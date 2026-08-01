@@ -6,7 +6,9 @@ import tseslint from 'typescript-eslint';
  * run unchanged in a browser and in Node, so it may not reach for React, the DOM
  * or Node built-ins. Three things enforce that, deliberately overlapping:
  *
- *   1. packages/engine/package.json declares zero dependencies.
+ *   1. packages/engine/package.json declares no dependency except @gp/data,
+ *      which is platform-free by the same rules (ticket 04: every engine
+ *      function takes the overlay-applied GameData as an argument).
  *   2. packages/engine/tsconfig.json omits the "DOM" lib and all @types, so
  *      `document` or `process` fail typecheck.
  *   3. the no-restricted-imports block below, which catches the rest.
@@ -17,6 +19,14 @@ export default tseslint.config(
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
+  {
+    // Build and repo-hygiene scripts. Plain JS, so they get no Node globals from
+    // @types/node the way the TypeScript packages do.
+    files: ['tools/**/*.mjs', '*.config.js'],
+    languageOptions: {
+      globals: { process: 'readonly', console: 'readonly', URL: 'readonly' },
+    },
+  },
   {
     rules: {
       '@typescript-eslint/consistent-type-imports': 'error',

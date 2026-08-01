@@ -1,0 +1,6 @@
+{
+  "name": "hire-price",
+  "description": "Watch-list item 3, bootstrap. Everyone starts on nothing, so a dear Worker means several near-identical opening turns. Sweep the fee and read the turn of first hire off each cell.",
+  "schemaVersion": 1,
+  "sweep": [{ "knob": "workers.hireFee", "values": [1, 2, 3, 4] }]
+}

@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "schemaVersion": 1,
+    "kind": "authored",
+    "generatedBy": null,
+    "sourceSheet": null,
+    "notes": [
+      "Hand-authored from the current rules. Deliberately NOT in any sheet: the spreadsheet's Components tab is stale material from an older edition (retired player meeples and food tokens) and must never be imported.",
+      "Five Hired Worker cards sit in a central Hiring Fair, each tied to one core action, each with a big meeple standing on a Working Week track. These are the only meeples in the game; player-coloured worker meeples are dead.",
+      "Hiring is a Build action costing hireFee to the bank. Maximum one hired Worker per player. The meeple arrives on the track's first space (no wage) and can be worked the same turn.",
+      "Every use advances the meeple one space, INCLUDING the owner's own free uses. The wage on the space the meeple moves onto is paid by the BANK to the card's owner, and only when a RIVAL uses it via a Visit. The owner's own uses pay nothing.",
+      "The wages array lists the paying spaces in order after arrival: advancing onto paying space i pays wages[i - 1]. When the meeple advances past the last paying space it walks home, and the card returns to the Hiring Fair, hireable again by anyone. A full track is therefore wages.length + 1 uses.",
+      "Workers perform PLAIN base actions. The Draw Worker is the load-bearing exception: it draws 3 and keeps 2, not the plain draw-2-keep-1. Because every rental is paid with a card, a Worker whose action produces cards is worthless to rent unless it over-delivers. If it ever reverts to a plain Draw it becomes pointless to rent. Do not tidy this away.",
+      "The Draw Worker's track is deliberately short. It is the only Worker that refunds its own fee, so track length is its only brake.",
+      "There is deliberately no Grow Worker of the activate-a-building kind: building text must never fire twice in a turn. The Sow Worker sows onto one of your OWN buildings, which is a placement, not an activation.",
+      "linkedSuit is the suit whose Farmstead power composes with this Worker's action, because a Worker performs YOUR action and so your suit power applies. It is flavour and coupling, not a hiring restriction: anyone may hire any Worker."
+    ],
+    "unresolved": []
+  },
+  "hireFee": 2,
+  "maxPerPlayer": 1,
+  "roster": [
+    {
+      "id": "harvest",
+      "name": "Harvest Worker",
+      "action": "harvest",
+      "actionText": "Harvest.",
+      "linkedSuit": "wheat",
+      "wages": [1, 2, 3]
+    },
+    {
+      "id": "deliver",
+      "name": "Deliver Worker",
+      "action": "deliver",
+      "actionText": "Deliver.",
+      "linkedSuit": "vegetable",
+      "wages": [1, 2, 3]
+    },
+    {
+      "id": "draw",
+      "name": "Draw Worker",
+      "action": "draw",
+      "actionText": "Draw 3, keep 2.",
+      "linkedSuit": "orchard",
+      "draw": {
+        "see": 3,
+        "keep": 2
+      },
+      "wages": [1, 2]
+    },
+    {
+      "id": "sow",
+      "name": "Sow Worker",
+      "action": "sow",
+      "actionText": "Sow 1 card from your hand onto one of your own buildings.",
+      "linkedSuit": "apiary",
+      "sow": {
+        "amount": 1
+      },
+      "wages": [1, 2, 3]
+    },
+    {
+      "id": "build",
+      "name": "Build Worker",
+      "action": "build",
+      "actionText": "Build.",
+      "linkedSuit": "dairy",
+      "wages": [1, 2, 3]
+    }
+  ]
+}

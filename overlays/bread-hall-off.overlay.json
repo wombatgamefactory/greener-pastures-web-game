@@ -1,0 +1,8 @@
+{
+  "name": "bread-hall-off",
+  "description": "Paired comparison: the Bread Hall switched out. Run against the baseline to settle whether its 1 VP per 2 coins corrupts the coin economy, rather than deciding it on judgement. The question is open in the design.",
+  "schemaVersion": 1,
+  "set": {
+    "cards.catalogue.W21.enabled": false
+  }
+}

@@ -1,0 +1,190 @@
+/**
+ * The engine's state model, move protocol and event stream, as designed in
+ * wayfinder ticket 04 and proven by ticket 05's spanning-set prototype.
+ *
+ * Everything in here is plain JSON: no classes, no closures, no Dates. A
+ * GameState survives structuredClone, JSON round-trips, and being diffed by a
+ * human. Card properties are never copied into state; a zone holds card ids and
+ * the properties are read from GameData.
+ */
+
+import type { Suit, WorkerAction } from '@gp/data';
+
+export type Seat = number;
+
+/** A card's spreadsheet Ref, e.g. "W13". All 105 are unique; the id IS the card. */
+export type CardId = string;
+
+/** A built card in a player's tableau. Starters live here too, from setup. */
+export interface BuildingState {
+  card: CardId;
+  /** Cards paid or sown onto this building, oldest first. Full = length >= threshold. */
+  stack: CardId[];
+  /** Starters flip; deck cards never do. */
+  upgraded: boolean;
+}
+
+export interface PlayerState {
+  suit: Suit;
+  coins: number;
+  hand: CardId[];
+  /** Stored value. Identity is inert here (views tally by suit) but ids keep card conservation checkable. */
+  barn: CardId[];
+  tableau: BuildingState[];
+  /** VP values of island receipt tokens taken, in delivery order. */
+  receipts: number[];
+}
+
+export interface WorkerState {
+  id: WorkerAction;
+  /** null = in the Hiring Fair. */
+  owner: Seat | null;
+  /** 0 = arrival space (no wage); 1..wages.length = paying spaces. Advancing past the end sends the Worker home. */
+  trackPos: number;
+}
+
+/**
+ * Everything scoped to the current turn. Turn end replaces the whole object,
+ * so a turn-scoped leak is structurally impossible.
+ */
+export interface TurnState {
+  actionSpent: boolean;
+  bonusSpent: boolean;
+  /**
+   * The Helping Hand gate. Set only by a visit's worker payoff; a repeat
+   * re-works this worker. `repeats` counts repeats taken this visit.
+   */
+  visit: { host: Seat; workerId: WorkerAction; repeats: number } | null;
+}
+
+/**
+ * A suspended mid-effect choice, waiting for a task answer. Only choices queue;
+ * immediate effects resolve synchronously. Head of the queue answers first.
+ *
+ * The vocabulary is deliberately small and generic: a task describes WHAT is
+ * being chosen with data riders, never card-specific logic. Card-specific
+ * behaviour rides as riders the generic resolver applies (e.g. `ownerCoins` on
+ * chooseWorker), or in the last resort as a `card` task resolved by the card's
+ * own handler.
+ */
+export type Task =
+  | {
+      /** Pick a Hired Worker and perform its action. */
+      t: 'chooseWorker';
+      pid: Seat;
+      src: CardId;
+      /** Whose workers qualify. */
+      owned: 'rival' | 'own' | 'any';
+      /** false = the Herb Hive mode: no meeple advance, therefore no wage. */
+      progress: boolean;
+      /** Coins the worker's owner mints from the bank when the pick resolves. */
+      ownerCoins: number;
+    }
+  | {
+      /**
+       * The see-N / keep-K draw engine, one task for the whole draw. While
+       * `revealed.length < see` the answers are deck picks; once everything is
+       * revealed the answers are keep-subsets. Kept cards go to hand, the rest
+       * to their suits' discards.
+       */
+      t: 'draw';
+      pid: Seat;
+      src: CardId | null;
+      see: number;
+      keep: number;
+      revealed: CardId[];
+    }
+  | {
+      /** Pick one of your own buildings matching the filter, then do `then` to it. */
+      t: 'chooseBuilding';
+      pid: Seat;
+      src: CardId | null;
+      filter: 'full' | 'notFull';
+      then: 'harvest';
+    }
+  | {
+      /** Sow: place a card from hand onto one of your own non-full buildings. Suit-free, never activates. */
+      t: 'sow';
+      pid: Seat;
+      src: CardId | null;
+      remaining: number;
+    }
+  | {
+      /**
+       * Escape hatch: a card-specific choice the generic vocabulary cannot
+       * express. Resolved by the handler registered for `src`, keyed by `kind`.
+       * None of the spanning set needed it; prefer the generic tasks.
+       */
+      t: 'card';
+      pid: Seat;
+      src: CardId;
+      kind: string;
+      riders: Record<string, unknown>;
+    };
+
+/** An answer to the head task. Shape depends on the task type. */
+export type TaskAnswer =
+  | { kind: 'worker'; workerId: WorkerAction }
+  | { kind: 'deck'; suit: Suit }
+  | { kind: 'keep'; cards: CardId[] }
+  | { kind: 'building'; card: CardId }
+  | { kind: 'sow'; card: CardId; onto: CardId }
+  | { kind: 'skip' }
+  | { kind: 'card'; payload: Record<string, unknown> };
+
+/** Where control returns when the task queue drains. */
+export type Resume = 'main' | 'worker' | 'turnflow';
+
+export interface GameState {
+  schema: 1;
+  /** cards meta.sourceSha256 + overlay name; loading against different data fails loudly. */
+  dataFingerprint: string;
+  /** sfc32 state. */
+  rng: [number, number, number, number];
+  seats: number;
+  turnPlayer: Seat;
+  phase: 'playing' | 'ended';
+  endTrigger: { seat: Seat } | null;
+  players: PlayerState[];
+  /** Per-suit, index 0 = top. Never merged, never cross-shuffled. */
+  decks: Record<Suit, CardId[]>;
+  discards: Record<Suit, CardId[]>;
+  fair: WorkerState[];
+  turn: TurnState;
+  tasks: Task[];
+  resume: Resume | null;
+}
+
+/**
+ * The Move union. Two families: turn moves (the five actions, the bonus slot,
+ * turn end) and answers to a pending task. Card-contributed standing moves
+ * (`cardMove`) are enumerated by legalMoves via the card's handler and applied
+ * through the same registry, so legality still has exactly one source.
+ *
+ * Ticket 05 implements the handler-facing slice (task + cardMove); the plain
+ * turn moves land with the bulk card build.
+ */
+export type Move =
+  | { type: 'task'; seat: Seat; answer: TaskAnswer }
+  | {
+      type: 'cardMove';
+      seat: Seat;
+      /** The built card offering this move. */
+      card: CardId;
+      /** Handler-defined discriminator. */
+      kind: string;
+      payload: Record<string, unknown>;
+    };
+
+/** One truth-level stream; redactEvents masks per seat. Feeds UI animation and sim metrics alike. */
+export type GameEvent =
+  | { e: 'coins'; seat: Seat; delta: number; why: string }
+  | { e: 'cardPlaced'; seat: Seat; onto: { seat: Seat; building: CardId }; card: CardId }
+  | { e: 'cardsToHand'; seat: Seat; cards: CardId[] }
+  | { e: 'cardsDiscarded'; suit: Suit; cards: CardId[] }
+  | { e: 'deckToBarn'; seat: Seat; suit: Suit; card: CardId }
+  | { e: 'harvested'; seat: Seat; building: CardId; cards: CardId[] }
+  | { e: 'workerWorked'; seat: Seat; workerId: WorkerAction; owner: Seat | null; free: boolean }
+  | { e: 'workerAdvanced'; workerId: WorkerAction; to: number; wage: number; paidTo: Seat | null }
+  | { e: 'workerExpired'; workerId: WorkerAction }
+  | { e: 'reshuffled'; suit: Suit; count: number };

@@ -8,7 +8,8 @@
     "gp-sim": "./src/cli.ts"
   },
   "dependencies": {
-    "@gp/engine": "*"
+    "@gp/engine": "*",
+    "@gp/data": "*"
   },
   "scripts": {
     "sim": "tsx src/cli.ts",

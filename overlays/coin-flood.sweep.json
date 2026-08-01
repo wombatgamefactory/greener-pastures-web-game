@@ -1,0 +1,9 @@
+{
+  "name": "coin-flood",
+  "description": "Watch-list items 1 and 2, drought to flood. Every visit now mints coins from the bank, and the visitor also hands a rival a card. Sweep the visit payout against the coin pity rate; table coins at end of round must plateau, not climb. Shrinking the payout is the named dial if it bites - never removing the card.",
+  "schemaVersion": 1,
+  "sweep": [
+    { "knob": "rules.economy.visitPayout.base", "values": [1, 2] },
+    { "knob": "rules.economy.coinPityDivisor", "values": [5, 10, null] }
+  ]
+}

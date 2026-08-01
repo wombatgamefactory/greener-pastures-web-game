@@ -1,0 +1,36 @@
+{
+  "meta": {
+    "schemaVersion": 1,
+    "kind": "authored",
+    "generatedBy": null,
+    "sourceSheet": null,
+    "notes": [
+      "The numbers that belong to no single card: setup quantities, the standing economy rates, and the end-game trigger. Anything PRINTED on a card lives in cards.json instead, and anything printed on the island lives in island.json.",
+      "visitPayout is the machine-readable form of the payout printed on the Notice Board and on its upgraded face. The card text is the source; this is what the engine and the simulator read, so the two must not drift.",
+      "coinPityDivisor turns leftover coins into VP at game end: floor(coins / divisor). It is flagged OPEN in the design: the current edition makes coins abundant, and a pity rate then quietly rewards not spending. The live candidates are raising the divisor to 10 or deleting the rule (divisor null).",
+      "startingBarnCards is the single card each player starts with in their barn. startingHand is drawn from their own suit deck, which is why an owned deck holds 12 cards after setup."
+    ],
+    "unresolved": [
+      "coinPityDivisor: 5 is the current printed rule, but it is explicitly open. Ships as a knob so the simulator can test 5 against 10 against off.",
+      "The Notice Board threshold is printed 5, with a proposed dial to 4 at two seats that has never been adopted. Not modelled: the printed threshold in cards.json is the only threshold. If the dial is adopted it becomes a seats-indexed override here."
+    ]
+  },
+  "setup": {
+    "startingHand": 5,
+    "startingBarnCards": 1,
+    "startingCoins": 0
+  },
+  "turn": {
+    "actionsPerTurn": 1,
+    "bonusSlotsPerTurn": 1
+  },
+  "economy": {
+    "upgradeCostCoins": 2,
+    "coinPityDivisor": 5,
+    "visitPayout": { "base": 1, "upgraded": 2 }
+  },
+  "endGame": {
+    "trigger": "levelThreeDelivery",
+    "furtherTurnsEach": 1
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Same platform-free discipline as the engine: this package is imported by
+    // the browser UI and by Node, so it may not reach for either. It reads no
+    // files at runtime - the JSON is imported, not loaded from disk.
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["src", "data"]
+}
