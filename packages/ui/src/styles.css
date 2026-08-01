@@ -1,0 +1,31 @@
+:root {
+  --paper: #f7f1e3;
+  --ink: #5a4632;
+  --ink-soft: #8a7457;
+
+  color-scheme: light;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.shell {
+  text-align: center;
+  padding: 2rem;
+}
+
+.build-stamp {
+  color: var(--ink-soft);
+  font-size: 0.875rem;
+}

@@ -22,3 +22,27 @@ desktop.ini
 # Environment
 .env
 .env.local
+
+# ---------------------------------------------------------------------------
+# DISCLOSURE BOUNDARY
+# This repo will be made public and shown to publishers. Everything below is
+# design material, planning, or analysis that must stay private. These rules
+# must be correct from the first commit: flipping the repo public exposes the
+# entire history, not just the current tree.
+# ---------------------------------------------------------------------------
+
+# Wayfinder map, decision tickets, and research notes
+.scratch/
+
+# Simulator output: balance reports, complexity reports, run logs, cut lists.
+# Deliberately not anchored to the repo root, so a report written into
+# packages/sim/reports/ is caught too.
+reports/
+sim-out/
+*.jsonl
+
+# Source design material. Generated card data (packages/ui/public/data/*.json)
+# still ships, because the game cannot run without it.
+*.xlsm
+*.xlsx
+design/

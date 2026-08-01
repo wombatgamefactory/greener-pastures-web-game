@@ -1,0 +1,5 @@
+dist/
+node_modules/
+.scratch/
+reports/
+package-lock.json

@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // No "DOM" and no "types". The engine must compile with zero knowledge of a
+    // browser or of Node. Referencing `document`, `window`, `process` or `Buffer`
+    // in here is a typecheck failure, not a code-review note.
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["src"]
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@gp/sim",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Headless Node simulator: card economics, difficulty cross-reference, and the v14 watch-list assertions.",
+  "bin": {
+    "gp-sim": "./src/cli.ts"
+  },
+  "dependencies": {
+    "@gp/engine": "*"
+  },
+  "scripts": {
+    "sim": "tsx src/cli.ts",
+    "typecheck": "tsc -p . --noEmit"
+  }
+}
