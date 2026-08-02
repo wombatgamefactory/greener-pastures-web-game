@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Same platform-free settings as the engine: no "DOM", no "types". The UI's
+    // difficulty ladder and the Node simulator both run these bots, so a
+    // reference to `document`, `window` or `process` is a typecheck failure.
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["src"]
+}

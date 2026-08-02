@@ -28,6 +28,21 @@ export default tseslint.config(
     },
   },
   {
+    // The layout verifier ships callbacks to `page.evaluate`, so its source
+    // legitimately contains browser code alongside its Node code.
+    files: ['tools/verify-layout.mjs'],
+    languageOptions: {
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        URL: 'readonly',
+        document: 'readonly',
+        window: 'readonly',
+        getComputedStyle: 'readonly',
+      },
+    },
+  },
+  {
     rules: {
       '@typescript-eslint/consistent-type-imports': 'error',
       '@typescript-eslint/no-unused-vars': [
@@ -52,6 +67,40 @@ export default tseslint.config(
               group: ['node:*', 'fs', 'path', 'os', 'crypto', 'child_process'],
               message:
                 'The engine must run in the browser. Do I/O in @gp/sim or @gp/ui and pass data in.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // The bots are consumed by the browser AND by Node, so they carry the
+    // engine's platform rules. The extra rule is the one ticket 10 exists to
+    // protect: a policy sees a PlayerView, never the truth. Importing GameState
+    // is how that boundary would erode, so it fails the build here as well as
+    // in the source probe in @gp/sim.
+    files: ['packages/bots/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@gp/engine',
+              importNames: ['GameState'],
+              message:
+                'A policy sees PlayerView, never GameState. A bot that knows the deck order ' +
+                'contaminates every balance number.',
+            },
+          ],
+          patterns: [
+            {
+              group: ['react', 'react-*', '@gp/ui', '@gp/ui/*', '@gp/sim', '@gp/sim/*'],
+              message: 'The bots run in the browser and in Node. No framework, no simulator.',
+            },
+            {
+              group: ['node:*', 'fs', 'path', 'os', 'crypto', 'child_process'],
+              message: 'The bots run in the browser. Do I/O in @gp/sim or @gp/ui.',
             },
           ],
         },

@@ -1,0 +1,146 @@
+/*
+ * Tokens, reset and the responsive size steps.
+ *
+ * Card sizes are custom properties rather than component constants so the
+ * responsive floor is enforced in ONE place. `Table.tsx` reads them back with
+ * getComputedStyle, which means a size can never be tuned here and silently
+ * ignored by a component.
+ *
+ * The palette is the printed one: paper is the card stock, ink is the sepia
+ * line work the art style locks (never black - black tips the whole thing into
+ * Western cartoon).
+ */
+
+/* Latin subsets only: the printed game is English and the Hebrew subsets are
+   dead weight in the bundle. Fredoka is SIL OFL, self-hosted, no network call -
+   the printed cards are set in Berlin Sans FB, which is licensed with Office and
+   is not ours to redistribute, so this is the nearest free relative in the same
+   rounded-geometric family. */
+@import '@fontsource/fredoka/latin-400.css';
+@import '@fontsource/fredoka/latin-500.css';
+@import '@fontsource/fredoka/latin-600.css';
+
+:root {
+  --paper: #f7f1e3;
+  --paper-deep: #ece2cb;
+  --paper-panel: #fdfaf1;
+  --ink: #5a4632;
+  --ink-soft: #8a7457;
+  --ink-line: #b9a68a;
+  --rule: #d9cbae;
+  --shadow: 0 1px 3px rgb(58 42 24 / 14%);
+  --shadow-lift: 0 6px 18px rgb(58 42 24 / 26%);
+
+  --font-display: 'Fredoka', 'Berlin Sans FB', 'Trebuchet MS', system-ui, sans-serif;
+  --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* Comfortable desktop. Overridden downward at the breakpoints below. */
+  --rail-w: 244px;
+  --card-building: 128px;
+  --card-hand: 190px;
+  --card-deck: 96px;
+  --card-inspector: 158px;
+  --island-tile-w: 58px;
+  --gap: 12px;
+
+  color-scheme: light;
+  font-family: var(--font-ui);
+  color: var(--ink);
+}
+
+/* The 1024x700 floor. Verified with a real browser by
+   `npm run verify:layout`, not assumed: the check fails if any rival, the
+   commons, the farm or the hand falls below the fold. */
+@media (max-width: 1320px) {
+  :root {
+    --rail-w: 214px;
+    --card-building: 108px;
+    --card-hand: 158px;
+    --card-deck: 80px;
+    --card-inspector: 136px;
+    --island-tile-w: 50px;
+    --gap: 10px;
+  }
+}
+
+/* Room to spend. The farm is meant to own the screen, and at this size the
+   default step leaves the tableau floating in empty space rather than filling
+   it, so the cards themselves grow. */
+@media (min-width: 1500px) and (min-height: 850px) {
+  :root {
+    --rail-w: 268px;
+    --card-building: 168px;
+    --card-hand: 236px;
+    --card-deck: 116px;
+    --card-inspector: 186px;
+    --island-tile-w: 68px;
+    --gap: 14px;
+  }
+}
+
+@media (max-width: 1100px), (max-height: 760px) {
+  :root {
+    --rail-w: 196px;
+    --card-building: 92px;
+    --card-hand: 132px;
+    --card-deck: 68px;
+    --card-inspector: 118px;
+    --island-tile-w: 44px;
+    --gap: 8px;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at 22% 0%, #fbf6ea 0%, var(--paper) 46%, #efe6d1 100%);
+  color: var(--ink);
+  overflow: hidden;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+img {
+  -webkit-user-drag: none;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.empty-note {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-style: italic;
+}

@@ -8,6 +8,7 @@
   "workspaces": [
     "packages/engine",
     "packages/data",
+    "packages/bots",
     "packages/ui",
     "packages/sim"
   ],
@@ -16,7 +17,7 @@
     "build": "npm run build --workspace @gp/ui",
     "preview": "npm run preview --workspace @gp/ui",
     "sim": "npm run sim --workspace @gp/sim --",
-    "typecheck": "tsc -p packages/engine --noEmit && tsc -p packages/data --noEmit && tsc -p packages/sim --noEmit && tsc -p packages/ui --noEmit",
+    "typecheck": "tsc -p packages/engine --noEmit && tsc -p packages/data --noEmit && tsc -p packages/bots --noEmit && tsc -p packages/sim --noEmit && tsc -p packages/ui --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -24,12 +25,14 @@
     "test:watch": "vitest",
     "check": "npm run check:disclosure && npm run format:check && npm run lint && npm run typecheck && npm run test",
     "knobs": "npm run sim -- --list-knobs",
+    "verify:layout": "node tools/verify-layout.mjs",
     "check:disclosure": "node tools/check-disclosure.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.1.2",
     "eslint": "^10.8.0",
+    "playwright-core": "^1.62.1",
     "prettier": "^3.9.6",
     "tsx": "^4.23.1",
     "typescript": "^6.0.3",

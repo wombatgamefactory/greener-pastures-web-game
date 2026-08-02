@@ -1,0 +1,918 @@
+/*
+ * Layout B: focus plus rail.
+ *
+ * The shell is a two-column grid pinned to the viewport, and every region that
+ * can overflow scrolls INSIDE itself. That is what makes the 1024x700 floor a
+ * property of the layout rather than a hope: the page itself never scrolls, so
+ * "below the fold" can only happen if a region is given too little height, and
+ * the verifier measures exactly that.
+ */
+
+.table {
+  display: grid;
+  grid-template-columns: var(--rail-w) minmax(0, 1fr);
+  gap: var(--gap);
+  height: 100dvh;
+  padding: var(--gap);
+  overflow: hidden;
+}
+
+/* ---- the rail ----------------------------------------------------------- */
+
+/* The neighbours come first and the feed takes what is left. A fractional split
+   gave the feed 259px at the 700px floor and pushed the third neighbour out of
+   the rail entirely - which the layout verifier only caught once it learned to
+   account for clipping by a scrolling ancestor. */
+.rail-column {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) clamp(104px, 18%, 320px);
+  gap: var(--gap);
+  min-height: 0;
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  overflow-y: auto;
+  min-height: 0;
+  padding-right: 2px;
+}
+
+.rival {
+  background: var(--paper-panel);
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--seat-pip);
+  border-radius: 8px;
+  padding: 7px 8px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 5px;
+}
+
+.rival-active {
+  outline: 2px solid var(--seat-pip);
+  outline-offset: 1px;
+}
+
+.rival-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 0;
+  padding: 0;
+  width: 100%;
+  text-align: left;
+}
+
+.rival-head:hover .rival-open,
+.rival-head:focus-visible .rival-open {
+  opacity: 1;
+}
+
+.rival-head h3 {
+  font-size: 13px;
+  color: var(--seat-ink);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rival-crop {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.rival-turn {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: var(--seat-pip);
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+.rival-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  margin: 0;
+  font-size: 11px;
+}
+
+.rival-stats div {
+  text-align: center;
+}
+
+.rival-stats dt {
+  color: var(--ink-soft);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.rival-stats dd {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.rival-board {
+  display: grid;
+  gap: 2px;
+}
+
+.rival-payout {
+  font-size: 10px;
+  color: var(--ink-soft);
+}
+
+.rival-board-none {
+  margin: 0;
+  font-size: 10px;
+  color: #a2493a;
+  font-style: italic;
+}
+
+.rival-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1px solid rgb(58 42 24 / 45%);
+}
+
+.dot-full {
+  box-shadow: 0 0 0 2px #a2493a;
+}
+
+.dot-upgraded {
+  border-radius: 2px;
+}
+
+.rival-open {
+  font-size: 9px;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+/* The rail is compressed hard so three neighbours fit above the 700px fold.
+   Everything a visit decision does not need is hidden at this size and lives in
+   the inspector instead. */
+.worker-rail .worker-action,
+.worker-rail .worker-next {
+  display: none;
+}
+
+/* ---- the feed ----------------------------------------------------------- */
+
+.feed {
+  background: var(--paper-panel);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 6px 8px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  box-shadow: var(--shadow);
+}
+
+.feed-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  font-size: 11px;
+  line-height: 1.35;
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+.feed-line {
+  padding: 1px 0;
+  border-left: 3px solid var(--line-ink, transparent);
+  padding-left: 5px;
+}
+
+.feed-boundary {
+  color: var(--ink-soft);
+  font-style: italic;
+  border-top: 1px dashed var(--rule);
+  margin-top: 2px;
+  padding-top: 2px;
+}
+
+.feed-alarm {
+  font-weight: 700;
+  color: #a2493a;
+}
+
+/* ---- the main column ---------------------------------------------------- */
+
+.main-column {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--gap);
+  min-height: 0;
+  min-width: 0;
+}
+
+.panel {
+  background: var(--paper-panel);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 6px 8px;
+  box-shadow: var(--shadow);
+  min-width: 0;
+}
+
+.panel-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-soft);
+  margin-bottom: 4px;
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.panel-title em {
+  font-style: normal;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* ---- commons ------------------------------------------------------------ */
+
+.commons {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(160px, auto);
+  gap: var(--gap);
+  min-width: 0;
+}
+
+.commons-right {
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: var(--gap);
+  align-content: start;
+  min-width: 0;
+}
+
+.decks {
+  display: flex;
+  gap: 5px;
+}
+
+.deck {
+  display: grid;
+  gap: 3px;
+}
+
+.deck-discard {
+  display: grid;
+  gap: 1px;
+  justify-items: center;
+}
+
+.deck-empty {
+  aspect-ratio: 1039 / 750;
+  border: 1px dashed var(--ink-line);
+  border-radius: 5px;
+}
+
+.deck-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.fair {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+/* ---- island ------------------------------------------------------------- */
+
+.island {
+  display: grid;
+  gap: 3px;
+  justify-items: center;
+}
+
+.island-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.island-level {
+  display: grid;
+  font-size: 9px;
+  color: var(--ink-soft);
+  text-align: right;
+  line-height: 1.15;
+  min-width: 38px;
+}
+
+.island-level b {
+  font-family: var(--font-display);
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.island-row-open .island-level b {
+  color: #3f7a3a;
+}
+
+.island-locked {
+  color: #a2493a;
+}
+
+.island-tiles {
+  display: flex;
+}
+
+.island-tile {
+  position: relative;
+  width: var(--island-tile);
+  aspect-ratio: 375 / 520;
+  overflow: hidden;
+}
+
+.island-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.island-tile-done {
+  filter: saturate(0.45) brightness(0.94);
+}
+
+.island-demands {
+  position: absolute;
+  inset: 4% 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px;
+}
+
+.island-crate {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.island-crate b {
+  position: absolute;
+  bottom: -3px;
+  right: -2px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  color: #fff;
+  -webkit-text-stroke: 2px #2f2318;
+  paint-order: stroke fill;
+}
+
+.demand {
+  position: relative;
+  display: block;
+}
+
+.demand img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.island-receipts {
+  position: absolute;
+  inset: auto 0 4%;
+  display: flex;
+  justify-content: center;
+  gap: 3px;
+}
+
+.receipt {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid #2f2318;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.receipt img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  mix-blend-mode: multiply;
+}
+
+.receipt-empty {
+  background: rgb(255 255 255 / 55%);
+  border-style: dashed;
+}
+
+/* ---- aerodrome ---------------------------------------------------------- */
+
+.balloons {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.balloons li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  line-height: 1.15;
+}
+
+.balloons img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  flex: none;
+}
+
+/* ---- your farm ---------------------------------------------------------- */
+
+.farm {
+  background: var(--paper-panel);
+  border: 1px solid var(--rule);
+  border-top: 4px solid var(--seat-pip);
+  border-radius: 8px;
+  padding: 6px 8px;
+  box-shadow: var(--shadow);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 6px;
+  min-height: 0;
+}
+
+.farm-active {
+  box-shadow: var(--shadow-lift);
+}
+
+.farm-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.farm-head h2 {
+  font-size: 15px;
+  color: var(--seat-ink);
+}
+
+.farm-crop {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.farm-coins,
+.farm-vp {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-display);
+  font-size: 14px;
+}
+
+.farm-coins img,
+.farm-vp img {
+  width: 17px;
+  height: 17px;
+  object-fit: contain;
+  border-radius: 50%;
+}
+
+.farm-covered {
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.farm-turn {
+  margin-left: auto;
+  background: var(--seat-pip);
+  color: #fff;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.farm-waiting {
+  margin-left: auto;
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+.tableau {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-content: flex-start;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 2px;
+}
+
+.building {
+  position: relative;
+}
+
+.building-full .card {
+  outline: 2px solid #a2493a;
+  outline-offset: 1px;
+}
+
+.building-gauge {
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  transform: translateX(-50%);
+}
+
+.building-clog {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  background: #a2493a;
+  color: #fff;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
+/* ---- gauges ------------------------------------------------------------- */
+
+.gauge {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+  background: rgb(28 20 12 / 62%);
+  border-radius: 999px;
+  padding: 2px 5px;
+}
+
+.pip {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 25%);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 45%);
+}
+
+.pip-filled {
+  box-shadow: inset 0 0 0 1px rgb(28 20 12 / 55%);
+}
+
+.gauge-full {
+  background: #a2493a;
+}
+
+.gauge-rail .pip {
+  width: 5px;
+  height: 5px;
+}
+
+.gauge-over {
+  color: #fff;
+  font-size: 9px;
+}
+
+.fillbar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 5px;
+}
+
+.fillbar-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--paper-deep);
+  box-shadow: inset 0 0 0 1px var(--ink-line);
+  overflow: hidden;
+}
+
+.fillbar-fill {
+  display: block;
+  height: 100%;
+  background: var(--seat-pip, #7d9a5c);
+}
+
+.fillbar-full .fillbar-fill {
+  background: #a2493a;
+}
+
+.fillbar-text {
+  font-size: 10px;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- hand and barn ------------------------------------------------------ */
+
+.farm-strips {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--gap);
+  align-items: start;
+}
+
+.strip-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-soft);
+  margin-bottom: 3px;
+}
+
+.strip-title em {
+  font-style: normal;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.over-limit {
+  color: #a2493a;
+  font-weight: 700;
+}
+
+.hand {
+  display: flex;
+  min-height: calc(var(--card-hand) * 0.722);
+}
+
+/* The fan tightens only as the hand grows. A fixed overlap clipped the names
+   off a four-card hand for no reason; peak hand is 7 (measured, ticket 09) and
+   only that needs the full squeeze to stay on one row at the floor. */
+.hand-card + .hand-card {
+  margin-left: calc(var(--card-hand) * -0.1);
+}
+
+.hand:has(.hand-card:nth-child(5)) .hand-card + .hand-card {
+  margin-left: calc(var(--card-hand) * -0.28);
+}
+
+.hand:has(.hand-card:nth-child(7)) .hand-card + .hand-card {
+  margin-left: calc(var(--card-hand) * -0.44);
+}
+
+.hand-card {
+  transition: transform 120ms ease;
+}
+
+.hand-card:hover {
+  transform: translateY(-10px);
+  z-index: 50 !important;
+}
+
+.barn-piles {
+  display: flex;
+  gap: 4px;
+}
+
+/* ---- workers ------------------------------------------------------------ */
+
+.worker {
+  border: 1px solid var(--rule);
+  border-left-width: 3px;
+  border-radius: 6px;
+  background: var(--paper);
+  padding: 3px 5px;
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+}
+
+.worker-art {
+  width: 54px;
+  border-radius: 4px;
+  flex: none;
+}
+
+.worker-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.worker-name {
+  font-family: var(--font-display);
+  font-size: 11px;
+  display: flex;
+  gap: 4px;
+  justify-content: space-between;
+}
+
+.worker-name em {
+  font-style: normal;
+  font-size: 9px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.worker-hire {
+  color: #3f7a3a !important;
+}
+
+.worker-action {
+  font-size: 10px;
+  color: var(--ink-soft);
+}
+
+.worker-track {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 2px;
+}
+
+.worker-space {
+  min-width: 17px;
+  height: 15px;
+  border-radius: 3px;
+  background: var(--paper-deep);
+  box-shadow: inset 0 0 0 1px var(--ink-line);
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  color: var(--ink-soft);
+}
+
+.worker-space-here {
+  background: #4a3a26;
+}
+
+.worker-space-home {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--rule);
+}
+
+.worker-meeple {
+  width: 7px;
+  height: 11px;
+  border-radius: 3px 3px 1px 1px;
+  background: #f3e7cd;
+  box-shadow: 0 -4px 0 -1px #f3e7cd;
+}
+
+.worker-next {
+  font-size: 9px;
+  color: var(--ink-soft);
+}
+
+.worker-rail .worker-name {
+  font-size: 10px;
+}
+
+/* ---- zoom, inspector, banner -------------------------------------------- */
+
+.zoom {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 80;
+  pointer-events: none;
+  display: grid;
+  gap: 4px;
+  max-width: 420px;
+}
+
+.zoom .card {
+  box-shadow: var(--shadow-lift);
+}
+
+.zoom-other {
+  margin: 0;
+  background: var(--paper-panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 4px 7px;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(44 32 20 / 52%);
+  display: grid;
+  place-items: center;
+  z-index: 90;
+  padding: 20px;
+}
+
+.inspector {
+  background: var(--paper-panel);
+  border-radius: 10px;
+  padding: 12px 14px;
+  max-width: min(1100px, 92vw);
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-lift);
+  display: grid;
+  gap: 8px;
+}
+
+.inspector-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.inspector-head h2 {
+  font-size: 17px;
+  color: var(--seat-ink);
+}
+
+.inspector-close {
+  margin-left: auto;
+  background: var(--paper-deep);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 3px 12px;
+  font-size: 12px;
+}
+
+.inspector-visit {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  font-size: 12px;
+  background: var(--paper);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.inspector-workers {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.inspector .tableau {
+  overflow: visible;
+}
+
+.inspector-covered {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.end-banner {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  background: #a2493a;
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 13px;
+  padding: 3px 16px;
+  border-radius: 0 0 8px 8px;
+  z-index: 70;
+}

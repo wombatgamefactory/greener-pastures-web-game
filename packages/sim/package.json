@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "@gp/engine": "*",
-    "@gp/data": "*"
+    "@gp/data": "*",
+    "@gp/bots": "*"
   },
   "scripts": {
     "sim": "tsx src/cli.ts",

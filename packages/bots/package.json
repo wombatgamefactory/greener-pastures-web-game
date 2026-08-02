@@ -1,0 +1,19 @@
+{
+  "name": "@gp/bots",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The policy layer: how a seat decides. Platform-free, so the browser's difficulty ladder and the headless simulator run the same bots.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@gp/data": "0.0.0",
+    "@gp/engine": "0.0.0"
+  },
+  "scripts": {
+    "typecheck": "tsc -p . --noEmit"
+  }
+}

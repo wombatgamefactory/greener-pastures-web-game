@@ -338,6 +338,36 @@ export type Move =
   /** Decline whatever options are still live and end the turn. Legal once the action is spent. */
   | { type: 'endTurn'; seat: Seat };
 
+export type MoveType = Move['type'];
+
+/**
+ * The Move union's discriminator, reflected at runtime.
+ *
+ * `satisfies` makes this a two-way lock: a missing key is not assignable to the
+ * Record and an extra key trips the excess-property check, so the list cannot
+ * drift from the union. That is what lets a consumer assert coverage over every
+ * move type - the bot roster's scoring terms do exactly that, so a rules change
+ * that adds a move type fails the build rather than scoring it 0 in silence.
+ */
+const MOVE_TYPE_KEYS = {
+  task: true,
+  cardMove: true,
+  draw: true,
+  build: true,
+  hire: true,
+  upgrade: true,
+  grow: true,
+  harvest: true,
+  deliver: true,
+  moveBalloon: true,
+  visit: true,
+  workOwnWorker: true,
+  pass: true,
+  endTurn: true,
+} satisfies Record<MoveType, true>;
+
+export const MOVE_TYPES = Object.keys(MOVE_TYPE_KEYS) as readonly MoveType[];
+
 /** One truth-level stream; redactEvents masks per seat. Feeds UI animation and sim metrics alike. */
 export type GameEvent =
   | { e: 'coins'; seat: Seat; delta: number; why: string }

@@ -1,0 +1,293 @@
+/*
+ * The card, laid out in container-query units against the printed 1039 x 750
+ * geometry. Every percentage in here was measured off the exported InDesign
+ * layers, so the web card and the physical card share one layout grammar.
+ *
+ * 1cqw = 1% of the card's own width, so a single rule set serves every size
+ * the interface renders a card at.
+ */
+
+.card {
+  container-type: inline-size;
+  container-name: card;
+  position: relative;
+  aspect-ratio: 1039 / 750;
+  /* Percentages, not cqw. A container-query unit used on the container ITSELF
+     resolves against the next container out, not this box - which silently
+     turned every card into an ellipse the first time this was built. Inside the
+     card, cqw is correct and used everywhere. */
+  border-radius: 3.2%;
+  overflow: hidden;
+  flex: none;
+  background: var(--paper-deep);
+  box-shadow: 0 2px 5px rgb(58 42 24 / 22%);
+  user-select: none;
+  font-family: var(--font-display);
+}
+
+/* The printed dark keyline, drawn inside the container so it can scale in cqw. */
+.card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 0.55cqw #2f2318;
+  pointer-events: none;
+  z-index: 9;
+}
+
+.card-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ---- the ability band --------------------------------------------------- */
+
+.card-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 17.33%;
+  display: block;
+}
+
+.card-band-top {
+  top: 0;
+}
+
+.card-band-bottom {
+  bottom: 0;
+  height: 18.93%;
+}
+
+.card-band-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+
+.card-band-icon {
+  position: absolute;
+  top: 5%;
+  left: 1.9%;
+  width: 8.2%;
+  height: auto;
+}
+
+.card-band-icon-convert {
+  left: 12.3%;
+  width: 7.5%;
+}
+
+.card-ability {
+  position: absolute;
+  inset: 4% 2.5% 4% 21%;
+  margin: 0;
+  font-size: 3.5cqw;
+  line-height: 1.2;
+  font-weight: 600;
+  color: #fff;
+  white-space: pre-line;
+  -webkit-text-stroke: 0.62cqw #2f2318;
+  paint-order: stroke fill;
+  overflow: hidden;
+}
+
+/* A band with no icons (Power and Endgame print neither) reclaims the gutter. */
+.card-band:not(:has(.card-band-icon)) .card-ability {
+  inset: 6% 2.5% 6% 2.5%;
+  text-align: center;
+}
+
+/* ---- name --------------------------------------------------------------- */
+
+.card-name {
+  position: absolute;
+  top: 17.5%;
+  left: 13%;
+  right: 11%;
+  margin: 0;
+  text-align: center;
+  font-size: 4.7cqw;
+  font-weight: 600;
+  line-height: 1.05;
+  color: #fff;
+  -webkit-text-stroke: 0.75cqw #2f2318;
+  paint-order: stroke fill;
+}
+
+.card-band-bottom ~ .card-name {
+  top: 3%;
+}
+
+/* ---- left column: VP, crop chip, reference, threshold -------------------- */
+
+.card-vp {
+  position: absolute;
+  left: 2.1%;
+  top: 19%;
+  width: 8.6%;
+  aspect-ratio: 512 / 496;
+  display: grid;
+  place-items: center;
+}
+
+.card-vp img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.card-vp span {
+  position: relative;
+  font-size: 4.2cqw;
+  font-weight: 600;
+  color: #2f4a2c;
+}
+
+.card-chip {
+  position: absolute;
+  left: 1.7%;
+  top: 36.3%;
+  width: 11.1%;
+  aspect-ratio: 256 / 512;
+}
+
+.card-chip-bg,
+.card-chip-icon {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Inset the crop inside the chip with PADDING, not with `inset` plus auto sizing.
+   An absolutely positioned replaced element with `width: auto` takes its
+   intrinsic width and ignores the opposite offset, which rendered the crop icon
+   at 368px on a 58px chip - a giant apple across the whole card. */
+.card-chip-icon {
+  padding: 14% 10%;
+}
+
+.card-ref {
+  position: absolute;
+  left: 1.9%;
+  top: 70.5%;
+  font-size: 2.6cqw;
+  font-weight: 600;
+  color: #fff;
+  -webkit-text-stroke: 0.45cqw #2f2318;
+  paint-order: stroke fill;
+  letter-spacing: 0.02em;
+}
+
+.card-threshold {
+  position: absolute;
+  left: 1.5%;
+  bottom: -1%;
+  font-size: 18cqw;
+  font-weight: 600;
+  line-height: 1;
+  color: #fff;
+  -webkit-text-stroke: 1.1cqw #2f2318;
+  paint-order: stroke fill;
+}
+
+/* A bottom band would collide with the threshold number, but no card prints
+   both: Power and Endgame cards never stack. Belt and braces all the same. */
+.card:has(.card-band-bottom) .card-threshold {
+  display: none;
+}
+
+/* ---- the cost bar ------------------------------------------------------- */
+
+.card-cost-shape {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.card-cost-head,
+.card-cost-icon {
+  position: absolute;
+  height: auto;
+}
+
+.card-cost-icon {
+  transform: translateY(-50%);
+}
+
+/* ---- what a small card drops ------------------------------------------- */
+
+@container card (max-width: 260px) {
+  .card-ability,
+  .card-band-icon {
+    display: none;
+  }
+
+  .card-band {
+    opacity: 0.75;
+  }
+
+  .card-name {
+    font-size: 6.4cqw;
+    -webkit-text-stroke-width: 1cqw;
+    top: 15%;
+  }
+
+  .card-ref {
+    display: none;
+  }
+}
+
+@container card (max-width: 150px) {
+  .card-cost {
+    display: none;
+  }
+
+  .card-band {
+    display: none;
+  }
+
+  .card-name {
+    top: 4%;
+    left: 15%;
+    right: 4%;
+    font-size: 8cqw;
+  }
+
+  .card-threshold {
+    font-size: 22cqw;
+  }
+}
+
+/* ---- backs -------------------------------------------------------------- */
+
+.card-back {
+  display: grid;
+  place-items: center;
+}
+
+.card-count {
+  position: relative;
+  font-size: 16cqw;
+  font-weight: 600;
+  color: #fff;
+  -webkit-text-stroke: 1cqw #2f2318;
+  paint-order: stroke fill;
+}
+
+.card-back-unknown .card-art {
+  object-fit: contain;
+  padding: 12%;
+  background: var(--paper-deep);
+}
