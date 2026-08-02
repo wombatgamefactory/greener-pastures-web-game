@@ -55,8 +55,66 @@ export function canTakeCard(data: GameData, building: BuildingState): boolean {
   return threshold !== null && building.stack.length < threshold;
 }
 
+/**
+ * Spaces left under a building's threshold - 0 for a full one and for a
+ * building with no stack at all. Special Orders' 2-card visit needs room for
+ * BOTH cards before anything moves, which is the only place a count of one is
+ * not the same question as canTakeCard.
+ */
+export function roomOn(data: GameData, building: BuildingState): number {
+  const threshold = thresholdOf(data, building);
+  return threshold === null ? 0 : Math.max(0, threshold - building.stack.length);
+}
+
 export function fullBuildings(data: GameData, state: GameState, seat: Seat): BuildingState[] {
   return player(state, seat).tableau.filter((b) => isFull(data, b));
+}
+
+/**
+ * The CROP a building prints on its showing face - ticket 07's rule for every
+ * "buildings of crop X" count in the game, so it is never derived twice.
+ *
+ * A deck card prints its crop icon. A starter prints the generic
+ * starting-building icon on its base face and its crop icon only once flipped
+ * (verified in print by ticket 13: all 15 base faces carry `card_starter.png`,
+ * all 15 upgraded faces carry `suit_<crop>.png`). So a BASE starter belongs to
+ * no crop at all: it counts neither for its crop nor against it, and the £2
+ * upgrade sinks buy a crop icon as well as their printed rider.
+ *
+ * Not the keyword sub-types - FIELD, DEPOT, ORCHARD, HIVE come from title
+ * keywords and are untouched by this.
+ */
+export function cropOf(data: GameData, building: BuildingState): Suit | null {
+  const card = cardById(data, building.card);
+  if (card.type === 'starter') return building.upgraded ? card.suit : null;
+  return card.suit;
+}
+
+/** Buildings in a seat's tableau printing this crop's icon. */
+export function cropBuildings(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+  crop: Suit,
+): BuildingState[] {
+  return player(state, seat).tableau.filter((b) => cropOf(data, b) === crop);
+}
+
+/**
+ * Buildings printing SOME crop icon other than this one. Deliberately not the
+ * complement of cropBuildings: a base starter prints no crop, so it is not a
+ * building of a foreign crop either.
+ */
+export function foreignCropBuildings(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+  crop: Suit,
+): BuildingState[] {
+  return player(state, seat).tableau.filter((b) => {
+    const printed = cropOf(data, b);
+    return printed !== null && printed !== crop;
+  });
 }
 
 export function workerState(state: GameState, id: string): WorkerState {

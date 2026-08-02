@@ -129,6 +129,13 @@ export interface IslandFile {
   readonly seats: { readonly min: number; readonly max: number };
   readonly decksInPlayBySeats: Readonly<Record<string, number>>;
   readonly deliveriesPerTile: number;
+  /**
+   * The per-player level gate (ticket 07): deliver to a level only while
+   * already holding a receipt from the level below. False removes the climb
+   * entirely and every tile is deliverable at any time, which is what the
+   * engine shipped before ticket 29.
+   */
+  readonly levelGate: boolean;
   readonly levelRules: Readonly<Record<string, IslandLevelRule>>;
   readonly slotsBySeats: Readonly<Record<string, Readonly<Record<string, number>>>>;
   readonly levelThreeTilesBySeats: Readonly<Record<string, readonly string[]>>;
@@ -207,8 +214,22 @@ export interface RulesFile {
     readonly upgradeCostCoins: number;
     /** VP at game end is `floor(coins / divisor)`. Null disables the rule. */
     readonly coinPityDivisor: number | null;
-    readonly visitPayout: { readonly base: number; readonly upgraded: number };
-    /** The Farmstead flips FREE when a player's own-colour deck builds reach this count. */
+    /**
+     * What the bank pays a visitor who takes the money. `base` and `upgraded`
+     * are the one-card payouts of the two Notice Board faces; `twoCard` is
+     * Special Orders' second line ("2 cards, take £3"), which the upgraded face
+     * prints and the base face does not.
+     */
+    readonly visitPayout: {
+      readonly base: number;
+      readonly upgraded: number;
+      readonly twoCard: number;
+    };
+    /**
+     * The Farmstead flips FREE at this many buildings printing the player's own
+     * crop icon. Ticket 07: base starters print the starting-building icon and
+     * do not count; upgraded ones print the crop icon and do.
+     */
     readonly farmsteadFlipAtOwnColourBuilds: number;
   };
   readonly endGame: {

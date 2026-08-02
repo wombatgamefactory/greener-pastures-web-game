@@ -7,17 +7,18 @@
  * bit-identical final state.
  */
 
-import { BASE_GAME_DATA as data } from '@gp/data';
+import { BASE_GAME_DATA as data, loadGameData } from '@gp/data';
 import type { Suit } from '@gp/data';
 import { describe, expect, it } from 'vitest';
 
+import { tileLevel } from './actions.js';
 import { apply, isOver, legalMoves, newGame } from './game.js';
 import { cardById } from './query.js';
 import { seedRng, rngInt } from './rng.js';
 import { score } from './runtime.js';
 import { freshTurn, islandTilesInPlay } from './setup.js';
 import type { GameEvent, GameState, Move } from './state.js';
-import { dealTo, hireFor, makeState } from './testkit.js';
+import { buildFor, dealTo, deliveredAt, hireFor, makeState } from './testkit.js';
 import { redactEvents, viewFor } from './view.js';
 
 const WHEAT = 0;
@@ -25,6 +26,19 @@ const APIARY = 1;
 
 function base(): GameState {
   return makeState(data, ['wheat', 'apiary']);
+}
+
+function noticeBoard(state: GameState, seat: number) {
+  const board = state.players[seat]?.tableau.find(
+    (b) => cardById(data, b.card).slot === 'noticeboard',
+  );
+  if (!board) throw new Error(`seat ${seat} has no Notice Board`);
+  return board;
+}
+
+/** Flip a seat's Notice Board to its Special Orders face without paying for it. */
+function upgradeNoticeBoard(state: GameState, seat: number): void {
+  noticeBoard(state, seat).upgraded = true;
 }
 
 /** Move ids from a deck straight into a barn (testkit-style surgery). */
@@ -190,14 +204,18 @@ describe('main actions through apply', () => {
     expect(applied.state.island.tiles.find((t) => t.tile === 'A1')?.deliveredBy).toEqual([WHEAT]);
     expect(applied.state.endTrigger).toBeNull();
 
+    // Level 3 runs at 3 cards per crate (ticket 14), so D1's [dairy, dairy, wild]
+    // wants 6 dairy plus 3 of one freely chosen suit: 9 barn cards in all. The
+    // level gate (ticket 29) wants the climb done first, so seed the receipts.
     const s2 = base();
-    stockBarn(s2, WHEAT, 'dairy', 4);
-    stockBarn(s2, WHEAT, 'orchard', 2); // the wild crate, paid in one suit
+    deliveredAt(s2, WHEAT, 'A1', 'B1');
+    stockBarn(s2, WHEAT, 'dairy', 6);
+    stockBarn(s2, WHEAT, 'orchard', 3); // the wild crate, paid in one suit
     const l3 = apply(data, s2, {
       type: 'deliver',
       seat: WHEAT,
       tile: 'D1',
-      spend: { dairy: 4, orchard: 2 },
+      spend: { dairy: 6, orchard: 3 },
     });
     expect(l3.state.endTrigger).toEqual({ seat: WHEAT });
     expect(l3.state.players[WHEAT]!.receipts).toEqual([16]);
@@ -216,6 +234,115 @@ describe('main actions through apply', () => {
     s.turnPlayer = WHEAT;
     expect(legalMoves(data, s).some((m) => m.type === 'deliver' && m.tile === 'A1')).toBe(false);
     expect(() => apply(data, s, move)).toThrow(/no delivery slots/);
+  });
+
+  it('the level gate opens one rung at a time, per seat', () => {
+    // Testkit island at 2 seats: A1/A2/A5 level 1, B1/B4 level 2, D1 level 3.
+    // Stock every demand this seat could possibly be asked for, so the ONLY
+    // thing that can refuse a tile is the gate.
+    const s = base();
+    stockBarn(s, WHEAT, 'wheat', 2);
+    stockBarn(s, WHEAT, 'apiary', 6);
+    stockBarn(s, WHEAT, 'dairy', 6);
+    stockBarn(s, WHEAT, 'orchard', 3);
+    const levels = (state: GameState) =>
+      new Set(
+        legalMoves(data, state)
+          .filter((m) => m.type === 'deliver')
+          .map((m) => tileLevel(data, m.tile)),
+      );
+
+    expect(levels(s)).toEqual(new Set([1]));
+    expect(() =>
+      apply(data, s, { type: 'deliver', seat: WHEAT, tile: 'B1', spend: { apiary: 6 } }),
+    ).toThrow(/may not deliver to level 2/);
+
+    // A level 1 receipt opens level 2, and only level 2.
+    deliveredAt(s, WHEAT, 'A2');
+    expect(levels(s)).toEqual(new Set([1, 2]));
+    expect(() =>
+      apply(data, s, { type: 'deliver', seat: WHEAT, tile: 'D1', spend: { dairy: 6, orchard: 3 } }),
+    ).toThrow(/may not deliver to level 3/);
+
+    // A level 2 receipt opens level 3, and the lower rungs stay open.
+    deliveredAt(s, WHEAT, 'B4');
+    expect(levels(s)).toEqual(new Set([1, 2, 3]));
+  });
+
+  it('the gate is per seat: a rival climbing opens nothing for you', () => {
+    const s = base();
+    stockBarn(s, WHEAT, 'apiary', 6);
+    deliveredAt(s, APIARY, 'A1');
+    expect(legalMoves(data, s).some((m) => m.type === 'deliver' && m.tile === 'B1')).toBe(false);
+  });
+
+  it('island.levelGate false restores the pre-ticket-29 free-for-all', () => {
+    const open = loadGameData({
+      name: 'no-level-gate',
+      schemaVersion: 1,
+      set: { 'island.levelGate': false },
+    });
+    const s = makeState(open, ['wheat', 'apiary']);
+    stockBarn(s, WHEAT, 'dairy', 6);
+    stockBarn(s, WHEAT, 'orchard', 3);
+    const l3 = apply(open, s, {
+      type: 'deliver',
+      seat: WHEAT,
+      tile: 'D1',
+      spend: { dairy: 6, orchard: 3 },
+    });
+    expect(l3.state.players[WHEAT]!.receipts).toEqual([16]);
+  });
+
+  it('a balloon move is neither gated nor level-opening', () => {
+    // The freight branch of Deliver (DL-12) never touches the island, so it
+    // cannot be blocked by the gate and cannot unlock a rung.
+    const s = makeState(data, ['vegetable', 'wheat']);
+    stockBarn(s, 0, 'wheat', 1);
+    stockBarn(s, 0, 'apiary', 1);
+    const move = legalMoves(data, s).find((m) => m.type === 'moveBalloon');
+    expect(move).toBeDefined();
+    const after = apply(data, s, move as Move).state;
+    expect(after.island.tiles.every((t) => t.deliveredBy.length === 0)).toBe(true);
+    expect(after.players[0]!.receipts).toEqual([]);
+  });
+
+  it('the Farmstead milestone counts printed crop icons, so a paid flip can trigger it', () => {
+    // Ticket 07: base starters print the starting-building icon and count for
+    // nothing; an upgraded one prints the crop icon and counts. So £2 spent on
+    // the Barn can be the third own-crop building and flip the Farmstead free.
+    const s = base();
+    buildFor(data, s, WHEAT, 'W4', 'W5'); // two own-crop deck builds
+    dealTo(data, s, WHEAT, 'W6'); // keep the turn from settling
+    s.players[WHEAT]!.coins = 2;
+    expect(s.players[WHEAT]!.tableau.find((b) => b.card === 'W2')?.upgraded).toBe(false);
+
+    const up = apply(data, s, { type: 'upgrade', seat: WHEAT, card: 'W1' });
+    const tableau = up.state.players[WHEAT]!.tableau;
+    expect(tableau.find((b) => b.card === 'W1')?.upgraded).toBe(true);
+    expect(tableau.find((b) => b.card === 'W2')?.upgraded).toBe(true);
+    expect(up.events.filter((e) => e.e === 'starterUpgraded').map((e) => [e.card, e.free])).toEqual(
+      [
+        ['W1', false],
+        ['W2', true],
+      ],
+    );
+  });
+
+  it('two deck builds alone leave the Farmstead unflipped', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W4', 'W5');
+    dealTo(data, s, WHEAT, 'W6');
+    s.players[WHEAT]!.coins = 2;
+    const up = apply(data, s, { type: 'upgrade', seat: WHEAT, card: 'W1' });
+    // Sanity check on the negative: strip the Barn's contribution and nothing flips.
+    const s2 = base();
+    buildFor(data, s2, WHEAT, 'W4');
+    dealTo(data, s2, WHEAT, 'W6');
+    s2.players[WHEAT]!.coins = 2;
+    const up2 = apply(data, s2, { type: 'upgrade', seat: WHEAT, card: 'W1' });
+    expect(up.state.players[WHEAT]!.tableau.find((b) => b.card === 'W2')?.upgraded).toBe(true);
+    expect(up2.state.players[WHEAT]!.tableau.find((b) => b.card === 'W2')?.upgraded).toBe(false);
   });
 
   it('pass is offered only when no main action is legal', () => {
@@ -240,7 +367,7 @@ describe('the bonus slot through apply', () => {
       type: 'visit',
       seat: WHEAT,
       host: APIARY,
-      fee: 'W4',
+      fee: ['W4'],
       payoff: { mode: 'coin' },
     });
     expect(applied.state.players[WHEAT]!.coins).toBe(data.rules.economy.visitPayout.base);
@@ -260,11 +387,102 @@ describe('the bonus slot through apply', () => {
       type: 'visit',
       seat: WHEAT,
       host: APIARY,
-      fee: 'W4',
+      fee: ['W4'],
       payoff: { mode: 'worker', workerId: 'draw' },
     });
     expect(applied.state.turn.visit).toMatchObject({ host: APIARY, workerId: 'draw' });
     expect(applied.state.tasks[0]).toMatchObject({ t: 'draw', see: 3, keep: 2, pid: WHEAT });
+  });
+
+  it("Special Orders' 2-card visit places both cards and mints the bigger payout", () => {
+    const state = base();
+    upgradeNoticeBoard(state, APIARY);
+    dealTo(data, state, WHEAT, 'W4', 'W5', 'W6');
+    const applied = apply(data, state, {
+      type: 'visit',
+      seat: WHEAT,
+      host: APIARY,
+      fee: ['W4', 'W5'],
+      payoff: { mode: 'special' },
+    });
+    const visitor = applied.state.players[WHEAT] as GameState['players'][number];
+    expect(visitor.coins).toBe(data.rules.economy.visitPayout.twoCard);
+    expect(visitor.hand).toEqual(['W6']);
+    expect(noticeBoard(applied.state, APIARY).stack).toEqual(['W4', 'W5']);
+    expect(applied.state.turn.bonusSpent).toBe(true);
+    // No Worker option, so the Helping Hand gate stays shut.
+    expect(applied.state.turn.visit).toBeNull();
+    expect(applied.events).toContainEqual({
+      e: 'visited',
+      seat: WHEAT,
+      host: APIARY,
+      mode: 'special',
+    });
+  });
+
+  it('offers the 2-card mode only at an upgraded board, and never with a Worker', () => {
+    const state = base();
+    hireFor(state, APIARY, 'draw');
+    dealTo(data, state, WHEAT, 'W4', 'W5');
+    const plain = legalMoves(data, state).filter((m) => m.type === 'visit');
+    expect(plain.some((m) => m.payoff.mode === 'special')).toBe(false);
+    expect(() =>
+      apply(data, state, {
+        type: 'visit',
+        seat: WHEAT,
+        host: APIARY,
+        fee: ['W4', 'W5'],
+        payoff: { mode: 'special' },
+      }),
+    ).toThrow(/does not print/);
+
+    upgradeNoticeBoard(state, APIARY);
+    const special = legalMoves(data, state).filter(
+      (m) => m.type === 'visit' && m.payoff.mode === 'special',
+    );
+    expect(special).toHaveLength(1); // C(2,2), one host
+    expect(special[0]).toMatchObject({ fee: ['W4', 'W5'] });
+    // A special visit is a pair of DISTINCT cards: no card is ever paid twice.
+    expect(
+      legalMoves(data, state).some(
+        (m) => m.type === 'visit' && m.payoff.mode === 'special' && m.fee[0] === m.fee[1],
+      ),
+    ).toBe(false);
+  });
+
+  it('refuses the whole 2-card visit when the board has room for only one', () => {
+    const state = base();
+    upgradeNoticeBoard(state, APIARY);
+    const board = noticeBoard(state, APIARY);
+    board.stack = state.decks.apiary.splice(0, 4); // 4 of 5
+    dealTo(data, state, WHEAT, 'W4', 'W5');
+    const moves = legalMoves(data, state).filter((m) => m.type === 'visit');
+    expect(moves.some((m) => m.payoff.mode === 'special')).toBe(false);
+    expect(moves.some((m) => m.payoff.mode === 'coin')).toBe(true); // one card still fits
+    expect(() =>
+      apply(data, state, {
+        type: 'visit',
+        seat: WHEAT,
+        host: APIARY,
+        fee: ['W4', 'W5'],
+        payoff: { mode: 'special' },
+      }),
+    ).toThrow(/no room/);
+    expect(noticeBoard(state, APIARY).stack).toHaveLength(4); // nothing moved
+  });
+
+  it('holds every payoff to its printed card count', () => {
+    const state = base();
+    upgradeNoticeBoard(state, APIARY);
+    dealTo(data, state, WHEAT, 'W4', 'W5');
+    for (const move of [
+      { fee: ['W4', 'W5'], payoff: { mode: 'coin' as const } },
+      { fee: ['W4'], payoff: { mode: 'special' as const } },
+    ]) {
+      expect(() =>
+        apply(data, state, { type: 'visit', seat: WHEAT, host: APIARY, ...move }),
+      ).toThrow(/exactly/);
+    }
   });
 
   it('working your own Worker uses the bonus slot and pays no wage', () => {
@@ -438,7 +656,13 @@ describe('full games', () => {
   it('rejects moves legalMoves does not offer', () => {
     const state = newGame(data, { seats: 2, suits: ['wheat', 'apiary'], seed: 'illegal' });
     expect(() =>
-      apply(data, state, { type: 'visit', seat: 0, host: 0, fee: 'W4', payoff: { mode: 'coin' } }),
+      apply(data, state, {
+        type: 'visit',
+        seat: 0,
+        host: 0,
+        fee: ['W4'],
+        payoff: { mode: 'coin' },
+      }),
     ).toThrow();
     expect(() => apply(data, state, { type: 'harvest', seat: 0, building: 'W4' })).toThrow();
     expect(() => apply(data, state, { type: 'endTurn', seat: 0 })).toThrow();

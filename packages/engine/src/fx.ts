@@ -360,10 +360,10 @@ export interface HookEvents {
   /**
    * A visit landed on the host's Notice Board (fee placed, slot spent), fired
    * before the payoff resolves - O16 The Orchard Keeper reacts host-side in
-   * every visit branch. A Helping Hand repeat is not a visit and never fires
-   * this.
+   * every visit branch. Once per visit, so the 2-card `special` mode fires it
+   * once, not twice. A Helping Hand repeat is not a visit and never fires this.
    */
-  afterVisit: { visitor: Seat; host: Seat; mode: 'coin' | 'worker' };
+  afterVisit: { visitor: Seat; host: Seat; mode: 'coin' | 'worker' | 'special' };
   /**
    * A see-N/keep-K draw finished and the kept cards entered the hand - the
    * reference's onDraw moment (keepFromReveal). Fires for the Draw action,

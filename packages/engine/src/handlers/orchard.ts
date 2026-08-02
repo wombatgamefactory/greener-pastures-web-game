@@ -175,8 +175,9 @@ export const orchardNoticeBoard: CardHandler = {
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'No behaviour here: the visit (fee placement, coin/worker payoff, wage minting) is ' +
-      "engine-level from ticket 17. The upgraded face's 2-cards-take-£3 mode is ticket 23.",
+      'No behaviour here: the whole visit - fee placement, all three payoffs (coin, ' +
+      "worker, the upgraded face's 2-cards-take-£3 mode) and the wage minting - is " +
+      'engine-level.',
   },
 };
 
@@ -418,7 +419,7 @@ export const orchardKeeper: CardHandler = {
     asserted: { newPrimitive: true, conditional: false, counts: false, interrupts: false },
     notes:
       'The host-side visit reactor that forced the afterVisit hook: fires on ANY visit to ' +
-      "the owner's board (coin or worker payoff; the special mode joins in ticket 23), " +
+      "the owner's board (coin, worker or the 2-card Special Orders mode), once per visit, " +
       'after the fee lands and before the payoff. Both draws are choiceless own-suit- ' +
       'fallback autoDraws (reference DL-67) - no picker, no O17, no recursion. A Helping ' +
       'Hand repeat is not a visit and never fires it. An ORCHARD by name (DL-42).',

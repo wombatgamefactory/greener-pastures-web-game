@@ -98,6 +98,20 @@ export function buildFor(data: GameData, state: GameState, seat: Seat, ...cards:
   }
 }
 
+/**
+ * Record a free delivery by `seat` on each tile - no barn cards spent, no coins
+ * minted, no receipt VP. The island's own `deliveredBy` record is what the
+ * level gate reads, so this is how a scenario starts a seat part-way up the
+ * climb without playing the deliveries out.
+ */
+export function deliveredAt(state: GameState, seat: Seat, ...tiles: string[]): void {
+  for (const id of tiles) {
+    const tile = state.island.tiles.find((t) => t.tile === id);
+    if (!tile) throw new Error(`Tile ${id} is not in play`);
+    tile.deliveredBy.push(seat);
+  }
+}
+
 /** Put a hired Worker in play. */
 export function hireFor(state: GameState, seat: Seat, workerId: string, trackPos = 0): void {
   const w = state.fair.find((x) => x.id === workerId);

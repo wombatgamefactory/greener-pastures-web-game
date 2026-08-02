@@ -331,7 +331,7 @@ describe('O16 The Orchard Keeper - the host-side visit reactor', () => {
       type: 'visit',
       seat: WHEAT,
       host: ORCHARD,
-      fee: 'W4',
+      fee: ['W4'],
       payoff: { mode: 'coin' },
     });
     expect(applied.state.tasks).toHaveLength(0);
@@ -353,12 +353,31 @@ describe('O16 The Orchard Keeper - the host-side visit reactor', () => {
       type: 'visit',
       seat: WHEAT,
       host: ORCHARD,
-      fee: 'W4',
+      fee: ['W4'],
       payoff: { mode: 'worker', workerId: 'harvest' },
     });
     expect(player(applied.state, ORCHARD).hand).toHaveLength(1);
     // The visitor's keeper card arrived on top of the worker's harvest flow.
     expect(player(applied.state, WHEAT).hand.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("fires once, not twice, on Special Orders' 2-card visit", () => {
+    const s = base();
+    buildFor(data, s, ORCHARD, 'O16');
+    const board = player(s, ORCHARD).tableau.find((b) => b.card === 'O3');
+    if (board) board.upgraded = true;
+    dealTo(data, s, WHEAT, 'W4', 'W5');
+    s.turnPlayer = WHEAT;
+    const applied = apply(data, s, {
+      type: 'visit',
+      seat: WHEAT,
+      host: ORCHARD,
+      fee: ['W4', 'W5'],
+      payoff: { mode: 'special' },
+    });
+    expect(player(applied.state, ORCHARD).hand).toHaveLength(1); // one keeper draw, not two
+    expect(player(applied.state, WHEAT).hand).toHaveLength(1); // both fees spent, one drawn back
+    expect(player(applied.state, WHEAT).coins).toBe(data.rules.economy.visitPayout.twoCard);
   });
 });
 
@@ -404,7 +423,7 @@ describe('O17 The Fruit Basket - the on-draw divert', () => {
       type: 'visit',
       seat: WHEAT,
       host: ORCHARD,
-      fee: 'W4',
+      fee: ['W4'],
       payoff: { mode: 'coin' },
     });
     expect(visited.state.tasks).toHaveLength(0);

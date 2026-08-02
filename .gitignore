@@ -33,6 +33,7 @@ desktop.ini
 
 # Wayfinder map, decision tickets, and research notes
 .scratch/
+.scratchprobe
 
 # Simulator output: balance reports, complexity reports, run logs, cut lists.
 # Deliberately not anchored to the repo root, so a report written into

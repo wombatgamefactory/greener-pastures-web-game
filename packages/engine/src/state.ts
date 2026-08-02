@@ -318,16 +318,18 @@ export type Move =
    */
   | { type: 'moveBalloon'; seat: Seat; balloon: string; spend: Partial<Record<Suit, number>> }
   /**
-   * The visit half of the bonus slot: 1 card from hand onto a neighbour's
-   * Notice Board, then either take the printed coins or work one of the host's
-   * Workers.
+   * The visit half of the bonus slot: cards from hand onto a neighbour's Notice
+   * Board, then the payoff printed on the face they landed on. `fee` is exactly
+   * 1 card for `coin` and `worker`, and exactly 2 distinct cards for `special` -
+   * Special Orders' "2 cards, take £3", which the upgraded face alone prints and
+   * which never offers a Worker.
    */
   | {
       type: 'visit';
       seat: Seat;
       host: Seat;
-      fee: CardId;
-      payoff: { mode: 'coin' } | { mode: 'worker'; workerId: WorkerAction };
+      fee: CardId[];
+      payoff: { mode: 'coin' } | { mode: 'worker'; workerId: WorkerAction } | { mode: 'special' };
     }
   /** The other half of the bonus slot. Free, no wage. */
   | { type: 'workOwnWorker'; seat: Seat; workerId: WorkerAction }
@@ -381,7 +383,7 @@ export type GameEvent =
   | { e: 'cardGifted'; from: Seat; to: Seat; card: CardId }
   /** A card sent from its owner's hand into their own barn (O17's £1 divert). */
   | { e: 'handToBarn'; seat: Seat; card: CardId }
-  | { e: 'visited'; seat: Seat; host: Seat; mode: 'coin' | 'worker' }
+  | { e: 'visited'; seat: Seat; host: Seat; mode: 'coin' | 'worker' | 'special' }
   | { e: 'endTriggered'; seat: Seat }
   | { e: 'turnEnded'; seat: Seat; next: Seat }
   | { e: 'gameEnded' };

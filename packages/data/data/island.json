@@ -10,22 +10,23 @@
       "VP is 4 / 8 / 16 by level and coins are 2 / 3 / 4 by level, both read from the sheet. The design docs' 5 / 10 / 20 is overruled by the owner in favour of the sheet. Both ship as tuning knobs.",
       "Coins are not seeded onto a tile. The bank pays the tile's coins on EVERY delivery, first and second alike.",
       "A tile is a delivery slot taking up to TWO deliveries. Both deliverers score the tile's printed VP by taking a receipt token; a third delivery to a tile is illegal.",
-      "Delivery cost is PER CRATE, not per tile. A tile prints one crate per level. A suit demand token is placed face up on every crate at setup, and paying a crate costs cardsPerCrate barn cards of that crate's suit. A cornucopia token is wild and accepts any suit. Total cost is therefore crates * cardsPerCrate.",
+      "Delivery cost is PER CRATE, not per tile. A tile prints one crate icon, a quantity label beside it, and one suit token slot per crate the tile demands: 1 slot at level 1, 2 at level 2, 3 at level 3. The quantity label is the RATE, not the total - it reads 2= / 3= / 3= by level, meaning cards of ONE suit per crate. A suit demand token is placed face up on every crate at setup, and paying a crate costs cardsPerCrate barn cards of that crate's suit. A cornucopia token is wild and accepts any suit, still at the level's full rate. Total cost is crates * cardsPerCrate, so 2 / 6 / 9 by level. Settled by the owner in ticket 14, 2026-08-02: level 1 wants 2 goods of one kind, level 2 wants 3 of each of 2 kinds, level 3 wants 3 of each of 3 kinds. Both the rulebook's flat 2 and the reference implementation's 2/4/6 are wrong, as is the 2/3/3 total that ticket 07 derived by reading the quantity label as a total.",
       "seats counts players at the table. There is no one-seat board: a solo game is a two-seat game in which a bot occupies the second seat.",
       "Exactly (seats + 1) suit decks are in play: one owned by each seat, plus one passive suit nobody farms but everybody may draw from and the island demands. The remaining suits are out of the game entirely. This is why the demand-token pool spans (seats + 1) suits - it spans exactly the decks on the table.",
       "slotsBySeats is the authoritative table. It follows seats+1 / seats / seats-1 by level, but the table is what the engine reads.",
-      "The pyramid layout is cosmetic. Every tile is deliverable at any time, subject only to cost, so adjacency is null by decision rather than by omission.",
+      "The pyramid layout is cosmetic in the sense that no tile is adjacent to any other: adjacency is null by decision rather than by omission, and nothing about WHICH tile you deliver to is constrained. What the pyramid does carry is the LEVEL GATE - see levelGate below.",
+      "levelGate is the per-player climb ruled in ticket 07, replacing the socket chain the rulebook printed ('too hard to explain, not interesting to play'). A seat may deliver to a level only if it already holds a receipt from the level below: the first delivery must be Level 1, Level 2 opens once that seat holds any Level 1 receipt, Level 3 once it holds any Level 2. It is a per-seat read of which levels that seat has already delivered to, not a stored flag, and it says nothing about whose token is where. Delivering to a lower level stays legal once higher ones are open. Balloon moves are Deliver actions but are not island deliveries, so they are neither gated nor level-opening. Ships as a boolean knob so the simulator can switch it off and measure what it is worth.",
       "Bookend rule: the art paints each row's first printed face (A1 / B1 / C1) as the island's left edge and its last (A5 / B4 / C3) as the right edge, so a row with n tiles in play uses the first (n - 1) printed faces plus the row-end face. The 3-tile level-1 row is therefore A1, A2, A5.",
       "At 2 seats the lone level-3 tile is D1 rather than C1. D1 prints no mechanical difference from C1; it is a distinct illustration for the two-player board."
     ],
     "unresolved": [
-      "cardsPerCrate: the rulebook and the reference implementation both state 2 cards per crate at every level, making the totals 2 / 4 / 6. The sheet's map-cards crate-quantity column reads 2 / 3 / 3, which would make the totals 2 / 6 / 9. The sheet-wins baseline says the sheet, but the reference implementation was built against the previous sheet version and every prose source says 2. Shipping 2 / 2 / 2 and flagging it; the value is a per-level tuning knob, so either reading is one overlay line away.",
       "D1 and C1 print identical VP, cost and delivery capacity, so the two-seat substitution is currently identity-only. Confirm, or print a mechanical difference."
     ]
   },
   "seats": { "min": 2, "max": 4 },
   "decksInPlayBySeats": { "2": 3, "3": 4, "4": 5 },
   "deliveriesPerTile": 2,
+  "levelGate": true,
   "levelRules": {
     "1": {
       "vp": 4,
@@ -38,14 +39,14 @@
       "vp": 8,
       "coinsPerDelivery": 3,
       "crates": 2,
-      "cardsPerCrate": 2,
+      "cardsPerCrate": 3,
       "triggersGameEnd": false
     },
     "3": {
       "vp": 16,
       "coinsPerDelivery": 4,
       "crates": 3,
-      "cardsPerCrate": 2,
+      "cardsPerCrate": 3,
       "triggersGameEnd": true
     }
   },

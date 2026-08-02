@@ -6,9 +6,10 @@
     "sourceSheet": null,
     "notes": [
       "The numbers that belong to no single card: setup quantities, the standing economy rates, and the end-game trigger. Anything PRINTED on a card lives in cards.json instead, and anything printed on the island lives in island.json.",
-      "visitPayout is the machine-readable form of the payout printed on the Notice Board and on its upgraded face. The card text is the source; this is what the engine and the simulator read, so the two must not drift.",
+      "visitPayout is the machine-readable form of the payout printed on the Notice Board and on its upgraded face. The card text is the source; this is what the engine and the simulator read, so the two must not drift. twoCard is Special Orders' second line, \"2 cards, take £3\": it exists on the upgraded face only, so a base board never offers it.",
       "coinPityDivisor turns leftover coins into VP at game end: floor(coins / divisor). It is flagged OPEN in the design: the current edition makes coins abundant, and a pity rate then quietly rewards not spending. The live candidates are raising the divisor to 10 or deleting the rule (divisor null).",
-      "startingBarnCards is the single card each player starts with in their barn. startingHand is drawn from their own suit deck, which is why an owned deck holds 12 cards after setup."
+      "startingBarnCards is the single card each player starts with in their barn. startingHand is drawn from their own suit deck, which is why an owned deck holds 12 cards after setup.",
+      "farmsteadFlipAtOwnColourBuilds counts buildings printing the player's own CROP icon, not own-suit builds. Ticket 07: a base starter prints the generic starting-building icon and counts for nothing, an upgraded starter prints the crop icon and counts, so paying £2 to flip a Barn or a Notice Board can also be the third own-crop building and flip the Farmstead free."
     ],
     "unresolved": [
       "coinPityDivisor: 5 is the current printed rule, but it is explicitly open. Ships as a knob so the simulator can test 5 against 10 against off.",
@@ -28,7 +29,7 @@
   "economy": {
     "upgradeCostCoins": 2,
     "coinPityDivisor": 5,
-    "visitPayout": { "base": 1, "upgraded": 2 },
+    "visitPayout": { "base": 1, "upgraded": 2, "twoCard": 3 },
     "farmsteadFlipAtOwnColourBuilds": 3
   },
   "endGame": {

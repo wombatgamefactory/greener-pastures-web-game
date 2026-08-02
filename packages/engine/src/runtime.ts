@@ -120,7 +120,7 @@ export function visitWork(
 ): Applied {
   const draft = cloneState(state);
   const fx = new Fx(data, draft, visitor);
-  doVisit(fx, visitor, host, fee, { mode: 'worker', workerId: workerId as WorkerAction });
+  doVisit(fx, visitor, host, [fee], { mode: 'worker', workerId: workerId as WorkerAction });
   drainTasks(data, draft);
   return { state: draft, events: fx.events, audit: fx.audit };
 }

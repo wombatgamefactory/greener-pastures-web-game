@@ -24,7 +24,7 @@ import type { GameData, Suit } from '@gp/data';
 import { placeBuilt } from '../actions.js';
 import type { BuildMods } from '../actions.js';
 import type { Fx } from '../fx.js';
-import { cardById, drawableSuits, player } from '../query.js';
+import { cardById, cropBuildings, drawableSuits, foreignCropBuildings, player } from '../query.js';
 import type { CardId, GameState, Seat, TaskAnswer } from '../state.js';
 import type { CardHandler } from './types.js';
 
@@ -87,8 +87,8 @@ export const dairyNoticeBoard: CardHandler = {
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      "No behaviour here: the visit is engine-level from ticket 17. The upgraded face's " +
-      '2-cards-take-£3 mode is ticket 23.',
+      'No behaviour here: the whole visit, including the upgraded ' +
+      "face's 2-cards-take-£3 mode, is engine-level.",
   },
 };
 
@@ -474,15 +474,13 @@ export const grandCreamery: CardHandler = {
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
-      '"Dairy building you have built" = Dairy-suit cards in your tableau, the three ' +
-      'starters INCLUDED (they are buildings you have, and the Farmstead flip already reads ' +
-      'them that way) and the Creamery itself included. So a Dairy player opens at ' +
-      'discount 4 and climbs - by far the biggest discount in the game, on a tier 3.',
+      '"Dairy building you have built" = buildings printing the Dairy crop icon (ticket 07), ' +
+      'so BASE starters do not count and upgraded ones do. The Creamery itself counts, so a ' +
+      'Dairy player opens at discount 1 and climbs with real Dairy builds and starter ' +
+      'flips - not the discount 4 the base starters used to hand out for free.',
   },
   activate(fx, self) {
-    const dairy = player(fx.state, self.seat).tableau.filter(
-      (b) => cardById(fx.data, b.card).suit === 'dairy',
-    ).length;
+    const dairy = cropBuildings(fx.data, fx.state, self.seat, 'dairy').length;
     buildWith(fx, self.seat, self.card, { discount: dairy });
   },
 };
@@ -539,13 +537,14 @@ export const cheeseHall: CardHandler = {
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: true },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
-      'Counts every non-Dairy card in the tableau, starters included in principle - though ' +
-      "a seat only ever holds its own suit's starters, so in practice this counts foreign " +
-      'deck cards. A D11-covered card is not in the tableau and never counts.',
+      'Buildings printing SOME crop icon that is not Dairy (ticket 07). Not the complement ' +
+      'of the D15 count: a base starter prints the starting-building icon, so it is neither ' +
+      'a Dairy building nor a non-Dairy one and scores nothing either way. That also stops ' +
+      'this card penalising a Dairy seat for upgrading. A D11-covered card is not in the ' +
+      'tableau and never counts.',
   },
   gameEnd(data, state, seat) {
-    return player(state, seat).tableau.filter((b) => cardById(data, b.card).suit !== 'dairy')
-      .length;
+    return foreignCropBuildings(data, state, seat, 'dairy').length;
   },
 };
 

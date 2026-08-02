@@ -118,8 +118,9 @@ export const vegetableNoticeBoard: CardHandler = {
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'No behaviour here: the visit (fee placement, coin/worker payoff, wage minting) is ' +
-      "engine-level from ticket 17. The upgraded face's 2-cards-take-£3 mode is ticket 23.",
+      'No behaviour here: the whole visit - fee placement, all three payoffs (coin, ' +
+      "worker, the upgraded face's 2-cards-take-£3 mode) and the wage minting - is " +
+      'engine-level.',
   },
 };
 
@@ -359,7 +360,7 @@ export const auctionHouse: CardHandler = {
       answers(data, state, task) {
         const out = deliverAnswers(data, state, task.pid);
         const tally = barnTally(data, state, task.pid);
-        for (const d of deliverDemands(data, state)) {
+        for (const d of deliverDemands(data, state, task.pid)) {
           if ((d.spend.vegetable ?? 0) < 1) continue;
           for (const from of state.suitsInPlay) {
             if (from === 'vegetable') continue;

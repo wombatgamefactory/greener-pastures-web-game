@@ -4,7 +4,7 @@
     "kind": "generated",
     "generatedBy": "tools/extract_cards.py",
     "sourceSheet": "worksheet 'cards' of the designer spreadsheet (kept outside this repo)",
-    "sourceSha256": "b13bc5ea0e25cbfca0c141649ecae550612dabd2f9934ee0e784e0190805764e",
+    "sourceSha256": "3e9c66f459131f73e3c82636b1bd00d94e5162965e2687a6583e11bda5a4cb31",
     "notes": [
       "buildCost is derived from the @cost1..@cost6 icon columns, which are authoritative; the sheet's 'Build Cost' text column is lossy.",
       "A suit has THREE starters - Barn (ref 1), Farmstead (ref 2), Notice Board (ref 3) - plus the 18-card deck (refs 4..21). 105 cards total (15 starters + 90 deck).",
@@ -80,7 +80,7 @@
           "printedVp": 2,
           "threshold": null,
           "activationType": null,
-          "abilityText": "GROW: You may use any card.\nWhen you GROW, you may SOW a second building."
+          "abilityText": "GROW: You may use any card.\nWhen you GROW, you may also SOW 1 card from your hand onto another of your buildings."
         }
       }
     },
@@ -381,7 +381,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 1,
-      "abilityText": "When you place the second card onto a building, Draw 1.",
+      "abilityText": "Whenever you place a card that brings a building's stack to 2 cards, Draw 1.",
       "abilityTrigger": [
         "passive"
       ],
@@ -423,7 +423,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 1,
-      "abilityText": "When you WORK a rival's Hired Worker, you may place a second card on their Notice Board to work it again.",
+      "abilityText": "When you VISIT a neighbour and WORK their Hired Worker, you may place a second card on their Notice Board to work it again.",
       "abilityTrigger": [
         "passive"
       ],
@@ -659,7 +659,7 @@
       "activationType": "dairy",
       "threshold": 5,
       "printedVp": 1,
-      "abilityText": "Build. You may spend your Dairy cards as any suit.",
+      "abilityText": "Build. You may spend up to £2 as wild resources.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -890,7 +890,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 1,
-      "abilityText": "When you WORK a rival's Hired Worker, you may place a second card on their Notice Board to work it again.",
+      "abilityText": "When you VISIT a neighbour and WORK their Hired Worker, you may place a second card on their Notice Board to work it again.",
       "abilityTrigger": [
         "passive"
       ],
@@ -953,7 +953,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Score 1 VP for each Dairy building you have built with a build cost of 3 or less.",
+      "abilityText": "Score 1 VP for each Dairy tier building you have built with a build cost of 3 or less.",
       "abilityTrigger": [
         "gameEnd"
       ],
@@ -1008,14 +1008,14 @@
           "printedVp": 0,
           "threshold": null,
           "activationType": null,
-          "abilityText": "DRAW: Draw 3, Keep 1."
+          "abilityText": "When you Draw, see 1 extra card."
         },
         "upgraded": {
           "name": "Upgraded Farmstead",
           "printedVp": 2,
           "threshold": null,
           "activationType": null,
-          "abilityText": "DRAW: Draw 3, Keep 2."
+          "abilityText": "When you Draw, see 1 extra card and keep 1 extra card."
         }
       }
     },
@@ -1084,7 +1084,7 @@
       "activationType": "orchard",
       "threshold": 3,
       "printedVp": 1,
-      "abilityText": "Draw 1, then SOW 1 onto one of your ORCHARDs",
+      "abilityText": "Draw 1, then you may SOW 1 onto one of your ORCHARDs",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1252,7 +1252,7 @@
       "activationType": "wild",
       "threshold": 2,
       "printedVp": 3,
-      "abilityText": "Pay £1: Draw 1 for each ORCHARD you have, then SOW onto each of your ORCHARDs.",
+      "abilityText": "Pay £1: Draw 1 for each ORCHARD you have, then you may SOW onto each of your ORCHARDs.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1357,7 +1357,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 1,
-      "abilityText": "When you WORK a rival's Hired Worker, you may place a second card on their Notice Board to work it again.",
+      "abilityText": "When you VISIT a neighbour and WORK their Hired Worker, you may place a second card on their Notice Board to work it again.",
       "abilityTrigger": [
         "passive"
       ],
@@ -1551,7 +1551,7 @@
       "activationType": "vegetable",
       "threshold": 3,
       "printedVp": 1,
-      "abilityText": "Move a Balloon to your zone and collect the reward.",
+      "abilityText": "Move a Balloon to your Aerodrome and collect the reward.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1761,7 +1761,7 @@
       "activationType": "wild",
       "threshold": 2,
       "printedVp": 3,
-      "abilityText": "Move one Balloon from each neighbour's Port (pay the normal cost for each) and collect the rewards.",
+      "abilityText": "Move one Balloon from each neighbour's Aerodrome (pay the normal cost for each) and collect the rewards.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1804,7 +1804,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 1,
-      "abilityText": "When a neighbour moves a Balloon away from your Port, Draw 1.",
+      "abilityText": "When a neighbour moves a Balloon away from your Aerodrome, Draw 1.",
       "abilityTrigger": [
         "passive"
       ],
@@ -1825,7 +1825,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 1,
-      "abilityText": "When you WORK a rival's Hired Worker, you may place a second card on their Notice Board to work it again.",
+      "abilityText": "When you VISIT a neighbour and WORK their Hired Worker, you may place a second card on their Notice Board to work it again.",
       "abilityTrigger": [
         "passive"
       ],
@@ -2298,7 +2298,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 1,
-      "abilityText": "When you WORK a rival's Hired Worker, you may place a second card on their Notice Board to work it again.",
+      "abilityText": "When you VISIT a neighbour and WORK their Hired Worker, you may place a second card on their Notice Board to work it again.",
       "abilityTrigger": [
         "passive"
       ],

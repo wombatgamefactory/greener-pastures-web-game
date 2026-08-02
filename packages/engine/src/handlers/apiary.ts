@@ -82,8 +82,9 @@ export const apiaryNoticeBoard: CardHandler = {
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'No behaviour here: the visit (fee placement, coin/worker payoff, wage minting) is ' +
-      "engine-level from ticket 17. The upgraded face's 2-cards-take-£3 mode is ticket 23.",
+      'No behaviour here: the whole visit - fee placement, all three payoffs (coin, ' +
+      "worker, the upgraded face's 2-cards-take-£3 mode) and the wage minting - is " +
+      'engine-level.',
   },
 };
 

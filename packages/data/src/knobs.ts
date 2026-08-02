@@ -100,9 +100,17 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     description: 'The same, at an upgraded Notice Board.',
   },
   {
+    template: 'rules.economy.visitPayout.twoCard',
+    type: 'int',
+    description:
+      "Special Orders' 2-card mode: the coins the bank pays a visitor who places two cards " +
+      'instead of one. Upgraded boards only, and never a Worker payoff.',
+  },
+  {
     template: 'rules.economy.farmsteadFlipAtOwnColourBuilds',
     type: 'int',
-    description: 'Own-colour deck builds at which the Farmstead flips free.',
+    description:
+      'Buildings printing your own crop icon at which the Farmstead flips free. Ticket 07 made this a printed-icon count, so an upgraded Barn or Notice Board counts and a base starter does not - which is what gives the £2 upgrade sinks a second job.',
   },
   {
     template: 'rules.endGame.furtherTurnsEach',
@@ -151,6 +159,12 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     description: 'How many deliveries one tile accepts before it closes.',
   },
   {
+    template: 'island.levelGate',
+    type: 'boolean',
+    description:
+      'The per-player climb: deliver to a level only while holding a receipt from the level below. False deletes the rule, restoring the pre-ticket-29 free-for-all. The knob exists so the sim can measure what the gate costs the clock.',
+  },
+  {
     template: 'island.levelRules.{}.vp',
     type: 'int',
     description: 'Receipt VP at this level. The 4/8/16 versus 5/10/20 question lives here.',
@@ -169,7 +183,7 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     template: 'island.levelRules.{}.cardsPerCrate',
     type: 'int',
     description:
-      'Barn cards of the matching suit needed to pay one crate. Total tile cost is crates times this. Currently disputed between sources.',
+      'Barn cards of the matching suit needed to pay one crate - the sheet-printed rate, 2 / 3 / 3 by level. Total tile cost is crates times this, so 2 / 6 / 9. Settled by ticket 14.',
   },
   {
     template: 'island.slotsBySeats.{}.{}',

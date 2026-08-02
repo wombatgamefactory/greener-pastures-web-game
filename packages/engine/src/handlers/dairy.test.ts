@@ -167,13 +167,23 @@ describe('the build-modifier vocabulary', () => {
     expect(player(done.state, DAIRY).coins).toBe(0);
   });
 
-  it('D15 discounts 1 per Dairy building, starters included', () => {
+  it('D15 discounts 1 per PRINTED Dairy crop icon, so base starters do not count', () => {
     const s = base();
     buildFor(data, s, DAIRY, 'D15');
-    dealTo(data, s, DAIRY, 'D5', 'W9');
+    dealTo(data, s, DAIRY, 'D5', 'W5', 'W6', 'D4');
     const grown = growBuilding(data, s, DAIRY, 'D15', 'D5');
-    // D1 + D2 + D3 + D15 = 4.
-    expect(headBuild(grown.state).mods).toEqual({ discount: 4 });
+    // Ticket 07: D1/D2/D3 print the starting-building icon, so only D15 itself
+    // counts. It opens at 1, not the discount 4 the starters used to give away.
+    expect(headBuild(grown.state).mods).toEqual({ discount: 1 });
+  });
+
+  it('D15 counts an upgraded starter, which prints its crop icon', () => {
+    const s = base();
+    buildFor(data, s, DAIRY, 'D15');
+    buildingOf(s, DAIRY, 'D1').upgraded = true; // the Dairy Barn, flipped
+    dealTo(data, s, DAIRY, 'D5', 'W5', 'W6', 'D4');
+    const grown = growBuilding(data, s, DAIRY, 'D15', 'D5');
+    expect(headBuild(grown.state).mods).toEqual({ discount: 2 });
   });
 
   it('D12 offers two independent optional builds at discount 1', () => {
@@ -456,7 +466,7 @@ describe('D16 The Ledger and D17 The Strongbox - the reactors', () => {
       type: 'visit',
       seat: WHEAT,
       host: DAIRY,
-      fee: 'W4',
+      fee: ['W4'],
       payoff: { mode: 'worker', workerId: 'draw' },
     });
     // Only the £1 track wage - the Strongbox is actor-scoped, and the actor is Wheat.
@@ -465,9 +475,15 @@ describe('D16 The Ledger and D17 The Strongbox - the reactors', () => {
 });
 
 describe('the endgame cards - D19, D20, D21', () => {
-  it('D19 scores 1 per non-Dairy building', () => {
+  it('D19 scores 1 per building printing a non-Dairy crop icon', () => {
     const s = base();
     buildFor(data, s, DAIRY, 'D19', 'W5', 'W6', 'D4');
+    expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(2);
+    // Ticket 07: a base starter prints no crop, so it is not a non-Dairy
+    // building either, and flipping it makes it a DAIRY one. Either way this
+    // card never pays a Dairy seat for its own starters.
+    buildingOf(s, DAIRY, 'D1').upgraded = true;
+    buildingOf(s, DAIRY, 'D3').upgraded = true;
     expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(2);
   });
 

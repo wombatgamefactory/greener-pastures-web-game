@@ -380,7 +380,7 @@ describe("A16 The Beekeeper's Veil - stack position 2 (ruling G)", () => {
       type: 'visit',
       seat: APIARY,
       host: WHEAT,
-      fee: 'A7',
+      fee: ['A7'],
       payoff: { mode: 'coin' },
     });
     expect(headDraw(applied.state)).toMatchObject({ see: 1, keep: 1, src: 'A16' });
@@ -396,7 +396,7 @@ describe("A16 The Beekeeper's Veil - stack position 2 (ruling G)", () => {
       type: 'visit',
       seat: WHEAT,
       host: APIARY,
-      fee: 'W4',
+      fee: ['W4'],
       payoff: { mode: 'coin' },
     });
     expect(applied.state.tasks).toHaveLength(0);
@@ -423,7 +423,7 @@ describe('A17 The Smoke Pot - the rival-work reactor', () => {
       type: 'visit',
       seat: WHEAT,
       host: APIARY,
-      fee: 'W4',
+      fee: ['W4'],
       payoff: { mode: 'worker', workerId: 'draw' },
     });
     // The owner's autoDraw landed without a picker; the visitor's Draw 3 waits.
@@ -511,7 +511,7 @@ describe('difficulty metadata stays honest for the Apiary suit', () => {
       type: 'visit',
       seat: WHEAT,
       host: APIARY,
-      fee: 'W4',
+      fee: ['W4'],
       payoff: { mode: 'worker', workerId: 'draw' },
     });
     expect(applied.audit.crossSeat).toBe(true);
