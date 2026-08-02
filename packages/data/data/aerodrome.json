@@ -10,7 +10,7 @@
       "The Aerodrome is the freight delivery destination that several Vegetable cards reference. Unlike an island slot, a balloon is MOVED rather than claimed, so it can be collected repeatedly. It is deliberately unrationed.",
       "Moving a balloon IS the Deliver action, not a free action and not a card-only effect.",
       "moveCost is the printed 'two crates, not equal' icon: two barn cards of two DIFFERENT suits.",
-      "Setup: one balloon parked on each player's Port, leftovers at the central Aerodrome at 1-3 players; at 4 players the central Aerodrome starts empty. No reward is collected at setup - rewards pay only on arrival by a move.",
+      "Setup: all four balloons start unowned beside the play area (the centre) - no per-seat parking and no draft (ticket 06 ruling J). The reference implementation and rulebook v1 park one per seat instead; ruling J explicitly supersedes that, and the divergence is flagged to the rulings audit (ticket 07). No reward is collected at setup - rewards pay only on arrival by a move.",
       "Legal source for a move is a NEIGHBOUR's Port or the unowned central Aerodrome. Never your own Port.",
       "A balloon move is a Deliver but is NOT a 'Deliver to the island'. Cards gate themselves by printed phrase, which is why the ability dispatcher needs both onDeliver and onDeliverIsland trigger keys. A card printing the gated form cannot re-trigger itself off a balloon move, so no recursion guard is needed."
     ],

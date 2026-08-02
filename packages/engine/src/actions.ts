@@ -16,6 +16,7 @@
 import type { GameData, Suit, WorkerAction } from '@gp/data';
 
 import type { Fx } from './fx.js';
+import { fireHook } from './fx.js';
 import {
   canTakeCard,
   cardById,
@@ -27,7 +28,7 @@ import {
   workerData,
   workerState,
 } from './query.js';
-import type { CardId, GameState, IslandTileState, Move, Seat } from './state.js';
+import type { CardId, GameState, IslandTileState, Move, Seat, TaskAnswer } from './state.js';
 import { workWorker } from './workers.js';
 
 /** All k-card subsets. Bounded: hands are 6-8, costs at most 5 cards. */
@@ -85,24 +86,34 @@ export interface BuildOption {
  * plus m of any suit plus c coins; the built card never pays for itself; own-
  * suit cards may fill the wild half. `hand` overrides the seat's hand for the
  * post-fee re-check a visit's worker payoff needs.
+ *
+ * `discount` is the cream balloon's "Build, with a discount of 4" (reference
+ * buildDiscount): the card count drops by the discount (min 0), the remaining
+ * payment is ANY suit (the own-suit half is waived), and a coin price is
+ * waived when the leftover discount covers it.
  */
 export function buildOptions(
   data: GameData,
   state: GameState,
   seat: Seat,
   hand?: CardId[],
+  discount = 0,
 ): BuildOption[] {
   const p = player(state, seat);
   const cards = hand ?? p.hand;
   const out: BuildOption[] = [];
   for (const id of cards) {
     const cost = cardById(data, id).buildCost;
-    if (!cost || p.coins < cost.coins) continue;
+    if (!cost) continue;
+    const totalCards = cost.suit + cost.wild;
+    const cardsNeeded = Math.max(0, totalCards - discount);
+    const coinsNeeded = discount - totalCards >= cost.coins ? 0 : cost.coins;
+    if (p.coins < coinsNeeded) continue;
     const suit = cardById(data, id).suit;
     const others = cards.filter((h) => h !== id);
-    for (const payment of subsets(others, cost.suit + cost.wild)) {
+    for (const payment of subsets(others, cardsNeeded)) {
       const own = payment.filter((c) => cardById(data, c).suit === suit).length;
-      if (own >= cost.suit) out.push({ card: id, payment });
+      if (discount > 0 || own >= cost.suit) out.push({ card: id, payment });
     }
   }
   return out;
@@ -127,7 +138,7 @@ export function anyBuildOption(
   });
 }
 
-export function doBuild(fx: Fx, seat: Seat, card: CardId, payment: CardId[]): void {
+export function doBuild(fx: Fx, seat: Seat, card: CardId, payment: CardId[], discount = 0): void {
   const p = player(fx.state, seat);
   const c = cardById(fx.data, card);
   const cost = c.buildCost;
@@ -135,17 +146,22 @@ export function doBuild(fx: Fx, seat: Seat, card: CardId, payment: CardId[]): vo
   if (!p.hand.includes(card)) throw new Error(`${card} is not in seat ${seat}'s hand`);
   if (payment.includes(card)) throw new Error(`${card} cannot pay for itself`);
   if (new Set(payment).size !== payment.length) throw new Error('Duplicate payment card');
-  if (payment.length !== cost.suit + cost.wild) {
-    throw new Error(`${card} costs ${cost.suit + cost.wild} cards, got ${payment.length}`);
+  const totalCards = cost.suit + cost.wild;
+  const cardsNeeded = Math.max(0, totalCards - discount);
+  const coinsNeeded = discount - totalCards >= cost.coins ? 0 : cost.coins;
+  if (payment.length !== cardsNeeded) {
+    throw new Error(`${card} costs ${cardsNeeded} cards, got ${payment.length}`);
   }
-  const own = payment.filter((id) => cardById(fx.data, id).suit === c.suit).length;
-  if (own < cost.suit) throw new Error(`${card} needs ${cost.suit} ${c.suit} cards in payment`);
+  if (discount === 0) {
+    const own = payment.filter((id) => cardById(fx.data, id).suit === c.suit).length;
+    if (own < cost.suit) throw new Error(`${card} needs ${cost.suit} ${c.suit} cards in payment`);
+  }
 
-  if (cost.coins > 0) fx.payCoins(seat, cost.coins, `build:${card}`);
+  if (coinsNeeded > 0) fx.payCoins(seat, coinsNeeded, `build:${card}`);
   fx.removeFromHand(seat, card);
   for (const id of payment) fx.removeFromHand(seat, id);
   fx.discard(payment);
-  placeBuilt(fx, seat, card, payment, cost.coins);
+  placeBuilt(fx, seat, card, payment, coinsNeeded);
 }
 
 /**
@@ -348,8 +364,12 @@ function namedDemand(
   return { base, wilds, cardsPerCrate: rule.cardsPerCrate };
 }
 
-export function deliverOptions(data: GameData, state: GameState, seat: Seat): DeliverOption[] {
-  const tally = barnTally(data, state, seat);
+/**
+ * Demand-side spends per open tile (wild crates resolved to a suit each),
+ * BEFORE affordability. V12's treat-one-card-as-Vegetable enumerates against
+ * these; everything else goes through deliverOptions.
+ */
+export function deliverDemands(data: GameData, state: GameState): DeliverOption[] {
   const out: DeliverOption[] = [];
   for (const tile of state.island.tiles) {
     if (tile.deliveredBy.length >= data.island.deliveriesPerTile) continue;
@@ -357,13 +377,17 @@ export function deliverOptions(data: GameData, state: GameState, seat: Seat): De
     for (const fill of wildFills(state.suitsInPlay, wilds)) {
       const spend: Partial<Record<Suit, number>> = { ...base };
       for (const s of fill) spend[s] = (spend[s] ?? 0) + cardsPerCrate;
-      const affordable = (Object.entries(spend) as [Suit, number][]).every(
-        ([s, n]) => (tally[s] ?? 0) >= n,
-      );
-      if (affordable) out.push({ tile: tile.tile, spend });
+      out.push({ tile: tile.tile, spend });
     }
   }
   return out;
+}
+
+export function deliverOptions(data: GameData, state: GameState, seat: Seat): DeliverOption[] {
+  const tally = barnTally(data, state, seat);
+  return deliverDemands(data, state).filter((o) =>
+    (Object.entries(o.spend) as [Suit, number][]).every(([s, n]) => (tally[s] ?? 0) >= n),
+  );
 }
 
 export function anyDeliverOption(data: GameData, state: GameState, seat: Seat): boolean {
@@ -389,6 +413,8 @@ export function doDeliver(
   seat: Seat,
   tileId: string,
   spend: Partial<Record<Suit, number>>,
+  /** V12's "treat any 1 card as a Vegetable": each entry relabels one spent card for validation only. */
+  countAs?: { from: Suit; to: Suit }[],
 ): void {
   const state = fx.state;
   const tile = state.island.tiles.find((t) => t.tile === tileId);
@@ -396,10 +422,18 @@ export function doDeliver(
   if (tile.deliveredBy.length >= fx.data.island.deliveriesPerTile) {
     throw new Error(`Tile ${tileId} has no delivery slots left`);
   }
+  const virtual: Partial<Record<Suit, number>> = { ...spend };
+  for (const sub of countAs ?? []) {
+    if ((virtual[sub.from] ?? 0) < 1) {
+      throw new Error(`No ${sub.from} card in the spend to count as ${sub.to}`);
+    }
+    virtual[sub.from] = (virtual[sub.from] as number) - 1;
+    virtual[sub.to] = (virtual[sub.to] ?? 0) + 1;
+  }
   const { base, wilds, cardsPerCrate } = namedDemand(fx.data, tile);
   let wildsPaid = 0;
   for (const suit of fx.data.cards.suits) {
-    const paid = spend[suit] ?? 0;
+    const paid = virtual[suit] ?? 0;
     const surplus = paid - (base[suit] ?? 0);
     if (surplus < 0) throw new Error(`Spend does not cover the ${suit} crates of ${tileId}`);
     if (surplus % cardsPerCrate !== 0) {
@@ -411,16 +445,151 @@ export function doDeliver(
     throw new Error(`${tileId} has ${wilds} wild crates; spend covers ${wildsPaid}`);
   }
 
-  fx.spendFromBarn(seat, spend);
+  const cards = fx.spendFromBarn(seat, spend);
   const rule = levelRuleOf(fx.data, tileLevel(fx.data, tileId));
   player(state, seat).receipts.push(rule.vp);
   tile.deliveredBy.push(seat);
   fx.gainCoins(seat, rule.coinsPerDelivery, `deliver:${tileId}`);
   fx.emit({ e: 'delivered', seat, tile: tileId, vp: rule.vp, coins: rule.coinsPerDelivery, spend });
+  fireHook(fx, 'afterDeliver', { seat, island: true, tile: tileId, cards });
   if (rule.triggersGameEnd && state.endTrigger === null) {
     state.endTrigger = { seat };
     fx.emit({ e: 'endTriggered', seat });
   }
+}
+
+// --- The Aerodrome: the Deliver action's freight branch ---------------------
+
+export interface BalloonMoveOption {
+  balloon: string;
+  spend: Partial<Record<Suit, number>>;
+}
+
+/**
+ * The printed move cost as concrete spends: `barnCards` cards, one per suit
+ * when `mustDiffer` (the 2-with-a-slash icon). Data-driven so the overlay's
+ * barnCards knob composes.
+ */
+function balloonSpends(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+): Partial<Record<Suit, number>>[] {
+  const cost = data.aerodrome.moveCost;
+  if (!cost.mustDiffer) throw new Error('Only the printed different-suits move cost is modelled');
+  const tally = barnTally(data, state, seat);
+  const suits = state.suitsInPlay.filter((s) => (tally[s] ?? 0) >= 1);
+  return subsets(suits, cost.barnCards).map(
+    (pick) => Object.fromEntries(pick.map((s) => [s, 1])) as Partial<Record<Suit, number>>,
+  );
+}
+
+/** Every legal (balloon, spend) pair. Source is the centre or a rival's Aerodrome, never your own. */
+export function balloonMoveOptions(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+): BalloonMoveOption[] {
+  const aero = state.aerodrome;
+  if (!aero) return [];
+  const movable = aero.balloons.filter((b) => b.at !== seat);
+  if (movable.length === 0) return [];
+  const spends = balloonSpends(data, state, seat);
+  return movable.flatMap((b) => spends.map((spend) => ({ balloon: b.id, spend })));
+}
+
+export function anyBalloonMoveOption(data: GameData, state: GameState, seat: Seat): boolean {
+  const aero = state.aerodrome;
+  if (!aero || !aero.balloons.some((b) => b.at !== seat)) return false;
+  return balloonSpends(data, state, seat).length > 0;
+}
+
+/**
+ * Move a balloon to your Aerodrome and collect its reward. `spend` is the
+ * printed cost; null is a card effect's FREE move (V16 - no cards, but still a
+ * balloon move, so the raid hook and the deliver hook both fire). The raided
+ * player is not compensated (ruling J - on the sim watch list).
+ */
+export function doMoveBalloon(
+  fx: Fx,
+  seat: Seat,
+  balloonId: string,
+  spend: Partial<Record<Suit, number>> | null,
+): void {
+  const aero = fx.state.aerodrome;
+  if (!aero) throw new Error('The Aerodrome module is not in play');
+  const balloon = aero.balloons.find((b) => b.id === balloonId);
+  if (!balloon) throw new Error(`Unknown balloon ${balloonId}`);
+  if (balloon.at === seat) throw new Error('A balloon is never moved from your own Aerodrome');
+
+  let cards: CardId[] = [];
+  if (spend !== null) {
+    const cost = fx.data.aerodrome.moveCost;
+    const counts = Object.values(spend) as number[];
+    const total = counts.reduce((a, b) => a + b, 0);
+    if (total !== cost.barnCards) {
+      throw new Error(`A balloon move costs ${cost.barnCards} barn cards, got ${total}`);
+    }
+    if (cost.mustDiffer && counts.some((n) => n > 1)) {
+      throw new Error('The balloon move cards must differ in suit');
+    }
+    cards = fx.spendFromBarn(seat, spend);
+  }
+
+  const from = balloon.at;
+  balloon.at = seat;
+  fx.emit({
+    e: 'balloonMoved',
+    seat,
+    balloon: balloonId,
+    from,
+    spend: spend ?? {},
+    free: spend === null,
+  });
+  fireHook(fx, 'afterBalloonMove', { seat, balloon: balloonId, from });
+  fireHook(fx, 'afterDeliver', { seat, island: false, cards });
+  grantBalloonReward(fx, seat, balloonId);
+}
+
+/** The reward printed under the balloon, from aerodrome.json (overlay-tunable). */
+export function grantBalloonReward(fx: Fx, seat: Seat, balloonId: string): void {
+  const balloon = fx.data.aerodrome.balloons.find((b) => b.id === balloonId);
+  if (!balloon) throw new Error(`No balloon ${balloonId} in the data`);
+  const { type: reward, amount } = balloon.reward;
+  switch (reward) {
+    case 'draw':
+      // A card-ability draw: the Orchard Farmstead modifier does not apply (DL-47).
+      fx.pushTask({ t: 'draw', pid: seat, src: null, see: amount, keep: amount, revealed: [] });
+      break;
+    case 'buildDiscount':
+      fx.pushTask({ t: 'build', pid: seat, src: null, discount: amount });
+      break;
+    case 'sowFromHand':
+      // "Sow 4 cards from your hand" reads as up-to: skippable, stops early.
+      fx.pushTask({ t: 'sow', pid: seat, src: null, remaining: amount, optional: true });
+      break;
+    case 'gainCoins':
+      fx.gainCoins(seat, amount, `balloon:${balloonId}`);
+      break;
+    default:
+      reward satisfies never;
+  }
+}
+
+/**
+ * The Deliver action's full option set as task answers - island deliveries
+ * AND balloon moves (a balloon move IS a Deliver, DL-12). The generic deliver
+ * task and the Vegetable deliver cards both enumerate through here.
+ */
+export function deliverAnswers(data: GameData, state: GameState, seat: Seat): TaskAnswer[] {
+  return [
+    ...deliverOptions(data, state, seat).map(
+      (o) => ({ kind: 'deliver', tile: o.tile, spend: o.spend }) as TaskAnswer,
+    ),
+    ...balloonMoveOptions(data, state, seat).map(
+      (o) => ({ kind: 'balloon', balloon: o.balloon, spend: o.spend }) as TaskAnswer,
+    ),
+  ];
 }
 
 // --- Workers: shared action legality --------------------------------------
@@ -453,7 +622,8 @@ export function workerActionLegal(
     case 'build':
       return anyBuildOption(data, state, seat, hand);
     case 'deliver':
-      return anyDeliverOption(data, state, seat);
+      // Island or freight: a balloon move IS the Deliver action (DL-12).
+      return anyDeliverOption(data, state, seat) || anyBalloonMoveOption(data, state, seat);
     default:
       return worker.action satisfies never;
   }
@@ -559,6 +729,7 @@ export function hasMainOption(data: GameData, state: GameState, seat: Seat): boo
     upgradeOptions(data, state, seat).length > 0 ||
     growOptions(data, state, seat).length > 0 ||
     harvestOptions(data, state, seat).length > 0 ||
-    anyDeliverOption(data, state, seat)
+    anyDeliverOption(data, state, seat) ||
+    anyBalloonMoveOption(data, state, seat)
   );
 }

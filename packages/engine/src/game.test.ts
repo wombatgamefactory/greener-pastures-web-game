@@ -66,7 +66,8 @@ describe('newGame', () => {
   it('parks balloons only when Vegetable is on the table', () => {
     const withVeg = newGame(data, { seats: 2, suits: ['vegetable', 'dairy'], seed: 'v' });
     expect(withVeg.aerodrome?.balloons).toHaveLength(4);
-    expect(withVeg.aerodrome?.balloons.filter((b) => b.at === 'centre')).toHaveLength(2);
+    // Ruling J: all four start unowned in the centre - no per-seat parking.
+    expect(withVeg.aerodrome?.balloons.filter((b) => b.at === 'centre')).toHaveLength(4);
     // At 4 seats all five decks are on the table, so the Aerodrome is always in play.
     const four = newGame(data, {
       seats: 4,

@@ -149,6 +149,21 @@ export class Fx {
     this.emit({ e: 'stackToBarn', seat, building, card });
   }
 
+  /**
+   * Pull a face-up card out of its suit's discard into a barn (the upgraded
+   * Vegetable Barn's freight refund reclaims a just-spent delivery card).
+   */
+  reclaimDiscard(seat: Seat, card: CardId): void {
+    this.touch(seat);
+    const suit = cardById(this.data, card).suit;
+    const pile = this.state.discards[suit];
+    const i = pile.indexOf(card);
+    if (i < 0) throw new Error(`${card} is not in the ${suit} discard`);
+    pile.splice(i, 1);
+    player(this.state, seat).barn.push(card);
+    this.emit({ e: 'discardToBarn', seat, card });
+  }
+
   /** Top of a deck straight into a barn (the Patisserie / Meadow Hive shape). No-op when the suit is exhausted. */
   deckTopToBarn(seat: Seat, suit: Suit): void {
     const card = this.takeDeckTop(suit);
@@ -233,6 +248,16 @@ export class Fx {
 export interface HookEvents {
   afterHarvest: { seat: Seat; building: CardId; cards: CardId[] };
   afterPlacement: { seat: Seat; onto: CardInPlay; card: CardId; stackSize: number };
+  /**
+   * Any Deliver: an island delivery (island: true, tile set) or a balloon move
+   * (island: false) - both, because moving a balloon IS the Deliver action
+   * (DL-12). `cards` are the ids actually spent ([] for a free card-effect
+   * move), so the freight-refund family can reclaim one. Island-only cards
+   * (V16) guard on `island`; the Vegetable Farmstead deliberately does not.
+   */
+  afterDeliver: { seat: Seat; island: boolean; tile?: string; cards: CardId[] };
+  /** A balloon changed Aerodrome. `from` is where it left - V17 draws when that was its owner's port. */
+  afterBalloonMove: { seat: Seat; balloon: string; from: Seat | 'centre' };
 }
 
 export type HookName = keyof HookEvents;

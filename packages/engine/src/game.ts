@@ -7,11 +7,13 @@
 import type { GameData } from '@gp/data';
 
 import {
+  balloonMoveOptions,
   buildOptions,
   deliverOptions,
   doBuild,
   doDeliver,
   doDraw,
+  doMoveBalloon,
   doHarvestAction,
   doHire,
   doUpgrade,
@@ -83,6 +85,10 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
     for (const o of deliverOptions(data, state, seat)) {
       moves.push({ type: 'deliver', seat, tile: o.tile, spend: o.spend });
     }
+    // The Deliver action's freight branch (DL-12): balloon moves.
+    for (const o of balloonMoveOptions(data, state, seat)) {
+      moves.push({ type: 'moveBalloon', seat, balloon: o.balloon, spend: o.spend });
+    }
     if (moves.length === 0) moves.push({ type: 'pass', seat });
   } else if (turn.again === 'harvest') {
     // The upgraded Wheat Farmstead's optional second harvest, declinable via
@@ -110,6 +116,7 @@ const MAIN_ACTIONS = new Set<Move['type']>([
   'grow',
   'harvest',
   'deliver',
+  'moveBalloon',
   'pass',
 ]);
 
@@ -181,6 +188,9 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
       break;
     case 'deliver':
       doDeliver(fx, move.seat, move.tile, move.spend);
+      break;
+    case 'moveBalloon':
+      doMoveBalloon(fx, move.seat, move.balloon, move.spend);
       break;
     case 'pass':
       if (hasMainOption(data, state, move.seat)) {

@@ -61,10 +61,7 @@ export function makeState(data: GameData, suits: Suit[]): GameState {
     fair: data.workers.roster.map((w) => ({ id: w.id, owner: null, trackPos: 0 })),
     island: { tiles: buildIsland(data, seats, demandPool(data, seats, poolSuits)) },
     aerodrome: suits.includes('vegetable')
-      ? parkBalloons(
-          seats,
-          data.aerodrome.balloons.map((b) => b.id),
-        )
+      ? parkBalloons(data.aerodrome.balloons.map((b) => b.id))
       : null,
     turn: freshTurn(),
     tasks: [],

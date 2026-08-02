@@ -169,9 +169,20 @@ export type Task =
       t: 'build';
       pid: Seat;
       src: CardId | null;
+      /**
+       * The cream balloon's "Build, with a discount of 4": the card cost drops
+       * by this many, the remaining payment is any-suit, and a coin price is
+       * waived when the leftover discount covers it (reference buildDiscount).
+       */
+      discount?: number;
     }
   | {
-      /** A full Deliver action mid-effect (the Deliver Worker). Answers come from the same enumerator as the Deliver move. */
+      /**
+       * A full Deliver action mid-effect (the Deliver Worker, the Vegetable
+       * deliver cards). Answers come from the same enumerators as the Deliver
+       * move - island deliveries AND balloon moves, because moving a balloon
+       * IS the Deliver action (reference DL-12).
+       */
       t: 'deliver';
       pid: Seat;
       src: CardId | null;
@@ -204,6 +215,7 @@ export type TaskAnswer =
   | { kind: 'sow'; card: CardId; onto: CardId }
   | { kind: 'build'; card: CardId; payment: CardId[] }
   | { kind: 'deliver'; tile: string; spend: Partial<Record<Suit, number>> }
+  | { kind: 'balloon'; balloon: string; spend: Partial<Record<Suit, number>> }
   | { kind: 'discard'; cards: CardId[] }
   | { kind: 'skip' }
   | { kind: 'card'; payload: Record<string, unknown> };
@@ -269,6 +281,12 @@ export type Move =
   /** Deliver from barn to an island tile. `spend` is a per-suit map - barn identity is inert. */
   | { type: 'deliver'; seat: Seat; tile: string; spend: Partial<Record<Suit, number>> }
   /**
+   * The Deliver action's freight branch (reference DL-12): pay 2 differing
+   * barn cards, take a balloon that is not on your own Aerodrome, collect its
+   * reward. In play only when Vegetable is on the table.
+   */
+  | { type: 'moveBalloon'; seat: Seat; balloon: string; spend: Partial<Record<Suit, number>> }
+  /**
    * The visit half of the bonus slot: 1 card from hand onto a neighbour's
    * Notice Board, then either take the printed coins or work one of the host's
    * Workers.
@@ -313,6 +331,17 @@ export type GameEvent =
       coins: number;
       spend: Partial<Record<Suit, number>>;
     }
+  | {
+      e: 'balloonMoved';
+      seat: Seat;
+      balloon: string;
+      from: Seat | 'centre';
+      spend: Partial<Record<Suit, number>>;
+      /** True for a card effect's free move (V16) - no barn cards paid. */
+      free: boolean;
+    }
+  /** A face-up discard reclaimed into a barn (the upgraded Vegetable Barn's freight refund). */
+  | { e: 'discardToBarn'; seat: Seat; card: CardId }
   | { e: 'visited'; seat: Seat; host: Seat; mode: 'coin' | 'worker' }
   | { e: 'endTriggered'; seat: Seat }
   | { e: 'turnEnded'; seat: Seat; next: Seat }

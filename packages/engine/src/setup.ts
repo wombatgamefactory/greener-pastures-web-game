@@ -14,14 +14,7 @@ import type { GameData, Suit } from '@gp/data';
 
 import { levelRuleOf } from './actions.js';
 import { seedRng, shuffle } from './rng.js';
-import type {
-  AerodromeState,
-  CardId,
-  GameState,
-  IslandTileState,
-  Seat,
-  TurnState,
-} from './state.js';
+import type { AerodromeState, CardId, GameState, IslandTileState, TurnState } from './state.js';
 
 export interface NewGameOptions {
   seats: number;
@@ -95,11 +88,14 @@ export function buildIsland(
   });
 }
 
-/** Park one balloon per seat, leftovers at the central Aerodrome (in the order given). */
-export function parkBalloons(seats: number, order: string[]): AerodromeState {
-  return {
-    balloons: order.map((id, i) => ({ id, at: i < seats ? (i as Seat) : 'centre' })),
-  };
+/**
+ * All balloons start unowned in the centre - ticket 06 ruling J: no per-seat
+ * parking and no draft. (The reference implementation and the rulebook park
+ * one per seat; ruling J explicitly supersedes that, and the divergence is
+ * flagged to the rulings audit, ticket 07.)
+ */
+export function parkBalloons(order: string[]): AerodromeState {
+  return { balloons: order.map((id) => ({ id, at: 'centre' })) };
 }
 
 export function newGame(data: GameData, opts: NewGameOptions): GameState {
@@ -171,7 +167,6 @@ export function newGame(data: GameData, opts: NewGameOptions): GameState {
   };
   const aerodrome = suitsInPlay.includes('vegetable')
     ? parkBalloons(
-        seats,
         shuffle(
           rng,
           data.aerodrome.balloons.map((b) => b.id),

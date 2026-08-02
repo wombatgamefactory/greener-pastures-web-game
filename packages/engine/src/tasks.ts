@@ -18,9 +18,10 @@ import type { GameData } from '@gp/data';
 
 import {
   buildOptions,
-  deliverOptions,
+  deliverAnswers,
   doBuild,
   doDeliver,
+  doMoveBalloon,
   harvestOptions,
   harvestSurchargeOf,
   subsets,
@@ -87,14 +88,13 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
     }
 
     case 'build':
-      return buildOptions(data, state, task.pid).map(
+      return buildOptions(data, state, task.pid, undefined, task.discount ?? 0).map(
         (o) => ({ kind: 'build', card: o.card, payment: o.payment }) as TaskAnswer,
       );
 
     case 'deliver':
-      return deliverOptions(data, state, task.pid).map(
-        (o) => ({ kind: 'deliver', tile: o.tile, spend: o.spend }) as TaskAnswer,
-      );
+      // Island deliveries AND balloon moves - one Deliver action (DL-12).
+      return deliverAnswers(data, state, task.pid);
 
     case 'discard': {
       const hand = player(state, task.pid).hand;
@@ -161,14 +161,20 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
 
     case 'build': {
       if (answer.kind !== 'build') throw new Error('build expects a build answer');
-      doBuild(fx, task.pid, answer.card, answer.payment);
+      doBuild(fx, task.pid, answer.card, answer.payment, task.discount ?? 0);
       return true;
     }
 
     case 'deliver': {
-      if (answer.kind !== 'deliver') throw new Error('deliver expects a deliver answer');
-      doDeliver(fx, task.pid, answer.tile, answer.spend);
-      return true;
+      if (answer.kind === 'deliver') {
+        doDeliver(fx, task.pid, answer.tile, answer.spend);
+        return true;
+      }
+      if (answer.kind === 'balloon') {
+        doMoveBalloon(fx, task.pid, answer.balloon, answer.spend);
+        return true;
+      }
+      throw new Error('deliver expects a deliver or balloon answer');
     }
 
     case 'discard': {
