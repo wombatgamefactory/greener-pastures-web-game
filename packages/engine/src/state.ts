@@ -192,6 +192,8 @@ export type Task =
       t: 'deliver';
       pid: Seat;
       src: CardId | null;
+      /** "You may immediately deliver" (A15): a skip answer is offered. */
+      optional?: boolean;
     }
   | {
       /** End-of-turn discard down to the printed Barn hand size. */

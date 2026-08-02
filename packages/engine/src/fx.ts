@@ -223,6 +223,27 @@ export class Fx {
       throw new Error(`${onto.card} cannot take a card (full or no stack)`);
     }
     this.removeFromHand(from, card);
+    this.land(from, onto, card);
+  }
+
+  /**
+   * Sow the top of a suit's discard onto a building (A6 The Garden Hive - the
+   * only card that places from anywhere but a hand). Same landing tail as
+   * placeOnBuilding, so the placement reactors fire identically.
+   */
+  placeFromDiscard(from: Seat, onto: CardInPlay, suit: Suit): void {
+    const building = this.buildingDraft(onto);
+    if (!canTakeCard(this.data, building)) {
+      throw new Error(`${onto.card} cannot take a card (full or no stack)`);
+    }
+    const pile = this.state.discards[suit];
+    const card = pile.pop();
+    if (card === undefined) throw new Error(`The ${suit} discard is empty`);
+    this.land(from, onto, card);
+  }
+
+  private land(from: Seat, onto: CardInPlay, card: CardId): void {
+    const building = this.buildingDraft(onto);
     this.touch(onto.seat);
     building.stack.push(card);
     this.emit({
@@ -307,6 +328,13 @@ export interface HookEvents {
    * the Draw Worker and card-ability draws alike; autoDraw never fires it.
    */
   afterDrawKeep: { seat: Seat; cards: CardId[] };
+  /**
+   * A Hired Worker was WORKED - any path: the bonus slot, a visit's payoff, a
+   * card-granted work (Herb Hive's free mode included, `free: true`). `owner`
+   * is captured before the advance, so an expiring use still reports him.
+   * A17 The Smoke Pot reacts owner-side when `actor !== owner`.
+   */
+  afterWork: { actor: Seat; owner: Seat; workerId: string; free: boolean };
 }
 
 export type HookName = keyof HookEvents;

@@ -59,13 +59,14 @@ describe('1. The Meadow Hive (A5) - plain activate-and-gain', () => {
   });
 
   it('rejects a non-matching payment (GROW matching is the payment rule)', () => {
+    // Asserted on the WHEAT seat since ticket 21: the Apiary Farmstead's base
+    // power ("GROW: You may use any card") waives the match for an Apiary seat,
+    // so A5 is no longer a valid subject for the general rule.
     const s = base();
-    buildFor(data, s, APIARY, 'A5');
-    dealTo(data, s, APIARY, 'A6');
-    // Steal a wheat card into hand to try paying with the wrong suit.
-    const wheatCard = s.decks.wheat.shift() as string;
-    player(s, APIARY).hand.push(wheatCard);
-    expect(() => growBuilding(data, s, APIARY, 'A5', wheatCard)).toThrow(/needs a apiary card/);
+    buildFor(data, s, WHEAT, 'W5');
+    const apiaryCard = s.decks.apiary.shift() as string;
+    player(s, WHEAT).hand.push(apiaryCard);
+    expect(() => growBuilding(data, s, WHEAT, 'W5', apiaryCard)).toThrow(/needs a wheat card/);
   });
 
   it('still pays the £1 when the apiary deck and discard are empty', () => {

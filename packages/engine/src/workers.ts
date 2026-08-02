@@ -10,6 +10,7 @@
 
 import { withDrawModifier, workerData, workerState } from './query.js';
 import type { Fx } from './fx.js';
+import { fireHook } from './fx.js';
 import type { Seat } from './state.js';
 
 export interface WorkOptions {
@@ -29,11 +30,13 @@ export interface WorkOptions {
 export function workWorker(fx: Fx, actor: Seat, workerId: string, opts: WorkOptions): void {
   const worker = workerData(fx.data, workerId);
   const ws = workerState(fx.state, workerId);
+  // Captured before the advance: an expiring use still knows who was paid.
+  const owner = ws.owner;
   fx.emit({
     e: 'workerWorked',
     seat: actor,
     workerId: worker.id,
-    owner: ws.owner,
+    owner,
     free: !opts.progress,
   });
 
@@ -83,6 +86,13 @@ export function workWorker(fx: Fx, actor: Seat, workerId: string, opts: WorkOpti
   }
 
   if (opts.progress) advanceWorker(fx, actor, workerId);
+  // The reference fires the work-completion reactors (A17 The Smoke Pot) in
+  // finishWorkerUse, after the action resolves; here the hook fires before the
+  // action's queued task drains - benign for the same reason the wage timing
+  // is (ticket 17): the reactors are choiceless and independent of the action.
+  if (owner !== null) {
+    fireHook(fx, 'afterWork', { actor, owner, workerId: worker.id, free: !opts.progress });
+  }
 }
 
 /**

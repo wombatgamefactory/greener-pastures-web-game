@@ -10,7 +10,7 @@
 
 import type { GameData, WorkerAction } from '@gp/data';
 
-import { doVisit, doWorkOwn } from './actions.js';
+import { activationSurchargeOf, doVisit, doWorkOwn } from './actions.js';
 import { Fx } from './fx.js';
 import type { FxAudit } from './fx.js';
 import { handlerFor } from './handlers/registry.js';
@@ -51,7 +51,8 @@ function clonePlain<T>(value: T): T {
  * actions.ts for workerActionLegal).
  */
 export function doGrow(fx: Fx, seat: Seat, building: CardId, payment: CardId): void {
-  const b = player(fx.state, seat).tableau.find((x) => x.card === building);
+  const p = player(fx.state, seat);
+  const b = p.tableau.find((x) => x.card === building);
   if (!b) throw new Error(`Seat ${seat} has not built ${building}`);
   if (cardById(fx.data, building).slot === 'noticeboard') {
     throw new Error('The Notice Board is never a Grow target');
@@ -59,14 +60,34 @@ export function doGrow(fx: Fx, seat: Seat, building: CardId, payment: CardId): v
   if (!canTakeCard(fx.data, b)) throw new Error(`${building} is full or has no stack`);
   const activationType = faceOf(fx.data, b).activationType;
   if (activationType === null) throw new Error(`${building} has no activation type`);
-  if (activationType !== 'wild') {
+  // The Apiary Farmstead's base power: GROW may pay with any card (no match).
+  if (activationType !== 'wild' && p.suit !== 'apiary') {
     const paidSuit = cardById(fx.data, payment).suit;
     if (paidSuit !== activationType) {
       throw new Error(`${building} needs a ${activationType} card, got ${paidSuit}`);
     }
   }
+  // A8's £1 activation surcharge: checked before, paid after the card lands
+  // (the reference's order), before the ability fires.
+  const surcharge = activationSurchargeOf(fx.data, building);
+  if (p.coins < surcharge) throw new Error(`${building} needs £${surcharge} to activate`);
   fx.placeOnBuilding(seat, { seat, card: building }, payment);
+  if (surcharge > 0) fx.payCoins(seat, surcharge, `surcharge:${building}`);
   handlerFor(building)?.activate?.(fx, { seat, card: building });
+
+  // The upgraded Apiary Farmstead (ticket 06 ruling F): "When you GROW, you
+  // may also SOW 1 card from your hand onto another of your buildings." An
+  // engine seam, not handler code - GROW is only ever the main action. Queued
+  // after the activation's own tasks, per the reference's afterMainAction.
+  if (p.suit === 'apiary') {
+    const farmstead = p.tableau.find((x) => cardById(fx.data, x.card).slot === 'farmstead');
+    if (farmstead?.upgraded) {
+      const targets = p.tableau
+        .filter((x) => x.card !== building && canTakeCard(fx.data, x))
+        .map((x) => x.card);
+      fx.pushTask({ t: 'sow', pid: seat, src: null, remaining: 1, targets, optional: true });
+    }
+  }
 }
 
 /** GROW as a bare runtime slice (no action bookkeeping). apply()'s grow branch spends the action first. */

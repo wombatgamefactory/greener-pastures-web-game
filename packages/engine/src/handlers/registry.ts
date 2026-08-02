@@ -12,7 +12,28 @@
 
 import { wireHookBus } from '../fx.js';
 import type { CardId } from '../state.js';
-import { herbHive, meadowHive } from './apiary.js';
+import {
+  apiaristsGuild,
+  apiaryBarn,
+  apiaryFarmstead,
+  apiaryNoticeBoard,
+  beekeepersVeil,
+  crossPollinator,
+  foragingHive,
+  gardenHive,
+  herbHive,
+  honeycombTower,
+  honeyHall,
+  honeyHut,
+  meadowHive,
+  pollinatorTrail,
+  queensHive,
+  royalApiary,
+  smokePot,
+  waxHall,
+  waxWorkshop,
+  wildHive,
+} from './apiary.js';
 import { helpingHand } from './helpingHand.js';
 import type { CardHandler } from './types.js';
 import {
@@ -146,8 +167,27 @@ const HANDLERS = new Map<CardId, CardHandler>([
   ['O19', fruitHall],
   ['O20', orchardArchive],
   ['O21', harvestFestival],
+  // Apiary - the full suit (ticket 21; A4/A5 date from the spanning set).
+  ['A1', apiaryBarn],
+  ['A2', apiaryFarmstead],
+  ['A3', apiaryNoticeBoard],
   ['A4', herbHive],
   ['A5', meadowHive],
+  ['A6', gardenHive],
+  ['A7', foragingHive],
+  ['A8', wildHive],
+  ['A9', pollinatorTrail],
+  ['A10', crossPollinator],
+  ['A11', waxWorkshop],
+  ['A12', honeyHut],
+  ['A13', queensHive],
+  ['A14', honeycombTower],
+  ['A15', royalApiary],
+  ['A16', beekeepersVeil],
+  ['A17', smokePot],
+  ['A19', honeyHall],
+  ['A20', apiaristsGuild],
+  ['A21', waxHall],
   // One Power card per suit, shared name, identical text on all five copies -
   // one handler object, five registrations.
   ['W18', helpingHand],

@@ -195,19 +195,25 @@ export function placeBuilt(
   }
 }
 
-export function hireOptions(data: GameData, state: GameState, seat: Seat): WorkerAction[] {
+/** `discount` is A10 The Cross-Pollinator's "paying £1 less" (fee floors at 0). */
+export function hireOptions(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+  discount = 0,
+): WorkerAction[] {
   const p = player(state, seat);
-  if (p.coins < data.workers.hireFee) return [];
+  if (p.coins < Math.max(0, data.workers.hireFee - discount)) return [];
   const owned = state.fair.filter((w) => w.owner === seat).length;
   if (owned >= data.workers.maxPerPlayer) return [];
   return state.fair.filter((w) => w.owner === null).map((w) => w.id);
 }
 
-export function doHire(fx: Fx, seat: Seat, workerId: WorkerAction): void {
-  if (!hireOptions(fx.data, fx.state, seat).includes(workerId)) {
+export function doHire(fx: Fx, seat: Seat, workerId: WorkerAction, discount = 0): void {
+  if (!hireOptions(fx.data, fx.state, seat, discount).includes(workerId)) {
     throw new Error(`Seat ${seat} cannot hire ${workerId}`);
   }
-  fx.payCoins(seat, fx.data.workers.hireFee, `hire:${workerId}`);
+  fx.payCoins(seat, Math.max(0, fx.data.workers.hireFee - discount), `hire:${workerId}`);
   const ws = workerState(fx.state, workerId);
   ws.owner = seat;
   ws.trackPos = 0;
@@ -260,20 +266,34 @@ export interface GrowOption {
 }
 
 /**
+ * The activation surcharge a card prints ("You must pay £1 to activate this
+ * card", A8 The Wild Hive), keyed by the data trigger like the harvest
+ * surcharge: checked at legality, paid in doGrow after the card lands.
+ */
+export function activationSurchargeOf(data: GameData, card: CardId): number {
+  return cardById(data, card).abilityTrigger.includes('activationSurcharge') ? 1 : 0;
+}
+
+/**
  * Own non-full buildings with a printed activation type, never the Notice
  * Board (porting guard: it passes the placement check but is not a Grow
- * target), paid with a matching hand card ('wild' takes any).
+ * target), paid with a matching hand card ('wild' takes any). The Apiary
+ * Farmstead's base power (live from turn 1) waives the match entirely -
+ * the reference's `Placement::checkNoType` in the Grow funnel. Surcharged
+ * buildings (A8) drop out when the seat cannot pay.
  */
 export function growOptions(data: GameData, state: GameState, seat: Seat): GrowOption[] {
   const p = player(state, seat);
+  const anyCard = p.suit === 'apiary';
   const out: GrowOption[] = [];
   for (const b of p.tableau) {
     if (!canTakeCard(data, b)) continue;
     if (cardById(data, b.card).slot === 'noticeboard') continue;
     const type = faceOf(data, b).activationType;
     if (type === null) continue;
+    if (activationSurchargeOf(data, b.card) > p.coins) continue;
     for (const card of p.hand) {
-      if (type === 'wild' || cardById(data, card).suit === type) {
+      if (anyCard || type === 'wild' || cardById(data, card).suit === type) {
         out.push({ building: b.card, payment: card });
       }
     }

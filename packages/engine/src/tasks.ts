@@ -93,9 +93,12 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
         (o) => ({ kind: 'build', card: o.card, payment: o.payment }) as TaskAnswer,
       );
 
-    case 'deliver':
+    case 'deliver': {
       // Island deliveries AND balloon moves - one Deliver action (DL-12).
-      return deliverAnswers(data, state, task.pid);
+      const out = deliverAnswers(data, state, task.pid);
+      if (task.optional === true && out.length > 0) out.push({ kind: 'skip' });
+      return out;
+    }
 
     case 'discard': {
       const hand = player(state, task.pid).hand;
@@ -173,6 +176,7 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
     }
 
     case 'deliver': {
+      if (answer.kind === 'skip' && task.optional === true) return true;
       if (answer.kind === 'deliver') {
         doDeliver(fx, task.pid, answer.tile, answer.spend);
         return true;
