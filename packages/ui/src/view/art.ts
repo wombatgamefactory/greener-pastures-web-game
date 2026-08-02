@@ -74,7 +74,9 @@ export function frame(layer: string): string {
  * change when the painted token lands: only this function.
  */
 export function demandTokenLayers(demand: Suit | 'wild'): string[] {
-  if (demand === 'wild') return [token('demand-slot'), frame('suit_wild')];
+  // The wild demand used to be composed from the cost bar's cornucopia over an
+  // empty crate slot, because no cornucopia token art existed. Ticket 33 built
+  // the real one, so all six demands are now one painted token.
   return [token(`demand-${demand}`)];
 }
 

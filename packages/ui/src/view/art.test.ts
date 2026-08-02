@@ -51,12 +51,9 @@ describe('art paths', () => {
     expect(cardArtZoom('V4')).toContain('/cards/zoom/v4.webp');
   });
 
-  it('composes the cornucopia demand from two layers, having no token art (ticket 33)', () => {
+  it('draws every demand, wild included, as one painted token (ticket 33)', () => {
     expect(demandTokenLayers('wheat')).toEqual([`${BASE}art/tokens/demand-wheat.webp`]);
-    expect(demandTokenLayers('wild')).toEqual([
-      `${BASE}art/tokens/demand-slot.webp`,
-      `${BASE}art/frame/suit_wild.webp`,
-    ]);
+    expect(demandTokenLayers('wild')).toEqual([`${BASE}art/tokens/demand-wild.webp`]);
   });
 
   it('has a distinct icon for the generic starting building and for a crop', () => {
