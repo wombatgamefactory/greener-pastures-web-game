@@ -18,14 +18,8 @@
  * cards are the scarce resource and the master clock.
  */
 
-import {
-  builtCopies,
-  canTakeCard,
-  noticeBoardOf,
-  player,
-  workerActionLegal,
-  workerState,
-} from '../query.js';
+import { workerActionLegal } from '../actions.js';
+import { builtCopies, canTakeCard, noticeBoardOf, player, workerState } from '../query.js';
 import { workWorker } from '../workers.js';
 import type { CardHandler, CardMove } from './types.js';
 

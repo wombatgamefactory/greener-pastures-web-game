@@ -60,10 +60,14 @@ export function workWorker(fx: Fx, actor: Seat, workerId: string, opts: WorkOpti
       fx.pushTask({ t: 'sow', pid: actor, src: null, remaining: worker.sow?.amount ?? 1 });
       break;
     case 'build':
+      // A plain Build, chosen via the same enumerator the Build move uses.
+      // Hire and starter upgrades are NOT offered through a Worker (open
+      // ruling; the reference's worker-build is hand-builds only).
+      fx.pushTask({ t: 'build', pid: actor, src: null });
+      break;
     case 'deliver':
-      // Plain Build / Deliver actions - they land with the bulk card build,
-      // which owns the main-action funnels these re-enter.
-      throw new Error(`Worker action '${worker.action}' is not implemented yet`);
+      fx.pushTask({ t: 'deliver', pid: actor, src: null });
+      break;
     default:
       worker.action satisfies never;
   }

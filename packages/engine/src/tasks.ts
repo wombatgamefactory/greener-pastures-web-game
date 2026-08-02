@@ -16,26 +16,19 @@
 
 import type { GameData } from '@gp/data';
 
-import type { Fx } from './fx.js';
 import {
-  canTakeCard,
-  drawableSuits,
-  fullBuildings,
-  player,
+  buildOptions,
+  deliverOptions,
+  doBuild,
+  doDeliver,
+  subsets,
   workerActionLegal,
-  workerState,
-} from './query.js';
+} from './actions.js';
+import type { Fx } from './fx.js';
+import { canTakeCard, drawableSuits, fullBuildings, player, workerState } from './query.js';
 import type { GameState, Task, TaskAnswer } from './state.js';
 import { workWorker } from './workers.js';
 import { handlerFor } from './handlers/registry.js';
-
-/** All k-card subsets, for keep picks. Bounded: see-N is 4 at most. */
-function subsets<T>(items: readonly T[], k: number): T[][] {
-  if (k === 0) return [[]];
-  if (k > items.length) return [];
-  const [head, ...rest] = items as [T, ...T[]];
-  return [...subsets(rest, k - 1).map((s) => [head, ...s]), ...subsets(rest, k)];
-}
 
 /** Legal answers to a task. Empty = the task has nothing to do and is skipped. */
 export function taskAnswers(data: GameData, state: GameState, task: Task): TaskAnswer[] {
@@ -75,6 +68,23 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
       return hand.flatMap((card) =>
         targets.map((b) => ({ kind: 'sow', card, onto: b.card }) as TaskAnswer),
       );
+    }
+
+    case 'build':
+      return buildOptions(data, state, task.pid).map(
+        (o) => ({ kind: 'build', card: o.card, payment: o.payment }) as TaskAnswer,
+      );
+
+    case 'deliver':
+      return deliverOptions(data, state, task.pid).map(
+        (o) => ({ kind: 'deliver', tile: o.tile, spend: o.spend }) as TaskAnswer,
+      );
+
+    case 'discard': {
+      const hand = player(state, task.pid).hand;
+      const excess = hand.length - task.downTo;
+      if (excess <= 0) return [];
+      return subsets(hand, excess).map((cards) => ({ kind: 'discard', cards }) as TaskAnswer);
     }
 
     case 'card': {
@@ -128,6 +138,25 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
       fx.placeOnBuilding(task.pid, { seat: task.pid, card: answer.onto }, answer.card);
       task.remaining -= 1;
       return task.remaining <= 0;
+    }
+
+    case 'build': {
+      if (answer.kind !== 'build') throw new Error('build expects a build answer');
+      doBuild(fx, task.pid, answer.card, answer.payment);
+      return true;
+    }
+
+    case 'deliver': {
+      if (answer.kind !== 'deliver') throw new Error('deliver expects a deliver answer');
+      doDeliver(fx, task.pid, answer.tile, answer.spend);
+      return true;
+    }
+
+    case 'discard': {
+      if (answer.kind !== 'discard') throw new Error('discard expects a discard answer');
+      for (const card of answer.cards) fx.removeFromHand(task.pid, card);
+      fx.discard(answer.cards);
+      return true;
     }
 
     case 'card': {

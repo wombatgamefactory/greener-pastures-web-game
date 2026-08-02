@@ -22,12 +22,14 @@
   },
   "turn": {
     "actionsPerTurn": 1,
-    "bonusSlotsPerTurn": 1
+    "bonusSlotsPerTurn": 1,
+    "baseDraw": { "see": 2, "keep": 1 }
   },
   "economy": {
     "upgradeCostCoins": 2,
     "coinPityDivisor": 5,
-    "visitPayout": { "base": 1, "upgraded": 2 }
+    "visitPayout": { "base": 1, "upgraded": 2 },
+    "farmsteadFlipAtOwnColourBuilds": 3
   },
   "endGame": {
     "trigger": "levelThreeDelivery",

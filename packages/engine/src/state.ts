@@ -44,12 +44,46 @@ export interface WorkerState {
 }
 
 /**
+ * One island tile in play. Level, VP, coins and crate count are all read from
+ * the tile's level rules in GameData; the state stores only what setup
+ * randomised (the demand tokens) and what play has done (the deliveries).
+ */
+export interface IslandTileState {
+  /** Printed face id, e.g. "A1". Level comes from data.island.tiles. */
+  tile: string;
+  /** One demand token per crate, dealt at setup. 'wild' is the cornucopia. */
+  crates: (Suit | 'wild')[];
+  /** Seats that have delivered here, in order. Full at data.island.deliveriesPerTile. */
+  deliveredBy: Seat[];
+}
+
+export interface IslandState {
+  tiles: IslandTileState[];
+}
+
+/**
+ * The balloon module, in play only when Vegetable is on the table (null
+ * otherwise). Ticket 17 sets it up; the balloon-move Deliver branch lands with
+ * the Vegetable handler ticket.
+ */
+export interface AerodromeState {
+  balloons: { id: string; at: Seat | 'centre' }[];
+}
+
+/**
  * Everything scoped to the current turn. Turn end replaces the whole object,
  * so a turn-scoped leak is structurally impossible.
  */
 export interface TurnState {
   actionSpent: boolean;
   bonusSpent: boolean;
+  /**
+   * Set when turn end has been committed (explicit endTurn, or nothing left to
+   * do): once the queue drains - the end-of-turn discard may still be pending -
+   * the turn finalises unconditionally. Prevents a standing move from wedging
+   * an ending turn open.
+   */
+  ending: boolean;
   /**
    * The Helping Hand gate. Set only by a visit's worker payoff; a repeat
    * re-works this worker. `repeats` counts repeats taken this visit.
@@ -110,6 +144,24 @@ export type Task =
       remaining: number;
     }
   | {
+      /** A full Build action mid-effect (the Build Worker). Answers come from the same enumerator as the Build move. */
+      t: 'build';
+      pid: Seat;
+      src: CardId | null;
+    }
+  | {
+      /** A full Deliver action mid-effect (the Deliver Worker). Answers come from the same enumerator as the Deliver move. */
+      t: 'deliver';
+      pid: Seat;
+      src: CardId | null;
+    }
+  | {
+      /** End-of-turn discard down to the printed Barn hand size. */
+      t: 'discard';
+      pid: Seat;
+      downTo: number;
+    }
+  | {
       /**
        * Escape hatch: a card-specific choice the generic vocabulary cannot
        * express. Resolved by the handler registered for `src`, keyed by `kind`.
@@ -129,6 +181,9 @@ export type TaskAnswer =
   | { kind: 'keep'; cards: CardId[] }
   | { kind: 'building'; card: CardId }
   | { kind: 'sow'; card: CardId; onto: CardId }
+  | { kind: 'build'; card: CardId; payment: CardId[] }
+  | { kind: 'deliver'; tile: string; spend: Partial<Record<Suit, number>> }
+  | { kind: 'discard'; cards: CardId[] }
   | { kind: 'skip' }
   | { kind: 'card'; payload: Record<string, unknown> };
 
@@ -142,14 +197,22 @@ export interface GameState {
   /** sfc32 state. */
   rng: [number, number, number, number];
   seats: number;
+  /**
+   * The seats' suits plus the one passive suit nobody farms - exactly the
+   * decks on the table. Stored (not derived from deck emptiness) because a
+   * fully-exhausted in-play suit is not the same as an out-of-game one.
+   */
+  suitsInPlay: Suit[];
   turnPlayer: Seat;
   phase: 'playing' | 'ended';
   endTrigger: { seat: Seat } | null;
   players: PlayerState[];
-  /** Per-suit, index 0 = top. Never merged, never cross-shuffled. */
+  /** Per-suit, index 0 = top. Never merged, never cross-shuffled. Out-of-play suits hold []. */
   decks: Record<Suit, CardId[]>;
   discards: Record<Suit, CardId[]>;
   fair: WorkerState[];
+  island: IslandState;
+  aerodrome: AerodromeState | null;
   turn: TurnState;
   tasks: Task[];
   resume: Resume | null;
@@ -160,9 +223,6 @@ export interface GameState {
  * turn end) and answers to a pending task. Card-contributed standing moves
  * (`cardMove`) are enumerated by legalMoves via the card's handler and applied
  * through the same registry, so legality still has exactly one source.
- *
- * Ticket 05 implements the handler-facing slice (task + cardMove); the plain
- * turn moves land with the bulk card build.
  */
 export type Move =
   | { type: 'task'; seat: Seat; answer: TaskAnswer }
@@ -174,7 +234,37 @@ export type Move =
       /** Handler-defined discriminator. */
       kind: string;
       payload: Record<string, unknown>;
-    };
+    }
+  /** The plain Draw action. Deck picks and the keep are the draw task's answers. */
+  | { type: 'draw'; seat: Seat }
+  /** Build a card from hand. `payment` is the chosen card ids; a coin-priced card pays coins and an empty payment. */
+  | { type: 'build'; seat: Seat; card: CardId; payment: CardId[] }
+  /** Hire a Worker from the Fair - a Build-action branch. */
+  | { type: 'hire'; seat: Seat; workerId: WorkerAction }
+  /** Flip a starter (Barn or Notice Board) for coins - a Build-action branch. The Farmstead only ever flips free. */
+  | { type: 'upgrade'; seat: Seat; card: CardId }
+  | { type: 'grow'; seat: Seat; building: CardId; payment: CardId }
+  | { type: 'harvest'; seat: Seat; building: CardId }
+  /** Deliver from barn to an island tile. `spend` is a per-suit map - barn identity is inert. */
+  | { type: 'deliver'; seat: Seat; tile: string; spend: Partial<Record<Suit, number>> }
+  /**
+   * The visit half of the bonus slot: 1 card from hand onto a neighbour's
+   * Notice Board, then either take the printed coins or work one of the host's
+   * Workers.
+   */
+  | {
+      type: 'visit';
+      seat: Seat;
+      host: Seat;
+      fee: CardId;
+      payoff: { mode: 'coin' } | { mode: 'worker'; workerId: WorkerAction };
+    }
+  /** The other half of the bonus slot. Free, no wage. */
+  | { type: 'workOwnWorker'; seat: Seat; workerId: WorkerAction }
+  /** Legal only when no main action is: spends the action, keeps the bonus slot. */
+  | { type: 'pass'; seat: Seat }
+  /** Decline whatever options are still live and end the turn. Legal once the action is spent. */
+  | { type: 'endTurn'; seat: Seat };
 
 /** One truth-level stream; redactEvents masks per seat. Feeds UI animation and sim metrics alike. */
 export type GameEvent =
@@ -187,4 +277,20 @@ export type GameEvent =
   | { e: 'workerWorked'; seat: Seat; workerId: WorkerAction; owner: Seat | null; free: boolean }
   | { e: 'workerAdvanced'; workerId: WorkerAction; to: number; wage: number; paidTo: Seat | null }
   | { e: 'workerExpired'; workerId: WorkerAction }
-  | { e: 'reshuffled'; suit: Suit; count: number };
+  | { e: 'reshuffled'; suit: Suit; count: number }
+  | { e: 'built'; seat: Seat; card: CardId; payment: CardId[]; coins: number }
+  | { e: 'hired'; seat: Seat; workerId: WorkerAction }
+  /** free = the Farmstead milestone flip (3rd own-colour build); false = a paid Barn/Notice Board flip. */
+  | { e: 'starterUpgraded'; seat: Seat; card: CardId; free: boolean }
+  | {
+      e: 'delivered';
+      seat: Seat;
+      tile: string;
+      vp: number;
+      coins: number;
+      spend: Partial<Record<Suit, number>>;
+    }
+  | { e: 'visited'; seat: Seat; host: Seat; mode: 'coin' | 'worker' }
+  | { e: 'endTriggered'; seat: Seat }
+  | { e: 'turnEnded'; seat: Seat; next: Seat }
+  | { e: 'gameEnded' };

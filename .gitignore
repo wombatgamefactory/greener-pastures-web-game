@@ -46,3 +46,4 @@ sim-out/
 *.xlsm
 *.xlsx
 design/
+*.tsbuildinfo

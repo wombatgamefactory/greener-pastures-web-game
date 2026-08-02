@@ -8,24 +8,16 @@
  * branches, not a second API.
  */
 
-import type { GameData } from '@gp/data';
+import type { GameData, WorkerAction } from '@gp/data';
 
+import { doVisit, doWorkOwn } from './actions.js';
 import { Fx } from './fx.js';
 import type { FxAudit } from './fx.js';
 import { handlerFor } from './handlers/registry.js';
 import type { CardMove } from './handlers/types.js';
-import {
-  buildingOf,
-  canTakeCard,
-  cardById,
-  faceOf,
-  noticeBoardOf,
-  player,
-  workerState,
-} from './query.js';
+import { canTakeCard, cardById, faceOf, player } from './query.js';
 import type { CardId, GameEvent, GameState, Seat, Task, TaskAnswer } from './state.js';
 import { drainTasks, resolveTask, taskAnswers } from './tasks.js';
-import { workWorker } from './workers.js';
 
 export interface Applied {
   state: GameState;
@@ -53,9 +45,31 @@ function clonePlain<T>(value: T): T {
  * GROW: activate one of your own non-full buildings by paying one matching
  * card from hand into its stack, then gain its ability. "Matching" follows the
  * printed activation type: a suit means that suit, 'wild' means any card.
- * Owner-only by construction - only the owner's GROW action reaches here, and
- * a visitor never fires (or needs to read) a neighbour's card text.
+ * Owner-only by construction, and never the Notice Board (porting guard).
+ * Lives here rather than in actions.ts because it dispatches into the handler
+ * registry, which actions.ts must not import (the Helping Hand imports
+ * actions.ts for workerActionLegal).
  */
+export function doGrow(fx: Fx, seat: Seat, building: CardId, payment: CardId): void {
+  const b = player(fx.state, seat).tableau.find((x) => x.card === building);
+  if (!b) throw new Error(`Seat ${seat} has not built ${building}`);
+  if (cardById(fx.data, building).slot === 'noticeboard') {
+    throw new Error('The Notice Board is never a Grow target');
+  }
+  if (!canTakeCard(fx.data, b)) throw new Error(`${building} is full or has no stack`);
+  const activationType = faceOf(fx.data, b).activationType;
+  if (activationType === null) throw new Error(`${building} has no activation type`);
+  if (activationType !== 'wild') {
+    const paidSuit = cardById(fx.data, payment).suit;
+    if (paidSuit !== activationType) {
+      throw new Error(`${building} needs a ${activationType} card, got ${paidSuit}`);
+    }
+  }
+  fx.placeOnBuilding(seat, { seat, card: building }, payment);
+  handlerFor(building)?.activate?.(fx, { seat, card: building });
+}
+
+/** GROW as a bare runtime slice (no action bookkeeping). apply()'s grow branch spends the action first. */
 export function growBuilding(
   data: GameData,
   state: GameState,
@@ -65,19 +79,7 @@ export function growBuilding(
 ): Applied {
   const draft = cloneState(state);
   const fx = new Fx(data, draft, seat);
-
-  const b = buildingOf(draft, seat, building);
-  if (!canTakeCard(data, b)) throw new Error(`${building} is full or has no stack`);
-  const activationType = faceOf(data, b).activationType;
-  if (activationType !== 'wild' && activationType !== null) {
-    const paidSuit = cardById(data, payment).suit;
-    if (paidSuit !== activationType) {
-      throw new Error(`${building} needs a ${activationType} card, got ${paidSuit}`);
-    }
-  }
-
-  fx.placeOnBuilding(seat, { seat, card: building }, payment);
-  handlerFor(building)?.activate?.(fx, { seat, card: building });
+  doGrow(fx, seat, building, payment);
   drainTasks(data, draft);
   return { state: draft, events: fx.events, audit: fx.audit };
 }
@@ -95,19 +97,9 @@ export function visitWork(
   workerId: string,
   fee: CardId,
 ): Applied {
-  if (visitor === host) throw new Error('You may never visit your own farm');
   const draft = cloneState(state);
   const fx = new Fx(data, draft, visitor);
-
-  if (draft.turn.bonusSpent) throw new Error('Bonus slot already spent this turn');
-  const worker = workerState(draft, workerId);
-  if (worker.owner !== host) throw new Error(`Worker ${workerId} is not the host's`);
-
-  const board = noticeBoardOf(data, draft, host);
-  fx.placeOnBuilding(visitor, { seat: host, card: board.card }, fee);
-  draft.turn.bonusSpent = true;
-  draft.turn.visit = { host, workerId: worker.id, repeats: 0 };
-  workWorker(fx, visitor, workerId, { progress: true });
+  doVisit(fx, visitor, host, fee, { mode: 'worker', workerId: workerId as WorkerAction });
   drainTasks(data, draft);
   return { state: draft, events: fx.events, audit: fx.audit };
 }
@@ -124,11 +116,7 @@ export function workOwnWorker(
 ): Applied {
   const draft = cloneState(state);
   const fx = new Fx(data, draft, seat);
-  if (draft.turn.bonusSpent) throw new Error('Bonus slot already spent this turn');
-  if (workerState(draft, workerId).owner !== seat)
-    throw new Error(`Worker ${workerId} is not yours`);
-  draft.turn.bonusSpent = true;
-  workWorker(fx, seat, workerId, { progress: true });
+  doWorkOwn(fx, seat, workerId as WorkerAction);
   drainTasks(data, draft);
   return { state: draft, events: fx.events, audit: fx.audit };
 }
@@ -206,10 +194,37 @@ export function gameEndScores(data: GameData, state: GameState): ScoreBreakdown[
   });
 }
 
+export interface GameScore {
+  seats: ScoreBreakdown[];
+  /** Seats best-first: VP, then coins remaining, then receipt count (DL-16's full chain), then seat order. */
+  ranking: Seat[];
+}
+
+export function score(data: GameData, state: GameState): GameScore {
+  const seats = gameEndScores(data, state);
+  const ranking = state.players
+    .map((_, seat) => seat)
+    .sort((a, b) => {
+      const sa = seats[a] as ScoreBreakdown;
+      const sb = seats[b] as ScoreBreakdown;
+      const pa = player(state, a);
+      const pb = player(state, b);
+      return (
+        sb.total - sa.total ||
+        pb.coins - pa.coins ||
+        pb.receipts.length - pa.receipts.length ||
+        a - b
+      );
+    });
+  return { seats, ranking };
+}
+
 /** Structural equality for answers/moves; card-set fields compare as sets. */
-function sameShape(a: unknown, b: unknown): boolean {
+export function sameShape(a: unknown, b: unknown): boolean {
   return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
 }
+
+const SET_KEYS = new Set(['cards', 'payment']);
 
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
@@ -217,7 +232,7 @@ function canonical(value: unknown): unknown {
     const out: Record<string, unknown> = {};
     for (const k of Object.keys(value as object).sort()) {
       const v = (value as Record<string, unknown>)[k];
-      out[k] = k === 'cards' && Array.isArray(v) ? [...v].sort() : canonical(v);
+      out[k] = SET_KEYS.has(k) && Array.isArray(v) ? [...(v as unknown[])].sort() : canonical(v);
     }
     return out;
   }

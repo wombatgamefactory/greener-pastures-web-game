@@ -10,9 +10,14 @@
 import type { GameData, Suit } from '@gp/data';
 
 import { seedRng } from './rng.js';
+import { buildIsland, demandPool, freshTurn, parkBalloons } from './setup.js';
 import type { CardId, GameState, Seat } from './state.js';
 
-/** A playable state: starters built, decks full (catalogue order), fair unhired. */
+/**
+ * A playable state: starters built, decks full (catalogue order), fair
+ * unhired, island tiled with demand tokens dealt in pool order - everything
+ * deterministic, nothing consumes the rng.
+ */
 export function makeState(data: GameData, suits: Suit[]): GameState {
   const decks = Object.fromEntries(
     data.cards.suits.map((s) => [
@@ -24,11 +29,20 @@ export function makeState(data: GameData, suits: Suit[]): GameState {
     data.cards.suits.map((s) => [s, [] as CardId[]]),
   ) as GameState['discards'];
 
+  const seats = suits.length;
+  const poolSpec = data.island.demandTokensBySeats[String(seats)];
+  const poolSuits = [...suits, ...data.cards.suits.filter((s) => !suits.includes(s))].slice(
+    0,
+    poolSpec?.suits ?? seats + 1,
+  );
+
   return {
     schema: 1,
     dataFingerprint: `${data.cards.meta.sourceSha256 ?? 'unknown'}+testkit`,
     rng: seedRng('testkit'),
-    seats: suits.length,
+    seats,
+    // Every deck is on the table in the testkit, so scenarios can pull any card.
+    suitsInPlay: [...data.cards.suits],
     turnPlayer: 0,
     phase: 'playing',
     endTrigger: null,
@@ -45,7 +59,14 @@ export function makeState(data: GameData, suits: Suit[]): GameState {
     decks,
     discards,
     fair: data.workers.roster.map((w) => ({ id: w.id, owner: null, trackPos: 0 })),
-    turn: { actionSpent: false, bonusSpent: false, visit: null },
+    island: { tiles: buildIsland(data, seats, demandPool(data, seats, poolSuits)) },
+    aerodrome: suits.includes('vegetable')
+      ? parkBalloons(
+          seats,
+          data.aerodrome.balloons.map((b) => b.id),
+        )
+      : null,
+    turn: freshTurn(),
     tasks: [],
     resume: null,
   };

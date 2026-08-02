@@ -67,6 +67,16 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     type: 'int',
     description: 'Free bonus slots per turn (work your own Worker, or Visit).',
   },
+  {
+    template: 'rules.turn.baseDraw.see',
+    type: 'int',
+    description: 'Cards a plain Draw action reveals.',
+  },
+  {
+    template: 'rules.turn.baseDraw.keep',
+    type: 'int',
+    description: 'Cards a plain Draw action keeps.',
+  },
 
   // --- Economy -------------------------------------------------------------
   {
@@ -88,6 +98,11 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     template: 'rules.economy.visitPayout.upgraded',
     type: 'int',
     description: 'The same, at an upgraded Notice Board.',
+  },
+  {
+    template: 'rules.economy.farmsteadFlipAtOwnColourBuilds',
+    type: 'int',
+    description: 'Own-colour deck builds at which the Farmstead flips free.',
   },
   {
     template: 'rules.endGame.furtherTurnsEach',

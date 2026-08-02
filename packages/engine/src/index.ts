@@ -21,6 +21,7 @@ export * from './state.js';
 export { seedRng, rngNext, rngInt, shuffle } from './rng.js';
 export type { RngState } from './rng.js';
 export * from './query.js';
+export * from './actions.js';
 export { Fx, fireHook, wireHookBus } from './fx.js';
 export type { CardInPlay, FxAudit, HookEvents, HookName } from './fx.js';
 export { workWorker, advanceWorker } from './workers.js';
@@ -38,6 +39,21 @@ export {
   answerTask,
   pendingAnswers,
   gameEndScores,
+  score,
+  sameShape,
 } from './runtime.js';
-export type { Applied, ScoreBreakdown } from './runtime.js';
+export type { Applied, GameScore, ScoreBreakdown } from './runtime.js';
+export {
+  newGame,
+  islandTilesInPlay,
+  demandPool,
+  buildIsland,
+  parkBalloons,
+  freshTurn,
+} from './setup.js';
+export type { NewGameOptions } from './setup.js';
+export { legalMoves, apply, isOver } from './game.js';
+export { settleTurn } from './turnflow.js';
+export { viewFor, redactEvents, maskCard } from './view.js';
+export type { BuildingView, PlayerView, RivalView } from './view.js';
 export * as testkit from './testkit.js';

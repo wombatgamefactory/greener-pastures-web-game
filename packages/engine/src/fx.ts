@@ -114,6 +114,26 @@ export class Fx {
     hand.splice(i, 1);
   }
 
+  /**
+   * Spend barn cards by per-suit tally (barn identity is inert): the first
+   * matching ids leave the barn for their suits' discards. The Deliver funnel
+   * and the balloon move both pay through here.
+   */
+  spendFromBarn(seat: Seat, spend: Partial<Record<Suit, number>>): CardId[] {
+    this.touch(seat);
+    const barn = player(this.state, seat).barn;
+    const taken: CardId[] = [];
+    for (const [suit, count] of Object.entries(spend) as [Suit, number][]) {
+      for (let i = 0; i < count; i++) {
+        const at = barn.findIndex((id) => cardById(this.data, id).suit === suit);
+        if (at < 0) throw new Error(`Seat ${seat}'s barn has no ${suit} card left to spend`);
+        taken.push(...barn.splice(at, 1));
+      }
+    }
+    this.discard(taken);
+    return taken;
+  }
+
   /** Top of a deck straight into a barn (the Patisserie / Meadow Hive shape). No-op when the suit is exhausted. */
   deckTopToBarn(seat: Seat, suit: Suit): void {
     const card = this.takeDeckTop(suit);

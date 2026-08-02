@@ -93,37 +93,6 @@ export function drawableSuits(data: GameData, state: GameState): Suit[] {
   );
 }
 
-/**
- * Can this Worker's action do anything for this seat right now? Reuses the
- * same predicates the action funnels enforce, so a Worker is never offered
- * and then wedged.
- */
-export function workerActionLegal(
-  data: GameData,
-  state: GameState,
-  seat: Seat,
-  workerId: string,
-): boolean {
-  const worker = workerData(data, workerId);
-  switch (worker.action) {
-    case 'draw':
-      return drawableSuits(data, state).length > 0;
-    case 'harvest':
-      return fullBuildings(data, state, seat).length > 0;
-    case 'sow':
-      return (
-        player(state, seat).hand.length > 0 &&
-        player(state, seat).tableau.some((b) => canTakeCard(data, b))
-      );
-    case 'build':
-    case 'deliver':
-      // Not yet implemented (bulk card build); never offered until they are.
-      return false;
-    default:
-      return worker.action satisfies never;
-  }
-}
-
 /** Built copies of a card in a seat's tableau (Helping Hand duplicates stack). */
 export function builtCopies(data: GameData, state: GameState, seat: Seat, name: string): number {
   return player(state, seat).tableau.filter((b) => cardById(data, b.card).name === name).length;

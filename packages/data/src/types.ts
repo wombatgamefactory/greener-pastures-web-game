@@ -200,12 +200,16 @@ export interface RulesFile {
   readonly turn: {
     readonly actionsPerTurn: number;
     readonly bonusSlotsPerTurn: number;
+    /** The plain Draw action: see this many, keep this many. The Draw Worker prints its own numbers. */
+    readonly baseDraw: { readonly see: number; readonly keep: number };
   };
   readonly economy: {
     readonly upgradeCostCoins: number;
     /** VP at game end is `floor(coins / divisor)`. Null disables the rule. */
     readonly coinPityDivisor: number | null;
     readonly visitPayout: { readonly base: number; readonly upgraded: number };
+    /** The Farmstead flips FREE when a player's own-colour deck builds reach this count. */
+    readonly farmsteadFlipAtOwnColourBuilds: number;
   };
   readonly endGame: {
     readonly trigger: 'levelThreeDelivery';
