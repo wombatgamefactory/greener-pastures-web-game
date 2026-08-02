@@ -144,6 +144,26 @@ describe('the playable table renders', () => {
     expect(live.buildings.size + live.tiles.size + live.hand.size).toBeGreaterThan(0);
   });
 
+  /**
+   * The drop zones are read back out of the DOM by hit-testing, so a component
+   * that quietly loses its `data-drop` breaks drag and nothing else: the click
+   * path still works, every unit test still passes, and the gesture just stops.
+   * `verify:drag` would catch it, but that needs a build and a browser and is
+   * not in `npm run check`.
+   */
+  it('stamps a drop zone on every building and every neighbour', () => {
+    const html = render(snap, { k: 'idle' });
+    for (const b of snap.view.you.tableau) {
+      expect(html).toContain(`data-drop="building:${b.card}"`);
+    }
+    for (const r of snap.view.rivals) {
+      expect(html).toContain(`data-drop="rival:${r.seat}"`);
+    }
+    // And nowhere else: a drop zone is always a subset of what is clickable.
+    const zones = [...html.matchAll(/data-drop="([^"]+)"/g)].map((m) => m[1] as string);
+    expect(zones.every((z) => z.startsWith('building:') || z.startsWith('rival:'))).toBe(true);
+  });
+
   it('renders the held-card state and its targets', () => {
     const card = snap.view.you.hand[0] as string;
     const html = render(snap, { k: 'hold', card });

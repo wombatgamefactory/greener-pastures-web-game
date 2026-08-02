@@ -21,11 +21,13 @@ import { useEffect, useState } from 'react';
 import type { GameData } from '@gp/data';
 import type { GameEvent, PlayerView, Seat } from '@gp/engine';
 
+import { useDrag } from '../session/drag';
 import { narrateAll } from '../session/narrate';
 import type { Play } from '../session/play';
 import { seatSuits } from '../view/table';
 import { ActionBar } from './ActionBar';
 import { Commons } from './Commons';
+import { DragGhost } from './DragGhost';
 import { EventFeed } from './EventFeed';
 import { Farm } from './Farm';
 import { Inspector } from './Inspector';
@@ -67,6 +69,9 @@ export function Table({
   waitingOn?: string | null | undefined;
 }) {
   const zoom = useZoom();
+  // Ticket 26. Additive by construction: it makes no moves of its own, it only
+  // performs the same `hold` and the same click handler the mouse already has.
+  const drag = useDrag(play);
   const [inspecting, setInspecting] = useState<Seat | null>(null);
   const suits = seatSuits(view);
   const lines = narrateAll(data, events, suits, view.seat);
@@ -109,6 +114,7 @@ export function Table({
           handWidth={hand}
           zoom={zoom}
           play={play}
+          drag={drag}
         />
         {play && (
           <>
@@ -125,6 +131,7 @@ export function Table({
       </main>
 
       <ZoomPanel data={data} zoom={zoom} />
+      <DragGhost data={data} drag={drag} width={hand} />
 
       {inspecting !== null && (
         <Inspector

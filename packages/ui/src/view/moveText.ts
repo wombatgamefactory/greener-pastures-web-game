@@ -195,9 +195,21 @@ const FAMILIES: readonly {
   { type: 'endTurn', label: 'End turn', hint: 'Decline what is left', needsTarget: false },
 ];
 
+/**
+ * Build is the one family reachable from two move types. A card that grants a
+ * Build (W7 Golden Field, the Build Worker) offers it as a build TASK, whose
+ * moves are `type: 'task'` - so a plain `m.type === family.type` filter greys
+ * the Build button at the exact moment the prompt is asking for a build. Every
+ * other task is answered in place on a building, a deck or a tile, which is why
+ * this stays a one-family exception rather than a general answer-to-family map.
+ */
 export function actionGroups(moves: readonly Move[]): ActionGroup[] {
   return FAMILIES.map((family) => ({
     ...family,
-    moves: moves.filter((m) => m.type === family.type),
+    moves: moves.filter(
+      (m) =>
+        m.type === family.type ||
+        (family.type === 'build' && m.type === 'task' && m.answer.kind === 'build'),
+    ),
   }));
 }

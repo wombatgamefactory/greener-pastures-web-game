@@ -26,6 +26,7 @@
     "check": "npm run check:disclosure && npm run format:check && npm run lint && npm run typecheck && npm run test",
     "knobs": "npm run sim -- --list-knobs",
     "verify:layout": "node tools/verify-layout.mjs",
+    "verify:drag": "node tools/verify-drag.mjs",
     "check:disclosure": "node tools/check-disclosure.mjs"
   },
   "devDependencies": {

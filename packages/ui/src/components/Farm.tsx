@@ -11,9 +11,11 @@
 import type { GameData, Suit } from '@gp/data';
 import type { BuildingView, PlayerView } from '@gp/engine';
 
+import type { Drag } from '../session/drag';
 import { mark } from '../session/play';
 import type { Play } from '../session/play';
 import { cropIcon, frame, token } from '../view/art';
+import { dropZone } from '../view/drop';
 import { printedFace } from '../view/printed';
 import { SUIT_META } from '../view/suits';
 import { displayOrder, receiptTotal } from '../view/table';
@@ -49,6 +51,7 @@ export function Tableau({
           <div
             key={b.card}
             className={`building${full ? ' building-full' : ''}${mark(play, live)}`}
+            {...(play ? dropZone('building', b.card) : {})}
             onMouseEnter={() => zoom.show(b.card, b.upgraded)}
             onClick={live ? () => play?.building(b.card) : undefined}
             role={live ? 'button' : undefined}
@@ -110,6 +113,7 @@ function Hand({
   handSize,
   zoom,
   play,
+  drag,
 }: {
   data: GameData;
   hand: readonly string[];
@@ -117,6 +121,7 @@ function Hand({
   handSize: number | null;
   zoom: Zoomer;
   play?: Play | undefined;
+  drag?: Drag | undefined;
 }) {
   const over = handSize !== null && hand.length > handSize;
   const held = play?.intent.k === 'hold' ? play.intent.card : null;
@@ -142,7 +147,10 @@ function Hand({
               className={`hand-card${state}${mark(play, live)}`}
               style={{ zIndex: i }}
               onMouseEnter={() => zoom.show(id)}
-              onClick={play ? () => play.hold(id) : undefined}
+              onPointerDown={drag ? (e) => drag.start(id, e) : undefined}
+              // A drag ends in a click too. `consumeClick` is what keeps the
+              // release from picking the card straight back up (ticket 26).
+              onClick={play ? () => !drag?.consumeClick() && play.hold(id) : undefined}
               role={play?.active ? 'button' : undefined}
               tabIndex={play?.active ? 0 : undefined}
               onKeyDown={
@@ -178,6 +186,7 @@ export function Farm({
   handWidth,
   zoom,
   play,
+  drag,
 }: {
   data: GameData;
   view: PlayerView;
@@ -185,6 +194,7 @@ export function Farm({
   handWidth: number;
   zoom: Zoomer;
   play?: Play | undefined;
+  drag?: Drag | undefined;
 }) {
   const meta = SUIT_META[view.you.suit];
   const yourTurn = view.turnPlayer === view.seat;
@@ -236,6 +246,7 @@ export function Farm({
           handSize={handSizeOf(data, view.you.tableau)}
           zoom={zoom}
           play={play}
+          drag={drag}
         />
         <Barn barn={view.you.barn} cardWidth={Math.round(handWidth * 0.66)} />
       </div>

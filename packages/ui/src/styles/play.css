@@ -82,6 +82,69 @@
   transform: translateY(-8px);
 }
 
+/* ---- drag (ticket 26) ---------------------------------------------------- */
+
+/* Nothing under a hand card scrolls - the page never scrolls, the hand is a
+   fan rather than a strip - so taking the touch gesture outright costs nothing
+   and is what makes a finger drag possible at all. */
+.hand-card {
+  touch-action: none;
+}
+
+body.is-dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+/* The fan's hover lift fights a card in flight: the pointer passes back over
+   the hand on the way to the rail and cards pop up under the ghost. */
+body.is-dragging .hand-card:hover {
+  transform: none;
+}
+
+/* The card is in the air, so its place in the fan is a gap rather than a card. */
+body.is-dragging .hand-card.is-held {
+  opacity: 0.3;
+}
+
+/* Hover zoom is the reason every other card can be rendered small - and it is
+   400px of card pinned to the bottom right, which during a drag lands squarely
+   on top of the tableau you are dragging TO. Found in the browser: dragging
+   across your own buildings opened the zoom on each one in turn and hid the
+   targets behind it. It is hit-test-invisible (`pointer-events: none`) so the
+   drag still worked perfectly and looked broken. */
+body.is-dragging .zoom {
+  display: none;
+}
+
+.drag-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 90;
+  /* The hit-test asks what is under the pointer, and a ghost that answered would
+     be the only answer it ever got. */
+  pointer-events: none;
+  opacity: 0.9;
+  rotate: -3deg;
+  /* The pointer holds the card near its top-left corner rather than at the
+     centre, so the card hangs below the cursor and never hides the zone. */
+  margin: -14px 0 0 -22px;
+  filter: drop-shadow(0 6px 10px rgb(0 0 0 / 32%));
+}
+
+.drag-ghost:empty {
+  display: none;
+}
+
+/* The zone under the pointer, marked by the drag layer rather than by React:
+   a pointermove costs a hit-test and an attribute, not a pass over the table. */
+[data-drop-hot] {
+  outline: 3px solid #3f7a3a !important;
+  outline-offset: 2px;
+  background: #eef4e6;
+}
+
 /* ---- the prompt strip ---------------------------------------------------- */
 
 .prompt {

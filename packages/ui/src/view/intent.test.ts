@@ -43,6 +43,7 @@ import {
   withPayment,
 } from './intent';
 import type { BuildDraft, Intent } from './intent';
+import { actionGroups } from './moveText';
 
 const IDLE: Intent = { k: 'idle' };
 
@@ -123,7 +124,7 @@ function reachable(position: Position, move: Move): boolean {
     }
 
     case 'task':
-      return taskReachable(moves, move);
+      return taskReachable(position, move);
 
     default:
       return move satisfies never;
@@ -156,8 +157,28 @@ function assembleBuild(
   return buildComplete(moves, draft);
 }
 
-function taskReachable(moves: readonly Move[], move: Move): boolean {
+/**
+ * The build panel has to be OPENABLE, not merely completable.
+ *
+ * A build TASK (W7 Golden Field's harvest, the Build Worker) is the one task
+ * with no in-place gesture: its answer names a card in the HAND, and a hand
+ * click otherwise means "pick up". Assembling from a draft the test made itself
+ * proved nothing about how a player gets that draft - which is how the panel
+ * stayed dead behind a prompt that said "Build a card from your hand" while
+ * this file was green. Both doors are checked: the action bar's Build family
+ * must list the task's moves, and the card must be lit for the click that opens
+ * the assembly.
+ */
+function buildPanelOpens(position: Position, card: string): boolean {
+  const armed: Intent = { k: 'arm', type: 'build' };
+  const bar = actionGroups(position.moves).find((g) => g.type === 'build');
+  if (!bar || bar.moves.length === 0) return false;
+  return liveTargets(position.view, position.moves, armed).hand.has(card);
+}
+
+function taskReachable(position: Position, move: Move): boolean {
   if (move.type !== 'task') return false;
+  const { moves } = position;
   const answer = move.answer;
   switch (answer.kind) {
     case 'deck':
@@ -174,6 +195,7 @@ function taskReachable(moves: readonly Move[], move: Move): boolean {
       return clickBalloon(moves, IDLE, answer.balloon).includes(move);
     case 'build':
       return (
+        buildPanelOpens(position, answer.card) &&
         assembleBuild(moves, answer.card, answer.payment, answer.barn ?? {}, answer.coinWild ?? 0)
           ?.move === move
       );
@@ -218,6 +240,15 @@ describe('every legal move is reachable through the interface', () => {
       expect([...new Set(unreachable)].slice(0, 5)).toEqual([]);
     });
   }
+
+  it('actually meets a build task, so its two doors are really being checked', () => {
+    const tasks = tables.flatMap(({ positions }) =>
+      positions.flatMap((p) =>
+        p.moves.filter((m) => m.type === 'task' && m.answer.kind === 'build'),
+      ),
+    );
+    expect(tasks.length).toBeGreaterThan(0);
+  });
 
   it('exercises every move type across the corpus, so the coverage means something', () => {
     const seen = new Set<MoveType>();

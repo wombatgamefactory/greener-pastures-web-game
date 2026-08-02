@@ -19,6 +19,7 @@ import type { PlayerView, Seat } from '@gp/engine';
 import { mark } from '../session/play';
 import type { Play } from '../session/play';
 import { cropIcon } from '../view/art';
+import { dropZone } from '../view/drop';
 import { SUIT_META, seatName } from '../view/suits';
 import {
   farmOf,
@@ -61,6 +62,12 @@ export function RivalRail({
             className={`rival${theirTurn ? ' rival-active' : ''}${mark(play, live)}${
               visiting ? ' rival-visiting' : ''
             }`}
+            /* The DROP zone is the whole neighbour, not the Notice Board button
+               inside it. The button is 8px tall at the 1024 floor - a fine click
+               target, since a click is aimed at rest, and a hopeless one for a
+               moving pointer. Ticket 26 took the ticket's second option: a
+               rival's rail card accepts the drop as a whole. */
+            {...(play ? dropZone('rival', rival.seat) : {})}
             style={{ ['--seat-ink' as string]: meta.ink, ['--seat-pip' as string]: meta.pip }}
           >
             {/* The whole header is the way in to the inspector. A separate

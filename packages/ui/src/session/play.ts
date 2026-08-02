@@ -102,6 +102,24 @@ export function usePlay(host: PlayHost): Play {
   }, []);
 
   const task = pendingTask(view);
+
+  /**
+   * A build TASK is the one task with no in-place gesture to answer it. Its
+   * answers name a card in the HAND, and a hand click means "pick up" - so
+   * without this the prompt says "Build a card from your hand", the card lifts
+   * out of the fan, and nothing anywhere will take it. Treating the task as a
+   * pre-armed Build hands it to the surface that already does this job: the
+   * same glow, the same panel, the same send path as the main action.
+   *
+   * Derived rather than stored, so it cannot be escaped away - a forced task
+   * has nothing to cancel back to - and cannot fight the intent reset.
+   */
+  const armBuildTask = active && intent.k === 'idle' && task?.t === 'build';
+  const effective = useMemo<Intent>(
+    () => (armBuildTask ? { k: 'arm', type: 'build' } : intent),
+    [armBuildTask, intent],
+  );
+
   const subsetKind: 'keep' | 'discard' | null =
     !active || task === null
       ? null
@@ -152,19 +170,19 @@ export function usePlay(host: PlayHost): Play {
 
     const hold = (card: CardId) => {
       if (inert) return;
-      if (intent.k === 'arm' && intent.type === 'build') {
+      if (effective.k === 'arm' && effective.type === 'build') {
         startBuild(card);
         return;
       }
-      if (intent.k === 'build') {
-        setIntent({ k: 'build', draft: withPayment(intent.draft, card) });
+      if (effective.k === 'build') {
+        setIntent({ k: 'build', draft: withPayment(effective.draft, card) });
         return;
       }
-      if (intent.k === 'visit') {
-        const fee = intent.fee.includes(card)
-          ? intent.fee.filter((c) => c !== card)
-          : [...intent.fee, card];
-        setIntent({ ...intent, fee });
+      if (effective.k === 'visit') {
+        const fee = effective.fee.includes(card)
+          ? effective.fee.filter((c) => c !== card)
+          : [...effective.fee, card];
+        setIntent({ ...effective, fee });
         return;
       }
       if (subsetKind !== null) {
@@ -178,19 +196,23 @@ export function usePlay(host: PlayHost): Play {
         else setPicked(next);
         return;
       }
-      setIntent(intent.k === 'hold' && intent.card === card ? IDLE : { k: 'hold', card });
+      setIntent(effective.k === 'hold' && effective.card === card ? IDLE : { k: 'hold', card });
     };
 
     return {
       active,
       view,
       moves,
-      intent,
+      intent: effective,
       picked,
       commitments:
-        intent.k === 'build' ? intent.draft.payment : intent.k === 'visit' ? intent.fee : picked,
+        effective.k === 'build'
+          ? effective.draft.payment
+          : effective.k === 'visit'
+            ? effective.fee
+            : picked,
       subsetKind,
-      live: liveTargets(view, moves, intent),
+      live: liveTargets(view, moves, effective),
 
       send,
       choose: resolve,
@@ -200,7 +222,7 @@ export function usePlay(host: PlayHost): Play {
       },
       arm: (type) => {
         if (inert) return;
-        setIntent(intent.k === 'arm' && intent.type === type ? IDLE : { k: 'arm', type });
+        setIntent(effective.k === 'arm' && effective.type === type ? IDLE : { k: 'arm', type });
       },
       hold,
       startBuild: (card) => {
@@ -209,38 +231,38 @@ export function usePlay(host: PlayHost): Play {
       },
       setDraft: (draft) => setIntent({ k: 'build', draft }),
       payWithBarn: (suit, delta) => {
-        if (intent.k !== 'build') return;
-        setIntent({ k: 'build', draft: withBarn(intent.draft, suit, delta) });
+        if (effective.k !== 'build') return;
+        setIntent({ k: 'build', draft: withBarn(effective.draft, suit, delta) });
       },
       setVisitFee: (host, fee) => setIntent({ k: 'visit', host, fee }),
 
       building: (card) => {
         if (inert) return;
-        resolve(clickBuilding(moves, intent, card), 'What here?');
+        resolve(clickBuilding(moves, effective, card), 'What here?');
       },
       rival: (seat) => {
         if (inert) return;
-        const next = clickRival(moves, intent, seat);
+        const next = clickRival(moves, effective, seat);
         if (next) setIntent(next);
       },
       tile: (id) => {
         if (inert) return;
-        resolve(clickTile(moves, intent, id), 'Which crops?');
+        resolve(clickTile(moves, effective, id), 'Which crops?');
       },
       balloon: (id) => {
         if (inert) return;
-        resolve(clickBalloon(moves, intent, id), 'Pay which two barn cards?');
+        resolve(clickBalloon(moves, effective, id), 'Pay which two barn cards?');
       },
       worker: (id) => {
         if (inert) return;
-        resolve(clickWorker(moves, intent, id), 'What here?');
+        resolve(clickWorker(moves, effective, id), 'What here?');
       },
       deck: (suit) => {
         if (inert) return;
         resolve(clickDeck(moves, suit), 'Which deck?');
       },
     };
-  }, [active, view, moves, intent, picked, subsetKind, send, resolve]);
+  }, [active, view, moves, effective, picked, subsetKind, send, resolve]);
 
   return play;
 }

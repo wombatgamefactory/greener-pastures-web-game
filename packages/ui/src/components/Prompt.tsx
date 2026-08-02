@@ -20,6 +20,7 @@ import type { GameData } from '@gp/data';
 import type { Move } from '@gp/engine';
 
 import type { Play } from '../session/play';
+import { dropZone } from '../view/drop';
 import { answersOfKind, pendingTask, subsetAnswer } from '../view/intent';
 import { describeMove, describeTask } from '../view/moveText';
 import { printedFace } from '../view/printed';
@@ -94,16 +95,19 @@ export function Prompt({ data, play, zoom }: { data: GameData; play: Play; zoom:
       </section>
     );
   }
+  // Both assemblies take a hand card as a DROP as well as a click: a build is
+  // paid one card at a time and the two-card visit needs a second, which is the
+  // one place a drag has more than one card to carry.
   if (intent.k === 'build') {
     return (
-      <section className="prompt" aria-live="polite">
+      <section className="prompt" aria-live="polite" {...dropZone('assembly')}>
         <BuildPanel data={data} play={play} draft={intent.draft} />
       </section>
     );
   }
   if (intent.k === 'visit') {
     return (
-      <section className="prompt" aria-live="polite">
+      <section className="prompt" aria-live="polite" {...dropZone('assembly')}>
         <VisitPanel data={data} play={play} host={intent.host} fee={intent.fee} />
       </section>
     );

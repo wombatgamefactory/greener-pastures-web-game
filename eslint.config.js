@@ -28,9 +28,9 @@ export default tseslint.config(
     },
   },
   {
-    // The layout verifier ships callbacks to `page.evaluate`, so its source
+    // The browser verifiers ship callbacks to `page.evaluate`, so their source
     // legitimately contains browser code alongside its Node code.
-    files: ['tools/verify-layout.mjs'],
+    files: ['tools/verify-layout.mjs', 'tools/verify-drag.mjs'],
     languageOptions: {
       globals: {
         process: 'readonly',
