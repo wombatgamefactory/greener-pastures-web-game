@@ -26,7 +26,14 @@ export interface NewGameOptions {
 }
 
 export function freshTurn(): TurnState {
-  return { actionSpent: false, bonusSpent: false, ending: false, visit: null, again: null };
+  return {
+    actionSpent: false,
+    bonusSpent: false,
+    ending: false,
+    visit: null,
+    again: null,
+    onceUsed: [],
+  };
 }
 
 /**

@@ -8,7 +8,7 @@
  * was the fee card); an owner's own uses advance the meeple but pay nothing.
  */
 
-import { workerData, workerState } from './query.js';
+import { withDrawModifier, workerData, workerState } from './query.js';
 import type { Fx } from './fx.js';
 import type { Seat } from './state.js';
 
@@ -41,8 +41,10 @@ export function workWorker(fx: Fx, actor: Seat, workerId: string, opts: WorkOpti
     case 'draw': {
       // The one printed exception, load-bearing: Draw 3 keep 2, never a plain
       // draw. A Worker priced in cards must over-deliver cards to be worth
-      // renting - do not "tidy" this to the base draw.
-      const spec = worker.draw ?? { see: 1, keep: 1 };
+      // renting - do not "tidy" this to the base draw. The Orchard Farmstead's
+      // draw modifier composes here (suit powers apply to Worker actions):
+      // (3,2) -> (4,2) base, (4,3) upgraded.
+      const spec = withDrawModifier(fx.data, fx.state, actor, worker.draw ?? { see: 1, keep: 1 });
       fx.pushTask({
         t: 'draw',
         pid: actor,

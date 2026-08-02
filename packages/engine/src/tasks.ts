@@ -28,6 +28,7 @@ import {
   workerActionLegal,
 } from './actions.js';
 import type { Fx } from './fx.js';
+import { fireHook } from './fx.js';
 import { canTakeCard, drawableSuits, fullBuildings, player, workerState } from './query.js';
 import type { BuildingState, GameState, Task, TaskAnswer } from './state.js';
 import { workWorker } from './workers.js';
@@ -140,6 +141,12 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
       const rest = task.revealed.filter((c) => !answer.cards.includes(c));
       fx.cardsToHand(task.pid, answer.cards);
       fx.discard(rest);
+      // The reference's onDraw moment (keepFromReveal): fires for every
+      // see/keep draw - base action, Draw Worker, card abilities - and never
+      // for autoDraw. O17 The Fruit Basket is its consumer.
+      if (answer.cards.length > 0) {
+        fireHook(fx, 'afterDrawKeep', { seat: task.pid, cards: answer.cards });
+      }
       return true;
     }
 

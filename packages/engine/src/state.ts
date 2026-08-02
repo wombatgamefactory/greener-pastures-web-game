@@ -98,6 +98,12 @@ export interface TurnState {
    * repeat move, declined by endTurn or by the turn settling.
    */
   again: 'harvest' | null;
+  /**
+   * Built cards whose once-per-turn standing move has been taken this turn
+   * (the upgraded Orchard Barn's gift). A handler's moves() checks membership;
+   * turn end resets by replacing the whole object.
+   */
+  onceUsed: CardId[];
 }
 
 /**
@@ -342,6 +348,10 @@ export type GameEvent =
     }
   /** A face-up discard reclaimed into a barn (the upgraded Vegetable Barn's freight refund). */
   | { e: 'discardToBarn'; seat: Seat; card: CardId }
+  /** A card given from one hand to another (the Orchard gift family). Identity travels with it. */
+  | { e: 'cardGifted'; from: Seat; to: Seat; card: CardId }
+  /** A card sent from its owner's hand into their own barn (O17's £1 divert). */
+  | { e: 'handToBarn'; seat: Seat; card: CardId }
   | { e: 'visited'; seat: Seat; host: Seat; mode: 'coin' | 'worker' }
   | { e: 'endTriggered'; seat: Seat }
   | { e: 'turnEnded'; seat: Seat; next: Seat }

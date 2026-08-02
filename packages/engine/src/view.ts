@@ -144,7 +144,11 @@ export function viewFor(data: GameData, state: GameState, seat: Seat): PlayerVie
       state.aerodrome === null
         ? null
         : { balloons: state.aerodrome.balloons.map((b) => ({ ...b })) },
-    turn: { ...state.turn, visit: state.turn.visit === null ? null : { ...state.turn.visit } },
+    turn: {
+      ...state.turn,
+      visit: state.turn.visit === null ? null : { ...state.turn.visit },
+      onceUsed: [...state.turn.onceUsed],
+    },
     tasks: state.tasks.map((task) =>
       task.t === 'draw' && task.pid !== seat
         ? { ...task, revealed: task.revealed.map(maskCard) }
@@ -172,6 +176,14 @@ export function redactEvents(events: GameEvent[], seat: Seat): GameEvent[] {
       case 'deckToBarn':
       case 'stackToBarn':
         return { ...event, card: maskCard(event.card) };
+      case 'cardGifted':
+        // Identity travels with the gift: giver chose it, recipient now holds it.
+        return event.from === seat || event.to === seat
+          ? event
+          : { ...event, card: maskCard(event.card) };
+      case 'handToBarn':
+        // The owner chose the card; to everyone else the barn stays a suit tally.
+        return event.seat === seat ? event : { ...event, card: maskCard(event.card) };
       default:
         return event;
     }

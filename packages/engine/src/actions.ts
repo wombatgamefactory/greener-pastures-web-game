@@ -25,6 +25,7 @@ import {
   isFull,
   noticeBoardOf,
   player,
+  withDrawModifier,
   workerData,
   workerState,
 } from './query.js';
@@ -241,9 +242,13 @@ export function doUpgrade(fx: Fx, seat: Seat, card: CardId): void {
 
 // --- Draw ------------------------------------------------------------------
 
-/** The plain Draw action: push the see-N/keep-K task with the printed base numbers. */
+/**
+ * The plain Draw action: push the see-N/keep-K task with the printed base
+ * numbers, through the Orchard Farmstead's draw modifier (see +1 base, see +1
+ * keep +1 upgraded - never for card-ability draws, DL-47).
+ */
 export function doDraw(fx: Fx, seat: Seat): void {
-  const spec = fx.data.rules.turn.baseDraw;
+  const spec = withDrawModifier(fx.data, fx.state, seat, fx.data.rules.turn.baseDraw);
   fx.pushTask({ t: 'draw', pid: seat, src: null, see: spec.see, keep: spec.keep, revealed: [] });
 }
 
@@ -696,6 +701,9 @@ export function doVisit(
 
   fx.placeOnBuilding(visitor, { seat: host, card: board.card }, fee);
   state.turn.bonusSpent = true;
+  // O16 The Orchard Keeper reacts host-side in every branch, after the fee
+  // lands and before the payoff (the reference fires it at this point too).
+  fireHook(fx, 'afterVisit', { visitor, host, mode: payoff.mode });
 
   if (payoff.mode === 'coin') {
     const rates = fx.data.rules.economy.visitPayout;

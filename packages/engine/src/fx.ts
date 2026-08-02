@@ -15,7 +15,7 @@
 
 import type { GameData, Suit } from '@gp/data';
 
-import { cardById, canTakeCard, player } from './query.js';
+import { cardById, canTakeCard, drawableSuits, player } from './query.js';
 import { shuffle } from './rng.js';
 import type { CardId, GameEvent, GameState, Seat, Task } from './state.js';
 
@@ -104,6 +104,42 @@ export class Fx {
     this.touch(seat);
     player(this.state, seat).hand.push(...cards);
     this.emit({ e: 'cardsToHand', seat, cards });
+  }
+
+  /**
+   * A choiceless draw straight to hand: the seat's own suit while it lasts,
+   * else the first drawable suit (the reference's own-suit-fallback shape,
+   * DL-64/DL-67). Used by effects whose draws must not open a picker or fire
+   * the draw reactors - O16's keeper draws, the gift family's refills - so a
+   * gift can never re-gift and O17 can never fire on them. Under-delivers
+   * quietly when the table runs dry.
+   */
+  autoDraw(seat: Seat, n: number): void {
+    for (let i = 0; i < n; i++) {
+      const drawable = drawableSuits(this.data, this.state);
+      if (drawable.length === 0) return;
+      const own = player(this.state, seat).suit;
+      const suit = drawable.includes(own) ? own : (drawable[0] as Suit);
+      const card = this.takeDeckTop(suit);
+      if (card === null) return;
+      this.cardsToHand(seat, [card]);
+    }
+  }
+
+  /** Move one card from a hand to another hand (the Orchard gift family). Identity travels with it. */
+  giveCard(from: Seat, to: Seat, card: CardId): void {
+    if (from === to) throw new Error('A gift goes to a neighbour, never yourself');
+    this.removeFromHand(from, card);
+    this.touch(to);
+    player(this.state, to).hand.push(card);
+    this.emit({ e: 'cardGifted', from, to, card });
+  }
+
+  /** Move one card from a seat's hand into their own barn (O17's divert). */
+  handToBarn(seat: Seat, card: CardId): void {
+    this.removeFromHand(seat, card);
+    player(this.state, seat).barn.push(card);
+    this.emit({ e: 'handToBarn', seat, card });
   }
 
   removeFromHand(seat: Seat, card: CardId): void {
@@ -258,6 +294,19 @@ export interface HookEvents {
   afterDeliver: { seat: Seat; island: boolean; tile?: string; cards: CardId[] };
   /** A balloon changed Aerodrome. `from` is where it left - V17 draws when that was its owner's port. */
   afterBalloonMove: { seat: Seat; balloon: string; from: Seat | 'centre' };
+  /**
+   * A visit landed on the host's Notice Board (fee placed, slot spent), fired
+   * before the payoff resolves - O16 The Orchard Keeper reacts host-side in
+   * every visit branch. A Helping Hand repeat is not a visit and never fires
+   * this.
+   */
+  afterVisit: { visitor: Seat; host: Seat; mode: 'coin' | 'worker' };
+  /**
+   * A see-N/keep-K draw finished and the kept cards entered the hand - the
+   * reference's onDraw moment (keepFromReveal). Fires for the Draw action,
+   * the Draw Worker and card-ability draws alike; autoDraw never fires it.
+   */
+  afterDrawKeep: { seat: Seat; cards: CardId[] };
 }
 
 export type HookName = keyof HookEvents;

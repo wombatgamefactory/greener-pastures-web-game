@@ -86,6 +86,29 @@ export function upgradedBuildingCount(state: GameState, seat: Seat): number {
   return player(state, seat).tableau.filter((b) => b.upgraded).length;
 }
 
+/**
+ * The Orchard Farmstead suit power as a DRAW MODIFIER (the reference's
+ * `Farmstead::orchardDraw`, DL-34): base face sees +1, upgraded face sees +1
+ * AND keeps +1. Applied where a Draw ACTION's numbers are set - the base Draw
+ * and the Draw Worker (suit powers apply to Worker actions) - so it composes:
+ * (2,1)->(3,1)/(3,2), Draw Worker (3,2)->(4,2)/(4,3). Deliberately NOT applied
+ * to card-ability draws (DL-47); handlers push their printed numbers directly.
+ */
+export function withDrawModifier(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+  spec: { see: number; keep: number },
+): { see: number; keep: number } {
+  const p = player(state, seat);
+  if (p.suit !== 'orchard') return spec;
+  const farmstead = p.tableau.find((b) => cardById(data, b.card).slot === 'farmstead');
+  if (!farmstead) return spec;
+  return farmstead.upgraded
+    ? { see: spec.see + 1, keep: spec.keep + 1 }
+    : { see: spec.see + 1, keep: spec.keep };
+}
+
 /** Suits whose deck or discard still has cards - the drawable suits. */
 export function drawableSuits(data: GameData, state: GameState): Suit[] {
   return data.cards.suits.filter(
