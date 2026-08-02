@@ -94,4 +94,16 @@ export interface CardHandler {
 
   /** End-game VP for this card's owner. Pure; called once at scoring. */
   gameEnd?: (data: GameData, state: GameState, seat: Seat) => number;
+
+  /**
+   * This card's own rate REPLACES the coin pity for its owner (the Bread Hall,
+   * per the reference). Scoring zeroes their `coinPity` line and the card's
+   * `gameEnd` returns the whole value of their coins.
+   *
+   * It exists so the two lines reconcile on the scoring screen: encoded as a
+   * delta against the pity instead, the total was right but the card printed
+   * "1 VP for every £2" beside a number that was not the holder's coins over
+   * two, and no player could check it.
+   */
+  replacesCoinPity?: true;
 }

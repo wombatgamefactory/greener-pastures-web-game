@@ -573,8 +573,22 @@ body.is-dragging .zoom {
 
 /* ---- the result overlay -------------------------------------------------- */
 
+/* Two columns at a comfortable width - the ranking beside the working - and one
+   at the floor, where 700px of height is the binding constraint and a side by
+   side would push the button off. `.inspector` already scrolls. */
 .result {
-  max-width: 640px;
+  max-width: min(940px, 94vw);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.result-head h2 {
+  font-size: 19px;
+}
+
+.result-trigger {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: var(--ink-soft);
 }
 
 .result-table {
@@ -583,26 +597,180 @@ body.is-dragging .zoom {
   width: 100%;
 }
 
-.result-table th {
+.result-table thead th {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--ink-soft);
   text-align: right;
   padding: 2px 6px;
+  font-weight: 500;
 }
 
-.result-table th:first-child,
-.result-table td:first-child {
+.result-table caption {
+  caption-side: top;
+  text-align: left;
+  font-size: 10px;
+  color: var(--ink-soft);
+  padding-bottom: 2px;
+}
+
+.result-table tbody tr {
+  cursor: pointer;
+}
+
+.result-table tbody tr:hover,
+.result-table tbody tr:focus-visible {
+  background: var(--paper-deep);
+  outline: none;
+}
+
+.result-table td,
+.result-table tbody th {
+  padding: 3px 6px;
+  text-align: right;
+  border-top: 1px solid var(--rule);
+  font-weight: 400;
+}
+
+.result-table .result-rank,
+.result-table .result-farm,
+.result-table .result-farm-head {
   text-align: left;
 }
 
-.result-table td {
-  padding: 2px 6px;
-  text-align: right;
-  border-top: 1px solid var(--rule);
+.result-farm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.result-farm img {
+  width: 16px;
+  height: 16px;
+}
+
+.result-rank {
+  width: 22px;
+  color: var(--ink-soft);
+}
+
+/* The island share, under the island VP: the design instrument, readable
+   without arithmetic. */
+.result-table td small {
+  display: block;
+  font-size: 9px;
+  color: var(--ink-soft);
 }
 
 .result-you {
   background: var(--paper-deep);
+}
+
+.result-open {
+  box-shadow: inset 3px 0 0 var(--ink-line);
+}
+
+.result-share,
+.result-note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
+.result-warn {
+  margin: 0;
+  font-size: 11px;
+  color: #a2493a;
+}
+
+.result-detail {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: grid;
+  gap: 7px;
+}
+
+.result-detail h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+  color: var(--seat-ink);
+}
+
+.result-detail h3 img {
+  width: 18px;
+  height: 18px;
+}
+
+.result-source h4 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 3px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.result-source-vp {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  font-size: 13px;
+}
+
+.result-source-vp img {
+  width: 14px;
+  height: 14px;
+}
+
+.result-source-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 6px;
+  align-items: flex-start;
+  font-size: 11px;
+}
+
+.result-source-body .chip b {
+  margin-left: 5px;
+}
+
+.result-source-body .chip small {
+  margin-left: 4px;
+  color: var(--ink-soft);
+}
+
+.chip-muted {
+  border-style: dashed;
+  color: var(--ink-soft);
+}
+
+.result-count,
+.result-sum {
+  color: var(--ink-soft);
+}
+
+/* An end-game card carries its formula, because its number is the one a player
+   cannot recount off the table. */
+/* The formula belongs to the card above it, and side by side two of them read as
+   one sentence: the rule is what keeps the pairs apart. */
+.result-endgame {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  max-width: 260px;
+  border-left: 2px solid var(--rule);
+  padding-left: 6px;
+}
+
+.result-endgame small {
+  color: var(--ink-soft);
+  line-height: 1.3;
 }

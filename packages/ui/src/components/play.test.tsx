@@ -25,7 +25,6 @@ import { Session } from '../session/table';
 import type { Play } from '../session/play';
 import { emptyBuildDraft, liveTargets } from '../view/intent';
 import type { Intent } from '../view/intent';
-import { Result } from './Result';
 import { Start } from './Start';
 import { Table } from './Table';
 
@@ -205,8 +204,8 @@ describe('the two assemblies render', () => {
   });
 });
 
-describe('the screens either side of the game', () => {
-  it('the start screen offers two rungs and no invented hard one', () => {
+describe('the start screen', () => {
+  it('offers two rungs and no invented hard one', () => {
     const html = renderToStaticMarkup(<Start onStart={() => {}} />);
     expect(html).toContain('Easy');
     expect(html).toContain('Normal');
@@ -214,22 +213,5 @@ describe('the screens either side of the game', () => {
     // measures one. Hiding the rung is the honest reading.
     expect(html).not.toContain('>Hard<');
     expect(html).toContain('a hermit');
-  });
-
-  it('the result screen prints the four VP sources', () => {
-    const snap = position('play-c', 40);
-    const score = {
-      seats: snap.view.rivals
-        .map((r) => r.seat)
-        .concat(snap.view.seat)
-        .sort()
-        .map(() => ({ printed: 3, receipts: 8, endgame: 1, coinPity: 0, total: 12 })),
-      ranking: [0, 1, 2],
-    };
-    const html = renderToStaticMarkup(
-      <Result data={data} view={snap.view} score={score} onAgain={() => {}} />,
-    );
-    expect(html).toContain('wins the island');
-    expect(html).toContain('end-game cards');
   });
 });

@@ -14,6 +14,13 @@
  *
  *   npm run build && npm run verify:layout
  *   npm run verify:layout -- --shot reports/floor.png
+ *   npm run verify:layout -- --result          the end-game scoring screen
+ *
+ * `--result` walks a whole game out (`?finish=1`) and measures the scoring
+ * overlay instead of the table. It is a separate pass rather than an extra
+ * landmark because the two cannot be on screen at once, and because the panel's
+ * failure mode is its own: it is the one surface that grows with the game, so a
+ * seat with fifteen buildings and three end-game cards is what has to fit.
  */
 
 import { createReadStream, existsSync, mkdirSync, statSync } from 'node:fs';
@@ -30,7 +37,7 @@ const VIEWPORTS = [
 ];
 
 /** Every landmark that must be fully on screen, and where to find it. */
-const LANDMARKS = [
+const TABLE_LANDMARKS = [
   { name: 'commons', selector: '.commons' },
   { name: 'island', selector: '.island' },
   { name: 'hiring fair', selector: '.panel-fair' },
@@ -42,9 +49,23 @@ const LANDMARKS = [
   { name: 'the turn bar', selector: '.actionbar' },
 ];
 
+/**
+ * The scoring screen. The panel scrolls internally by design (`.inspector` caps
+ * at 88vh), so what is measured is the PANEL fitting the viewport and the
+ * ranking table being visible in it without a scroll - the verdict and the
+ * standings are what a player looks at first.
+ */
+const RESULT_LANDMARKS = [
+  { name: 'the result panel', selector: '.result' },
+  { name: 'the verdict', selector: '.result-head' },
+  { name: 'the standings', selector: '.result-table' },
+];
+
 const args = process.argv.slice(2);
 const shotAt = args.indexOf('--shot');
 const shotPath = shotAt === -1 ? null : args[shotAt + 1];
+const resultMode = args.includes('--result');
+const LANDMARKS = resultMode ? RESULT_LANDMARKS : TABLE_LANDMARKS;
 /**
  * Ticket 25 put a start screen in front of the table, so the floor has to be
  * measured on an auto-started game. The warm-up depth matters as much as the
@@ -52,7 +73,11 @@ const shotPath = shotAt === -1 ? null : args[shotAt + 1];
  * what this check exists to catch is a full tableau plus the two interaction
  * strips squeezing the hand off the bottom.
  */
-const query = process.env.VERIFY_QUERY ?? '?autostart=1&seats=4&depth=320&minHand=4';
+const query =
+  process.env.VERIFY_QUERY ??
+  (resultMode
+    ? '?autostart=1&seats=4&finish=1&seed=result-floor'
+    : '?autostart=1&seats=4&depth=320&minHand=4');
 
 const ROOT = resolve(import.meta.dirname, '..');
 const DIST = join(ROOT, 'packages', 'ui', 'dist');
@@ -106,8 +131,14 @@ async function measure(page, url, viewport) {
   await page.goto(url, { waitUntil: 'load' });
   // `attached`, not `visible`: a region squeezed to zero height IS the failure
   // this check exists to catch, so it has to be measured, not waited on.
-  await page.waitForSelector('.farm', { state: 'attached' });
-  await page.waitForFunction(() => document.querySelectorAll('.rival').length > 0);
+  if (resultMode) {
+    // A whole game is walked in the browser before the first paint, so this is
+    // slower than a warmed table and has to be waited for explicitly.
+    await page.waitForSelector('.result', { state: 'attached', timeout: 60_000 });
+  } else {
+    await page.waitForSelector('.farm', { state: 'attached' });
+    await page.waitForFunction(() => document.querySelectorAll('.rival').length > 0);
+  }
 
   return page.evaluate(
     ({ landmarks, rivalSelector }) => {
@@ -144,12 +175,16 @@ async function measure(page, url, viewport) {
         const el = document.querySelector(l.selector);
         return el ? { ...l, ...box(el), found: true } : { ...l, found: false };
       });
-      const rivals = [...document.querySelectorAll(rivalSelector)].map((el, i) => ({
-        name: `rival ${i + 1}`,
-        selector: rivalSelector,
-        found: true,
-        ...box(el),
-      }));
+      // Skipped on the scoring screen: the table is still mounted behind the
+      // overlay, and a neighbour panel under a modal is not a layout failure.
+      const rivals = rivalSelector
+        ? [...document.querySelectorAll(rivalSelector)].map((el, i) => ({
+            name: `rival ${i + 1}`,
+            selector: rivalSelector,
+            found: true,
+            ...box(el),
+          }))
+        : [];
       return {
         vw,
         vh,
@@ -158,7 +193,7 @@ async function measure(page, url, viewport) {
         boxes: [...results, ...rivals],
       };
     },
-    { landmarks: LANDMARKS, rivalSelector: '.rival' },
+    { landmarks: LANDMARKS, rivalSelector: resultMode ? null : '.rival' },
   );
 }
 

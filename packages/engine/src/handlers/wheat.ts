@@ -600,15 +600,16 @@ export const breadHall: CardHandler = {
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: true },
     asserted: { newPrimitive: false, conditional: true, counts: true, interrupts: false },
     notes:
-      "REPLACES its holder's coin pity (the reference rule) - encoded as floor(coins/2) " +
-      'minus the pity the runtime will add anyway, so the TOTAL is exact while the ' +
-      "breakdown's coinPity line still shows the raw pity. Never negative: floor(c/2) >= " +
-      'floor(c/divisor) for every divisor >= 2.',
+      "REPLACES its holder's coin pity (the reference rule), declared with " +
+      '`replacesCoinPity` so scoring zeroes their pity line and this returns the whole ' +
+      'value of their coins. It was once encoded as floor(coins/2) minus the pity the ' +
+      'runtime would add anyway: the total was identical, but the card then printed "1 VP ' +
+      'for every £2" beside a number that was not the coins over two, which ticket 27 ' +
+      'could not put on a scoring screen. The rate is the printed one and needs no knob: ' +
+      'it stands whether or not the pity rule is switched on.',
   },
-  gameEnd(data, state, seat) {
-    const coins = player(state, seat).coins;
-    const divisor = data.rules.economy.coinPityDivisor;
-    const pity = divisor === null ? 0 : Math.floor(coins / divisor);
-    return Math.floor(coins / 2) - pity;
+  replacesCoinPity: true,
+  gameEnd(_data, state, seat) {
+    return Math.floor(player(state, seat).coins / 2);
   },
 };

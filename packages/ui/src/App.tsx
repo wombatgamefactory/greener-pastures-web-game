@@ -15,6 +15,7 @@
  * Query string, for looking at the interface under different loads and for
  * `verify:layout`:
  *   ?autostart=1  ?seats=2..4  ?suits=wheat,vegetable  ?seed=x  ?depth=n  ?bots=balanced
+ *   ?finish=1     walk the whole game out, so the scoring screen can be looked at
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -55,8 +56,13 @@ export function readOptions(search: string): Boot | null {
   // Vegetable is in by default so the Aerodrome is on the table: worst-case
   // density is the honest case to design against.
   const suits = asked.length === seats ? asked : ALL_SUITS.slice(0, seats);
-  const depth = Number(q.get('depth') ?? 320);
-  const minHand = Number(q.get('minHand') ?? 4);
+  // `finish` reuses the warm-up walk rather than adding a driver: given a depth
+  // no game reaches, it plays every seat out to the end trigger and the app
+  // opens on the scoring screen. That is how ticket 27's surface is measured in
+  // a real browser (`verify:layout --result`), and it needs no seed to be lucky.
+  const finish = q.get('finish') !== null;
+  const depth = finish ? 100_000 : Number(q.get('depth') ?? 320);
+  const minHand = finish ? 0 : Number(q.get('minHand') ?? 4);
   const bot = q.get('bots');
   const opponents: PolicyId[] = Array.from({ length: seats }, () =>
     bot !== null && isPolicyId(bot) ? bot : 'balanced',

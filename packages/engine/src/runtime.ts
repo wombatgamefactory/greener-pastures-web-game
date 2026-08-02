@@ -200,6 +200,24 @@ export interface ScoreBreakdown {
   endgame: number;
   coinPity: number;
   total: number;
+  /**
+   * Which built card contributed what to `endgame`, in tableau order, including
+   * the ones that scored 0.
+   *
+   * The other three sources are re-derivable from a `PlayerView` - receipts are
+   * on the island, printed VP is on the cards in the tableau, coins are in
+   * front of you - but an end-game formula runs against the true state, so a
+   * screen that only got the total would be asking the player to take one of
+   * the four numbers on trust. Ticket 27 needs this to show its working.
+   */
+  endgameCards: { card: CardId; vp: number }[];
+  /**
+   * The card whose own rate stands in for this seat's coin pity (the Bread
+   * Hall), or null. Their `coinPity` is 0 and the coins are scored inside
+   * `endgame` instead - which a screen has to say out loud, or the coins look
+   * like they were forgotten.
+   */
+  coinPityReplacedBy: CardId | null;
 }
 
 export function gameEndScores(data: GameData, state: GameState): ScoreBreakdown[] {
@@ -210,13 +228,25 @@ export function gameEndScores(data: GameData, state: GameState): ScoreBreakdown[
       p.tableau.reduce((sum, b) => sum + faceOf(data, b).printedVp, 0) +
       p.covered.reduce((sum, id) => sum + (cardById(data, id).printedVp ?? 0), 0);
     const receipts = p.receipts.reduce((sum, vp) => sum + vp, 0);
-    const endgame = p.tableau.reduce(
-      (sum, b) => sum + (handlerFor(b.card)?.gameEnd?.(data, state, seat) ?? 0),
-      0,
-    );
+    const endgameCards = p.tableau.flatMap((b) => {
+      const formula = handlerFor(b.card)?.gameEnd;
+      return formula ? [{ card: b.card, vp: formula(data, state, seat) }] : [];
+    });
+    const endgame = endgameCards.reduce((sum, e) => sum + e.vp, 0);
     const divisor = data.rules.economy.coinPityDivisor;
-    const coinPity = divisor === null ? 0 : Math.floor(p.coins / divisor);
-    return { printed, receipts, endgame, coinPity, total: printed + receipts + endgame + coinPity };
+    const coinPityReplacedBy =
+      p.tableau.find((b) => handlerFor(b.card)?.replacesCoinPity)?.card ?? null;
+    const coinPity =
+      divisor === null || coinPityReplacedBy !== null ? 0 : Math.floor(p.coins / divisor);
+    return {
+      printed,
+      receipts,
+      endgame,
+      coinPity,
+      total: printed + receipts + endgame + coinPity,
+      endgameCards,
+      coinPityReplacedBy,
+    };
   });
 }
 
