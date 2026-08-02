@@ -10,6 +10,8 @@
 
 import type { Suit, WorkerAction } from '@gp/data';
 
+import type { BuildMods } from './actions.js';
+
 export type Seat = number;
 
 /** A card's spreadsheet Ref, e.g. "W13". All 105 are unique; the id IS the card. */
@@ -31,6 +33,12 @@ export interface PlayerState {
   /** Stored value. Identity is inert here (views tally by suit) but ids keep card conservation checkable. */
   barn: CardId[];
   tableau: BuildingState[];
+  /**
+   * Cards buried under a D11 cover-build. Not buildings: invisible to every
+   * count, formula and placement. Only their printed VP still scores, as a
+   * bare sum (the reference's cover semantics).
+   */
+  covered: CardId[];
   /** VP values of island receipt tokens taken, in delivery order. */
   receipts: number[];
 }
@@ -92,12 +100,12 @@ export interface TurnState {
   /**
    * The ActionAgain gate (the reference's state 14): an upgraded Farmstead's
    * one optional repeat of the main action just taken. 'harvest' = the Wheat
-   * "Harvest is 2 buildings"; the Dairy Build-again extends this union.
+   * "Harvest is 2 buildings", 'build' = the Dairy "BUILD: you may BUILD again".
    * Armed by apply after the qualifying MAIN action (never a Worker's - the
    * reference offers the repeat from afterMainAction only), consumed by the
    * repeat move, declined by endTurn or by the turn settling.
    */
-  again: 'harvest' | null;
+  again: 'harvest' | 'build' | null;
   /**
    * Built cards whose once-per-turn standing move has been taken this turn
    * (the upgraded Orchard Barn's gift). A handler's moves() checks membership;
@@ -128,6 +136,10 @@ export type Task =
       progress: boolean;
       /** Coins the worker's owner mints from the bank when the pick resolves. */
       ownerCoins: number;
+      /** Coins the ACTOR mints if the work happens (D9's "if you do, gain £2"). */
+      actorCoins?: number;
+      /** "You may then WORK" (D9): a skip answer is offered. */
+      optional?: boolean;
     }
   | {
       /**
@@ -176,11 +188,14 @@ export type Task =
       pid: Seat;
       src: CardId | null;
       /**
-       * The cream balloon's "Build, with a discount of 4": the card cost drops
-       * by this many, the remaining payment is any-suit, and a coin price is
-       * waived when the leftover discount covers it (reference buildDiscount).
+       * The modifiers this build runs under: the cream balloon's and Dairy's
+       * discounts, D7's coins-as-cards, D8's barn payment. Absent = the plain
+       * printed rules. The seat's own Farmstead substitution is added on top by
+       * the enumerator, so a card never has to remember it.
        */
-      discount?: number;
+      mods?: BuildMods;
+      /** "You may Build" (D12's two builds): a skip answer is offered. */
+      optional?: boolean;
     }
   | {
       /**
@@ -221,7 +236,15 @@ export type TaskAnswer =
   | { kind: 'keep'; cards: CardId[] }
   | { kind: 'building'; card: CardId }
   | { kind: 'sow'; card: CardId; onto: CardId }
-  | { kind: 'build'; card: CardId; payment: CardId[] }
+  | {
+      kind: 'build';
+      card: CardId;
+      payment: CardId[];
+      /** D8: barn cards joining the payment, by suit tally (barn identity is inert). */
+      barn?: Partial<Record<Suit, number>>;
+      /** D7: coins spent as wild cards, on top of the card's printed coin price. */
+      coinWild?: number;
+    }
   | { kind: 'deliver'; tile: string; spend: Partial<Record<Suit, number>> }
   | { kind: 'balloon'; balloon: string; spend: Partial<Record<Suit, number>> }
   | { kind: 'discard'; cards: CardId[] }
@@ -328,6 +351,10 @@ export type GameEvent =
   | { e: 'workerExpired'; workerId: WorkerAction }
   | { e: 'reshuffled'; suit: Suit; count: number }
   | { e: 'built'; seat: Seat; card: CardId; payment: CardId[]; coins: number }
+  /** A card buried under a D11 cover-build: no longer a building, printed VP still scores. */
+  | { e: 'covered'; seat: Seat; card: CardId }
+  /** An empty building demolished into its owner's barn (D14). */
+  | { e: 'demolished'; seat: Seat; card: CardId }
   | { e: 'hired'; seat: Seat; workerId: WorkerAction }
   /** free = the Farmstead milestone flip (3rd own-colour build); false = a paid Barn/Notice Board flip. */
   | { e: 'starterUpgraded'; seat: Seat; card: CardId; free: boolean }

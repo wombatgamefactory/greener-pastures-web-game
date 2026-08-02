@@ -54,6 +54,7 @@ export function makeState(data: GameData, suits: Suit[]): GameState {
       tableau: data.cards.catalogue
         .filter((c) => c.suit === suit && c.type === 'starter')
         .map((c) => ({ card: c.id, stack: [], upgraded: false })),
+      covered: [],
       receipts: [],
     })),
     decks,

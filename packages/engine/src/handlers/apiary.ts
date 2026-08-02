@@ -18,7 +18,7 @@
  * Wax Workshop, Honey Hut and Honeycomb Tower are not HIVEs.
  */
 
-import type { GameData, Suit } from '@gp/data';
+import type { GameData } from '@gp/data';
 
 import { doHire, hireOptions } from '../actions.js';
 import type { Fx } from '../fx.js';
@@ -148,11 +148,15 @@ export const gardenHive: CardHandler = {
   tasks: {
     discardSow: {
       answers(data, state, task) {
-        const suits = data.cards.suits.filter((s) => (state.discards[s]?.length ?? 0) > 0);
+        // One answer per (top card, target): the choice offered is the TOP of a
+        // pile, so nothing here can reach deeper and attach value to pile order.
+        const tops = data.cards.suits
+          .map((s) => state.discards[s]?.at(-1))
+          .filter((id): id is CardId => id !== undefined);
         const targets = player(state, task.pid).tableau.filter((b) => canTakeCard(data, b));
         const out: TaskAnswer[] = [];
-        for (const suit of suits) {
-          for (const b of targets) out.push({ kind: 'card', payload: { suit, onto: b.card } });
+        for (const card of tops) {
+          for (const b of targets) out.push({ kind: 'card', payload: { card, onto: b.card } });
         }
         if (out.length > 0) out.push({ kind: 'skip' });
         return out;
@@ -160,9 +164,12 @@ export const gardenHive: CardHandler = {
       resolve(fx, task, answer) {
         if (answer.kind === 'skip') return true;
         if (answer.kind !== 'card') throw new Error('discardSow expects a card answer');
-        const suit = answer.payload.suit as Suit;
         const onto = answer.payload.onto as CardId;
-        fx.placeFromDiscard(task.pid, { seat: task.pid, card: onto }, suit);
+        fx.placeFromDiscard(
+          task.pid,
+          { seat: task.pid, card: onto },
+          answer.payload.card as CardId,
+        );
         return true;
       },
     },

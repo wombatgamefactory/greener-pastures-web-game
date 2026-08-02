@@ -125,7 +125,7 @@ describe('A6 The Garden Hive - the sow-from-discard', () => {
     const answers = pendingAnswers(data, grown.state);
     expect(answers.some((a) => a.kind === 'skip')).toBe(true);
     const ontoA5 = answers.find(
-      (a) => a.kind === 'card' && a.payload.suit === 'wheat' && a.payload.onto === 'A5',
+      (a) => a.kind === 'card' && a.payload.card === 'W5' && a.payload.onto === 'A5',
     );
     const sown = answerTask(data, grown.state, ontoA5 as TaskAnswer);
     expect(buildingOf(sown.state, APIARY, 'A5').stack).toEqual(['W5']);

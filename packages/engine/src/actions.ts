@@ -77,9 +77,86 @@ export function levelRuleOf(data: GameData, level: 1 | 2 | 3) {
 
 // --- Build (and its branches: hire, upgrade) -------------------------------
 
+/**
+ * Modifiers a Build runs under. Absent = the plain printed rules, so every
+ * pre-Dairy call site keeps its behaviour. All of them compose.
+ */
+export interface BuildMods {
+  /** Card count reduction (the cream balloon, D4/D8/D9/D12/D15). Waives the own-suit half. */
+  discount?: number;
+  /** The Dairy Farmstead: any card pays any slot - the own-suit minimum is waived, never coins. */
+  substitute?: boolean;
+  /** D7 The Versatile Shed (ruling H): up to N coins each stand in for one required card. */
+  coinWild?: number;
+  /** D8 The Abundant Shed: barn cards may join the payment, by suit tally. */
+  fromBarn?: boolean;
+}
+
+/**
+ * A concrete, fully-chosen build. `payment` is hand cards; `barn` is a per-suit
+ * tally (barn identity is inert, and views anonymise it, so a policy can only
+ * ever name a suit there); `coinWild` is coins spent AS CARDS, on top of the
+ * card's printed coin price.
+ */
 export interface BuildOption {
   card: CardId;
   payment: CardId[];
+  barn?: Partial<Record<Suit, number>>;
+  coinWild?: number;
+}
+
+/** The Dairy Farmstead's base power, live from turn 1: substitution on every Build. */
+export function buildSubstitutePower(state: GameState, seat: Seat): boolean {
+  return player(state, seat).suit === 'dairy';
+}
+
+/**
+ * The upgraded Dairy Farmstead's "BUILD: you may BUILD again" - one optional
+ * repeat of the Build ACTION, the same `turn.again` gate the Wheat harvest
+ * repeat uses. Main action only, following the reference's afterMainAction.
+ */
+export function buildAgainPower(data: GameData, state: GameState, seat: Seat): boolean {
+  const p = player(state, seat);
+  if (p.suit !== 'dairy') return false;
+  const farmstead = p.tableau.find((b) => cardById(data, b.card).slot === 'farmstead');
+  return farmstead?.upgraded ?? false;
+}
+
+/** How many cards and coins a build actually costs under its modifiers. */
+function priceOf(
+  data: GameData,
+  card: CardId,
+  mods: BuildMods,
+): { cardsNeeded: number; coinsNeeded: number; ownSuitMin: number } | null {
+  const cost = cardById(data, card).buildCost;
+  if (!cost) return null;
+  const discount = mods.discount ?? 0;
+  const totalCards = cost.suit + cost.wild;
+  const cardsNeeded = Math.max(0, totalCards - discount);
+  const coinsNeeded = discount - totalCards >= cost.coins ? 0 : cost.coins;
+  // A discount waives the own-suit half (reference buildDiscount), and so does
+  // the Dairy Farmstead's substitution.
+  const ownSuitMin = discount > 0 || mods.substitute === true ? 0 : cost.suit;
+  return { cardsNeeded, coinsNeeded, ownSuitMin };
+}
+
+/** Multisets of size k over the suits a seat's barn can actually cover. */
+function barnFills(
+  tally: Partial<Record<Suit, number>>,
+  suits: readonly Suit[],
+  k: number,
+): Partial<Record<Suit, number>>[] {
+  if (k === 0) return [{}];
+  if (suits.length === 0) return [];
+  const [head, ...rest] = suits as [Suit, ...Suit[]];
+  const out: Partial<Record<Suit, number>>[] = [];
+  const max = Math.min(k, tally[head] ?? 0);
+  for (let n = max; n >= 0; n--) {
+    for (const tail of barnFills(tally, rest, k - n)) {
+      out.push(n > 0 ? { [head]: n, ...tail } : tail);
+    }
+  }
+  return out;
 }
 
 /**
@@ -88,33 +165,47 @@ export interface BuildOption {
  * suit cards may fill the wild half. `hand` overrides the seat's hand for the
  * post-fee re-check a visit's worker payoff needs.
  *
- * `discount` is the cream balloon's "Build, with a discount of 4" (reference
- * buildDiscount): the card count drops by the discount (min 0), the remaining
- * payment is ANY suit (the own-suit half is waived), and a coin price is
- * waived when the leftover discount covers it.
+ * Under `mods` the price and the own-suit minimum move (see priceOf), coins may
+ * stand in for cards (D7) and barn cards may join the payment (D8). The
+ * enumeration stays exhaustive and concrete: one option per fully-decided way
+ * to pay, so apply can re-validate exactly what was offered.
  */
 export function buildOptions(
   data: GameData,
   state: GameState,
   seat: Seat,
   hand?: CardId[],
-  discount = 0,
+  mods: BuildMods = {},
 ): BuildOption[] {
   const p = player(state, seat);
   const cards = hand ?? p.hand;
+  const tally = mods.fromBarn === true ? barnTally(data, state, seat) : {};
   const out: BuildOption[] = [];
   for (const id of cards) {
-    const cost = cardById(data, id).buildCost;
-    if (!cost) continue;
-    const totalCards = cost.suit + cost.wild;
-    const cardsNeeded = Math.max(0, totalCards - discount);
-    const coinsNeeded = discount - totalCards >= cost.coins ? 0 : cost.coins;
-    if (p.coins < coinsNeeded) continue;
+    const price = priceOf(data, id, mods);
+    if (!price) continue;
     const suit = cardById(data, id).suit;
     const others = cards.filter((h) => h !== id);
-    for (const payment of subsets(others, cardsNeeded)) {
-      const own = payment.filter((c) => cardById(data, c).suit === suit).length;
-      if (discount > 0 || own >= cost.suit) out.push({ card: id, payment });
+    const maxCoinWild = Math.min(mods.coinWild ?? 0, price.cardsNeeded);
+    for (let coinWild = 0; coinWild <= maxCoinWild; coinWild++) {
+      const coinsSpent = price.coinsNeeded + coinWild;
+      if (p.coins < coinsSpent) continue;
+      const cardsLeft = price.cardsNeeded - coinWild;
+      // A coin is a wild card, so it can never satisfy the own-suit minimum.
+      for (let fromHand = cardsLeft; fromHand >= 0; fromHand--) {
+        const fromBarn = cardsLeft - fromHand;
+        if (fromBarn > 0 && mods.fromBarn !== true) continue;
+        for (const payment of subsets(others, fromHand)) {
+          const own = payment.filter((c) => cardById(data, c).suit === suit).length;
+          if (own < price.ownSuitMin) continue;
+          for (const barn of barnFills(tally, state.suitsInPlay, fromBarn)) {
+            const option: BuildOption = { card: id, payment };
+            if (fromBarn > 0) option.barn = barn;
+            if (coinWild > 0) option.coinWild = coinWild;
+            out.push(option);
+          }
+        }
+      }
     }
   }
   return out;
@@ -129,47 +220,71 @@ export function anyBuildOption(
 ): boolean {
   const p = player(state, seat);
   const cards = hand ?? p.hand;
+  const substitute = buildSubstitutePower(state, seat);
   return cards.some((id) => {
     const cost = cardById(data, id).buildCost;
     if (!cost || p.coins < cost.coins) return false;
     const suit = cardById(data, id).suit;
     const others = cards.filter((h) => h !== id);
     const own = others.filter((c) => cardById(data, c).suit === suit).length;
-    return others.length >= cost.suit + cost.wild && own >= cost.suit;
+    return others.length >= cost.suit + cost.wild && (substitute || own >= cost.suit);
   });
 }
 
-export function doBuild(fx: Fx, seat: Seat, card: CardId, payment: CardId[], discount = 0): void {
+/**
+ * Spend for a build and land it. `src` is the card whose ability caused this
+ * build (null for the plain action), threaded through to the afterBuild hook so
+ * a card can react to ITS OWN build (D5, D6) rather than to every build.
+ */
+export function doBuild(
+  fx: Fx,
+  seat: Seat,
+  choice: BuildOption,
+  mods: BuildMods = {},
+  src: CardId | null = null,
+): void {
+  const { card, payment } = choice;
+  const barn = choice.barn ?? {};
+  const coinWild = choice.coinWild ?? 0;
   const p = player(fx.state, seat);
   const c = cardById(fx.data, card);
-  const cost = c.buildCost;
-  if (!cost) throw new Error(`${card} has no build cost`);
+  const price = priceOf(fx.data, card, mods);
+  if (!price) throw new Error(`${card} has no build cost`);
   if (!p.hand.includes(card)) throw new Error(`${card} is not in seat ${seat}'s hand`);
   if (payment.includes(card)) throw new Error(`${card} cannot pay for itself`);
   if (new Set(payment).size !== payment.length) throw new Error('Duplicate payment card');
-  const totalCards = cost.suit + cost.wild;
-  const cardsNeeded = Math.max(0, totalCards - discount);
-  const coinsNeeded = discount - totalCards >= cost.coins ? 0 : cost.coins;
-  if (payment.length !== cardsNeeded) {
-    throw new Error(`${card} costs ${cardsNeeded} cards, got ${payment.length}`);
+  if (coinWild > (mods.coinWild ?? 0))
+    throw new Error(`${card} may not spend £${coinWild} as cards`);
+  const fromBarn = (Object.values(barn) as number[]).reduce((a, b) => a + b, 0);
+  if (fromBarn > 0 && mods.fromBarn !== true)
+    throw new Error('This Build may not spend barn cards');
+  if (payment.length + fromBarn + coinWild !== price.cardsNeeded) {
+    throw new Error(
+      `${card} costs ${price.cardsNeeded} cards, got ${payment.length + fromBarn + coinWild}`,
+    );
   }
-  if (discount === 0) {
-    const own = payment.filter((id) => cardById(fx.data, id).suit === c.suit).length;
-    if (own < cost.suit) throw new Error(`${card} needs ${cost.suit} ${c.suit} cards in payment`);
+  const own = payment.filter((id) => cardById(fx.data, id).suit === c.suit).length;
+  if (own < price.ownSuitMin) {
+    throw new Error(`${card} needs ${price.ownSuitMin} ${c.suit} cards in payment`);
   }
 
-  if (coinsNeeded > 0) fx.payCoins(seat, coinsNeeded, `build:${card}`);
+  const coinsSpent = price.coinsNeeded + coinWild;
+  if (coinsSpent > 0) fx.payCoins(seat, coinsSpent, `build:${card}`);
   fx.removeFromHand(seat, card);
   for (const id of payment) fx.removeFromHand(seat, id);
   fx.discard(payment);
-  placeBuilt(fx, seat, card, payment, coinsNeeded);
+  // Barn cards leave for their suits' discards through the shared funnel, so
+  // they are spent exactly as a delivery spends them.
+  const barnCards = fromBarn > 0 ? fx.spendFromBarn(seat, barn) : [];
+  placeBuilt(fx, seat, card, [...payment, ...barnCards], coinsSpent, src);
 }
 
 /**
  * The build's landing half, shared with cost-waiving effects (W10's free
- * FIELD build): the card enters the tableau and the Farmstead milestone is
- * checked. The Farmstead flips FREE at the milestone (own-colour deck
- * builds) - the design docs win over the reference's paid flip, per ticket 04.
+ * FIELD build, D10/D13's deck-top builds): the card enters the tableau, the
+ * Farmstead milestone is checked, and the afterBuild reactors fire. The
+ * Farmstead flips FREE at the milestone (own-colour deck builds) - the design
+ * docs win over the reference's paid flip, per ticket 04.
  */
 export function placeBuilt(
   fx: Fx,
@@ -177,6 +292,7 @@ export function placeBuilt(
   card: CardId,
   payment: CardId[],
   coins: number,
+  src: CardId | null = null,
 ): void {
   const p = player(fx.state, seat);
   p.tableau.push({ card, stack: [], upgraded: false });
@@ -193,6 +309,8 @@ export function placeBuilt(
       fx.emit({ e: 'starterUpgraded', seat, card: farmstead.card, free: true });
     }
   }
+
+  fireHook(fx, 'afterBuild', { seat, card, payment, src });
 }
 
 /** `discount` is A10 The Cross-Pollinator's "paying £1 less" (fee floors at 0). */
@@ -218,6 +336,7 @@ export function doHire(fx: Fx, seat: Seat, workerId: WorkerAction, discount = 0)
   ws.owner = seat;
   ws.trackPos = 0;
   fx.emit({ e: 'hired', seat, workerId });
+  fireHook(fx, 'afterHire', { seat, workerId });
 }
 
 /** Starters a seat can pay to flip: Barn and Notice Board only - the Farmstead flips free. */
@@ -587,7 +706,7 @@ export function grantBalloonReward(fx: Fx, seat: Seat, balloonId: string): void 
       fx.pushTask({ t: 'draw', pid: seat, src: null, see: amount, keep: amount, revealed: [] });
       break;
     case 'buildDiscount':
-      fx.pushTask({ t: 'build', pid: seat, src: null, discount: amount });
+      fx.pushTask({ t: 'build', pid: seat, src: null, mods: { discount: amount } });
       break;
     case 'sowFromHand':
       // "Sow 4 cards from your hand" reads as up-to: skippable, stops early.

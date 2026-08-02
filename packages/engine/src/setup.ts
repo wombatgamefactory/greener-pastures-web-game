@@ -166,6 +166,7 @@ export function newGame(data: GameData, opts: NewGameOptions): GameState {
     tableau: data.cards.catalogue
       .filter((c) => c.suit === suit && c.type === 'starter' && c.enabled)
       .map((c) => ({ card: c.id, stack: [] as CardId[], upgraded: false })),
+    covered: [] as string[],
     receipts: [] as number[],
   }));
 

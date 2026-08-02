@@ -17,7 +17,7 @@ import { handlerFor } from './handlers/registry.js';
 import type { CardMove } from './handlers/types.js';
 import { canTakeCard, cardById, faceOf, player } from './query.js';
 import type { CardId, GameEvent, GameState, Seat, Task, TaskAnswer } from './state.js';
-import { drainTasks, resolveTask, taskAnswers } from './tasks.js';
+import { drainTasks, popTask, resolveTask, taskAnswers } from './tasks.js';
 
 export interface Applied {
   state: GameState;
@@ -176,8 +176,9 @@ export function answerTask(data: GameData, state: GameState, answer: TaskAnswer)
   }
   const draft = cloneState(state);
   const fx = new Fx(data, draft, head.pid);
-  const done = resolveTask(fx, draft.tasks[0] as Task, answer);
-  if (done) draft.tasks.shift();
+  const resolving = draft.tasks[0] as Task;
+  const done = resolveTask(fx, resolving, answer);
+  if (done) popTask(draft, resolving);
   drainTasks(data, draft);
   return { state: draft, events: fx.events, audit: fx.audit };
 }
@@ -203,7 +204,11 @@ export interface ScoreBreakdown {
 
 export function gameEndScores(data: GameData, state: GameState): ScoreBreakdown[] {
   return state.players.map((p, seat) => {
-    const printed = p.tableau.reduce((sum, b) => sum + faceOf(data, b).printedVp, 0);
+    // Covered cards (D11) add their printed VP as a bare sum: they are not
+    // buildings, so no endgame formula and no count can see them.
+    const printed =
+      p.tableau.reduce((sum, b) => sum + faceOf(data, b).printedVp, 0) +
+      p.covered.reduce((sum, id) => sum + (cardById(data, id).printedVp ?? 0), 0);
     const receipts = p.receipts.reduce((sum, vp) => sum + vp, 0);
     const endgame = p.tableau.reduce(
       (sum, b) => sum + (handlerFor(b.card)?.gameEnd?.(data, state, seat) ?? 0),

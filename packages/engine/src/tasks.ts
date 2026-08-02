@@ -18,6 +18,7 @@ import type { GameData } from '@gp/data';
 
 import {
   buildOptions,
+  buildSubstitutePower,
   deliverAnswers,
   doBuild,
   doDeliver,
@@ -27,6 +28,7 @@ import {
   subsets,
   workerActionLegal,
 } from './actions.js';
+import type { BuildMods } from './actions.js';
 import type { Fx } from './fx.js';
 import { fireHook } from './fx.js';
 import { canTakeCard, drawableSuits, fullBuildings, player, workerState } from './query.js';
@@ -34,11 +36,22 @@ import type { BuildingState, GameState, Task, TaskAnswer } from './state.js';
 import { workWorker } from './workers.js';
 import { handlerFor } from './handlers/registry.js';
 
+/**
+ * A build task's modifiers, with the actor's own Farmstead substitution folded
+ * in. One place decides it, so a card that grants a Build never has to remember
+ * whose Build it is, and the enumerator and the resolver cannot disagree.
+ */
+function buildModsFor(state: GameState, task: Extract<Task, { t: 'build' }>): BuildMods {
+  const mods: BuildMods = { ...(task.mods ?? {}) };
+  if (buildSubstitutePower(state, task.pid)) mods.substitute = true;
+  return mods;
+}
+
 /** Legal answers to a task. Empty = the task has nothing to do and is skipped. */
 export function taskAnswers(data: GameData, state: GameState, task: Task): TaskAnswer[] {
   switch (task.t) {
-    case 'chooseWorker':
-      return state.fair
+    case 'chooseWorker': {
+      const out: TaskAnswer[] = state.fair
         .filter((w) => {
           if (w.owner === null) return false;
           if (task.owned === 'rival' && w.owner === task.pid) return false;
@@ -46,6 +59,9 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
           return workerActionLegal(data, state, task.pid, w.id);
         })
         .map((w) => ({ kind: 'worker', workerId: w.id }));
+      if (task.optional === true && out.length > 0) out.push({ kind: 'skip' });
+      return out;
+    }
 
     case 'draw': {
       if (task.revealed.length < task.see) {
@@ -88,10 +104,20 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
       return out;
     }
 
-    case 'build':
-      return buildOptions(data, state, task.pid, undefined, task.discount ?? 0).map(
-        (o) => ({ kind: 'build', card: o.card, payment: o.payment }) as TaskAnswer,
+    case 'build': {
+      const out = buildOptions(data, state, task.pid, undefined, buildModsFor(state, task)).map(
+        (o) =>
+          ({
+            kind: 'build',
+            card: o.card,
+            payment: o.payment,
+            ...(o.barn ? { barn: o.barn } : {}),
+            ...(o.coinWild ? { coinWild: o.coinWild } : {}),
+          }) as TaskAnswer,
       );
+      if (task.optional === true && out.length > 0) out.push({ kind: 'skip' });
+      return out;
+    }
 
     case 'deliver': {
       // Island deliveries AND balloon moves - one Deliver action (DL-12).
@@ -125,11 +151,16 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
 export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
   switch (task.t) {
     case 'chooseWorker': {
+      if (answer.kind === 'skip' && task.optional === true) return true;
       if (answer.kind !== 'worker') throw new Error('chooseWorker expects a worker answer');
       const owner = workerState(fx.state, answer.workerId).owner;
       workWorker(fx, task.pid, answer.workerId, { progress: task.progress });
       if (task.ownerCoins > 0 && owner !== null) {
         fx.gainCoins(owner, task.ownerCoins, `rider:${task.src}`);
+      }
+      // "If you do, gain £2" (D9): minted only when the work actually happened.
+      if ((task.actorCoins ?? 0) > 0) {
+        fx.gainCoins(task.pid, task.actorCoins as number, `rider:${task.src}`);
       }
       return true;
     }
@@ -170,8 +201,20 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
     }
 
     case 'build': {
+      if (answer.kind === 'skip' && task.optional === true) return true;
       if (answer.kind !== 'build') throw new Error('build expects a build answer');
-      doBuild(fx, task.pid, answer.card, answer.payment, task.discount ?? 0);
+      doBuild(
+        fx,
+        task.pid,
+        {
+          card: answer.card,
+          payment: answer.payment,
+          ...(answer.barn ? { barn: answer.barn } : {}),
+          ...(answer.coinWild ? { coinWild: answer.coinWild } : {}),
+        },
+        buildModsFor(fx.state, task),
+        task.src,
+      );
       return true;
     }
 
@@ -204,6 +247,18 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
     default:
       return task satisfies never;
   }
+}
+
+/**
+ * Remove a RESOLVED task by identity, not by position. A resolver may have
+ * prepended tasks of its own (D13's two free builds must run before anything
+ * queued behind the gate), so the task that just finished is no longer
+ * guaranteed to be at index 0 - popping blindly would drop a fresh task and
+ * leave the finished one to be answered twice.
+ */
+export function popTask(state: GameState, task: Task): void {
+  const i = state.tasks.indexOf(task);
+  if (i >= 0) state.tasks.splice(i, 1);
 }
 
 /** Drop dead tasks from the head until a live one (or none) faces the player. */

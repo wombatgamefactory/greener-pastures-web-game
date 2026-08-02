@@ -34,6 +34,28 @@ import {
   waxWorkshop,
   wildHive,
 } from './apiary.js';
+import {
+  abundantShed,
+  butterFactory,
+  cheeseHall,
+  cheeseVault,
+  churningShed,
+  countingHouse,
+  creamRefinery,
+  dairyBarn,
+  dairyFarmstead,
+  dairyNoticeBoard,
+  grandCreamery,
+  heritageHouse,
+  ledger,
+  milkingShed,
+  prosperityWagon,
+  refinery,
+  scoutsPost,
+  strongbox,
+  tradingShed,
+  versatileShed,
+} from './dairy.js';
 import { helpingHand } from './helpingHand.js';
 import type { CardHandler } from './types.js';
 import {
@@ -188,6 +210,27 @@ const HANDLERS = new Map<CardId, CardHandler>([
   ['A19', honeyHall],
   ['A20', apiaristsGuild],
   ['A21', waxHall],
+  // Dairy - the full suit (ticket 22).
+  ['D1', dairyBarn],
+  ['D2', dairyFarmstead],
+  ['D3', dairyNoticeBoard],
+  ['D4', milkingShed],
+  ['D5', churningShed],
+  ['D6', tradingShed],
+  ['D7', versatileShed],
+  ['D8', abundantShed],
+  ['D9', prosperityWagon],
+  ['D10', scoutsPost],
+  ['D11', heritageHouse],
+  ['D12', butterFactory],
+  ['D13', cheeseVault],
+  ['D14', creamRefinery],
+  ['D15', grandCreamery],
+  ['D16', ledger],
+  ['D17', strongbox],
+  ['D19', cheeseHall],
+  ['D20', countingHouse],
+  ['D21', refinery],
   // One Power card per suit, shared name, identical text on all five copies -
   // one handler object, five registrations.
   ['W18', helpingHand],

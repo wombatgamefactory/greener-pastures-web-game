@@ -227,18 +227,22 @@ export class Fx {
   }
 
   /**
-   * Sow the top of a suit's discard onto a building (A6 The Garden Hive - the
-   * only card that places from anywhere but a hand). Same landing tail as
-   * placeOnBuilding, so the placement reactors fire identically.
+   * Sow a face-up discarded card onto a building - A6 The Garden Hive (the top
+   * of any pile) and D5 The Churning Shed (a card it just spent). Same landing
+   * tail as placeOnBuilding, so the placement reactors fire identically. The
+   * CALLER decides which card qualifies, which is what keeps the
+   * discard-ordering principle a card-text question and not an engine one.
    */
-  placeFromDiscard(from: Seat, onto: CardInPlay, suit: Suit): void {
+  placeFromDiscard(from: Seat, onto: CardInPlay, card: CardId): void {
     const building = this.buildingDraft(onto);
     if (!canTakeCard(this.data, building)) {
       throw new Error(`${onto.card} cannot take a card (full or no stack)`);
     }
+    const suit = cardById(this.data, card).suit;
     const pile = this.state.discards[suit];
-    const card = pile.pop();
-    if (card === undefined) throw new Error(`The ${suit} discard is empty`);
+    const i = pile.indexOf(card);
+    if (i < 0) throw new Error(`${card} is not in the ${suit} discard`);
+    pile.splice(i, 1);
     this.land(from, onto, card);
   }
 
@@ -258,6 +262,44 @@ export class Fx {
       card,
       stackSize: building.stack.length,
     });
+  }
+
+  // --- tableau surgery (Dairy) -------------------------------------------
+
+  /**
+   * D11 The Heritage House: the covered card leaves the tableau for the
+   * player's `covered` pile. It is no longer a building - invisible to every
+   * endgame formula, every count, every placement - but its printed VP still
+   * scores, as a bare sum (the reference's cover semantics). Empty stacks only,
+   * so no cards are ever buried with it.
+   */
+  coverBuilding(seat: Seat, building: CardId): void {
+    this.touch(seat);
+    const p = player(this.state, seat);
+    const i = p.tableau.findIndex((b) => b.card === building);
+    if (i < 0) throw new Error(`Seat ${seat} has not built ${building}`);
+    const b = p.tableau[i] as { card: CardId; stack: CardId[]; upgraded: boolean };
+    if (b.stack.length > 0) throw new Error(`${building} is not empty`);
+    p.tableau.splice(i, 1);
+    p.covered.push(building);
+    this.emit({ e: 'covered', seat, card: building });
+  }
+
+  /**
+   * D14 The Cream Refinery: an empty building of yours leaves the tableau for
+   * your barn, where it becomes ordinary delivery freight. Unlike a cover it
+   * scores no printed VP - it is not a building any more, it is stock.
+   */
+  demolish(seat: Seat, building: CardId): void {
+    this.touch(seat);
+    const p = player(this.state, seat);
+    const i = p.tableau.findIndex((b) => b.card === building);
+    if (i < 0) throw new Error(`Seat ${seat} has not built ${building}`);
+    const b = p.tableau[i] as { card: CardId; stack: CardId[]; upgraded: boolean };
+    if (b.stack.length > 0) throw new Error(`${building} is not empty`);
+    p.tableau.splice(i, 1);
+    p.barn.push(building);
+    this.emit({ e: 'demolished', seat, card: building });
   }
 
   // --- harvest -----------------------------------------------------------
@@ -332,9 +374,19 @@ export interface HookEvents {
    * A Hired Worker was WORKED - any path: the bonus slot, a visit's payoff, a
    * card-granted work (Herb Hive's free mode included, `free: true`). `owner`
    * is captured before the advance, so an expiring use still reports him.
-   * A17 The Smoke Pot reacts owner-side when `actor !== owner`.
+   * A17 The Smoke Pot reacts owner-side when `actor !== owner`; D17 The
+   * Strongbox reacts actor-side on every work.
    */
   afterWork: { actor: Seat; owner: Seat; workerId: string; free: boolean };
+  /**
+   * A card landed in a tableau, by ANY path - the Build action, a Worker's
+   * build, a card-granted or free build. `src` is the card whose ability caused
+   * it (null for the plain action), which is how D5 and D6 react to their OWN
+   * build while D16 The Ledger reacts to every one.
+   */
+  afterBuild: { seat: Seat; card: CardId; payment: CardId[]; src: CardId | null };
+  /** A Worker was hired from the Fair (D17 The Strongbox). */
+  afterHire: { seat: Seat; workerId: string };
 }
 
 export type HookName = keyof HookEvents;
