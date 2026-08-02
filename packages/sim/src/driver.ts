@@ -19,15 +19,39 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import type { GameState, Move, PlayerView, Seat } from '@gp/engine';
+import type { GameEvent, GameState, Move, PlayerView, Seat } from '@gp/engine';
 import { apply, isOver, legalMoves, newGame, seedRng, shuffle, viewFor } from '@gp/engine';
 import type { Policy, PolicyId } from '@gp/bots';
 import { BALANCE_PROFILES, makePolicy, policyRng } from '@gp/bots';
+
+/**
+ * One decision, as the metric fold sees it: what the table looked like, what
+ * was chosen, what it did, and what the table looked like afterwards.
+ *
+ * Ticket 11's fold is one pass over exactly this tuple. It rides on the driver
+ * rather than in a loop of its own so the games a balance run measures are the
+ * same games the bot tests walk - a second loop is a second set of rules.
+ */
+export interface Decision {
+  readonly pre: GameState;
+  readonly seat: Seat;
+  readonly legal: readonly Move[];
+  readonly move: Move;
+  readonly events: readonly GameEvent[];
+  readonly post: GameState;
+}
+
+export type Observer = (decision: Decision) => void;
 
 export interface GameSpec {
   readonly seed: string;
   readonly seats: number;
   readonly suits: readonly Suit[];
+  /**
+   * The passive decks. Omit and the game's own rng deals them; a balance run
+   * names them so its stratified cells are addressable.
+   */
+  readonly neutralSuits?: readonly Suit[];
   /**
    * One policy per seat, by roster id or as an instance. Instances are how a
    * sweep seats a custom weight table without inventing a roster entry; the rng
@@ -37,6 +61,8 @@ export interface GameSpec {
   readonly policies: readonly (PolicyId | Policy)[];
   /** Safety valve. A game that hits it is reported unfinished, never thrown. */
   readonly maxMoves?: number;
+  /** Called once per decision, in order. The balance run's metric fold. */
+  readonly observe?: Observer;
 }
 
 /**
@@ -48,8 +74,14 @@ export interface GameSpec {
  * From there no player can draw, build, grow or visit, and if no barn can fill
  * an open tile the island can never finish. Nothing in v14 ends such a game,
  * so the driver names it rather than burning the move budget on `pass`.
+ *
+ * `crashed` is the engine throwing mid-game. It is NOT swallowed - the error is
+ * carried on the result and the balance run prints the count and the messages -
+ * but one bad game in several hundred must not take a 90-second run down with
+ * it, or the harness cannot report the other 749. A crash rate above zero is a
+ * bug report, and the report says so.
  */
-export type Outcome = 'ended' | 'stalled' | 'maxMoves';
+export type Outcome = 'ended' | 'stalled' | 'maxMoves' | 'crashed';
 
 export interface GameResult {
   readonly state: GameState;
@@ -63,6 +95,8 @@ export interface GameResult {
   /** Wall time inside `policy.choose` only, in milliseconds. */
   readonly chooseMs: number;
   readonly maxLegalMoves: number;
+  /** Set only when `outcome` is 'crashed'. Never null on a crash. */
+  readonly error?: string;
 }
 
 /** Default ceiling. Ticket 14 measured a 4p median of ~1200 moves post-gate. */
@@ -94,7 +128,12 @@ export function runGame(data: GameData, spec: GameSpec, viewFn: ViewFn = viewFor
   const rngs = policies.map((policy, seat) => policyRng(spec.seed, seat, policy.id));
   const maxMoves = spec.maxMoves ?? DEFAULT_MAX_MOVES;
 
-  let state = newGame(data, { seats: spec.seats, suits: [...spec.suits], seed: spec.seed });
+  let state = newGame(data, {
+    seats: spec.seats,
+    suits: [...spec.suits],
+    ...(spec.neutralSuits ? { neutralSuits: [...spec.neutralSuits] } : {}),
+    seed: spec.seed,
+  });
   const moves: Move[] = [];
   let views = 0;
   let chooseMs = 0;
@@ -104,41 +143,69 @@ export function runGame(data: GameData, spec: GameSpec, viewFn: ViewFn = viewFor
   // pass and endTurn means the table has locked, not that a bot is dithering.
   const idleLimit = spec.seats * 4;
   let idle = 0;
+  let crash: string | null = null;
 
-  while (!isOver(state) && moves.length < maxMoves && idle < idleLimit) {
-    const legal = legalMoves(data, state);
-    if (legal.length === 0) throw new Error('No legal moves and the game is not over');
-    maxLegalMoves = Math.max(maxLegalMoves, legal.length);
+  try {
+    while (!isOver(state) && moves.length < maxMoves && idle < idleLimit) {
+      const legal = legalMoves(data, state);
+      if (legal.length === 0) throw new Error('No legal moves and the game is not over');
+      maxLegalMoves = Math.max(maxLegalMoves, legal.length);
 
-    // Every legal move belongs to one seat - the turn player, or the owner of
-    // the head task (which may be a rival: cross-player tasks are supported).
-    const seat = (legal[0] as Move).seat;
-    const policy = policies[seat];
-    const rng = rngs[seat];
-    if (!policy || !rng) throw new Error(`No policy for seat ${seat}`);
+      // Every legal move belongs to one seat - the turn player, or the owner of
+      // the head task (which may be a rival: cross-player tasks are supported).
+      const seat = (legal[0] as Move).seat;
+      const policy = policies[seat];
+      const rng = rngs[seat];
+      if (!policy || !rng) throw new Error(`No policy for seat ${seat}`);
 
-    const view = viewFn(data, state, seat);
-    views += 1;
+      const view = viewFn(data, state, seat);
+      views += 1;
 
-    const started = performance.now();
-    const move = policy.choose({ data, view, moves: legal, rng });
-    chooseMs += performance.now() - started;
+      const started = performance.now();
+      const move = policy.choose({ data, view, moves: legal, rng });
+      chooseMs += performance.now() - started;
 
-    state = apply(data, state, move).state;
-    moves.push(move);
-    idle = move.type === 'pass' || move.type === 'endTurn' ? idle + 1 : 0;
+      const applied = apply(data, state, move);
+      if (spec.observe) {
+        spec.observe({
+          pre: state,
+          seat,
+          legal,
+          move,
+          events: applied.events,
+          post: applied.state,
+        });
+      }
+      state = applied.state;
+      moves.push(move);
+      idle = move.type === 'pass' || move.type === 'endTurn' ? idle + 1 : 0;
+    }
+  } catch (error) {
+    // Deliberately caught and named rather than swallowed. A balance run walks
+    // hundreds of games; one engine bug must not cost the report on the other
+    // 749, and a crash that vanished into a `stalled` count would be worse than
+    // the crash. The message is carried out and printed.
+    crash = error instanceof Error ? error.message : String(error);
   }
 
-  const outcome: Outcome = isOver(state) ? 'ended' : idle >= idleLimit ? 'stalled' : 'maxMoves';
+  const outcome: Outcome =
+    crash !== null
+      ? 'crashed'
+      : isOver(state)
+        ? 'ended'
+        : idle >= idleLimit
+          ? 'stalled'
+          : 'maxMoves';
 
   return {
     state,
     moves,
     outcome,
-    ended: isOver(state),
+    ended: outcome === 'ended',
     decisions: moves.length,
     views,
     chooseMs,
     maxLegalMoves,
+    ...(crash === null ? {} : { error: crash }),
   };
 }

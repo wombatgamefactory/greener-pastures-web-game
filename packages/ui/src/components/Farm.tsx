@@ -11,6 +11,8 @@
 import type { GameData, Suit } from '@gp/data';
 import type { BuildingView, PlayerView } from '@gp/engine';
 
+import { mark } from '../session/play';
+import type { Play } from '../session/play';
 import { cropIcon, frame, token } from '../view/art';
 import { printedFace } from '../view/printed';
 import { SUIT_META } from '../view/suits';
@@ -19,27 +21,45 @@ import { Card, CardBack } from './Card';
 import { StackGauge } from './StackGauge';
 import type { Zoomer } from './Zoom';
 
+/**
+ * A row of buildings. Shared by your farm and the rival inspector, which is why
+ * `play` is optional: a neighbour's tableau is read-only, and passing no play
+ * object is how that is enforced rather than remembered.
+ */
 export function Tableau({
   data,
   buildings,
   cardWidth,
   zoom,
+  play,
 }: {
   data: GameData;
   buildings: readonly BuildingView[];
   cardWidth: number;
   zoom: Zoomer;
+  play?: Play | undefined;
 }) {
   return (
     <div className="tableau" onMouseLeave={() => zoom.clear()}>
       {displayOrder(data, buildings).map((b) => {
         const face = printedFace(data, b.card, b.upgraded);
         const full = face.threshold !== null && b.stack.length >= face.threshold;
+        const live = play?.live.buildings.has(b.card) ?? false;
         return (
           <div
             key={b.card}
-            className={`building${full ? ' building-full' : ''}`}
+            className={`building${full ? ' building-full' : ''}${mark(play, live)}`}
             onMouseEnter={() => zoom.show(b.card, b.upgraded)}
+            onClick={live ? () => play?.building(b.card) : undefined}
+            role={live ? 'button' : undefined}
+            tabIndex={live ? 0 : undefined}
+            onKeyDown={
+              live
+                ? (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') play?.building(b.card);
+                  }
+                : undefined
+            }
           >
             <Card face={face} width={cardWidth} />
             <div className="building-gauge">
@@ -73,20 +93,34 @@ function Barn({ barn, cardWidth }: { barn: Partial<Record<Suit, number>>; cardWi
   );
 }
 
+/**
+ * Your hand: the game's real clock, and the one place a click means "pick up"
+ * rather than "play here".
+ *
+ * A held card is lifted out of the fan and its destinations light up elsewhere -
+ * ticket 09's rule, because every card in hand is a legal visit fee and glowing
+ * the sources would glow the lot. `is-picked` is the other selection state: a
+ * card marked for a discard or chosen as payment, which is a commitment rather
+ * than a question.
+ */
 function Hand({
   data,
   hand,
   cardWidth,
   handSize,
   zoom,
+  play,
 }: {
   data: GameData;
   hand: readonly string[];
   cardWidth: number;
   handSize: number | null;
   zoom: Zoomer;
+  play?: Play | undefined;
 }) {
   const over = handSize !== null && hand.length > handSize;
+  const held = play?.intent.k === 'hold' ? play.intent.card : null;
+  const committed = new Set<string>(play?.commitments ?? []);
   return (
     <div className="hand-strip">
       <h3 className="strip-title">
@@ -99,16 +133,30 @@ function Hand({
       </h3>
       <div className="hand" onMouseLeave={() => zoom.clear()}>
         {hand.length === 0 && <p className="empty-note">No cards. Every visit costs one.</p>}
-        {hand.map((id, i) => (
-          <div
-            key={`${id}-${i}`}
-            className="hand-card"
-            style={{ zIndex: i }}
-            onMouseEnter={() => zoom.show(id)}
-          >
-            <Card face={printedFace(data, id)} width={cardWidth} />
-          </div>
-        ))}
+        {hand.map((id, i) => {
+          const live = play?.live.hand.has(id) ?? false;
+          const state = held === id ? ' is-held' : committed.has(id) ? ' is-picked' : '';
+          return (
+            <div
+              key={`${id}-${i}`}
+              className={`hand-card${state}${mark(play, live)}`}
+              style={{ zIndex: i }}
+              onMouseEnter={() => zoom.show(id)}
+              onClick={play ? () => play.hold(id) : undefined}
+              role={play?.active ? 'button' : undefined}
+              tabIndex={play?.active ? 0 : undefined}
+              onKeyDown={
+                play?.active
+                  ? (e) => {
+                      if (e.key === 'Enter' || e.key === ' ') play.hold(id);
+                    }
+                  : undefined
+              }
+            >
+              <Card face={printedFace(data, id)} width={cardWidth} />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -129,12 +177,14 @@ export function Farm({
   buildingWidth,
   handWidth,
   zoom,
+  play,
 }: {
   data: GameData;
   view: PlayerView;
   buildingWidth: number;
   handWidth: number;
   zoom: Zoomer;
+  play?: Play | undefined;
 }) {
   const meta = SUIT_META[view.you.suit];
   const yourTurn = view.turnPlayer === view.seat;
@@ -170,7 +220,13 @@ export function Farm({
         )}
       </header>
 
-      <Tableau data={data} buildings={view.you.tableau} cardWidth={buildingWidth} zoom={zoom} />
+      <Tableau
+        data={data}
+        buildings={view.you.tableau}
+        cardWidth={buildingWidth}
+        zoom={zoom}
+        play={play}
+      />
 
       <div className="farm-strips">
         <Hand
@@ -179,6 +235,7 @@ export function Farm({
           cardWidth={handWidth}
           handSize={handSizeOf(data, view.you.tableau)}
           zoom={zoom}
+          play={play}
         />
         <Barn barn={view.you.barn} cardWidth={Math.round(handWidth * 0.66)} />
       </div>

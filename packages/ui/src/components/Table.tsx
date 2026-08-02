@@ -11,6 +11,10 @@
  * Card sizes come from CSS custom properties rather than from here, so the
  * responsive steps live with the rest of the layout in table.css and this file
  * only reads them.
+ *
+ * `play` is optional. With it the table is playable (ticket 25); without it the
+ * same tree renders a position and nothing is clickable (ticket 24), which is
+ * what the render tests drive.
  */
 
 import { useEffect, useState } from 'react';
@@ -18,11 +22,14 @@ import type { GameData } from '@gp/data';
 import type { GameEvent, PlayerView, Seat } from '@gp/engine';
 
 import { narrateAll } from '../session/narrate';
+import type { Play } from '../session/play';
 import { seatSuits } from '../view/table';
+import { ActionBar } from './ActionBar';
 import { Commons } from './Commons';
 import { EventFeed } from './EventFeed';
 import { Farm } from './Farm';
 import { Inspector } from './Inspector';
+import { Prompt } from './Prompt';
 import { RivalRail } from './RivalRail';
 import { ZoomPanel, useZoom } from './Zoom';
 
@@ -46,10 +53,18 @@ export function Table({
   data,
   view,
   events,
+  play,
+  onUndo,
+  canUndo = false,
+  waitingOn = null,
 }: {
   data: GameData;
   view: PlayerView;
   events: readonly GameEvent[];
+  play?: Play | undefined;
+  onUndo?: (() => void) | undefined;
+  canUndo?: boolean | undefined;
+  waitingOn?: string | null | undefined;
 }) {
   const zoom = useZoom();
   const [inspecting, setInspecting] = useState<Seat | null>(null);
@@ -74,13 +89,39 @@ export function Table({
   return (
     <div className="table" data-phase={view.phase}>
       <aside className="rail-column">
-        <RivalRail data={data} view={view} onInspect={setInspecting} />
+        <RivalRail data={data} view={view} onInspect={setInspecting} play={play} />
         <EventFeed lines={lines} suits={suits} />
       </aside>
 
       <main className="main-column">
-        <Commons data={data} view={view} cardWidth={deck} islandTile={islandTile} zoom={zoom} />
-        <Farm data={data} view={view} buildingWidth={building} handWidth={hand} zoom={zoom} />
+        <Commons
+          data={data}
+          view={view}
+          cardWidth={deck}
+          islandTile={islandTile}
+          zoom={zoom}
+          play={play}
+        />
+        <Farm
+          data={data}
+          view={view}
+          buildingWidth={building}
+          handWidth={hand}
+          zoom={zoom}
+          play={play}
+        />
+        {play && (
+          <>
+            <Prompt data={data} play={play} zoom={zoom} />
+            <ActionBar
+              data={data}
+              play={play}
+              onUndo={onUndo ?? (() => {})}
+              canUndo={canUndo}
+              waitingOn={waitingOn}
+            />
+          </>
+        )}
       </main>
 
       <ZoomPanel data={data} zoom={zoom} />

@@ -39,12 +39,20 @@ const LANDMARKS = [
   { name: 'your hand', selector: '.hand' },
   { name: 'your barn', selector: '.barn' },
   { name: 'event feed', selector: '.feed' },
+  { name: 'the turn bar', selector: '.actionbar' },
 ];
 
 const args = process.argv.slice(2);
 const shotAt = args.indexOf('--shot');
 const shotPath = shotAt === -1 ? null : args[shotAt + 1];
-const query = process.env.VERIFY_QUERY ?? '';
+/**
+ * Ticket 25 put a start screen in front of the table, so the floor has to be
+ * measured on an auto-started game. The warm-up depth matters as much as the
+ * viewport: an opening position has three buildings and measures nothing, and
+ * what this check exists to catch is a full tableau plus the two interaction
+ * strips squeezing the hand off the bottom.
+ */
+const query = process.env.VERIFY_QUERY ?? '?autostart=1&seats=4&depth=320&minHand=4';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const DIST = join(ROOT, 'packages', 'ui', 'dist');

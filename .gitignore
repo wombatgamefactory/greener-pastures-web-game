@@ -33,7 +33,10 @@ desktop.ini
 
 # Wayfinder map, decision tickets, and research notes
 .scratch/
-.scratchprobe
+
+# Throwaway probe scripts a ticket writes to answer one question and abandons.
+.scratchprobe/
+.probe/
 
 # Simulator output: balance reports, complexity reports, run logs, cut lists.
 # Deliberately not anchored to the repo root, so a report written into

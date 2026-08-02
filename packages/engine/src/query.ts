@@ -129,6 +129,22 @@ export function workerData(data: GameData, id: string): HiredWorker {
   return w;
 }
 
+/**
+ * INVARIANT: every seat has a Notice Board for the whole game, so this throw is
+ * an assertion, not a reachable error path.
+ *
+ * It used to be reachable - D11/D14 could cover or demolish a starter, and this
+ * threw from `visitOptions` inside `legalMoves`, crashing the game for EVERY
+ * seat (3 of 1510 reference games, and 2-4 in 12 for a Dairy-heavy seat). Ticket
+ * 30 ruled starters out of that target set at the source, which is the whole
+ * fix: nothing else in the game removes a building.
+ *
+ * Deliberately still throwing rather than returning null. A seat with no Notice
+ * Board cannot be visited, so the graceful path is `visitOptions` silently
+ * offering nothing - which in a 1510-game balance run corrupts the hook metrics
+ * invisibly. Loud is right here: if this ever fires again, a new card has broken
+ * the invariant and the sim must not average over it.
+ */
 export function noticeBoardOf(data: GameData, state: GameState, seat: Seat): BuildingState {
   const b = player(state, seat).tableau.find((x) => cardById(data, x.card).slot === 'noticeboard');
   if (!b) throw new Error(`Seat ${seat} has no Notice Board`);

@@ -1,0 +1,545 @@
+/*
+ * The interaction layer: what is clickable, what is chosen, and the two strips
+ * that say what the game is waiting for.
+ *
+ * The glow is two-tier on purpose. `is-live` is quiet - "there is a move here" -
+ * and is what an idle turn wears, because in this game almost everything is a
+ * target of something and a loud ring on all of it is noise. `is-target` is the
+ * loud one and appears only once an intent has narrowed the question to "where
+ * does THIS go", which is the moment ticket 09's rule (glow targets, never
+ * sources) has anything to say.
+ */
+
+.is-live {
+  cursor: pointer;
+  position: relative;
+}
+
+.is-live > .card,
+.is-live.card {
+  outline: 1px dashed var(--ink-line);
+  outline-offset: 1px;
+}
+
+.is-target {
+  cursor: pointer;
+  position: relative;
+  animation: target-pulse 1.6s ease-in-out infinite;
+}
+
+.is-target > .card,
+.is-target.card,
+.is-target .island-art {
+  outline: 3px solid #3f7a3a;
+  outline-offset: 2px;
+}
+
+.is-target.island-tile,
+.is-target.worker,
+.is-target.rival,
+.is-target.deck {
+  box-shadow: 0 0 0 3px #3f7a3a;
+  border-radius: 6px;
+}
+
+.is-live.worker,
+.is-live.rival,
+.is-live.deck {
+  box-shadow: 0 0 0 1px var(--ink-line);
+}
+
+@keyframes target-pulse {
+  50% {
+    filter: brightness(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .is-target {
+    animation: none;
+  }
+}
+
+/* A card lifted out of the fan, and a card committed to a payment or a discard.
+   Two different states: held is a question, picked is a commitment. */
+.hand-card.is-held {
+  transform: translateY(-18px);
+  z-index: 60 !important;
+}
+
+.hand-card.is-held .card,
+.revealed-card.is-picked .card {
+  outline: 3px solid var(--seat-pip, #3f7a3a);
+  outline-offset: 2px;
+}
+
+.hand-card.is-picked .card {
+  outline: 3px solid #a2493a;
+  outline-offset: 2px;
+}
+
+.hand-card.is-picked {
+  transform: translateY(-8px);
+}
+
+/* ---- the prompt strip ---------------------------------------------------- */
+
+.prompt {
+  background: var(--paper-panel);
+  border: 1px solid var(--rule);
+  border-left: 4px solid #3f7a3a;
+  border-radius: 8px;
+  padding: 6px 10px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.prompt-quiet {
+  border-left-color: var(--ink-line);
+}
+
+.prompt-line {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.answer-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
+.answer {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 12px;
+}
+
+.answer:hover {
+  background: var(--paper-deep);
+}
+
+.revealed {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.revealed-card {
+  background: none;
+  border: 0;
+  padding: 0;
+}
+
+/* ---- assemblies (build, visit) ------------------------------------------- */
+
+.assembly {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.assembly-visit {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.assembly-body {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.assembly-body h3 {
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.assembly-board {
+  flex: 0 1 160px;
+}
+
+.assembly-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.assembly-more {
+  color: #9c6f11;
+}
+
+.assembly-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.assembly-note {
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.chips-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
+}
+
+.chip {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 11px;
+}
+
+.chip-paid {
+  background: var(--paper-deep);
+  border-color: var(--ink-line);
+}
+
+.chip-empty {
+  border-style: dashed;
+  color: var(--ink-soft);
+}
+
+.payoffs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* The three payoffs are the hook made clickable, so they get real estate: what
+   you take, and - the v14 pivot - what the BANK pays your neighbour. */
+.payoff {
+  display: grid;
+  gap: 1px;
+  text-align: left;
+  background: var(--paper);
+  border: 1px solid var(--ink-line);
+  border-radius: 8px;
+  padding: 5px 10px;
+  min-width: 150px;
+}
+
+.payoff:hover {
+  background: #eef4e6;
+  border-color: #3f7a3a;
+}
+
+.payoff b {
+  font-family: var(--font-display);
+  font-size: 13px;
+}
+
+.payoff span {
+  font-size: 10px;
+  color: var(--ink-soft);
+}
+
+/* ---- the action bar ------------------------------------------------------ */
+
+.actionbar {
+  display: grid;
+  grid-template-columns: minmax(120px, auto) minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  background: var(--paper-panel);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 5px 8px;
+  box-shadow: var(--shadow);
+}
+
+.turn-state {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.turn-state .unspent {
+  color: #3f7a3a;
+  font-weight: 700;
+}
+
+.turn-state .spent {
+  color: var(--ink-soft);
+  text-decoration: line-through;
+}
+
+.turn-state .again {
+  color: #9c6f11;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+}
+
+.waiting-on {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+  font-style: italic;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.action {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-family: var(--font-display);
+  font-size: 12px;
+}
+
+.action:disabled {
+  opacity: 0.36;
+  cursor: default;
+}
+
+.action:not(:disabled):hover {
+  background: var(--paper-deep);
+}
+
+.action-armed {
+  background: #3f7a3a;
+  border-color: #2f5c2b;
+  color: #fff;
+}
+
+.turn-exits {
+  display: flex;
+  gap: 5px;
+}
+
+.primary {
+  background: #3f7a3a;
+  border: 1px solid #2f5c2b;
+  color: #fff;
+  border-radius: 6px;
+  padding: 4px 14px;
+  font-family: var(--font-display);
+  font-size: 13px;
+}
+
+.primary:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ghost {
+  background: none;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.ghost:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ghost-on {
+  background: var(--paper-deep);
+  color: var(--ink);
+}
+
+.pace {
+  position: fixed;
+  left: 10px;
+  bottom: 8px;
+  display: flex;
+  gap: 3px;
+  z-index: 60;
+}
+
+/* ---- the rail's board button -------------------------------------------- */
+
+.rival-board-live {
+  background: none;
+  border: 0;
+  padding: 0;
+  width: 100%;
+  text-align: left;
+  display: grid;
+  gap: 2px;
+}
+
+.rival-board-live:disabled {
+  cursor: default;
+}
+
+.rival-visiting {
+  outline: 3px solid #3f7a3a;
+  outline-offset: 1px;
+}
+
+/* ---- the start screen ---------------------------------------------------- */
+
+.start {
+  height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.start-card {
+  background: var(--paper-panel);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lift);
+  padding: 18px 22px;
+  max-width: 620px;
+  display: grid;
+  gap: 12px;
+}
+
+.start-card h1 {
+  font-size: 30px;
+  color: #6c9550;
+}
+
+.start-hook {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.start-card fieldset {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: 0;
+  padding: 8px 0 0;
+  display: grid;
+  gap: 6px;
+}
+
+.start-card legend {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+}
+
+.choices {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.choice {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 4px 14px;
+  font-family: var(--font-display);
+  font-size: 13px;
+}
+
+.choice-on {
+  background: var(--seat-pip, #3f7a3a);
+  border-color: rgb(0 0 0 / 18%);
+  color: #fff;
+}
+
+.start-note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.start-archetypes {
+  display: grid;
+  gap: 4px;
+}
+
+.start-archetypes label {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.start-card input,
+.start-card select {
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 7px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--paper);
+  color: inherit;
+}
+
+.start-go {
+  justify-self: start;
+  font-size: 15px;
+  padding: 6px 22px;
+}
+
+/* ---- the result overlay -------------------------------------------------- */
+
+.result {
+  max-width: 640px;
+}
+
+.result-table {
+  border-collapse: collapse;
+  font-size: 13px;
+  width: 100%;
+}
+
+.result-table th {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
+  text-align: right;
+  padding: 2px 6px;
+}
+
+.result-table th:first-child,
+.result-table td:first-child {
+  text-align: left;
+}
+
+.result-table td {
+  padding: 2px 6px;
+  text-align: right;
+  border-top: 1px solid var(--rule);
+}
+
+.result-you {
+  background: var(--paper-deep);
+}

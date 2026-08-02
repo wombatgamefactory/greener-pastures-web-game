@@ -1,0 +1,12 @@
+{
+  "name": "wage-shrink",
+  "description": "Watch-list 2's prescribed remedy, in the design's own numbers: 'If it bites, shrink the wage (£1/£1/£2) - never remove the card.' Track LENGTH is untouched, because length is assertion 4's and assertion 7's dial and moving both at once would make the result unreadable. The Draw Worker keeps its deliberately short two-space track and takes the same shrunk values.",
+  "schemaVersion": 1,
+  "set": {
+    "workers.roster.harvest.wages": [1, 1, 2],
+    "workers.roster.deliver.wages": [1, 1, 2],
+    "workers.roster.draw.wages": [1, 1],
+    "workers.roster.sow.wages": [1, 1, 2],
+    "workers.roster.build.wages": [1, 1, 2]
+  }
+}

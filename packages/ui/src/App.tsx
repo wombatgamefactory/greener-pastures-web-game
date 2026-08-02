@@ -1,27 +1,52 @@
 /**
- * Ticket 24 builds the STATIC half of the interface: render any `PlayerView`
- * faithfully. Nothing here takes a move - the move surface is ticket 25 - so the
- * app's job is to seed an honest position and hand the view over.
+ * The app: a start screen, a live table, and the loop that lets the bots play.
  *
- * The position is real, not fixture data: ticket 09 found that driving a seeded
- * engine position beats placeholder data for any UI question, because the shape
- * of a real mid-game table is not the shape you would have invented.
+ * Ticket 24 rendered a walked position and nothing was clickable. Ticket 25
+ * makes it a game, and the whole of that change is here plus `session/play.ts`:
+ * the component tree below still only ever receives a `PlayerView`, a move list
+ * and callbacks.
  *
- * Query string, for looking at the interface under different loads:
- *   ?seats=2..4   ?suits=wheat,vegetable,orchard   ?seed=x   ?depth=n
+ * Bot turns are played one move at a time on a timer rather than resolved in a
+ * burst. Ticket 09 measured that the narrated feed makes a bot's turn
+ * followable with no animation at all - but only if it arrives at a human rate,
+ * which is what the pacing is for. The step control is beside the feed for
+ * anyone who disagrees.
+ *
+ * Query string, for looking at the interface under different loads and for
+ * `verify:layout`:
+ *   ?autostart=1  ?seats=2..4  ?suits=wheat,vegetable  ?seed=x  ?depth=n  ?bots=balanced
  */
 
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Suit } from '@gp/data';
+import { isPolicyId } from '@gp/bots';
+import type { PolicyId } from '@gp/bots';
+import type { Move } from '@gp/engine';
 
+import { Result } from './components/Result';
+import { Start } from './components/Start';
 import { Table } from './components/Table';
-import { data, dealTable } from './session/table';
-import type { TableOptions } from './session/table';
+import { usePlay } from './session/play';
+import { Session, YOU, data } from './session/table';
+import type { SessionOptions } from './session/table';
+import { seatName } from './view/suits';
+import { seatSuits } from './view/table';
 
 const ALL_SUITS: Suit[] = ['wheat', 'vegetable', 'orchard', 'apiary', 'dairy'];
 
-export function readOptions(search: string): TableOptions {
+/** How long a bot's move sits on screen before the next one. */
+const PACE = { slow: 900, normal: 420, fast: 60 } as const;
+type Pace = keyof typeof PACE;
+
+export interface Boot {
+  readonly options: SessionOptions;
+  readonly depth: number;
+  readonly minHand: number;
+}
+
+export function readOptions(search: string): Boot | null {
   const q = new URLSearchParams(search);
+  if (q.get('autostart') === null && q.get('seats') === null) return null;
   const seats = Math.min(4, Math.max(2, Number(q.get('seats') ?? 4) || 4));
   const asked = (q.get('suits') ?? '')
     .split(',')
@@ -32,21 +57,167 @@ export function readOptions(search: string): TableOptions {
   const suits = asked.length === seats ? asked : ALL_SUITS.slice(0, seats);
   const depth = Number(q.get('depth') ?? 320);
   const minHand = Number(q.get('minHand') ?? 4);
+  const bot = q.get('bots');
+  const opponents: PolicyId[] = Array.from({ length: seats }, () =>
+    bot !== null && isPolicyId(bot) ? bot : 'balanced',
+  );
   return {
-    seats,
-    suits,
-    seed: q.get('seed') ?? 'greener-pastures',
+    options: { seats, suits, seed: q.get('seed') ?? 'greener-pastures', opponents },
     depth: Number.isFinite(depth) && depth >= 0 ? depth : 320,
     minHand: Number.isFinite(minHand) && minHand >= 0 ? minHand : 4,
   };
 }
 
 export function App() {
-  const opts = useMemo(
+  const boot = useMemo(
     () => readOptions(typeof window === 'undefined' ? '' : window.location.search),
     [],
   );
-  const table = useMemo(() => dealTable(opts), [opts]);
+  const [session, setSession] = useState<Session | null>(() => {
+    if (boot === null) return null;
+    const s = new Session(data, boot.options);
+    s.warmUp(boot.depth, boot.minHand);
+    return s;
+  });
+  const [revision, setRevision] = useState(0);
+  const [pace, setPace] = useState<Pace>('normal');
+  const [stalled, setStalled] = useState(false);
+  const bump = useCallback(() => setRevision((r) => r + 1), []);
 
-  return <Table data={data} view={table.view} events={table.events} />;
+  // The session is mutable by design - it is the one thing holding the truth -
+  // so `revision` is what tells React the snapshot is stale. It is a dependency
+  // that is deliberately not read inside the callback.
+  const snapshot = useMemo(
+    () => (session === null || revision < 0 ? null : session.snapshot()),
+    [session, revision],
+  );
+
+  const send = useCallback(
+    (move: Move) => {
+      session?.send(move);
+      bump();
+    },
+    [session, bump],
+  );
+
+  const play = usePlay({
+    view: snapshot?.view ?? EMPTY_VIEW,
+    moves: snapshot?.moves ?? [],
+    active: snapshot?.yours === true && snapshot.over === false,
+    revision,
+    send,
+  });
+
+  // One bot move per tick. The timer is torn down and rebuilt on every
+  // snapshot, so the loop stops the moment the decision comes back to you.
+  const stepping = useRef(false);
+  useEffect(() => {
+    if (session === null || snapshot === null) return;
+    if (snapshot.yours || snapshot.over || stepping.current) return;
+    const timer = setTimeout(() => {
+      stepping.current = true;
+      const moved = session.stepBot();
+      stepping.current = false;
+      if (moved) bump();
+      // A table nobody can move in is ticket 34's supply lock, not a bug here.
+      else setStalled(true);
+    }, PACE[pace]);
+    return () => clearTimeout(timer);
+  }, [session, snapshot, pace, bump]);
+
+  if (session === null || snapshot === null) {
+    return (
+      <Start
+        onStart={(options) => {
+          setSession(new Session(data, options));
+          setStalled(false);
+          setRevision(0);
+        }}
+      />
+    );
+  }
+
+  const suits = seatSuits(snapshot.view);
+  const waitingOn =
+    snapshot.over || snapshot.yours || snapshot.actor === null
+      ? null
+      : `${seatName(suits[snapshot.actor], snapshot.actor, YOU)} is thinking.`;
+
+  return (
+    <>
+      <Table
+        data={data}
+        view={snapshot.view}
+        events={snapshot.events}
+        play={play}
+        canUndo={snapshot.canUndo}
+        onUndo={() => {
+          session.undo();
+          setStalled(false);
+          bump();
+        }}
+        waitingOn={waitingOn}
+      />
+
+      <div className="pace" aria-label="how fast your neighbours play">
+        {(Object.keys(PACE) as Pace[]).map((p) => (
+          <button
+            key={p}
+            className={`ghost${pace === p ? ' ghost-on' : ''}`}
+            onClick={() => setPace(p)}
+          >
+            {p}
+          </button>
+        ))}
+      </div>
+
+      {stalled && !snapshot.over && (
+        <p className="end-banner" role="status">
+          Nobody can move: the card supply is locked. That is a known open question, not a crash.
+        </p>
+      )}
+
+      {snapshot.over && snapshot.score && (
+        <Result
+          data={data}
+          view={snapshot.view}
+          score={snapshot.score}
+          onAgain={() => {
+            setSession(null);
+            setRevision(0);
+          }}
+        />
+      )}
+    </>
+  );
 }
+
+/**
+ * A view-shaped placeholder for the frames before a session exists. `usePlay`
+ * is a hook and cannot be called conditionally; nothing renders from this.
+ */
+const EMPTY_VIEW = {
+  seat: 0,
+  seats: 0,
+  suitsInPlay: [],
+  turnPlayer: 0,
+  phase: 'playing',
+  endTrigger: null,
+  you: { suit: 'wheat', coins: 0, hand: [], barn: {}, tableau: [], covered: [], receipts: [] },
+  rivals: [],
+  decks: {},
+  discards: {},
+  fair: [],
+  island: { tiles: [] },
+  aerodrome: null,
+  turn: {
+    actionSpent: false,
+    bonusSpent: false,
+    ending: false,
+    visit: null,
+    again: null,
+    onceUsed: [],
+  },
+  tasks: [],
+  resume: null,
+} as unknown as Parameters<typeof usePlay>[0]['view'];

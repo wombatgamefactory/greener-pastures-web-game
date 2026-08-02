@@ -223,9 +223,12 @@
 
 /* ---- the main column ---------------------------------------------------- */
 
+/* Commons, farm, then the two interaction strips. The farm is the only row that
+   flexes, so the prompt and the action bar can never push the hand below the
+   fold - they take their own height and the tableau gives it up (it scrolls). */
 .main-column {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   gap: var(--gap);
   min-height: 0;
   min-width: 0;
@@ -806,10 +809,12 @@
 
 /* ---- zoom, inspector, banner -------------------------------------------- */
 
+/* Clear of the turn bar: the bar is a click target now, and a hover zoom that
+   covers the buttons you are reaching for is worse than one that sits higher. */
 .zoom {
   position: fixed;
   right: 14px;
-  bottom: 14px;
+  bottom: 76px;
   z-index: 80;
   pointer-events: none;
   display: grid;

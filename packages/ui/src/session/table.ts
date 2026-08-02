@@ -7,14 +7,22 @@
  * reach. `src/boundary.test.ts` scans the sources and fails the build if any
  * other file names `GameState`.
  *
- * Ticket 24 builds the STATIC half of the interface, so this exposes no way to
- * take a move. It seeds a real position with the engine and hands out the view.
- * Ticket 25 adds the move surface on top; the seam is `TableSession.state`
- * staying private to this file.
+ * Ticket 24 needed only `dealTable`, which walks a position and hands out a
+ * view. Ticket 25 adds `Session`: the same boundary, plus a way to send a move
+ * and a bot driver. The seam is still that `state` never leaves this file - a
+ * component receives a `Snapshot`, which is a view, a move list and some flags.
+ *
+ * A session is a pure function of (data, options, move log). Bots are asked for
+ * a move but their answer is recorded in the log like any other, so undo is
+ * replay-a-prefix (ticket 04) with nothing else to unwind: `restart` re-seeds
+ * every policy stream and replays, so the same log always reproduces the same
+ * game.
  */
 
 import { loadGameData } from '@gp/data';
 import type { GameData, Suit } from '@gp/data';
+import { makePolicy, policyRng } from '@gp/bots';
+import type { PolicyId } from '@gp/bots';
 import {
   apply,
   isOver,
@@ -22,10 +30,11 @@ import {
   newGame,
   redactEvents,
   rngInt,
+  score,
   seedRng,
   viewFor,
 } from '@gp/engine';
-import type { GameEvent, GameState, Move, PlayerView, Seat } from '@gp/engine';
+import type { GameEvent, GameScore, GameState, Move, PlayerView, RngState, Seat } from '@gp/engine';
 
 export const data: GameData = loadGameData();
 
@@ -81,9 +90,32 @@ const HAND_KEEPING: Move['type'][] = [
   'endTurn',
 ];
 
-type Rng = [number, number, number, number];
+/**
+ * The warm-up's hand-keeping line. Draw first, VISIT LAST - and that ordering is
+ * the whole point. With visit above the builders (as in HAND_KEEPING) the seat
+ * draws one card and spends it on a visit every single turn, so the hand sits at
+ * zero forever and the interface is handed a turn with almost nothing legal.
+ * Measured at four seats, where your turn comes round rarely enough that the
+ * pattern never breaks on its own.
+ */
+const WARM_KEEPING: Move['type'][] = [
+  'task',
+  'draw',
+  'harvest',
+  'grow',
+  'build',
+  'hire',
+  'upgrade',
+  'deliver',
+  'workOwnWorker',
+  'moveBalloon',
+  'visit',
+  'cardMove',
+  'pass',
+  'endTurn',
+];
 
-function pick(rng: Rng, moves: Move[], order: Move['type'][] = PRIORITY): Move {
+function pick(rng: RngState, moves: Move[], order: Move['type'][] = PRIORITY): Move {
   for (const type of order) {
     const of = moves.filter((m) => m.type === type);
     const chosen = of[rngInt(rng, of.length)];
@@ -166,4 +198,237 @@ export function dealTable(opts: TableOptions): Table {
     view: viewFor(data, chosen.state, YOU),
     events: events.slice(0, chosen.events).slice(-60),
   };
+}
+
+// --- the live session -------------------------------------------------------
+
+export interface SessionOptions {
+  readonly seats: number;
+  /** One per seat, in seating order. Index 0 is yours. */
+  readonly suits: readonly Suit[];
+  readonly seed: string;
+  /** One per seat; index 0 is ignored because seat 0 is the human. */
+  readonly opponents: readonly PolicyId[];
+}
+
+/**
+ * Everything a component may see. Deliberately not the state: a snapshot is a
+ * view plus the legal move list, so the "one source of legality" constraint is
+ * structural - there is nothing else here to derive a move from.
+ */
+export interface Snapshot {
+  readonly view: PlayerView;
+  /**
+   * Exactly what `legalMoves` offered, and only when the decision is yours.
+   * Empty while a bot is thinking, so no interface path can act out of turn.
+   */
+  readonly moves: readonly Move[];
+  /** Whose decision it is - the head task's owner, or the turn player. */
+  readonly actor: Seat | null;
+  readonly yours: boolean;
+  readonly events: readonly GameEvent[];
+  readonly over: boolean;
+  readonly score: GameScore | null;
+  readonly canUndo: boolean;
+  /** Moves played so far. A save is (seed, this) - ticket 04's format. */
+  readonly played: number;
+}
+
+/** Whose decision the position is waiting on. */
+function actorOf(state: GameState): Seat | null {
+  if (state.phase !== 'playing') return null;
+  return state.tasks[0]?.pid ?? state.turnPlayer;
+}
+
+export class Session {
+  private state: GameState;
+  private readonly log: Move[] = [];
+  private events: GameEvent[] = [];
+  private rngs = new Map<Seat, RngState>();
+  /** Moves undo may not rewind past: the warm-up walk is scenery, not your play. */
+  private floor = 0;
+
+  constructor(
+    private readonly gameData: GameData,
+    readonly options: SessionOptions,
+  ) {
+    this.state = this.deal();
+  }
+
+  private deal(): GameState {
+    this.rngs.clear();
+    for (let seat = 0; seat < this.options.seats; seat++) {
+      if (seat === YOU) continue;
+      const id = this.policyId(seat);
+      this.rngs.set(seat, policyRng(this.options.seed, seat, id));
+    }
+    return newGame(this.gameData, {
+      seats: this.options.seats,
+      suits: [...this.options.suits],
+      seed: this.options.seed,
+    });
+  }
+
+  private policyId(seat: Seat): PolicyId {
+    return this.options.opponents[seat] ?? 'balanced';
+  }
+
+  snapshot(): Snapshot {
+    const actor = actorOf(this.state);
+    const yours = actor === YOU;
+    return {
+      view: viewFor(this.gameData, this.state, YOU),
+      moves: yours ? legalMoves(this.gameData, this.state) : [],
+      actor,
+      yours,
+      events: this.events.slice(-160),
+      over: isOver(this.state),
+      score: isOver(this.state) ? score(this.gameData, this.state) : null,
+      canUndo: this.log.slice(this.floor).some((m) => m.seat === YOU),
+      played: this.log.length,
+    };
+  }
+
+  /**
+   * Walk the table forward with the crude priority policy above, every seat
+   * included, and stop at the top of your turn. Not a way to play - it is how
+   * the interface gets judged against a dense mid-game board (ticket 09's
+   * finding that a real seeded position beats invented data), and how
+   * `verify:layout` measures the floor against a full tableau rather than a
+   * three-building opening.
+   *
+   * The walked moves go into the log like any other, so the session stays a
+   * pure function of (seed, log) and undo still works across the seam.
+   */
+  warmUp(depth: number, minHand: number): void {
+    if (depth <= 0) return;
+    try {
+      this.walk(depth, minHand);
+    } finally {
+      this.floor = this.log.length;
+    }
+  }
+
+  private walk(depth: number, minHand: number): void {
+    // Your neighbours are walked by the real scored bot, so the board you are
+    // handed is one a game could actually produce. Your own seat is walked by
+    // the hand-keeping order instead: `balanced` spends a hand to zero every
+    // turn (measured - every seat it plays sits at 0 for long stretches), which
+    // would hand the interface a permanently empty hand and hide half of what
+    // is being demonstrated. Preferring Draw is a different LINE of play, not a
+    // different rule set, so the position is still one the rules produced.
+    const policy = makePolicy('balanced');
+    const rngs = new Map<Seat, RngState>();
+    const step = () => {
+      const moves = legalMoves(this.gameData, this.state);
+      if (moves.length === 0) return false;
+      const seat = this.state.tasks[0]?.pid ?? this.state.turnPlayer;
+      const rng = rngs.get(seat) ?? seedRng(`warmup:${this.options.seed}:${seat}`);
+      rngs.set(seat, rng);
+      if (seat === YOU) {
+        // Draw while short of cards, then spend like anyone else. Held to the
+        // keeping line the whole way, the seat draws every single turn and
+        // never builds, so the tableau stays at three starters.
+        const short = (this.state.players[YOU]?.hand.length ?? 0) < minHand;
+        this.send(pick(rng, moves, short ? WARM_KEEPING : PRIORITY));
+        return true;
+      }
+      const view = viewFor(this.gameData, this.state, seat);
+      this.send(policy.choose({ data: this.gameData, view, moves, rng }));
+      return true;
+    };
+
+    for (let i = 0; i < depth && !isOver(this.state); i++) {
+      if (!step()) return;
+    }
+    const hand = () => this.state.players[YOU]?.hand.length ?? 0;
+    const turnTop = () =>
+      this.state.turnPlayer === YOU &&
+      this.state.tasks.length === 0 &&
+      !this.state.turn.actionSpent;
+
+    // Keep the FIRST turn-top as a floor and only better it. Without that a
+    // walk that insists on a full hand runs the whole game out and hands the
+    // interface a finished board - which is exactly what happened: the crude
+    // policy spends a hand to zero every turn, so `minHand` is often never met.
+    let best: { at: number; hand: number } | null = null;
+    for (let guard = 0; guard < 240 && !isOver(this.state); guard++) {
+      if (turnTop()) {
+        if (hand() >= minHand) return;
+        if (best === null || hand() > best.hand) best = { at: this.log.length, hand: hand() };
+      }
+      if (!step()) break;
+    }
+    if (best !== null) this.replay(this.log.slice(0, best.at));
+  }
+
+  /**
+   * The move log. With the seed this IS the save format ticket 04 settled -
+   * `{dataFingerprint, seed, moves}` - and it is what makes undo replay rather
+   * than unwind.
+   */
+  history(): readonly Move[] {
+    return this.log;
+  }
+
+  /** Play a move. Throws exactly where the engine would, so no UI-side rule can hide one. */
+  send(move: Move): void {
+    const applied = apply(this.gameData, this.state, move);
+    this.state = applied.state;
+    this.log.push(move);
+    this.events.push(...redactEvents(applied.events, YOU));
+  }
+
+  /**
+   * Let the seat to move decide, if it is not you. One move per call, so the
+   * caller controls pacing and the feed stays followable - ticket 09 measured
+   * that a narrated turn needs no animation to follow, but it does need to
+   * arrive at a human rate.
+   */
+  stepBot(): boolean {
+    const actor = actorOf(this.state);
+    if (actor === null || actor === YOU) return false;
+    const id = this.policyId(actor);
+    const rng = this.rngs.get(actor) ?? policyRng(this.options.seed, actor, id);
+    this.rngs.set(actor, rng);
+    const moves = legalMoves(this.gameData, this.state);
+    if (moves.length === 0) return false;
+    const move = makePolicy(id).choose({
+      data: this.gameData,
+      view: viewFor(this.gameData, this.state, actor),
+      moves,
+      rng,
+    });
+    this.send(move);
+    return true;
+  }
+
+  /**
+   * Rewind to just before your last decision, by replaying the log without its
+   * tail. No engine feature is needed for this (ticket 04) - but note what it
+   * costs: a replayed prefix reproduces the same shuffles, so undoing a draw
+   * and drawing again deals the same cards. That is a peek, and it is the
+   * reason this is a solo-versus-bots affordance rather than a rule.
+   */
+  undo(): boolean {
+    let cut = -1;
+    for (let i = this.log.length - 1; i >= this.floor; i--) {
+      if ((this.log[i] as Move).seat === YOU) {
+        cut = i;
+        break;
+      }
+    }
+    if (cut < 0) return false;
+    this.replay(this.log.slice(0, cut));
+    return true;
+  }
+
+  private replay(moves: readonly Move[]): void {
+    const floor = this.floor;
+    this.state = this.deal();
+    this.log.length = 0;
+    this.events = [];
+    for (const move of moves) this.send(move);
+    this.floor = floor;
+  }
 }

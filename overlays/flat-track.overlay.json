@@ -1,0 +1,12 @@
+{
+  "name": "flat-track",
+  "description": "Watch-list 4's prescribed remedy: 'at 2p it just degrades -> flatten'. Every paying space pays the same, so a rival has no reason to take the cheap spaces and abandon the Worker before the dear ones. Length is preserved per Worker, including the Draw Worker's deliberately short track.",
+  "schemaVersion": 1,
+  "set": {
+    "workers.roster.harvest.wages": [2, 2, 2],
+    "workers.roster.deliver.wages": [2, 2, 2],
+    "workers.roster.draw.wages": [2, 2],
+    "workers.roster.sow.wages": [2, 2, 2],
+    "workers.roster.build.wages": [2, 2, 2]
+  }
+}

@@ -9,6 +9,8 @@
  * owner's own uses pay nothing and still advance the meeple.
  */
 
+import { mark } from '../session/play';
+import type { Play } from '../session/play';
 import { workerArt } from '../view/art';
 import { SUIT_META } from '../view/suits';
 import type { WorkerTrack } from '../view/table';
@@ -18,16 +20,32 @@ export function WorkerPanel({
   ownerLabel,
   hireFee,
   size = 'full',
+  play,
 }: {
   track: WorkerTrack;
   /** Null when the Worker is still in the Fair. */
   ownerLabel: string | null;
   hireFee: number;
   size?: 'full' | 'rail';
+  play?: Play | undefined;
 }) {
   const meta = SUIT_META[track.linkedSuit];
+  const live = play?.live.workers.has(track.worker.id) ?? false;
   return (
-    <div className={`worker worker-${size}`} style={{ borderColor: meta.pip }}>
+    <div
+      className={`worker worker-${size}${mark(play, live)}`}
+      style={{ borderColor: meta.pip }}
+      onClick={live ? () => play?.worker(track.worker.id) : undefined}
+      role={live ? 'button' : undefined}
+      tabIndex={live ? 0 : undefined}
+      onKeyDown={
+        live
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') play?.worker(track.worker.id);
+            }
+          : undefined
+      }
+    >
       {size === 'full' && <img className="worker-art" src={workerArt(track.worker.id)} alt="" />}
       <div className="worker-body">
         <span className="worker-name">

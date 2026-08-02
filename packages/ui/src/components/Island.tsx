@@ -17,6 +17,8 @@
 import type { GameData, Suit } from '@gp/data';
 import type { IslandState, PlayerView, Seat } from '@gp/engine';
 
+import { mark } from '../session/play';
+import type { Play } from '../session/play';
 import { cropIcon, demandTokenLayers, islandTileArt } from '../view/art';
 import { SUIT_META } from '../view/suits';
 
@@ -57,10 +59,12 @@ export function IslandPanel({
   data,
   view,
   tileWidth,
+  play,
 }: {
   data: GameData;
   view: PlayerView;
   tileWidth: number;
+  play?: Play | undefined;
 }) {
   const open = openLevels(data, view.island, view.seat);
   const rows: Level[] = [3, 2, 1];
@@ -92,10 +96,24 @@ export function IslandPanel({
               {tiles.map((tile) => {
                 const spent = tile.deliveredBy.length;
                 const capacity = data.island.deliveriesPerTile;
+                const live = play?.live.tiles.has(tile.tile) ?? false;
                 return (
                   <div
                     key={tile.tile}
-                    className={`island-tile${spent >= capacity ? ' island-tile-done' : ''}`}
+                    className={`island-tile${spent >= capacity ? ' island-tile-done' : ''}${mark(
+                      play,
+                      live,
+                    )}`}
+                    onClick={live ? () => play?.tile(tile.tile) : undefined}
+                    role={live ? 'button' : undefined}
+                    tabIndex={live ? 0 : undefined}
+                    onKeyDown={
+                      live
+                        ? (e) => {
+                            if (e.key === 'Enter' || e.key === ' ') play?.tile(tile.tile);
+                          }
+                        : undefined
+                    }
                   >
                     <img className="island-art" src={islandTileArt(tile.tile)} alt="" />
                     <div className="island-demands">

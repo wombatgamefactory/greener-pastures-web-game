@@ -20,6 +20,14 @@ export interface NewGameOptions {
   seats: number;
   /** Player suits in seat order. Omit to deal random distinct suits. */
   suits?: Suit[];
+  /**
+   * The passive decks nobody farms - the crops on the table that no seat owns.
+   * Omit and the rng deals them from whatever the seats did not take, which is
+   * the game's own rule. Naming them is a HARNESS need: a balance run stratifies
+   * across every legal (player suits + neutral decks) combination, and a cell it
+   * cannot address is a cell it cannot sample evenly.
+   */
+  neutralSuits?: Suit[];
   seed: string;
   /** Names the overlay in the data fingerprint. Defaults to 'base'. */
   dataTag?: string;
@@ -138,7 +146,20 @@ export function newGame(data: GameData, opts: NewGameOptions): GameState {
     allSuits.filter((s) => !playerSuits.includes(s)),
   );
   const decksInPlay = data.island.decksInPlayBySeats[String(seats)] ?? seats + 1;
-  const suitsInPlay = [...playerSuits, ...remaining.slice(0, decksInPlay - seats)];
+  const neutrals = opts.neutralSuits ?? remaining;
+  if (opts.neutralSuits) {
+    if (new Set(opts.neutralSuits).size !== opts.neutralSuits.length) {
+      throw new Error('Neutral suits must be distinct');
+    }
+    for (const s of opts.neutralSuits) {
+      if (!allSuits.includes(s)) throw new Error(`Unknown suit ${s}`);
+      if (playerSuits.includes(s)) throw new Error(`${s} is a player suit, not a neutral one`);
+    }
+  }
+  if (neutrals.length < decksInPlay - seats) {
+    throw new Error(`Need ${decksInPlay - seats} neutral suits, got ${neutrals.length}`);
+  }
+  const suitsInPlay = [...playerSuits, ...neutrals.slice(0, decksInPlay - seats)];
 
   const decks = Object.fromEntries(
     allSuits.map((suit) => [

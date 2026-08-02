@@ -11,9 +11,11 @@
 import type { GameData, Suit } from '@gp/data';
 import type { PlayerView } from '@gp/engine';
 
+import { mark } from '../session/play';
+import type { Play } from '../session/play';
 import { balloonArt } from '../view/art';
 import { SUIT_META, seatName } from '../view/suits';
-import { seatSuits, workerTrack, workersForHire } from '../view/table';
+import { seatSuits, workerTrack, workersForHire, workersOwnedBy } from '../view/table';
 import { printedFace } from '../view/printed';
 import { Card, CardBack } from './Card';
 import { IslandPanel } from './Island';
@@ -27,6 +29,7 @@ function DeckSpine({
   discard,
   width,
   zoom,
+  play,
 }: {
   data: GameData;
   suit: Suit;
@@ -34,10 +37,25 @@ function DeckSpine({
   discard: readonly string[];
   width: number;
   zoom: Zoomer;
+  play?: Play | undefined;
 }) {
   const top = discard[discard.length - 1];
+  const live = play?.live.decks.has(suit) ?? false;
   return (
-    <div className="deck" onMouseLeave={() => zoom.clear()}>
+    <div
+      className={`deck${mark(play, live)}`}
+      onMouseLeave={() => zoom.clear()}
+      onClick={live ? () => play?.deck(suit) : undefined}
+      role={live ? 'button' : undefined}
+      tabIndex={live ? 0 : undefined}
+      onKeyDown={
+        live
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') play?.deck(suit);
+            }
+          : undefined
+      }
+    >
       <CardBack suit={suit} width={width} count={count} />
       <div className="deck-discard">
         {top ? (
@@ -61,15 +79,18 @@ export function Commons({
   cardWidth,
   islandTile,
   zoom,
+  play,
 }: {
   data: GameData;
   view: PlayerView;
   cardWidth: number;
   islandTile: number;
   zoom: Zoomer;
+  play?: Play | undefined;
 }) {
   const suits = seatSuits(view);
   const forHire = workersForHire(view);
+  const yours = workersOwnedBy(view, view.seat);
 
   return (
     <section className="commons" aria-label="the commons">
@@ -85,6 +106,7 @@ export function Commons({
               discard={view.discards[suit] ?? []}
               width={cardWidth}
               zoom={zoom}
+              play={play}
             />
           ))}
         </div>
@@ -92,7 +114,7 @@ export function Commons({
 
       <div className="panel panel-island">
         <h2 className="panel-title">The island</h2>
-        <IslandPanel data={data} view={view} tileWidth={islandTile} />
+        <IslandPanel data={data} view={view} tileWidth={islandTile} play={play} />
       </div>
 
       <div className="commons-right">
@@ -108,9 +130,23 @@ export function Commons({
                 ownerLabel={null}
                 hireFee={data.workers.hireFee}
                 size="rail"
+                play={play}
               />
             ))}
             {forHire.length === 0 && <p className="empty-note">Every Worker is out on hire.</p>}
+            {/* Your own Worker had nowhere to live in ticket 24's static build.
+                It needs one now: working it is half the bonus slot, and it is
+                the half that pays no wage. */}
+            {yours.map((w) => (
+              <WorkerPanel
+                key={w.id}
+                track={workerTrack(data, w)}
+                ownerLabel="yours"
+                hireFee={data.workers.hireFee}
+                size="rail"
+                play={play}
+              />
+            ))}
           </div>
         </div>
 
@@ -124,8 +160,14 @@ export function Commons({
                   balloon.at === 'centre'
                     ? 'in the centre, free to take'
                     : `parked at ${seatName(suits[balloon.at], balloon.at, view.seat)}`;
+                const live = play?.live.balloons.has(balloon.id) ?? false;
                 return (
-                  <li key={balloon.id} title={`${spec?.rewardText ?? balloon.id} - ${parked}`}>
+                  <li
+                    key={balloon.id}
+                    className={mark(play, live).trim()}
+                    title={`${spec?.rewardText ?? balloon.id} - ${parked}`}
+                    onClick={live ? () => play?.balloon(balloon.id) : undefined}
+                  >
                     <img src={balloonArt(balloon.id)} alt="" />
                     <span>{spec?.rewardText ?? balloon.id}</span>
                   </li>

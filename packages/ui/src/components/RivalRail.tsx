@@ -16,6 +16,8 @@
 import type { GameData } from '@gp/data';
 import type { PlayerView, Seat } from '@gp/engine';
 
+import { mark } from '../session/play';
+import type { Play } from '../session/play';
 import { cropIcon } from '../view/art';
 import { SUIT_META, seatName } from '../view/suits';
 import {
@@ -33,10 +35,12 @@ export function RivalRail({
   data,
   view,
   onInspect,
+  play,
 }: {
   data: GameData;
   view: PlayerView;
   onInspect(seat: Seat): void;
+  play?: Play | undefined;
 }) {
   const suits = seatSuits(view);
 
@@ -48,11 +52,15 @@ export function RivalRail({
         const workers = workersOwnedBy(view, rival.seat);
         const meta = SUIT_META[farm.suit];
         const theirTurn = view.turnPlayer === rival.seat;
+        const live = play?.live.hosts.has(rival.seat) ?? false;
+        const visiting = play?.intent.k === 'visit' && play.intent.host === rival.seat;
 
         return (
           <article
             key={rival.seat}
-            className={`rival${theirTurn ? ' rival-active' : ''}`}
+            className={`rival${theirTurn ? ' rival-active' : ''}${mark(play, live)}${
+              visiting ? ' rival-visiting' : ''
+            }`}
             style={{ ['--seat-ink' as string]: meta.ink, ['--seat-pip' as string]: meta.pip }}
           >
             {/* The whole header is the way in to the inspector. A separate
@@ -88,13 +96,20 @@ export function RivalRail({
             </dl>
 
             {board ? (
-              <div className="rival-board">
+              /* The Notice Board is the only visit target in the game (v14), so
+                 it is the rail's click target too - not the whole panel, whose
+                 header already opens the inspector. */
+              <button
+                className="rival-board rival-board-live"
+                disabled={!live}
+                onClick={() => play?.rival(rival.seat)}
+              >
                 <FillBar filled={board.filled} threshold={board.threshold} />
                 <span className="rival-payout">
                   {board.full ? 'no room - visit blocked' : `visit pays £${board.payout}`}
                   {board.twoCard !== null && !board.full && ` · 2 cards £${board.twoCard}`}
                 </span>
-              </div>
+              </button>
             ) : (
               <p className="rival-board rival-board-none">
                 No Notice Board. This farm cannot be visited.
@@ -110,6 +125,7 @@ export function RivalRail({
                     ownerLabel="theirs"
                     hireFee={data.workers.hireFee}
                     size="rail"
+                    play={play}
                   />
                 ))}
               </div>

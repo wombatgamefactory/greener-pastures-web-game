@@ -43,10 +43,28 @@ function buildWith(fx: Fx, seat: Seat, src: CardId, mods: BuildMods, optional = 
   fx.pushTask({ t: 'build', pid: seat, src, mods, ...(optional ? { optional: true } : {}) });
 }
 
-/** Every empty building in a tableau - the cover (D11) and demolish (D14) target set. */
-function emptyBuildings(state: GameState, seat: Seat): CardId[] {
+/**
+ * The cover (D11) and demolish (D14) target set: your empty NON-STARTER
+ * buildings. Ticket 30 - a starter is never a target, upgraded or not, because
+ * each of the three breaks the game a different way and none of the breakages
+ * was ever ruled in:
+ *
+ * - the Notice Board is v14's only visit target, so covering it is a one-card
+ *   permanent opt-out from the hook (and D11 covers at a DISCOUNT, making it
+ *   cheaper than a normal build);
+ * - the Barn prints the hand limit, and `handLimitOf` reads a missing Barn as
+ *   NO limit, silently stopping the design's master clock;
+ * - the Farmstead carries the suit power and the free-flip milestone;
+ * - and `demolish` puts the card in the barn where `barnTally` reads its
+ *   printed `suit`, so demolishing a base starter minted a free delivery good
+ *   plus 2 deck cards for nothing.
+ *
+ * This is also what keeps `noticeBoardOf`'s throw an invariant rather than a
+ * reachable crash - see the note there.
+ */
+function emptyBuildings(data: GameData, state: GameState, seat: Seat): CardId[] {
   return player(state, seat)
-    .tableau.filter((b) => b.stack.length === 0)
+    .tableau.filter((b) => b.stack.length === 0 && cardById(data, b.card).type !== 'starter')
     .map((b) => b.card);
 }
 
@@ -326,9 +344,9 @@ export const heritageHouse: CardHandler = {
   },
   tasks: {
     cover: {
-      answers(_data, state, task) {
+      answers(data, state, task) {
         // Never the Heritage House itself: the grow payment is sitting on it.
-        return emptyBuildings(state, task.pid)
+        return emptyBuildings(data, state, task.pid)
           .filter((card) => card !== task.src)
           .map((card) => ({ kind: 'card', payload: { card } }));
       },
@@ -434,8 +452,8 @@ export const creamRefinery: CardHandler = {
   },
   tasks: {
     demolish: {
-      answers(_data, state, task) {
-        return emptyBuildings(state, task.pid)
+      answers(data, state, task) {
+        return emptyBuildings(data, state, task.pid)
           .filter((card) => card !== task.src)
           .map((card) => ({ kind: 'card', payload: { card } }));
       },

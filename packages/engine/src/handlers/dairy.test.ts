@@ -386,6 +386,23 @@ describe('D11 The Heritage House - the cover-build', () => {
     expect(targets).toContain('D4');
   });
 
+  it('never offers a starter, base or upgraded (ticket 30)', () => {
+    const s = base();
+    buildFor(data, s, DAIRY, 'D11', 'D4');
+    dealTo(data, s, DAIRY, 'D5');
+    // The Notice Board is empty for most of a real game, and upgrading it is
+    // what would let a crop-icon reading back in - so prove both faces.
+    buildingOf(s, DAIRY, 'D3').upgraded = true;
+    const grown = growBuilding(data, s, DAIRY, 'D11', 'D5');
+    const targets = pendingAnswers(data, grown.state)
+      .filter((a) => a.kind === 'card')
+      .map((a) => a.payload.card);
+    expect(targets).not.toContain('D3'); // Notice Board, upgraded
+    expect(targets).not.toContain('D1'); // Barn
+    expect(targets).not.toContain('D2'); // Farmstead
+    expect(targets).toContain('D4'); // a real building still is one
+  });
+
   it('a covered card is invisible to endgame formulas', () => {
     const s = base();
     // D19 scores 1 per non-Dairy building; cover the wheat card and it stops counting.
@@ -411,6 +428,23 @@ describe('D14 The Cream Refinery - demolish into the barn', () => {
     state = answerAll(state);
     expect(player(state, DAIRY).barn).toHaveLength(3);
     expect(player(state, DAIRY).tableau.some((b) => b.card === 'D4')).toBe(false);
+  });
+
+  it('never offers a starter, so it cannot mint freight from one (ticket 30)', () => {
+    const s = base();
+    buildFor(data, s, DAIRY, 'D14', 'D4');
+    dealTo(data, s, DAIRY, 'D5');
+    buildingOf(s, DAIRY, 'D3').upgraded = true;
+    const grown = growBuilding(data, s, DAIRY, 'D14', 'D5');
+    const targets = pendingAnswers(data, grown.state)
+      .filter((a) => a.kind === 'card')
+      .map((a) => a.payload.card);
+    // `demolish` lands the card in the barn, where `barnTally` reads its printed
+    // suit - so a legal starter demolish was a free delivery good of your own crop.
+    expect(targets).not.toContain('D3');
+    expect(targets).not.toContain('D1');
+    expect(targets).not.toContain('D2');
+    expect(targets).toContain('D4');
   });
 
   it('scores nothing for the demolished card, unlike a cover', () => {
