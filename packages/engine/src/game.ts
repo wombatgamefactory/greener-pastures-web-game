@@ -18,6 +18,7 @@ import {
   doVisit,
   doWorkOwn,
   growOptions,
+  harvestAgainPower,
   harvestOptions,
   hasMainOption,
   hireOptions,
@@ -83,6 +84,12 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
       moves.push({ type: 'deliver', seat, tile: o.tile, spend: o.spend });
     }
     if (moves.length === 0) moves.push({ type: 'pass', seat });
+  } else if (turn.again === 'harvest') {
+    // The upgraded Wheat Farmstead's optional second harvest, declinable via
+    // endTurn (or by taking a bonus-slot move first - the gate stays open).
+    for (const building of harvestOptions(data, state, seat)) {
+      moves.push({ type: 'harvest', seat, building });
+    }
   }
 
   moves.push(...visitOptions(data, state, seat));
@@ -136,9 +143,15 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
   const fx = new Fx(data, draft, move.seat);
   const turn = draft.turn;
 
+  const againRepeat = move.type === 'harvest' && turn.actionSpent && turn.again === 'harvest';
   if (MAIN_ACTIONS.has(move.type)) {
-    if (turn.actionSpent) throw new Error('Main action already spent this turn');
-    turn.actionSpent = true;
+    if (!turn.actionSpent) {
+      turn.actionSpent = true;
+    } else if (againRepeat) {
+      turn.again = null; // the one repeat, consumed
+    } else {
+      throw new Error('Main action already spent this turn');
+    }
   }
 
   switch (move.type) {
@@ -159,6 +172,12 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
       break;
     case 'harvest':
       doHarvestAction(fx, move.seat, move.building);
+      // "Harvest is 2 buildings" (upgraded Wheat Farmstead): arm one optional
+      // repeat off the MAIN action only - a Worker's harvest never repeats,
+      // following the reference's afterMainAction gate.
+      if (!againRepeat && harvestAgainPower(data, draft, move.seat)) {
+        turn.again = 'harvest';
+      }
       break;
     case 'deliver':
       doDeliver(fx, move.seat, move.tile, move.spend);
@@ -178,6 +197,7 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
       if (!turn.actionSpent) throw new Error('End turn requires the action spent (or passed)');
       turn.ending = true;
       turn.visit = null;
+      turn.again = null;
       break;
     case 'cardMove': {
       const offered = standingMoves(data, draft, move.seat);

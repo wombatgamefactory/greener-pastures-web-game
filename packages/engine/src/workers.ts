@@ -54,7 +54,15 @@ export function workWorker(fx: Fx, actor: Seat, workerId: string, opts: WorkOpti
       break;
     }
     case 'harvest':
-      fx.pushTask({ t: 'chooseBuilding', pid: actor, src: null, filter: 'full', then: 'harvest' });
+      // 'harvestable', not 'full': the Worker performs the actor's Harvest
+      // action, so the Wheat Farmstead's relaxed gate composes (locked ruling).
+      fx.pushTask({
+        t: 'chooseBuilding',
+        pid: actor,
+        src: null,
+        filter: 'harvestable',
+        then: 'harvest',
+      });
       break;
     case 'sow':
       fx.pushTask({ t: 'sow', pid: actor, src: null, remaining: worker.sow?.amount ?? 1 });

@@ -119,7 +119,9 @@ describe('3. The Pie Shop (W17) - "£1 per non-wheat card in the harvest"', () =
     // Harvest through the Harvest Worker: chooseBuilding task -> pick W4.
     const out = workOwnWorker(data, s, WHEAT, 'harvest');
     const state = answerAll(out.state);
-    expect(player(state, WHEAT).coins).toBe(w4Threshold); // every card was non-wheat
+    // Pie Shop pays per non-wheat card, plus W4's own printed £1 on harvest
+    // (its handler landed with ticket 18).
+    expect(player(state, WHEAT).coins).toBe(w4Threshold + 1);
     expect(player(state, WHEAT).barn).toHaveLength(w4Threshold);
     // Own use: meeple advanced, no wage minted for anyone.
     expect(workerState(state, 'harvest').trackPos).toBe(1);

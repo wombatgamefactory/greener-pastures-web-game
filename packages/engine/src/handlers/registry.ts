@@ -15,12 +15,51 @@ import type { CardId } from '../state.js';
 import { herbHive, meadowHive } from './apiary.js';
 import { helpingHand } from './helpingHand.js';
 import type { CardHandler } from './types.js';
-import { bakery, pieShop, wheatExchange } from './wheat.js';
+import {
+  bakehouse,
+  bakery,
+  barleyField,
+  breadHall,
+  cropRotation,
+  furrow,
+  goldenField,
+  granary,
+  grandGranary,
+  heritageField,
+  millHouse,
+  patisserie,
+  pieShop,
+  pizzeria,
+  ryeField,
+  wheatBarn,
+  wheatExchange,
+  wheatFarmstead,
+  wheatField,
+  wheatNoticeBoard,
+} from './wheat.js';
 
 const HANDLERS = new Map<CardId, CardHandler>([
+  // Wheat - the full suit (ticket 18).
+  ['W1', wheatBarn],
+  ['W2', wheatFarmstead],
+  ['W3', wheatNoticeBoard],
+  ['W4', wheatField],
+  ['W5', ryeField],
+  ['W6', barleyField],
+  ['W7', goldenField],
+  ['W8', heritageField],
+  ['W9', millHouse],
+  ['W10', furrow],
+  ['W11', bakehouse],
+  ['W12', cropRotation],
   ['W13', bakery],
+  ['W14', pizzeria],
+  ['W15', patisserie],
+  ['W16', granary],
   ['W17', pieShop],
   ['W19', wheatExchange],
+  ['W20', grandGranary],
+  ['W21', breadHall],
   ['A4', herbHive],
   ['A5', meadowHive],
   // One Power card per suit, shared name, identical text on all five copies -

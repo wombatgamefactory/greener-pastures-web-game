@@ -134,6 +134,21 @@ export class Fx {
     return taken;
   }
 
+  /**
+   * Lift ONE card out of a building's stack into its owner's barn (the
+   * Pizzeria shape; the Dairy/Orchard stack-manipulation cards share it).
+   * Not a harvest: the building may reopen, but no on-harvest passive fires.
+   */
+  stackCardToBarn(seat: Seat, building: CardId, card: CardId): void {
+    this.touch(seat);
+    const b = this.buildingDraft({ seat, card: building });
+    const i = b.stack.indexOf(card);
+    if (i < 0) throw new Error(`${card} is not on ${building}'s stack`);
+    b.stack.splice(i, 1);
+    player(this.state, seat).barn.push(card);
+    this.emit({ e: 'stackToBarn', seat, building, card });
+  }
+
   /** Top of a deck straight into a barn (the Patisserie / Meadow Hive shape). No-op when the suit is exhausted. */
   deckTopToBarn(seat: Seat, suit: Suit): void {
     const card = this.takeDeckTop(suit);

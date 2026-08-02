@@ -8,7 +8,7 @@
 
 import type { GameData } from '@gp/data';
 
-import { handLimitOf, hasBonusOption } from './actions.js';
+import { handLimitOf, harvestOptions, hasBonusOption } from './actions.js';
 import type { Fx } from './fx.js';
 import { player } from './query.js';
 import { standingMoves } from './runtime.js';
@@ -25,6 +25,11 @@ export function settleTurn(data: GameData, draft: GameState, fx: Fx): void {
   const turn = draft.turn;
   if (!turn.ending) {
     if (!turn.actionSpent) return;
+    // An armed ActionAgain repeat with a live target holds the turn open,
+    // exactly like an unspent bonus slot; with no target it lapses silently.
+    if (turn.again === 'harvest' && harvestOptions(data, draft, draft.turnPlayer).length > 0) {
+      return;
+    }
     if (hasBonusOption(data, draft, draft.turnPlayer)) return;
     if (standingMoves(data, draft, draft.turnPlayer).length > 0) return;
     turn.ending = true;

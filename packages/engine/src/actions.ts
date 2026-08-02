@@ -20,7 +20,6 @@ import {
   canTakeCard,
   cardById,
   faceOf,
-  fullBuildings,
   drawableSuits,
   isFull,
   noticeBoardOf,
@@ -146,12 +145,27 @@ export function doBuild(fx: Fx, seat: Seat, card: CardId, payment: CardId[]): vo
   fx.removeFromHand(seat, card);
   for (const id of payment) fx.removeFromHand(seat, id);
   fx.discard(payment);
-  p.tableau.push({ card, stack: [], upgraded: false });
-  fx.emit({ e: 'built', seat, card, payment, coins: cost.coins });
+  placeBuilt(fx, seat, card, payment, cost.coins);
+}
 
-  // The Farmstead flips FREE at the milestone (own-colour deck builds) - the
-  // design docs win over the reference's paid flip, per ticket 04.
-  if (c.suit === p.suit) {
+/**
+ * The build's landing half, shared with cost-waiving effects (W10's free
+ * FIELD build): the card enters the tableau and the Farmstead milestone is
+ * checked. The Farmstead flips FREE at the milestone (own-colour deck
+ * builds) - the design docs win over the reference's paid flip, per ticket 04.
+ */
+export function placeBuilt(
+  fx: Fx,
+  seat: Seat,
+  card: CardId,
+  payment: CardId[],
+  coins: number,
+): void {
+  const p = player(fx.state, seat);
+  p.tableau.push({ card, stack: [], upgraded: false });
+  fx.emit({ e: 'built', seat, card, payment, coins });
+
+  if (cardById(fx.data, card).suit === p.suit) {
     const ownBuilds = p.tableau.filter(
       (b) => cardById(fx.data, b.card).inDeck && cardById(fx.data, b.card).suit === p.suit,
     ).length;
@@ -248,15 +262,55 @@ export function growOptions(data: GameData, state: GameState, seat: Seat): GrowO
 
 // --- Harvest ---------------------------------------------------------------
 
-/** The strict action gate: full buildings only. Wheat's relaxed gate is a Farmstead power, ticket 18. */
+/**
+ * The harvest surcharge a card prints ("You must pay £1 to Harvest this
+ * Field", W8), keyed by the data trigger so nothing here names a card. The £1
+ * is printed text, like every ability number in a handler.
+ */
+export function harvestSurchargeOf(data: GameData, card: CardId): number {
+  return cardById(data, card).abilityTrigger.includes('harvestSurcharge') ? 1 : 0;
+}
+
+/** Printed on the Wheat Farmstead: "Harvest: Any card with 2+ cards on it, even if not full." */
+const WHEAT_RELAXED_MIN = 2;
+
+/**
+ * The Harvest ACTION's targets. Strict gate: full buildings. The Wheat
+ * Farmstead's base power (live from turn 1) adds any building with 2+ cards
+ * even if not full - a true union, and the gates genuinely cross: a
+ * threshold-1 building is strict-harvestable at 1 card but never
+ * relaxed-harvestable. Surcharged buildings (W8) drop out when the seat
+ * cannot pay. Card-effect harvests do NOT inherit the relaxation; the Harvest
+ * Worker does (suit powers apply to Worker actions - the 'harvestable' task
+ * filter routes through here).
+ */
 export function harvestOptions(data: GameData, state: GameState, seat: Seat): CardId[] {
-  return fullBuildings(data, state, seat).map((b) => b.card);
+  const p = player(state, seat);
+  const relaxed = p.suit === 'wheat';
+  return p.tableau
+    .filter((b) => isFull(data, b) || (relaxed && b.stack.length >= WHEAT_RELAXED_MIN))
+    .filter((b) => harvestSurchargeOf(data, b.card) <= p.coins)
+    .map((b) => b.card);
+}
+
+/**
+ * The upgraded Wheat Farmstead's "Harvest is 2 buildings": one optional
+ * repeat of the Harvest ACTION (the `turn.again` gate). Main action only,
+ * following the reference - a Worker's harvest never offers the repeat.
+ */
+export function harvestAgainPower(data: GameData, state: GameState, seat: Seat): boolean {
+  const p = player(state, seat);
+  if (p.suit !== 'wheat') return false;
+  const farmstead = p.tableau.find((b) => cardById(data, b.card).slot === 'farmstead');
+  return farmstead?.upgraded ?? false;
 }
 
 export function doHarvestAction(fx: Fx, seat: Seat, building: CardId): void {
-  const b = player(fx.state, seat).tableau.find((x) => x.card === building);
-  if (!b) throw new Error(`Seat ${seat} has not built ${building}`);
-  if (!isFull(fx.data, b)) throw new Error(`${building} is not full`);
+  if (!harvestOptions(fx.data, fx.state, seat).includes(building)) {
+    throw new Error(`${building} is not harvestable by seat ${seat}`);
+  }
+  const fee = harvestSurchargeOf(fx.data, building);
+  if (fee > 0) fx.payCoins(seat, fee, `surcharge:${building}`);
   fx.harvest(seat, building);
 }
 
@@ -392,7 +446,8 @@ export function workerActionLegal(
     case 'draw':
       return drawableSuits(data, state).length > 0;
     case 'harvest':
-      return fullBuildings(data, state, seat).length > 0;
+      // harvestOptions, not fullBuildings: suit powers apply to Worker actions.
+      return harvestOptions(data, state, seat).length > 0;
     case 'sow':
       return hand.length > 0 && player(state, seat).tableau.some((b) => canTakeCard(data, b));
     case 'build':

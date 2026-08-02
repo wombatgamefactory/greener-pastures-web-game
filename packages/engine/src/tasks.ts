@@ -21,12 +21,14 @@ import {
   deliverOptions,
   doBuild,
   doDeliver,
+  harvestOptions,
+  harvestSurchargeOf,
   subsets,
   workerActionLegal,
 } from './actions.js';
 import type { Fx } from './fx.js';
 import { canTakeCard, drawableSuits, fullBuildings, player, workerState } from './query.js';
-import type { GameState, Task, TaskAnswer } from './state.js';
+import type { BuildingState, GameState, Task, TaskAnswer } from './state.js';
 import { workWorker } from './workers.js';
 import { handlerFor } from './handlers/registry.js';
 
@@ -55,19 +57,33 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
     }
 
     case 'chooseBuilding': {
-      const pool =
-        task.filter === 'full'
-          ? fullBuildings(data, state, task.pid)
-          : player(state, task.pid).tableau.filter((b) => canTakeCard(data, b));
+      const p = player(state, task.pid);
+      let pool =
+        task.filter === 'harvestable'
+          ? harvestOptions(data, state, task.pid).map(
+              (id) => p.tableau.find((b) => b.card === id) as BuildingState,
+            )
+          : task.filter === 'full'
+            ? fullBuildings(data, state, task.pid)
+            : p.tableau.filter((b) => canTakeCard(data, b));
+      if (task.exclude !== undefined) pool = pool.filter((b) => b.card !== task.exclude);
+      // A harvest pays the target's printed surcharge (W8): unaffordable
+      // targets are never offered, matching the action gate.
+      if (task.then === 'harvest') {
+        pool = pool.filter((b) => harvestSurchargeOf(data, b.card) <= p.coins);
+      }
       return pool.map((b) => ({ kind: 'building', card: b.card }));
     }
 
     case 'sow': {
       const hand = player(state, task.pid).hand;
-      const targets = player(state, task.pid).tableau.filter((b) => canTakeCard(data, b));
-      return hand.flatMap((card) =>
+      let targets = player(state, task.pid).tableau.filter((b) => canTakeCard(data, b));
+      if (task.targets) targets = targets.filter((b) => task.targets?.includes(b.card));
+      const out = hand.flatMap((card) =>
         targets.map((b) => ({ kind: 'sow', card, onto: b.card }) as TaskAnswer),
       );
+      if (task.optional === true && out.length > 0) out.push({ kind: 'skip' });
+      return out;
     }
 
     case 'build':
@@ -129,11 +145,14 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
 
     case 'chooseBuilding': {
       if (answer.kind !== 'building') throw new Error('chooseBuilding expects a building answer');
+      const fee = harvestSurchargeOf(fx.data, answer.card);
+      if (fee > 0) fx.payCoins(task.pid, fee, `surcharge:${answer.card}`);
       fx.harvest(task.pid, answer.card);
       return true;
     }
 
     case 'sow': {
+      if (answer.kind === 'skip' && task.optional === true) return true;
       if (answer.kind !== 'sow') throw new Error('sow expects a sow answer');
       fx.placeOnBuilding(task.pid, { seat: task.pid, card: answer.onto }, answer.card);
       task.remaining -= 1;

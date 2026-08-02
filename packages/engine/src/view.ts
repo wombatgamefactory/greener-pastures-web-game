@@ -170,6 +170,7 @@ export function redactEvents(events: GameEvent[], seat: Seat): GameEvent[] {
       case 'harvested':
         return { ...event, cards: event.cards.map(maskCard) };
       case 'deckToBarn':
+      case 'stackToBarn':
         return { ...event, card: maskCard(event.card) };
       default:
         return event;

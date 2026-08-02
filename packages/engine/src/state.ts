@@ -89,6 +89,15 @@ export interface TurnState {
    * re-works this worker. `repeats` counts repeats taken this visit.
    */
   visit: { host: Seat; workerId: WorkerAction; repeats: number } | null;
+  /**
+   * The ActionAgain gate (the reference's state 14): an upgraded Farmstead's
+   * one optional repeat of the main action just taken. 'harvest' = the Wheat
+   * "Harvest is 2 buildings"; the Dairy Build-again extends this union.
+   * Armed by apply after the qualifying MAIN action (never a Worker's - the
+   * reference offers the repeat from afterMainAction only), consumed by the
+   * repeat move, declined by endTurn or by the turn settling.
+   */
+  again: 'harvest' | null;
 }
 
 /**
@@ -129,11 +138,19 @@ export type Task =
       revealed: CardId[];
     }
   | {
-      /** Pick one of your own buildings matching the filter, then do `then` to it. */
+      /**
+       * Pick one of your own buildings matching the filter, then do `then` to
+       * it. 'harvestable' is the Harvest ACTION's own target set (strict-full
+       * plus the Wheat Farmstead's 2+ relaxation, surcharge-affordable) - the
+       * Harvest Worker uses it so suit powers compose; card effects use the
+       * plain gates. A harvest pays the target's surcharge (W8) on resolve.
+       */
       t: 'chooseBuilding';
       pid: Seat;
       src: CardId | null;
-      filter: 'full' | 'notFull';
+      filter: 'full' | 'notFull' | 'harvestable';
+      /** Never a legal target (W5's "Harvest another card"). */
+      exclude?: CardId;
       then: 'harvest';
     }
   | {
@@ -142,6 +159,10 @@ export type Task =
       pid: Seat;
       src: CardId | null;
       remaining: number;
+      /** Restrict targets to these buildings (W9/W12's "sow onto your FIELDs"). */
+      targets?: CardId[];
+      /** "You may": a skip answer is offered and ends the task. */
+      optional?: boolean;
     }
   | {
       /** A full Build action mid-effect (the Build Worker). Answers come from the same enumerator as the Build move. */
@@ -273,6 +294,8 @@ export type GameEvent =
   | { e: 'cardsToHand'; seat: Seat; cards: CardId[] }
   | { e: 'cardsDiscarded'; suit: Suit; cards: CardId[] }
   | { e: 'deckToBarn'; seat: Seat; suit: Suit; card: CardId }
+  /** One card lifted from a building's stack into its owner's barn (W14) - NOT a harvest, no on-harvest passives. */
+  | { e: 'stackToBarn'; seat: Seat; building: CardId; card: CardId }
   | { e: 'harvested'; seat: Seat; building: CardId; cards: CardId[] }
   | { e: 'workerWorked'; seat: Seat; workerId: WorkerAction; owner: Seat | null; free: boolean }
   | { e: 'workerAdvanced'; workerId: WorkerAction; to: number; wage: number; paidTo: Seat | null }
