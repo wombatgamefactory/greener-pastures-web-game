@@ -19,7 +19,11 @@ import { Card } from './Card';
 export function DragGhost({ data, drag, width }: { data: GameData; drag: Drag; width: number }) {
   return (
     <div className="drag-ghost" ref={drag.ghost} aria-hidden="true">
-      {drag.card && <Card face={printedFace(data, drag.card)} width={width} />}
+      {/* `card-readable` because this card was in hand a frame ago and is going
+          back there if the drop misses: it must not change costume in flight. */}
+      {drag.card && (
+        <Card face={printedFace(data, drag.card)} width={width} className="card-readable" />
+      )}
     </div>
   );
 }

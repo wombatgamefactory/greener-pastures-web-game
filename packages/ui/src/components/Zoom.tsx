@@ -1,10 +1,14 @@
 /**
  * Hover zoom: the one place any card is read in full.
  *
- * Everything else in the interface renders cards small enough that the ability
- * band is suppressed (see card.css), which is only honest because this exists.
- * It fetches the 1040px art tier, so the play tier stays small and the heavy
- * image is only ever requested for a card someone is actually reading.
+ * The tableau, the rail and the commons render cards small enough that the
+ * ability band is suppressed (see card.css), which is only honest because this
+ * exists. It fetches the 1040px art tier, so the play tier stays small and the
+ * heavy image is only ever requested for a card someone is actually reading.
+ *
+ * The hand no longer needs it: those cards print their text and grow on hover.
+ * The panel still answers them, because it is also the second face of an
+ * upgradable starter and the only place `zoom-other` is shown.
  */
 
 import { useCallback, useState } from 'react';

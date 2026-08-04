@@ -10,7 +10,9 @@
  *
  * Small sizes drop what would be illegible rather than shrinking it into mush:
  * the ability band goes below 260px and the cost bar below 150px (both in
- * card.css). That is what hover zoom is for.
+ * card.css). That is what hover zoom is for. The one exception is the hand,
+ * which passes `className="card-readable"` to keep the whole card printed and
+ * scales it on hover instead - there the text is the decision, not a detail.
  */
 
 import type { Suit } from '@gp/data';

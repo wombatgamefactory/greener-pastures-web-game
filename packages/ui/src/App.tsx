@@ -24,6 +24,7 @@ import { isPolicyId } from '@gp/bots';
 import type { PolicyId } from '@gp/bots';
 import type { Move } from '@gp/engine';
 
+import { gameFinished, gameStarted } from './session/analytics';
 import { CapturePanel } from './components/CapturePanel';
 import { Result } from './components/Result';
 import { Start } from './components/Start';
@@ -133,6 +134,24 @@ export function App() {
     return () => clearTimeout(timer);
   }, [session, snapshot, pace, bump]);
 
+  // Report the finished table once. `over` stays true for every frame the
+  // scoring screen is up, and `gameFinished` is paired with a `gameStarted`
+  // that a query-string session never fires, so the ref is only guarding
+  // against re-renders, not against the warm-up walk.
+  const reported = useRef(false);
+  useEffect(() => {
+    if (snapshot === null || !snapshot.over || snapshot.score === null) return;
+    if (reported.current) return;
+    reported.current = true;
+    gameFinished({
+      seats: snapshot.view.seats,
+      suit: snapshot.view.you.suit,
+      moves: snapshot.played,
+      rank: snapshot.score.ranking.indexOf(YOU) + 1,
+      vp: snapshot.score.seats[YOU]?.total ?? 0,
+    });
+  }, [snapshot]);
+
   if (session === null || snapshot === null) {
     return (
       <Start
@@ -140,6 +159,12 @@ export function App() {
           setSession(new Session(data, options));
           setStalled(false);
           setRevision(0);
+          reported.current = false;
+          gameStarted({
+            seats: options.seats,
+            suit: options.suits[YOU] ?? 'wheat',
+            bots: options.opponents[1] ?? 'balanced',
+          });
         }}
       />
     );

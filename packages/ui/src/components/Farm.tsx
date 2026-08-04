@@ -105,13 +105,18 @@ function Barn({ barn, cardWidth }: { barn: Partial<Record<Suit, number>>; cardWi
  * the sources would glow the lot. `is-picked` is the other selection state: a
  * card marked for a discard or chosen as payment, which is a commitment rather
  * than a question.
+ *
+ * The hand is the one region that does NOT feed the zoom panel: its cards print
+ * their own text and grow to reading size under the pointer (`card-readable` in
+ * card.css, `.hand-card:hover` in table.css). Sending them to the panel as well
+ * put the same card on screen twice, side by side and overlapping, and at the
+ * 700px floor the panel won and covered the card you were reading.
  */
 function Hand({
   data,
   hand,
   cardWidth,
   handSize,
-  zoom,
   play,
   drag,
 }: {
@@ -119,7 +124,6 @@ function Hand({
   hand: readonly string[];
   cardWidth: number;
   handSize: number | null;
-  zoom: Zoomer;
   play?: Play | undefined;
   drag?: Drag | undefined;
 }) {
@@ -136,7 +140,7 @@ function Hand({
           {over ? ' - discard at end of turn' : ''}
         </em>
       </h3>
-      <div className="hand" onMouseLeave={() => zoom.clear()}>
+      <div className="hand">
         {hand.length === 0 && <p className="empty-note">No cards. Every visit costs one.</p>}
         {hand.map((id, i) => {
           const live = play?.live.hand.has(id) ?? false;
@@ -146,7 +150,6 @@ function Hand({
               key={`${id}-${i}`}
               className={`hand-card${state}${mark(play, live)}`}
               style={{ zIndex: i }}
-              onMouseEnter={() => zoom.show(id)}
               onPointerDown={drag ? (e) => drag.start(id, e) : undefined}
               // A drag ends in a click too. `consumeClick` is what keeps the
               // release from picking the card straight back up (ticket 26).
@@ -161,7 +164,10 @@ function Hand({
                   : undefined
               }
             >
-              <Card face={printedFace(data, id)} width={cardWidth} />
+              {/* `card-readable` keeps the ability band alive at play size:
+                  the hand is the one place the text IS the decision, so it is
+                  not allowed to fall back to the zoom panel (card.css). */}
+              <Card face={printedFace(data, id)} width={cardWidth} className="card-readable" />
             </div>
           );
         })}
@@ -244,7 +250,6 @@ export function Farm({
           hand={view.you.hand}
           cardWidth={handWidth}
           handSize={handSizeOf(data, view.you.tableau)}
-          zoom={zoom}
           play={play}
           drag={drag}
         />

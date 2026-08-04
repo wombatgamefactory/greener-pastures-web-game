@@ -43,6 +43,13 @@
   --island-tile-w: 58px;
   --gap: 12px;
 
+  /* A hovered hand card scales to roughly the 400px the zoom panel uses, which
+     is the width the card's own type was set for. It is a multiplier rather than
+     a width because the fan must not reflow, so the growth is a transform - and
+     it is written out per step alongside `--card-hand` because the two are one
+     number: change the hand size and this comes with it. */
+  --hand-hover-scale: 2.1; /* 190 -> 399px */
+
   color-scheme: light;
   font-family: var(--font-ui);
   color: var(--ink);
@@ -60,6 +67,7 @@
     --card-inspector: 136px;
     --island-tile-w: 50px;
     --gap: 10px;
+    --hand-hover-scale: 2.4; /* 158 -> 379px */
   }
 }
 
@@ -75,6 +83,7 @@
     --card-inspector: 186px;
     --island-tile-w: 68px;
     --gap: 14px;
+    --hand-hover-scale: 1.8; /* 236 -> 425px */
   }
 }
 
@@ -87,6 +96,9 @@
     --card-inspector: 118px;
     --island-tile-w: 44px;
     --gap: 8px;
+    /* The floor. 700px of height is what caps this: a taller card would grow up
+       through the commons and off the top of the table, which clips. */
+    --hand-hover-scale: 2.5; /* 132 -> 330px */
   }
 }
 

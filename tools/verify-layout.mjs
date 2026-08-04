@@ -185,11 +185,31 @@ async function measure(page, url, viewport) {
             ...box(el),
           }))
         : [];
+      /**
+       * The hand fan against the barn beside it - the one pair in the layout
+       * that can collide without anything falling off the screen, so neither the
+       * fold check nor the horizontal-scroll check sees it.
+       *
+       * The fan overflows its own grid column by design (the cards are a fixed
+       * width and the slots shrink under them), which means "does `.hand` fit"
+       * is the wrong question: what matters is the right edge of the LAST card.
+       * Measured at 120px over the barn at 1600x900 before the slots were
+       * allowed to shrink.
+       */
+      const cards = [...document.querySelectorAll('.hand-card')];
+      const barn = document.querySelector('.barn');
+      const fanOverBarn =
+        cards.length && barn
+          ? Math.round(
+              cards.at(-1).getBoundingClientRect().right - barn.getBoundingClientRect().left,
+            )
+          : null;
       return {
         vw,
         vh,
         pageScrollsX: document.documentElement.scrollWidth > vw + 1,
         pageScrollsY: document.documentElement.scrollHeight > vh + 1,
+        fanOverBarn,
         boxes: [...results, ...rivals],
       };
     },
@@ -255,6 +275,13 @@ try {
           `  ok    ${b.name}  ${(b.bottom - b.top).toFixed(0)}px tall, ends at ${b.bottom.toFixed(0)}`,
         );
       }
+    }
+
+    if (report.fanOverBarn !== null && report.fanOverBarn > 1) {
+      console.log(`  FAIL  the hand fan runs ${report.fanOverBarn}px over the barn`);
+      failures++;
+    } else if (report.fanOverBarn !== null) {
+      console.log(`  ok    the hand fan clears the barn by ${-report.fanOverBarn}px`);
     }
 
     if (shotPath) {

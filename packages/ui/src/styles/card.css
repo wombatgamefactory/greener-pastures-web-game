@@ -228,44 +228,66 @@
 
 /* ---- what a small card drops ------------------------------------------- */
 
+/*
+ * Every drop below is `:not(.card-readable)`. A readable card is one whose text
+ * the player has to be able to get at without leaving it - the hand, where the
+ * text IS the decision (which of these do I spend?) - so it is always drawn in
+ * full, at the printed proportions above, at whatever width it is rendered.
+ *
+ * Excluding it from the drops rather than overriding them afterwards is what
+ * keeps the geometry in one place: a readable card restates no number, so the
+ * printed layout above cannot be tuned and silently disagreed with here.
+ *
+ * The hand's own answer to legibility is hover, which SCALES the card (see
+ * `.hand-card:hover` in table.css). Note that this cannot be a container query:
+ * a transform leaves the layout box alone, so a 132px card blown up to 330px on
+ * screen still measures 132px to `@container` and would drop everything it was
+ * being enlarged to show.
+ */
 @container card (max-width: 260px) {
-  .card-ability,
-  .card-band-icon {
+  .card:not(.card-readable) .card-ability,
+  .card:not(.card-readable) .card-band-icon {
     display: none;
   }
 
-  .card-band {
+  .card:not(.card-readable) .card-band {
     opacity: 0.75;
   }
 
+  /* The name is the last thing to go illegible, so BOTH kinds of card take the
+     bigger type. Only the offset is conditional: a card that has dropped its top
+     band pulls the name up into the space, and a readable one has not. */
   .card-name {
     font-size: 6.4cqw;
     -webkit-text-stroke-width: 1cqw;
+  }
+
+  .card:not(.card-readable) .card-name {
     top: 15%;
   }
 
-  .card-ref {
+  .card:not(.card-readable) .card-ref {
     display: none;
   }
 }
 
 @container card (max-width: 150px) {
-  .card-cost {
+  .card:not(.card-readable) .card-cost {
     display: none;
   }
 
-  .card-band {
+  .card:not(.card-readable) .card-band {
     display: none;
   }
 
-  .card-name {
+  .card:not(.card-readable) .card-name {
     top: 4%;
     left: 15%;
     right: 4%;
     font-size: 8cqw;
   }
 
-  .card-threshold {
+  .card:not(.card-readable) .card-threshold {
     font-size: 22cqw;
   }
 }

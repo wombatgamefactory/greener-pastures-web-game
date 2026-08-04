@@ -681,28 +681,80 @@
   min-height: calc(var(--card-hand) * 0.722);
 }
 
-/* The fan tightens only as the hand grows. A fixed overlap clipped the names
-   off a four-card hand for no reason; peak hand is 7 (measured, ticket 09) and
-   only that needs the full squeeze to stay on one row at the floor. */
+/*
+ * The fan tightens itself to the row it is given, not to a card count.
+ *
+ * Each slot may shrink while the card inside keeps its printed width, so the
+ * cards slide over one another by exactly as much as the row is short by and no
+ * more. That is what a count-keyed overlap could not do: it knew the hand size
+ * but nothing about how wide the barn beside it had grown, so a barn with three
+ * piles pushed the last card 120px over it (measured at 1600x900).
+ *
+ * Two declarations carry it. `min-width` is load-bearing, not a nicety: a flex
+ * item's automatic minimum is its min-content size, which for a slot wrapping a
+ * fixed-width card is the whole card - so without it nothing shrinks at all.
+ * And the LAST slot must not shrink: every card is drawn from its slot's left
+ * edge, so a shrunken last slot would put its card's right edge back outside the
+ * row by exactly what it gave up.
+ */
+.hand-card {
+  flex: 0 1 auto;
+  /* The sliver that always stays grabbable: crop chip, VP and threshold. */
+  min-width: calc(var(--card-hand) * 0.2);
+}
+
+.hand-card:last-child {
+  flex: none;
+}
+
+/* A resting overlap even when the row has room to spare, so the hand reads as a
+   fan rather than a line of tiles. Shrink takes it further from here. */
 .hand-card + .hand-card {
   margin-left: calc(var(--card-hand) * -0.1);
 }
 
-.hand:has(.hand-card:nth-child(5)) .hand-card + .hand-card {
-  margin-left: calc(var(--card-hand) * -0.28);
+/*
+ * Hover lifts the card out of the fan and scales it to reading size, so the hand
+ * is read in place rather than off the zoom panel in the corner. The transform
+ * grows it UP from its own bottom edge: the fan's baseline stays put, the fan
+ * does not reflow (a width change would), and the growth goes over the tableau,
+ * which is the one region above the hand that can be covered harmlessly.
+ *
+ * It is set on the CARD, not on the slot. The slot is the thing that shrinks, so
+ * its centre sits left of the card's and scaling about it would throw every
+ * squeezed card rightwards. Scaling about the card's own box also leaves the
+ * slot free to carry `is-held` and `is-picked`, which are transforms too.
+ */
+.hand-card .card {
+  transition: transform 130ms ease;
 }
 
-.hand:has(.hand-card:nth-child(7)) .hand-card + .hand-card {
-  margin-left: calc(var(--card-hand) * -0.44);
-}
-
-.hand-card {
-  transition: transform 120ms ease;
-}
-
-.hand-card:hover {
-  transform: translateY(-10px);
+.hand .hand-card:hover,
+.hand .hand-card:focus-visible {
   z-index: 50 !important;
+  outline: none;
+}
+
+.hand .hand-card:hover .card,
+.hand .hand-card:focus-visible .card {
+  transform: translateY(-6px) scale(var(--hand-hover-scale));
+  transform-origin: bottom center;
+  box-shadow: var(--shadow-lift);
+}
+
+/* Tabbing through the hand is how it is read without a mouse, so the keyboard
+   gets the same expansion. The ring moves from the slot to the card with it: the
+   slot is the shrunken box, so a ring left there would trace a rectangle down
+   the card's left edge and would not scale with the card it belongs to. */
+.hand .hand-card:focus-visible .card {
+  outline: 2px solid var(--seat-pip, #3f7a3a);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hand-card .card {
+    transition: none;
+  }
 }
 
 .barn-piles {

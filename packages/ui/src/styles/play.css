@@ -96,9 +96,10 @@ body.is-dragging {
   user-select: none;
 }
 
-/* The fan's hover lift fights a card in flight: the pointer passes back over
-   the hand on the way to the rail and cards pop up under the ghost. */
-body.is-dragging .hand-card:hover {
+/* The fan's hover expansion fights a card in flight: the pointer passes back
+   over the hand on the way to the rail and cards blow up under the ghost. The
+   selector reaches the CARD because that is where table.css puts the transform. */
+body.is-dragging .hand-card:hover .card {
   transform: none;
 }
 
