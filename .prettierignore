@@ -1,6 +1,9 @@
 dist/
 node_modules/
 .scratch/
+.scratchprobe/
+.probe/
+captures/
 reports/
 package-lock.json
 

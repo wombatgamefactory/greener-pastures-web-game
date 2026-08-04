@@ -6,15 +6,17 @@ about farms that cannot run alone.
 You farm one crop. Your neighbours farm the others. The way to make money is to own the thing
 your neighbours want to use, so the whole island competes to be the farm everyone needs.
 
-> **Status: early scaffolding.** Nothing is playable yet.
+> **Status: playable.** Pick a suit, play a full game against bots, and score it.
 
 ## What this repo is
 
-Three units, one rules engine:
+Five packages, one rules engine:
 
 | Package           | What it is                                                                      |
 | ----------------- | ------------------------------------------------------------------------------- |
 | `packages/engine` | The rules. Framework-free TypeScript, no DOM and no Node. Runs anywhere.        |
+| `packages/data`   | Card and rule numbers, plus a tuning overlay the simulator can vary.            |
+| `packages/bots`   | The AI opponents. A policy sees a redacted view, never the true state.          |
 | `packages/ui`     | The React front end. Ships to GitHub Pages.                                     |
 | `packages/sim`    | A headless Node simulator that plays thousands of games and reports on balance. |
 

@@ -42,6 +42,15 @@ This repo will be made public, and going public exposes the whole history rather
 the current tree, so a leak has to be caught before the commit rather than after. It has
 already happened once.
 
+`npm run check:disclosure:history` scans every blob and commit message reachable from any
+ref instead of the working tree. That is the question the default mode cannot answer: the
+working-tree scan goes green the moment an offending line is deleted, but the blob is still
+served to anyone holding the commit SHA. It is not part of `npm run check` because CI checks
+out at `fetch-depth: 1` and would scan one commit and call it clean. Run it locally, and run
+it before any change to who can read this repo.
+
+The second time it happened, it was caught by this mode and not the default one.
+
 Widening the forbidden list is cheap. Narrowing it needs a reason.
 
 ## Tuning overlays
