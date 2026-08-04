@@ -31,6 +31,7 @@ import {
   makePolicy,
   makeScratch,
   policyRng,
+  TERMS,
 } from '@gp/bots';
 
 import { assignProfiles, runGame } from './driver.js';
@@ -170,6 +171,7 @@ describe('the probe answers NOW', () => {
       next: [],
       truncated: false,
       pending: null,
+      handSize: 0,
       step: () => {
         throw new Error('no step expected');
       },
@@ -187,11 +189,25 @@ describe('the probe answers NOW', () => {
  * zero in 82.2% of the positions it was offered in, against 0.0% for all four
  * other Workers. It is the one the design calls a traffic magnet, and watch-list
  * assertion 7 exists to measure how much it attracts.
+ *
+ * Ticket 49 split the assertion in two, and the reason is that ticket 50's own
+ * proxy stopped meaning what it said. The price is now capped by ROOM IN HAND,
+ * so a seat renting a Draw Worker with a full hand is priced at zero on purpose:
+ * it draws into its own end-of-turn discard. That is a valuation, not the
+ * blindness this test was written to catch, and lumping the two together would
+ * either hide a regression or forbid a correct answer. So the rate is measured
+ * where there IS room - the only place the old claim can be tested - and the
+ * full-hand zeroes are asserted separately as the intended behaviour.
  */
 describe('a pending draw', () => {
   it('prices a rented Draw Worker as the cards it will keep, not as zero', () => {
     const zeroes: number[] = [];
     const values: number[] = [];
+    /** Split by whether the seat had room AFTER paying the visit fee. */
+    const withRoom: number[] = [];
+    const zeroesWithRoom: number[] = [];
+    const noRoom: number[] = [];
+    const nonZeroWithNoRoom: number[] = [];
 
     for (const seats of [2, 3]) {
       for (let n = 0; n < 3; n++) {
@@ -218,21 +234,112 @@ describe('a pending draw', () => {
           });
           if (rented.length > 0) {
             const scratch = makeScratch(data, viewFor(data, state, seat));
-            const outcomes = makeOutcomes(scratch, BALANCED, makeProber(data, state, seat));
-            const value = outcomes.value(rented[0] as Move);
+            const prober = makeProber(data, state, seat);
+            const outcomes = makeOutcomes(scratch, BALANCED, prober);
+            const move = rented[0] as Move;
+            const value = outcomes.value(move);
             values.push(value);
             if (value === 0) zeroes.push(value);
+            // The room the pricer itself sees: after the fee has left hand.
+            const limit = scratch.handLimit ?? Infinity;
+            if (prober(move).handSize < limit) {
+              withRoom.push(value);
+              if (value === 0) zeroesWithRoom.push(value);
+            } else {
+              noRoom.push(value);
+              if (value !== 0) nonZeroWithNoRoom.push(value);
+            }
           }
           state = apply(data, state, move).state;
         }
       }
     }
 
-    // Vacuous unless a Draw Worker really was rentable.
+    // Vacuous unless a Draw Worker really was rentable, with both cases met.
     expect(values.length, 'no seat was ever offered a rival Draw Worker').toBeGreaterThan(20);
-    // It was 82.2% before the fix. A stray zero is a legitimate position (an
-    // empty supply), so this is a rate rather than an absolute.
-    expect(zeroes.length / values.length).toBeLessThan(0.1);
+    expect(withRoom.length, 'never offered one with room in hand').toBeGreaterThan(10);
+    expect(noRoom.length, 'never offered one with a full hand').toBeGreaterThan(0);
+
+    // Ticket 50's claim, where it can be tested: with room in hand the rollout
+    // reaches the draw's payoff. It was 82.2% zero across all positions before
+    // that fix, so a stray zero here would be a real regression rather than a
+    // legitimate answer.
+    expect(zeroesWithRoom.length / withRoom.length).toBeLessThan(0.1);
+    // Ticket 49's cap, stated as an absolute because it is exact arithmetic:
+    // no room means no cards kept means nothing gained. Any non-zero here is
+    // the cap failing to bite.
+    expect(nonZeroWithNoRoom).toEqual([]);
+  });
+});
+
+/**
+ * Ticket 49. `grantBalloonReward` pushes a real ability - Draw 4, Sow 4 from
+ * hand, a build at a discount, or £4 - and all four scored the identical flat
+ * `balloon` weight, which is the shape ticket 40 deleted for GROW. Two claims,
+ * and the second is the one that stops it coming back: the pricer must not pay
+ * the flat weight, because the move term already does, and a weight charged in
+ * two places is how `growSpend`, `buildSpend` and `deliverCost` each went wrong.
+ */
+describe('a balloon move', () => {
+  /**
+   * Every distinct balloon priced, over real games - through the `outcome` TERM
+   * rather than through `Outcomes.value`, which is the difference between
+   * testing the pricer and testing the bot. `value` will roll a balloon out
+   * whether or not anything asks it to; only the term consults `isProbed`, so
+   * only the term fails when a balloon is taken back out of it.
+   */
+  function priceBalloons(weights = BALANCED): Map<string, number[]> {
+    const outcome = TERMS.find((t) => t.name === 'outcome');
+    if (!outcome) throw new Error('no `outcome` term');
+    const seen = new Map<string, number[]>();
+    for (const seats of [2, 3]) {
+      const seed = `balloon-${seats}`;
+      // The Aerodrome is only in play with Vegetables at the table.
+      const suits = SUITS.slice(1, 1 + seats);
+      const result = runGame(data, { seed, seats, suits, policies: assignProfiles(seed, seats) });
+      let state = newGame(data, { seed, seats, suits });
+      for (const move of result.moves) {
+        const seat = state.tasks[0]?.pid ?? state.turnPlayer;
+        const balloons = legalMoves(data, state).filter(
+          (m) => m.seat === seat && m.type === 'moveBalloon',
+        );
+        if (balloons.length > 0) {
+          const scratch = makeScratch(data, viewFor(data, state, seat));
+          const outcomes = makeOutcomes(scratch, weights, makeProber(data, state, seat));
+          for (const m of balloons) {
+            const id = (m as Extract<Move, { type: 'moveBalloon' }>).balloon;
+            const list = seen.get(id) ?? [];
+            list.push(outcome.feature(actOf(m), scratch, m, outcomes));
+            seen.set(id, list);
+          }
+        }
+        state = apply(data, state, move).state;
+      }
+    }
+    return seen;
+  }
+
+  it('prices the four balloons by what they grant, not by one constant', () => {
+    const seen = priceBalloons();
+    expect(seen.size, 'no balloon was ever movable').toBeGreaterThan(2);
+    const means = [...seen.values()].map((vs) => vs.reduce((a, b) => a + b, 0) / vs.length);
+    // Every one of these was the identical flat weight before the probe.
+    expect(new Set(means.map((m) => m.toFixed(6))).size).toBe(means.length);
+    // And the spread has to be a real preference, not floating-point noise:
+    // measured 4.8 to 9.9 over 55 games, against a flat 2 for all four.
+    expect(Math.max(...means) - Math.min(...means)).toBeGreaterThan(1);
+  });
+
+  it('never pays the flat balloon weight inside the pricer', () => {
+    // The invariant that keeps the two halves apart. `balloon` is a MOVE term,
+    // the way `grow` is; the pricer charges the freight and walks the reward.
+    // So cranking the weight must move nothing here - and the control is that
+    // it moves everything if `balloonMoved` ever pays it again.
+    const plain = priceBalloons();
+    const cranked = priceBalloons({ ...BALANCED, balloon: 1000 });
+    for (const [id, values] of plain) {
+      expect(cranked.get(id), `balloon ${id}`).toEqual(values);
+    }
   });
 });
 

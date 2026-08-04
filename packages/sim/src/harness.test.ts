@@ -66,7 +66,12 @@ describe('the stratified cells', () => {
     }
   });
 
-  it('is reproducible from the seed alone', () => {
+  // Timed out on the 5s default while ticket 51 was verifying an unrelated
+  // change: it walks a whole smoke balance run a SECOND time, and at 5.8s it sits
+  // just the wrong side of the line, so it flakes on the machine rather than on
+  // the code. Given an explicit budget rather than a faster run, because a
+  // cheaper sample is a weaker reproducibility claim.
+  it('is reproducible from the seed alone', { timeout: 30_000 }, () => {
     const again = runBalance(data, { ...SMOKE, seatCounts: [2, 3] });
     expect(again.games.map((g) => g.moves)).toEqual(result.games.map((g) => g.moves));
     expect(again.games.map((g) => g.winner)).toEqual(result.games.map((g) => g.winner));

@@ -122,6 +122,13 @@ function cardMoveSpend(payload: Record<string, unknown>): CardId | null {
  * before this. `cardMove` is the Helping Hand's repeat, which is worth exactly
  * what the repeated work is worth.
  *
+ * A balloon move joined them in ticket 49. `grantBalloonReward` pushes a real
+ * ability - Draw 4, Sow 4 from hand, a build at a discount, or £4 - and all four
+ * scored the identical flat weight, which is precisely the shape ticket 40
+ * deleted for GROW. Measured over 55 real games, the four price at 4.8 to 9.9
+ * against a flat 2, so the weight was not merely imprecise: it was low almost
+ * everywhere, and the balloon the bots took was not the balloon worth taking.
+ *
  * Everything NOT in this set has a feature that already reads its own value -
  * a delivery's printed VP, a harvest's stack size, a visit's minted coin - so
  * probing it would spend an `apply` to learn what the table already knows.
@@ -132,6 +139,7 @@ function isProbed(act: Act): boolean {
     case 'workOwn':
     case 'worker':
     case 'cardMove':
+    case 'balloon':
       return true;
     case 'visit':
       return act.payoff.mode === 'worker';
@@ -245,11 +253,72 @@ export const TERMS: readonly Term[] = [
      * tidy-up - it is what stops the NEXT exit route from arriving with a fourth
      * unrelated constant, which is exactly how the three-in-a-row happened.
      *
-     * The balloon branch is deliberately still not in `barnCardsSpent`, and the
-     * reason is measured rather than an oversight: its reward is scored by a
-     * flat `balloon: 2` with no probe behind it, so charging its freight without
-     * pricing what the freight BUYS would be a one-sided correction. Cost and
-     * reward have to move together - ticket 49.
+     * The third exit, the balloon, is charged at this same weight but not from
+     * here: ticket 49 made a balloon move PROBED, so its freight is taken off
+     * the `balloonMoved` event beside the reward that freight bought - which is
+     * also where a balloon moved by a card effect INSIDE a rollout gets charged,
+     * so one route serves both. Charging it here as well would take it twice.
+     *
+     * **It stays a COUNT, and it deliberately does not read `demandSuits`**
+     * (ticket 51). The hand has an ordering sibling beside its count charge
+     * (`visitFeeJunk`, `growSpend`, `buildSpend`) and the barn has none, so the
+     * obvious repair is to make a barn card the island still wants dearer than one
+     * it does not. Measured over 55 stratified games, that feature is not merely
+     * small, it is UNINFORMATIVE:
+     *
+     *   - the island exit cannot use it at all. A delivery's spend is built from
+     *     the tile's own crates, so 100% of the 1580 cards delivered were a suit
+     *     an open tile wanted, and 0 of 1098 (decision, tile) pairs separate on it;
+     *   - D8's build leg is a dead lane. Only 0.2% of 896 build groups offered a
+     *     barn card at all and not one chosen move spent one, so this is a
+     *     one-exit question rather than the three-exit one it looks like;
+     *   - the balloon is the only exit with a real choice (51.0% of 4604 pairs
+     *     pick which two suits burn), and there the demand binary is a coin flip
+     *     against what actually matters. Where the choice changes how many island
+     *     tiles the barn can still PAY for (13.5% of pairs), burning the fewest
+     *     demanded cards keeps the most tiles payable **53.4%** of the time.
+     *
+     * The reason is ticket 38's: the barn's block is MATCHING under an
+     * all-or-nothing payment, not quantity. Burning 1 of 3 wheat when a tile wants
+     * 3 is fatal and burning 1 of 6 is free, and a binary "is wheat wanted" cannot
+     * tell those apart. So a demand-scaled `barnSpend` would reorder 1.6% of
+     * barn-exit decisions in a direction that is right about half the time, which
+     * is the shape tickets 40 and 49 deleted weights for.
+     *
+     * **And it does not read PAYABILITY either, which is the feature 51 named as
+     * the one that would work** (ticket 52). That feature is real - "would burning
+     * these two cards cost me a delivery I could otherwise have made" separates
+     * where demand cannot - but the prize is already collected by accident, and
+     * the whole of it was measured before anything was written:
+     *
+     *   - nothing orders these spends today (the pricer collapses
+     *     `balloon:${balloon}`, and this term does not claim `moveBalloon`), so
+     *     the bot picks among them by random tie-break and the size of the prize
+     *     is simply the REGRET that tie-break pays. Over 55 stratified games it
+     *     is **9 tiles of payability across 215 moves, 0.16 a game** - and a tile
+     *     that stops being payable is a delivery deferred, not one lost;
+     *   - the mechanism is measured, not argued. The balloon is where the choice
+     *     lives (51.0% of pairs) but a balloon needs two DIFFERING barn suits, so
+     *     the bot takes one when its barn is fat - mean 7.1 cards at the chosen
+     *     move against 5.6 at every offer - and a fat barn absorbs two cards
+     *     without dropping a tile. Chosen balloon groups separate on payability
+     *     **2.5%** of the time against 13.5% across all pairs;
+     *   - it also corrects ticket 51's reading of the island exit. 51 called that
+     *     exit immune because 0 of 1098 pairs separate on demand; on payability it
+     *     separates in only 1.7% of pairs but **52.9% of the groups the bot
+     *     actually delivers into** (the wild-crate assignment), and there it picks
+     *     wrong 17.6% of the time. That is the sharpest case in the game and it is
+     *     17 moves in 55 games, worth 4 tiles;
+     *   - and at an ordering weight it does not do the job it was proposed for.
+     *     At 0.3, its siblings' weight, it moves the argmax in 0.9% of barn-exit
+     *     decisions - and **12 of those 19 change which TARGET is taken** rather
+     *     than how it is paid for, which is the reward's job, not a tie-break's.
+     *
+     * So the barn keeps one uniform count charge and no ordering sibling, and the
+     * reason is now the opposite of 51's: the demand feature was uninformative,
+     * the payability feature is informative and there is nothing left for it to
+     * win. Both channels' ceilings are below the noise floor a paired A/B could
+     * resolve (0.16 tiles and 0.35 decisions a game), which is why one was not run.
      */
     name: 'barnSpend',
     claims: ['deliver', 'build', ...ACTION_AND_TASK],
@@ -291,7 +360,7 @@ export const TERMS: readonly Term[] = [
      * trusts a rollout against a flat preference.
      */
     name: 'outcome',
-    claims: ['grow', 'visit', 'workOwnWorker', 'cardMove', ...ACTION_AND_TASK],
+    claims: ['grow', 'visit', 'workOwnWorker', 'cardMove', 'moveBalloon', ...ACTION_AND_TASK],
     feature: (act, _s, move, o) => (isProbed(act) ? o.value(move) : 0),
   },
 
@@ -315,8 +384,16 @@ export const TERMS: readonly Term[] = [
       act.a === 'deliver' && !s.heldLevels.has(tileLevel(s.data, act.tile)) ? 1 : 0,
   },
   {
-    // The freight branch: a Deliver action that moves a balloon instead. Pays
-    // 2 differing barn cards and is never an island delivery.
+    /**
+     * The freight branch: a Deliver action that moves a balloon instead. Pays
+     * 2 differing barn cards and is never an island delivery.
+     *
+     * The flat taste for taking one at all, and nothing more - ticket 49 moved
+     * what the move is WORTH into the probe (its printed reward) and what it
+     * COSTS into the pricer (its two barn cards), so this is now the exact twin
+     * of `grow`: a preference about the action, with the outcome priced where
+     * the outcome is. Its default weight is 0; see `weights.ts`.
+     */
     name: 'balloon',
     claims: ['moveBalloon', ...ACTION_AND_TASK],
     feature: (act) => (act.a === 'balloon' ? 1 : 0),
@@ -459,6 +536,10 @@ export const TERMS: readonly Term[] = [
     // The one thing a blind buy DOES let you choose: which crop. An open tile
     // wants suits you cannot grow yourself, which is the whole reason the rule
     // points at a deck that is not your own.
+    //
+    // The only term separating one buy from another, and it earns its place -
+    // just. Deleting it outright moves the argmax in 1.1% of the 7558 decisions
+    // offering a buy (ticket 53). Its level gate is measured on `demandSuits`.
     name: 'buyDemand',
     claims: ['buy'],
     feature: (act, s) => (act.a === 'buy' && s.demandSuits.has(act.suit) ? 1 : 0),
@@ -495,6 +576,24 @@ export const TERMS: readonly Term[] = [
     feature: (act, s) => (act.a === 'deckPick' && act.suit === s.mySuit ? 1 : 0),
   },
   {
+    /**
+     * **Measured dead** (ticket 53), and left in place pending
+     * [54](../../../.scratch/web-game/issues/54-draw-always-own-suit.md).
+     *
+     * Deleting it outright changes the bot's top move in **0 of 4650** decisions
+     * offering a deck pick, over 55 stratified games. It is 0.8 against
+     * `deckOwnCrop`'s 1.0 and a seat's own deck is in play whenever the seat is,
+     * so the own deck wins outright: taken on 83.9% of deck picks, with the own
+     * deck on offer in exactly 83.9% - it is taken every single time it is
+     * available. In the remaining 16.1% every deck still on offer is demanded,
+     * so the term is uniform there too and cannot order those either.
+     *
+     * Not deleted here, because the finding is not "this weight is wrong" but
+     * "the Draw never varies", which is a question about the instrument's whole
+     * acquisition lane and about whether a seat should ever draw a rival's crop.
+     * That is ticket 54, and a weight change made ahead of it would mint a
+     * reference for a number nobody has decided yet.
+     */
     name: 'deckDemand',
     claims: ACTION_AND_TASK,
     feature: (act, s) => (act.a === 'deckPick' && s.demandSuits.has(act.suit) ? 1 : 0),

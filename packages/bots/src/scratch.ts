@@ -86,7 +86,27 @@ export interface Scratch {
   readonly heldLevels: ReadonlySet<1 | 2 | 3>;
   /** Levels the island's per-player gate leaves open to you right now. */
   readonly openLevels: ReadonlySet<1 | 2 | 3>;
-  /** Suits an open, unfilled tile still wants. Wild crates count for every suit in play. */
+  /**
+   * Suits an open, unfilled tile still wants. Wild crates count for every suit
+   * in play, and the set is filtered by `openLevels` - the per-player level gate
+   * - so a seat holding no Level 1 receipt sees Level 2 and Level 3 demand as
+   * zero.
+   *
+   * **One set, gated, and the gate is measured rather than argued** (ticket 53).
+   * `buyDemand` and `deckDemand` are the only two terms that read it. Dropping
+   * the gate is not cosmetic - the gated and ungated sets are different sets in
+   * 32.6% of the decisions offering a deck choice, and **72.4% before the seat
+   * holds any receipt** - but over 55 stratified games it changes the bot's top
+   * move **0 times in 12,208 decisions**, against a control at a 100x weight
+   * that moves 19.0% of them. So there are not two readings to choose between;
+   * there is one distinction the bot has never acted on.
+   *
+   * The arithmetic behind that zero is worth keeping, because it bounds what any
+   * future gate change could do: the ungated set is a superset, so dropping the
+   * gate can only ADD a term's own weight to an option - which lifts it to a TIE
+   * with a leader that already has that weight, never past it. A gate reading
+   * cannot move these terms without their weights moving first.
+   */
   readonly demandSuits: ReadonlySet<Suit>;
   readonly ownsWorker: boolean;
   readonly coins: number;

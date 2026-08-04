@@ -23,6 +23,12 @@ export type Act =
    * `payment.length + barn + coinWild === cardsNeeded`, so the three are ways of
    * paying ONE price and a term that reads only their sum can never tell them
    * apart - which is what ticket 47 found `buildSpend` doing.
+   *
+   * `barn` is a COUNT and its suits are deliberately dropped. Ticket 51 went
+   * looking for them, to price WHICH barn card a D8 build burns, and measured the
+   * leg as empty: 0.2% of 896 build groups over 55 games offered a barn card at
+   * all, and no chosen move ever spent one. Carrying the suit map to serve that
+   * would be surface for nothing.
    */
   | { a: 'build'; card: CardId; payment: readonly CardId[]; coinWild: number; barn: number }
   | { a: 'hire'; workerId: WorkerAction }

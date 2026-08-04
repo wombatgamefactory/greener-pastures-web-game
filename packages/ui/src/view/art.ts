@@ -56,6 +56,11 @@ export function aerodromeArt(): string {
   return art('aerodrome/board.webp');
 }
 
+/** The box cover, 800x800. The start screen's hero, and its own backdrop. */
+export function logoArt(): string {
+  return art('logo.webp');
+}
+
 export function token(name: string): string {
   return art(`tokens/${name}.webp`);
 }

@@ -67,7 +67,32 @@ export const BALANCED: WeightTable = {
 
   deliver: 3,
   deliverClimb: 5,
-  balloon: 2,
+  /**
+   * **A balloon is worth its reward and nothing else** - the same sentence
+   * ticket 40 applied to the visit, for the same measured reason (ticket 49).
+   *
+   * It was 2, and until this ticket that 2 was the WHOLE valuation of a balloon
+   * move: all four balloons scored it, whether they granted Draw 4, £4, Sow 4 or
+   * a discounted build. With the reward priced by probing it, the 2 became an
+   * intrinsic taste sitting on top of a real payoff - and a taste we chose was
+   * inflating the number watch-list assertion 12 exists to measure. Paired A/B
+   * over 1510 games:
+   *
+   *     balloon moves per game    8.4   -> 5.5     (take rate 27.7% -> 18.0%)
+   *     raids per game            16.26 -> 11.61
+   *     assertion 1 steepest      £3.75 -> £2.00
+   *     end coins by seat count   £8/£14/£15 -> £8/£11/£12
+   *
+   * Nothing else moved (deliver take rate 81.5% -> 81.7%, visits per turn 0.55,
+   * verdict unchanged), so the 2 was buying balloon traffic and a coin flood and
+   * paying for neither.
+   *
+   * Kept as a live knob rather than deleted, exactly as `visit: 0` is: a profile
+   * that wants a taste for raiding the Aerodrome overrides it, and the pricer
+   * never reads it, so a balloon inside a rollout and a balloon as a move are
+   * valued the same way.
+   */
+  balloon: 0,
 
   harvest: 1.5,
   unclogBoard: 6,

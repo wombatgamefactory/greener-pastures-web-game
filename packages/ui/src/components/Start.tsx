@@ -20,6 +20,7 @@ import { useState } from 'react';
 import type { Suit } from '@gp/data';
 import type { PolicyId } from '@gp/bots';
 
+import { logoArt } from '../view/art';
 import { SUIT_META } from '../view/suits';
 import type { SessionOptions } from '../session/table';
 
@@ -72,103 +73,111 @@ export function Start({ onStart }: { onStart(options: SessionOptions): void }) {
   };
 
   return (
-    <div className="start">
+    <div className="start" style={{ ['--start-bg' as string]: `url(${logoArt()})` }}>
       <div className="start-card">
-        <h1>Greener Pastures</h1>
-        <p className="start-hook">
-          You cannot run your farm alone. Your neighbours power your engine, so the whole island
-          competes to be the farm everyone needs.
-        </p>
+        {/* The cover carries the title as painted lettering, so the h1 stays for
+            structure and screen readers and the art speaks for itself. */}
+        <h1 className="visually-hidden">Greener Pastures</h1>
 
-        <fieldset>
-          <legend>Farmers</legend>
-          <div className="choices">
-            {[2, 3, 4].map((n) => (
-              <button
-                key={n}
-                className={`choice${seats === n ? ' choice-on' : ''}`}
-                onClick={() => setSeats(n)}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
-        </fieldset>
-
-        <fieldset>
-          <legend>Your crop</legend>
-          <div className="choices">
-            {ALL_SUITS.map((s) => (
-              <button
-                key={s}
-                className={`choice${suit === s ? ' choice-on' : ''}`}
-                style={{ ['--seat-pip' as string]: SUIT_META[s].pip }}
-                onClick={() => setSuit(s)}
-              >
-                {SUIT_META[s].label}
-              </button>
-            ))}
-          </div>
-          <p className="start-note">
-            Your neighbours take the remaining crops in printed order:{' '}
-            {suits
-              .slice(1)
-              .map((s) => SUIT_META[s].label)
-              .join(', ') || 'none yet'}
-            .
+        <div className="start-hero">
+          <img className="start-cover" src={logoArt()} alt="Greener Pastures" />
+          <p className="start-hook">
+            You cannot run your farm alone. Your neighbours power your engine, so the whole island
+            competes to be the farm everyone needs.
           </p>
-        </fieldset>
+        </div>
 
-        <fieldset>
-          <legend>Neighbours</legend>
-          <div className="choices">
-            {LADDER.map((r) => (
-              <button
-                key={r.id}
-                className={`choice${rung === r.id ? ' choice-on' : ''}`}
-                title={r.blurb}
-                onClick={() => setRung(r.id)}
-              >
-                {r.label}
-              </button>
-            ))}
-          </div>
-          <p className="start-note">{LADDER.find((r) => r.id === rung)?.blurb}</p>
+        <div className="start-form">
+          <fieldset>
+            <legend>Farmers</legend>
+            <div className="choices">
+              {[2, 3, 4].map((n) => (
+                <button
+                  key={n}
+                  className={`choice${seats === n ? ' choice-on' : ''}`}
+                  onClick={() => setSeats(n)}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </fieldset>
 
-          <div className="start-archetypes">
-            {suits.slice(1).map((s, i) => {
-              const seat = i + 1;
-              return (
-                <label key={seat}>
-                  <span style={{ color: SUIT_META[s].ink }}>{SUIT_META[s].label} farm is</span>
-                  <select
-                    value={custom[seat] ?? rung}
-                    onChange={(e) => setCustom({ ...custom, [seat]: e.target.value as PolicyId })}
-                  >
-                    {ARCHETYPES.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.label} - {a.blurb}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              );
-            })}
-          </div>
-        </fieldset>
+          <fieldset>
+            <legend>Your crop</legend>
+            <div className="choices">
+              {ALL_SUITS.map((s) => (
+                <button
+                  key={s}
+                  className={`choice${suit === s ? ' choice-on' : ''}`}
+                  style={{ ['--seat-pip' as string]: SUIT_META[s].pip }}
+                  onClick={() => setSuit(s)}
+                >
+                  {SUIT_META[s].label}
+                </button>
+              ))}
+            </div>
+            <p className="start-note">
+              Your neighbours take the remaining crops in printed order:{' '}
+              {suits
+                .slice(1)
+                .map((s) => SUIT_META[s].label)
+                .join(', ') || 'none yet'}
+              .
+            </p>
+          </fieldset>
 
-        <fieldset>
-          <legend>Seed</legend>
-          <input value={seed} onChange={(e) => setSeed(e.target.value)} aria-label="game seed" />
-          <p className="start-note">
-            The whole game is a function of this and the moves played, so the same seed deals the
-            same island.
-          </p>
-        </fieldset>
+          <fieldset>
+            <legend>Neighbours</legend>
+            <div className="choices">
+              {LADDER.map((r) => (
+                <button
+                  key={r.id}
+                  className={`choice${rung === r.id ? ' choice-on' : ''}`}
+                  title={r.blurb}
+                  onClick={() => setRung(r.id)}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+            <p className="start-note">{LADDER.find((r) => r.id === rung)?.blurb}</p>
 
-        <button className="primary start-go" onClick={start}>
-          Take the farm
-        </button>
+            <div className="start-archetypes">
+              {suits.slice(1).map((s, i) => {
+                const seat = i + 1;
+                return (
+                  <label key={seat}>
+                    <span style={{ color: SUIT_META[s].ink }}>{SUIT_META[s].label} farm is</span>
+                    <select
+                      value={custom[seat] ?? rung}
+                      onChange={(e) => setCustom({ ...custom, [seat]: e.target.value as PolicyId })}
+                    >
+                      {ARCHETYPES.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.label} - {a.blurb}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Seed</legend>
+            <input value={seed} onChange={(e) => setSeed(e.target.value)} aria-label="game seed" />
+            <p className="start-note">
+              The whole game is a function of this and the moves played, so the same seed deals the
+              same island.
+            </p>
+          </fieldset>
+
+          <button className="primary start-go" onClick={start}>
+            Start the Game
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -162,7 +162,20 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
     }
 
     case 'balloonMoved':
-      return event.seat === me ? weight(w, 'balloon') : 0;
+      // Ticket 49. The last barn exit that was free: a balloon eats 2 differing
+      // barn cards, where the same cards delivered to the island are charged by
+      // `barnSpend` (ticket 48) and burnt on a build are charged by it too (47).
+      // Read off the event's own spend rather than the printed `moveCost`,
+      // because V16 moves a balloon for nothing and an invented cost would price
+      // that move as if it paid.
+      //
+      // Neither half of what the move is WORTH is here, and both omissions are
+      // deliberate. The reward is a task `grantBalloonReward` pushes, so the
+      // rollout walks it, which is the whole of this ticket; the flat `balloon`
+      // taste stays a MOVE term, the way `grow`'s does, because a taste is a
+      // thing a seat has about an action rather than a thing that happens in a
+      // position - and paying it here as well would charge it twice.
+      return event.seat === me ? -weight(w, 'barnSpend') * spendSize(event.spend) : 0;
 
     case 'built':
       // Priced for happening, not for what was built: the card's identity is
@@ -240,11 +253,31 @@ export interface Outcomes {
  * cards it will keep, at the same blind price `cardsToHand` pays. Cheaper than
  * before - the reveals are never applied at all - and blind by construction,
  * since only the counts are read and never `revealed`.
+ *
+ * **Capped by room in hand, and that half is ticket 49's** (2026-08-04). The
+ * first version priced `keep x meanCardValue` flat, which says a Draw 4 into a
+ * full hand is worth as much as a Draw 4 into an empty one - where the
+ * move-level `drawAction` term has always scaled by exactly the room in hand,
+ * because a card drawn into the end-of-turn discard is an action thrown away.
+ * The understatement was invisible on the Draw Worker (keep 2) and decisive on
+ * the Draw 4 balloon the moment ticket 49 let the bots see it: balloon moves
+ * taken went 89 -> 414 over 55 games, 60.9% of them the Draw balloon, **32.9%
+ * with no room in hand at all**, and the widest position in the UI's own corpus
+ * went from 792 legal moves to 8008 - C(hand, excess) discard subsets, a seat
+ * ending its turn seven cards over its limit.
+ *
+ * The room is read off the PROBE, not off `Scratch`, and that is not fussiness:
+ * a rented Worker is reached by a VISIT, which pays a card out of hand first, so
+ * a pre-move reading is short by exactly one on the case ticket 50 exists to
+ * fix - and short by one at room 0 is the difference between "worth a card" and
+ * "worth nothing". `handLimit` null means no Barn, which the engine reads as no
+ * limit, so nothing is capped there either.
  */
 function pendingDrawValue(probe: ReturnType<Prober>, s: Scratch, w: WeightTable): number | null {
   const task = probe.pending;
   if (task === null || task.t !== 'draw') return null;
-  const keep = Math.min(task.keep, task.see);
+  const room = s.handLimit === null ? task.keep : Math.max(0, s.handLimit - probe.handSize);
+  const keep = Math.min(task.keep, task.see, room);
   return weight(w, 'keepValue') * keep * meanCardValue(s.data);
 }
 
@@ -318,6 +351,22 @@ function effectKey(move: Move, act: Act): string {
     case 'workOwn':
     case 'worker':
       return `work:${act.workerId}`;
+    /**
+     * The same collapse, and it is what makes probing a balloon affordable
+     * (ticket 49). A decision is offered 8.4 balloon moves on average and up to
+     * 40 - every balloon crossed with every way to pick 2 differing barn suits -
+     * against a whole-decision budget of 96 applies shared with the grows and
+     * the Workers. All the ways to pay for one balloon grant the same reward, so
+     * keying on the balloon collapses 8.4 probes to 3.2.
+     *
+     * The one thing that survives the collapse is measured rather than assumed:
+     * over 4917 real (decision, balloon) pairs the spend moved the valuation in
+     * 6.6%, by at most 2.50 - the upgraded Vegetable Barn, which hands back one
+     * just-spent Vegetable. The first enumerated spend's rollout stands for all
+     * of them, which is the same bargain `grow` strikes with its payment card.
+     */
+    case 'balloon':
+      return `balloon:${act.balloon}`;
     case 'cardMove':
       return `cardMove:${act.card}:${act.kind}:${JSON.stringify(act.payload)}`;
     default:

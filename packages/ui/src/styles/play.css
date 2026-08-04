@@ -468,34 +468,87 @@ body.is-dragging .zoom {
 
 /* ---- the start screen ---------------------------------------------------- */
 
+/* The box cover does the talking here, twice: crisp as the hero, and blurred
+   behind everything as an ambient backdrop. `--start-bg` is set inline by
+   `Start.tsx` from `logoArt()`, because a `url()` written in this file would
+   miss the Pages base path and 404 in production. */
 .start {
   height: 100dvh;
   display: grid;
   place-items: center;
   padding: 16px;
   overflow-y: auto;
+  position: relative;
+  isolation: isolate;
+}
+
+.start::before {
+  content: '';
+  position: fixed;
+  inset: -40px;
+  z-index: -1;
+  background:
+    linear-gradient(rgb(247 241 227 / 62%), rgb(239 230 209 / 78%)),
+    var(--start-bg) center / cover no-repeat;
+  filter: blur(26px) saturate(1.08);
 }
 
 .start-card {
-  background: var(--paper-panel);
+  background: rgb(253 250 241 / 92%);
   border: 1px solid var(--rule);
-  border-radius: 12px;
+  border-radius: 16px;
   box-shadow: var(--shadow-lift);
-  padding: 18px 22px;
-  max-width: 620px;
+  padding: 20px;
+  max-width: 860px;
   display: grid;
-  gap: 12px;
+  grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
+  align-items: start;
+  gap: 22px;
 }
 
-.start-card h1 {
-  font-size: 30px;
-  color: #6c9550;
+.start-hero {
+  display: grid;
+  gap: 10px;
+}
+
+.start-cover {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  display: block;
+  border-radius: 12px;
+  border: 1px solid var(--ink-line);
+  box-shadow: var(--shadow);
+}
+
+.start-form {
+  display: grid;
+  gap: 12px;
+  align-content: start;
 }
 
 .start-hook {
   margin: 0;
   font-size: 14px;
-  line-height: 1.4;
+  line-height: 1.45;
+  text-align: center;
+  text-wrap: balance;
+  color: var(--ink-soft);
+}
+
+/* One column when there is no room for two: the cover crops to a banner, kept
+   on the painted title rather than centred on the cows. */
+@media (max-width: 760px), (max-height: 620px) {
+  .start-card {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 620px;
+    gap: 14px;
+  }
+
+  .start-cover {
+    aspect-ratio: 16 / 9;
+    object-position: 50% 7%;
+  }
 }
 
 .start-card fieldset {
@@ -566,9 +619,11 @@ body.is-dragging .zoom {
 }
 
 .start-go {
-  justify-self: start;
-  font-size: 15px;
-  padding: 6px 22px;
+  margin-top: 2px;
+  font-size: 17px;
+  padding: 9px 22px;
+  border-radius: 8px;
+  box-shadow: var(--shadow);
 }
 
 /* ---- the result overlay -------------------------------------------------- */

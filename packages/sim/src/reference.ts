@@ -252,7 +252,7 @@ export const REFERENCE_V6: ReferenceConfig = {
 };
 
 /**
- * `reference-v7` - the current instrument. Minted by ticket 50.
+ * `reference-v7` - superseded by v8. Minted by ticket 50.
  *
  * The probe could not see a draw. A `draw` task takes one `deck` answer per card
  * REVEALED and only then a `keep`, and `cardsToHand` - the only priced event in
@@ -296,8 +296,65 @@ export const REFERENCE_V7: ReferenceConfig = {
   seed: 'reference-v7',
 };
 
+/**
+ * `reference-v8` - the current instrument. Minted by ticket 49.
+ *
+ * The last flat constant standing where a real ability lives. A balloon move
+ * grants Draw 4, Sow 4 from hand, a build at a discount or £4, and all four
+ * scored one weight - `balloon: 2` - which is exactly the shape ticket 40
+ * deleted for GROW and ticket 50 for the draw. Its freight was free too: two
+ * differing barn cards, the one barn exit neither 47 nor 48 had charged.
+ *
+ * Three changes, and the second was forced by the first rather than planned:
+ *
+ *   1. **The balloon is probed.** The reward is a task, so the rollout walks it,
+ *      and `effectKey` collapses a balloon's C(suits, 2) ways to pay into one
+ *      probe the way a GROW's payments collapse - 8.4 offered options become 3.2
+ *      probes, measured, against a 96-apply budget the whole decision shares.
+ *   2. **A pending draw is capped by ROOM IN HAND.** Ticket 50 priced it at
+ *      `keep x meanCardValue` flat, which the Draw Worker (keep 2) hid and the
+ *      Draw 4 balloon exposed the moment the bots could see it: balloon takes
+ *      went 89 -> 414 over 55 games, 60.9% of them the Draw balloon, 32.9% with
+ *      a full hand, and the widest position in the UI's own corpus went from 792
+ *      legal moves to 8008 - discard subsets, a seat seven cards over its limit.
+ *      The room is read off the probe rather than off `Scratch`, because a
+ *      rented Worker is reached by a visit that pays a card first.
+ *   3. **`balloon` goes 2 -> 0.** "A balloon is worth its reward and nothing
+ *      else", the sentence ticket 40 applied to the visit, for the same measured
+ *      reason: with the payoff priced, the constant was inflating the number
+ *      watch-list assertion 12 exists to measure.
+ *
+ * Against v7, and this one re-baselines hard:
+ *
+ *     balloon moves per game       0.7   -> 5.5   (take rate 2.3% -> 18.0%)
+ *     raids per game (assertion 12) 6.91 -> 11.61
+ *     end coins by seat count       £7/£8/£9 -> £8/£11/£12
+ *     assertion 1, steepest climb   £1.25 -> £2.00
+ *     orchard suit win rate         40.9% -> 44.5%
+ *     racer / hermit                45.0 / 40.6 -> 38.6 / 38.3
+ *
+ * Verdict held at 6 PASS / 2 FAIL / 5 OBSERVE. Sampling plan unchanged from v1
+ * through v7.
+ *
+ * **Do not compare a per-card economic across v7 and v8.** The Aerodrome module
+ * is in play whenever Vegetables are at the table, and the bots went from
+ * ignoring it to using it eight times a game.
+ */
+export const REFERENCE_V8: ReferenceConfig = {
+  ...REFERENCE_V7,
+  id: 'reference-v8',
+  description:
+    'As reference-v7 - mixed scored profiles one per seat from the run seed, suits stratified ' +
+    'through every legal (player suits + neutral deck) combination, 2/3/4 seats, coins priced by ' +
+    'what the seat can still spend, card abilities priced by probing them, cards leaving a hand ' +
+    'or a barn charged what they cost - with the Aerodrome finally visible: a balloon move is ' +
+    'priced by the reward it grants rather than by one flat weight, its two barn cards are ' +
+    'charged like every other barn exit, and a draw is worth only the cards there is room to keep.',
+  seed: 'reference-v8',
+};
+
 /** The instrument every current number is defined against. */
-export const REFERENCE = REFERENCE_V7;
+export const REFERENCE = REFERENCE_V8;
 
 /**
  * One stratified cell: the suits at the table.

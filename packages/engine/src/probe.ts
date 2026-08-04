@@ -77,6 +77,19 @@ export interface Probe {
    * which is both more accurate and strictly cheaper in `apply`s.
    */
   readonly pending: Task | null;
+  /**
+   * The probing seat's OWN hand size in the probed position.
+   *
+   * Ticket 49. A pending draw is priced as the cards it will keep, and cards it
+   * cannot keep are cards the end-of-turn discard takes - so the price has to
+   * know how full the hand is. The seat's hand size before the move is not that
+   * number: the commonest way to reach a Draw Worker at all is a VISIT, which
+   * pays a card out of hand first, so a pre-move reading is short by one on
+   * exactly the case the design cares most about.
+   *
+   * No redaction question: it is the probing seat's own hand.
+   */
+  readonly handSize: number;
   /** Walk into one of `next`. Shares this probe's budget. */
   step(move: Move): Probe;
 }
@@ -88,6 +101,7 @@ const CUT: Probe = {
   next: [],
   truncated: true,
   pending: null,
+  handSize: 0,
   step: () => CUT,
 };
 
@@ -107,6 +121,7 @@ function probeAt(data: GameData, state: GameState, seat: Seat, budget: ProbeBudg
       next: mine ? legalMoves(data, post) : [],
       truncated: false,
       pending: mine && head !== undefined ? redactTask(head, seat) : null,
+      handSize: post.players[seat]?.hand.length ?? 0,
       step: probeAt(data, post, seat, budget),
     };
   };
