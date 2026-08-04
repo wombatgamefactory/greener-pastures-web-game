@@ -16,6 +16,16 @@ import { median, num } from '../stats.js';
  *
  * Hence a within-game comparison, final third against middle third. The claim
  * under test is not "barns are small" - it is "the delivery phase drains them".
+ *
+ * Ticket 38 then took the measurement further and found the hoard story is also
+ * wrong. The barn rises MONOTONICALLY from round one (1 -> 5 -> 9, peak 12), so
+ * there is no delivery phase to drain anything: delivery is continuous, taken
+ * at a 97.9% rate, and losing to harvest by about half a card a round all game.
+ * Both named causes are falsified - switching island.levelGate off leaves this
+ * assertion at exactly 4.00, and cutting the chain to 2/4/6 moved it to 3.50.
+ * What actually blocks a delivery is assembling NAMED SUITS in exact multiples
+ * under an all-or-nothing payment. The window comparison still holds as the
+ * shape to test; only the diagnosis behind it has moved.
  */
 export const barnGlut: Assertion = {
   id: 6,
@@ -31,9 +41,15 @@ export const barnGlut: Assertion = {
   threshold: 'FAIL if the final-third median exceeds the middle-third median',
   taste: false,
   remedy:
-    `${NO_REMEDY}. The design explicitly rules out a hard cap and lists only candidates ` +
-    '(a County Show barn sink, wider island appetite, more barn-eating endgame cards). Reported ' +
-    'against island.levelRules.{}.cardsPerCrate, which ticket 14 settled at 2/3/3.',
+    `${NO_REMEDY}. The design rules out a hard cap and lists only candidates (a County Show barn ` +
+    'sink, wider island appetite, more barn-eating endgame cards). Ticket 38 killed two of them ' +
+    'by measurement: appetite is NOT the constraint (the island still wants more than the barns ' +
+    'hold, in every suit), and no cardsPerCrate dial will do it either - 88.8% of barn-holding ' +
+    'decisions cannot afford any open tile and 84% of those are 1-2 cards short, so the block is ' +
+    'MATCHING under an all-or-nothing payment, not quantity. Cutting the chain from 2/6/9 to ' +
+    '2/4/6 moved this assertion 4.00 -> 3.50 and it still FAILs. The live levers all change the ' +
+    'SHAPE of the payment: partial delivery, more wilds, fewer suits per tile, or a no-matching ' +
+    'sink. Doing nothing is also live and unargued.',
   measure({ pooled }) {
     const middle = median(
       pooled.ended.map((g) => thirdMedian(g.barnByRound, 'middle')).filter(Number.isFinite),

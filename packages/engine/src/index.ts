@@ -12,10 +12,7 @@
  * the turn flow and the bulk card build land.
  */
 
-export const ENGINE_VERSION = '0.1.0';
-
-/** Rules edition this engine implements. Bumped when the design version moves. */
-export const RULES_EDITION = 'v14';
+export { ENGINE_VERSION, RULES_EDITION } from './version.js';
 
 export * from './state.js';
 export { seedRng, rngNext, rngInt, shuffle } from './rng.js';
@@ -54,6 +51,30 @@ export {
 export type { NewGameOptions } from './setup.js';
 export { legalMoves, apply, isOver } from './game.js';
 export { settleTurn } from './turnflow.js';
+export {
+  CAPTURE_FORMAT,
+  makeCapture,
+  captureFilename,
+  parseCapture,
+  describeCapture,
+  replayCapture,
+  replayFixture,
+  toFixture,
+} from './capture.js';
+export type {
+  Capture,
+  CaptureInput,
+  CaptureLabel,
+  CaptureOrigin,
+  CaptureSetup,
+  CaptureUi,
+  Fixture,
+  ReplayOptions,
+  ReplayResult,
+  ReplayThrow,
+} from './capture.js';
 export { viewFor, redactEvents, maskCard } from './view.js';
 export type { BuildingView, PlayerView, RivalView } from './view.js';
+export { makeProber, newProbeBudget, PROBE_BUDGET } from './probe.js';
+export type { Probe, ProbeBudget, Prober } from './probe.js';
 export * as testkit from './testkit.js';

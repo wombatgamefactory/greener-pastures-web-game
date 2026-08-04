@@ -527,13 +527,40 @@ describe('the endgame cards - D19, D20, D21', () => {
     expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(1);
   });
 
-  it('D21 scores 1 per Dairy TIER card costing 3 or less', () => {
+  it('D21 scores 1 per Dairy card costing 1 to 3', () => {
     const s = base();
-    // D4 (1) and D9 (3) count; D10 (4) does not; D21 itself is an endgame card,
-    // not a tier, so it never scores itself. Nothing else with a gameEnd is
-    // built here - `endgame` is the sum over every handler in the tableau.
+    // D4 (1) and D9 (3) count; D10 (4) does not; D21 itself costs 0 cards (it
+    // is bought for £2), so it never scores itself. Nothing else with a gameEnd
+    // is built here - `endgame` is the sum over every handler in the tableau.
     buildFor(data, s, DAIRY, 'D21', 'D4', 'D9', 'D10');
     expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(2);
+  });
+
+  // Ticket 39 deleted the word "tier" from D21's printed text and let the cost
+  // band do the excluding instead. That is only safe if the two readings pick
+  // out the same cards, so assert it over the real catalogue rather than
+  // trusting the argument: the lower bound must catch every starter (no build
+  // cost at all) and every £2 Power/Endgame card (a card cost of 0).
+  it('D21: the printed cost band and the old tier filter select the same Dairy cards', () => {
+    const dairy = data.cards.catalogue.filter((c) => c.suit === 'dairy');
+    expect(dairy).toHaveLength(21);
+
+    const cardCost = (c: (typeof dairy)[number]) =>
+      c.buildCost ? c.buildCost.suit + c.buildCost.wild : 0;
+    const byBand = dairy.filter((c) => cardCost(c) >= 1 && cardCost(c) <= 3).map((c) => c.id);
+    const byTier = dairy
+      .filter((c) => c.type.startsWith('tier') && cardCost(c) <= 3)
+      .map((c) => c.id);
+
+    expect(byBand).toEqual(byTier);
+    expect(byBand).toEqual(['D4', 'D5', 'D6', 'D7', 'D8', 'D9']);
+    // And the exclusions the lower bound is carrying, named explicitly.
+    for (const id of ['D1', 'D2', 'D3']) {
+      expect(dairy.find((c) => c.id === id)?.buildCost, `${id} is a starter`).toBeNull();
+    }
+    for (const id of ['D16', 'D17', 'D18', 'D19', 'D20', 'D21']) {
+      expect(cardCost(dairy.find((c) => c.id === id)!), `${id} costs coins, not cards`).toBe(0);
+    }
   });
 });
 

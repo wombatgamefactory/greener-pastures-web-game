@@ -9,7 +9,7 @@
 
 import type { GameData, Suit } from '@gp/data';
 import type { Move } from '@gp/engine';
-import { apply, isOver, legalMoves, newGame, viewFor } from '@gp/engine';
+import { apply, isOver, legalMoves, makeProber, newGame, viewFor } from '@gp/engine';
 import type { PolicyId } from '@gp/bots';
 import { makePolicy, policyRng } from '@gp/bots';
 
@@ -50,7 +50,8 @@ export function explainReport(data: GameData, opts: ExplainOptions): string {
     const rng = rngs[seat];
     if (!rng) throw new Error(`no rng for seat ${seat}`);
     const view = viewFor(data, state, seat);
-    state = apply(data, state, policy.choose({ data, view, moves, rng })).state;
+    const probe = makeProber(data, state, seat);
+    state = apply(data, state, policy.choose({ data, view, moves, rng, probe })).state;
   }
 
   if (frames.length === 0) return 'No decisions to explain.\n';
@@ -61,8 +62,9 @@ export function explainReport(data: GameData, opts: ExplainOptions): string {
 
   const seat = (frame.moves[0] as Move).seat;
   const view = viewFor(data, frame.state, seat);
+  const probe = makeProber(data, frame.state, seat);
   const rows = policy
-    .explain({ data, view, moves: frame.moves, rng: policyRng(opts.seed, seat, policy.id) })
+    .explain({ data, view, moves: frame.moves, rng: policyRng(opts.seed, seat, policy.id), probe })
     .slice(0, opts.top);
 
   const lines = [

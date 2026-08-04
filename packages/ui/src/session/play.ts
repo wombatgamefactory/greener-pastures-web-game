@@ -259,7 +259,7 @@ export function usePlay(host: PlayHost): Play {
       },
       deck: (suit) => {
         if (inert) return;
-        resolve(clickDeck(moves, suit), 'Which deck?');
+        resolve(clickDeck(moves, effective, suit), 'Which deck?');
       },
     };
   }, [active, view, moves, effective, picked, subsetKind, send, resolve]);

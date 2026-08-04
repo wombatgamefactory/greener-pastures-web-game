@@ -11,6 +11,8 @@
  *   @convert     action_convert (Notice Board) | action_harvest  -> what full means
  *   @cost_icon   build | caboose | game_end                     -> by card type
  *   @cost1..6    one icon per unit of buildCost                 -> crop, wild, coin
+ *                (the Farmstead's bar prints its MILESTONE instead: one own-crop
+ *                icon per building that flips it free - ticket 46)
  *   @cost_bar    cost_bg_<n> where n is that icon count
  *   @top_bar     ability_bg_<suit>, or bottom_bg_<suit> for Power and Endgame
  *
@@ -42,6 +44,12 @@ export interface PrintedFace {
   readonly identityIcon: 'starter' | Suit;
   /** Empty when the face is not buildable (an upgraded starter is flipped, never bought). */
   readonly cost: readonly CostIcon[];
+  /**
+   * What the cost bar is SAYING. Everywhere but the Farmstead it is a price;
+   * on the Farmstead the same slot prints the milestone that flips it free
+   * (ticket 46), and the two read identically to a screen reader otherwise.
+   */
+  readonly costMeaning: 'price' | 'milestone';
   /** The icon at the head of the cost bar. Null when there is no cost bar. */
   readonly costIcon: 'build' | 'caboose' | 'game_end' | null;
   /** Absolute printed hand size. Barn faces only. */
@@ -59,15 +67,22 @@ function faceOf(card: Card, upgraded: boolean): CardFace {
   };
 }
 
-function costIcons(card: Card, upgraded: boolean): CostIcon[] {
+function costIcons(data: GameData, card: Card, upgraded: boolean): CostIcon[] {
   // An upgraded starter face is flipped, not bought: the £2 belongs to the base
   // face, which is the one printing the cost bar. The sheet agrees - every
   // upgraded face leaves @cost1..6 empty.
   if (upgraded) return [];
   const cost = card.buildCost;
   if (!cost) {
-    // A base starter with no printed build cost still prints its £2 upgrade
-    // price in the cost bar (the sheet's W2 and O2 rows).
+    // The Farmstead is the one building that is never for sale, so its bar
+    // prints the MILESTONE instead of a price (ticket 46, Dean's call): one
+    // own-crop icon per building of your own crop, which is what flips it free.
+    // Read from the rule, never typed, so a knob and a card cannot disagree.
+    if (card.slot === 'farmstead') {
+      const flipAt = data.rules.economy.farmsteadFlipAtOwnColourBuilds;
+      return Array.from({ length: flipAt }, () => ({ kind: 'crop', suit: card.suit }) as CostIcon);
+    }
+    // The Barn and the Notice Board print their £2 upgrade price there.
     const upgradeCost = card.upgradeCostCoins ?? 0;
     return Array.from({ length: upgradeCost }, () => ({ kind: 'coin' }) as CostIcon);
   }
@@ -89,7 +104,7 @@ export function printedFace(data: GameData, id: string, upgraded = false): Print
   if (!card) throw new Error(`Unknown card id ${id}`);
   const face = faceOf(card, upgraded);
   const activation = (face.activationType ?? null) as Suit | 'wild' | null;
-  const cost = costIcons(card, upgraded);
+  const cost = costIcons(data, card, upgraded);
   const isNoticeBoard = card.slot === 'noticeboard';
 
   return {
@@ -108,6 +123,7 @@ export function printedFace(data: GameData, id: string, upgraded = false): Print
     // upgraded one prints the crop.
     identityIcon: card.type === 'starter' && !upgraded ? 'starter' : card.suit,
     cost,
+    costMeaning: card.slot === 'farmstead' ? 'milestone' : 'price',
     costIcon: cost.length === 0 ? null : costIconFor(card),
     handSize: face.handSize ?? null,
   };

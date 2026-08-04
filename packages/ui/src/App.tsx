@@ -24,9 +24,11 @@ import { isPolicyId } from '@gp/bots';
 import type { PolicyId } from '@gp/bots';
 import type { Move } from '@gp/engine';
 
+import { CapturePanel } from './components/CapturePanel';
 import { Result } from './components/Result';
 import { Start } from './components/Start';
 import { Table } from './components/Table';
+import { takeCapture } from './session/capture';
 import { usePlay } from './session/play';
 import { Session, YOU, data } from './session/table';
 import type { SessionOptions } from './session/table';
@@ -176,6 +178,16 @@ export function App() {
           </button>
         ))}
       </div>
+
+      {/* Ticket 31. Live at every moment - mid-task, on a rival's turn, and
+          over the scoring screen, which is why it is NOT inside the pace strip:
+          that strip sits at z-index 60 and the result overlay's scrim is at 90,
+          so a button parked in there would be unreachable on exactly the screen
+          whose numbers you would most want to query. Taking a capture applies
+          no move, so being live everywhere costs nothing. */}
+      <CapturePanel
+        take={(request) => takeCapture(session, play, request, new Date().toISOString())}
+      />
 
       {stalled && !snapshot.over && (
         <p className="end-banner" role="status">

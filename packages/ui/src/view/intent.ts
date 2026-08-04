@@ -184,11 +184,20 @@ export function clickWorker(
   return out;
 }
 
-/** A deck spine, while a draw task is revealing. */
-export function clickDeck(moves: readonly Move[], suit: Suit): Move[] {
-  return answersOfKind(moves, 'deck')
+/**
+ * A deck spine: pick it for a revealing draw task, or BUY its top card.
+ *
+ * The two never collide - a pending task is the only thing legal while it is
+ * pending - so the deck stays one surface with one meaning, "that crop".
+ */
+export function clickDeck(moves: readonly Move[], intent: Intent, suit: Suit): Move[] {
+  const out: Move[] = answersOfKind(moves, 'deck')
     .filter(({ answer }) => answer.suit === suit)
     .map(({ move }) => move);
+  for (const move of moves) {
+    if (move.type === 'buy' && move.suit === suit && armed(intent, 'buy')) out.push(move);
+  }
+  return out;
 }
 
 // --- what glows -------------------------------------------------------------
@@ -262,7 +271,7 @@ export function liveTargets(view: PlayerView, moves: readonly Move[], intent: In
 
   const decks = new Set<Suit>();
   for (const suit of view.suitsInPlay) {
-    if (clickDeck(moves, suit).length > 0) decks.add(suit);
+    if (clickDeck(moves, intent, suit).length > 0) decks.add(suit);
   }
 
   return { buildings, hosts, tiles, balloons, workers, decks, hand: liveHand(view, moves, intent) };
@@ -526,6 +535,7 @@ export const MOVE_ROUTES = {
   task: 'prompt',
   cardMove: 'action-bar',
   draw: 'action-bar',
+  buy: 'deck',
   build: 'build-panel',
   hire: 'worker',
   upgrade: 'building',

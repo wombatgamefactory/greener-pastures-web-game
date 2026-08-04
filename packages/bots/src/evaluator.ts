@@ -9,6 +9,7 @@ import type { Move } from '@gp/engine';
 import { rngInt } from '@gp/engine';
 
 import { actOf } from './acts.js';
+import { makeOutcomes } from './outcome.js';
 import { makeScratch } from './scratch.js';
 import { TERMS } from './terms.js';
 import type { ExplainedMove, Policy, PolicyContext } from './types.js';
@@ -18,9 +19,16 @@ import { weightsFor } from './weights.js';
 /** Ties inside this band are broken by the policy's own rng, not by move order. */
 const TIE_EPSILON = 1e-9;
 
-/** The scoring loop. One `Scratch` for the whole decision; one `Act` per move. */
+/**
+ * The scoring loop. One `Scratch` for the whole decision, one `Outcomes` (which
+ * memoises probes across terms and across the explain pass), one `Act` per move.
+ *
+ * A term whose weight is zero is skipped before its feature runs, which is what
+ * keeps the probe off the critical path for a profile that does not want it.
+ */
 function scoreAll(ctx: PolicyContext, weights: WeightTable): number[] {
   const scratch = makeScratch(ctx.data, ctx.view);
+  const outcomes = makeOutcomes(scratch, weights, ctx.probe);
   const totals: number[] = [];
   for (const move of ctx.moves) {
     const act = actOf(move);
@@ -28,7 +36,7 @@ function scoreAll(ctx: PolicyContext, weights: WeightTable): number[] {
     for (const term of TERMS) {
       const weight = weights[term.name] ?? 0;
       if (weight === 0) continue;
-      total += weight * term.feature(act, scratch);
+      total += weight * term.feature(act, scratch, move, outcomes);
     }
     totals.push(total);
   }
@@ -37,12 +45,15 @@ function scoreAll(ctx: PolicyContext, weights: WeightTable): number[] {
 
 function explainAll(ctx: PolicyContext, weights: WeightTable): ExplainedMove[] {
   const scratch = makeScratch(ctx.data, ctx.view);
+  const outcomes = makeOutcomes(scratch, weights, ctx.probe);
   return ctx.moves.map((move) => {
     const act = actOf(move);
     const terms: Record<string, number> = {};
     let total = 0;
     for (const term of TERMS) {
-      const value = (weights[term.name] ?? 0) * term.feature(act, scratch);
+      const weight = weights[term.name] ?? 0;
+      if (weight === 0) continue;
+      const value = weight * term.feature(act, scratch, move, outcomes);
       if (value === 0) continue;
       terms[term.name] = value;
       total += value;

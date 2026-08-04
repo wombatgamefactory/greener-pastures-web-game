@@ -6,7 +6,7 @@
  * W8's surcharge on every harvest path.
  */
 
-import { BASE_GAME_DATA as data } from '@gp/data';
+import { BASE_GAME_DATA as data, loadGameData } from '@gp/data';
 import { describe, expect, it } from 'vitest';
 
 import { apply, legalMoves } from '../game.js';
@@ -392,17 +392,44 @@ describe('endgame cards - W20 and W21', () => {
     expect(scores[WHEAT]?.endgame).toBe(2);
   });
 
-  it("W21 replaces its holder's coin pity with £2 = 1 VP", () => {
+  /**
+   * Ticket 37 deleted the coin pity (`coinPityDivisor: null`), so W21 is no
+   * longer a better rate than everybody else's - it is the only rate. Both
+   * halves are worth holding: the live rule, and the knob still doing its job
+   * if the pity is ever switched back on.
+   */
+  it('W21 is the only way coins score at all, now the pity is off', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W21');
     player(s, WHEAT).coins = 7;
     player(s, APIARY).coins = 7;
     const scores = gameEndScores(data, s);
-    // Holder: floor(7/2) = 3 total from coins (endgame 2 + pity 1).
-    expect((scores[WHEAT]?.endgame ?? 0) + (scores[WHEAT]?.coinPity ?? 0)).toBe(3);
-    // Non-holder: plain pity only.
-    expect(scores[APIARY]?.coinPity).toBe(1);
+    // Holder: floor(7/2) = 3, all of it from the card.
+    expect(scores[WHEAT]?.endgame).toBe(3);
+    expect(scores[WHEAT]?.coinPity).toBe(0);
+    // Non-holder: £7 is worth nothing.
+    expect(scores[APIARY]?.coinPity).toBe(0);
     expect(scores[APIARY]?.endgame).toBe(0);
+  });
+
+  it("W21 still replaces its holder's pity when the knob is switched back on", () => {
+    const pity = loadGameData({
+      name: 'pity-on',
+      schemaVersion: 1,
+      set: { 'rules.economy.coinPityDivisor': 5 },
+    });
+    const s = makeState(pity, ['wheat', 'apiary']);
+    buildFor(pity, s, WHEAT, 'W21');
+    player(s, WHEAT).coins = 7;
+    player(s, APIARY).coins = 7;
+    const scores = gameEndScores(pity, s);
+    // Holder: floor(7/2) = 3 from the card, and its pity line is zeroed rather
+    // than added on top (ticket 27 - the screen must reconcile).
+    expect(scores[WHEAT]?.endgame).toBe(3);
+    expect(scores[WHEAT]?.coinPity).toBe(0);
+    expect(scores[WHEAT]?.coinPityReplacedBy).toBe('W21');
+    // Non-holder: plain pity, floor(7/5) = 1.
+    expect(scores[APIARY]?.coinPity).toBe(1);
   });
 });
 

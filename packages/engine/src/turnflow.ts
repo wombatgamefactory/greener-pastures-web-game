@@ -8,7 +8,7 @@
 
 import type { GameData } from '@gp/data';
 
-import { handLimitOf, harvestOptions, hasBonusOption } from './actions.js';
+import { handLimitOf, harvestOptions, hasBonusOption, hasBuyOption } from './actions.js';
 import type { Fx } from './fx.js';
 import { player } from './query.js';
 import { standingMoves } from './runtime.js';
@@ -31,6 +31,10 @@ export function settleTurn(data: GameData, draft: GameState, fx: Fx): void {
       return;
     }
     if (hasBonusOption(data, draft, draft.turnPlayer)) return;
+    // The free card buy is an unspent option like the bonus slot, so it holds
+    // the turn open too. It is also why a seat holding coins now ends its turn
+    // by DECLINING rather than by running out of things to do.
+    if (hasBuyOption(data, draft, draft.turnPlayer)) return;
     if (standingMoves(data, draft, draft.turnPlayer).length > 0) return;
     turn.ending = true;
     turn.visit = null;

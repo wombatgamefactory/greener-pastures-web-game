@@ -11,6 +11,7 @@
 import type { GameData, WorkerAction } from '@gp/data';
 
 import { activationSurchargeOf, doVisit, doWorkOwn } from './actions.js';
+import { clonePlain } from './clone.js';
 import { Fx } from './fx.js';
 import type { FxAudit } from './fx.js';
 import { handlerFor } from './handlers/registry.js';
@@ -29,16 +30,6 @@ export interface Applied {
 /** Plain-data clone. GameState is JSON by construction, so this is total. */
 export function cloneState(state: GameState): GameState {
   return clonePlain(state);
-}
-
-function clonePlain<T>(value: T): T {
-  if (Array.isArray(value)) return value.map(clonePlain) as T;
-  if (value !== null && typeof value === 'object') {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value)) out[k] = clonePlain(v);
-    return out as T;
-  }
-  return value;
 }
 
 /**

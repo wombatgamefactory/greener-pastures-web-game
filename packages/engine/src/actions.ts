@@ -391,6 +391,46 @@ export function doDraw(fx: Fx, seat: Seat): void {
   fx.pushTask({ t: 'draw', pid: seat, src: null, see: spec.see, keep: spec.keep, revealed: [] });
 }
 
+// --- Buy (the once-per-turn free action) -----------------------------------
+
+/**
+ * The suits a seat may BUY from right now: every deck on the table except its
+ * OWN, while that suit still has cards (the discard reshuffles, as everywhere).
+ *
+ * Not your own suit, by Dean's rule (2026-08-03). It is what keeps the two
+ * supply lines distinct - money buys VARIETY, your own crop comes from your own
+ * deck - and it is why the buy cannot quietly become a second Draw.
+ *
+ * `rules.turn.buyCost` of null switches the whole rule off, which is what the
+ * paired overlay run turns on and off.
+ */
+export function buyOptions(data: GameData, state: GameState, seat: Seat): Suit[] {
+  const cost = data.rules.turn.buyCost;
+  if (cost === null) return [];
+  if (state.turn.buyUsed) return [];
+  const p = player(state, seat);
+  if (p.coins < cost) return [];
+  return drawableSuits(data, state).filter((s) => s !== p.suit && state.suitsInPlay.includes(s));
+}
+
+export function hasBuyOption(data: GameData, state: GameState, seat: Seat): boolean {
+  return buyOptions(data, state, seat).length > 0;
+}
+
+/** Pay the bank, take the top card of that suit's deck into hand. Blind, and never a Draw. */
+export function doBuy(fx: Fx, seat: Seat, suit: Suit): void {
+  if (!buyOptions(fx.data, fx.state, seat).includes(suit)) {
+    throw new Error(`Seat ${seat} cannot buy from the ${suit} deck`);
+  }
+  const cost = fx.data.rules.turn.buyCost;
+  if (cost === null) throw new Error('The card buy is switched off');
+  const card = fx.takeDeckTop(suit);
+  if (card === null) throw new Error(`The ${suit} deck is empty`);
+  fx.payCoins(seat, cost, 'buy');
+  fx.state.turn.buyUsed = true;
+  fx.cardsToHand(seat, [card]);
+}
+
 // --- Grow ------------------------------------------------------------------
 
 export interface GrowOption {

@@ -11,6 +11,8 @@ import {
   buildAgainPower,
   buildOptions,
   buildSubstitutePower,
+  buyOptions,
+  doBuy,
   deliverOptions,
   doBuild,
   doDeliver,
@@ -106,6 +108,8 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
     }
   }
 
+  // The free actions, offered whether or not the main action is spent.
+  for (const suit of buyOptions(data, state, seat)) moves.push({ type: 'buy', seat, suit });
   moves.push(...visitOptions(data, state, seat));
   for (const workerId of workOwnOptions(data, state, seat)) {
     moves.push({ type: 'workOwnWorker', seat, workerId });
@@ -187,6 +191,9 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
   switch (move.type) {
     case 'draw':
       doDraw(fx, move.seat);
+      break;
+    case 'buy':
+      doBuy(fx, move.seat, move.suit);
       break;
     case 'build': {
       const mods: BuildMods = buildSubstitutePower(draft, move.seat) ? { substitute: true } : {};

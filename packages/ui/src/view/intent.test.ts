@@ -20,7 +20,7 @@
 import { describe, expect, it } from 'vitest';
 import { BASE_GAME_DATA as data } from '@gp/data';
 import type { Suit } from '@gp/data';
-import { MOVE_TYPES, apply, isOver, legalMoves, newGame, viewFor } from '@gp/engine';
+import { MOVE_TYPES, apply, isOver, legalMoves, makeProber, newGame, viewFor } from '@gp/engine';
 import type { Move, MoveType, PlayerView } from '@gp/engine';
 import { makePolicy, policyRng } from '@gp/bots';
 
@@ -73,7 +73,8 @@ function corpus(seeds: readonly string[], seats: number, suits: Suit[]): Positio
       out.push({ view, moves });
       const policy = makePolicy(step % 3 === 0 ? 'pulse' : 'balanced');
       const rng = rngs.get(actor) ?? policyRng(seed, actor, 'balanced');
-      state = apply(data, state, policy.choose({ data, view, moves, rng })).state;
+      const probe = makeProber(data, state, actor);
+      state = apply(data, state, policy.choose({ data, view, moves, rng, probe })).state;
     }
   }
   return out;
@@ -98,6 +99,9 @@ function reachable(position: Position, move: Move): boolean {
       const held: Intent = move.type === 'grow' ? { k: 'hold', card: move.payment } : IDLE;
       return has(clickBuilding(moves, held, move.type === 'grow' ? move.building : cardOf(move)));
     }
+
+    case 'buy':
+      return has(clickDeck(moves, IDLE, move.suit));
 
     case 'deliver':
       return has(clickTile(moves, IDLE, move.tile));
@@ -182,7 +186,7 @@ function taskReachable(position: Position, move: Move): boolean {
   const answer = move.answer;
   switch (answer.kind) {
     case 'deck':
-      return clickDeck(moves, answer.suit).includes(move);
+      return clickDeck(moves, IDLE, answer.suit).includes(move);
     case 'building':
       return clickBuilding(moves, IDLE, answer.card).includes(move);
     case 'sow':

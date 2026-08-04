@@ -37,6 +37,7 @@ export function freshTurn(): TurnState {
   return {
     actionSpent: false,
     bonusSpent: false,
+    buyUsed: false,
     ending: false,
     visit: null,
     again: null,

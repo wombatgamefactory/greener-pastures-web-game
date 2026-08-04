@@ -16,7 +16,15 @@ type Spend = Partial<Record<Suit, number>>;
 
 export type Act =
   | { a: 'draw' }
-  | { a: 'build'; card: CardId; payment: readonly CardId[]; coinWild: number }
+  | { a: 'buy'; suit: Suit }
+  /**
+   * `payment` is hand cards, `coinWild` coins standing in for cards (D7) and
+   * `barn` barn cards joining the payment (D8). The engine holds
+   * `payment.length + barn + coinWild === cardsNeeded`, so the three are ways of
+   * paying ONE price and a term that reads only their sum can never tell them
+   * apart - which is what ticket 47 found `buildSpend` doing.
+   */
+  | { a: 'build'; card: CardId; payment: readonly CardId[]; coinWild: number; barn: number }
   | { a: 'hire'; workerId: WorkerAction }
   | { a: 'upgrade'; card: CardId }
   | { a: 'grow'; building: CardId; payment: CardId }
@@ -61,6 +69,7 @@ function actOfAnswer(answer: TaskAnswer): Act {
         card: answer.card,
         payment: answer.payment,
         coinWild: answer.coinWild ?? 0,
+        barn: spendSize(answer.barn ?? {}),
       };
     case 'deliver':
       return { a: 'deliver', tile: answer.tile, spend: answer.spend };
@@ -86,8 +95,10 @@ export function actOf(move: Move): Act {
       return { a: 'cardMove', card: move.card, kind: move.kind, payload: move.payload };
     case 'draw':
       return { a: 'draw' };
+    case 'buy':
+      return { a: 'buy', suit: move.suit };
     case 'build':
-      return { a: 'build', card: move.card, payment: move.payment, coinWild: 0 };
+      return { a: 'build', card: move.card, payment: move.payment, coinWild: 0, barn: 0 };
     case 'hire':
       return { a: 'hire', workerId: move.workerId };
     case 'upgrade':

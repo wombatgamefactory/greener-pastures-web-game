@@ -1,0 +1,8 @@
+{
+  "name": "no-card-buy",
+  "description": "The paired control for the card BUY (Dean, 2026-08-03), which ships ON in the base data - so this sweep runs BACKWARDS from the live rule, as the coin-flood sweep now does for the pity. Switching buyCost to null restores the pre-buy game exactly: no free action, no coin-to-card exchange, coins spendable only on hiring, the two starter flips and the coin-priced cards. Read every delta as what the buy DOES, sign flipped.",
+  "schemaVersion": 1,
+  "set": {
+    "rules.turn.buyCost": null
+  }
+}

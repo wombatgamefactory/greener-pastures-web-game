@@ -48,7 +48,11 @@ function CostBar({ face }: { face: PrintedFace }) {
   const bottom = BAR.columnBottom(n);
   return (
     <div className="card-cost">
-      <span className="visually-hidden">Cost: {face.cost.map(costIconAlt).join(', ')}</span>
+      <span className="visually-hidden">
+        {face.costMeaning === 'milestone'
+          ? `Flips free at ${n} ${SUIT_META[face.suit].label} buildings`
+          : `Cost: ${face.cost.map(costIconAlt).join(', ')}`}
+      </span>
       <img className="card-cost-shape" src={frame(`cost_bg_${n}`)} alt="" />
       <img
         className="card-cost-head"

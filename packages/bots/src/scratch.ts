@@ -14,7 +14,7 @@
 
 import type { Card, CardFace, GameData, Suit } from '@gp/data';
 import type { BuildingView, CardId, PlayerView } from '@gp/engine';
-import { tileLevel } from '@gp/engine';
+import { activationSurchargeOf, harvestSurchargeOf, tileLevel } from '@gp/engine';
 
 /**
  * Card lookup by id, indexed per GameData.
@@ -89,6 +89,151 @@ export interface Scratch {
   /** Suits an open, unfilled tile still wants. Wild crates count for every suit in play. */
   readonly demandSuits: ReadonlySet<Suit>;
   readonly ownsWorker: boolean;
+  readonly coins: number;
+  /**
+   * Every coin this seat could still SPEND, from here (ticket 40).
+   *
+   * Coins are spend-only and, since ticket 37 deleted the pity, worth exactly
+   * what they can still buy and nothing else - so a coin above the runway is
+   * worth zero and a seat paying a card for one is making a dominated move.
+   * Every component is a knob or a printed cost read from the data; nothing
+   * here is a typed threshold.
+   *
+   * The card BUY is deliberately NOT in this sum - it is an unbounded repeating
+   * sink, so adding it would make the runway meaningless. It is expressed as
+   * `coinNeverDead` instead.
+   */
+  readonly coinRunway: number;
+  /**
+   * The cheapest thing this seat still wants to buy, affordable or not, or null
+   * when it has bought everything it can reach.
+   *
+   * This is the whole of the bot's ability to SAVE. The term table prices moves,
+   * not plans, so without it a seat buys a card every turn and never reaches the
+   * £2 that hires a Worker - an instrument artefact that would be read as a rule
+   * effect.
+   *
+   * Deliberately NOT filtered to what the seat cannot afford, which is the
+   * version that was wrong: at exactly £2 the £2 Worker is affordable, so the
+   * filtered gap read null, so the seat bought a card and dropped to £1 with the
+   * Fair still open. The question a saver asks is "would this leave me short",
+   * not "am I short now".
+   */
+  readonly sinkGap: number | null;
+  /**
+   * True while the card buy is switched on: a coin can always be turned into a
+   * card, so a coin above the runway is no longer worth zero.
+   *
+   * This is the design claim being tested, stated in the one place that decides
+   * what a coin is worth. It moves only when the rule moves, so the paired
+   * `no-card-buy` run measures the rule and not a re-tuned bot.
+   */
+  readonly coinNeverDead: boolean;
+}
+
+/**
+ * The sinks a seat can still reach, summed.
+ *
+ * Deliberately what is reachable NOW rather than what exists in the game: a
+ * coin-priced card is only a sink while it is in your hand, which is what makes
+ * the runway move with the position instead of sitting at a constant.
+ */
+function sinksOf(
+  data: GameData,
+  view: PlayerView,
+  tableau: ReadonlyMap<CardId, BuildingView>,
+): number[] {
+  const you = view.you;
+  const sinks: number[] = [];
+
+  // Hiring: one Worker per player, and only while one is left in the Fair.
+  const canHire =
+    !view.fair.some((w) => w.owner === view.seat) && view.fair.some((w) => w.owner === null);
+  if (canHire) sinks.push(data.workers.hireFee);
+
+  for (const building of tableau.values()) {
+    const card = cardById(data, building.card);
+    // The Farmstead flips FREE at the own-crop milestone and can never be
+    // bought (ticket 07), so its printed cost bar is not a sink.
+    if (card.slot && card.slot !== 'farmstead' && !building.upgraded) {
+      sinks.push(card.upgradeCostCoins ?? data.rules.economy.upgradeCostCoins);
+    }
+    // Surcharges are printed per card and keyed by data trigger, never by name.
+    sinks.push(activationSurchargeOf(data, building.card));
+    sinks.push(harvestSurchargeOf(data, building.card));
+  }
+
+  // The £2 Power and Endgame cards - a sink only while you hold one.
+  for (const id of you.hand) sinks.push(cardById(data, id).buildCost?.coins ?? 0);
+
+  return sinks.filter((n) => n > 0);
+}
+
+/**
+ * The runway and the gap in ONE pass over the sinks. Both are read once per
+ * decision and the pass walks the tableau and the hand, so deriving them
+ * separately measurably cost the decision budget.
+ */
+function coinsOf(
+  data: GameData,
+  view: PlayerView,
+  tableau: ReadonlyMap<CardId, BuildingView>,
+): { runway: number; gap: number | null } {
+  let runway = 0;
+  let gap: number | null = null;
+  for (const cost of sinksOf(data, view, tableau)) {
+    runway += cost;
+    if (gap === null || cost < gap) gap = cost;
+  }
+  return { runway, gap };
+}
+
+/**
+ * What `n` more coins are actually worth to this seat: the part of the gain
+ * that lands under the runway. Above it the marginal coin buys nothing.
+ *
+ * A NEGATIVE `n` is a spend, priced the same way and signed the other way: the
+ * coins removed that were sitting under the runway, and so would have bought
+ * something. Coins above it were worth nothing and are free to burn.
+ *
+ * Most spending never comes through here - a coin leaving for a hire or an
+ * upgrade is already priced by the term that wanted the thing. The one caller
+ * that does is D7's coins-as-wilds (ticket 47), where the coin buys nothing and
+ * merely stands in for a card, so both sides of that trade have to be priced in
+ * the same currency to be comparable.
+ */
+export function coinWorth(s: Scratch, n: number): number {
+  if (n === 0) return 0;
+  // With the buy live there is always something to spend on, so the cap goes.
+  if (s.coinNeverDead) return n;
+  if (n > 0) return Math.min(n, Math.max(0, s.coinRunway - s.coins));
+  return -Math.max(0, Math.min(-n, s.coinRunway - (s.coins + n)));
+}
+
+/**
+ * How many of `n` cards leaving this hand actually COST the seat anything.
+ *
+ * The other half of the exchange, and the half ticket 40 first shipped without
+ * (Dean, 2026-08-02). A card in hand is not junk waiting to be dumped - it is
+ * fuel. It can be built, it can pay a GROW and fire an ability, it can pay a
+ * visit later. The design says so outright: *"cards are the scarce resource and
+ * the master clock"*, and *"every turn you convert 1 spare card into either £1
+ * or a second action"* - which prices one card at one coin, so a card must beat
+ * a coin the seat cannot spend.
+ *
+ * The exemption is Dean's and it is the whole subtlety: **a card you are over
+ * your hand limit with is free**, because the end-of-turn discard is going to
+ * take it anyway. Cards above the limit are spent first and cost nothing; only
+ * what a seat would otherwise have KEPT is charged.
+ *
+ * The forced end-of-turn discard is deliberately not run through here. You have
+ * no choice there, so there is nothing to price - `discardJunk` only picks which.
+ */
+export function handSpendCost(s: Scratch, n: number): number {
+  if (n <= 0) return 0;
+  const limit = s.handLimit;
+  const excess = limit === null ? 0 : Math.max(0, s.view.you.hand.length - limit);
+  return Math.max(0, n - excess);
 }
 
 function starterSlotOf(card: Card): string | null {
@@ -127,6 +272,7 @@ export function makeScratch(data: GameData, view: PlayerView): Scratch {
     if (slot === 'noticeboard') noticeBoard = building;
   }
 
+  const purse = coinsOf(data, view, buildings);
   const { held: heldLevels, open: openLevels } = levelsFor(data, view);
   const demandSuits = new Set<Suit>();
   for (const tile of view.island.tiles) {
@@ -153,5 +299,9 @@ export function makeScratch(data: GameData, view: PlayerView): Scratch {
     openLevels,
     demandSuits,
     ownsWorker: view.fair.some((w) => w.owner === view.seat),
+    coins: you.coins,
+    coinRunway: purse.runway,
+    sinkGap: purse.gap,
+    coinNeverDead: data.rules.turn.buyCost !== null,
   };
 }

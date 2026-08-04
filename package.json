@@ -27,6 +27,7 @@
     "knobs": "npm run sim -- --list-knobs",
     "verify:layout": "node tools/verify-layout.mjs",
     "verify:drag": "node tools/verify-drag.mjs",
+    "verify:capture": "tsx tools/verify-capture.mjs",
     "check:disclosure": "node tools/check-disclosure.mjs"
   },
   "devDependencies": {

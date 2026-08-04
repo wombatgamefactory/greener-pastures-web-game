@@ -38,6 +38,13 @@ desktop.ini
 .scratchprobe/
 .probe/
 
+# Captured bug reports and design notes (ticket 31). A capture carries the free
+# text written about the game's weak spots, so it stays private - and it is what
+# the browser's report button downloads and what a crashed sim run writes.
+# The PUBLIC half is packages/sim/fixtures/, which is a capture stripped to its
+# setup and move log by `--replay --fixture`.
+captures/
+
 # Simulator output: balance reports, complexity reports, run logs, cut lists.
 # Deliberately not anchored to the repo root, so a report written into
 # packages/sim/reports/ is caught too.

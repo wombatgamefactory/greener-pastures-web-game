@@ -9,9 +9,9 @@
 import { BASE_GAME_DATA as data } from '@gp/data';
 import type { Suit } from '@gp/data';
 import type { CardId, GameState, Move, PlayerView, Seat } from '@gp/engine';
-import { apply, legalMoves, newGame, viewFor } from '@gp/engine';
+import { apply, legalMoves, makeProber, newGame, viewFor } from '@gp/engine';
 import type { PolicyId } from '@gp/bots';
-import { actOf, makePolicy, policyRng } from '@gp/bots';
+import { TERMS, actOf, cardValue, makePolicy, policyRng, totalValue } from '@gp/bots';
 import { describe, expect, it } from 'vitest';
 
 import { assignProfiles, runGame } from './driver.js';
@@ -20,6 +20,26 @@ const SUITS: Suit[] = ['wheat', 'vegetable', 'orchard', 'apiary', 'dairy'];
 
 function mirror(id: PolicyId, seats: number) {
   return Array.from({ length: seats }, () => id);
+}
+
+/** A build in either spelling: the main move or its task-answer twin. */
+interface BuildAct {
+  readonly card: CardId;
+  readonly payment: readonly CardId[];
+  readonly coinWild: number;
+  readonly barn: number;
+}
+
+function buildAct(move: Move): BuildAct | null {
+  const act = actOf(move);
+  return act.a === 'build'
+    ? { card: act.card, payment: act.payment, coinWild: act.coinWild, barn: act.barn }
+    : null;
+}
+
+/** Same card, and paid the same way - so only the cards themselves differ. */
+function sameMethod(a: BuildAct, b: BuildAct): boolean {
+  return a.card === b.card && a.coinWild === b.coinWild && a.barn === b.barn;
 }
 
 // --- view safety -----------------------------------------------------------
@@ -114,7 +134,8 @@ function walkForViewSafety(seed: string, seats: number, ids: PolicyId[]): number
     const policy = policies[seat];
     const rng = rngs[seat];
     if (!policy || !rng) throw new Error('missing policy');
-    state = apply(data, state, policy.choose({ data, view, moves, rng })).state;
+    const probe = makeProber(data, state, seat);
+    state = apply(data, state, policy.choose({ data, view, moves, rng, probe })).state;
   }
   return checked;
 }
@@ -148,16 +169,29 @@ describe('termination', () => {
     }
   });
 
+  /**
+   * A RATE rather than one seed per seat count, which is what this was until
+   * ticket 47. About 2% of mixed games lock the card supply (assertion 13,
+   * ticket 34), so a single fixed seed per seat count is a coin toss away from
+   * red on any change that moves a trajectory - and the pressure that creates is
+   * to pick a friendlier seed, which measures nothing. Six seeds with a floor of
+   * five still fails loudly on a real regression (a table that stops
+   * delivering), and rides out the background lock rate.
+   */
   it('finishes a mixed table at 2, 3 and 4 seats', () => {
     for (const seats of [2, 3, 4]) {
-      const seed = `mixed-${seats}`;
-      const result = runGame(data, {
-        seed,
-        seats,
-        suits: SUITS.slice(0, seats),
-        policies: assignProfiles(seed, seats),
-      });
-      expect(result.outcome).toBe('ended');
+      let ended = 0;
+      for (let n = 0; n < 6; n++) {
+        const seed = `mixed-${seats}-${n}`;
+        const result = runGame(data, {
+          seed,
+          seats,
+          suits: SUITS.slice(0, seats),
+          policies: assignProfiles(seed, seats),
+        });
+        if (result.outcome === 'ended') ended += 1;
+      }
+      expect(ended, `${seats} seats`).toBeGreaterThanOrEqual(5);
     }
   });
 
@@ -264,7 +298,32 @@ describe('the decision budget', () => {
     expect(result.views).toBe(result.decisions);
   });
 
-  it('keeps the scored evaluator inside 50us a decision', () => {
+  /**
+   * The budget was 50us a decision, set in ticket 10 for an evaluator that did
+   * arithmetic over a term table and nothing else. Ticket 40's probe cannot fit
+   * in it and never could: pricing a move by applying it costs an `apply`, and
+   * one `apply` is 18us on its own.
+   *
+   * So the guard is re-stated against the thing it was protecting - **the cost
+   * of a whole game**, which is what a 1,510-game balance run actually pays.
+   * Measured before and after, that number did not move: probes added ~35us to
+   * a ~144us decision, and indexing the engine's `cardById` (a linear scan of
+   * 105 cards, flagged as the cheapest single-core win since ticket 28) paid
+   * for it. A 4-seat game runs in ~58ms, against ticket 28's published 12 games
+   * a second at 4 seats.
+   *
+   * A regression here means the rollout has grown a branch, and the levers are
+   * `DEPTH` and `BRANCH_CAP` in `outcome.ts`, in that order.
+   *
+   * **Both budgets are denominated in `apply`s, measured on the machine running
+   * the test** (ticket 46 found this red on a laptop at 40% background load,
+   * with an unchanged evaluator: the same numbers reproduce with the change
+   * reverted, so an absolute millisecond threshold was measuring the machine).
+   * The published pair - a 120us decision against an 18us `apply` - is the
+   * RATIO this keeps, so a slower machine moves both sides together and only a
+   * rollout that actually grew fails.
+   */
+  it('keeps a whole game inside the throughput a balance run is built on', () => {
     const spec = {
       seed: 'speed',
       seats: 4,
@@ -272,11 +331,37 @@ describe('the decision budget', () => {
       policies: mirror('balanced', 4),
       maxMoves: 600,
     };
-    runGame(data, spec); // warm the JIT; the first game pays for compilation
+    const warm = runGame(data, spec); // the first game pays for compilation
+    const started = performance.now();
     const result = runGame(data, spec);
-    const perDecision = (result.chooseMs * 1000) / result.decisions;
+    const wallMs = performance.now() - started;
+
+    // This machine's `apply`, timed by replaying the warm-up game's own moves.
+    // Median of five passes: one pass wanders 20-30us on a loaded laptop, and
+    // the calibration must be quieter than the thing it is calibrating.
+    const passes: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      let state = newGame(data, { seed: spec.seed, seats: spec.seats, suits: spec.suits });
+      const applyStarted = performance.now();
+      for (const move of warm.moves) state = apply(data, state, move).state;
+      passes.push(((performance.now() - applyStarted) * 1000) / warm.moves.length);
+    }
+    passes.sort((a, b) => a - b);
+    const applyUs = passes[2] as number;
+
     expect(result.decisions).toBeGreaterThan(200);
-    expect(perDecision).toBeLessThan(50);
+    // Ticket 28 measured 12 games a second at 4 seats (83ms) against an 18us
+    // apply: a whole game is ~4,600 applies. Measured here at 4,000-4,400, so
+    // 8,300 fails on a real regression rather than on a busy machine.
+    expect((wallMs * 1000) / applyUs, `whole game, in applies`).toBeLessThan(8300);
+    // And the decision cost itself: ticket 40's published pair is a 120us
+    // decision against an 18us apply, or 6.7. Live it reads 5.9-6.4, and the
+    // calibration carries about a tenth either way, so the gate is 8.
+    const perDecision = (result.chooseMs * 1000) / result.decisions;
+    expect(
+      perDecision / applyUs,
+      `${perDecision.toFixed(0)}us / ${applyUs.toFixed(1)}us`,
+    ).toBeLessThan(8);
   });
 });
 
@@ -297,6 +382,175 @@ describe('the archetypes', () => {
       });
       expect(result.moves.filter((m) => m.type === 'visit')).toEqual([]);
     }
+  });
+
+  /**
+   * Ticket 45. `growSpend` was signed so the bot paid a GROW with the card it
+   * valued MOST, against its own comment and against both correctly-signed
+   * siblings. The sign alone is not the claim worth guarding - the claim is the
+   * behaviour, so walk real games and check every GROW the bot actually took.
+   *
+   * This is not merely an ordering preference. `handSpend` charges by COUNT
+   * (`cardsLeavingHand` returns a flat 1 for a grow), so `growSpend` is the only
+   * term reading which card pays, and it therefore moves the argmax of the whole
+   * grow family: the bug scored the best grow at `base + 0.3 x max(cardValue)`
+   * rather than `base - 0.3 x min(cardValue)`, manufacturing GROW traffic
+   * (measured: 8.9 activations a game against a true 6.9).
+   */
+  it('pays a GROW with the junkiest legal card, not the most valuable', () => {
+    let checked = 0;
+    let ties = 0;
+
+    const runs: [number, number][] = [
+      [2, 0],
+      [2, 1],
+      [3, 0],
+      [3, 1],
+      [4, 0],
+      [4, 1],
+    ];
+    for (const [seats, n] of runs) {
+      const seed = `growspend-${seats}-${n}`;
+      const result = runGame(data, {
+        seed,
+        seats,
+        suits: SUITS.slice(n, n + seats),
+        policies: assignProfiles(seed, seats),
+        maxMoves: 1500,
+      });
+
+      // Replay so each GROW can be judged against the alternatives it had.
+      let state = newGame(data, { seed, seats, suits: SUITS.slice(n, n + seats) });
+      for (const move of result.moves) {
+        if (move.type === 'grow') {
+          const alternatives = legalMoves(data, state).filter(
+            (m): m is Extract<Move, { type: 'grow' }> =>
+              m.type === 'grow' && m.seat === move.seat && m.building === move.building,
+          );
+          const cheapest = Math.min(...alternatives.map((m) => cardValue(data, m.payment)));
+          const chosen = cardValue(data, move.payment);
+          // `cardValue`'s tail key makes exact ties near-impossible, so an
+          // equality here is the junkiest card, not a coincidence.
+          expect(chosen, `${move.building} paid with ${move.payment}`).toBeCloseTo(cheapest, 9);
+          if (alternatives.length === 1) ties += 1;
+          checked += 1;
+        }
+        state = apply(data, state, move).state;
+      }
+    }
+
+    // The check is worthless if most GROWs had only one legal payment.
+    expect(checked).toBeGreaterThan(30);
+    expect(ties).toBeLessThan(checked);
+  });
+
+  /**
+   * Ticket 47. `buildSpend` read `-(payment.length + coinWild)`, and the engine
+   * holds `payment.length + barn + coinWild === cardsNeeded` - so for one built
+   * card that sum is a CONSTANT and the term could not order a build's payments
+   * at all. Measured over 262 real builds it separated the alternatives twice,
+   * both on D8's barn leg, while 23.7% of builds had a real choice of which
+   * cards to burn. The pick was the evaluator's random tie-break.
+   *
+   * The claim guarded here is the behaviour, not the sign: given HOW it is
+   * paying (same barn and coin legs), a build spends the junkiest cards it can.
+   * Comparing across payment methods would be a different assertion - a barn or
+   * coin payment is cheaper in hand cards by construction, and `barnSpend` and
+   * `coinGain` are what price that trade.
+   */
+  it('pays a build with the junkiest legal cards, not the most valuable', () => {
+    let checked = 0;
+
+    const runs: [number, number][] = [];
+    for (const seats of [2, 3, 4]) for (let n = 0; n < 5; n++) runs.push([seats, n]);
+    for (const [seats, n] of runs) {
+      const seed = `buildspend-${seats}-${n}`;
+      const suits = Array.from({ length: seats }, (_, i) => SUITS[(n + i) % 5] as Suit);
+      const result = runGame(data, {
+        seed,
+        seats,
+        suits,
+        policies: assignProfiles(seed, seats),
+        maxMoves: 1500,
+      });
+
+      let state = newGame(data, { seed, seats, suits });
+      for (const move of result.moves) {
+        const chosen = buildAct(move);
+        if (chosen) {
+          const alternatives = legalMoves(data, state)
+            .map((m) => (m.seat === move.seat ? buildAct(m) : null))
+            .filter((a): a is BuildAct => a !== null && sameMethod(a, chosen));
+          const cheapest = Math.min(...alternatives.map((a) => totalValue(data, a.payment)));
+          const paid = totalValue(data, chosen.payment);
+          expect(paid, `${chosen.card} paid with ${chosen.payment.join(', ')}`).toBeCloseTo(
+            cheapest,
+            9,
+          );
+          if (alternatives.length > 1) checked += 1;
+        }
+        state = apply(data, state, move).state;
+      }
+    }
+
+    // Worthless unless builds really did have a choice of payment.
+    expect(checked).toBeGreaterThan(30);
+  });
+
+  /**
+   * Ticket 48's sign convention, asserted where it actually bites: the PRODUCT.
+   *
+   * `roster.test.ts` holds the weights positive; this holds the features
+   * negative, over real positions rather than by reading the code. Together they
+   * are the thing that was missing when `growSpend`, `buildSpend` and
+   * `deliverCost` were each written as a negative weight against a negated
+   * feature - three terms that paid the bot for spending more, none of which
+   * looks wrong at its own call site.
+   *
+   * `explain` is used rather than the term functions directly because it returns
+   * exactly what the scorer added up, so a term that is inverted only in the
+   * profile's override is caught as well.
+   */
+  it('never lets a cost term pay a bot for spending', () => {
+    const costTerms = new Set(TERMS.filter((term) => term.cost).map((term) => term.name));
+    let checked = 0;
+    let seen = 0;
+
+    for (const id of ['balanced', 'racer', 'socialite'] as PolicyId[]) {
+      const seed = `costsign-${id}`;
+      const policy = makePolicy(id);
+      let state = newGame(data, { seed, seats: 3, suits: SUITS.slice(0, 3) });
+      const result = runGame(data, {
+        seed,
+        seats: 3,
+        suits: SUITS.slice(0, 3),
+        policies: mirror(id, 3),
+        maxMoves: 400,
+      });
+      for (const move of result.moves) {
+        const seat = state.turnPlayer;
+        const rows = policy.explain?.({
+          data,
+          view: viewFor(data, state, seat),
+          moves: legalMoves(data, state).filter((m) => m.seat === seat),
+          rng: policyRng(seed, seat, id),
+          probe: makeProber(data, state, seat),
+        });
+        for (const row of rows ?? []) {
+          for (const [name, value] of Object.entries(row.terms)) {
+            if (!costTerms.has(name)) continue;
+            seen += 1;
+            expect(value, `${id}: ${name} on ${JSON.stringify(row.move)}`).toBeLessThanOrEqual(0);
+          }
+        }
+        checked += 1;
+        state = apply(data, state, move).state;
+      }
+    }
+
+    // Vacuous unless the cost terms really fired.
+    expect(checked).toBeGreaterThan(200);
+    expect(seen).toBeGreaterThan(500);
   });
 
   it('makes the socialite visit far more than the balanced reference', () => {
@@ -322,7 +576,14 @@ describe('explain', () => {
     const moves = legalMoves(data, state);
     const view = viewFor(data, state, state.turnPlayer);
     const policy = makePolicy('balanced');
-    const rows = policy.explain?.({ data, view, moves, rng: policyRng('explain', 0, 'balanced') });
+    const probe = makeProber(data, state, state.turnPlayer);
+    const rows = policy.explain?.({
+      data,
+      view,
+      moves,
+      rng: policyRng('explain', 0, 'balanced'),
+      probe,
+    });
     expect(rows).toBeDefined();
     expect(rows).toHaveLength(moves.length);
     for (const row of rows ?? []) {
@@ -331,7 +592,13 @@ describe('explain', () => {
     }
     // Best first, and the chosen move is one of the best.
     const best = (rows ?? [])[0];
-    const chosen = policy.choose({ data, view, moves, rng: policyRng('explain', 0, 'balanced') });
+    const chosen = policy.choose({
+      data,
+      view,
+      moves,
+      rng: policyRng('explain', 0, 'balanced'),
+      probe: makeProber(data, state, state.turnPlayer),
+    });
     const chosenRow = (rows ?? []).find((r) => JSON.stringify(r.move) === JSON.stringify(chosen));
     expect(chosenRow?.total).toBeCloseTo(best?.total ?? 0, 9);
   });

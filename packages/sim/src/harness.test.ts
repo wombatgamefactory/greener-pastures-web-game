@@ -21,7 +21,7 @@ import { WATCHLIST } from './assertions/index.js';
 import { NO_REMEDY } from './assertions/types.js';
 import { cutList, funnel } from './cutlist.js';
 import { EVENT_KINDS, MOVE_KINDS } from './observe.js';
-import { REFERENCE_V1, cellsFor, gamesPerCell } from './reference.js';
+import { REFERENCE, cellsFor, gamesPerCell } from './reference.js';
 import { renderReport } from './report.js';
 import { planRun, pool, runBalance } from './run.js';
 import { runWatchlist } from './watchlist.js';
@@ -30,7 +30,7 @@ const data = BASE_GAME_DATA;
 
 /** A handful of games. Enough to exercise every path, small enough for CI. */
 const SMOKE = {
-  reference: { ...REFERENCE_V1, targetGames: { 2: 4, 3: 4, 4: 2 }, maxMoves: 2500 },
+  reference: { ...REFERENCE, targetGames: { 2: 4, 3: 4, 4: 2 }, maxMoves: 2500 },
   seed: 'smoke',
   games: 4,
 };
@@ -46,7 +46,7 @@ describe('the stratified cells', () => {
   });
 
   it('gives every cell the same number of games', () => {
-    const plan = planRun(data, { reference: REFERENCE_V1, games: 500, seatCounts: [2] });
+    const plan = planRun(data, { reference: REFERENCE, games: 500, seatCounts: [2] });
     const counts = new Set(plan.cells.map((c) => c.games));
     expect(counts.size).toBe(1);
     expect(plan.total).toBeGreaterThanOrEqual(500);
@@ -204,7 +204,7 @@ describe('the report', () => {
       overlayName: null,
       fullFunnel: true,
     });
-    expect(text).toContain(REFERENCE_V1.id);
+    expect(text).toContain(REFERENCE.id);
     expect(text).toContain('smoke');
     expect(text).toContain('THE WATCH LIST');
     expect(text).toContain('THE CUT LIST');

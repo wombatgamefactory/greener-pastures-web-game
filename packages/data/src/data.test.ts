@@ -92,18 +92,20 @@ describe('the extract', () => {
 });
 
 describe('the island', () => {
-  // Ticket 14: the sheet's quantity label is the per-crate RATE, not the tile total,
-  // so a tile wants 2 of one crop / 3 of each of 2 crops / 3 of each of 3 crops.
+  // Ticket 14 read the sheet's quantity label as the per-crate RATE rather than the
+  // tile total, and settled 2 / 6 / 9. Ticket 38 overturned the rate itself: a set is
+  // TWO of a kind at every level, so a tile wants 2 of one crop / 2 of each of 2 crops
+  // / 2 of each of 3 crops. The RATE-not-total reading survives; only the rate moved.
   it('derives delivery cost from crates times cards-per-crate', () => {
     expect(deliveryCost(BASE_GAME_DATA, 1)).toBe(2);
-    expect(deliveryCost(BASE_GAME_DATA, 2)).toBe(6);
-    expect(deliveryCost(BASE_GAME_DATA, 3)).toBe(9);
+    expect(deliveryCost(BASE_GAME_DATA, 2)).toBe(4);
+    expect(deliveryCost(BASE_GAME_DATA, 3)).toBe(6);
   });
 
   it('lets one knob move the whole cost, because cost is never stored twice', () => {
-    const cheaper = loadGameData(overlay({ 'island.levelRules.3.cardsPerCrate': 2 }));
-    expect(deliveryCost(cheaper, 3)).toBe(6);
-    expect(deliveryCost(BASE_GAME_DATA, 3)).toBe(9);
+    const dearer = loadGameData(overlay({ 'island.levelRules.3.cardsPerCrate': 3 }));
+    expect(deliveryCost(dearer, 3)).toBe(9);
+    expect(deliveryCost(BASE_GAME_DATA, 3)).toBe(6);
   });
 
   it('names a level-3 tile for every seat count', () => {
@@ -214,6 +216,11 @@ describe('applying an overlay', () => {
   });
 
   it('accepts null where a knob nulls out a rule', () => {
+    // The base rule is already null (ticket 37), so the null case is asserted
+    // against the shipped data and the overlay proves the knob can put it back.
+    expect(BASE_GAME_DATA.rules.economy.coinPityDivisor).toBeNull();
+    const withPity = loadGameData(overlay({ 'rules.economy.coinPityDivisor': 5 }));
+    expect(withPity.rules.economy.coinPityDivisor).toBe(5);
     const noPity = loadGameData(overlay({ 'rules.economy.coinPityDivisor': null }));
     expect(noPity.rules.economy.coinPityDivisor).toBeNull();
   });

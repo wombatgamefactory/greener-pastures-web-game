@@ -18,6 +18,8 @@
 
 import type { GameData, Suit } from '@gp/data';
 import { SUITS } from '@gp/data';
+import { makeCapture } from '@gp/engine';
+import type { Capture } from '@gp/engine';
 import type { PolicyId } from '@gp/bots';
 
 import { assignProfiles, runGame } from './driver.js';
@@ -34,6 +36,19 @@ export interface RunOptions {
   readonly seatCounts?: readonly number[] | undefined;
   /** Called after each game, for a progress line on a 90-second run. */
   readonly onGame?: ((done: number, total: number) => void) | undefined;
+  /**
+   * Called with a ready-made capture for every game the engine threw in
+   * (ticket 31). The run itself does no I/O - the caller writes the file - but
+   * building the envelope belongs here, because this is where the seed, the
+   * cell's suits and the seat profiles are all in scope at once.
+   *
+   * Ticket 30's bug killed a 1510-game run at game 751 and had to be re-found
+   * by hand afterwards. With this it is a file on disk the moment it happens,
+   * and `--replay` turns it into a fixture.
+   */
+  readonly onCrash?: ((capture: Capture) => void) | undefined;
+  /** Names the overlay in a crash capture. Metadata only. */
+  readonly overlay?: string | null | undefined;
 }
 
 export interface RunPlan {
@@ -94,6 +109,37 @@ export function runBalance(data: GameData, opts: RunOptions): RunResult {
         observe: (d) => fold.observe(d),
       });
       games.push(fold.finish(result.state, result.outcome, result.chooseMs, result.error ?? null));
+      if (result.outcome === 'crashed' && opts.onCrash) {
+        opts.onCrash(
+          makeCapture({
+            label: 'bug',
+            // The note is the run's own account of itself. A simulator capture
+            // has no human behind it, so this is what a reader gets instead.
+            note:
+              `Emitted automatically by a balance run.\n` +
+              `Cell ${cell.label} at ${cell.seats} seats, game ${i} of ${n}.`,
+            at: new Date().toISOString(),
+            origin: 'sim',
+            dataFingerprint: result.state.dataFingerprint,
+            setup: {
+              seed: gameSeed,
+              seats: cell.seats,
+              suits: cell.suits,
+              neutralSuits: cell.neutral,
+            },
+            policies: profiles,
+            // The attempted move is appended so the replay throws in the same
+            // place rather than reaching the crash position and stopping
+            // cleanly. It is absent when the throw came from `legalMoves`, and
+            // then the log alone reaches the position that cannot enumerate.
+            moves: result.attempted ? [...result.moves, result.attempted] : result.moves,
+            seat: result.state.turnPlayer,
+            turn: result.turns,
+            overlay: opts.overlay ?? null,
+            error: result.error ?? null,
+          }),
+        );
+      }
       opts.onGame?.(games.length, plan.total);
     }
   }

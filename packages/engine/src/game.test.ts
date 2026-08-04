@@ -204,18 +204,18 @@ describe('main actions through apply', () => {
     expect(applied.state.island.tiles.find((t) => t.tile === 'A1')?.deliveredBy).toEqual([WHEAT]);
     expect(applied.state.endTrigger).toBeNull();
 
-    // Level 3 runs at 3 cards per crate (ticket 14), so D1's [dairy, dairy, wild]
-    // wants 6 dairy plus 3 of one freely chosen suit: 9 barn cards in all. The
-    // level gate (ticket 29) wants the climb done first, so seed the receipts.
+    // Every level runs at 2 cards per crate (ticket 38), so D1's [dairy, dairy,
+    // wild] wants 4 dairy plus 2 of one freely chosen suit: 6 barn cards in all.
+    // The level gate (ticket 29) wants the climb done first, so seed the receipts.
     const s2 = base();
     deliveredAt(s2, WHEAT, 'A1', 'B1');
-    stockBarn(s2, WHEAT, 'dairy', 6);
-    stockBarn(s2, WHEAT, 'orchard', 3); // the wild crate, paid in one suit
+    stockBarn(s2, WHEAT, 'dairy', 4);
+    stockBarn(s2, WHEAT, 'orchard', 2); // the wild crate, paid in one suit
     const l3 = apply(data, s2, {
       type: 'deliver',
       seat: WHEAT,
       tile: 'D1',
-      spend: { dairy: 6, orchard: 3 },
+      spend: { dairy: 4, orchard: 2 },
     });
     expect(l3.state.endTrigger).toEqual({ seat: WHEAT });
     expect(l3.state.players[WHEAT]!.receipts).toEqual([16]);
@@ -283,13 +283,13 @@ describe('main actions through apply', () => {
       set: { 'island.levelGate': false },
     });
     const s = makeState(open, ['wheat', 'apiary']);
-    stockBarn(s, WHEAT, 'dairy', 6);
-    stockBarn(s, WHEAT, 'orchard', 3);
+    stockBarn(s, WHEAT, 'dairy', 4);
+    stockBarn(s, WHEAT, 'orchard', 2);
     const l3 = apply(open, s, {
       type: 'deliver',
       seat: WHEAT,
       tile: 'D1',
-      spend: { dairy: 6, orchard: 3 },
+      spend: { dairy: 4, orchard: 2 },
     });
     expect(l3.state.players[WHEAT]!.receipts).toEqual([16]);
   });
@@ -525,6 +525,83 @@ describe('the turn boundary', () => {
   });
 });
 
+describe('the card buy', () => {
+  /** The rule switched off, which is the paired control the sim runs. */
+  const noBuy = loadGameData({
+    name: 'no-card-buy',
+    schemaVersion: 1,
+    set: { 'rules.turn.buyCost': null },
+  });
+
+  function withCoins(n: number): GameState {
+    const state = base();
+    state.players[WHEAT]!.coins = n;
+    return state;
+  }
+
+  function buys(state: GameState): Move[] {
+    return legalMoves(data, state).filter((m) => m.type === 'buy');
+  }
+
+  it('offers every deck but your own, and only while you can pay', () => {
+    expect(buys(withCoins(0))).toHaveLength(0);
+    // Two seats: wheat, apiary and one passive deck. The Wheat seat may buy
+    // from the other two and never from wheat.
+    const offered = buys(withCoins(1));
+    expect(offered.map((m) => (m.type === 'buy' ? m.suit : null)).sort()).toEqual(
+      base()
+        .suitsInPlay.filter((s) => s !== 'wheat')
+        .sort(),
+    );
+  });
+
+  it('pays the bank, takes the top card blind, and is once a turn', () => {
+    const state = withCoins(3);
+    const top = state.decks.apiary[0] as string;
+    const applied = apply(data, state, { type: 'buy', seat: WHEAT, suit: 'apiary' });
+    const after = applied.state;
+    expect(after.players[WHEAT]!.coins).toBe(2);
+    expect(after.players[WHEAT]!.hand).toContain(top);
+    expect(after.decks.apiary[0]).not.toBe(top);
+    expect(after.turn.buyUsed).toBe(true);
+    // Free: the main action and the bonus slot are both still there.
+    expect(after.turn.actionSpent).toBe(false);
+    expect(after.turn.bonusSpent).toBe(false);
+    expect(buys(after)).toHaveLength(0);
+    expect(() => apply(data, after, { type: 'buy', seat: WHEAT, suit: 'apiary' })).toThrow();
+  });
+
+  it('is not a Draw: no reveal task, and the Orchard modifier never touches it', () => {
+    const orchard = makeState(data, ['orchard', 'wheat']);
+    orchard.players[0]!.coins = 1;
+    const farmstead = orchard.players[0]!.tableau.find(
+      (b) => cardById(data, b.card).slot === 'farmstead',
+    );
+    farmstead!.upgraded = true; // see +1 and keep +1 on every DRAW
+    const applied = apply(data, orchard, { type: 'buy', seat: 0, suit: 'wheat' });
+    expect(applied.state.tasks).toHaveLength(0);
+    expect(applied.state.players[0]!.hand).toHaveLength(1);
+  });
+
+  it('holds the turn open, so a seat with coins declines rather than running out', () => {
+    const state = withCoins(1);
+    // Hand is empty, so with the buy switched off the draw's turn settles by
+    // itself once the kept card is spent. With it on, the free action is an
+    // unspent option exactly like the bonus slot.
+    state.turn.actionSpent = true;
+    expect(legalMoves(data, state).some((m) => m.type === 'endTurn')).toBe(true);
+    expect(buys(state).length).toBeGreaterThan(0);
+    const ended = apply(data, state, { type: 'endTurn', seat: WHEAT });
+    expect(ended.state.turnPlayer).toBe(APIARY);
+  });
+
+  it('disappears entirely when the rule is switched off', () => {
+    const state = withCoins(5);
+    expect(legalMoves(noBuy, state).filter((m) => m.type === 'buy')).toHaveLength(0);
+    expect(() => apply(noBuy, state, { type: 'buy', seat: WHEAT, suit: 'apiary' })).toThrow();
+  });
+});
+
 describe('views and redaction', () => {
   it('viewFor hides rival hands, deck order and barn identity', () => {
     const state = base();
@@ -554,10 +631,28 @@ describe('views and redaction', () => {
 });
 
 describe('scoring', () => {
+  /**
+   * Ticket 37 deleted the coin pity, which this test had been using to BUILD
+   * the VP tie. Coins now enter scoring only here, as the first tie-break, so
+   * the tie is made out of receipts and the coins do nothing else.
+   */
   it('ranks by VP, then coins, then receipts', () => {
     const state = base();
     state.players[WHEAT]!.receipts.push(4); // 4 VP
-    state.players[APIARY]!.coins = 21; // 4 VP coin pity + tie-break coins
+    state.players[APIARY]!.receipts.push(4); // 4 VP - tied
+    state.players[APIARY]!.coins = 21; // worth 0 VP, breaks the tie
+    const result = score(data, state);
+    expect(result.seats[WHEAT]!.total).toBe(result.seats[APIARY]!.total);
+    expect(result.seats[APIARY]!.coinPity).toBe(0);
+    expect(result.ranking).toEqual([APIARY, WHEAT]);
+  });
+
+  it('falls through to receipt count when VP and coins both tie', () => {
+    const state = base();
+    state.players[WHEAT]!.receipts.push(8); // 8 VP from one receipt
+    state.players[APIARY]!.receipts.push(4, 4); // 8 VP from two
+    state.players[WHEAT]!.coins = 3;
+    state.players[APIARY]!.coins = 3;
     const result = score(data, state);
     expect(result.seats[WHEAT]!.total).toBe(result.seats[APIARY]!.total);
     expect(result.ranking).toEqual([APIARY, WHEAT]);

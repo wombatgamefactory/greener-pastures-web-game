@@ -34,6 +34,35 @@ describe('printedFace, against the sheet', () => {
     expect(face.handSize).toBe(7);
   });
 
+  /**
+   * Ticket 46, Dean's call. The Farmstead is the one building never for sale, so
+   * the slot every other card prints a PRICE in prints the MILESTONE that flips
+   * it free: one own-crop icon per building of your own crop. Read from the rule
+   * rather than typed, so the card and the knob cannot disagree - and asserted
+   * for all five, because a starter that quietly went back to two coins would be
+   * telling a publisher the Farmstead costs £2.
+   */
+  it('every Farmstead prints its milestone in the cost bar, never a price', () => {
+    const flipAt = data.rules.economy.farmsteadFlipAtOwnColourBuilds;
+    for (const card of data.cards.catalogue.filter((c) => c.slot === 'farmstead')) {
+      const face = printedFace(data, card.id);
+      expect(card.upgradeCostCoins, `${card.id} carries a price`).toBeUndefined();
+      expect(face.costMeaning).toBe('milestone');
+      expect(face.cost, card.id).toEqual(
+        Array.from({ length: flipAt }, () => ({ kind: 'crop', suit: card.suit })),
+      );
+      expect(face.costIcon).toBe('build');
+      // And the base face says so in words, because three crop icons alone read
+      // like a payment.
+      expect(face.abilityText, card.id).toMatch(/Flips free when you have \d+ \w+ buildings\./);
+    }
+    // Its neighbours still print the £2 they really do cost.
+    for (const id of ['W1', 'W3']) {
+      expect(printedFace(data, id).cost).toEqual([{ kind: 'coin' }, { kind: 'coin' }]);
+      expect(printedFace(data, id).costMeaning).toBe('price');
+    }
+  });
+
   it('W3 Notice Board: wild activation, the CONVERT arrow rather than a harvest', () => {
     const face = printedFace(data, 'W3');
     expect(face.activation).toBe('wild');

@@ -91,6 +91,8 @@ export function describeMove(data: GameData, view: PlayerView, move: Move): stri
       return `${cardName(data, move.card)}: ${move.kind}`;
     case 'draw':
       return 'Draw';
+    case 'buy':
+      return `Buy the top ${SUIT_META[move.suit].label} card for £${data.rules.turn.buyCost ?? 0}`;
     case 'build':
       return `Build ${cardName(data, move.card)}, paying ${cardList(data, move.payment)}`;
     case 'hire':
@@ -176,6 +178,12 @@ const FAMILIES: readonly {
   needsTarget: boolean;
 }[] = [
   { type: 'draw', label: 'Draw', hint: 'Top of any two decks, keep one', needsTarget: false },
+  {
+    type: 'buy',
+    label: 'Buy',
+    hint: 'Free, once a turn: £1 for the top card of a neighbouring crop',
+    needsTarget: true,
+  },
   { type: 'build', label: 'Build', hint: 'Pay cards from hand', needsTarget: true },
   { type: 'hire', label: 'Hire', hint: 'Build a Worker out of the Fair', needsTarget: true },
   { type: 'upgrade', label: 'Upgrade', hint: 'Flip a starter for coins', needsTarget: true },

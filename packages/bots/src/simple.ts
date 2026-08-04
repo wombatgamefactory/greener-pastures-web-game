@@ -68,6 +68,7 @@ export const GREEDY_PRIORITY: readonly MoveType[] = [
   'upgrade',
   'grow',
   'draw',
+  'buy',
   'visit',
   'workOwnWorker',
   'cardMove',

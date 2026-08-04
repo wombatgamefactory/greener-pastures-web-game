@@ -8,8 +8,28 @@ import type { Card, CardFace, GameData, HiredWorker, Suit } from '@gp/data';
 
 import type { BuildingState, CardId, GameState, PlayerState, Seat, WorkerState } from './state.js';
 
+/**
+ * Card lookup, indexed per GameData.
+ *
+ * It was a linear scan of the 105-card catalogue, which was the right shape
+ * while a rules engine read a handful of cards per `apply`. Ticket 28 measured
+ * the scan costing a bot 30-54us a decision and indexed it inside @gp/bots;
+ * ticket 40's probe made the engine itself the hot caller, since a decision now
+ * runs several speculative applies. Indexing here retires both copies of the
+ * problem and the sim's flagged "cheapest single-core throughput win".
+ *
+ * Keyed on the data object, so an overlay run gets its own index and each is
+ * collected with the data it describes. Behaviour is unchanged, throw included.
+ */
+const CARD_INDEX = new WeakMap<GameData, Map<CardId, Card>>();
+
 export function cardById(data: GameData, id: CardId): Card {
-  const card = data.cards.catalogue.find((c) => c.id === id);
+  let index = CARD_INDEX.get(data);
+  if (index === undefined) {
+    index = new Map(data.cards.catalogue.map((c) => [c.id, c]));
+    CARD_INDEX.set(data, index);
+  }
+  const card = index.get(id);
   if (!card) throw new Error(`Unknown card id ${id}`);
   return card;
 }

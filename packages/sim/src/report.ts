@@ -237,7 +237,7 @@ function seriesSection({ pooled }: ReportInput): string[] {
  * those two send a card change in opposite directions. Offered-versus-taken
  * separates them, and it costs nothing: the fold already holds `legalMoves`.
  */
-function actionMix({ pooled }: ReportInput): string[] {
+function actionMix({ pooled, data }: ReportInput): string[] {
   const chosen = new Map<string, number>();
   const offered = new Map<string, number>();
   let decisions = 0;
@@ -272,10 +272,20 @@ function actionMix({ pooled }: ReportInput): string[] {
     );
   }
   out.push('');
+  // Ticket 45: this line used to read "a card's ability only fires on GROW, so
+  // the GROW row is the ceiling on how much of the card set does anything at
+  // all in a game", which is false for 47 of the 105 cards - the endgame cards
+  // score without ever being activated, the Power cards fire on hooks, the
+  // starters carry the suit powers, and the two Wheat fields fire on harvest.
+  // Derived from the data rather than transcribed, so a retrigger cannot make
+  // the sentence stale.
+  const enabled = data.cards.catalogue.filter((c) => c.enabled);
+  const gated = enabled.filter((c) => c.abilityTrigger.includes('onActivate')).length;
   out.push(
-    `${decisions} decisions across ${pooled.ended.length} ended games. A card's ability only ` +
-      'fires on GROW, so the\nGROW row is the ceiling on how much of the card set does anything ' +
-      'at all in a game.',
+    `${decisions} decisions across ${pooled.ended.length} ended games. GROW is what fires a ` +
+      `card's printed ability, so the\nGROW row bounds how often the ${gated} ` +
+      `activation-gated cards do anything - not the other ${enabled.length - gated}, which ` +
+      'score at\ngame end, fire on hooks, or are the starters carrying the suit powers.',
   );
   out.push('');
   return out;

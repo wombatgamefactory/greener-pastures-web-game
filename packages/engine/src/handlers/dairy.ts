@@ -324,7 +324,7 @@ export const scoutsPost: CardHandler = {
   },
 };
 
-/** D11 The Heritage House - "Build on top of one of your empty buildings, at a discount of 2. The covered card scores its VP at game end." */
+/** D11 The Heritage House - "Build on top of one of your empty buildings (never a starter), at a discount of 2. The covered card scores its VP at game end." */
 export const heritageHouse: CardHandler = {
   difficulty: {
     score: 5,
@@ -434,7 +434,7 @@ export const cheeseVault: CardHandler = {
   },
 };
 
-/** D14 The Cream Refinery - "Demolish one of your empty buildings: put it and the top 2 cards of any decks into your barn." */
+/** D14 The Cream Refinery - "Demolish one of your empty buildings (never a starter): put it and the top 2 cards of any decks into your barn." */
 export const creamRefinery: CardHandler = {
   difficulty: {
     score: 4,
@@ -582,25 +582,28 @@ export const countingHouse: CardHandler = {
   },
 };
 
-/** D21 The Refinery - "Score 1 VP for each Dairy building you have built with a build cost of 3 or less." */
+/** D21 The Refinery - "Score 1 VP for each Dairy building you have built with a build cost of 1 to 3." */
 export const refinery: CardHandler = {
   difficulty: {
     score: 1,
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: true },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
-      'READING: TIER cards only, per the reference\'s "dairy tier card cost <= 3" gloss. ' +
-      'Taken literally, the £2 Power and Endgame cards have a card cost of 0 and would all ' +
-      'count - including this card itself and any Helping Hand - which would make it score ' +
-      'for buying cheap coin cards rather than for building a cheap Dairy engine. Flagged ' +
-      'to ticket 07.',
+      'The band is 1 TO 3, not "3 or less", and the lower bound is what does the excluding. ' +
+      'A starter has no build cost and the £2 Power and Endgame cards have a card cost of 0, ' +
+      'so "3 or less" would count every one of them - including this card itself and any ' +
+      'Helping Hand - and score for buying cheap coin cards rather than for building a cheap ' +
+      'Dairy engine. Ticket 13 closed that hole with the word "tier" on the card; ticket 39 ' +
+      'took the word back off (it was the only printed "tier" in the game and is taught ' +
+      'nowhere) and let the arithmetic do it instead, so the print and this filter are now ' +
+      'the same sentence. Equivalence is machine-checked in dairy.test.ts.',
   },
   gameEnd(data, state, seat) {
     return player(state, seat).tableau.filter((b) => {
       const card = cardById(data, b.card);
       if (card.suit !== 'dairy') return false;
-      if (!card.type.startsWith('tier')) return false;
-      return (cardCostOf(data, b.card) ?? 0) <= 3;
+      const cost = cardCostOf(data, b.card) ?? 0;
+      return cost >= 1 && cost <= 3;
     }).length;
   },
 };

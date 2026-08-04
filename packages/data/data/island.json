@@ -10,7 +10,7 @@
       "VP is 4 / 8 / 16 by level and coins are 2 / 3 / 4 by level, both read from the sheet. The design docs' 5 / 10 / 20 is overruled by the owner in favour of the sheet. Both ship as tuning knobs.",
       "Coins are not seeded onto a tile. The bank pays the tile's coins on EVERY delivery, first and second alike.",
       "A tile is a delivery slot taking up to TWO deliveries. Both deliverers score the tile's printed VP by taking a receipt token; a third delivery to a tile is illegal.",
-      "Delivery cost is PER CRATE, not per tile. A tile prints one crate icon, a quantity label beside it, and one suit token slot per crate the tile demands: 1 slot at level 1, 2 at level 2, 3 at level 3. The quantity label is the RATE, not the total - it reads 2= / 3= / 3= by level, meaning cards of ONE suit per crate. A suit demand token is placed face up on every crate at setup, and paying a crate costs cardsPerCrate barn cards of that crate's suit. A cornucopia token is wild and accepts any suit, still at the level's full rate. Total cost is crates * cardsPerCrate, so 2 / 6 / 9 by level. Settled by the owner in ticket 14, 2026-08-02: level 1 wants 2 goods of one kind, level 2 wants 3 of each of 2 kinds, level 3 wants 3 of each of 3 kinds. Both the rulebook's flat 2 and the reference implementation's 2/4/6 are wrong, as is the 2/3/3 total that ticket 07 derived by reading the quantity label as a total.",
+      "Delivery cost is PER CRATE, not per tile. A tile prints one crate icon, a quantity label beside it, and one suit token slot per crate the tile demands: 1 slot at level 1, 2 at level 2, 3 at level 3. The quantity label is the RATE, not the total - it reads 2= at EVERY level, meaning cards of ONE suit per crate. A suit demand token is placed face up on every crate at setup, and paying a crate costs cardsPerCrate barn cards of that crate's suit. A cornucopia token is wild and accepts any suit, still at the level's full rate. Total cost is crates * cardsPerCrate, so 2 / 4 / 6 by level. HISTORY: ticket 14 settled 2 / 6 / 9 on 2026-08-02 by reading the printed quantity label as 2= / 3= / 3=, and ticket 38 overturned it the same day - a set is TWO of a kind at every level. The owner took 2 / 4 / 6 knowing it does not fix the barn queue it was proposed for (assertion 6 moved 4.00 to 3.50 and still FAILs) and taking it for what it does do: 8 rounds shorter, unfinished games 8.9% to 3.6%, supply lock 13% to 10%. PRINT CONSEQUENCE: the level 2 and level 3 tile faces still print 3=, so the map-cards worksheet's crate-qty label needs 3 -> 2 at both levels. The web build is unaffected - the UI renders cardsPerCrate over text-free tile art. Earlier readings now all superseded: the rulebook's flat 2, the reference implementation's per-tile 2/4/6, and ticket 07's 2/3/3 total.",
       "seats counts players at the table. There is no one-seat board: a solo game is a two-seat game in which a bot occupies the second seat.",
       "Exactly (seats + 1) suit decks are in play: one owned by each seat, plus one passive suit nobody farms but everybody may draw from and the island demands. The remaining suits are out of the game entirely. This is why the demand-token pool spans (seats + 1) suits - it spans exactly the decks on the table.",
       "slotsBySeats is the authoritative table. It follows seats+1 / seats / seats-1 by level, but the table is what the engine reads.",
@@ -23,8 +23,15 @@
       "D1 and C1 print identical VP, cost and delivery capacity, so the two-seat substitution is currently identity-only. Confirm, or print a mechanical difference."
     ]
   },
-  "seats": { "min": 2, "max": 4 },
-  "decksInPlayBySeats": { "2": 3, "3": 4, "4": 5 },
+  "seats": {
+    "min": 2,
+    "max": 4
+  },
+  "decksInPlayBySeats": {
+    "2": 3,
+    "3": 4,
+    "4": 5
+  },
   "deliveriesPerTile": 2,
   "levelGate": true,
   "levelRules": {
@@ -39,21 +46,33 @@
       "vp": 8,
       "coinsPerDelivery": 3,
       "crates": 2,
-      "cardsPerCrate": 3,
+      "cardsPerCrate": 2,
       "triggersGameEnd": false
     },
     "3": {
       "vp": 16,
       "coinsPerDelivery": 4,
       "crates": 3,
-      "cardsPerCrate": 3,
+      "cardsPerCrate": 2,
       "triggersGameEnd": true
     }
   },
   "slotsBySeats": {
-    "2": { "1": 3, "2": 2, "3": 1 },
-    "3": { "1": 4, "2": 3, "3": 2 },
-    "4": { "1": 5, "2": 4, "3": 3 }
+    "2": {
+      "1": 3,
+      "2": 2,
+      "3": 1
+    },
+    "3": {
+      "1": 4,
+      "2": 3,
+      "3": 2
+    },
+    "4": {
+      "1": 5,
+      "2": 4,
+      "3": 3
+    }
   },
   "levelThreeTilesBySeats": {
     "2": ["D1"],
@@ -61,24 +80,87 @@
     "4": ["C1", "C2", "C3"]
   },
   "demandTokensBySeats": {
-    "2": { "crates": 10, "suits": 3, "perSuit": 3, "wild": 1 },
-    "3": { "crates": 16, "suits": 4, "perSuit": 4, "wild": 0 },
-    "4": { "crates": 22, "suits": 5, "perSuit": 4, "wild": 2 }
+    "2": {
+      "crates": 10,
+      "suits": 3,
+      "perSuit": 3,
+      "wild": 1
+    },
+    "3": {
+      "crates": 16,
+      "suits": 4,
+      "perSuit": 4,
+      "wild": 0
+    },
+    "4": {
+      "crates": 22,
+      "suits": 5,
+      "perSuit": 4,
+      "wild": 2
+    }
   },
   "adjacency": null,
   "tiles": [
-    { "id": "A1", "level": 1, "note": null },
-    { "id": "A2", "level": 1, "note": null },
-    { "id": "A3", "level": 1, "note": null },
-    { "id": "A4", "level": 1, "note": null },
-    { "id": "A5", "level": 1, "note": "row-end face: always the right edge of the level-1 row" },
-    { "id": "B1", "level": 2, "note": null },
-    { "id": "B2", "level": 2, "note": null },
-    { "id": "B3", "level": 2, "note": null },
-    { "id": "B4", "level": 2, "note": "row-end face: always the right edge of the level-2 row" },
-    { "id": "C1", "level": 3, "note": "unused at 2 seats, where D1 takes its place" },
-    { "id": "C2", "level": 3, "note": null },
-    { "id": "C3", "level": 3, "note": "row-end face: always the right edge of the level-3 row" },
+    {
+      "id": "A1",
+      "level": 1,
+      "note": null
+    },
+    {
+      "id": "A2",
+      "level": 1,
+      "note": null
+    },
+    {
+      "id": "A3",
+      "level": 1,
+      "note": null
+    },
+    {
+      "id": "A4",
+      "level": 1,
+      "note": null
+    },
+    {
+      "id": "A5",
+      "level": 1,
+      "note": "row-end face: always the right edge of the level-1 row"
+    },
+    {
+      "id": "B1",
+      "level": 2,
+      "note": null
+    },
+    {
+      "id": "B2",
+      "level": 2,
+      "note": null
+    },
+    {
+      "id": "B3",
+      "level": 2,
+      "note": null
+    },
+    {
+      "id": "B4",
+      "level": 2,
+      "note": "row-end face: always the right edge of the level-2 row"
+    },
+    {
+      "id": "C1",
+      "level": 3,
+      "note": "unused at 2 seats, where D1 takes its place"
+    },
+    {
+      "id": "C2",
+      "level": 3,
+      "note": null
+    },
+    {
+      "id": "C3",
+      "level": 3,
+      "note": "row-end face: always the right edge of the level-3 row"
+    },
     {
       "id": "D1",
       "level": 3,

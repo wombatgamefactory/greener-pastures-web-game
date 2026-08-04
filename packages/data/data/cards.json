@@ -4,7 +4,7 @@
     "kind": "generated",
     "generatedBy": "tools/extract_cards.py",
     "sourceSheet": "worksheet 'cards' of the designer spreadsheet (kept outside this repo)",
-    "sourceSha256": "3e9c66f459131f73e3c82636b1bd00d94e5162965e2687a6583e11bda5a4cb31",
+    "sourceSha256": "6f94a17248b7109ab8b93639ce6fe9a98e37dca1a138cdd5c1c71b51906e6360",
     "notes": [
       "buildCost is derived from the @cost1..@cost6 icon columns, which are authoritative; the sheet's 'Build Cost' text column is lossy.",
       "A suit has THREE starters - Barn (ref 1), Farmstead (ref 2), Notice Board (ref 3) - plus the 18-card deck (refs 4..21). 105 cards total (15 starters + 90 deck).",
@@ -64,7 +64,6 @@
       "inDeck": false,
       "enabled": true,
       "buildCost": null,
-      "upgradeCostCoins": 2,
       "abilityTrigger": [],
       "needsDesignReview": false,
       "faces": {
@@ -73,7 +72,7 @@
           "printedVp": 0,
           "threshold": null,
           "activationType": null,
-          "abilityText": "GROW: You may use any card."
+          "abilityText": "GROW: You may use any card.\nFlips free when you have 3 Apiary buildings."
         },
         "upgraded": {
           "name": "Upgraded Farmstead",
@@ -532,7 +531,6 @@
       "inDeck": false,
       "enabled": true,
       "buildCost": null,
-      "upgradeCostCoins": 2,
       "abilityTrigger": [],
       "needsDesignReview": false,
       "faces": {
@@ -541,7 +539,7 @@
           "printedVp": 0,
           "threshold": null,
           "activationType": null,
-          "abilityText": "BUILD: Substitute any card for another (not £)."
+          "abilityText": "BUILD: Substitute any card for another (not £).\nFlips free when you have 3 Dairy buildings."
         },
         "upgraded": {
           "name": "Upgraded Farmstead",
@@ -743,7 +741,7 @@
       "activationType": "dairy",
       "threshold": 3,
       "printedVp": 2,
-      "abilityText": "Build on top of one of your empty buildings, at a discount of 2. The covered card scores its VP at game end.",
+      "abilityText": "Build on top of one of your empty buildings (never a starter), at a discount of 2. The covered card scores its VP at game end.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -806,7 +804,7 @@
       "activationType": "wild",
       "threshold": 1,
       "printedVp": 3,
-      "abilityText": "Demolish one of your empty buildings: put it and the top 2 cards of any decks into your barn.",
+      "abilityText": "Demolish one of your empty buildings (never a starter): put it and the top 2 cards of any decks into your barn.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -953,7 +951,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Score 1 VP for each Dairy tier building you have built with a build cost of 3 or less.",
+      "abilityText": "Score 1 VP for each Dairy building you have built with a build cost of 1 to 3.",
       "abilityTrigger": [
         "gameEnd"
       ],
@@ -999,7 +997,6 @@
       "inDeck": false,
       "enabled": true,
       "buildCost": null,
-      "upgradeCostCoins": 2,
       "abilityTrigger": [],
       "needsDesignReview": false,
       "faces": {
@@ -1008,7 +1005,7 @@
           "printedVp": 0,
           "threshold": null,
           "activationType": null,
-          "abilityText": "When you Draw, see 1 extra card."
+          "abilityText": "When you Draw, see 1 extra card.\nFlips free when you have 3 Orchard buildings."
         },
         "upgraded": {
           "name": "Upgraded Farmstead",
@@ -1466,7 +1463,6 @@
       "inDeck": false,
       "enabled": true,
       "buildCost": null,
-      "upgradeCostCoins": 2,
       "abilityTrigger": [],
       "needsDesignReview": false,
       "faces": {
@@ -1475,7 +1471,7 @@
           "printedVp": 0,
           "threshold": null,
           "activationType": null,
-          "abilityText": "When you Deliver, gain £1."
+          "abilityText": "When you Deliver, gain £1.\nFlips free when you have 3 Vegetable buildings."
         },
         "upgraded": {
           "name": "Upgraded Farmstead",
@@ -1934,7 +1930,6 @@
       "inDeck": false,
       "enabled": true,
       "buildCost": null,
-      "upgradeCostCoins": 2,
       "abilityTrigger": [],
       "needsDesignReview": false,
       "faces": {
@@ -1943,7 +1938,7 @@
           "printedVp": 0,
           "threshold": null,
           "activationType": null,
-          "abilityText": "Harvest: Any card with 2+ cards on it, even if not full."
+          "abilityText": "Harvest: Any card with 2+ cards on it, even if not full.\nFlips free when you have 3 Wheat buildings."
         },
         "upgraded": {
           "name": "Upgraded Farmstead",

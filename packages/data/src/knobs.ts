@@ -77,6 +77,12 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     type: 'int',
     description: 'Cards a plain Draw action keeps.',
   },
+  {
+    template: 'rules.turn.buyCost',
+    type: 'intOrNull',
+    description:
+      'Coins for the once-per-turn free BUY: one card, blind, off the top of a deck that is not your own suit. Null deletes the rule. The exchange rate between the currency the game mints and the currency it is throttled by, so it is the balance number of the whole economy.',
+  },
 
   // --- Economy -------------------------------------------------------------
   {

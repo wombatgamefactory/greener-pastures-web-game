@@ -53,6 +53,28 @@ describe('weight tables', () => {
     // The control for watch-list assertion 8 only has teeth if it is absolute.
     expect(weightsFor('hermit')['visit']).toBeLessThan(0);
   });
+
+  /**
+   * Half of ticket 48's sign convention; @gp/sim's `bots.test.ts` asserts the
+   * other half (the feature itself, over real games).
+   *
+   * `growSpend`, `buildSpend` and `deliverCost` were each written as a negative
+   * weight against an already negated feature, and each therefore PAID the bot
+   * for spending more. Three in a row is a shape, not three slips: a product's
+   * sign is invisible from either half on its own, so it gets asserted rather
+   * than reviewed.
+   */
+  it('gives every cost term a positive weight, in every profile', () => {
+    const costTerms = TERMS.filter((term) => term.cost).map((term) => term.name);
+    // Vacuous if the flag ever gets dropped in a refactor.
+    expect(costTerms.length).toBeGreaterThan(5);
+    for (const profile of Object.keys(PROFILES)) {
+      const table = weightsFor(profile);
+      for (const name of costTerms) {
+        expect(table[name], `${profile}.${name}`).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
 });
 
 describe('the roster', () => {

@@ -86,6 +86,13 @@ export interface TurnState {
   actionSpent: boolean;
   bonusSpent: boolean;
   /**
+   * The once-per-turn card BUY (2026-08-03): pay the bank and take the top card
+   * of a deck that is not your own suit. Its own flag rather than a share of the
+   * bonus slot, because it is a free action - the design's point is that a coin
+   * is never dead, and a sink that competed with the visit would not be one.
+   */
+  buyUsed: boolean;
+  /**
    * Set when turn end has been committed (explicit endTurn, or nothing left to
    * do): once the queue drains - the end-of-turn discard may still be pending -
    * the turn finalises unconditionally. Prevents a standing move from wedging
@@ -301,6 +308,13 @@ export type Move =
     }
   /** The plain Draw action. Deck picks and the keep are the draw task's answers. */
   | { type: 'draw'; seat: Seat }
+  /**
+   * BUY one card, blind, off the top of a deck that is NOT your own suit, for
+   * `rules.turn.buyCost` to the bank. A free action, once a turn, and
+   * deliberately not a Draw: no reveal, no keep, and no draw modifier - so the
+   * Orchard Farmstead and the Draw Worker keep the draw lane to themselves.
+   */
+  | { type: 'buy'; seat: Seat; suit: Suit }
   /** Build a card from hand. `payment` is the chosen card ids; a coin-priced card pays coins and an empty payment. */
   | { type: 'build'; seat: Seat; card: CardId; payment: CardId[] }
   /** Hire a Worker from the Fair - a Build-action branch. */
@@ -353,6 +367,7 @@ const MOVE_TYPE_KEYS = {
   task: true,
   cardMove: true,
   draw: true,
+  buy: true,
   build: true,
   hire: true,
   upgrade: true,

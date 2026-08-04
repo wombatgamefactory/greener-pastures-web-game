@@ -9,7 +9,7 @@
  */
 
 import type { GameData } from '@gp/data';
-import type { Move, PlayerView, RngState } from '@gp/engine';
+import type { Move, PlayerView, Prober, RngState } from '@gp/engine';
 
 export interface PolicyContext {
   /** All public: printed faces, costs, knobs. Overlay-applied by the caller. */
@@ -18,6 +18,19 @@ export interface PolicyContext {
   readonly view: PlayerView;
   /** Exactly what legalMoves offered, unfiltered and unredacted (view-safe by construction). */
   readonly moves: Move[];
+  /**
+   * "If I played this, what would visibly happen?" (ticket 40).
+   *
+   * A closure built by the caller over the GameState this package may not see,
+   * returning the events a move would produce - redacted for this seat - and
+   * the choice it would stop on. It is how a bot prices a card's ability in the
+   * position it is actually in, rather than at a flat constant.
+   *
+   * Required rather than optional on purpose: absent, GROW silently returns to
+   * being worth 2.5 whatever it does, which is the bug this ticket exists to
+   * fix. A missing probe should fail a typecheck, not a balance report.
+   */
+  readonly probe: Prober;
   /**
    * This policy's own stream, seeded from the game seat and carried across the
    * game. A policy may never touch `state.rng`: reading it would let a bot's

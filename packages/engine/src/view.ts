@@ -78,6 +78,19 @@ export function maskCard(id: CardId): CardId {
   return `${id.charAt(0)}?`;
 }
 
+/**
+ * One pending task as a seat may see it: another seat's in-flight draw reveals
+ * masked, everything else public.
+ *
+ * Shared by `viewFor` and the probe (ticket 50), which needed to hand a rollout
+ * the task it stopped on. One function so the two can never redact differently.
+ */
+export function redactTask(task: Task, seat: Seat): Task {
+  return task.t === 'draw' && task.pid !== seat
+    ? { ...task, revealed: task.revealed.map(maskCard) }
+    : { ...task };
+}
+
 function buildingView(
   data: GameData,
   b: { card: CardId; stack: CardId[]; upgraded: boolean },
@@ -154,11 +167,7 @@ export function viewFor(data: GameData, state: GameState, seat: Seat): PlayerVie
       visit: state.turn.visit === null ? null : { ...state.turn.visit },
       onceUsed: [...state.turn.onceUsed],
     },
-    tasks: state.tasks.map((task) =>
-      task.t === 'draw' && task.pid !== seat
-        ? { ...task, revealed: task.revealed.map(maskCard) }
-        : { ...task },
-    ),
+    tasks: state.tasks.map((task) => redactTask(task, seat)),
     resume: state.resume,
   };
 }

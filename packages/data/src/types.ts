@@ -209,6 +209,12 @@ export interface RulesFile {
     readonly bonusSlotsPerTurn: number;
     /** The plain Draw action: see this many, keep this many. The Draw Worker prints its own numbers. */
     readonly baseDraw: { readonly see: number; readonly keep: number };
+    /**
+     * Coins for the once-per-turn free BUY: one card, blind, off the top of a
+     * deck that is not your own suit. Null switches the rule off, which is the
+     * paired control (`overlays/no-card-buy.overlay.json`).
+     */
+    readonly buyCost: number | null;
   };
   readonly economy: {
     readonly upgradeCostCoins: number;

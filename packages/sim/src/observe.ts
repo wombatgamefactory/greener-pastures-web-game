@@ -79,6 +79,7 @@ export const MOVE_KINDS = {
   task: true,
   cardMove: true,
   draw: true,
+  buy: true,
   build: true,
   hire: true,
   upgrade: true,
@@ -384,8 +385,12 @@ export class Fold {
         this.taskAnswer(d, pre.tasks[0]);
         return;
       // Claimed and uninteresting: their effect is measured through events.
+      // `buy` included - the action-mix table counts it, the `coins` event pays
+      // for it, and the card it takes is blind, so there is nothing card-level
+      // to fold.
       case 'cardMove':
       case 'draw':
+      case 'buy':
       case 'hire':
       case 'upgrade':
       case 'harvest':

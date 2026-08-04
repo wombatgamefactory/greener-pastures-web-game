@@ -1,6 +1,6 @@
 {
   "name": "coin-flood",
-  "description": "Watch-list items 1 and 2, drought to flood. Every visit now mints coins from the bank, and the visitor also hands a rival a card. Sweep the visit payout against the coin pity rate; table coins at end of round must plateau, not climb. Shrinking the payout is the named dial if it bites - never removing the card.",
+  "description": "Watch-list items 1 and 2, drought to flood. Every visit now mints coins from the bank, and the visitor also hands a rival a card. Sweep the visit payout against the coin pity rate; table coins at end of round must plateau, not climb. Shrinking the payout is the named dial if it bites - never removing the card. NOTE (ticket 37, 2026-08-02): the pity axis is now a sweep BACKWARDS from the live rule - coinPityDivisor is null in the shipped data, so null is the baseline cell and 5 and 10 are the counterfactuals.",
   "schemaVersion": 1,
   "sweep": [
     { "knob": "rules.economy.visitPayout.base", "values": [1, 2] },

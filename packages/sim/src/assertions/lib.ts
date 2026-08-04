@@ -22,16 +22,6 @@ export function bySeatCount<T>(pooled: Pooled, f: (games: readonly GameMetrics[]
   return pooled.bySeats.map((slice) => f(slice.ended));
 }
 
-/** Coins each player is sitting on when the game stops, pooled as a median. */
-export function endCoins(games: readonly GameMetrics[]): number {
-  const all: number[] = [];
-  for (const g of games) {
-    const last = g.coinsByRound[g.coinsByRound.length - 1];
-    if (last !== undefined) all.push(last);
-  }
-  return median(all);
-}
-
 /**
  * The last k round-end coin medians, pooled position by position from the END
  * of the game. Games are different lengths, so aligning on the final round is

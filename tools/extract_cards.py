@@ -55,6 +55,11 @@ TYPES = {"Starter": "starter", "Tier 1": "tier1", "Tier 2": "tier2",
 # The three starter slots, keyed by printed ref number (1/2/3).
 STARTER_SLOT_BY_NUM = {1: "barn", 2: "farmstead", 3: "noticeboard"}
 
+# What the Farmstead's cost bar prints instead of a price (ticket 46): one own-crop
+# icon per building of your own crop that flips it free. Pinned here so a silent
+# sheet edit is caught, exactly as the Barn's hand sizes are.
+FARMSTEAD_MILESTONE = 3
+
 # --- Starter mechanical stats --------------------------------------------
 # The Notice Board prints threshold 5 / wild on both faces, and the Barn prints
 # its hand size in its face text; both are READ from the sheet. The tables below
@@ -260,19 +265,27 @@ def main():
             key = (suit, ref)
             faces.setdefault(key, {})[side] = face
             if not upgraded:
-                if cost["coins"] != 2 or cost["suit"] or cost["wild"]:
-                    warnings.append(f"r{r} {ref}: starter upgrade cost is not exactly 2 coins ({dict(cost)})")
                 slot = STARTER_SLOT_BY_NUM.get(int(re.sub(r"\D", "", ref)))
                 if not slot:
                     warnings.append(f"r{r} {ref}: unrecognised starter ref")
-                # RULED (owner 2026-07-19): all three starters are £2 upgrades - the
-                # Farmstead included (the free/automatic flip is retired; the sheet's
-                # £2 cost icons on the Farmstead base row are correct).
+                # The Barn and the Notice Board are bought for £2. The FARMSTEAD is
+                # not for sale at any price - it flips free at your third building
+                # printing your own crop (ticket 07) - so ticket 46 replaced its
+                # phantom £2 cost bar with the milestone: three of its own crop.
+                # It therefore carries no upgradeCostCoins at all, and the sheet is
+                # checked for the shape that belongs to each.
+                if slot == "farmstead":
+                    if cost["coins"] or cost["wild"] or cost["suit"] != FARMSTEAD_MILESTONE:
+                        warnings.append(f"r{r} {ref}: Farmstead cost bar is not {FARMSTEAD_MILESTONE} "
+                                        f"own-crop icons ({dict(cost)}) -- it prints the milestone, "
+                                        f"never a price")
+                elif cost["coins"] != 2 or cost["suit"] or cost["wild"]:
+                    warnings.append(f"r{r} {ref}: starter upgrade cost is not exactly 2 coins ({dict(cost)})")
                 cards[key] = {
                     "id": ref, "suit": suit, "type": "starter", "slot": slot,
                     "name": clean(name), "inDeck": False, "enabled": True,
                     "buildCost": None,
-                    "upgradeCostCoins": 2,
+                    **({} if slot == "farmstead" else {"upgradeCostCoins": 2}),
                     "abilityTrigger": [], "needsDesignReview": False,
                 }
             elif cost:

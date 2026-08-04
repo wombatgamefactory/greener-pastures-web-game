@@ -252,10 +252,10 @@ describe('6. The Wheat Exchange (W19) - end-game scoring', () => {
     const wheat = scores[WHEAT]!;
     expect(wheat.endgame).toBe(6);
     expect(wheat.receipts).toBe(12);
-    expect(wheat.coinPity).toBe(1); // £7 at the £5 pity divisor
+    expect(wheat.coinPity).toBe(0); // ticket 37: coins are worth no VP at all
     // Printed VP includes the two upgraded starter faces (2 VP each).
     expect(wheat.printed).toBe(4);
-    expect(wheat.total).toBe(23);
+    expect(wheat.total).toBe(22);
     expect(scores[APIARY]!.total).toBe(0);
   });
 });

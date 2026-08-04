@@ -23,7 +23,8 @@ import type { Overlay, Suit } from '@gp/data';
 import { LADDER, POLICY_IDS, isPolicyId } from '@gp/bots';
 
 import { explainReport } from './explain.js';
-import { REFERENCE_V1 } from './reference.js';
+import { REFERENCE } from './reference.js';
+import { crashWriter, replayReport } from './replay.js';
 import { planRun, pool, runBalance } from './run.js';
 import { renderReport } from './report.js';
 import { runSweep } from './sweep.js';
@@ -59,6 +60,12 @@ const HELP = [
   '  --sweep=<path>      Delta table against the reference, for an overlay or a sweep file.',
   '                      Failure-driven: run one when an assertion FAILs and prints its remedy,',
   '                      or for the two intrinsically paired questions.',
+  '  --replay=<path>     Replay a captured bug report or design note (ticket 31) and print what',
+  '                      it does. Exit 0 replayed clean, 1 reproduced a throw, 2 the data has',
+  '                      moved on since the capture.',
+  '    --force           Replay anyway when the data has moved on. The record always prints.',
+  '    --fixture=<why>   Also write a public-side regression fixture, stripped of the note.',
+  '    --top=<n>         How many legal moves per type to print at the failure (default 4).',
   '  --list-knobs        Print every tunable value an overlay or a sweep may address.',
   '  --list-bots         Print the roster and the difficulty ladder.',
   '  --explain           Print the per-term breakdown behind one bot decision.',
@@ -146,8 +153,8 @@ function baseOptions(argv: readonly string[]) {
   const seatCounts = seatCountsFrom(argv);
   const n = flag(argv, 'n');
   return {
-    reference: REFERENCE_V1,
-    seed: flag(argv, 'seed') ?? REFERENCE_V1.seed,
+    reference: REFERENCE,
+    seed: flag(argv, 'seed') ?? REFERENCE.seed,
     ...(n === null ? {} : { games: Number(n) }),
     ...(seatCounts === null ? {} : { seatCounts }),
   };
@@ -182,15 +189,22 @@ function watchlistMode(argv: readonly string[]): number {
   const overlayPath = flag(argv, 'overlay');
   const loaded = overlayPath === null ? null : loadOverlay(overlayPath);
   const data = loaded === null ? BASE_GAME_DATA : loadGameData(loaded.overlay);
-  const opts = { ...baseOptions(argv), onGame: progress(quiet) };
+  const crashes = crashWriter(CAPTURE_DIR);
+  const opts = {
+    ...baseOptions(argv),
+    onGame: progress(quiet),
+    onCrash: crashes.onCrash,
+    overlay: loaded?.name ?? null,
+  };
 
   const plan = planRun(data, opts);
   if (!quiet) {
     process.stderr.write(
-      `${REFERENCE_V1.id}: ${plan.total} games across ${plan.cells.length} stratified cells\n`,
+      `${REFERENCE.id}: ${plan.total} games across ${plan.cells.length} stratified cells\n`,
     );
   }
   const result = runBalance(data, opts);
+  if (!quiet) process.stderr.write(crashes.summary());
   const pooled = pool(result);
 
   const mirrorGames = Number(flag(argv, 'mirrors') ?? 60);
@@ -209,7 +223,7 @@ function watchlistMode(argv: readonly string[]): number {
   });
 
   const file = write(
-    `watchlist-${stamp()}-${REFERENCE_V1.id}${loaded ? `-${loaded.name}` : ''}.txt`,
+    `watchlist-${stamp()}-${REFERENCE.id}${loaded ? `-${loaded.name}` : ''}.txt`,
     report,
   );
   process.stdout.write(report);
@@ -235,6 +249,32 @@ function sweepMode(argv: readonly string[], path: string): number {
   return 0;
 }
 
+/**
+ * Where captures land. Gitignored, because a report carries the game's weak
+ * spots and Dean's own notes, and this repo goes public.
+ *
+ * The browser downloads to wherever the browser downloads to - ticket 31 chose
+ * a plain file over a dev-server endpoint precisely so the button works on the
+ * deployed build - so this is the SUGGESTED home rather than an enforced one,
+ * and `--replay` takes any path.
+ */
+const CAPTURE_DIR = join(ROOT, 'captures');
+
+/** Fixtures are the public half: setup and move log, never a note. */
+const FIXTURE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'fixtures');
+
+function replayMode(argv: readonly string[], path: string): number {
+  const { report, code } = replayReport(BASE_GAME_DATA, {
+    path: fromRoot(path),
+    force: argv.includes('--force'),
+    fixture: flag(argv, 'fixture'),
+    fixtureDir: FIXTURE_DIR,
+    top: Number(flag(argv, 'top') ?? 4),
+  });
+  process.stdout.write(report);
+  return code;
+}
+
 function main(argv: readonly string[]): number {
   if (argv.includes('--help') || argv.includes('-h')) {
     process.stdout.write(HELP);
@@ -256,6 +296,9 @@ function main(argv: readonly string[]): number {
     process.stdout.write(report);
     return code;
   }
+
+  const replay = flag(argv, 'replay');
+  if (replay !== null) return replayMode(argv, replay);
 
   const sweep = flag(argv, 'sweep');
   if (sweep !== null) return sweepMode(argv, sweep);

@@ -21,20 +21,43 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import type { CardId, MoveType } from '@gp/engine';
+import type { CardId, Move, MoveType } from '@gp/engine';
 import { tileLevel } from '@gp/engine';
 
 import type { Act } from './acts.js';
 import { spendSize } from './acts.js';
 import { cardValue, totalValue } from './junk.js';
+import type { Outcomes } from './outcome.js';
 import type { Scratch } from './scratch.js';
-import { cardById, faceOfView } from './scratch.js';
+import { cardById, coinWorth, faceOfView, handSpendCost } from './scratch.js';
 
 export interface Term {
   readonly name: string;
   /** Move types this term can score. Asserted against the engine's MOVE_TYPES. */
   readonly claims: readonly MoveType[];
-  readonly feature: (act: Act, s: Scratch) => number;
+  /**
+   * `act` is the move with its two spellings collapsed; `s` the per-decision
+   * facts. `move` and `o` are for the one term that probes - everything else
+   * ignores them, and should, because a term that reaches for the probe when a
+   * cheap feature would do is spending an `apply` for nothing.
+   */
+  readonly feature: (act: Act, s: Scratch, move: Move, o: Outcomes) => number;
+  /**
+   * This term charges for something, so its product must never be positive.
+   *
+   * Three terms in a row were written as a negative WEIGHT against an already
+   * negated FEATURE and therefore paid the bot for spending more - `growSpend`
+   * (ticket 45), `buildSpend` (47) and `deliverCost` (48). Each read correctly
+   * at its own call site and each was inverted where it counted, because the
+   * sign of a product is not visible from either half.
+   *
+   * So the convention is declared rather than remembered: a cost term negates
+   * in the FEATURE and its weight is POSITIVE in every profile. Both halves are
+   * asserted - the weights in `roster.test.ts`, the features against real games
+   * in @gp/sim's `bots.test.ts` - so a fourth one cannot be written the old way
+   * without turning something red.
+   */
+  readonly cost?: true;
 }
 
 /** Both spellings of the same act: the main move and its task-answer twin. */
@@ -64,6 +87,23 @@ function countOwnCrop(s: Scratch, ids: readonly CardId[]): number {
   return n;
 }
 
+/**
+ * The coins a visit would mint, from the host's showing Notice Board face.
+ *
+ * Special Orders' second line lives on the upgraded face only, so the three
+ * payouts are exactly the three the card prints. Worker visits mint nothing to
+ * the visitor - the wage goes to the host, from the bank - so they price at 0
+ * here and are valued by the probe instead.
+ */
+function visitPayout(s: Scratch, act: Extract<Act, { a: 'visit' }>): number {
+  const payout = s.data.rules.economy.visitPayout;
+  if (act.payoff.mode === 'worker') return 0;
+  if (act.payoff.mode === 'special') return payout.twoCard;
+  const host = s.view.rivals.find((r) => r.seat === act.host);
+  const board = host?.tableau.find((b) => cardById(s.data, b.card).slot === 'noticeboard');
+  return board?.upgraded ? payout.upgraded : payout.base;
+}
+
 /** The card a standing move spends out of hand: the Helping Hand's fee, O1's gift. */
 function cardMoveSpend(payload: Record<string, unknown>): CardId | null {
   const fee = payload['fee'];
@@ -73,7 +113,188 @@ function cardMoveSpend(payload: Record<string, unknown>): CardId | null {
   return null;
 }
 
+/**
+ * The acts whose value is unknowable from their label (ticket 40).
+ *
+ * GROW fires a card's ability, and the ability is the entire value of the move.
+ * A Worker's action is likewise whatever that Worker does - renting a rival's
+ * Draw Worker (Draw 3, keep 2) and their Sow Worker both scored a flat +2
+ * before this. `cardMove` is the Helping Hand's repeat, which is worth exactly
+ * what the repeated work is worth.
+ *
+ * Everything NOT in this set has a feature that already reads its own value -
+ * a delivery's printed VP, a harvest's stack size, a visit's minted coin - so
+ * probing it would spend an `apply` to learn what the table already knows.
+ */
+function isProbed(act: Act): boolean {
+  switch (act.a) {
+    case 'grow':
+    case 'workOwn':
+    case 'worker':
+    case 'cardMove':
+      return true;
+    case 'visit':
+      return act.payoff.mode === 'worker';
+    default:
+      return false;
+  }
+}
+
+/**
+ * The acting seat's NET coin change, from the printed source.
+ *
+ * Spending is deliberately not run through here in general - a coin leaving for
+ * a hire or an upgrade is already priced by the term that wanted the thing. D7's
+ * coins-as-wilds are the exception (ticket 47), because there the coin is not
+ * buying anything: it is standing in for a card, and the seat is choosing which
+ * of the two to spend. That trade needs both sides in one currency, so it is
+ * priced here rather than by a second weight that could drift from this one.
+ */
+function coinsMinted(act: Act, s: Scratch): number {
+  if (act.a === 'visit') return visitPayout(s, act);
+  if (act.a === 'build') return -act.coinWild;
+  if (act.a === 'deliver') {
+    const level = String(tileLevel(s.data, act.tile));
+    return s.data.island.levelRules[level]?.coinsPerDelivery ?? 0;
+  }
+  return 0;
+}
+
+/**
+ * Cards this act takes out of the seat's BARN, by whichever exit (ticket 48).
+ *
+ * Three routes and one price. A tile's card cost is fixed by its crates
+ * (`crates x cardsPerCrate`, ticket 14's 2 / 6 / 9) and a wild crate changes
+ * which suit pays rather than how many, so this cannot order the spends for one
+ * tile - measured over 391 real (decision, tile) pairs it never once varied
+ * within a tile. What it prices is the resource leaving.
+ */
+function barnCardsSpent(act: Act): number {
+  switch (act.a) {
+    case 'deliver':
+      return spendSize(act.spend);
+    case 'build':
+      return act.barn;
+    default:
+      return 0;
+  }
+}
+
+/** Cards this act takes OUT of the seat's hand. The end-of-turn discard is forced, so it is not one. */
+function cardsLeavingHand(act: Act): number {
+  switch (act.a) {
+    case 'build':
+      return act.payment.length;
+    case 'grow':
+      return 1;
+    case 'visit':
+      return act.fee.length;
+    case 'sow':
+      return 1;
+    case 'cardMove':
+      return cardMoveSpend(act.payload) === null ? 0 : 1;
+    default:
+      return 0;
+  }
+}
+
 export const TERMS: readonly Term[] = [
+  // --- what the move actually does ------------------------------------------
+  {
+    /**
+     * **What a card in hand is worth, which is not nothing** (Dean, 2026-08-02).
+     *
+     * The other half of the exchange. `coinGain` priced what a visit GETS; this
+     * prices what it PAYS, and until it existed the two constants deciding a
+     * worthless visit were unrelated to each other. Measured at the moment the
+     * seat's marginal coin is provably worth zero:
+     *
+     *     worthless coin visit  -1.95   {visitFeeJunk: -1.95}
+     *     vs endTurn            -2.00   {endTurn: -2}
+     *
+     * The bot gave away a card for literally nothing, by 0.05, in 68% of those
+     * positions - not because a card was priced at zero, but because the only
+     * thing charging for it was `visitFeeJunk`, a JUNK ORDERING (its own header
+     * says "not an economic estimate") that happened to land beside an
+     * artificial -2 tax on ending your turn.
+     *
+     * So the cost of a card leaving hand becomes its own term, uniform across
+     * every way a card can leave, with the family terms left to do what they are
+     * good at - choosing WHICH card. A card is fuel: it can be built, it can pay
+     * a GROW and fire an ability, it can pay a visit later.
+     */
+    name: 'handSpend',
+    claims: ['build', 'grow', 'visit', 'cardMove', ...ACTION_AND_TASK],
+    feature: (act, s) => -handSpendCost(s, cardsLeavingHand(act)),
+    cost: true,
+  },
+  {
+    /**
+     * `handSpend`'s twin for the other store: what a card leaving the BARN
+     * costs, wherever it leaves for (ticket 48).
+     *
+     * It used to be two terms with two constants and a hole. `deliverCost` was
+     * `-0.5` against a `-spendSize` feature, so the product paid the bot £0.5 a
+     * card for delivering to the tile that ate MORE freight; `buildBarn` (ticket
+     * 47) charged D8's barn leg properly but only there; and a balloon move's
+     * two barn cards were charged nothing at all. One store, three exits, three
+     * different answers.
+     *
+     * So the barn gets what the hand already has: one uniform charge in one
+     * place, with the family terms left to order WHICH card goes. That is not a
+     * tidy-up - it is what stops the NEXT exit route from arriving with a fourth
+     * unrelated constant, which is exactly how the three-in-a-row happened.
+     *
+     * The balloon branch is deliberately still not in `barnCardsSpent`, and the
+     * reason is measured rather than an oversight: its reward is scored by a
+     * flat `balloon: 2` with no probe behind it, so charging its freight without
+     * pricing what the freight BUYS would be a one-sided correction. Cost and
+     * reward have to move together - ticket 49.
+     */
+    name: 'barnSpend',
+    claims: ['deliver', 'build', ...ACTION_AND_TASK],
+    feature: (act) => -barnCardsSpent(act),
+    cost: true,
+  },
+  {
+    /**
+     * What coins are worth to THIS seat right now: the part of a gain that
+     * lands under its remaining runway of things to buy (ticket 40).
+     *
+     * The blind spot this closes was the widest one in the table. Nothing read
+     * a seat's coin balance at all, so `visit` scored a flat 6 at £0 and at
+     * £65 - and ticket 37 measured 73.3% of visits taking the coin payoff,
+     * 50.9% of those by a seat already holding £10 or more, with 65.4% of every
+     * coin minted never spent on anything. Since the pity went, a coin above
+     * the runway buys nothing, so paying a card for one is strictly dominated.
+     *
+     * One coin price for the whole bot: the probe pricer values a `coins` event
+     * through this same weight, so a wage a card mints and a wage the island
+     * pays are worth the same thing - and so does the one place a coin is spent
+     * INSTEAD of a card rather than to buy something (D7's wilds, ticket 47).
+     */
+    name: 'coinGain',
+    claims: ['visit', 'deliver', 'build', ...ACTION_AND_TASK],
+    feature: (act, s) => coinWorth(s, coinsMinted(act, s)),
+  },
+  {
+    /**
+     * The probe term. Applies the move on a throwaway clone and prices what
+     * came out, in this same weight table's currency - so a grow that harvests
+     * a three-card stack is worth what harvesting that stack is worth, and a
+     * grow that does nothing here is worth nothing here.
+     *
+     * Its default weight is 1 because the value arrives already denominated:
+     * the pricer scored those events with the profile's OWN weights, so a
+     * racer's rollout is priced through a racer's eyes. The weight stays
+     * tunable for the one thing it can honestly express - how much a profile
+     * trusts a rollout against a flat preference.
+     */
+    name: 'outcome',
+    claims: ['grow', 'visit', 'workOwnWorker', 'cardMove', ...ACTION_AND_TASK],
+    feature: (act, _s, move, o) => (isProbed(act) ? o.value(move) : 0),
+  },
+
   // --- the island -----------------------------------------------------------
   {
     // DL-78. The one rule that makes a game terminate, so it carries the
@@ -92,11 +313,6 @@ export const TERMS: readonly Term[] = [
     claims: ['deliver', ...ACTION_AND_TASK],
     feature: (act, s) =>
       act.a === 'deliver' && !s.heldLevels.has(tileLevel(s.data, act.tile)) ? 1 : 0,
-  },
-  {
-    name: 'deliverCost',
-    claims: ['deliver', ...ACTION_AND_TASK],
-    feature: (act) => (act.a === 'deliver' ? -spendSize(act.spend) : 0),
   },
   {
     // The freight branch: a Deliver action that moves a balloon instead. Pays
@@ -131,6 +347,17 @@ export const TERMS: readonly Term[] = [
     feature: (act, s) => (act.a === 'grow' && fillsBuilding(s, act.building) ? 1 : 0),
   },
   {
+    // GROW's card payment was the one main-action cost with no term against it:
+    // Build pays `buildSpend`, Deliver pays `barnSpend`, and growing was free.
+    // Reading the actual card (rather than a flat -1) is what makes the bot pay
+    // its junk into the stack, the same principle as `visitFeeJunk`. Your own
+    // hand card, so no probe and no sight question.
+    name: 'growSpend',
+    claims: ['grow', ...ACTION_AND_TASK],
+    feature: (act, s) => (act.a === 'grow' ? -cardValue(s.data, act.payment) : 0),
+    cost: true,
+  },
+  {
     name: 'sow',
     claims: ACTION_AND_TASK,
     feature: (act) => (act.a === 'sow' ? 1 : 0),
@@ -160,11 +387,31 @@ export const TERMS: readonly Term[] = [
     feature: (act, s) => (act.a === 'build' && suitOf(s.data, act.card) === s.mySuit ? 1 : 0),
   },
   {
-    // Cards are the scarce resource and the master clock (v14). Paying four of
-    // them for a card has to hurt or the bot empties its hand every turn.
+    /**
+     * Which cards pay for a build - the junk ordering the build never had
+     * (ticket 47).
+     *
+     * This used to read `-(payment.length + coinWild)`, which cannot order a
+     * build's payments at all: the engine holds
+     * `payment.length + barn + coinWild === cardsNeeded`, so for one built card
+     * that sum is a CONSTANT. Measured over 262 real builds it varied across the
+     * alternatives 2 times, both of them D8's barn leg - so 23.7% of builds had a
+     * real choice of which cards to burn and the term was blind to every one of
+     * them, leaving the pick to the evaluator's random tie-break.
+     *
+     * So it becomes what its siblings already are - `visitFeeJunk`, `growSpend`,
+     * `cardMoveSpend`, all `+0.3` on a `-value` feature - and the build's SIZE
+     * stays charged where it always really was, by `handSpend` at 2.5 a card.
+     *
+     * Unlike a GROW's payment (which must match the activation suit, so every
+     * legal payment is the same suit and differs only as cards), a build's wild
+     * half takes any suit - so the alternatives here differ in suit as well as
+     * value, and paying the junk is the whole of the choice.
+     */
     name: 'buildSpend',
     claims: ['build', ...ACTION_AND_TASK],
-    feature: (act) => (act.a === 'build' ? -(act.payment.length + act.coinWild) : 0),
+    feature: (act, s) => (act.a === 'build' ? -totalValue(s.data, act.payment) : 0),
+    cost: true,
   },
   {
     name: 'hire',
@@ -196,6 +443,53 @@ export const TERMS: readonly Term[] = [
     feature: (act, s) => (act.a === 'draw' ? s.handRoom : 0),
   },
   {
+    /**
+     * The card BUY (2026-08-03): £1, blind, off a deck that is not your own.
+     *
+     * Scaled by hand room for the same reason `drawAction` is - a card bought
+     * into an end-of-turn discard is a coin thrown away - and by nothing else,
+     * because the buy is blind. What suit it is is the only thing knowable in
+     * advance, which is what `buyDemand` prices.
+     */
+    name: 'buy',
+    claims: ['buy'],
+    feature: (act, s) => (act.a === 'buy' && s.handRoom > 0 ? 1 : 0),
+  },
+  {
+    // The one thing a blind buy DOES let you choose: which crop. An open tile
+    // wants suits you cannot grow yourself, which is the whole reason the rule
+    // points at a deck that is not your own.
+    name: 'buyDemand',
+    claims: ['buy'],
+    feature: (act, s) => (act.a === 'buy' && s.demandSuits.has(act.suit) ? 1 : 0),
+  },
+  {
+    /**
+     * The only saving instinct the bot has.
+     *
+     * The term table prices moves, not plans, so a seat on £1 with a £2 Worker
+     * in front of it will otherwise buy a card every single turn and never
+     * hire - an instrument artefact that would be read as a rule effect.
+     *
+     * The question is "would this leave me short of the cheapest thing I still
+     * want", which is what a person at the table asks. It stops firing the
+     * moment there is nothing left to save for, which is exactly when spare
+     * coins should be turning into cards.
+     *
+     * Its weight has to clear the `endTurn` floor to do anything: a bot takes
+     * the highest-scoring move, and declining costs -2, so a term that only
+     * pulls the buy down to zero still buys. That is where the magnitude comes
+     * from - the architecture, not a preference.
+     */
+    name: 'buySaving',
+    claims: ['buy'],
+    feature: (act, s) => {
+      if (act.a !== 'buy' || s.sinkGap === null) return 0;
+      return s.coins - (s.data.rules.turn.buyCost ?? 0) < s.sinkGap ? -1 : 0;
+    },
+    cost: true,
+  },
+  {
     name: 'deckOwnCrop',
     claims: ACTION_AND_TASK,
     feature: (act, s) => (act.a === 'deckPick' && act.suit === s.mySuit ? 1 : 0),
@@ -220,6 +514,7 @@ export const TERMS: readonly Term[] = [
     name: 'discardJunk',
     claims: ACTION_AND_TASK,
     feature: (act, s) => (act.a === 'discard' ? -totalValue(s.data, act.cards) : 0),
+    cost: true,
   },
 
   // --- the bonus slot -------------------------------------------------------
@@ -244,6 +539,7 @@ export const TERMS: readonly Term[] = [
     name: 'visitFeeJunk',
     claims: ['visit'],
     feature: (act, s) => (act.a === 'visit' ? -totalValue(s.data, act.fee) : 0),
+    cost: true,
   },
   {
     name: 'workOwn',
@@ -272,6 +568,7 @@ export const TERMS: readonly Term[] = [
       const spent = cardMoveSpend(act.payload);
       return spent === null ? 0 : -cardValue(s.data, spent);
     },
+    cost: true,
   },
   {
     // Optional tasks: "you may". A negative weight means take the option.

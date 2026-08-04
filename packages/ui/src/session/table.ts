@@ -27,6 +27,8 @@ import {
   apply,
   isOver,
   legalMoves,
+  makeCapture,
+  makeProber,
   newGame,
   redactEvents,
   rngInt,
@@ -34,12 +36,33 @@ import {
   seedRng,
   viewFor,
 } from '@gp/engine';
-import type { GameEvent, GameScore, GameState, Move, PlayerView, RngState, Seat } from '@gp/engine';
+import type {
+  Capture,
+  CaptureLabel,
+  CaptureUi,
+  GameEvent,
+  GameScore,
+  GameState,
+  Move,
+  PlayerView,
+  RngState,
+  Seat,
+} from '@gp/engine';
 
 export const data: GameData = loadGameData();
 
 /** The seat the human sits in. Always 0: the interface is written from one chair. */
 export const YOU: Seat = 0;
+
+/**
+ * Which build this is, stamped into a bug report.
+ *
+ * Injected by `vite.config.ts` from `git describe`. The guard is not paranoia:
+ * the unit tests run under vitest with no Vite `define` at all, and a bare
+ * reference to an undefined global is a ReferenceError rather than `undefined`.
+ */
+declare const __APP_VERSION__: string | undefined;
+const APP_VERSION: string | null = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : null;
 
 /**
  * A crude action-priority policy, enough to walk a game into a dense mid-board
@@ -57,6 +80,7 @@ const PRIORITY: Move['type'][] = [
   'upgrade',
   'grow',
   'draw',
+  'buy',
   'visit',
   'workOwnWorker',
   'moveBalloon',
@@ -76,6 +100,7 @@ const PRIORITY: Move['type'][] = [
 const HAND_KEEPING: Move['type'][] = [
   'task',
   'draw',
+  'buy',
   'deliver',
   'harvest',
   'visit',
@@ -101,6 +126,7 @@ const HAND_KEEPING: Move['type'][] = [
 const WARM_KEEPING: Move['type'][] = [
   'task',
   'draw',
+  'buy',
   'harvest',
   'grow',
   'build',
@@ -247,6 +273,13 @@ export class Session {
   private rngs = new Map<Seat, RngState>();
   /** Moves undo may not rewind past: the warm-up walk is scenery, not your play. */
   private floor = 0;
+  /**
+   * Which turn the table is on. Counted here rather than derived from the log,
+   * because a cross-player task answer changes a move's `seat` without ending
+   * anyone's turn - deriving it from seat changes overstates a real game by
+   * about a tenth.
+   */
+  private turns = 1;
 
   constructor(
     private readonly gameData: GameData,
@@ -257,6 +290,9 @@ export class Session {
 
   private deal(): GameState {
     this.rngs.clear();
+    // Replay re-deals, so the counter has to reset with the table or an undo
+    // would leave it counting from the old game.
+    this.turns = 1;
     for (let seat = 0; seat < this.options.seats; seat++) {
       if (seat === YOU) continue;
       const id = this.policyId(seat);
@@ -334,18 +370,28 @@ export class Session {
         return true;
       }
       const view = viewFor(this.gameData, this.state, seat);
-      this.send(policy.choose({ data: this.gameData, view, moves, rng }));
+      const probe = makeProber(this.gameData, this.state, seat);
+      this.send(policy.choose({ data: this.gameData, view, moves, rng, probe }));
       return true;
     };
 
-    for (let i = 0; i < depth && !isOver(this.state); i++) {
-      if (!step()) return;
-    }
     const hand = () => this.state.players[YOU]?.hand.length ?? 0;
     const turnTop = () =>
       this.state.turnPlayer === YOU &&
       this.state.tasks.length === 0 &&
       !this.state.turn.actionSpent;
+
+    // The last turn-top seen while walking to depth. A caller asking for more
+    // depth than the game has left would otherwise be handed a FINISHED board:
+    // the search below never runs (the state is already over) and there is
+    // nothing to fall back to. Ticket 38's cheaper island shortened the game by
+    // 20% and depth 260 started overrunning it, which is the failure mode - so
+    // the deepest playable turn-top is kept as a floor from the first move.
+    let lastTop: number | null = null;
+    for (let i = 0; i < depth && !isOver(this.state); i++) {
+      if (turnTop()) lastTop = this.log.length;
+      if (!step()) break;
+    }
 
     // Keep the FIRST turn-top as a floor and only better it. Without that a
     // walk that insists on a full hand runs the whole game out and hands the
@@ -360,6 +406,7 @@ export class Session {
       if (!step()) break;
     }
     if (best !== null) this.replay(this.log.slice(0, best.at));
+    else if (lastTop !== null && isOver(this.state)) this.replay(this.log.slice(0, lastTop));
   }
 
   /**
@@ -374,6 +421,7 @@ export class Session {
   /** Play a move. Throws exactly where the engine would, so no UI-side rule can hide one. */
   send(move: Move): void {
     const applied = apply(this.gameData, this.state, move);
+    if (applied.state.turnPlayer !== this.state.turnPlayer) this.turns += 1;
     this.state = applied.state;
     this.log.push(move);
     this.events.push(...redactEvents(applied.events, YOU));
@@ -398,9 +446,62 @@ export class Session {
       view: viewFor(this.gameData, this.state, actor),
       moves,
       rng,
+      // Ticket 40: the probe closes over the state, so the bots price a card's
+      // ability in the browser exactly as they do in the simulator.
+      probe: makeProber(this.gameData, this.state, actor),
     });
     this.send(move);
     return true;
+  }
+
+  /**
+   * Take a bug report or a design note (ticket 31).
+   *
+   * The whole payload is metadata plus `(seed, move log)`, because ticket 04's
+   * contract means that pair replays to a bit-identical state - so nothing here
+   * describes what went wrong or dumps a position, and there is no way for the
+   * capture to disagree with the game it was taken from.
+   *
+   * Deliberately callable mid-task. Mid-effect states are exactly where bugs
+   * live, and taking a capture applies no move, so a half-answered draw is
+   * captured as a half-answered draw: the pending task's type rides in `ui` and
+   * the log stops one move short of answering it.
+   */
+  capture(input: {
+    label: CaptureLabel;
+    note: string;
+    at: string;
+    ui?: CaptureUi | null;
+  }): Capture {
+    return makeCapture({
+      label: input.label,
+      note: input.note,
+      at: input.at,
+      origin: 'ui',
+      dataFingerprint: this.state.dataFingerprint,
+      // The UI never names the neutral decks - the seed deals them - so the
+      // setup here is exactly what `deal` passes to newGame, and no more.
+      setup: {
+        seed: this.options.seed,
+        seats: this.options.seats,
+        suits: this.options.suits,
+      },
+      // Seat 0 is you; the rest are labelled with the bot actually playing them,
+      // which is what makes "the socialite did something odd" reproducible.
+      policies: Array.from({ length: this.options.seats }, (_, seat) =>
+        seat === YOU ? 'human' : this.policyId(seat),
+      ),
+      moves: this.log,
+      seat: YOU,
+      turn: this.turns,
+      appVersion: APP_VERSION,
+      overlay: null,
+      ui: {
+        ...(input.ui ?? { intent: null, picked: [], task: null }),
+        task: input.ui?.task ?? this.state.tasks[0]?.t ?? null,
+      },
+      error: null,
+    });
   }
 
   /**

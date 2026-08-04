@@ -21,7 +21,7 @@
 import { describe, expect, it } from 'vitest';
 import { BASE_GAME_DATA as data } from '@gp/data';
 import type { Suit } from '@gp/data';
-import { apply, isOver, legalMoves, newGame, viewFor } from '@gp/engine';
+import { apply, isOver, legalMoves, makeProber, newGame, viewFor } from '@gp/engine';
 import type { CardId, Move, PlayerView, Seat } from '@gp/engine';
 import { makePolicy, policyRng } from '@gp/bots';
 
@@ -48,7 +48,8 @@ function corpus(seeds: readonly string[], seats: number, suits: Suit[]): Positio
       out.push({ view, moves });
       const policy = makePolicy(step % 3 === 0 ? 'socialite' : 'balanced');
       const rng = policyRng(seed, actor, 'balanced');
-      state = apply(data, state, policy.choose({ data, view, moves, rng })).state;
+      const probe = makeProber(data, state, actor);
+      state = apply(data, state, policy.choose({ data, view, moves, rng, probe })).state;
     }
   }
   return out;

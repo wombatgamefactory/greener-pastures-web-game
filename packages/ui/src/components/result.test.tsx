@@ -135,6 +135,17 @@ describe('the tie-break is stated rather than assumed', () => {
   });
 });
 
+/**
+ * The live rule is `coinPityDivisor: null` (ticket 37 - coins score nothing).
+ * The knob survives, so both branches of the screen still need covering, and
+ * the pity-ON branch is now the one that has to be arranged for.
+ */
+function pityOn(): GameData {
+  const on = cloneData(data) as { rules: { economy: { coinPityDivisor: number | null } } };
+  on.rules.economy.coinPityDivisor = 5;
+  return on as unknown as GameData;
+}
+
 describe('the result screen renders', () => {
   it('shows the four sources, the winner and the end trigger', () => {
     const game = GAMES[0]!;
@@ -144,7 +155,11 @@ describe('the result screen renders', () => {
     expect(html).toContain('Island receipts');
     expect(html).toContain('VP printed on cards you built');
     expect(html).toContain('End-game cards');
-    expect(html).toContain('Coins left over');
+    // Ticket 37 deleted the pity, so coins are no longer a VP source. The
+    // screen still has to SAY so - a seat holding £40 that scores nothing for
+    // it reads as a bug unless the screen names the rule.
+    expect(html).not.toContain('coins ÷');
+    expect(html).toContain('Leftover coins score nothing');
     expect(html).toContain('delivered to Level 3');
     expect(html).toContain('Another game');
     // The design instrument: the island's share of the winning score, printed.
@@ -153,40 +168,39 @@ describe('the result screen renders', () => {
   });
 
   /**
-   * The pity rate is flagged OPEN in the design and one live candidate is
-   * deleting it, so the screen has to survive the knob going away rather than
-   * printing "coins ÷ null".
+   * The mirror of the case above, and it is the one that now needs arranging:
+   * ticket 37 set `coinPityDivisor` to null, so the live rule renders no coin
+   * column at all. The knob survives, so the column has to keep working if the
+   * pity is ever switched back on - which is also what a sweep would render.
    */
-  it('drops the coin column entirely when the pity rule is switched off', () => {
+  it('shows the coin column when the pity rule is switched back on', () => {
     const game = GAMES[0]!;
-    const off = cloneData(data) as {
-      rules: { economy: { coinPityDivisor: number | null } };
-    };
-    off.rules.economy.coinPityDivisor = null;
-    const withoutPity = off as unknown as GameData;
-    // The engine scored this game with the rule ON, so the totals have to come
-    // off too, or the screen is right to complain that it cannot reconcile them.
+    const withPity = pityOn();
+    // The engine scored this game with the rule OFF, so the pity lines have to
+    // go back on, or the screen is right to complain it cannot reconcile them.
+    const coinsOf = (seat: number): number =>
+      seat === game.view.seat
+        ? game.view.you.coins
+        : (game.view.rivals.find((r) => r.seat === seat)?.coins ?? 0);
     const scored: GameScore = {
       ...game.score,
-      seats: game.score.seats.map((s) => ({
-        ...s,
-        coinPity: 0,
-        total: s.total - s.coinPity,
-      })),
+      seats: game.score.seats.map((s, seat) => {
+        const pity = s.coinPityReplacedBy === null ? Math.floor(coinsOf(seat) / 5) : 0;
+        return { ...s, coinPity: pity, total: s.total + pity };
+      }),
     };
 
-    const report = scoreReport(withoutPity, game.view, scored);
-    expect(report.pityDivisor).toBeNull();
+    const report = scoreReport(withPity, game.view, scored);
+    expect(report.pityDivisor).toBe(5);
     for (const seat of report.seats) {
-      expect(seat.pity).toBeNull();
       expect(seat.agrees).toBe(true);
     }
 
     const html = renderToStaticMarkup(
-      <Result data={withoutPity} view={game.view} score={scored} onAgain={() => {}} />,
+      <Result data={withPity} view={game.view} score={scored} onAgain={() => {}} />,
     );
-    expect(html).not.toContain('coins ÷');
-    expect(html).toContain('Leftover coins score nothing');
+    expect(html).toContain('coins ÷');
+    expect(html).not.toContain('Leftover coins score nothing');
     expect(html).not.toContain('is a bug in the breakdown');
   });
 
@@ -194,6 +208,11 @@ describe('the result screen renders', () => {
    * The Bread Hall replaces its holder's coin pity, so their coin line is 0 and
    * their coins were scored on the card instead. Left unsaid, the screen shows a
    * seat with £40 scoring nothing for them, which reads as a bug.
+   *
+   * With the pity now off there is no coin line to replace and nothing to
+   * explain, so the note belongs to the pity-ON branch. Both are asserted here:
+   * the note appears when the knob is on, and does NOT appear under the live
+   * rule, where the card is simply an end-game card like any other.
    */
   it('says so when a card replaced the coin pity', () => {
     const game = GAMES[0]!;
@@ -218,17 +237,40 @@ describe('the result screen renders', () => {
           : s,
       ),
     };
-    const report = scoreReport(data, game.view, withBreadHall);
+    const withPity = pityOn();
+    // Every other seat keeps a real pity line, so the holder's zero is a
+    // deliberate replacement rather than the rule simply being off.
+    const scored: GameScore = {
+      ...withBreadHall,
+      seats: withBreadHall.seats.map((s, seat) => {
+        if (s.coinPityReplacedBy !== null) return s;
+        const c =
+          seat === game.view.seat
+            ? game.view.you.coins
+            : (game.view.rivals.find((r) => r.seat === seat)?.coins ?? 0);
+        const pity = Math.floor(c / 5);
+        return { ...s, coinPity: pity, total: s.total + pity };
+      }),
+    };
+    const report = scoreReport(withPity, game.view, scored);
     const holder = report.seats.find((s) => s.seat === first)!;
     expect(holder.pity?.vp).toBe(0);
     expect(holder.pity?.replacedBy).toBe('The Bread Hall');
     expect(holder.agrees).toBe(true);
 
     const html = renderToStaticMarkup(
-      <Result data={data} view={game.view} score={withBreadHall} onAgain={() => {}} />,
+      <Result data={withPity} view={game.view} score={scored} onAgain={() => {}} />,
     );
     expect(html).toContain('scored above by The Bread Hall');
     expect(html).not.toContain('is a bug in the breakdown');
+
+    // Under the live rule there is no pity line at all, so nothing to explain.
+    const live = renderToStaticMarkup(
+      <Result data={data} view={game.view} score={withBreadHall} onAgain={() => {}} />,
+    );
+    expect(live).not.toContain('scored above by The Bread Hall');
+    expect(live).toContain('Leftover coins score nothing');
+    expect(live).not.toContain('is a bug in the breakdown');
   });
 
   it('raises the alarm when the working disagrees with the engine', () => {

@@ -1,0 +1,6 @@
+{
+  "name": "card-buy",
+  "description": "The card BUY (Dean, 2026-08-03) priced, with the rule switched off as the third cell. The base data ships £1, so the £1 cell is a NOISE CONTROL against the baseline column - it differs only by the sweep's seed suffix - and the null cell is the pre-buy game. Read the null column as what the rule does, sign flipped.",
+  "schemaVersion": 1,
+  "sweep": [{ "knob": "rules.turn.buyCost", "values": [1, 2, null] }]
+}

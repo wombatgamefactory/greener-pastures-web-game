@@ -81,13 +81,37 @@ export function separated(a: Interval, b: Interval): boolean {
 }
 
 /**
+ * Mean absolute change per step of a series: +1.0 is "one more coin a round".
+ *
+ * Ticket 44 moved assertion 1 onto this and off `growthPerStep`, because a
+ * ratio is read against the level it sits on. Re-scored across the whole report
+ * archive, the ratio metric **passed the run with the steepest absolute climb**
+ * (reference-v1, +£1.75 a round on a £24 pile, 6.6%) and **failed the flattest**
+ * (reference-v5, +£0.33 a round on a £5 pile, 21.3%) - so a rule that lowered
+ * the pile without changing its shape flipped the verdict. The design's word is
+ * *plateau*, which is a statement about coins, not about percentages.
+ */
+export function changePerStep(series: readonly number[]): number {
+  const steps: number[] = [];
+  for (let i = 1; i < series.length; i++) {
+    const prev = series[i - 1] as number;
+    const next = series[i] as number;
+    if (!Number.isFinite(prev) || !Number.isFinite(next)) continue;
+    steps.push(next - prev);
+  }
+  return steps.length === 0 ? NaN : mean(steps);
+}
+
+/**
  * Mean per-step growth of a series, as a fraction: +0.15 is "grows 15% a step".
  *
  * Deliberately the mean of the per-step ratios rather than a fitted regression
- * slope. Assertion 1's threshold is stated as a percentage per step ("must
- * plateau, not climb"), and a regression slope is in coins per step, so it
- * would need a scale to be read against - which is exactly the snapshot-derived
- * number ticket 11 forbids. A ratio needs none.
+ * slope. Assertion 1's threshold used to be stated as a percentage per step,
+ * and a regression slope is in coins per step, so it would need a scale to be
+ * read against - which is exactly the snapshot-derived number ticket 11 forbids.
+ * Ticket 44 found the scale in the design instead (v14: one spare card a turn
+ * converts to £1), so assertion 1 no longer calls this. Kept because it is the
+ * right shape for any series with no natural unit.
  */
 export function growthPerStep(series: readonly number[]): number {
   const steps: number[] = [];

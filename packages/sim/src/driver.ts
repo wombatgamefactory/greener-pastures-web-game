@@ -20,7 +20,16 @@
 
 import type { GameData, Suit } from '@gp/data';
 import type { GameEvent, GameState, Move, PlayerView, Seat } from '@gp/engine';
-import { apply, isOver, legalMoves, newGame, seedRng, shuffle, viewFor } from '@gp/engine';
+import {
+  apply,
+  isOver,
+  legalMoves,
+  makeProber,
+  newGame,
+  seedRng,
+  shuffle,
+  viewFor,
+} from '@gp/engine';
 import type { Policy, PolicyId } from '@gp/bots';
 import { BALANCE_PROFILES, makePolicy, policyRng } from '@gp/bots';
 
@@ -90,6 +99,12 @@ export interface GameResult {
   /** True when the game reached the Level 3 end trigger and played out. */
   readonly ended: boolean;
   readonly decisions: number;
+  /**
+   * Turns played, counted from `turnPlayer` changing. Not derivable from the
+   * move log: a cross-player task answer carries a rival's seat without ending
+   * anyone's turn, so counting seat changes in the log overstates it.
+   */
+  readonly turns: number;
   /** Views built. Equal to `decisions` unless someone adds a second call site. */
   readonly views: number;
   /** Wall time inside `policy.choose` only, in milliseconds. */
@@ -97,6 +112,17 @@ export interface GameResult {
   readonly maxLegalMoves: number;
   /** Set only when `outcome` is 'crashed'. Never null on a crash. */
   readonly error?: string;
+  /**
+   * The move that was being applied when it threw, which is deliberately NOT in
+   * `moves` - the log records applied moves only, and this one never applied.
+   *
+   * Ticket 31 needs it: a capture whose log stops one move short reaches the
+   * crash position and then replays cleanly, which reads as "not reproducible"
+   * when the truth is "the log was one move short". Appending this to a
+   * capture's log makes the replay throw in exactly the same place. Absent when
+   * the throw came from `legalMoves` rather than from a move.
+   */
+  readonly attempted?: Move;
 }
 
 /** Default ceiling. Ticket 14 measured a 4p median of ~1200 moves post-gate. */
@@ -144,6 +170,10 @@ export function runGame(data: GameData, spec: GameSpec, viewFn: ViewFn = viewFor
   const idleLimit = spec.seats * 4;
   let idle = 0;
   let crash: string | null = null;
+  let turns = 1;
+  // Held outside the try so the catch can name the move that threw. Cleared the
+  // moment a move applies, so it is only ever set during an apply.
+  let attempting: Move | null = null;
 
   try {
     while (!isOver(state) && moves.length < maxMoves && idle < idleLimit) {
@@ -162,9 +192,14 @@ export function runGame(data: GameData, spec: GameSpec, viewFn: ViewFn = viewFor
       views += 1;
 
       const started = performance.now();
-      const move = policy.choose({ data, view, moves: legal, rng });
+      // Ticket 40: a fresh probe per decision, closed over the state the bots
+      // may not see. One budget per decision, so a wide position costs a
+      // bounded number of speculative applies rather than a proportional one.
+      const probe = makeProber(data, state, seat);
+      const move = policy.choose({ data, view, moves: legal, rng, probe });
       chooseMs += performance.now() - started;
 
+      attempting = move;
       const applied = apply(data, state, move);
       if (spec.observe) {
         spec.observe({
@@ -176,8 +211,10 @@ export function runGame(data: GameData, spec: GameSpec, viewFn: ViewFn = viewFor
           post: applied.state,
         });
       }
+      if (applied.state.turnPlayer !== state.turnPlayer) turns += 1;
       state = applied.state;
       moves.push(move);
+      attempting = null;
       idle = move.type === 'pass' || move.type === 'endTurn' ? idle + 1 : 0;
     }
   } catch (error) {
@@ -203,9 +240,11 @@ export function runGame(data: GameData, spec: GameSpec, viewFn: ViewFn = viewFor
     outcome,
     ended: outcome === 'ended',
     decisions: moves.length,
+    turns,
     views,
     chooseMs,
     maxLegalMoves,
     ...(crash === null ? {} : { error: crash }),
+    ...(crash !== null && attempting !== null ? { attempted: attempting } : {}),
   };
 }
