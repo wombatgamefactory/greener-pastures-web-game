@@ -71,6 +71,9 @@ export const GREEDY_PRIORITY: readonly MoveType[] = [
   'buy',
   'visit',
   'workOwnWorker',
+  // Below the visit on purpose: greedy is a regression baseline, and the
+  // market must never displace its bonus slot while a visit is on offer.
+  'market',
   'cardMove',
   'pass',
   'endTurn',

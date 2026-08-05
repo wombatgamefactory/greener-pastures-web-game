@@ -17,6 +17,8 @@ type Spend = Partial<Record<Suit, number>>;
 export type Act =
   | { a: 'draw' }
   | { a: 'buy'; suit: Suit }
+  /** BUY AT MARKET (ticket 56): the bonus-slot coin sink. Top of `suit`'s deck into the BARN. */
+  | { a: 'market'; suit: Suit }
   /**
    * `payment` is hand cards, `coinWild` coins standing in for cards (D7) and
    * `barn` barn cards joining the payment (D8). The engine holds
@@ -103,6 +105,8 @@ export function actOf(move: Move): Act {
       return { a: 'draw' };
     case 'buy':
       return { a: 'buy', suit: move.suit };
+    case 'market':
+      return { a: 'market', suit: move.suit };
     case 'build':
       return { a: 'build', card: move.card, payment: move.payment, coinWild: 0, barn: 0 };
     case 'hire':

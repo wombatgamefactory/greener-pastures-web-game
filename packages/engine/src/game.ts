@@ -17,6 +17,7 @@ import {
   doBuild,
   doDeliver,
   doDraw,
+  doMarket,
   doMoveBalloon,
   doHarvestAction,
   doHire,
@@ -24,6 +25,7 @@ import {
   doVisit,
   doWorkOwn,
   growOptions,
+  marketOptions,
   harvestAgainPower,
   harvestOptions,
   hasMainOption,
@@ -111,6 +113,8 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
   // The free actions, offered whether or not the main action is spent.
   for (const suit of buyOptions(data, state, seat)) moves.push({ type: 'buy', seat, suit });
   moves.push(...visitOptions(data, state, seat));
+  // The bonus slot's third option (ticket 56): buy at market.
+  for (const suit of marketOptions(data, state, seat)) moves.push({ type: 'market', seat, suit });
   for (const workerId of workOwnOptions(data, state, seat)) {
     moves.push({ type: 'workOwnWorker', seat, workerId });
   }
@@ -194,6 +198,9 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
       break;
     case 'buy':
       doBuy(fx, move.seat, move.suit);
+      break;
+    case 'market':
+      doMarket(fx, move.seat, move.suit);
       break;
     case 'build': {
       const mods: BuildMods = buildSubstitutePower(draft, move.seat) ? { substitute: true } : {};

@@ -147,8 +147,32 @@ export interface Scratch {
    * This is the design claim being tested, stated in the one place that decides
    * what a coin is worth. It moves only when the rule moves, so the paired
    * `no-card-buy` run measures the rule and not a re-tuned bot.
+   *
+   * **Deliberately reads `buyCost` only, never `marketCost`** (ticket 56). The
+   * buy converts a coin into a HAND card at £1, close enough to face value that
+   * "a coin is a coin" holds. The market converts £3 into one BARN card - a
+   * card `barnSpend` prices at a fifth of a hand card - so face value would
+   * overprice a hoarder's pile and the market would never fire for exactly the
+   * seats it exists to drain. The market's effect on a coin's worth arrives
+   * through `coinRunway` instead: one market buy of headroom, below.
    */
   readonly coinNeverDead: boolean;
+  /**
+   * Island tiles that flip from unpayable to payable if ONE card of each suit
+   * were added to this seat's barn - the market's ordering feature, and null
+   * while the market is off.
+   *
+   * Ticket 56, standing on 51 and 52: DEMAND is uninformative for barn
+   * decisions (right 53.4% of the time, chance) and PAYABILITY is the real
+   * feature - ticket 38 measured the barn's whole block as matching under an
+   * all-or-nothing payment, with 89% of blocked deliveries unable to afford any
+   * open tile and 93% of near-misses short by 1-2 cards. A market card is worth
+   * the deliveries it unlocks, so the feature counts exactly that, mirroring
+   * the engine's own `anyDeliverOption` arithmetic from the view (wild crates
+   * as capacity, the level gate applied - a tile you may not deliver to is not
+   * a delivery unlocked).
+   */
+  readonly marketPayability: ReadonlyMap<Suit, number> | null;
 }
 
 /**
@@ -205,6 +229,17 @@ function coinsOf(
     runway += cost;
     if (gap === null || cost < gap) gap = cost;
   }
+  // ONE market buy of headroom (ticket 56). The market is a repeating sink like
+  // the card buy, so it can never join `sinksOf` wholesale - an unbounded sink
+  // makes the runway meaningless, and a market entry in the GAP would make
+  // `marketSaving` suppress the market to save for the market. But excluding it
+  // entirely re-creates ticket 40's dead-coin blindness in the market-only arm:
+  // a seat whose bounded sinks are spent would price every minted coin at zero
+  // and never earn its way to £3, under-reporting the rule the arm exists to
+  // measure. One buy ahead is a real purchasable thing, re-derived every
+  // decision, so the runway sees the market without the gap ever doing so.
+  const market = data.rules.turn.marketCost;
+  if (market !== null) runway += market;
   return { runway, gap };
 }
 
@@ -258,6 +293,71 @@ export function handSpendCost(s: Scratch, n: number): number {
 
 function starterSlotOf(card: Card): string | null {
   return card.slot ?? null;
+}
+
+/**
+ * Can this barn tally pay for this tile? The engine's `anyDeliverOption`
+ * arithmetic, re-stated over the view: named crates covered outright, then
+ * every crate-sized block of surplus in one suit covers one wild. Demand
+ * tokens are dealt from in-play suits only, so one pass over `suits` both
+ * checks coverage and counts wild capacity.
+ */
+function tallyPays(
+  suits: readonly Suit[],
+  tally: Partial<Record<Suit, number>>,
+  base: Partial<Record<Suit, number>>,
+  wilds: number,
+  per: number,
+): boolean {
+  let wildCapacity = 0;
+  for (const suit of suits) {
+    const surplus = (tally[suit] ?? 0) - (base[suit] ?? 0);
+    if (surplus < 0) return false;
+    wildCapacity += Math.floor(surplus / per);
+  }
+  return wildCapacity >= wilds;
+}
+
+/**
+ * The market's ordering feature (ticket 56): for each suit, how many open,
+ * unfilled, level-open tiles flip from unpayable to payable with one more barn
+ * card of that suit. Adding a card is monotone, so the count is a plain delta.
+ *
+ * On the decision budget: one working tally is mutated and restored rather
+ * than copied per (tile, suit), and the caller only runs this at all when the
+ * seat can afford a market buy - the first version computed it every decision
+ * and pushed the whole-game gate from within budget to 9.5 applies a decision.
+ */
+function payabilityBySuit(
+  data: GameData,
+  view: PlayerView,
+  openLevels: ReadonlySet<1 | 2 | 3>,
+): Map<Suit, number> {
+  const suits = view.suitsInPlay;
+  const tally: Partial<Record<Suit, number>> = { ...view.you.barn };
+  const out = new Map<Suit, number>();
+  for (const suit of suits) out.set(suit, 0);
+  for (const tile of view.island.tiles) {
+    if (tile.deliveredBy.length >= data.island.deliveriesPerTile) continue;
+    const level = tileLevel(data, tile.tile);
+    if (!openLevels.has(level)) continue;
+    const rule = data.island.levelRules[String(level)];
+    if (!rule) continue;
+    const per = rule.cardsPerCrate;
+    const base: Partial<Record<Suit, number>> = {};
+    let wilds = 0;
+    for (const crate of tile.crates) {
+      if (crate === 'wild') wilds += 1;
+      else base[crate] = (base[crate] ?? 0) + per;
+    }
+    if (tallyPays(suits, tally, base, wilds, per)) continue;
+    for (const suit of suits) {
+      tally[suit] = (tally[suit] ?? 0) + 1;
+      if (tallyPays(suits, tally, base, wilds, per)) out.set(suit, (out.get(suit) ?? 0) + 1);
+      tally[suit] = (tally[suit] as number) - 1;
+    }
+  }
+  return out;
 }
 
 function levelsFor(
@@ -323,5 +423,11 @@ export function makeScratch(data: GameData, view: PlayerView): Scratch {
     coinRunway: purse.runway,
     sinkGap: purse.gap,
     coinNeverDead: data.rules.turn.buyCost !== null,
+    // Null when the market is off OR unaffordable: no market move exists in
+    // either case, so nothing reads it and the tile scan is never paid for.
+    marketPayability:
+      data.rules.turn.marketCost === null || you.coins < data.rules.turn.marketCost
+        ? null
+        : payabilityBySuit(data, view, openLevels),
   };
 }

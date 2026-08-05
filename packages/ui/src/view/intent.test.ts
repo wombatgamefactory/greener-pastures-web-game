@@ -101,6 +101,7 @@ function reachable(position: Position, move: Move): boolean {
     }
 
     case 'buy':
+    case 'market':
       return has(clickDeck(moves, IDLE, move.suit));
 
     case 'deliver':

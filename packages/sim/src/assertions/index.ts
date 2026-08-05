@@ -1,10 +1,11 @@
 /**
  * The suite, in the order ticket 11 section 8 lists it.
  *
- * Eight assertions carry a threshold and can FAIL; five are OBSERVE, because
+ * Nine assertions carry a threshold and can FAIL; five are OBSERVE, because
  * the design names no number for them and a snapshot of our own first run is
  * not a threshold. That split is not a gap in the work - it is ticket 11
- * section 2 doing its job.
+ * section 2 doing its job. Assertion 14 (ticket 56) is live only while the
+ * market rule is switched on, and reports OBSERVE otherwise.
  */
 
 import { coinFlood } from './a01-coin-flood.js';
@@ -20,6 +21,7 @@ import { breadHall } from './a10-bread-hall.js';
 import { wagonSelfWork } from './a11-wagon-self-work.js';
 import { balloonRaid } from './a12-balloon-raid.js';
 import { supplyLock } from './a13-supply-lock.js';
+import { marketMix } from './a14-market-mix.js';
 import type { Assertion } from './types.js';
 
 export const WATCHLIST: readonly Assertion[] = [
@@ -36,6 +38,7 @@ export const WATCHLIST: readonly Assertion[] = [
   wagonSelfWork,
   balloonRaid,
   supplyLock,
+  marketMix,
 ];
 
 export type { Assertion, MeasureContext, Measurement, Verdict } from './types.js';

@@ -315,6 +315,16 @@ export type Move =
    * Orchard Farmstead and the Draw Worker keep the draw lane to themselves.
    */
   | { type: 'buy'; seat: Seat; suit: Suit }
+  /**
+   * BUY AT MARKET (docs/Market Bonus Action 2026-08-03.md): a bonus-slot option
+   * beside the coin visit and the worker visit. Pay `rules.turn.marketCost` to
+   * the bank, take the top card of any one deck in play - own suit included -
+   * straight into your BARN, revealed as it goes. Consumes the bonus slot; not
+   * a visit (no Helping Hand, no afterVisit, no wage) and not a Draw (no
+   * reveal-and-keep, no draw modifier). Ticket 56 holds it beside `buy` so the
+   * paired arms can decide which coin sink is the game's.
+   */
+  | { type: 'market'; seat: Seat; suit: Suit }
   /** Build a card from hand. `payment` is the chosen card ids; a coin-priced card pays coins and an empty payment. */
   | { type: 'build'; seat: Seat; card: CardId; payment: CardId[] }
   /** Hire a Worker from the Fair - a Build-action branch. */
@@ -368,6 +378,7 @@ const MOVE_TYPE_KEYS = {
   cardMove: true,
   draw: true,
   buy: true,
+  market: true,
   build: true,
   hire: true,
   upgrade: true,

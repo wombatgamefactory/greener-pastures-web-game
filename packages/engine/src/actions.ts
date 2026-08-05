@@ -927,8 +927,52 @@ export function workOwnOptions(data: GameData, state: GameState, seat: Seat): Wo
     .map((w) => w.id);
 }
 
+/**
+ * BUY AT MARKET's deck choices (docs/Market Bonus Action 2026-08-03.md). A
+ * bonus-slot option, so it gates on `bonusSpent` like the visit - competing
+ * with the visit is the entire point of the rule. Any deck in play, OWN SUIT
+ * INCLUDED (legal here and illegal at the card buy, both deliberate: the barn
+ * destination makes own-suit harmless colour for delivery, the hand destination
+ * made it a second Draw). A suit whose deck and discard are both empty cannot
+ * be bought (the doc's ruling); the reshuffle happens in the funnel as usual.
+ *
+ * A seat that cannot afford the fee simply has no market option, so the turn is
+ * never held open waiting for a market it cannot take - the `settleTurn`
+ * decline behaviour falls out of `hasBonusOption` reading this.
+ */
+export function marketOptions(data: GameData, state: GameState, seat: Seat): Suit[] {
+  const cost = data.rules.turn.marketCost;
+  if (cost === null) return [];
+  if (state.turn.bonusSpent) return [];
+  if (player(state, seat).coins < cost) return [];
+  return drawableSuits(data, state).filter((s) => state.suitsInPlay.includes(s));
+}
+
 export function hasBonusOption(data: GameData, state: GameState, seat: Seat): boolean {
-  return visitOptions(data, state, seat).length > 0 || workOwnOptions(data, state, seat).length > 0;
+  return (
+    visitOptions(data, state, seat).length > 0 ||
+    workOwnOptions(data, state, seat).length > 0 ||
+    marketOptions(data, state, seat).length > 0
+  );
+}
+
+/**
+ * Pay the bank, top card of that deck straight into the barn, revealed (the
+ * `deckToBarn` event carries it - the Patisserie / Meadow Hive primitive, so
+ * the narrator and redaction inherit it). Consumes the bonus slot and nothing
+ * else: `turn.visit` stays null, so a Helping Hand never arms, and no
+ * `afterVisit` fires - the ticket 23 precedent. Never a Draw: no task, no
+ * keep, and `withDrawModifier` is never consulted.
+ */
+export function doMarket(fx: Fx, seat: Seat, suit: Suit): void {
+  if (!marketOptions(fx.data, fx.state, seat).includes(suit)) {
+    throw new Error(`Seat ${seat} cannot buy the ${suit} crop at market`);
+  }
+  const cost = fx.data.rules.turn.marketCost;
+  if (cost === null) throw new Error('The market is switched off');
+  fx.payCoins(seat, cost, 'market');
+  fx.state.turn.bonusSpent = true;
+  fx.deckTopToBarn(seat, suit);
 }
 
 /**

@@ -165,6 +165,10 @@ function coinsMinted(act: Act, s: Scratch): number {
     const level = String(tileLevel(s.data, act.tile));
     return s.data.island.levelRules[level]?.coinsPerDelivery ?? 0;
   }
+  // The market's fee (ticket 56), priced at the bot's ONE coin price like D7's
+  // wilds: `coinWorth` signs a spend symmetrically, so a hoarder's £3 above the
+  // runway costs nothing and a poor seat's £3 costs what it would have bought.
+  if (act.a === 'market') return -(s.data.rules.turn.marketCost ?? 0);
   return 0;
 }
 
@@ -343,7 +347,7 @@ export const TERMS: readonly Term[] = [
      * INSTEAD of a card rather than to buy something (D7's wilds, ticket 47).
      */
     name: 'coinGain',
-    claims: ['visit', 'deliver', 'build', ...ACTION_AND_TASK],
+    claims: ['visit', 'deliver', 'build', 'market', ...ACTION_AND_TASK],
     feature: (act, s) => coinWorth(s, coinsMinted(act, s)),
   },
   {
@@ -567,6 +571,57 @@ export const TERMS: readonly Term[] = [
     feature: (act, s) => {
       if (act.a !== 'buy' || s.sinkGap === null) return 0;
       return s.coins - (s.data.rules.turn.buyCost ?? 0) < s.sinkGap ? -1 : 0;
+    },
+    cost: true,
+  },
+  {
+    /**
+     * BUY AT MARKET's barn card (ticket 56): one card arriving in the barn,
+     * priced at what this table already pays a card arriving in a barn - the
+     * `harvest` rate, exactly as the probe pricer's `deckToBarn` case would
+     * price the same event. It is a feature-of-1 deliberately NOT probed:
+     * the probe would spend an apply to return this constant, which is the
+     * shape the `outcome` term's own header warns against. The weight is
+     * PINNED to `harvest` in `weights.ts` rather than free, so there is one
+     * price for a barn arrival, not two that can drift.
+     */
+    name: 'marketGain',
+    claims: ['market'],
+    feature: (act) => (act.a === 'market' ? 1 : 0),
+  },
+  {
+    /**
+     * The market's ordering feature, and the whole reason a seat below its
+     * runway ever takes one: the deliveries this card unlocks. Ticket 38
+     * measured the barn's block as MATCHING (89% of blocked deliveries can
+     * afford no open tile, 93% of near-misses short by 1-2 cards), and tickets
+     * 51/52 established payability - not demand - as the feature that tracks
+     * it. This is the acquisition side of that finding: +1 card of a chosen
+     * suit, counted in tiles that flip from unpayable to payable.
+     *
+     * The weight converts an unlocked delivery into score. It cannot be
+     * derived the way `marketGain`'s pin can, so it is set between
+     * `sowCompletes` (2) and `deliverClimb` (5) and the delete test is run in
+     * ticket 56's report rather than asserted here.
+     */
+    name: 'marketPayability',
+    claims: ['market'],
+    feature: (act, s) => (act.a === 'market' ? (s.marketPayability?.get(act.suit) ?? 0) : 0),
+  },
+  {
+    /**
+     * `buySaving`'s twin for the £3 sink (ticket 56): would this market buy
+     * leave me short of the cheapest bounded thing I still want? `sinkGap`
+     * deliberately excludes the market itself (a repeating sink in the gap
+     * would suppress the market to save for the market), so this guards the
+     * hire and the upgrades, nothing else. Same derived weight as `buySaving`:
+     * it has to clear the `endTurn` floor to decide anything.
+     */
+    name: 'marketSaving',
+    claims: ['market'],
+    feature: (act, s) => {
+      if (act.a !== 'market' || s.sinkGap === null) return 0;
+      return s.coins - (s.data.rules.turn.marketCost ?? 0) < s.sinkGap ? -1 : 0;
     },
     cost: true,
   },

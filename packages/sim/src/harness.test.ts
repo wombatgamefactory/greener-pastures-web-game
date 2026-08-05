@@ -157,8 +157,10 @@ describe('the per-card funnel', () => {
 describe('the watch-list suite', () => {
   const rows = runWatchlist(data, pooled, new Map());
 
-  it('has all 13, numbered 1 to 13', () => {
-    expect(rows.map((r) => r.assertion.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+  it('has all 14, numbered 1 to 14', () => {
+    expect(rows.map((r) => r.assertion.id)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
+    ]);
   });
 
   it('produces a number and a verdict for each', () => {
@@ -186,8 +188,13 @@ describe('the watch-list suite', () => {
     }
   });
 
-  it('marks exactly the three taste-sensitive assertions', () => {
-    expect(rows.filter((r) => r.assertion.taste).map((r) => r.assertion.id)).toEqual([2, 8, 11]);
+  it('marks exactly the four taste-sensitive assertions', () => {
+    // 14 joined the set with ticket 56: the bonus-slot mix is precisely the
+    // kind of number a single taste could produce alone (a hermit mirror
+    // markets instead of visiting by construction).
+    expect(rows.filter((r) => r.assertion.taste).map((r) => r.assertion.id)).toEqual([
+      2, 8, 11, 14,
+    ]);
   });
 
   // Deliberately absent: any assertion that the design PASSES. That belongs to

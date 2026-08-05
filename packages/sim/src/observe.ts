@@ -35,6 +35,7 @@ import {
   handlerFor,
   player,
   score,
+  tileLevel,
   visitOptions,
 } from '@gp/engine';
 import type { PolicyId } from '@gp/bots';
@@ -80,6 +81,7 @@ export const MOVE_KINDS = {
   cardMove: true,
   draw: true,
   buy: true,
+  market: true,
   build: true,
   hire: true,
   upgrade: true,
@@ -166,6 +168,28 @@ export interface GameMetrics {
 
   turnsBySeat: number[];
   bonusTurnsBySeat: number[];
+  /**
+   * The market doc's headline metric (ticket 56): how each seat spent its bonus
+   * slots. `visitsBySeat` and `workOwnBySeat` are the other two thirds of the
+   * mix; "market outnumbers visit" is the doc's named hook-losing condition.
+   */
+  marketBuysBySeat: number[];
+  workOwnBySeat: number[];
+  /** 1-based round of each market buy, for the doc's midgame split. */
+  marketRounds: number[];
+  /**
+   * 1-based round of each PLAIN coin visit - the £1 payout on a base Notice
+   * Board, the floor move the market doc says the market eats first.
+   */
+  plainVisitRounds: number[];
+  /**
+   * The doc's exploit probe: deliveries whose whole card cost was covered by
+   * market buys made since the seat's last harvest (so the slot could have been
+   * bought entirely at market), indexed by island level 1-3.
+   */
+  marketFundedDeliveriesByLevel: number[];
+  /** The doc's sharpest case: such a delivery at Level 3 by a Vegetable seat. */
+  marketFundedL3Veg: number;
   visitsBySeat: number[];
   visitsToLeaderBySeat: number[];
   deliveriesBySeat: number[];
@@ -249,12 +273,15 @@ export class Fold {
   private turnsEnded = 0;
   private sampledTurn = -1;
   private leader: Seat | null = null;
+  /** Working counter for the exploit probe: market buys since the seat's last harvest. */
+  private marketSinceHarvest: number[] = [];
   private readonly open = new Map<string, WorkerLifetime>();
   private seeded = false;
   private leaderCache: { d: Decision; v: Seat | null } | null = null;
 
   constructor(data: GameData, spec: FoldSpec, seats: number) {
     this.data = data;
+    this.marketSinceHarvest = Array<number>(seats).fill(0);
     const zeros = () => Array<number>(seats).fill(0);
     this.m = {
       seed: spec.seed,
@@ -278,6 +305,12 @@ export class Fold {
       endTriggerRound: null,
       turnsBySeat: zeros(),
       bonusTurnsBySeat: zeros(),
+      marketBuysBySeat: zeros(),
+      workOwnBySeat: zeros(),
+      marketRounds: [],
+      plainVisitRounds: [],
+      marketFundedDeliveriesByLevel: [0, 0, 0],
+      marketFundedL3Veg: 0,
       visitsBySeat: zeros(),
       visitsToLeaderBySeat: zeros(),
       deliveriesBySeat: zeros(),
@@ -381,6 +414,17 @@ export class Fold {
       case 'visit':
         for (const id of move.fee) this.facts(id).junked = true;
         return;
+      case 'market': {
+        // The bonus-slot mix's third column, plus the exploit probe's counter.
+        const seat = move.seat;
+        this.m.marketBuysBySeat[seat] = (this.m.marketBuysBySeat[seat] ?? 0) + 1;
+        this.m.marketRounds.push(this.round());
+        this.marketSinceHarvest[seat] = (this.marketSinceHarvest[seat] ?? 0) + 1;
+        return;
+      }
+      case 'workOwnWorker':
+        this.m.workOwnBySeat[move.seat] = (this.m.workOwnBySeat[move.seat] ?? 0) + 1;
+        return;
       case 'task':
         this.taskAnswer(d, pre.tasks[0]);
         return;
@@ -396,7 +440,6 @@ export class Fold {
       case 'harvest':
       case 'deliver':
       case 'moveBalloon':
-      case 'workOwnWorker':
       case 'pass':
       case 'endTurn':
         return;
@@ -495,8 +538,29 @@ export class Fold {
       case 'starterUpgraded':
         if (!e.free) m.upgradesBySeat[e.seat] = (m.upgradesBySeat[e.seat] ?? 0) + 1;
         return;
-      case 'delivered':
+      case 'delivered': {
         m.deliveriesBySeat[e.seat] = (m.deliveriesBySeat[e.seat] ?? 0) + 1;
+        // The exploit probe (ticket 56): could this slot have been bought
+        // entirely at market, with no harvest between? Conservative in the
+        // exploit's favour - it asks whether the market buys since the last
+        // harvest COVER the cost, not which physical cards were spent, because
+        // barn identity is inert and the engine spends arbitrary ids.
+        const cost = Object.values(e.spend).reduce((a, n) => a + (n ?? 0), 0);
+        if (cost > 0 && (this.marketSinceHarvest[e.seat] ?? 0) >= cost) {
+          const level = tileLevel(this.data, e.tile);
+          m.marketFundedDeliveriesByLevel[level - 1] =
+            (m.marketFundedDeliveriesByLevel[level - 1] ?? 0) + 1;
+          if (level === 3 && player(d.post, e.seat).suit === 'vegetable') {
+            m.marketFundedL3Veg += 1;
+          }
+        }
+        return;
+      }
+      case 'harvested':
+        // Any harvest resets the exploit window; the card facts a harvest
+        // carries are folded elsewhere (stack cards were counted as they
+        // arrived on the building).
+        this.marketSinceHarvest[e.seat] = 0;
         return;
       case 'balloonMoved': {
         m.balloonMoves += 1;
@@ -507,6 +571,15 @@ export class Fold {
       }
       case 'visited': {
         m.visitsBySeat[e.seat] = (m.visitsBySeat[e.seat] ?? 0) + 1;
+        // The plain £1 visit - a coin payoff on a BASE board - is the floor
+        // move the market doc says the market eats first; its round index
+        // feeds the midgame split (ticket 56).
+        if (e.mode === 'coin') {
+          const board = player(d.pre, e.host).tableau.find(
+            (b) => cardById(this.data, b.card).slot === 'noticeboard',
+          );
+          if (board && !board.upgraded) m.plainVisitRounds.push(this.round());
+        }
         const leader = this.leaderOf(d);
         if (leader === e.host) {
           m.visitsToLeaderBySeat[e.seat] = (m.visitsToLeaderBySeat[e.seat] ?? 0) + 1;
@@ -538,7 +611,6 @@ export class Fold {
       case 'cardsDiscarded':
       case 'deckToBarn':
       case 'stackToBarn':
-      case 'harvested':
       case 'covered':
       case 'demolished':
       case 'discardToBarn':
@@ -604,6 +676,11 @@ export class Fold {
     const best = Math.max(...totals);
     const leaders = totals.flatMap((t, seat) => (t === best ? [seat] : []));
     return leaders.length === 1 ? (leaders[0] as Seat) : null;
+  }
+
+  /** The 1-based round in progress, read the way `endTriggerRound` reads it. */
+  private round(): number {
+    return Math.floor(this.turnsEnded / this.m.seats) + 1;
   }
 
   /** `why` strings that name a card: the bare id, and the `rider:` form. */

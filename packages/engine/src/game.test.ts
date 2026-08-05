@@ -602,6 +602,123 @@ describe('the card buy', () => {
   });
 });
 
+describe('buy at market (ticket 56)', () => {
+  /** The rule switched off - ticket 56's buy-as-shipped arm. */
+  const noMarket = loadGameData({
+    name: 'no-market',
+    schemaVersion: 1,
+    set: { 'rules.turn.marketCost': null },
+  });
+
+  function withCoins(n: number): GameState {
+    const state = base();
+    state.players[WHEAT]!.coins = n;
+    return state;
+  }
+
+  function markets(state: GameState): Move[] {
+    return legalMoves(data, state).filter((m) => m.type === 'market');
+  }
+
+  it('offers every deck in play, OWN SUIT INCLUDED, and only at the printed price', () => {
+    expect(markets(withCoins(2))).toHaveLength(0);
+    const offered = markets(withCoins(3));
+    // Unlike the buy, the market may point at your own crop: the barn
+    // destination makes it harmless colour for delivery.
+    expect(offered.map((m) => (m.type === 'market' ? m.suit : null)).sort()).toEqual(
+      [...base().suitsInPlay].sort(),
+    );
+  });
+
+  it('pays the bank, puts the top card in the BARN revealed, and consumes the bonus slot', () => {
+    const state = withCoins(3);
+    const top = state.decks.apiary[0] as string;
+    const applied = apply(data, state, { type: 'market', seat: WHEAT, suit: 'apiary' });
+    const after = applied.state;
+    expect(after.players[WHEAT]!.coins).toBe(0);
+    expect(after.players[WHEAT]!.barn).toContain(top);
+    expect(after.players[WHEAT]!.hand).toHaveLength(0);
+    // Revealed: the deckToBarn event carries the card, like the Patisserie.
+    expect(applied.events).toContainEqual({
+      e: 'deckToBarn',
+      seat: WHEAT,
+      suit: 'apiary',
+      card: top,
+    });
+    // The bonus slot is spent - no visit, no second market - but the main
+    // action is untouched.
+    expect(after.turn.bonusSpent).toBe(true);
+    expect(after.turn.actionSpent).toBe(false);
+    expect(legalMoves(data, after).some((m) => m.type === 'visit')).toBe(false);
+    expect(markets(after)).toHaveLength(0);
+  });
+
+  it('is not a visit: no wage, no visited event, and it never arms a Helping Hand', () => {
+    const state = withCoins(3);
+    const applied = apply(data, state, { type: 'market', seat: WHEAT, suit: 'wheat' });
+    expect(applied.events.some((e) => e.e === 'visited')).toBe(false);
+    expect(applied.state.turn.visit).toBeNull();
+    // The only coins that moved were the fee to the bank.
+    const coinEvents = applied.events.filter((e) => e.e === 'coins');
+    expect(coinEvents).toEqual([{ e: 'coins', seat: WHEAT, delta: -3, why: 'market' }]);
+  });
+
+  it('is not a Draw: no task, and the Orchard modifier never touches it', () => {
+    const orchard = makeState(data, ['orchard', 'wheat']);
+    orchard.players[0]!.coins = 3;
+    const farmstead = orchard.players[0]!.tableau.find(
+      (b) => cardById(data, b.card).slot === 'farmstead',
+    );
+    farmstead!.upgraded = true; // see +1 and keep +1 on every DRAW
+    const applied = apply(data, orchard, { type: 'market', seat: 0, suit: 'wheat' });
+    expect(applied.state.tasks).toHaveLength(0);
+    expect(applied.state.players[0]!.hand).toHaveLength(0);
+    expect(applied.state.players[0]!.barn).toHaveLength(1); // the bought card, nothing kept
+  });
+
+  it('reshuffles an empty deck, and an exhausted crop cannot be bought', () => {
+    const state = withCoins(6);
+    // Deck empty, discard holds one card: the buy reshuffles and delivers.
+    const card = state.decks.apiary[0] as string;
+    state.discards.apiary.push(...state.decks.apiary.splice(0));
+    const applied = apply(data, state, { type: 'market', seat: WHEAT, suit: 'apiary' });
+    expect(applied.events.some((e) => e.e === 'reshuffled')).toBe(true);
+    expect(applied.state.players[WHEAT]!.barn).toHaveLength(1);
+    expect(card).toBeDefined();
+    // Both empty: that crop is off the market entirely (the doc's ruling).
+    const dry = withCoins(3);
+    dry.decks.apiary.splice(0);
+    expect(markets(dry).some((m) => m.type === 'market' && m.suit === 'apiary')).toBe(false);
+  });
+
+  it('holds the turn open at £3 and never holds a £2 seat hostage', () => {
+    // £3, empty hand, action spent: the market is a live bonus option, so the
+    // turn waits for an explicit decline.
+    const rich = withCoins(3);
+    rich.turn.actionSpent = true;
+    expect(markets(rich).length).toBeGreaterThan(0);
+    const ended = apply(data, rich, { type: 'endTurn', seat: WHEAT });
+    expect(ended.state.turnPlayer).toBe(APIARY);
+    // £2 under the market-only data (the buy off): no market option exists, so
+    // nothing offers and nothing waits.
+    const marketOnly = loadGameData({
+      name: 'market-not-buy',
+      schemaVersion: 1,
+      set: { 'rules.turn.buyCost': null },
+    });
+    const poor = withCoins(2);
+    poor.turn.actionSpent = true;
+    const moves = legalMoves(marketOnly, poor);
+    expect(moves.filter((m) => m.type === 'market' || m.type === 'buy')).toHaveLength(0);
+  });
+
+  it('disappears entirely when the rule is switched off', () => {
+    const state = withCoins(9);
+    expect(legalMoves(noMarket, state).filter((m) => m.type === 'market')).toHaveLength(0);
+    expect(() => apply(noMarket, state, { type: 'market', seat: WHEAT, suit: 'apiary' })).toThrow();
+  });
+});
+
 describe('views and redaction', () => {
   it('viewFor hides rival hands, deck order and barn identity', () => {
     const state = base();

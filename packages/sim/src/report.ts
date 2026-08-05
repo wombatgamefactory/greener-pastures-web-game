@@ -108,6 +108,13 @@ function watchlistSection({ rows, mirrorGames }: ReportInput): string[] {
     const tag = `${String(a.id).padStart(2)} ${m.verdict.padEnd(7)}`;
     if (m.verdict === 'PASS') {
       out.push(`${tag} ${a.title} - ${m.headline}`);
+      // The detail lines print on a PASS too (ticket 56). Assertion 14's
+      // details ARE the market doc's log sheet - the bonus-slot mix, the plain
+      // £1 visit after midgame, the exploit probe - and a paired-arm comparison
+      // needs them from the arm that passes exactly as much as from the one
+      // that fails. Ticket 44's re-scorability rule points the same way: a
+      // headline that hides its own components cannot be re-scored by hand.
+      for (const line of m.detail ?? []) out.push(`         detail:   ${line}`);
       // The mirror spread is printed even on a PASS, and especially on one. A
       // taste-sensitive number that passes on the mixed table while a single
       // archetype's mirror sits far outside it is a pass held up by the other

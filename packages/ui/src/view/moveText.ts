@@ -93,6 +93,8 @@ export function describeMove(data: GameData, view: PlayerView, move: Move): stri
       return 'Draw';
     case 'buy':
       return `Buy the top ${SUIT_META[move.suit].label} card for £${data.rules.turn.buyCost ?? 0}`;
+    case 'market':
+      return `Buy at market: the top ${SUIT_META[move.suit].label} card into your barn, for £${data.rules.turn.marketCost ?? 0}`;
     case 'build':
       return `Build ${cardName(data, move.card)}, paying ${cardList(data, move.payment)}`;
     case 'hire':
@@ -197,6 +199,12 @@ const FAMILIES: readonly {
   { type: 'deliver', label: 'Deliver', hint: 'Barn to the island', needsTarget: true },
   { type: 'moveBalloon', label: 'Freight', hint: 'Bring in a balloon', needsTarget: true },
   { type: 'visit', label: 'Visit', hint: "A card on a neighbour's board", needsTarget: true },
+  {
+    type: 'market',
+    label: 'Market',
+    hint: 'Bonus slot: £3 for the top card of any crop, into your barn',
+    needsTarget: true,
+  },
   { type: 'workOwnWorker', label: 'Work yours', hint: 'Free, and no wage', needsTarget: true },
   { type: 'cardMove', label: 'Card power', hint: 'A standing move on a card', needsTarget: false },
   { type: 'pass', label: 'Pass', hint: 'Nothing else is legal', needsTarget: false },

@@ -9,6 +9,7 @@
       "visitPayout is the machine-readable form of the payout printed on the Notice Board and on its upgraded face. The card text is the source; this is what the engine and the simulator read, so the two must not drift. twoCard is Special Orders' second line, \"2 cards, take £3\": it exists on the upgraded face only, so a base board never offers it.",
       "coinPityDivisor turns leftover coins into VP at game end: floor(coins / divisor). It is now NULL - coins are worth no victory points at all. Settled by Dean on ticket 37 (2026-08-02), which measured the rule's real cost: 65% of every coin minted was never spent on anything, so at the printed divisor of 5 a typical end-game pile of GBP 37 was quietly worth 7 VP - close to a Level 2 delivery - for hoarding. That made the free visit a risk-free VP drip and left GROW competing against it for the same scarce card. Coins are spend-only, as the design has always said; they survive in scoring only as the first tie-break.",
       "turn.buyCost is the card BUY (Dean, 2026-08-03): once a turn, as a free action, pay the bank and take the top card of a deck that is NOT your own suit. It is the answer to the Feld-lens finding that the game mints coins and is throttled by cards with no exchange between them - a coin now converts into the throttled resource, so coins are never dead. Blind, and deliberately not a Draw: no reveal, no keep, no draw modifier, so the Orchard Farmstead and the Draw Worker keep the draw lane. Null switches the rule off, which is the paired control in overlays/no-card-buy.overlay.json.",
+      "turn.marketCost is BUY AT MARKET as the parent design adopted it (docs/Market Bonus Action 2026-08-03.md): a third bonus-slot option beside the coin visit and the worker visit. Pay the bank, take the top card of ANY one deck in play - own suit included - straight into the BARN, revealed as it goes. It consumes the bonus slot, because competing with the visit is the entire point; it is not a visit (no Helping Hand, no afterVisit, no wage) and not a Draw (no reveal-and-keep, no draw modifier). Own suit is legal here and illegal at the buy, both deliberately: the barn destination makes own-suit harmless colour for delivery, the hand destination made it a second Draw. Null deletes the rule. Ticket 56 holds this and buyCost side by side so the paired arms can decide which coin sink is the game's - they are two different rules, not two prices for one.",
       "startingBarnCards is the single card each player starts with in their barn. startingHand is drawn from their own suit deck, which is why an owned deck holds 12 cards after setup.",
       "farmsteadFlipAtOwnColourBuilds counts buildings printing the player's own CROP icon, not own-suit builds. Ticket 07: a base starter prints the generic starting-building icon and counts for nothing, an upgraded starter prints the crop icon and counts, so paying £2 to flip a Barn or a Notice Board can also be the third own-crop building and flip the Farmstead free."
     ],
@@ -26,7 +27,8 @@
     "actionsPerTurn": 1,
     "bonusSlotsPerTurn": 1,
     "baseDraw": { "see": 2, "keep": 1 },
-    "buyCost": 1
+    "buyCost": 1,
+    "marketCost": 3
   },
   "economy": {
     "upgradeCostCoins": 2,

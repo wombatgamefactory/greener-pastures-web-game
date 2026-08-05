@@ -83,6 +83,12 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     description:
       'Coins for the once-per-turn free BUY: one card, blind, off the top of a deck that is not your own suit. Null deletes the rule. The exchange rate between the currency the game mints and the currency it is throttled by, so it is the balance number of the whole economy.',
   },
+  {
+    template: 'rules.turn.marketCost',
+    type: 'intOrNull',
+    description:
+      'Coins for BUY AT MARKET, the adopted bonus-slot coin sink (docs/Market Bonus Action 2026-08-03.md): top card of any one deck in play, own suit included, into the barn, revealed. Consumes the bonus slot, so it competes with the visit - which is the point, and the risk. Null deletes the rule. The doc names GBP 2 as broken and GBP 4 as the fallback dial.',
+  },
 
   // --- Economy -------------------------------------------------------------
   {

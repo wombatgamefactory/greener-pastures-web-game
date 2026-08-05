@@ -162,6 +162,22 @@ export const BALANCED: WeightTable = {
   buy: 2,
   buyDemand: 1,
   buySaving: 6,
+  /**
+   * The market's three terms (ticket 56), live only while `rules.turn.marketCost`
+   * is set - their features are all 0 otherwise, which is what keeps the
+   * market-off arm bit-identical to reference-v8.
+   *
+   * `marketGain` is PINNED to `harvest`: one card arriving in a barn has one
+   * price in this table, whichever gate it came through. If `harvest` moves,
+   * move this with it. `marketPayability` converts a delivery unlocked by the
+   * bought card into score - set between `sowCompletes` (2) and `deliverClimb`
+   * (5), with the delete test run in ticket 56's report rather than argued.
+   * `marketSaving` is `buySaving`'s twin at the same derived magnitude: it must
+   * clear the -2 `endTurn` floor to decide anything.
+   */
+  marketGain: 1.5,
+  marketPayability: 4,
+  marketSaving: 6,
   deckOwnCrop: 1,
   deckDemand: 0.8,
   keepValue: 2,

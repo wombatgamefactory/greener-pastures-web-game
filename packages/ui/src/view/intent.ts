@@ -196,6 +196,10 @@ export function clickDeck(moves: readonly Move[], intent: Intent, suit: Suit): M
     .map(({ move }) => move);
   for (const move of moves) {
     if (move.type === 'buy' && move.suit === suit && armed(intent, 'buy')) out.push(move);
+    // The bonus-slot market buy (ticket 56) is deck-targeted too. When both it
+    // and the card buy are live on one deck, the resolver returns two moves and
+    // the caller opens its `choose` menu, which is the designed fallback.
+    if (move.type === 'market' && move.suit === suit && armed(intent, 'market')) out.push(move);
   }
   return out;
 }
@@ -536,6 +540,7 @@ export const MOVE_ROUTES = {
   cardMove: 'action-bar',
   draw: 'action-bar',
   buy: 'deck',
+  market: 'deck',
   build: 'build-panel',
   hire: 'worker',
   upgrade: 'building',

@@ -215,6 +215,13 @@ export interface RulesFile {
      * paired control (`overlays/no-card-buy.overlay.json`).
      */
     readonly buyCost: number | null;
+    /**
+     * Coins for BUY AT MARKET (docs/Market Bonus Action 2026-08-03.md): a
+     * bonus-slot option - top card of any one deck in play, own suit included,
+     * into the BARN, revealed. Null deletes the rule. Independent of `buyCost`
+     * so ticket 56's paired arms stay clean: they are two different rules.
+     */
+    readonly marketCost: number | null;
   };
   readonly economy: {
     readonly upgradeCostCoins: number;
