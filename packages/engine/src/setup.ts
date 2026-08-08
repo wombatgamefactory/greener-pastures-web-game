@@ -100,7 +100,12 @@ export function buildIsland(
         `Demand pool ran out: ${tokens.length} tokens for at least ${next + crates} crates`,
       );
     }
-    return { tile: tileId, crates: tokens.slice(next, (next += crates)), deliveredBy: [] };
+    return {
+      tile: tileId,
+      crates: tokens.slice(next, (next += crates)),
+      deliveredBy: [],
+      bonusVp: [],
+    };
   });
 }
 

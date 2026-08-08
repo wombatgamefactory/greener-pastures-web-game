@@ -353,8 +353,129 @@ export const REFERENCE_V8: ReferenceConfig = {
   seed: 'reference-v8',
 };
 
+/**
+ * `reference-v9` - the current instrument. Minted 2026-08-08.
+ *
+ * **The first minting in the file's history that changes the SAMPLING PLAN
+ * rather than the evaluator.** v1 through v8 all end with "sampling plan
+ * unchanged"; this one does not, and it is the more serious kind of re-baseline
+ * because it moves what was measured rather than who was measuring.
+ *
+ * The defect: `cellsFor` seats a cell's chosen suits in canonical `SUITS` order,
+ * so seat index was tied to suit for every run this project has ever done.
+ * Measured over 763 ended games at v8:
+ *
+ *     suit         seat 0   seat 1   seat 2   seat 3
+ *     wheat          100%       0%       0%       0%
+ *     vegetable       44%      56%       0%       0%
+ *     orchard         17%      55%      27%       0%
+ *     apiary           6%      34%      49%      11%
+ *     dairy            0%      23%      33%      44%
+ *
+ * Wheat had never once been seated anywhere but the start player's chair, and
+ * dairy had never once sat in it. That would be a small bias if the chair were
+ * worth nothing. It is not: two independent 1510-game arms put the LAST SEAT at
+ * -10.1 and -9.8 win-share points at 3 seats, a movement of 0.3 between arms,
+ * against a band of about +/-3. The last seat delivers 3.13 against the start
+ * player's 4.16 and takes 6 VP less in island receipts, on a winning score
+ * around 40 - the island is a race for tiles and the last chair loses it.
+ *
+ * So every per-suit win rate in every report up to and including v8 is a mixture
+ * of "how good is this suit" and "what is this chair worth", and the two cannot
+ * be separated from those runs. `docs/Card Analysis v14.md` reads them as suit
+ * strength.
+ *
+ * The correction is `seatingFor`: the suit set rotates around the table by game
+ * index within each cell, so each suit sits in each chair equally often. The old
+ * comment on `cellsFor` said seat order was not a stratification axis because
+ * "the profile assignment already rotates who sits where" - true of the
+ * PROFILES, false of the SUITS, and that is what hid it.
+ *
+ * `gamesPerCell` now rounds up to a whole multiple of the seat count as well as
+ * to a whole cell, for the same reason it already rounded up to a whole cell: a
+ * cell running 17 games at 2 seats would give one rotation 9 games and the other
+ * 8, quietly weighting one seating above the other in every pooled number.
+ *
+ * **Nothing in the bots changed.** The evaluator is v8's exactly.
+ *
+ * **Do not compare ANY per-suit or per-seat number across v8 and v9.** Per-card
+ * economics are also affected wherever a card's suit correlates with position.
+ */
+export const REFERENCE_V9: ReferenceConfig = {
+  ...REFERENCE_V8,
+  id: 'reference-v9',
+  description:
+    'As reference-v8 - the same evaluator throughout: coins priced by what the seat can still ' +
+    'spend, card abilities and balloon rewards priced by probing them, cards leaving a hand or a ' +
+    'barn charged what they cost, a draw worth only the cards there is room to keep - with the ' +
+    'sampling plan corrected for the first time since v1: a cell rotates its suits around the ' +
+    'table by game index, so seat index is no longer tied to canonical suit order and a suit win ' +
+    'rate is no longer confounded with what the chair is worth.',
+  seed: 'reference-v9',
+};
+
 /** The instrument every current number is defined against. */
-export const REFERENCE = REFERENCE_V8;
+export const REFERENCE = REFERENCE_V9;
+
+/**
+ * The noise floor, measured once and quoted constantly.
+ *
+ * The method document's section 8 opens with this and the project had no answer
+ * until 2026-08-08: without it, every delta table in `reports/` is unreadable in
+ * principle, because nothing says how big a difference has to be to be real.
+ *
+ * These are the observed movements between TWO IDENTICAL RUNS on two seeds -
+ * same rules, same plan, same bots, different sample. A difference smaller than
+ * the figure here is not a finding, whatever else the report says about it.
+ *
+ * Re-measure with `npm run sim -- --noise` after minting a reference, and paste
+ * the new numbers back here. They are quoted in the sweep header and the report
+ * footer, so a stale value here is worse than none.
+ */
+export interface NoiseFloor {
+  /** The reference these were measured against. A mismatch is printed, not hidden. */
+  readonly reference: string;
+  /** Games per seat count in each arm. */
+  readonly games: number;
+  readonly measured: string;
+  /** Metric label -> largest observed |arm A - arm B|, in the metric's own units. */
+  readonly movement: Readonly<Record<string, number>>;
+}
+
+/**
+ * Measured 2026-08-08, `reference-v9`, 1580 games per arm.
+ *
+ * Read the seat figure carefully, because it is the one that matters and it is
+ * the one most easily over-read. `seat deviation` here is the WORST chair at any
+ * seat count, which is a maximum over nine chairs and therefore biased upward by
+ * construction. Chair by chair the movement was 0.2 / 1.2 / 3.8 / 4.8 at 4
+ * seats, 3.6 / 0.3 / 3.9 at 3, and 4.9 at 2. So a single chair sitting 4 points
+ * off an even split is unremarkable; the +/-3 band is a design target, not a
+ * detection threshold, and at this `n` the instrument cannot resolve it.
+ *
+ * **A movement of exactly 0 means "below this metric's own resolution", never
+ * "noiseless".** Six of these are medians over discrete quantities - rounds,
+ * VP, cards - so both arms land on the same integer and the difference is
+ * floored at zero. Treating that as licence to call a 1-point delta real is the
+ * obvious way to misuse this table. Where a metric reads 0 the honest floor is
+ * one unit of whatever it counts.
+ */
+export const NOISE_FLOOR: NoiseFloor | null = {
+  reference: 'reference-v9',
+  games: 500,
+  measured: '2026-08-08',
+  movement: {
+    'end coins per player': 0,
+    'barn at game end': 0,
+    'game length, rounds': 0,
+    'visits per turn': 0.003,
+    'unfinished games': 0.002,
+    'winning score': 0,
+    'last as % of winner': 0.027,
+    'tied top score': 0,
+    'seat deviation': 6.186,
+  },
+};
 
 /**
  * One stratified cell: the suits at the table.
@@ -383,10 +504,11 @@ function combinations<T>(items: readonly T[], k: number): T[][] {
 /**
  * Every legal cell at this seat count: 30 at 2 seats, 20 at 3, 5 at 4.
  *
- * Player suits are taken as an unordered SET and seated in canonical order.
- * Seat order is not a stratification axis - the profile assignment already
- * rotates who sits where, and treating (wheat, dairy) and (dairy, wheat) as
- * different cells would double the run for no extra coverage.
+ * A cell is an unordered SET of player suits. Treating (wheat, dairy) and
+ * (dairy, wheat) as different cells would double the cell count for no extra
+ * suit coverage, so the seating is handled inside the cell instead, by
+ * `seatingFor` rotating the set by game index. `cell.suits` is therefore the
+ * canonical order and NOT the order anybody sat in - ask `seatingFor`.
  */
 export function cellsFor(seats: number, decksInPlay: number): Cell[] {
   const neutralCount = decksInPlay - seats;
@@ -418,11 +540,40 @@ export function short(suit: Suit): string {
 }
 
 /**
- * Games per cell at this seat count: the target rounded UP so every cell gets
- * the same number. Rounding up rather than down keeps the stratification exact
- * at the cost of a few extra games, and an uneven cell would quietly weight one
- * suit matchup above another in every pooled number in the report.
+ * Who sits where, for game `index` of a cell: the cell's suits rotated left by
+ * `index % seats`.
+ *
+ * This is the whole of reference-v9's correction. Rotation rather than a shuffle
+ * because rotation is EXACT - over any whole multiple of the seat count every
+ * suit sits in every chair the same number of times, where a shuffle would only
+ * get there in the limit and would leave a residual confound at the sizes this
+ * harness actually runs.
+ *
+ * It also keeps the seat-to-seat relationships varied: at 3 seats, wheat is
+ * upstream of vegetable in one rotation and downstream in another, which matters
+ * for a game whose central mechanism is visiting the neighbour.
  */
-export function gamesPerCell(target: number, cellCount: number): number {
-  return Math.max(1, Math.ceil(target / cellCount));
+export function seatingFor(cell: Cell, index: number): Suit[] {
+  const n = cell.suits.length;
+  const shift = ((index % n) + n) % n;
+  return cell.suits.map((_, i) => cell.suits[(i + shift) % n] as Suit);
+}
+
+/**
+ * Games per cell at this seat count: the target rounded UP so every cell gets
+ * the same number, and up again to a whole multiple of `seats`.
+ *
+ * Rounding up rather than down keeps the stratification exact at the cost of a
+ * few extra games, and an uneven cell would quietly weight one suit matchup
+ * above another in every pooled number in the report.
+ *
+ * The second rounding is reference-v9's, and it is the same argument applied to
+ * the rotation: 500 games over 30 cells at 2 seats is 17 a cell, and 17 is odd,
+ * so one seating would get 9 games and the other 8. That is a 6% weighting on
+ * exactly the axis the rotation exists to balance. Rounding 17 to 18 costs 30
+ * extra games out of 510 and makes the balance exact.
+ */
+export function gamesPerCell(target: number, cellCount: number, seats: number): number {
+  const perCell = Math.max(1, Math.ceil(target / cellCount));
+  return Math.ceil(perCell / seats) * seats;
 }

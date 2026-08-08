@@ -149,7 +149,7 @@ describe('V2 Farmstead - the deliver coin', () => {
     barnTo(s, VEG, 'V4', 'V5');
     const out = apply(data, s, { type: 'deliver', seat: VEG, tile: 'A1', spend: { vegetable: 2 } });
     expect(player(out.state, VEG).coins).toBe(3); // £2 tile + £1 Farmstead
-    expect(player(out.state, VEG).receipts).toEqual([4]);
+    expect(player(out.state, VEG).receipts).toEqual([7]); // 4 + the level's first fill-order bonus
 
     const t = base();
     buildingOf(t, VEG, 'V2').upgraded = true;
@@ -266,7 +266,7 @@ describe('the deliver cards', () => {
     expect(pendingAnswers(data, state).some((a) => a.kind === 'skip')).toBe(true);
     state = answerTask(data, state, { kind: 'skip' }).state;
     expect(state.tasks).toHaveLength(0);
-    expect(player(state, VEG).receipts).toEqual([4]);
+    expect(player(state, VEG).receipts).toEqual([7]); // 4 + the level's first fill-order bonus
   });
 
   it('V8 prices the whole effect at £1 and runs both steps', () => {
@@ -347,7 +347,7 @@ describe('the deliver cards', () => {
       payload: { tile: 'A1', spend: { vegetable: 1, wheat: 1 }, sub: 'wheat' },
     });
     const state = answerTask(data, out.state, sub as TaskAnswer).state;
-    expect(player(state, VEG).receipts).toEqual([4]);
+    expect(player(state, VEG).receipts).toEqual([7]); // 4 + the level's first fill-order bonus
     expect(player(state, VEG).barn).toHaveLength(0);
   });
 
@@ -369,7 +369,7 @@ describe('the deliver cards', () => {
       spend: { vegetable: 2 },
     }).state;
     expect(state.tasks).toHaveLength(0); // budget spent
-    expect(player(state, VEG).receipts).toEqual([4, 4]);
+    expect(player(state, VEG).receipts).toEqual([7, 6]); // 4 + the level's +3 / +2 fill-order bonus
   });
 
   it('V14 delivers once per built Depot', () => {
@@ -385,7 +385,7 @@ describe('the deliver cards', () => {
       spend: { vegetable: 2 },
     }).state;
     state = answerTask(data, state, { kind: 'deliver', tile: 'A2', spend: { vegetable: 2 } }).state;
-    expect(player(state, VEG).receipts).toEqual([4, 4]);
+    expect(player(state, VEG).receipts).toEqual([7, 6]); // 4 + the level's +3 / +2 fill-order bonus
   });
 
   it('V15 raids one balloon from each neighbour, each raid skippable, paying per raid', () => {

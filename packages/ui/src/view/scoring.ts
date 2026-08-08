@@ -45,6 +45,9 @@ export interface LevelTally {
   readonly level: IslandLevel;
   readonly count: number;
   readonly vpEach: number;
+  /** Fill-order bonus VP caught at this level. 0 for a seat that arrived late. */
+  readonly bonus: number;
+  /** `count * vpEach + bonus`. */
   readonly vp: number;
 }
 
@@ -115,22 +118,31 @@ export interface ScoreReport {
  * Which levels a seat took receipts from, read off the island rather than off
  * the receipt values. The tiles are what the player can see, and a level's VP
  * comes from the level rules, so the two multiply back to the engine's total.
+ *
+ * The fill-order bonus is the one part that cannot be multiplied back, because
+ * it depends on WHEN the delivery happened and nothing in the layout records
+ * that. So the island stores it per delivery and this adds it in; that keeps the
+ * `agrees` check honest, which is the whole reason this function re-derives
+ * rather than reading the engine's number.
  */
 function levelsFor(data: GameData, view: PlayerView, seat: Seat): LevelTally[] {
   const counts = new Map<IslandLevel, number>();
+  const bonuses = new Map<IslandLevel, number>();
   for (const tile of view.island.tiles) {
     const level = data.island.tiles.find((t) => t.id === tile.tile)?.level;
     if (level === undefined) throw new Error(`Unknown island tile ${tile.tile}`);
-    for (const who of tile.deliveredBy) {
-      if (who !== seat) continue;
+    tile.deliveredBy.forEach((who, i) => {
+      if (who !== seat) return;
       counts.set(level, (counts.get(level) ?? 0) + 1);
-    }
+      bonuses.set(level, (bonuses.get(level) ?? 0) + (tile.bonusVp[i] ?? 0));
+    });
   }
   return [...counts.entries()]
     .sort((a, b) => b[0] - a[0])
     .map(([level, count]) => {
       const vpEach = data.island.levelRules[String(level)]?.vp ?? 0;
-      return { level, count, vpEach, vp: count * vpEach };
+      const bonus = bonuses.get(level) ?? 0;
+      return { level, count, vpEach, bonus, vp: count * vpEach + bonus };
     });
 }
 

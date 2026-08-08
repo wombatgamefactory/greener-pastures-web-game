@@ -171,6 +171,18 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     description: 'How many deliveries one tile accepts before it closes.',
   },
   {
+    template: 'island.cardsPerSubstitution',
+    type: 'intOrNull',
+    description:
+      'Cards of any crops that stand in for one card the island asked for. null restores exact matching, which is the control arm. This is the dial on the barn queue: ticket 38 proved the block is MATCHING under an all-or-nothing crate payment, not quantity, so this is the only lever that touches the actual cause. Lower is looser - at 2 the colour puzzle survives because matching is still cheaper, and the rate self-scales because only a big barn can afford to substitute.',
+  },
+  {
+    template: 'island.fillOrderBonusBySeats.{}',
+    type: 'intArray',
+    description:
+      'The time gradient at this seat count, replaced whole. Bonus VP to the 1st, 2nd, ... delivery to a level across the TABLE, on top of the printed receipt. [] switches it off, which is the control arm - and switching it off is a THREE-knob overlay, one per seat count, because a run with the rule on at some tables and off at others measures nothing. Its LENGTH decides how many deliveries are raced for and its values decide how hard.',
+  },
+  {
     template: 'island.levelGate',
     type: 'boolean',
     description:

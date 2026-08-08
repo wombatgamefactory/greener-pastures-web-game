@@ -20,6 +20,7 @@ import { LADDER, POLICY_IDS } from '@gp/bots';
 import { cutList, funnel } from './cutlist.js';
 import type { CutRow, FunnelRow } from './cutlist.js';
 import type { GameMetrics } from './observe.js';
+import { NOISE_FLOOR, REFERENCE } from './reference.js';
 import type { Pooled, RunResult } from './run.js';
 import { mean, median, num, pct, proportion, separated, sum } from './stats.js';
 import type { WatchlistRow } from './watchlist.js';
@@ -45,6 +46,7 @@ export function renderReport(input: ReportInput): string {
   out.push(...watchlistSection(input));
   out.push(...seriesSection(input));
   out.push(...actionMix(input));
+  out.push(...seatTable(input));
   out.push(...suitTable(input));
   out.push(...botTable(input));
   out.push(...cutListSection(input));
@@ -178,6 +180,16 @@ function seriesSection({ pooled }: ReportInput): string[] {
       pooled.bySeats.map((s) => pad(`${s.ended.length} of ${s.all.length}`, 20)).join(''),
   );
   out.push(pad('unfinished', 34) + pooled.bySeats.map((s) => pad(pct(s.stallRate), 20)).join(''));
+  // `stalled` and `maxMoves` mean completely different things - a table that
+  // drained the card supply, against a game the move ceiling cut off - and
+  // pooling them into one "unfinished" percentage hid that for eight references.
+  // The method document's clock section: if a game has three end conditions and
+  // one fires 99% of the time, the other two are backstops and you should KNOW
+  // that rather than assume a mix.
+  // Its own block rather than a column: "ended 530, stalled 10" does not fit the
+  // 20-character grid, and a truncated end-reason reads as though there were
+  // only one.
+  out.push(pad('end reasons', 34) + 'below the table');
   line('game length, rounds (median)', (g) => num(median(g.map((x) => x.rounds)), 0));
   line(
     'end coins per player (median)',
@@ -204,7 +216,36 @@ function seriesSection({ pooled }: ReportInput): string[] {
       0,
     ),
   );
+  // Preferred over the raw gap above, and printed beside it rather than instead
+  // of it: the gap says how far apart the ends were, the ratio says whether the
+  // loser was ever in it, and only the ratio survives score inflation. This is
+  // the number to move if that complaint ever comes back from a table.
+  out.push(
+    pad('last as % of winner (median)', 34) +
+      pooled.bySeats.map((s) => pad(pct(s.lastPctOfWinner, 0), 20)).join(''),
+  );
+  // The engine's tie-break chain ends on seat order, so `winner` is never null
+  // and a tie is invisible in every win rate in this report. Measured off the
+  // totals instead. Below about 18% a tiebreak is not a rules burden worth
+  // spending a clause on at gateway weight - but that is a decision, and it
+  // needs the number in front of it.
+  out.push(
+    pad('games with a tied top score', 34) +
+      pooled.bySeats.map((s) => pad(pct(s.tieRate, 1), 20)).join(''),
+  );
   line('island filled at game end', (g) => pct(median(g.map((x) => x.islandFill)), 0));
+  out.push('');
+  out.push('End reasons. `stalled` drained the card supply; `maxMoves` hit the ceiling; `crashed`');
+  out.push('is a bug. They are three different things and only the first is a design fact.');
+  for (const s of pooled.bySeats) {
+    out.push(
+      `  ${s.seats}p  ` +
+        [...s.endReasons]
+          .sort((a, b) => b[1] - a[1])
+          .map(([reason, n]) => `${reason} ${n}`)
+          .join(', '),
+    );
+  }
   out.push('');
   out.push(
     'The end trigger DEFINES the end, so "when it fires relative to game length" is 100% by',
@@ -294,6 +335,67 @@ function actionMix({ pooled, data }: ReportInput): string[] {
       `activation-gated cards do anything - not the other ${enabled.length - gated}, which ` +
       'score at\ngame end, fire on hooks, or are the starters carrying the suit powers.',
   );
+  out.push('');
+  return out;
+}
+
+/**
+ * The chairs. New in reference-v9, and the reason the SUITS table below it is
+ * worth reading at all.
+ *
+ * Win-share DEVIATION rather than raw win rate, because an even split is a
+ * different number at every seat count and the eye should not have to do that
+ * arithmetic. The band is about +/-3 points; anything past it is a defect in the
+ * design, not a curiosity, and the method document calls this the most sensitive
+ * number in the whole method - it moves when nothing else does.
+ *
+ * The gradient columns are here because the deviation says WHO wins and cannot
+ * say by how much or through what. When v8's fixed seating was measured, the
+ * last chair's whole deficit turned out to sit in island receipts while printed
+ * VP and visits held level: the island is a race for tiles and the last seat
+ * loses it. Deviation alone would never have found that.
+ */
+function seatTable({ pooled }: ReportInput): string[] {
+  const out = [
+    THIN,
+    'SEATS  (seat 0 is the start player; the suits rotate, so this is the CHAIR)',
+    THIN,
+    '',
+  ];
+  out.push(
+    pad('seats', 8) +
+      pad('seat', 7) +
+      pad('games', 8) +
+      pad('win rate', 11) +
+      pad('deviation', 12) +
+      pad('95% interval', 18) +
+      pad('mean score', 12) +
+      pad('receipts', 10) +
+      'turns',
+  );
+  for (const slice of pooled.bySeats) {
+    const even = 1 / slice.seats;
+    for (const s of slice.bySeatIndex) {
+      const p = proportion(s.wins, s.games);
+      const dev = (p.rate - even) * 100;
+      out.push(
+        pad(`${slice.seats}p`, 8) +
+          pad(String(s.seat), 7) +
+          pad(String(s.games), 8) +
+          pad(pct(p.rate), 11) +
+          pad(`${dev >= 0 ? '+' : ''}${num(dev, 1)} pts`, 12) +
+          pad(`${pct(p.interval.lo)} - ${pct(p.interval.hi)}`, 18) +
+          pad(num(s.meanScore, 1), 12) +
+          pad(num(s.meanReceipts, 1), 10) +
+          num(s.meanTurns, 2),
+      );
+    }
+    out.push('');
+  }
+  out.push(
+    'Deviation is win share minus an even split, in percentage points. The band is about +/-3.',
+  );
+  out.push(...noiseNote(['seat deviation']));
   out.push('');
   return out;
 }
@@ -488,6 +590,54 @@ function funnelSection(input: ReportInput): string[] {
   );
   out.push('');
   return out;
+}
+
+/**
+ * The noise floor, quoted where the number it bounds is printed rather than in a
+ * footnote. The method document's section 4 is explicit about the placement:
+ * "print the noise floor in the report header, not in a footnote", because a
+ * reader who has to go looking will not.
+ *
+ * Says so loudly when it has not been measured for this reference. A stale floor
+ * is worse than an absent one, since it licenses a claim about a run it never saw.
+ */
+function noiseNote(metrics: readonly string[]): string[] {
+  // Bound locally: an imported binding is not narrowed inside a callback.
+  const floor = NOISE_FLOOR;
+  if (floor === null) {
+    return [
+      'NOISE FLOOR NOT MEASURED for this reference. Run `npm run sim -- --noise` and paste the',
+      'result into NOISE_FLOOR in reference.ts. Until then nothing here has a threshold to be',
+      'read against, and a small difference cannot be told from re-drawing the deck.',
+    ];
+  }
+  const quoted = metrics
+    .map((m) => {
+      const v = floor.movement[m];
+      return v === undefined ? null : `${m} +/-${num(v, 2)}`;
+    })
+    .filter((s): s is string => s !== null);
+  const stale =
+    floor.reference === REFERENCE.id
+      ? ''
+      : `  *** measured against ${floor.reference}, not ${REFERENCE.id} - re-measure ***`;
+  if (quoted.length === 0) {
+    return [
+      `Noise floor (${floor.reference}, n=${floor.games}): not measured for this metric.${stale}`,
+    ];
+  }
+  return [
+    `Noise floor, seed to seed at n=${floor.games}: ${quoted.join(', ')}. ` +
+      `A smaller difference is not a finding.${stale}`,
+    // The seat figure is a maximum over every chair at every seat count, so it
+    // runs high on purpose. Chair by chair the movement was under 5 points. A
+    // reader who takes 6.19 as "any chair inside 6 points is fine" has the wrong
+    // end of it: the +/-3 band is what the design wants, and this number says
+    // the instrument cannot yet resolve it at this n.
+    'That seat figure is the WORST chair at any seat count, a maximum over nine, so it runs high;',
+    'per chair the movement was under 5 points. The +/-3 band is a design target, not a detection',
+    'threshold, and at this n the instrument cannot separate the two.',
+  ];
 }
 
 function pad(s: string, n: number): string {

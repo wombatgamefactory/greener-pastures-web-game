@@ -23,6 +23,7 @@ import type { Overlay, Suit } from '@gp/data';
 import { LADDER, POLICY_IDS, isPolicyId } from '@gp/bots';
 
 import { explainReport } from './explain.js';
+import { runNoise } from './noise.js';
 import { REFERENCE } from './reference.js';
 import { crashWriter, replayReport } from './replay.js';
 import { planRun, pool, runBalance } from './run.js';
@@ -57,9 +58,18 @@ const HELP = [
   '    --overlay=<path>  Run the whole suite under a tuning overlay.',
   '    --full-funnel     Append the 105-row funnel table. The cut list is the point.',
   '    --quiet           No progress line.',
+  '  --noise             Run the plan TWICE on two seeds, same rules both times, and print how',
+  '                      far each metric moves. That movement is the noise floor: a delta smaller',
+  '                      than it is not a result. Prints a NOISE_FLOOR literal to paste into',
+  '                      reference.ts. Re-run after minting a reference; the floor does not',
+  '                      carry across instruments, and it does not carry to a smaller --n.',
+  '    --n=<games>       Games per seat count PER ARM. Use the reference n; a small run',
+  '                      overstates the floor enormously and is worse than not measuring it.',
   '  --sweep=<path>      Delta table against the reference, for an overlay or a sweep file.',
   '                      Failure-driven: run one when an assertion FAILs and prints its remedy,',
-  '                      or for the two intrinsically paired questions.',
+  '                      or for the two intrinsically paired questions. Arms are PAIRED: every',
+  '                      arm runs on the same seed, so they share their deck order until the',
+  '                      changed rule makes them diverge.',
   '  --replay=<path>     Replay a captured bug report or design note (ticket 31) and print what',
   '                      it does. Exit 0 replayed clean, 1 reproduced a throw, 2 the data has',
   '                      moved on since the capture.',
@@ -231,6 +241,19 @@ function watchlistMode(argv: readonly string[]): number {
   return failures(rows).length > 0 ? 1 : 0;
 }
 
+function noiseMode(argv: readonly string[]): number {
+  const quiet = argv.includes('--quiet');
+  const report = runNoise({
+    data: BASE_GAME_DATA,
+    opts: { ...baseOptions(argv), onGame: progress(quiet) },
+    onArm: quiet ? undefined : (label) => process.stderr.write(`${label}...\n`),
+  });
+  const file = write(`noise-${stamp()}-${REFERENCE.id}.txt`, report);
+  process.stdout.write(report);
+  process.stdout.write(`\nWritten to ${file}\n`);
+  return 0;
+}
+
 function sweepMode(argv: readonly string[], path: string): number {
   const quiet = argv.includes('--quiet');
   const opts = { ...baseOptions(argv), onGame: progress(quiet) };
@@ -299,6 +322,8 @@ function main(argv: readonly string[]): number {
 
   const replay = flag(argv, 'replay');
   if (replay !== null) return replayMode(argv, replay);
+
+  if (argv.includes('--noise')) return noiseMode(argv);
 
   const sweep = flag(argv, 'sweep');
   if (sweep !== null) return sweepMode(argv, sweep);

@@ -175,6 +175,7 @@ function Detail({
             <b>{l.vp}</b>
             <small>
               {l.count} × {l.vpEach}
+              {l.bonus > 0 && ` +${l.bonus} early`}
             </small>
           </span>
         ))}

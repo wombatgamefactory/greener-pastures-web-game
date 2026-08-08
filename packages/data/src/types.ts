@@ -130,6 +130,24 @@ export interface IslandFile {
   readonly decksInPlayBySeats: Readonly<Record<string, number>>;
   readonly deliveriesPerTile: number;
   /**
+   * The wild substitution (2026-08-08): paying the island, any ONE card it asks
+   * for may instead be paid with this many cards of any crops. null switches the
+   * rule off and restores exact matching. Island delivery only - see the scope
+   * warning in island.json, which is the part that must not drift.
+   */
+  readonly cardsPerSubstitution: number | null;
+  /**
+   * The time gradient (2026-08-08), one queue per seat count. Bonus VP paid on
+   * top of the printed receipt to the first, second, ... delivery made to a
+   * level BY ANYONE, in fill order across the table. A delivery past the end of
+   * the queue takes no bonus, and an empty queue switches the gradient off,
+   * which is what the sim compares against. The queue is seats + 1 long, so it
+   * matches the Level 1 slot count. See the meta notes in island.json for why it
+   * is table-wide, why it is additive rather than a reduction of the printed VP,
+   * and for the sweep that found it inert against the bots.
+   */
+  readonly fillOrderBonusBySeats: Readonly<Record<string, readonly number[]>>;
+  /**
    * The per-player level gate (ticket 07): deliver to a level only while
    * already holding a receipt from the level below. False removes the climb
    * entirely and every tile is deliverable at any time, which is what the

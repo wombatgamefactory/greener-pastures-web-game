@@ -139,7 +139,9 @@ export function narrate(
         : line(`${who(event.seat)} upgrades ${cardWord(data, event.card)}`, event.seat);
     case 'delivered':
       return line(
-        `${who(event.seat)} delivers to island ${event.tile}: ${event.vp} VP and £${event.coins}`,
+        `${who(event.seat)} delivers to island ${event.tile}: ${event.vp} VP` +
+          (event.bonus > 0 ? ` +${event.bonus} for getting there early` : '') +
+          ` and £${event.coins}`,
         event.seat,
       );
     case 'balloonMoved':

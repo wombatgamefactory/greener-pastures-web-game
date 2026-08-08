@@ -9,7 +9,7 @@
 import { BASE_GAME_DATA as data } from '@gp/data';
 import type { Suit } from '@gp/data';
 import type { CardId, GameState, Move, PlayerView, Seat } from '@gp/engine';
-import { apply, legalMoves, makeProber, newGame, viewFor } from '@gp/engine';
+import { apply, legalMoves, makeProber, newGame, tileLevel, viewFor } from '@gp/engine';
 import type { PolicyId } from '@gp/bots';
 import { TERMS, actOf, cardValue, makePolicy, policyRng, totalValue } from '@gp/bots';
 import { describe, expect, it } from 'vitest';
@@ -176,7 +176,15 @@ describe('termination', () => {
           policies: mirror('balanced', seats),
         });
         if (result.outcome === 'ended') ended += 1;
-        if (result.state.players.some((p) => p.receipts.includes(16))) hitLevelThree = true;
+        // Off the island, not off the receipt values: a receipt now carries its
+        // fill-order bonus, so a Level 3 delivery is not always worth 16.
+        if (
+          result.state.island.tiles.some(
+            (t) => tileLevel(data, t.tile) === 3 && t.deliveredBy.length > 0,
+          )
+        ) {
+          hitLevelThree = true;
+        }
       }
       expect(ended, `${seats} seats`).toBeGreaterThanOrEqual(5);
       expect(hitLevelThree, `${seats} seats reached Level 3`).toBe(true);
@@ -415,11 +423,21 @@ describe('the archetypes', () => {
     let checked = 0;
     let ties = 0;
 
+    // Widened from six runs to nine on 2026-08-08. The wild substitution makes
+    // more deliveries affordable, so the same seeds now spend more moves on
+    // Deliver and fewer on Grow, and the sample fell under the adequacy guard
+    // below. The guard is what makes this test mean anything, so the sample
+    // moved rather than the bar.
+    // `n` is a slice offset into SUITS, so it is bounded by 5 - seats: the extra
+    // runs are the ones that leaves available.
     const runs: [number, number][] = [
       [2, 0],
       [2, 1],
+      [2, 2],
+      [2, 3],
       [3, 0],
       [3, 1],
+      [3, 2],
       [4, 0],
       [4, 1],
     ];

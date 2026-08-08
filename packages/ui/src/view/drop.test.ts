@@ -55,9 +55,14 @@ function corpus(seeds: readonly string[], seats: number, suits: Suit[]): Positio
   return out;
 }
 
+// `drop-d` was added on 2026-08-08, not because anything broke but because the
+// wild substitution shifted these seeds toward Deliver and away from Sow, and
+// the sow coverage count fell under its adequacy guard. The guards are the point
+// of the corpus, so the corpus grew rather than the guards shrinking.
 const positions = [
   ...corpus(['drop-a', 'drop-b'], 3, ['wheat', 'vegetable', 'orchard']),
   ...corpus(['drop-c'], 4, ['wheat', 'vegetable', 'orchard', 'dairy']),
+  ...corpus(['drop-d'], 3, ['apiary', 'vegetable', 'dairy']),
 ];
 
 const held = (card: CardId): Intent => ({ k: 'hold', card });

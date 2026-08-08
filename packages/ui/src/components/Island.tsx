@@ -55,6 +55,46 @@ function DemandToken({ demand, size }: { demand: Suit | 'wild'; size: number }) 
   );
 }
 
+/**
+ * The time gradient, shown as the queue it is: every bonus the level started
+ * with, the taken ones struck through and the next one live. This is the whole
+ * point of the device - a slope you watch shrinking is pressure, the same slope
+ * discovered at the moment it costs you is a hidden wall - so it renders even
+ * when the level is fully spent, and renders nothing only when the knob is off.
+ */
+function FillOrderBonus({
+  data,
+  seats,
+  tiles,
+}: {
+  data: GameData;
+  seats: number;
+  tiles: readonly IslandState['tiles'][number][];
+}) {
+  const queue = data.island.fillOrderBonusBySeats[String(seats)] ?? [];
+  if (queue.length === 0) return null;
+  const made = tiles.reduce((n, t) => n + t.deliveredBy.length, 0);
+  return (
+    <span
+      className="island-bonus"
+      title={
+        made < queue.length
+          ? `The next delivery to this level takes +${queue[made]} VP. Bonuses left: ${queue
+              .slice(made)
+              .map((b) => `+${b}`)
+              .join(', ')}`
+          : 'Every early-delivery bonus on this level has gone'
+      }
+    >
+      {queue.map((bonus, i) => (
+        <b key={i} className={i < made ? 'island-bonus-spent' : undefined}>
+          +{bonus}
+        </b>
+      ))}
+    </span>
+  );
+}
+
 export function IslandPanel({
   data,
   view,
@@ -90,6 +130,7 @@ export function IslandPanel({
               <b>L{level}</b>
               <span>{rule?.vp ?? '?'} VP</span>
               <span>£{rule?.coinsPerDelivery ?? '?'}</span>
+              <FillOrderBonus data={data} seats={view.rivals.length + 1} tiles={tiles} />
               {!open.has(level) && <span className="island-locked">locked</span>}
             </span>
             <div className="island-tiles">

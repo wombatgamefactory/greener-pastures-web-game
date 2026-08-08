@@ -23,9 +23,11 @@ import { expandSweep, loadGameData, validateOverlay } from '@gp/data';
 import type { Overlay, SweepCell, SweepFile } from '@gp/data';
 
 import { WATCHLIST } from './assertions/index.js';
+import { HEADLINE_METRICS } from './metrics.js';
+import { NOISE_FLOOR, REFERENCE } from './reference.js';
 import type { Pooled, RunOptions } from './run.js';
 import { pool, runBalance } from './run.js';
-import { median, num, pct, sum } from './stats.js';
+import { num } from './stats.js';
 
 export interface SweepInput {
   readonly path: string;
@@ -53,11 +55,18 @@ export function runSweep(input: SweepInput): string {
   const cells = cellsFromFile(input.path, input.baselineData);
   const rows: Row[] = cells.map((cell) => {
     const data = loadGameData(cell.overlay);
-    const result = runBalance(data, {
-      ...input.opts,
-      seed: `${input.opts.seed ?? input.opts.reference.seed}:sweep:${cell.label}`,
-      onGame: undefined,
-    });
+    // PAIRED, as of 2026-08-08. Every cell and the baseline arm run on the SAME
+    // seed, so they get the same cell plan, the same profile assignment per
+    // game, the same seating rotation and the same shuffles: common random
+    // numbers, and the classic variance reduction for exactly this comparison.
+    //
+    // It used to append `:sweep:<label>` per cell, which gave every arm a fresh
+    // sample, so each delta carried the rule's effect PLUS two independent
+    // draws' worth of noise - and with no noise floor printed there was nothing
+    // to read it against either. Trajectories still diverge the moment the
+    // changed rule bites, which is the point; what the shared seed removes is
+    // the difference that was there before either arm made a move.
+    const result = runBalance(data, { ...input.opts, onGame: undefined });
     return { label: cell.label, data, pooled: pool(result) };
   });
 
@@ -68,24 +77,19 @@ export function runSweep(input: SweepInput): string {
   out.push(
     `Deltas against ${input.opts.reference.id}. Absolute values are in brackets; the delta is the answer.`,
   );
+  out.push(
+    `Paired: every arm runs on seed "${input.opts.seed ?? input.opts.reference.seed}", so the ` +
+      'arms share their deck order,',
+  );
+  out.push('seating rotation and profile assignment until the changed rule makes them diverge.');
+  out.push('');
+  // The noise floor belongs in the header of the table it bounds, not in a
+  // footnote, and loudly when it is missing: a delta table with no threshold
+  // invites reading a rounding difference as a result.
+  out.push(...noiseHeader());
   out.push('');
 
-  const metrics: { label: string; of: (p: Pooled) => number; fmt: (x: number) => string }[] = [
-    { label: 'end coins per player', of: endCoins, fmt: (x) => `£${num(x, 1)}` },
-    { label: 'barn at game end', of: endBarn, fmt: (x) => num(x, 1) },
-    {
-      label: 'game length, rounds',
-      of: (p) => median(p.ended.map((g) => g.rounds)),
-      fmt: (x) => num(x, 1),
-    },
-    { label: 'visits per turn', of: visitsPerTurn, fmt: (x) => num(x, 2) },
-    {
-      label: 'unfinished games',
-      of: (p) => 1 - p.ended.length / Math.max(1, p.all.length),
-      fmt: (x) => pct(x, 1),
-    },
-    { label: 'winning score', of: winningScore, fmt: (x) => num(x, 1) },
-  ];
+  const metrics = HEADLINE_METRICS;
 
   const width = 30;
   out.push(
@@ -130,23 +134,34 @@ export function runSweep(input: SweepInput): string {
   return `${out.join('\n')}\n`;
 }
 
-function endCoins(p: Pooled): number {
-  return median(p.ended.flatMap((g) => g.coinsByRound.slice(-1)));
-}
-
-function endBarn(p: Pooled): number {
-  return median(p.ended.flatMap((g) => g.barnByRound.slice(-1)));
-}
-
-function visitsPerTurn(p: Pooled): number {
-  const turns = sum(p.ended.map((g) => sum(g.turnsBySeat)));
-  return turns === 0 ? NaN : sum(p.ended.map((g) => sum(g.visitsBySeat))) / turns;
-}
-
-function winningScore(p: Pooled): number {
-  return median(
-    p.ended.flatMap((g) => (g.winner === null ? [] : [g.scores[g.winner]?.total ?? NaN])),
-  );
+function noiseHeader(): string[] {
+  // Bound locally: an imported binding is not narrowed inside a callback.
+  const floor = NOISE_FLOOR;
+  if (floor === null) {
+    return [
+      '*** NO NOISE FLOOR MEASURED for this reference, so no delta below has a threshold. ***',
+      '    Run `npm run sim -- --noise` and record the result in reference.ts before quoting',
+      '    anything here. A delta smaller than the sampling noise is not a result.',
+    ];
+  }
+  const stale =
+    floor.reference === REFERENCE.id
+      ? ''
+      : `  *** measured against ${floor.reference}, not ${REFERENCE.id} - re-measure ***`;
+  const quoted = HEADLINE_METRICS.map((m) => {
+    const v = floor.movement[m.label];
+    if (v === undefined || !Number.isFinite(v)) return null;
+    // Zero is not "noiseless", it is "the two arms landed on the same integer".
+    // Saying so here is the difference between a floor and a licence.
+    return v === 0 ? `${m.label} <1 unit` : `${m.label} ${m.fmt(v)}`;
+  }).filter((s): s is string => s !== null);
+  return [
+    `Noise floor (${floor.reference}, n=${floor.games}, measured ${floor.measured}).` +
+      ` A delta below this is not a result:${stale}`,
+    `  ${quoted.join('   ')}`,
+    '  "<1 unit" is a median over a discrete quantity: both arms hit the same integer, so the',
+    '  floor is one unit of whatever it counts, not zero.',
+  ];
 }
 
 function delta(x: number, fmt: (n: number) => string): string {

@@ -39,7 +39,14 @@ export interface PlayerState {
    * bare sum (the reference's cover semantics).
    */
   covered: CardId[];
-  /** VP values of island receipt tokens taken, in delivery order. */
+  /**
+   * VP taken from the island, in delivery order: the receipt token's printed VP
+   * PLUS whatever fill-order bonus that delivery caught. One entry per delivery,
+   * so `receipts.length` is still the receipt count the tie-break reads. The
+   * bonus half is recorded again on the tile (`bonusVp`) so a scoring screen can
+   * take the two apart without re-deriving fill order, which the state does not
+   * otherwise remember.
+   */
   receipts: number[];
 }
 
@@ -63,6 +70,14 @@ export interface IslandTileState {
   crates: (Suit | 'wild')[];
   /** Seats that have delivered here, in order. Full at data.island.deliveriesPerTile. */
   deliveredBy: Seat[];
+  /**
+   * The fill-order bonus each of those deliveries took, same index as
+   * `deliveredBy`, 0 for one that arrived after the level's bonuses were gone.
+   * Held here rather than on the player because the island is the public record
+   * of who delivered what, and the scoring screen re-derives island VP off the
+   * tiles rather than off the receipt values.
+   */
+  bonusVp: number[];
 }
 
 export interface IslandState {
@@ -420,7 +435,10 @@ export type GameEvent =
       e: 'delivered';
       seat: Seat;
       tile: string;
+      /** The receipt token's printed VP for the level. Never includes the bonus. */
       vp: number;
+      /** The fill-order bonus this delivery caught, 0 once the level's are gone. */
+      bonus: number;
       coins: number;
       spend: Partial<Record<Suit, number>>;
     }

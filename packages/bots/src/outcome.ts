@@ -158,7 +158,11 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
       // found in `built` arriving on the other action. Blind: a count off the
       // event's own spend, never a card.
       const freight = weight(w, 'barnSpend') * spendSize(event.spend);
-      return weight(w, 'deliver') * event.vp + climb + coins - freight;
+      // The fill-order bonus rides on the same term as the receipt, deliberately
+      // and with no taste weight of its own: it is plain VP on the same delivery,
+      // and a bot that priced it separately would be tuned to chase the gradient
+      // rather than measuring whether the gradient is worth chasing.
+      return weight(w, 'deliver') * (event.vp + event.bonus) + climb + coins - freight;
     }
 
     case 'balloonMoved':

@@ -572,6 +572,44 @@ export function openLevels(data: GameData, state: GameState, seat: Seat): Set<1 
   return open;
 }
 
+/**
+ * Deliveries already made to `level`, over every tile of it and by every seat.
+ * The fill-order bonus is a queue read off this count, so the count has to span
+ * the table: the whole point of the gradient is that a rival can take the big
+ * bonus first, which is what makes waiting cost something. Counted per seat it
+ * would be a variety gradient pushing play UP the levels, pointing the same way
+ * as the ascending 4/8/16 and making the accumulate-then-convert problem worse.
+ */
+export function deliveriesAtLevel(data: GameData, state: GameState, level: 1 | 2 | 3): number {
+  let n = 0;
+  for (const tile of state.island.tiles) {
+    if (tileLevel(data, tile.tile) === level) n += tile.deliveredBy.length;
+  }
+  return n;
+}
+
+/**
+ * This table's fill-order queue: the bonus for the 1st, 2nd, ... delivery to any
+ * one level. Seats + 1 long, so it matches the Level 1 slot count and roughly
+ * half of Level 1's deliveries are raced for. An unknown seat count is an empty
+ * queue rather than a throw, because the gradient is a reward and a missing row
+ * should cost a table its bonuses, never its game.
+ */
+export function fillOrderQueue(data: GameData, state: GameState): readonly number[] {
+  return data.island.fillOrderBonusBySeats[String(state.players.length)] ?? [];
+}
+
+/**
+ * The fill-order bonus the NEXT delivery to `level` would take, on top of the
+ * level's printed receipt VP. 0 once that level's bonuses have all gone, and 0
+ * throughout when this table's queue is empty. Public because it is a published
+ * slope, not a hidden wall: the board prints it and the UI shows it, so a player
+ * watching it shrink is the mechanism working.
+ */
+export function fillOrderBonus(data: GameData, state: GameState, level: 1 | 2 | 3): number {
+  return fillOrderQueue(data, state)[deliveriesAtLevel(data, state, level)] ?? 0;
+}
+
 /** Multisets of size k over the suits - one suit choice per wild crate. */
 function wildFills(suits: readonly Suit[], k: number): Suit[][] {
   if (k === 0) return [[]];
@@ -622,13 +660,162 @@ export function deliverDemands(data: GameData, state: GameState, seat: Seat): De
   return out;
 }
 
-export function deliverOptions(data: GameData, state: GameState, seat: Seat): DeliverOption[] {
-  const tally = barnTally(data, state, seat);
-  return deliverDemands(data, state, seat).filter((o) =>
-    (Object.entries(o.spend) as [Suit, number][]).every(([s, n]) => (tally[s] ?? 0) >= n),
-  );
+// --- The wild substitution -------------------------------------------------
+//
+// "When you pay the island, any single card it asks for may instead be paid
+// with `cardsPerSubstitution` cards of any crops." Island delivery only: the
+// balloon move, build costs and everything else that spends barn cards are
+// untouched, and must stay that way or the barn stops being a dead end.
+//
+// The whole rule reduces to one piece of arithmetic. Against a concrete demand
+// `need`, let M be the cards of the spend that land on a suit the demand named
+// (capped at what it named). Then `totalNeed - M` cards had to be substituted,
+// and the spend's remaining `totalSpend - M` cards are what pays for them. So a
+// spend is legal exactly when those two balance at the substitution rate. With
+// the rule off, that collapses to the old exact-match test, which is why there
+// is no second code path for it.
+
+function tallyTotal(m: Partial<Record<Suit, number>>): number {
+  let n = 0;
+  for (const v of Object.values(m)) n += v ?? 0;
+  return n;
 }
 
+/** Cards of `spend` that count against `need` directly, i.e. not as filler. */
+function matchedAgainst(
+  need: Partial<Record<Suit, number>>,
+  spend: Partial<Record<Suit, number>>,
+): number {
+  let m = 0;
+  for (const [suit, want] of Object.entries(need) as [Suit, number][]) {
+    m += Math.min(spend[suit] ?? 0, want);
+  }
+  return m;
+}
+
+/**
+ * Could this barn pay this demand at all? Cheap - no enumeration, because the
+ * filler is any-suit, so only the TOTAL surplus matters. This is what keeps
+ * `anyDeliverOption` a fast path rather than a hidden full enumeration.
+ */
+function canPay(
+  data: GameData,
+  need: Partial<Record<Suit, number>>,
+  tally: Partial<Record<Suit, number>>,
+): boolean {
+  const matched = matchedAgainst(need, tally);
+  const short = tallyTotal(need) - matched;
+  if (short === 0) return true;
+  const rate = data.island.cardsPerSubstitution;
+  if (rate === null) return false;
+  return tallyTotal(tally) - matched >= rate * short;
+}
+
+/** Multisets of size n over the suits, each suit capped by what the barn holds. */
+function fillerSpends(
+  suits: readonly Suit[],
+  n: number,
+  cap: Partial<Record<Suit, number>>,
+): Partial<Record<Suit, number>>[] {
+  if (n === 0) return [{}];
+  if (suits.length === 0) return [];
+  const [head, ...rest] = suits as [Suit, ...Suit[]];
+  const out: Partial<Record<Suit, number>>[] = [];
+  for (let take = Math.min(n, cap[head] ?? 0); take >= 0; take--) {
+    for (const tail of fillerSpends(rest, n - take, cap)) {
+      out.push(take === 0 ? tail : { ...tail, [head]: take });
+    }
+  }
+  return out;
+}
+
+/**
+ * Substituted spends for one demand this barn cannot pay exactly.
+ *
+ * Only the MINIMUM number of substitutions is offered. Substituting a card you
+ * could have supplied is legal and `doDeliver` accepts it, but it is strictly
+ * worse - it costs an extra card and buys nothing, because the barn is a dead
+ * end and no rule pays you for emptying it. Offering those shapes would multiply
+ * the move list for choices no player would make. The genuine decision that IS
+ * offered is which crops the filler comes out of.
+ */
+function substitutedSpends(
+  data: GameData,
+  suits: readonly Suit[],
+  need: Partial<Record<Suit, number>>,
+  tally: Partial<Record<Suit, number>>,
+): Partial<Record<Suit, number>>[] {
+  const rate = data.island.cardsPerSubstitution;
+  if (rate === null) return [];
+  const matched: Partial<Record<Suit, number>> = {};
+  for (const [suit, want] of Object.entries(need) as [Suit, number][]) {
+    matched[suit] = Math.min(tally[suit] ?? 0, want);
+  }
+  const short = tallyTotal(need) - tallyTotal(matched);
+  if (short === 0) return [];
+  const surplus: Partial<Record<Suit, number>> = {};
+  for (const suit of suits) surplus[suit] = (tally[suit] ?? 0) - (matched[suit] ?? 0);
+  return fillerSpends(suits, rate * short, surplus).map((filler) => {
+    const spend: Partial<Record<Suit, number>> = { ...matched };
+    for (const [suit, n] of Object.entries(filler) as [Suit, number][]) {
+      spend[suit] = (spend[suit] ?? 0) + n;
+    }
+    for (const suit of Object.keys(spend) as Suit[]) {
+      if (spend[suit] === 0) delete spend[suit];
+    }
+    return spend;
+  });
+}
+
+/** Stable key for de-duping spends that differ only in how they were derived. */
+function spendKey(tile: string, spend: Partial<Record<Suit, number>>): string {
+  const parts = (Object.entries(spend) as [Suit, number][])
+    .filter(([, n]) => n > 0)
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([s, n]) => `${s}${n}`);
+  return `${tile}|${parts.join(',')}`;
+}
+
+/**
+ * Every payment this seat could actually make, exact and substituted.
+ *
+ * Substituted spends are generated barn-aware rather than filtered afterwards,
+ * because the filler is drawn from surplus and enumerating it blind would be a
+ * combinatorial explosion for shapes the barn cannot cover anyway. The result is
+ * de-duped: two different wild-crate fills collapse to the same spend once
+ * enough of the tile is paid in filler.
+ */
+export function deliverOptions(data: GameData, state: GameState, seat: Seat): DeliverOption[] {
+  const tally = barnTally(data, state, seat);
+  const out: DeliverOption[] = [];
+  const seen = new Set<string>();
+  const add = (tile: string, spend: Partial<Record<Suit, number>>) => {
+    const key = spendKey(tile, spend);
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ tile, spend });
+  };
+  for (const demand of deliverDemands(data, state, seat)) {
+    const affordable = (Object.entries(demand.spend) as [Suit, number][]).every(
+      ([s, n]) => (tally[s] ?? 0) >= n,
+    );
+    if (affordable) add(demand.tile, demand.spend);
+    else {
+      for (const spend of substitutedSpends(data, state.suitsInPlay, demand.spend, tally)) {
+        add(demand.tile, spend);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Is ANY island delivery open to this seat? Kept as a fast path - it walks the
+ * wild-crate fills but never enumerates a filler, because `canPay` only needs
+ * the total surplus. Every route that can deliver must agree with this, so it
+ * has to see the substitution too: a seat holding a payable-by-substitution
+ * barn is not a seat with no deliveries.
+ */
 export function anyDeliverOption(data: GameData, state: GameState, seat: Seat): boolean {
   const tally = barnTally(data, state, seat);
   const open = openLevels(data, state, seat);
@@ -636,16 +823,11 @@ export function anyDeliverOption(data: GameData, state: GameState, seat: Seat): 
     if (tile.deliveredBy.length >= data.island.deliveriesPerTile) return false;
     if (!open.has(tileLevel(data, tile.tile))) return false;
     const { base, wilds, cardsPerCrate } = namedDemand(data, tile);
-    let wildCapacity = 0;
-    for (const suit of state.suitsInPlay) {
-      const surplus = (tally[suit] ?? 0) - (base[suit] ?? 0);
-      if (surplus < 0) return false;
-      wildCapacity += Math.floor(surplus / cardsPerCrate);
-    }
-    for (const [suit, need] of Object.entries(base) as [Suit, number][]) {
-      if ((tally[suit] ?? 0) < need) return false;
-    }
-    return wildCapacity >= wilds;
+    return wildFills(state.suitsInPlay, wilds).some((fill) => {
+      const need: Partial<Record<Suit, number>> = { ...base };
+      for (const s of fill) need[s] = (need[s] ?? 0) + cardsPerCrate;
+      return canPay(data, need, tally);
+    });
   });
 }
 
@@ -677,27 +859,48 @@ export function doDeliver(
     virtual[sub.from] = (virtual[sub.from] as number) - 1;
     virtual[sub.to] = (virtual[sub.to] ?? 0) + 1;
   }
+  // Validate against every way the wild crates could have been nominated, and
+  // accept if any of them balances. A search rather than arithmetic on `base`
+  // alone, because once a card is paid in filler the crate that wanted it no
+  // longer pins a suit, so there is no closed form over the unfilled demand.
   const { base, wilds, cardsPerCrate } = namedDemand(fx.data, tile);
-  let wildsPaid = 0;
-  for (const suit of fx.data.cards.suits) {
-    const paid = virtual[suit] ?? 0;
-    const surplus = paid - (base[suit] ?? 0);
-    if (surplus < 0) throw new Error(`Spend does not cover the ${suit} crates of ${tileId}`);
-    if (surplus % cardsPerCrate !== 0) {
-      throw new Error(`A crate is paid in ${cardsPerCrate} cards of ONE suit`);
-    }
-    wildsPaid += surplus / cardsPerCrate;
-  }
-  if (wildsPaid !== wilds) {
-    throw new Error(`${tileId} has ${wilds} wild crates; spend covers ${wildsPaid}`);
+  const rate = fx.data.island.cardsPerSubstitution;
+  const paid = tallyTotal(virtual);
+  const legal = wildFills(fx.data.cards.suits, wilds).some((fill) => {
+    const need: Partial<Record<Suit, number>> = { ...base };
+    for (const s of fill) need[s] = (need[s] ?? 0) + cardsPerCrate;
+    const matched = matchedAgainst(need, virtual);
+    const substituted = tallyTotal(need) - matched;
+    if (substituted === 0) return paid === matched;
+    if (rate === null) return false;
+    return paid - matched === rate * substituted;
+  });
+  if (!legal) {
+    throw new Error(
+      rate === null
+        ? `Spend does not pay ${tileId}: a crate is ${cardsPerCrate} cards of ONE suit`
+        : `Spend does not pay ${tileId}: unmatched cards cost ${rate} of any crop each`,
+    );
   }
 
   const cards = fx.spendFromBarn(seat, spend);
   const rule = levelRuleOf(fx.data, level);
-  player(state, seat).receipts.push(rule.vp);
+  // Read the bonus BEFORE this delivery joins the count, or every delivery
+  // would take the next seat's bonus rather than its own.
+  const bonus = fillOrderBonus(fx.data, state, level);
+  player(state, seat).receipts.push(rule.vp + bonus);
   tile.deliveredBy.push(seat);
+  tile.bonusVp.push(bonus);
   fx.gainCoins(seat, rule.coinsPerDelivery, `deliver:${tileId}`);
-  fx.emit({ e: 'delivered', seat, tile: tileId, vp: rule.vp, coins: rule.coinsPerDelivery, spend });
+  fx.emit({
+    e: 'delivered',
+    seat,
+    tile: tileId,
+    vp: rule.vp,
+    bonus,
+    coins: rule.coinsPerDelivery,
+    spend,
+  });
   fireHook(fx, 'afterDeliver', { seat, island: true, tile: tileId, cards });
   if (rule.triggersGameEnd && state.endTrigger === null) {
     state.endTrigger = { seat };

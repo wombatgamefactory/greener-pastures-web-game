@@ -103,12 +103,18 @@ export function buildFor(data: GameData, state: GameState, seat: Seat, ...cards:
  * minted, no receipt VP. The island's own `deliveredBy` record is what the
  * level gate reads, so this is how a scenario starts a seat part-way up the
  * climb without playing the deliveries out.
+ *
+ * These deliveries take no fill-order bonus either (a 0 keeps `bonusVp` in step
+ * with `deliveredBy`), but they DO consume the level's queue, because the queue
+ * is a count of deliveries made. A scenario that wants the bonuses still on
+ * offer must seed the climb somewhere other than the level it is testing.
  */
 export function deliveredAt(state: GameState, seat: Seat, ...tiles: string[]): void {
   for (const id of tiles) {
     const tile = state.island.tiles.find((t) => t.tile === id);
     if (!tile) throw new Error(`Tile ${id} is not in play`);
     tile.deliveredBy.push(seat);
+    tile.bonusVp.push(0);
   }
 }
 

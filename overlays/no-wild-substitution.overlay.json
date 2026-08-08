@@ -1,0 +1,8 @@
+{
+  "name": "no-wild-substitution",
+  "description": "The control arm for the wild substitution (2026-08-08): exact matching restored, so a crate is 2 cards of ONE named suit or nothing. This is the game as it stood when ticket 38 measured the barn queue and found the block was MATCHING and not quantity - 88.8% of barn-holding decisions could not afford any open tile, 84% of them 1-2 cards short - and when assertion 6 failed at 2.00 with every other lever exhausted (the level gate off left it at 4.00, the chain cut to 2/4/6 moved it to 3.50, and four time-gradient arms moved it not at all). Read the shipped rule as the delta against this. RESULT, paired n=500, 2026-08-08. This arm reproduced the pre-change baseline to the digit (barn 4.5, assertion 6 at 2.00, assertion 1 at 1.50, unfinished 2.0%), so the read is clean. Against it the shipped rule gives: barn at game end 4.5 -> 1.5; assertion 6 from 2.00 to 0.75, still FAIL but nearer zero than any lever tried before it (level gate off left it at 4.00, the 2/4/6 chain cut reached 3.50, four time-gradient ladders moved it not at all); assertion 1 coin flood 1.50 FAIL -> 0.33 PASS; unfinished games 2.0% -> 0.0%; supply lock 0.04 -> 0.00; last as a percentage of the winner 42.2% -> 45.3%, a 3.1-point narrowing against a 2.7-point noise floor. Game length did not move (22 rounds both arms), so the feared brute-forced Level 3 ending did not appear. NOT YET EXPLAINED: why the coin flood flattens. It is a real move and a large one, but no probe has established the mechanism, so do not repeat a story about it - measure it. Still open: assertion 6 is not actually passing, so barns still grow slightly across the final third.",
+  "schemaVersion": 1,
+  "set": {
+    "island.cardsPerSubstitution": null
+  }
+}

@@ -21,7 +21,8 @@ import { WATCHLIST } from './assertions/index.js';
 import { NO_REMEDY } from './assertions/types.js';
 import { cutList, funnel } from './cutlist.js';
 import { EVENT_KINDS, MOVE_KINDS } from './observe.js';
-import { REFERENCE, cellsFor, gamesPerCell } from './reference.js';
+import type { Cell } from './reference.js';
+import { REFERENCE, cellsFor, gamesPerCell, seatingFor } from './reference.js';
 import { renderReport } from './report.js';
 import { planRun, pool, runBalance } from './run.js';
 import { runWatchlist } from './watchlist.js';
@@ -53,8 +54,50 @@ describe('the stratified cells', () => {
   });
 
   it('rounds up rather than down, so no cell is short', () => {
-    expect(gamesPerCell(500, 30)).toBe(17);
-    expect(gamesPerCell(1, 30)).toBe(1);
+    // 500 over 30 cells is 16.7, up to 17, up again to 18 so it divides by the
+    // 2 seatings. 1 over 30 cells is 1 game, up to 2 for the same reason.
+    expect(gamesPerCell(500, 30, 2)).toBe(18);
+    expect(gamesPerCell(1, 30, 2)).toBe(2);
+    expect(gamesPerCell(500, 20, 3)).toBe(27);
+    expect(gamesPerCell(500, 5, 4)).toBe(100);
+  });
+
+  /**
+   * reference-v9's whole correction, guarded. This is the test to read if
+   * someone ever "tidies" the rotation away: with a fixed seating, seat index is
+   * welded to canonical suit order, wheat sits in the start player's chair in
+   * 100% of games and dairy in 0%, and every per-suit win rate silently becomes
+   * a mixture of the suit and the chair. That was true for eight references and
+   * it passed every other test in this file.
+   */
+  it('rotates the suits around the table, so no suit is welded to a chair', () => {
+    const cell = cellsFor(3, 4)[0] as Cell;
+    const seatings = [0, 1, 2, 3].map((i) => seatingFor(cell, i));
+    // Each rotation is a permutation of the same set...
+    for (const s of seatings) expect([...s].sort()).toEqual([...cell.suits].sort());
+    // ...they are distinct over one full turn of the wheel...
+    expect(new Set(seatings.slice(0, 3).map((s) => s.join(','))).size).toBe(3);
+    // ...and it wraps, so a whole multiple of the seat count is exactly balanced.
+    expect(seatings[3]).toEqual(seatings[0]);
+    // Every suit reaches every chair.
+    for (let seat = 0; seat < 3; seat++) {
+      expect(new Set(seatings.slice(0, 3).map((s) => s[seat])).size).toBe(3);
+    }
+  });
+
+  it('seats a real run evenly, every suit in every chair', () => {
+    const counts = new Map<string, number[]>();
+    for (const game of result.games) {
+      if (game.seats !== 2) continue;
+      game.suits.forEach((suit, seat) => {
+        const row = counts.get(suit) ?? [0, 0];
+        row[seat] = (row[seat] ?? 0) + 1;
+        counts.set(suit, row);
+      });
+    }
+    // Exactly balanced, not merely approximately: the rotation is deterministic
+    // and `gamesPerCell` rounds to a whole multiple of the seat count for it.
+    for (const [, row] of counts) expect(row[0]).toBe(row[1]);
   });
 
   it('names the neutral deck, so a cell is addressable', () => {
