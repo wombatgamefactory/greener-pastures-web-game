@@ -40,12 +40,11 @@ export interface PlayerState {
    */
   covered: CardId[];
   /**
-   * VP taken from the island, in delivery order: the receipt token's printed VP
-   * PLUS whatever fill-order bonus that delivery caught. One entry per delivery,
-   * so `receipts.length` is still the receipt count the tie-break reads. The
-   * bonus half is recorded again on the tile (`bonusVp`) so a scoring screen can
-   * take the two apart without re-deriving fill order, which the state does not
-   * otherwise remember.
+   * VP taken from the island, in delivery order - one entry per delivery, so
+   * `receipts.length` is the receipt count the tie-break reads. Since the flat
+   * island every entry is read straight off `island.vpByDeliveryOrder` (6 for
+   * arriving first at a tile, 3 for second), and nothing is added on top, so a
+   * scoring screen can re-derive the whole list from the tiles.
    */
   receipts: number[];
 }
@@ -59,25 +58,22 @@ export interface WorkerState {
 }
 
 /**
- * One island tile in play. Level, VP, coins and crate count are all read from
- * the tile's level rules in GameData; the state stores only what setup
- * randomised (the demand tokens) and what play has done (the deliveries).
+ * One island tile in play. Cost, coins and VP are the same on every tile and
+ * live in `island.tileRule` / `island.vpByDeliveryOrder`; the state stores only
+ * what setup randomised (the demand tokens) and what play has done.
  */
 export interface IslandTileState {
-  /** Printed face id, e.g. "A1". Level comes from data.island.tiles. */
+  /** Printed face id, e.g. "A1". Its level is layout only - see tileLevel. */
   tile: string;
   /** One demand token per crate, dealt at setup. 'wild' is the cornucopia. */
   crates: (Suit | 'wild')[];
-  /** Seats that have delivered here, in order. Full at data.island.deliveriesPerTile. */
-  deliveredBy: Seat[];
   /**
-   * The fill-order bonus each of those deliveries took, same index as
-   * `deliveredBy`, 0 for one that arrived after the level's bonuses were gone.
-   * Held here rather than on the player because the island is the public record
-   * of who delivered what, and the scoring screen re-derives island VP off the
-   * tiles rather than off the receipt values.
+   * Seats that have delivered here, IN ORDER, and the order is the payment: the
+   * seat at index i took `island.vpByDeliveryOrder[i]`. Full at that array's
+   * length. This is why nothing else has to be stored per delivery - the public
+   * record on the tile is enough to re-derive every VP the island paid.
    */
-  bonusVp: number[];
+  deliveredBy: Seat[];
 }
 
 export interface IslandState {
@@ -435,10 +431,8 @@ export type GameEvent =
       e: 'delivered';
       seat: Seat;
       tile: string;
-      /** The receipt token's printed VP for the level. Never includes the bonus. */
+      /** The receipt taken: 6 for arriving first at this tile, 3 for second. */
       vp: number;
-      /** The fill-order bonus this delivery caught, 0 once the level's are gone. */
-      bonus: number;
       coins: number;
       spend: Partial<Record<Suit, number>>;
     }

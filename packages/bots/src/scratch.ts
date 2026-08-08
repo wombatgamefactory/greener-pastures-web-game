@@ -14,7 +14,8 @@
 
 import type { Card, CardFace, GameData, Suit } from '@gp/data';
 import type { BuildingView, CardId, PlayerView } from '@gp/engine';
-import { activationSurchargeOf, harvestSurchargeOf, tileLevel } from '@gp/engine';
+import { deliveriesPerTile } from '@gp/data';
+import { activationSurchargeOf, harvestSurchargeOf } from '@gp/engine';
 
 /**
  * Card lookup by id, indexed per GameData.
@@ -82,30 +83,17 @@ export interface Scratch {
   readonly flipAt: number;
   readonly farmsteadUpgraded: boolean;
   readonly noticeBoard: BuildingView | null;
-  /** Levels you already hold a receipt from. */
-  readonly heldLevels: ReadonlySet<1 | 2 | 3>;
-  /** Levels the island's per-player gate leaves open to you right now. */
-  readonly openLevels: ReadonlySet<1 | 2 | 3>;
   /**
-   * Suits an open, unfilled tile still wants. Wild crates count for every suit
-   * in play, and the set is filtered by `openLevels` - the per-player level gate
-   * - so a seat holding no Level 1 receipt sees Level 2 and Level 3 demand as
-   * zero.
+   * Suits a tile with a free receipt space still wants. Wild crates count for
+   * every suit in play.
    *
-   * **One set, gated, and the gate is measured rather than argued** (ticket 53).
-   * `buyDemand` and `deckDemand` are the only two terms that read it. Dropping
-   * the gate is not cosmetic - the gated and ungated sets are different sets in
-   * 32.6% of the decisions offering a deck choice, and **72.4% before the seat
-   * holds any receipt** - but over 55 stratified games it changes the bot's top
-   * move **0 times in 12,208 decisions**, against a control at a 100x weight
-   * that moves 19.0% of them. So there are not two readings to choose between;
-   * there is one distinction the bot has never acted on.
-   *
-   * The arithmetic behind that zero is worth keeping, because it bounds what any
-   * future gate change could do: the ungated set is a superset, so dropping the
-   * gate can only ADD a term's own weight to an option - which lifts it to a TIE
-   * with a leader that already has that weight, never past it. A gate reading
-   * cannot move these terms without their weights moving first.
+   * It used to be filtered by the per-player level gate, and ticket 53 measured
+   * that filter rather than arguing it: gated and ungated were different sets in
+   * 32.6% of the decisions offering a deck choice, and 72.4% before the seat held
+   * any receipt, yet over 55 stratified games the distinction changed the bot's
+   * top move 0 times in 12,208 decisions. The flat island (2026-08-09) deleted
+   * the gate, so this is now simply the ungated set - and that measurement is why
+   * the deletion could not have moved these terms.
    */
   readonly demandSuits: ReadonlySet<Suit>;
   readonly ownsWorker: boolean;
@@ -319,31 +307,23 @@ function tallyPays(
 }
 
 /**
- * The market's ordering feature (ticket 56): for each suit, how many open,
- * unfilled, level-open tiles flip from unpayable to payable with one more barn
- * card of that suit. Adding a card is monotone, so the count is a plain delta.
+ * The market's ordering feature (ticket 56): for each suit, how many tiles with
+ * a free receipt space flip from unpayable to payable with one more barn card of
+ * that suit. Adding a card is monotone, so the count is a plain delta.
  *
  * On the decision budget: one working tally is mutated and restored rather
  * than copied per (tile, suit), and the caller only runs this at all when the
  * seat can afford a market buy - the first version computed it every decision
  * and pushed the whole-game gate from within budget to 9.5 applies a decision.
  */
-function payabilityBySuit(
-  data: GameData,
-  view: PlayerView,
-  openLevels: ReadonlySet<1 | 2 | 3>,
-): Map<Suit, number> {
+function payabilityBySuit(data: GameData, view: PlayerView): Map<Suit, number> {
   const suits = view.suitsInPlay;
   const tally: Partial<Record<Suit, number>> = { ...view.you.barn };
   const out = new Map<Suit, number>();
+  const per = data.island.tileRule.cardsPerCrate;
   for (const suit of suits) out.set(suit, 0);
   for (const tile of view.island.tiles) {
-    if (tile.deliveredBy.length >= data.island.deliveriesPerTile) continue;
-    const level = tileLevel(data, tile.tile);
-    if (!openLevels.has(level)) continue;
-    const rule = data.island.levelRules[String(level)];
-    if (!rule) continue;
-    const per = rule.cardsPerCrate;
+    if (tile.deliveredBy.length >= deliveriesPerTile(data)) continue;
     const base: Partial<Record<Suit, number>> = {};
     let wilds = 0;
     for (const crate of tile.crates) {
@@ -358,21 +338,6 @@ function payabilityBySuit(
     }
   }
   return out;
-}
-
-function levelsFor(
-  data: GameData,
-  view: PlayerView,
-): { held: Set<1 | 2 | 3>; open: Set<1 | 2 | 3> } {
-  const held = new Set<1 | 2 | 3>();
-  for (const tile of view.island.tiles) {
-    if (tile.deliveredBy.includes(view.seat)) held.add(tileLevel(data, tile.tile));
-  }
-  if (!data.island.levelGate) return { held, open: new Set<1 | 2 | 3>([1, 2, 3]) };
-  const open = new Set<1 | 2 | 3>([1]);
-  if (held.has(1)) open.add(2);
-  if (held.has(2)) open.add(3);
-  return { held, open };
 }
 
 export function makeScratch(data: GameData, view: PlayerView): Scratch {
@@ -393,11 +358,9 @@ export function makeScratch(data: GameData, view: PlayerView): Scratch {
   }
 
   const purse = coinsOf(data, view, buildings);
-  const { held: heldLevels, open: openLevels } = levelsFor(data, view);
   const demandSuits = new Set<Suit>();
   for (const tile of view.island.tiles) {
-    if (tile.deliveredBy.length >= data.island.deliveriesPerTile) continue;
-    if (!openLevels.has(tileLevel(data, tile.tile))) continue;
+    if (tile.deliveredBy.length >= deliveriesPerTile(data)) continue;
     for (const crate of tile.crates) {
       if (crate === 'wild') for (const suit of view.suitsInPlay) demandSuits.add(suit);
       else demandSuits.add(crate);
@@ -415,8 +378,6 @@ export function makeScratch(data: GameData, view: PlayerView): Scratch {
     flipAt: data.rules.economy.farmsteadFlipAtOwnColourBuilds,
     farmsteadUpgraded,
     noticeBoard,
-    heldLevels,
-    openLevels,
     demandSuits,
     ownsWorker: view.fair.some((w) => w.owner === view.seat),
     coins: you.coins,
@@ -428,6 +389,6 @@ export function makeScratch(data: GameData, view: PlayerView): Scratch {
     marketPayability:
       data.rules.turn.marketCost === null || you.coins < data.rules.turn.marketCost
         ? null
-        : payabilityBySuit(data, view, openLevels),
+        : payabilityBySuit(data, view),
   };
 }

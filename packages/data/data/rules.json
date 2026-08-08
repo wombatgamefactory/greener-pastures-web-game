@@ -11,6 +11,7 @@
       "turn.buyCost is the card BUY (Dean, 2026-08-03): once a turn, as a free action, pay the bank and take the top card of a deck that is NOT your own suit. It is the answer to the Feld-lens finding that the game mints coins and is throttled by cards with no exchange between them - a coin now converts into the throttled resource, so coins are never dead. Blind, and deliberately not a Draw: no reveal, no keep, no draw modifier, so the Orchard Farmstead and the Draw Worker keep the draw lane. Null switches the rule off, which is the paired control in overlays/no-card-buy.overlay.json.",
       "turn.marketCost is BUY AT MARKET as the parent design adopted it (docs/Market Bonus Action 2026-08-03.md): a third bonus-slot option beside the coin visit and the worker visit. Pay the bank, take the top card of ANY one deck in play - own suit included - straight into the BARN, revealed as it goes. It consumes the bonus slot, because competing with the visit is the entire point; it is not a visit (no Helping Hand, no afterVisit, no wage) and not a Draw (no reveal-and-keep, no draw modifier). Own suit is legal here and illegal at the buy, both deliberately: the barn destination makes own-suit harmless colour for delivery, the hand destination made it a second Draw. Null deletes the rule. Ticket 56 holds this and buyCost side by side so the paired arms can decide which coin sink is the game's - they are two different rules, not two prices for one.",
       "startingBarnCards is the single card each player starts with in their barn. startingHand is drawn from their own suit deck, which is why an owned deck holds 12 cards after setup.",
+      "endGame.trigger is deliveryCount (owner, 2026-08-09, with the flat island): the game ends when any ONE seat completes its deliveriesToTrigger-th island delivery, after which every other player takes furtherTurnsEach more turns. It replaces levelThreeDelivery, which cannot survive an island with no levels. Two properties carried over deliberately. It is still ONE observable trigger read off public state - now a receipt count in front of a player rather than a token on the top row - and it is still a thing a player does rather than a deck running out. Balloon moves are Deliver actions but not island deliveries, so they do not count toward it. deliveriesToTrigger is FLAT at every seat count, which means the trigger fires at half the 2-seat island, a third of the 3-seat one and a quarter of the 4-seat one; that asymmetry is known and taken, and 2p is where to watch it.",
       "farmsteadFlipAtOwnColourBuilds counts buildings printing the player's own CROP icon, not own-suit builds. Ticket 07: a base starter prints the generic starting-building icon and counts for nothing, an upgraded starter prints the crop icon and counts, so paying £2 to flip a Barn or a Notice Board can also be the third own-crop building and flip the Farmstead free."
     ],
     "unresolved": [
@@ -37,7 +38,8 @@
     "farmsteadFlipAtOwnColourBuilds": 3
   },
   "endGame": {
-    "trigger": "levelThreeDelivery",
+    "trigger": "deliveryCount",
+    "deliveriesToTrigger": 6,
     "furtherTurnsEach": 1
   }
 }

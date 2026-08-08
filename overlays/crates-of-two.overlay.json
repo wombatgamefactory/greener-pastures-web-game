@@ -1,9 +1,0 @@
-{
-  "name": "crates-of-two",
-  "description": "Ticket 38 candidate: every crate is 2 cards of a suit, at every level, so the chain is 2 / 4 / 6 instead of 2 / 6 / 9. Tests whether the barn queue is caused by set SIZE. Ticket 38's probe found 88.8% of barn-holding decisions cannot afford any open tile and 84% of those are 1-2 cards short, so a smaller set should convert near-misses into deliveries. Note this is a PRINT change as well as a knob: ticket 14 read 2/6/9 off the sheet's crate-qty label.",
-  "schemaVersion": 1,
-  "set": {
-    "island.levelRules.2.cardsPerCrate": 2,
-    "island.levelRules.3.cardsPerCrate": 2
-  }
-}

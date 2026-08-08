@@ -14,6 +14,7 @@
  */
 
 import type { GameData, Suit, WorkerAction } from '@gp/data';
+import { deliveriesPerTile, deliveryVp } from '@gp/data';
 
 import type { Fx } from './fx.js';
 import { fireHook } from './fx.js';
@@ -65,16 +66,16 @@ export function barnTally(
   return tally;
 }
 
+/**
+ * The tile's printed row. LAYOUT ONLY since the flat island (2026-08-09) - it
+ * exists for the UI and for setup's bookend rule, and no rule reads it. If a
+ * rule ever needs it again, that is the hierarchy coming back and it should be
+ * priced as a new rule rather than a restoration.
+ */
 export function tileLevel(data: GameData, tileId: string): 1 | 2 | 3 {
   const tile = data.island.tiles.find((t) => t.id === tileId);
   if (!tile) throw new Error(`Unknown island tile ${tileId}`);
   return tile.level;
-}
-
-export function levelRuleOf(data: GameData, level: 1 | 2 | 3) {
-  const rule = data.island.levelRules[String(level)];
-  if (!rule) throw new Error(`No island level rules for level ${level}`);
-  return rule;
 }
 
 // --- Build (and its branches: hire, upgrade) -------------------------------
@@ -542,72 +543,21 @@ export interface DeliverOption {
  * step. Note it reads the seat's OWN deliveries only - whose token sits where
  * is not part of the rule.
  */
-export function receiptLevels(data: GameData, state: GameState, seat: Seat): Set<1 | 2 | 3> {
-  const levels = new Set<1 | 2 | 3>();
-  for (const tile of state.island.tiles) {
-    if (tile.deliveredBy.includes(seat)) levels.add(tileLevel(data, tile.tile));
-  }
-  return levels;
-}
-
-/**
- * The island LEVEL GATE (ticket 07, replacing the rulebook's socket chain): a
- * seat may deliver to a level only while it already holds a receipt from the
- * level below. Level 1 is always open, so a first delivery is always Level 1;
- * a lower level stays open once a higher one has been unlocked. Per player, and
- * `island.levelGate` switches the whole rule off for a paired sim run.
- *
- * Every route to an island delivery reads this - the enumerator below (which
- * feeds the Deliver action, the Deliver Worker, the generic deliver task and
- * every Vegetable deliver card) and doDeliver's re-validation. Balloon moves
- * are Deliver actions but not island deliveries, so they neither pass through
- * here nor open a level.
- */
-export function openLevels(data: GameData, state: GameState, seat: Seat): Set<1 | 2 | 3> {
-  if (!data.island.levelGate) return new Set<1 | 2 | 3>([1, 2, 3]);
-  const held = receiptLevels(data, state, seat);
-  const open = new Set<1 | 2 | 3>([1]);
-  if (held.has(1)) open.add(2);
-  if (held.has(2)) open.add(3);
-  return open;
-}
-
-/**
- * Deliveries already made to `level`, over every tile of it and by every seat.
- * The fill-order bonus is a queue read off this count, so the count has to span
- * the table: the whole point of the gradient is that a rival can take the big
- * bonus first, which is what makes waiting cost something. Counted per seat it
- * would be a variety gradient pushing play UP the levels, pointing the same way
- * as the ascending 4/8/16 and making the accumulate-then-convert problem worse.
- */
-export function deliveriesAtLevel(data: GameData, state: GameState, level: 1 | 2 | 3): number {
+export function islandDeliveriesBy(state: GameState, seat: Seat): number {
   let n = 0;
   for (const tile of state.island.tiles) {
-    if (tileLevel(data, tile.tile) === level) n += tile.deliveredBy.length;
+    for (const who of tile.deliveredBy) if (who === seat) n += 1;
   }
   return n;
 }
 
 /**
- * This table's fill-order queue: the bonus for the 1st, 2nd, ... delivery to any
- * one level. Seats + 1 long, so it matches the Level 1 slot count and roughly
- * half of Level 1's deliveries are raced for. An unknown seat count is an empty
- * queue rather than a throw, because the gradient is a reward and a missing row
- * should cost a table its bonuses, never its game.
+ * Is this tile still open? The VP schedule's length is the capacity rule, so a
+ * tile closes exactly when there is no VP left to pay for the next delivery.
+ * One place, because every route to a delivery has to agree with it.
  */
-export function fillOrderQueue(data: GameData, state: GameState): readonly number[] {
-  return data.island.fillOrderBonusBySeats[String(state.players.length)] ?? [];
-}
-
-/**
- * The fill-order bonus the NEXT delivery to `level` would take, on top of the
- * level's printed receipt VP. 0 once that level's bonuses have all gone, and 0
- * throughout when this table's queue is empty. Public because it is a published
- * slope, not a hidden wall: the board prints it and the UI shows it, so a player
- * watching it shrink is the mechanism working.
- */
-export function fillOrderBonus(data: GameData, state: GameState, level: 1 | 2 | 3): number {
-  return fillOrderQueue(data, state)[deliveriesAtLevel(data, state, level)] ?? 0;
+export function tileHasRoom(data: GameData, tile: IslandTileState): boolean {
+  return tile.deliveredBy.length < deliveriesPerTile(data);
 }
 
 /** Multisets of size k over the suits - one suit choice per wild crate. */
@@ -627,29 +577,28 @@ function namedDemand(
   data: GameData,
   tile: IslandTileState,
 ): { base: Partial<Record<Suit, number>>; wilds: number; cardsPerCrate: number } {
-  const rule = levelRuleOf(data, tileLevel(data, tile.tile));
+  const { cardsPerCrate } = data.island.tileRule;
   const base: Partial<Record<Suit, number>> = {};
   let wilds = 0;
   for (const crate of tile.crates) {
     if (crate === 'wild') wilds += 1;
-    else base[crate] = (base[crate] ?? 0) + rule.cardsPerCrate;
+    else base[crate] = (base[crate] ?? 0) + cardsPerCrate;
   }
-  return { base, wilds, cardsPerCrate: rule.cardsPerCrate };
+  return { base, wilds, cardsPerCrate };
 }
 
 /**
  * Demand-side spends per tile this seat may deliver to (wild crates resolved to
- * a suit each), BEFORE affordability. The level gate bites here, so it bites
- * once for every island delivery in the game. V12's
- * treat-one-card-as-Vegetable enumerates against these; everything else goes
- * through deliverOptions.
+ * a suit each), BEFORE affordability. Since the flat island the only demand-side
+ * gate left is whether the tile has a free receipt space - `seat` is taken but
+ * unused, kept because every caller has one and a future rule that does look at
+ * the seat should not have to re-thread it. V12's treat-one-card-as-Vegetable
+ * enumerates against these; everything else goes through deliverOptions.
  */
-export function deliverDemands(data: GameData, state: GameState, seat: Seat): DeliverOption[] {
+export function deliverDemands(data: GameData, state: GameState, _seat: Seat): DeliverOption[] {
   const out: DeliverOption[] = [];
-  const open = openLevels(data, state, seat);
   for (const tile of state.island.tiles) {
-    if (tile.deliveredBy.length >= data.island.deliveriesPerTile) continue;
-    if (!open.has(tileLevel(data, tile.tile))) continue;
+    if (!tileHasRoom(data, tile)) continue;
     const { base, wilds, cardsPerCrate } = namedDemand(data, tile);
     for (const fill of wildFills(state.suitsInPlay, wilds)) {
       const spend: Partial<Record<Suit, number>> = { ...base };
@@ -818,10 +767,8 @@ export function deliverOptions(data: GameData, state: GameState, seat: Seat): De
  */
 export function anyDeliverOption(data: GameData, state: GameState, seat: Seat): boolean {
   const tally = barnTally(data, state, seat);
-  const open = openLevels(data, state, seat);
   return state.island.tiles.some((tile) => {
-    if (tile.deliveredBy.length >= data.island.deliveriesPerTile) return false;
-    if (!open.has(tileLevel(data, tile.tile))) return false;
+    if (!tileHasRoom(data, tile)) return false;
     const { base, wilds, cardsPerCrate } = namedDemand(data, tile);
     return wildFills(state.suitsInPlay, wilds).some((fill) => {
       const need: Partial<Record<Suit, number>> = { ...base };
@@ -842,14 +789,8 @@ export function doDeliver(
   const state = fx.state;
   const tile = state.island.tiles.find((t) => t.tile === tileId);
   if (!tile) throw new Error(`Tile ${tileId} is not in play`);
-  if (tile.deliveredBy.length >= fx.data.island.deliveriesPerTile) {
+  if (!tileHasRoom(fx.data, tile)) {
     throw new Error(`Tile ${tileId} has no delivery slots left`);
-  }
-  const level = tileLevel(fx.data, tileId);
-  if (!openLevels(fx.data, state, seat).has(level)) {
-    throw new Error(
-      `Seat ${seat} may not deliver to level ${level}: no level ${level - 1} receipt yet`,
-    );
   }
   const virtual: Partial<Record<Suit, number>> = { ...spend };
   for (const sub of countAs ?? []) {
@@ -884,25 +825,22 @@ export function doDeliver(
   }
 
   const cards = fx.spendFromBarn(seat, spend);
-  const rule = levelRuleOf(fx.data, level);
-  // Read the bonus BEFORE this delivery joins the count, or every delivery
-  // would take the next seat's bonus rather than its own.
-  const bonus = fillOrderBonus(fx.data, state, level);
-  player(state, seat).receipts.push(rule.vp + bonus);
+  const coins = fx.data.island.tileRule.coinsPerDelivery;
+  // Read the VP BEFORE this delivery joins the tile, or the first deliverer
+  // would be paid the second deliverer's rate. The tile's own fill order is the
+  // whole gradient now: 6 for being first here, 3 for being second.
+  const vp = deliveryVp(fx.data, tile.deliveredBy.length);
+  player(state, seat).receipts.push(vp);
   tile.deliveredBy.push(seat);
-  tile.bonusVp.push(bonus);
-  fx.gainCoins(seat, rule.coinsPerDelivery, `deliver:${tileId}`);
-  fx.emit({
-    e: 'delivered',
-    seat,
-    tile: tileId,
-    vp: rule.vp,
-    bonus,
-    coins: rule.coinsPerDelivery,
-    spend,
-  });
+  fx.gainCoins(seat, coins, `deliver:${tileId}`);
+  fx.emit({ e: 'delivered', seat, tile: tileId, vp, coins, spend });
   fireHook(fx, 'afterDeliver', { seat, island: true, tile: tileId, cards });
-  if (rule.triggersGameEnd && state.endTrigger === null) {
+  // The clock: one seat's Nth ISLAND delivery ends the game. Counted after the
+  // push, and off the island rather than off `receipts`, because receipts is a
+  // VP list that other rules could one day write to and the trigger must stay a
+  // count of things visible on the board.
+  const target = fx.data.rules.endGame.deliveriesToTrigger;
+  if (state.endTrigger === null && islandDeliveriesBy(state, seat) >= target) {
     state.endTrigger = { seat };
     fx.emit({ e: 'endTriggered', seat });
   }

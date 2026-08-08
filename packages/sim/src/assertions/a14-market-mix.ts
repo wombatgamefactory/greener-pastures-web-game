@@ -12,8 +12,9 @@ import { num, pct, sum } from '../stats.js';
  * verdict rather than an OBSERVE. The details carry the rest of the log sheet:
  * the mix itself, the plain £1 visit after midgame (the floor move the market
  * eats first), and the exploit probe (island slots that could have been bought
- * entirely at market with no harvest between - especially Level 3, especially
- * Vegetable seats).
+ * entirely at market with no harvest between, especially by Vegetable seats).
+ * The probe used to split by island level, where a Level 3 slot was the big
+ * prize; the flat island prices every tile the same, so it is one count.
  *
  * Reports OBSERVE while `rules.turn.marketCost` is null: with no market in the
  * game the ratio is 0 by construction, and printing that as a PASS would dress
@@ -55,11 +56,8 @@ export const marketMix: Assertion = {
       }
     }
 
-    const funded = games.reduce(
-      (acc, g) => acc.map((n, i) => n + (g.marketFundedDeliveriesByLevel[i] ?? 0)),
-      [0, 0, 0],
-    );
-    const fundedL3Veg = sum(games.map((g) => g.marketFundedL3Veg));
+    const funded = sum(games.map((g) => g.marketFundedDeliveries));
+    const fundedVeg = sum(games.map((g) => g.marketFundedVeg));
 
     return {
       value,
@@ -71,8 +69,7 @@ export const marketMix: Assertion = {
         `market buys per ended game: ${num(games.length === 0 ? NaN : markets / games.length, 1)}`,
         `the plain £1 visit: ${plainEarly} before each game's midgame, ${plainLate} after`,
         `exploit probe - deliveries coverable by market buys alone since the last harvest: ` +
-          `${funded[0]} at L1, ${funded[1]} at L2, ${funded[2]} at L3 ` +
-          `(of which ${fundedL3Veg} were a Vegetable seat at L3)`,
+          `${funded} (of which ${fundedVeg} by a Vegetable seat)`,
       ],
       verdict: !Number.isFinite(value) && markets === 0 ? 'OBSERVE' : value > 1 ? 'FAIL' : 'PASS',
     };

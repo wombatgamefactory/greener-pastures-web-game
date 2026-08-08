@@ -100,21 +100,21 @@ export function buildFor(data: GameData, state: GameState, seat: Seat, ...cards:
 
 /**
  * Record a free delivery by `seat` on each tile - no barn cards spent, no coins
- * minted, no receipt VP. The island's own `deliveredBy` record is what the
- * level gate reads, so this is how a scenario starts a seat part-way up the
- * climb without playing the deliveries out.
+ * minted, no receipt VP on the player. This is how a scenario fills the island
+ * without playing the deliveries out.
  *
- * These deliveries take no fill-order bonus either (a 0 keeps `bonusVp` in step
- * with `deliveredBy`), but they DO consume the level's queue, because the queue
- * is a count of deliveries made. A scenario that wants the bonuses still on
- * offer must seed the climb somewhere other than the level it is testing.
+ * It DOES take the tile's delivery space, and since the flat island the space
+ * taken is what the VP schedule pays: seeding a tile makes the next real
+ * delivery there worth 3 rather than 6. A scenario testing the first-deliverer
+ * rate must seed somewhere other than the tile it is testing. It also counts
+ * toward the end trigger the moment a real delivery re-reads the island, so
+ * seeding six tiles for one seat arms the clock.
  */
 export function deliveredAt(state: GameState, seat: Seat, ...tiles: string[]): void {
   for (const id of tiles) {
     const tile = state.island.tiles.find((t) => t.tile === id);
     if (!tile) throw new Error(`Tile ${id} is not in play`);
     tile.deliveredBy.push(seat);
-    tile.bonusVp.push(0);
   }
 }
 

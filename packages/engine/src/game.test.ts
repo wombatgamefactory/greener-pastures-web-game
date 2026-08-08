@@ -1,7 +1,7 @@
 /**
  * Ticket 17's proof: the full newGame / legalMoves / apply surface plays whole
  * games. Surgical tests pin each action funnel and the turn boundary; the
- * full-game tests drive seeded games to the Level 3 end trigger with a greedy
+ * full-game tests drive seeded games to the delivery-count end trigger with a greedy
  * policy, assert apply accepts exactly what legalMoves offers, keep a ceiling
  * on the move list, check card conservation, and replay the move list to the
  * bit-identical final state.
@@ -11,14 +11,7 @@ import { BASE_GAME_DATA as data, loadGameData } from '@gp/data';
 import type { Suit } from '@gp/data';
 import { describe, expect, it } from 'vitest';
 
-import {
-  anyDeliverOption,
-  deliverOptions,
-  deliveriesAtLevel,
-  fillOrderBonus,
-  fillOrderQueue,
-  tileLevel,
-} from './actions.js';
+import { anyDeliverOption, deliverOptions, islandDeliveriesBy, tileLevel } from './actions.js';
 import { apply, isOver, legalMoves, newGame } from './game.js';
 import { cardById } from './query.js';
 import { seedRng, rngInt } from './rng.js';
@@ -48,7 +41,7 @@ function upgradeNoticeBoard(state: GameState, seat: number): void {
   noticeBoard(state, seat).upgraded = true;
 }
 
-/** A Wheat delivery to A1, which the testkit island stocks with a single wheat crate. */
+/** A Wheat delivery to A1, which the testkit island stocks with two wheat crates (4 wheat). */
 function deliverA1(spend: Partial<Record<Suit, number>>): Move {
   return { type: 'deliver', seat: WHEAT, tile: 'A1', spend };
 }
@@ -80,9 +73,10 @@ describe('newGame', () => {
     expect(state.decks[passive]).toHaveLength(18);
     // Bookend rule at 2 seats: A1 A2 A5 / B1 B4 / D1.
     expect(state.island.tiles.map((t) => t.tile)).toEqual(['A1', 'A2', 'A5', 'B1', 'B4', 'D1']);
-    // 10 demand tokens over 10 crates, only in-play suits and wilds.
+    // 12 demand tokens over 12 crates - 6 tiles of 2 since the flat island -
+    // only in-play suits and wilds.
     const tokens = state.island.tiles.flatMap((t) => t.crates);
-    expect(tokens).toHaveLength(10);
+    expect(tokens).toHaveLength(12);
     for (const tok of tokens) {
       expect(tok === 'wild' || state.suitsInPlay.includes(tok)).toBe(true);
     }
@@ -199,51 +193,82 @@ describe('main actions through apply', () => {
     expect(up.state.players[WHEAT]!.coins).toBe(0);
   });
 
-  it('deliver pays crates from the barn, mints coins, takes a receipt, and can trigger the end', () => {
+  it('deliver pays crates from the barn, mints coins, and takes the next receipt on the tile', () => {
     const state = base();
-    // Testkit island: A1 holds [wheat]; D1 holds [dairy, dairy, wild].
+    // Testkit island at 2 seats: A1 holds [wheat, wheat], so 4 wheat.
     dealTo(data, state, WHEAT, 'W4'); // keep the bonus slot live so the turn does not auto-end
-    stockBarn(state, WHEAT, 'wheat', 2);
+    stockBarn(state, WHEAT, 'wheat', 4);
     const applied = apply(data, state, {
       type: 'deliver',
       seat: WHEAT,
       tile: 'A1',
-      spend: { wheat: 2 },
+      spend: { wheat: 4 },
     });
-    // 4 printed + 3: the first delivery to Level 1 by anyone takes the head of
-    // the fill-order queue. The receipt records the total, the tile records the
-    // bonus half so the scoring screen can take the two apart.
-    expect(applied.state.players[WHEAT]!.receipts).toEqual([7]);
-    expect(applied.state.players[WHEAT]!.coins).toBe(2);
+    // First to this tile, so the head of the schedule: 6 VP and a flat £1.
+    expect(applied.state.players[WHEAT]!.receipts).toEqual([6]);
+    expect(applied.state.players[WHEAT]!.coins).toBe(1);
     expect(applied.state.players[WHEAT]!.barn).toHaveLength(0);
     expect(applied.state.island.tiles.find((t) => t.tile === 'A1')?.deliveredBy).toEqual([WHEAT]);
-    expect(applied.state.island.tiles.find((t) => t.tile === 'A1')?.bonusVp).toEqual([3]);
     expect(applied.state.endTrigger).toBeNull();
 
-    // Every level runs at 2 cards per crate (ticket 38), so D1's [dairy, dairy,
-    // wild] wants 4 dairy plus 2 of one freely chosen suit: 6 barn cards in all.
-    // The level gate (ticket 29) wants the climb done first, so seed the receipts.
-    const s2 = base();
-    deliveredAt(s2, WHEAT, 'A1', 'B1');
-    stockBarn(s2, WHEAT, 'dairy', 4);
-    stockBarn(s2, WHEAT, 'orchard', 2); // the wild crate, paid in one suit
-    const l3 = apply(data, s2, {
+    // Second to the SAME tile takes the second entry, whoever they are. The
+    // whole time gradient is this: arriving first is worth double.
+    const s2 = applied.state;
+    s2.turn = freshTurn();
+    s2.turnPlayer = APIARY;
+    stockBarn(s2, APIARY, 'wheat', 4);
+    const second = apply(data, s2, {
+      type: 'deliver',
+      seat: APIARY,
+      tile: 'A1',
+      spend: { wheat: 4 },
+    });
+    expect(second.state.players[APIARY]!.receipts).toEqual([3]);
+    expect(second.state.players[APIARY]!.coins).toBe(1);
+  });
+
+  /**
+   * The clock. One seat's Nth island delivery ends the game, counted across the
+   * whole island and per seat - so a rival racing does not arm your trigger, and
+   * the two receipts on one tile count as two.
+   */
+  it('the end fires on a sixth island delivery by ONE seat, not on six across the table', () => {
+    const s = base();
+    // Five for Wheat and five for Apiary, interleaved over the six 2-seat tiles.
+    deliveredAt(s, WHEAT, 'A1', 'A2', 'A5', 'B1', 'B4');
+    deliveredAt(s, APIARY, 'A1', 'A2', 'A5', 'B1', 'B4');
+    expect(islandDeliveriesBy(s, WHEAT)).toBe(5);
+    expect(s.endTrigger).toBeNull();
+
+    stockBarn(s, WHEAT, 'dairy', 4);
+    const out = apply(data, s, {
       type: 'deliver',
       seat: WHEAT,
       tile: 'D1',
-      spend: { dairy: 4, orchard: 2 },
+      spend: { dairy: 4 },
     });
-    expect(l3.state.endTrigger).toEqual({ seat: WHEAT });
-    // 19, not 16: `deliveredAt` seeds the climb on Levels 1 and 2, so Level 3's
-    // queue is untouched and this delivery takes its +3.
-    expect(l3.state.players[WHEAT]!.receipts).toEqual([19]);
-    expect(l3.state.players[WHEAT]!.coins).toBe(4);
+    expect(islandDeliveriesBy(out.state, WHEAT)).toBe(6);
+    expect(out.state.endTrigger).toEqual({ seat: WHEAT });
+    expect(out.events.some((e) => e.e === 'endTriggered')).toBe(true);
+  });
+
+  it('rules.endGame.deliveriesToTrigger is the dial on the clock', () => {
+    const quick = loadGameData({
+      name: 'short-game',
+      schemaVersion: 1,
+      set: { 'rules.endGame.deliveriesToTrigger': 2 },
+    });
+    const s = makeState(quick, ['wheat', 'apiary']);
+    deliveredAt(s, WHEAT, 'A2');
+    stockBarn(s, WHEAT, 'wheat', 4);
+    const out = apply(quick, s, { type: 'deliver', seat: WHEAT, tile: 'A1', spend: { wheat: 4 } });
+    expect(out.state.endTrigger).toEqual({ seat: WHEAT });
   });
 
   it('a tile takes two deliveries and then refuses', () => {
     const state = base();
-    stockBarn(state, WHEAT, 'wheat', 6);
-    const move: Move = { type: 'deliver', seat: WHEAT, tile: 'A1', spend: { wheat: 2 } };
+    stockBarn(state, WHEAT, 'wheat', 12);
+    const move: Move = { type: 'deliver', seat: WHEAT, tile: 'A1', spend: { wheat: 4 } };
     let s = apply(data, state, move).state;
     s.turn = freshTurn();
     s.turnPlayer = WHEAT;
@@ -258,44 +283,45 @@ describe('main actions through apply', () => {
    * The wild substitution: "when you pay the island, any single card it asks for
    * may instead be paid with 2 cards of any crops".
    *
-   * The testkit island puts [wheat] on A1, so A1 wants 2 wheat. That gives the
-   * three payment shapes the rule creates - 2 wheat, 1 wheat + 2 anything, and
-   * 4 anything - and lets the parity trap it exists to break be shown directly:
-   * a barn holding ONE wheat used to be worth nothing at all against A1.
+   * The testkit island puts [wheat, wheat] on A1, so A1 wants 4 wheat. That
+   * gives the payment shapes the rule creates - 4 wheat, 3 wheat + 2 anything,
+   * and 8 anything - and lets the parity trap it exists to break be shown
+   * directly: a barn holding THREE wheat used to be worth nothing against A1.
    */
   it('pays a demanded card with 2 of any crops, at every shape', () => {
     const exact = base();
-    stockBarn(exact, WHEAT, 'wheat', 2);
-    expect(apply(data, exact, deliverA1({ wheat: 2 })).state.players[WHEAT]!.barn).toHaveLength(0);
+    stockBarn(exact, WHEAT, 'wheat', 4);
+    expect(apply(data, exact, deliverA1({ wheat: 4 })).state.players[WHEAT]!.barn).toHaveLength(0);
 
-    // One short of the pair, which is the 84% case, and it now delivers.
+    // One card short, which is the 84% case, and it now delivers.
     const half = base();
-    stockBarn(half, WHEAT, 'wheat', 1);
+    stockBarn(half, WHEAT, 'wheat', 3);
     stockBarn(half, WHEAT, 'apiary', 2);
     expect(anyDeliverOption(data, half, WHEAT)).toBe(true);
-    apply(data, half, deliverA1({ wheat: 1, apiary: 2 }));
+    apply(data, half, deliverA1({ wheat: 3, apiary: 2 }));
 
-    // No wheat at all: both demanded cards substituted, 4 of anything.
+    // No wheat at all: every demanded card substituted, 8 of anything. The flat
+    // island caps that at 8 - it used to be 12 at a Level 3 tile.
     const none = base();
-    stockBarn(none, WHEAT, 'apiary', 3);
-    stockBarn(none, WHEAT, 'orchard', 1);
-    apply(data, none, deliverA1({ apiary: 3, orchard: 1 }));
+    stockBarn(none, WHEAT, 'apiary', 6);
+    stockBarn(none, WHEAT, 'orchard', 2);
+    apply(data, none, deliverA1({ apiary: 6, orchard: 2 }));
 
     // And the rate is a real price, so short change is still refused.
-    expect(() => apply(data, half, deliverA1({ wheat: 1, apiary: 1 }))).toThrow(/does not pay/);
+    expect(() => apply(data, half, deliverA1({ wheat: 3, apiary: 1 }))).toThrow(/does not pay/);
   });
 
   it('offers substituted payments as real moves, deduped, and never over-substitutes', () => {
     const s = base();
-    stockBarn(s, WHEAT, 'wheat', 1);
+    stockBarn(s, WHEAT, 'wheat', 3);
     stockBarn(s, WHEAT, 'apiary', 2);
     const spends = deliverOptions(data, s, WHEAT)
       .filter((o) => o.tile === 'A1')
       .map((o) => JSON.stringify(o.spend));
     // Exactly one: the minimum substitution, and the only surplus it can draw
-    // filler from is the pair of apiary. Paying 4 cards when 3 will do is legal
-    // but strictly worse, so it is not offered.
-    expect(spends).toEqual([JSON.stringify({ wheat: 1, apiary: 2 })]);
+    // filler from is the pair of apiary. Paying more when 5 cards will do is
+    // legal but strictly worse, so it is not offered.
+    expect(spends).toEqual([JSON.stringify({ wheat: 3, apiary: 2 })]);
     expect(new Set(spends).size).toBe(spends.length);
   });
 
@@ -306,7 +332,7 @@ describe('main actions through apply', () => {
       set: { 'island.cardsPerSubstitution': null },
     });
     const s = makeState(strict, ['wheat', 'apiary']);
-    stockBarn(s, WHEAT, 'wheat', 1);
+    stockBarn(s, WHEAT, 'wheat', 3);
     stockBarn(s, WHEAT, 'apiary', 2);
     expect(anyDeliverOption(strict, s, WHEAT)).toBe(false);
     expect(() =>
@@ -314,33 +340,30 @@ describe('main actions through apply', () => {
         type: 'deliver',
         seat: WHEAT,
         tile: 'A1',
-        spend: { wheat: 1, apiary: 2 },
+        spend: { wheat: 3, apiary: 2 },
       }),
     ).toThrow(/ONE suit/);
   });
 
   /**
-   * The time gradient. Three properties, and all three are the rule rather than
-   * an implementation detail, so all three are asserted:
-   *  - the queue is per LEVEL and spans the TABLE, so a rival's delivery spends
-   *    a bonus you were waiting for. Counted per seat it would be a variety
-   *    gradient pointing the same way as the ascending 4/8/16;
-   *  - it is ADDITIVE. The printed receipt never shrinks, so a late delivery is
-   *    a smaller prize and never a dead move or a punishment;
-   *  - it RUNS OUT, and the level keeps taking deliveries afterwards.
+   * The flat island's one gradient, and the properties that make it the rule
+   * rather than an implementation detail:
+   *  - it is PER TILE, so a rival taking your tile costs you 3 VP while a rival
+   *    taking a different tile costs you nothing. That is what makes it a race
+   *    over a specific square of board rather than a queue you join;
+   *  - it is the WHOLE receipt, not a bonus on top of a printed value. There is
+   *    nothing left to add it to;
+   *  - it never runs out and never reaches zero, so no delivery is a dead move.
    */
-  it('the fill-order bonus decays across the table, per level, and then stops', () => {
-    // 2 seats, so the queue is [3, 2, 1] and the 4th delivery to a level is the
-    // first to take nothing. Level 1 holds 3 tiles at 2 seats and each takes two
-    // deliveries, so all four fit.
+  it('the receipt is decided by arrival order at that tile, per tile', () => {
     const s = base();
-    stockBarn(s, WHEAT, 'wheat', 2);
-    stockBarn(s, APIARY, 'wheat', 6);
+    stockBarn(s, WHEAT, 'wheat', 8);
+    stockBarn(s, APIARY, 'wheat', 8);
     const deliver = (seat: number, tile: string) => ({
       type: 'deliver' as const,
       seat,
       tile,
-      spend: { wheat: 2 },
+      spend: { wheat: 4 },
     });
     const nextTurn = (state: GameState, seat: number) => {
       state.turn = freshTurn();
@@ -348,119 +371,90 @@ describe('main actions through apply', () => {
       return state;
     };
 
-    // Wheat first: +3 on top of the printed 4.
+    // Wheat gets to A1 first: the head of the schedule.
     let g = apply(data, s, deliver(WHEAT, 'A1')).state;
-    expect(g.players[WHEAT]!.receipts).toEqual([7]);
+    expect(g.players[WHEAT]!.receipts).toEqual([6]);
 
-    // Apiary second, on a DIFFERENT tile: still the same level's queue, so +2.
+    // Apiary goes to a DIFFERENT tile and is first there, so it takes 6 too.
+    // Under the old level queue this was the second delivery to Level 1 and
+    // would have been docked; per tile, it is not.
     g = apply(data, nextTurn(g, APIARY), deliver(APIARY, 'A2')).state;
     expect(g.players[APIARY]!.receipts).toEqual([6]);
 
-    // Third: the tail of the queue.
-    g = apply(data, nextTurn(g, APIARY), deliver(APIARY, 'A5')).state;
-    expect(g.players[APIARY]!.receipts).toEqual([6, 5]);
-
-    // Fourth and beyond: the printed VP alone. This one takes A1's second slot,
-    // which also shows the queue counting DELIVERIES rather than tiles.
+    // Apiary follows Wheat onto A1: second at that tile, so 3.
     g = apply(data, nextTurn(g, APIARY), deliver(APIARY, 'A1')).state;
-    expect(g.players[APIARY]!.receipts).toEqual([6, 5, 4]);
-    expect(g.island.tiles.find((t) => t.tile === 'A1')?.bonusVp).toEqual([3, 0]);
+    expect(g.players[APIARY]!.receipts).toEqual([6, 3]);
 
-    // Level 2's queue is untouched by any of that.
-    expect(fillOrderBonus(data, g, 1)).toBe(0);
-    expect(fillOrderBonus(data, g, 2)).toBe(3);
-    expect(deliveriesAtLevel(data, g, 1)).toBe(4);
+    // And Wheat following Apiary onto A2 is second there, also 3 - the schedule
+    // is a property of the tile, not of the player or of how late it is.
+    g = apply(data, nextTurn(g, WHEAT), deliver(WHEAT, 'A2')).state;
+    expect(g.players[WHEAT]!.receipts).toEqual([6, 3]);
   });
 
-  it('the queue is seats + 1 long, so a bigger table races for more of the level', () => {
-    expect(fillOrderQueue(data, makeState(data, ['wheat', 'apiary']))).toEqual([3, 2, 1]);
-    expect(fillOrderQueue(data, makeState(data, ['wheat', 'apiary', 'orchard']))).toEqual([
-      3, 2, 2, 1,
-    ]);
-    expect(fillOrderQueue(data, makeState(data, ['wheat', 'apiary', 'orchard', 'dairy']))).toEqual([
-      3, 3, 2, 2, 1,
-    ]);
-  });
-
-  it('an empty queue switches the gradient off - the control arm', () => {
-    // All three seat counts together: the rule on at some tables and off at
-    // others would measure nothing, which is why the overlay sets all three.
+  it('island.vpByDeliveryOrder is the schedule AND the capacity - the control arm', () => {
     const flat = loadGameData({
-      name: 'no-time-gradient',
+      name: 'flat-receipts',
       schemaVersion: 1,
-      set: {
-        'island.fillOrderBonusBySeats.2': [],
-        'island.fillOrderBonusBySeats.3': [],
-        'island.fillOrderBonusBySeats.4': [],
-      },
+      set: { 'island.vpByDeliveryOrder': [5, 4] },
     });
     const s = makeState(flat, ['wheat', 'apiary']);
-    stockBarn(s, WHEAT, 'wheat', 2);
-    const out = apply(flat, s, { type: 'deliver', seat: WHEAT, tile: 'A1', spend: { wheat: 2 } });
-    expect(out.state.players[WHEAT]!.receipts).toEqual([4]);
-  });
+    stockBarn(s, WHEAT, 'wheat', 4);
+    const out = apply(flat, s, { type: 'deliver', seat: WHEAT, tile: 'A1', spend: { wheat: 4 } });
+    expect(out.state.players[WHEAT]!.receipts).toEqual([5]);
 
-  it('the level gate opens one rung at a time, per seat', () => {
-    // Testkit island at 2 seats: A1/A2/A5 level 1, B1/B4 level 2, D1 level 3.
-    // Stock every demand this seat could possibly be asked for, so the ONLY
-    // thing that can refuse a tile is the gate.
-    const s = base();
-    stockBarn(s, WHEAT, 'wheat', 2);
-    stockBarn(s, WHEAT, 'apiary', 6);
-    stockBarn(s, WHEAT, 'dairy', 6);
-    stockBarn(s, WHEAT, 'orchard', 3);
-    const levels = (state: GameState) =>
-      new Set(
-        legalMoves(data, state)
-          .filter((m) => m.type === 'deliver')
-          .map((m) => tileLevel(data, m.tile)),
-      );
-
-    expect(levels(s)).toEqual(new Set([1]));
-    expect(() =>
-      apply(data, s, { type: 'deliver', seat: WHEAT, tile: 'B1', spend: { apiary: 6 } }),
-    ).toThrow(/may not deliver to level 2/);
-
-    // A level 1 receipt opens level 2, and only level 2.
-    deliveredAt(s, WHEAT, 'A2');
-    expect(levels(s)).toEqual(new Set([1, 2]));
-    expect(() =>
-      apply(data, s, { type: 'deliver', seat: WHEAT, tile: 'D1', spend: { dairy: 6, orchard: 3 } }),
-    ).toThrow(/may not deliver to level 3/);
-
-    // A level 2 receipt opens level 3, and the lower rungs stay open.
-    deliveredAt(s, WHEAT, 'B4');
-    expect(levels(s)).toEqual(new Set([1, 2, 3]));
-  });
-
-  it('the gate is per seat: a rival climbing opens nothing for you', () => {
-    const s = base();
-    stockBarn(s, WHEAT, 'apiary', 6);
-    deliveredAt(s, APIARY, 'A1');
-    expect(legalMoves(data, s).some((m) => m.type === 'deliver' && m.tile === 'B1')).toBe(false);
-  });
-
-  it('island.levelGate false restores the pre-ticket-29 free-for-all', () => {
-    const open = loadGameData({
-      name: 'no-level-gate',
+    // Shortening the array closes a delivery space. There is no second knob to
+    // keep in step, which is the reason it is one array.
+    const single = loadGameData({
+      name: 'one-delivery-per-tile',
       schemaVersion: 1,
-      set: { 'island.levelGate': false },
+      set: { 'island.vpByDeliveryOrder': [6] },
     });
-    const s = makeState(open, ['wheat', 'apiary']);
-    stockBarn(s, WHEAT, 'dairy', 4);
-    stockBarn(s, WHEAT, 'orchard', 2);
-    const l3 = apply(open, s, {
+    const t = makeState(single, ['wheat', 'apiary']);
+    stockBarn(t, WHEAT, 'wheat', 8);
+    const u = apply(single, t, {
+      type: 'deliver',
+      seat: WHEAT,
+      tile: 'A1',
+      spend: { wheat: 4 },
+    }).state;
+    u.turn = freshTurn();
+    u.turnPlayer = WHEAT;
+    expect(legalMoves(single, u).some((m) => m.type === 'deliver' && m.tile === 'A1')).toBe(false);
+  });
+
+  /**
+   * No hierarchy (2026-08-09). The level gate is deleted, not switched off, so
+   * every tile on the board is deliverable from the first turn - which is the
+   * change a player notices first.
+   */
+  it('every tile is open from the first turn, whatever its printed row', () => {
+    // Testkit island at 2 seats: A1/A2/A5 row 1, B1/B4 row 2, D1 row 3. Stock
+    // every demand, so the only thing that could refuse a tile is a rule.
+    const s = base();
+    stockBarn(s, WHEAT, 'wheat', 8);
+    stockBarn(s, WHEAT, 'apiary', 8);
+    stockBarn(s, WHEAT, 'dairy', 8);
+    const rows = new Set(
+      legalMoves(data, s)
+        .filter((m) => m.type === 'deliver')
+        .map((m) => tileLevel(data, m.tile)),
+    );
+    expect(rows).toEqual(new Set([1, 2, 3]));
+
+    // Including the top row on a seat's very first delivery, which the gate
+    // used to make impossible.
+    const out = apply(data, s, {
       type: 'deliver',
       seat: WHEAT,
       tile: 'D1',
-      spend: { dairy: 4, orchard: 2 },
+      spend: { dairy: 4 },
     });
-    expect(l3.state.players[WHEAT]!.receipts).toEqual([19]); // 16 + Level 3's first fill-order bonus
+    expect(out.state.players[WHEAT]!.receipts).toEqual([6]);
   });
 
-  it('a balloon move is neither gated nor level-opening', () => {
+  it('a balloon move is not an island delivery, so it never arms the clock', () => {
     // The freight branch of Deliver (DL-12) never touches the island, so it
-    // cannot be blocked by the gate and cannot unlock a rung.
+    // takes no receipt space and does not count toward the end trigger.
     const s = makeState(data, ['vegetable', 'wheat']);
     stockBarn(s, 0, 'wheat', 1);
     stockBarn(s, 0, 'apiary', 1);

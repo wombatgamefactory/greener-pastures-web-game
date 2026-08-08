@@ -1,8 +1,0 @@
-{
-  "name": "level-gate-off",
-  "description": "Paired control for ticket 38. The level gate (deliver to a level only if you hold a receipt from the level below, adopted by ticket 07) is the mechanism ticket 14 named as the cause of the end-game barn hoard: seats save toward a nine-card Level 3 instead of spending down. Switching the rule off is the comparison that tests it.",
-  "schemaVersion": 1,
-  "set": {
-    "island.levelGate": false
-  }
-}

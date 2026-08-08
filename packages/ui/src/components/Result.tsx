@@ -14,8 +14,8 @@
  *
  * Nothing here knows a rule constant. The coin column exists only while
  * `rules.json` prints a pity divisor - the rule is flagged OPEN in the design
- * and may be deleted - and the island's VP per level and the number of further
- * turns are read the same way.
+ * and may be deleted - and the island's VP by arrival order, the delivery count
+ * that ends the game and the number of further turns are read the same way.
  */
 
 import { useState } from 'react';
@@ -43,6 +43,7 @@ export function Result({
 }) {
   const report = scoreReport(data, view, score);
   const { verdict } = report;
+  const trigger = data.rules.endGame;
   const [open, setOpen] = useState(verdict.winner.seat);
   const zoom = useZoom();
   const detail = report.seats.find((s) => s.seat === open) ?? verdict.winner;
@@ -58,8 +59,8 @@ export function Result({
           </h2>
           <p className="result-trigger">
             {verdict.trigger
-              ? `${verdict.trigger.name} delivered to Level 3, which ended the game. Everyone else took ${verdict.furtherTurns === 1 ? 'one more turn' : `${verdict.furtherTurns} more turns`}.`
-              : 'The game ended without a Level 3 delivery.'}
+              ? `${verdict.trigger.name} completed a ${trigger.deliveriesToTrigger}th island delivery, which ended the game. Everyone else took ${verdict.furtherTurns === 1 ? 'one more turn' : `${verdict.furtherTurns} more turns`}.`
+              : 'The game ended before anyone completed their run of deliveries.'}
           </p>
         </header>
 
@@ -164,18 +165,25 @@ function Detail({
         vp={seat.breakdown.receipts}
         icon={token('receipt')}
         empty="No deliveries. Every point came from the farm."
-        isEmpty={seat.levels.length === 0}
+        isEmpty={seat.arrivals.length === 0}
       >
         <span className="result-count">
           {seat.receiptCount} receipt{seat.receiptCount === 1 ? '' : 's'}:
         </span>
-        {seat.levels.map((l) => (
-          <span key={l.level} className="chip">
-            Level {l.level}
-            <b>{l.vp}</b>
+        {/* Grouped by who got there first, because that is the only thing that
+            decides an island receipt's value now. "Level 2, 3 x 8" told a
+            player about the board; "got there first, 4 x 6" tells them about
+            their game. */}
+        {seat.arrivals.map((a) => (
+          <span key={a.order} className="chip">
+            {a.order === 0
+              ? 'Got there first'
+              : a.order === 1
+                ? 'Arrived second'
+                : `Arrived ${a.order + 1}th`}
+            <b>{a.vp}</b>
             <small>
-              {l.count} × {l.vpEach}
-              {l.bonus > 0 && ` +${l.bonus} early`}
+              {a.count} × {a.vpEach}
             </small>
           </span>
         ))}

@@ -129,6 +129,12 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     type: 'int',
     description: 'Turns each other player takes after the game-end trigger.',
   },
+  {
+    template: 'rules.endGame.deliveriesToTrigger',
+    type: 'int',
+    description:
+      'Island deliveries by one seat that fire the end of the game. The whole clock of the flat island, and flat across seat counts - at 6 that is half the 2-seat board, a third of the 3-seat and a quarter of the 4-seat, so this is the dial if 2p runs long.',
+  },
 
   // --- Hired Workers -------------------------------------------------------
   {
@@ -166,9 +172,10 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
 
   // --- The island ----------------------------------------------------------
   {
-    template: 'island.deliveriesPerTile',
-    type: 'int',
-    description: 'How many deliveries one tile accepts before it closes.',
+    template: 'island.vpByDeliveryOrder',
+    type: 'intArray',
+    description:
+      "The flat island in one array: entry i is the VP the (i+1)th delivery to a tile takes, and the length is how many deliveries a tile accepts. [6, 3] is the game's only remaining time gradient - first to a tile is worth double second - and it replaced both the 4/8/16 level VP and the fill-order bonus strip. Replaced whole, like a Working Week track: shortening it closes a delivery space, lengthening it opens one and forces the new price to be named.",
   },
   {
     template: 'island.cardsPerSubstitution',
@@ -177,37 +184,20 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'Cards of any crops that stand in for one card the island asked for. null restores exact matching, which is the control arm. This is the dial on the barn queue: ticket 38 proved the block is MATCHING under an all-or-nothing crate payment, not quantity, so this is the only lever that touches the actual cause. Lower is looser - at 2 the colour puzzle survives because matching is still cheaper, and the rate self-scales because only a big barn can afford to substitute.',
   },
   {
-    template: 'island.fillOrderBonusBySeats.{}',
-    type: 'intArray',
-    description:
-      'The time gradient at this seat count, replaced whole. Bonus VP to the 1st, 2nd, ... delivery to a level across the TABLE, on top of the printed receipt. [] switches it off, which is the control arm - and switching it off is a THREE-knob overlay, one per seat count, because a run with the rule on at some tables and off at others measures nothing. Its LENGTH decides how many deliveries are raced for and its values decide how hard.',
-  },
-  {
-    template: 'island.levelGate',
-    type: 'boolean',
-    description:
-      'The per-player climb: deliver to a level only while holding a receipt from the level below. False deletes the rule, restoring the pre-ticket-29 free-for-all. The knob exists so the sim can measure what the gate costs the clock.',
-  },
-  {
-    template: 'island.levelRules.{}.vp',
+    template: 'island.tileRule.coinsPerDelivery',
     type: 'int',
-    description: 'Receipt VP at this level. The 4/8/16 versus 5/10/20 question lives here.',
+    description: 'Coins the bank pays on every island delivery. Flat £1 since 2026-08-09.',
   },
   {
-    template: 'island.levelRules.{}.coinsPerDelivery',
+    template: 'island.tileRule.crates',
     type: 'int',
-    description: 'Coins the bank pays on every delivery at this level.',
+    description: 'Crates printed on every tile. Each crate carries one suit demand token.',
   },
   {
-    template: 'island.levelRules.{}.crates',
-    type: 'int',
-    description: 'Crates printed on a tile at this level. Each crate carries one suit demand.',
-  },
-  {
-    template: 'island.levelRules.{}.cardsPerCrate',
+    template: 'island.tileRule.cardsPerCrate',
     type: 'int',
     description:
-      'Barn cards of the matching suit needed to pay one crate - the sheet-printed rate, 2 / 3 / 3 by level. Total tile cost is crates times this, so 2 / 6 / 9. Settled by ticket 14.',
+      'Barn cards of the matching suit that pay one crate. Total tile cost is crates times this, so 4 at every tile. The pair, not the tile, is the unit a player reads.',
   },
   {
     template: 'island.slotsBySeats.{}.{}',

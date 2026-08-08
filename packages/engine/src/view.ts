@@ -156,7 +156,6 @@ export function viewFor(data: GameData, state: GameState, seat: Seat): PlayerVie
         ...t,
         crates: [...t.crates],
         deliveredBy: [...t.deliveredBy],
-        bonusVp: [...t.bonusVp],
       })),
     },
     aerodrome:

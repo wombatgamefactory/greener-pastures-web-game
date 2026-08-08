@@ -12,7 +12,6 @@
 
 import type { GameData, Suit } from '@gp/data';
 
-import { levelRuleOf } from './actions.js';
 import { seedRng, shuffle } from './rng.js';
 import type { AerodromeState, CardId, GameState, IslandTileState, TurnState } from './state.js';
 
@@ -92,9 +91,7 @@ export function buildIsland(
 ): IslandTileState[] {
   let next = 0;
   return islandTilesInPlay(data, seats).map((tileId) => {
-    const level = data.island.tiles.find((t) => t.id === tileId)?.level;
-    if (!level) throw new Error(`Unknown island tile ${tileId}`);
-    const crates = levelRuleOf(data, level).crates;
+    const crates = data.island.tileRule.crates;
     if (next + crates > tokens.length) {
       throw new Error(
         `Demand pool ran out: ${tokens.length} tokens for at least ${next + crates} crates`,
@@ -104,7 +101,6 @@ export function buildIsland(
       tile: tileId,
       crates: tokens.slice(next, (next += crates)),
       deliveredBy: [],
-      bonusVp: [],
     };
   });
 }

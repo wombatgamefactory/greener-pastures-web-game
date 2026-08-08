@@ -84,12 +84,26 @@ export function activeCards(data: GameData = BASE_GAME_DATA) {
 }
 
 /**
- * Total barn cards a tile at this level costs: one demand per crate, each paid in
+ * Total barn cards a tile costs: one demand per crate, each paid in
  * `cardsPerCrate` cards. Derived rather than stored, so a knob on either factor
- * moves the real cost instead of half of it.
+ * moves the real cost instead of half of it. No level argument since the flat
+ * island - every tile costs the same.
  */
-export function deliveryCost(data: GameData, level: 1 | 2 | 3): number {
-  const rule = data.island.levelRules[String(level)];
-  if (!rule) throw new Error(`no island level rules for level ${level}`);
-  return rule.crates * rule.cardsPerCrate;
+export function deliveryCost(data: GameData): number {
+  const { crates, cardsPerCrate } = data.island.tileRule;
+  return crates * cardsPerCrate;
+}
+
+/** How many deliveries one tile accepts. The VP schedule's length IS the rule. */
+export function deliveriesPerTile(data: GameData): number {
+  return data.island.vpByDeliveryOrder.length;
+}
+
+/**
+ * VP the next delivery to a tile with `already` receipts on it would take. 0
+ * past the end of the schedule, which is also the tile being full - callers
+ * check capacity, this never invents a value for an illegal delivery.
+ */
+export function deliveryVp(data: GameData, already: number): number {
+  return data.island.vpByDeliveryOrder[already] ?? 0;
 }

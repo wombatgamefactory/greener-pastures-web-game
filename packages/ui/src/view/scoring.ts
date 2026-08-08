@@ -15,13 +15,13 @@
  * against the true state - so the engine reports them per card and this module
  * only names them.
  *
- * Nothing here reads a rule constant: the coin pity divisor, the island's VP per
- * level and the number of further turns all come out of `GameData`, because all
- * three are live knobs (the pity rate is flagged OPEN in the design and may be
- * deleted outright).
+ * Nothing here reads a rule constant: the coin pity divisor, the island's VP by
+ * arrival order and the number of further turns all come out of `GameData`,
+ * because all three are live knobs (the pity rate is flagged OPEN in the design
+ * and may be deleted outright).
  */
 
-import type { GameData, IslandLevel } from '@gp/data';
+import type { GameData } from '@gp/data';
 import type { GameScore, PlayerView, ScoreBreakdown, Seat } from '@gp/engine';
 
 import { printedFace } from './printed';
@@ -41,13 +41,18 @@ export interface EndgameCard extends ScoredCard {
   readonly text: string;
 }
 
-export interface LevelTally {
-  readonly level: IslandLevel;
+/**
+ * Receipts grouped by the thing that now decides what one is worth: the
+ * position the seat arrived in at that tile. Under the flat island the levels
+ * are decoration, so grouping by level would tell a player nothing; grouping by
+ * arrival order is the whole story of their island game.
+ */
+export interface ArrivalTally {
+  /** 0-based position at the tile: 0 = got there first. */
+  readonly order: number;
   readonly count: number;
   readonly vpEach: number;
-  /** Fill-order bonus VP caught at this level. 0 for a seat that arrived late. */
-  readonly bonus: number;
-  /** `count * vpEach + bonus`. */
+  /** `count * vpEach`. */
   readonly vp: number;
 }
 
@@ -71,8 +76,8 @@ export interface SeatScore {
   readonly rank: number;
   readonly isYou: boolean;
   readonly triggeredEnd: boolean;
-  /** Island receipts grouped by level, high level first. */
-  readonly levels: readonly LevelTally[];
+  /** Island receipts grouped by arrival order, first-in first. */
+  readonly arrivals: readonly ArrivalTally[];
   readonly receiptCount: number;
   /** Built cards printing VP, plus the ones buried under a D11 cover-build. */
   readonly built: readonly ScoredCard[];
@@ -101,7 +106,7 @@ export interface Verdict {
   readonly separator: Separator;
   /** The two values that separated them, winner first. Empty when nothing did. */
   readonly margin: readonly [number, number] | null;
-  /** The seat that delivered to the top level, if the game ended that way. */
+  /** The seat whose sixth island delivery ended the game, if one did. */
   readonly trigger: SeatScore | null;
   readonly furtherTurns: number;
 }
@@ -115,34 +120,27 @@ export interface ScoreReport {
 }
 
 /**
- * Which levels a seat took receipts from, read off the island rather than off
- * the receipt values. The tiles are what the player can see, and a level's VP
- * comes from the level rules, so the two multiply back to the engine's total.
- *
- * The fill-order bonus is the one part that cannot be multiplied back, because
- * it depends on WHEN the delivery happened and nothing in the layout records
- * that. So the island stores it per delivery and this adds it in; that keeps the
- * `agrees` check honest, which is the whole reason this function re-derives
- * rather than reading the engine's number.
+ * Where a seat's receipts came from, read off the island rather than off the
+ * receipt values. Since the flat island a delivery's VP is decided entirely by
+ * its index in the tile's `deliveredBy` list, and that list is public, so the
+ * whole of island scoring multiplies back out of what is on the table. Nothing
+ * has to be stored per delivery for this to work - which is what keeps the
+ * `agrees` check honest, the whole reason this re-derives rather than reading
+ * the engine's number.
  */
-function levelsFor(data: GameData, view: PlayerView, seat: Seat): LevelTally[] {
-  const counts = new Map<IslandLevel, number>();
-  const bonuses = new Map<IslandLevel, number>();
+function arrivalsFor(data: GameData, view: PlayerView, seat: Seat): ArrivalTally[] {
+  const counts = new Map<number, number>();
   for (const tile of view.island.tiles) {
-    const level = data.island.tiles.find((t) => t.id === tile.tile)?.level;
-    if (level === undefined) throw new Error(`Unknown island tile ${tile.tile}`);
-    tile.deliveredBy.forEach((who, i) => {
+    tile.deliveredBy.forEach((who, order) => {
       if (who !== seat) return;
-      counts.set(level, (counts.get(level) ?? 0) + 1);
-      bonuses.set(level, (bonuses.get(level) ?? 0) + (tile.bonusVp[i] ?? 0));
+      counts.set(order, (counts.get(order) ?? 0) + 1);
     });
   }
   return [...counts.entries()]
-    .sort((a, b) => b[0] - a[0])
-    .map(([level, count]) => {
-      const vpEach = data.island.levelRules[String(level)]?.vp ?? 0;
-      const bonus = bonuses.get(level) ?? 0;
-      return { level, count, vpEach, bonus, vp: count * vpEach + bonus };
+    .sort((a, b) => a[0] - b[0])
+    .map(([order, count]) => {
+      const vpEach = data.island.vpByDeliveryOrder[order] ?? 0;
+      return { order, count, vpEach, vp: count * vpEach };
     });
 }
 
@@ -157,7 +155,7 @@ function seatScore(
   const breakdown = score.seats[seat];
   if (!breakdown) throw new Error(`No score for seat ${seat}`);
 
-  const levels = levelsFor(data, view, seat);
+  const arrivals = arrivalsFor(data, view, seat);
   const built = farm.tableau
     .map((b) => {
       const face = printedFace(data, b.card, b.upgraded);
@@ -188,7 +186,7 @@ function seatScore(
           replacedBy: replacedBy === null ? null : printedFace(data, replacedBy).name,
         };
 
-  const islandTotal = levels.reduce((sum, l) => sum + l.vp, 0);
+  const islandTotal = arrivals.reduce((sum, a) => sum + a.vp, 0);
   const printedTotal = [...built, ...covered].reduce((sum, c) => sum + c.vp, 0);
   const agrees =
     islandTotal === breakdown.receipts &&
@@ -203,7 +201,7 @@ function seatScore(
     rank,
     isYou: seat === view.seat,
     triggeredEnd: view.endTrigger?.seat === seat,
-    levels,
+    arrivals,
     receiptCount: farm.receipts.length,
     built,
     covered,

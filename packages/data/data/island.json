@@ -1,29 +1,29 @@
 {
   "meta": {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "kind": "authored",
     "generatedBy": null,
-    "sourceSheet": "worksheet 'map-cards' of the designer spreadsheet (VP column, money column, crate columns), plus the rulebook for the seat-scaling tables",
+    "sourceSheet": "worksheet 'map-cards' of the designer spreadsheet (crate columns), plus the rulebook for the seat-scaling tables. The VP and money columns of that sheet are SUPERSEDED by the flat island - see the note below.",
     "notes": [
-      "The 13 printed tile faces are A1..A5, B1..B4, C1..C3 and D1 (D1 is printed as map-c-4). Only some are in play in any one game; the count scales with seat count.",
-      "Nothing is stored per tile that its LEVEL already decides. VP, coins, crate count and cards-per-crate all live in levelRules, so a tuning knob on any of them moves every tile at that level at once. A tile carries only its id, its level, and a layout note.",
-      "VP is 4 / 8 / 16 by level and coins are 2 / 3 / 4 by level, both read from the sheet. The design docs' 5 / 10 / 20 is overruled by the owner in favour of the sheet. Both ship as tuning knobs.",
-      "Coins are not seeded onto a tile. The bank pays the tile's coins on EVERY delivery, first and second alike.",
-      "A tile is a delivery slot taking up to TWO deliveries. Both deliverers score the tile's printed VP by taking a receipt token; a third delivery to a tile is illegal. This is how the physical game has always been played; the rulebook printed one delivery per slot and is the thing that is wrong. See Rulebook/outstanding-rule-changes.md.",
-      "fillOrderBonusBySeats is the TIME gradient, added 2026-08-08 in answer to the Feld lens's W1 ('nothing is worth more early than late'). It is the ONLY decaying reward in the game and it opposes the ascending 4/8/16 size gradient, so every barn decision asks 'now, or bigger?'. Read it as a queue per LEVEL, across the whole table: the first delivery to a level takes the first entry as bonus VP on top of the printed receipt, the second takes the second, and every delivery after the list runs out takes nothing. Two properties are load-bearing and must not be 'tidied'. (1) It is counted ACROSS THE TABLE, not per player. A per-player decay is a variety gradient - it says stop repeating a level and climb - which points the same way as the size gradient and would make the accumulate-then-convert problem worse, not better. The bonus has to be takeable by a rival first or there is no reason to hurry. (2) It is a BONUS ON TOP of an unchanged printed VP, never a reduction of it. Halving the base was the owner's first instinct and was dropped: it guts island VP to roughly half the board's total, makes the tail of every level a dead move, and punishes the trailing player who is forced through Level 1 by the level gate anyway.",
-      "The queue LENGTH scales with the table (owner, 2026-08-08): seats + 1, which is the same count as slotsBySeats level 1, so at Level 1 about half the deliveries are raced for and half are not. It is a queue of deliveries, not of slots, and a slot takes two - so a player can take two bonuses off one tile if nobody beats them to it. Two consequences of the length being flat across levels: at 2 seats Level 3 is one tile, so only two of its three bonuses can ever be taken and the +1 is decorative; and the 'about half' property holds exactly at Level 1 only, loosening as the levels narrow. Both are accepted. WARNING, and it is the reason this note is long: four paired n=500 sweeps on 2026-08-08 found the gradient changes NO behaviour at all against the bots - barn at game end 4.5, game length 22 rounds, unfinished games 2.0% and all fourteen assertions identical with the rule on, off, at the shipped per-seat ladder, and at a ladder paying a bonus on EVERY delivery to a level. Only the winning score moves. So ladder length is not the dial. A fifth run then killed the follow-up explanation too: the first guess was affordability, that the bots simply could not deliver, so the arm was re-run after the wild substitution had made deliveries affordable (barn 4.5 to 1.5, supply locks and unfinished games to zero, assertion 6 from 2.00 to 0.75) and the gradient was STILL inert - every assertion identical, only the winning score moving. THE REASON IS STRUCTURAL. A decaying bonus rewards delivering sooner, and ticket 38 measured the bots taking a delivery at a 97.9% rate whenever one is available: they already never wait, so there is no waiting for the rule to discourage. An agent that cannot dawdle cannot be paid to hurry. The rule is therefore UNMEASURABLE by this simulator in principle, not merely unmeasured. Do not sweep it again and never cite the simulator as evidence either way. Only a table of humans, who hoard by choice, can answer it.",
-      "cardsPerSubstitution is the WILD SUBSTITUTION (owner, 2026-08-08): when you pay the island, any single card it asks for may instead be paid with this many cards of any crops. null switches the rule off and restores exact matching, which is the control arm. It is the answer to ticket 38's finding that the barn queue is a MATCHING problem and not a quantity one - 88.8% of barn-holding decisions cannot afford any open tile and 84% of those are 1-2 cards short. Because a crate is 2 cards of ONE named suit, all or nothing, a single odd card of a suit is worth exactly zero and a barn fills with cards that can never combine: a parity trap. A substitution rate of 2 breaks the trap at a real price. The property that makes 2 the right number rather than a tuned one: the valve OPENS AS THE PRESSURE RISES. A 4-card barn can afford one substitution, a 12-card barn can afford six, so the rule cannot cheapen delivery in the early game when barns are small and always rescues a jammed late game - which is exactly the window assertion 6 measures. SCOPE IS LOAD-BEARING: it applies to island delivery ONLY. It must never reach the balloon move cost, a build cost, or anything else that spends barn cards, or the barn stops being a dead end and starts accelerating engines. MEASURED, paired n=500 against overlays/no-wild-substitution.overlay.json on the day it shipped: median barn at game end 4.5 -> 1.5, assertion 6 from 2.00 to 0.75 (still FAIL, but nearer zero than any previous lever), assertion 1 coin flood 1.50 FAIL -> 0.33 PASS, unfinished games 2.0% -> 0.0%, supply lock 0.04 -> 0.00, last-as-percent-of-winner 42.2% -> 45.3%, game length unchanged at 22 rounds. The first change in the project to move the number it was aimed at. Two things still open: assertion 6 does not actually pass, and nobody has probed WHY the coin flood flattens - treat that as unexplained rather than repeating a guess about it.",
-      "Delivery cost is PER CRATE, not per tile. A tile prints one crate icon, a quantity label beside it, and one suit token slot per crate the tile demands: 1 slot at level 1, 2 at level 2, 3 at level 3. The quantity label is the RATE, not the total - it reads 2= at EVERY level, meaning cards of ONE suit per crate. A suit demand token is placed face up on every crate at setup, and paying a crate costs cardsPerCrate barn cards of that crate's suit. A cornucopia token is wild and accepts any suit, still at the level's full rate. Total cost is crates * cardsPerCrate, so 2 / 4 / 6 by level. HISTORY: ticket 14 settled 2 / 6 / 9 on 2026-08-02 by reading the printed quantity label as 2= / 3= / 3=, and ticket 38 overturned it the same day - a set is TWO of a kind at every level. The owner took 2 / 4 / 6 knowing it does not fix the barn queue it was proposed for (assertion 6 moved 4.00 to 3.50 and still FAILs) and taking it for what it does do: 8 rounds shorter, unfinished games 8.9% to 3.6%, supply lock 13% to 10%. PRINT CONSEQUENCE: the level 2 and level 3 tile faces still print 3=, so the map-cards worksheet's crate-qty label needs 3 -> 2 at both levels. The web build is unaffected - the UI renders cardsPerCrate over text-free tile art. Earlier readings now all superseded: the rulebook's flat 2, the reference implementation's per-tile 2/4/6, and ticket 07's 2/3/3 total.",
+      "THE FLAT ISLAND (owner, 2026-08-09). The island lost its hierarchy in one decision. Every tile in play is now mechanically identical: 2 crates of 2 cards, £1 on delivery, 6 VP to the first deliverer and 3 VP to the second. There is no level gate, no ascending 4/8/16 size gradient, no per-level fill-order bonus, and no level-3 end trigger. The game ends when any one seat completes its 6th island delivery. Everything that used to be decided by a tile's LEVEL is now decided by its DELIVERY ORDER, which is the single gradient left in the island and the only thing worth racing for.",
+      "LEVEL IS NOW ART. `tiles[].level` and `slotsBySeats` survive because the physical island is still built as a pyramid out of the printed map cards, and the bookend rule below still decides which faces are on the table. Nothing mechanical reads a level. If you find yourself adding a rule keyed to level, you are re-introducing the hierarchy that was just deleted - price it as a new rule, not as a restoration.",
+      "vpByDeliveryOrder is the whole VP schedule and the whole capacity rule at once: entry i is the VP taken by the (i+1)th delivery to a tile, and the array's LENGTH is how many deliveries a tile accepts. There is deliberately no separate deliveriesPerTile knob. Lengthening the array is the only way to open a third delivery space, which forces the question 'and what is it worth?' to be answered in the same edit. 6 then 3 is the time gradient in its entirety: being first to a tile is worth double being second, it is printed on the tile rather than on a chit strip beside the board, and it needs no per-player-count row in the teach. It replaces fillOrderBonusBySeats, which is deleted - see Rulebook/outstanding-rule-changes.md change 4 for why two overlapping decaying rewards was one too many.",
+      "tileRule replaces levelRules. crates x cardsPerCrate = 4 barn cards, at every tile, at every seat count. The 2/4/6 chain by level is gone, as is the 2/3/4 coin chain: coinsPerDelivery is a flat £1. HISTORY, so nobody re-derives the old numbers off the sheet: ticket 14 read the printed quantity label as 2=/3=/3= and settled 2/6/9 on 2026-08-02; ticket 38 overturned it the same day to 2/4/6; the flat island overturned both on 2026-08-09. PRINT CONSEQUENCE: every tile face must now show TWO crates and the label 2=, so the map-cards worksheet needs its crate count and quantity label reworked at levels 1 and 3 (level 2 already prints two crates, and its 3= label was already wrong).",
+      "cardsPerSubstitution is the WILD SUBSTITUTION (owner, 2026-08-08, kept through the flat island): when you pay the island, any single card it asks for may instead be paid with this many cards of any crops. null switches the rule off and restores exact matching, which is the control arm. It is the answer to ticket 38's finding that the barn queue is a MATCHING problem and not a quantity one - 88.8% of barn-holding decisions cannot afford any open tile and 84% of those are 1-2 cards short. Because a crate is 2 cards of ONE named suit, all or nothing, a single odd card of a suit is worth exactly zero and a barn fills with cards that can never combine: a parity trap. A substitution rate of 2 breaks the trap at a real price. The property that makes 2 the right number rather than a tuned one: the valve OPENS AS THE PRESSURE RISES. A 4-card barn can afford one substitution, a 12-card barn can afford six, so the rule cannot cheapen delivery in the early game when barns are small and always rescues a jammed late game. SCOPE IS LOAD-BEARING: island delivery ONLY. It must never reach the balloon move cost, a build cost, or anything else that spends barn cards, or the barn stops being a dead end and starts accelerating engines. NOTE the flat island changed its ceiling: the dearest all-wild payment used to be a 12-card Level 3 tile and is now 8 cards at any tile, so the rule is flatter and more often affordable than the 2026-08-08 measurement saw it.",
+      "The END TRIGGER lives in rules.json (endGame.trigger = deliveryCount, deliveriesToTrigger = 6) rather than here, because it is no longer a property of any tile. It is FLAT at every seat count, which is a deliberate asymmetry the owner took with the trade named: 6 deliveries is half of the 2-seat island's 12 delivery spaces, a third of the 3-seat island's 18 and a quarter of the 4-seat island's 24, so relative to the board the 2-player game runs longest. Watch it at 2p before dialling anything.",
+      "Coins are not seeded onto a tile. The bank pays tileRule.coinsPerDelivery on EVERY delivery, first and second alike.",
+      "Delivery cost is PER CRATE. A tile prints one crate icon per demand, a quantity label beside it, and one suit token slot per crate. The quantity label is the RATE, not the total - it reads 2=, meaning 2 cards of ONE suit per crate. A suit demand token is placed face up on every crate at setup, and paying a crate costs cardsPerCrate barn cards of that crate's suit. A cornucopia token is wild and accepts any suit at the same rate. Two crates on one tile may be dealt the same suit, in which case the tile wants 4 cards of one crop; that is the pool doing its job, not a bug.",
       "seats counts players at the table. There is no one-seat board: a solo game is a two-seat game in which a bot occupies the second seat.",
       "Exactly (seats + 1) suit decks are in play: one owned by each seat, plus one passive suit nobody farms but everybody may draw from and the island demands. The remaining suits are out of the game entirely. This is why the demand-token pool spans (seats + 1) suits - it spans exactly the decks on the table.",
-      "slotsBySeats is the authoritative table. It follows seats+1 / seats / seats-1 by level, but the table is what the engine reads.",
-      "The pyramid layout is cosmetic in the sense that no tile is adjacent to any other: adjacency is null by decision rather than by omission, and nothing about WHICH tile you deliver to is constrained. What the pyramid does carry is the LEVEL GATE - see levelGate below.",
-      "levelGate is the per-player climb ruled in ticket 07, replacing the socket chain the rulebook printed ('too hard to explain, not interesting to play'). A seat may deliver to a level only if it already holds a receipt from the level below: the first delivery must be Level 1, Level 2 opens once that seat holds any Level 1 receipt, Level 3 once it holds any Level 2. It is a per-seat read of which levels that seat has already delivered to, not a stored flag, and it says nothing about whose token is where. Delivering to a lower level stays legal once higher ones are open. Balloon moves are Deliver actions but are not island deliveries, so they are neither gated nor level-opening. Ships as a boolean knob so the simulator can switch it off and measure what it is worth.",
+      "slotsBySeats is the authoritative layout table and is unchanged by the flat island - the island is the same SIZE, it just has no hierarchy. It follows seats+1 / seats / seats-1 by level, giving 6 / 9 / 12 tiles and therefore 12 / 18 / 24 delivery spaces.",
+      "demandTokensBySeats grew with the crate count: every tile now carries 2 crates, so the pool is tiles x 2 = 12 / 18 / 24, up from 10 / 16 / 22. The owner took a flat 4 tokens per suit at every seat count (one number to remember at the table) with the remainder in cornucopias, which puts the wild share at 0% / 11% / 17%. The 4-seat 17% is the highest the game has run and is the number to watch if the colour puzzle goes soft.",
+      "The pyramid layout is cosmetic in the strong sense now: no tile is adjacent to any other, adjacency is null by decision rather than by omission, and since the level gate was deleted nothing constrains WHICH tile you deliver to. Any tile with a free receipt space is legal on any turn.",
       "Bookend rule: the art paints each row's first printed face (A1 / B1 / C1) as the island's left edge and its last (A5 / B4 / C3) as the right edge, so a row with n tiles in play uses the first (n - 1) printed faces plus the row-end face. The 3-tile level-1 row is therefore A1, A2, A5.",
       "At 2 seats the lone level-3 tile is D1 rather than C1. D1 prints no mechanical difference from C1; it is a distinct illustration for the two-player board."
     ],
     "unresolved": [
-      "D1 and C1 print identical VP, cost and delivery capacity, so the two-seat substitution is currently identity-only. Confirm, or print a mechanical difference."
+      "D1 and C1 print identical cost and delivery capacity, and now that every tile is identical the two-seat substitution is purely illustrative. Confirm that is what is wanted, or drop D1 and let 2p use C3.",
+      "The flat 6-delivery end trigger is not scaled by seat count. If the 2-player game runs long at the table, the dial is either the trigger (a per-seat row) or slotsBySeats, not the VP."
     ]
   },
   "seats": {
@@ -35,36 +35,12 @@
     "3": 4,
     "4": 5
   },
-  "deliveriesPerTile": 2,
+  "vpByDeliveryOrder": [6, 3],
   "cardsPerSubstitution": 2,
-  "fillOrderBonusBySeats": {
-    "2": [3, 2, 1],
-    "3": [3, 2, 2, 1],
-    "4": [3, 3, 2, 2, 1]
-  },
-  "levelGate": true,
-  "levelRules": {
-    "1": {
-      "vp": 4,
-      "coinsPerDelivery": 2,
-      "crates": 1,
-      "cardsPerCrate": 2,
-      "triggersGameEnd": false
-    },
-    "2": {
-      "vp": 8,
-      "coinsPerDelivery": 3,
-      "crates": 2,
-      "cardsPerCrate": 2,
-      "triggersGameEnd": false
-    },
-    "3": {
-      "vp": 16,
-      "coinsPerDelivery": 4,
-      "crates": 3,
-      "cardsPerCrate": 2,
-      "triggersGameEnd": true
-    }
+  "tileRule": {
+    "crates": 2,
+    "cardsPerCrate": 2,
+    "coinsPerDelivery": 1
   },
   "slotsBySeats": {
     "2": {
@@ -90,22 +66,22 @@
   },
   "demandTokensBySeats": {
     "2": {
-      "crates": 10,
+      "crates": 12,
       "suits": 3,
-      "perSuit": 3,
-      "wild": 1
-    },
-    "3": {
-      "crates": 16,
-      "suits": 4,
       "perSuit": 4,
       "wild": 0
     },
-    "4": {
-      "crates": 22,
-      "suits": 5,
+    "3": {
+      "crates": 18,
+      "suits": 4,
       "perSuit": 4,
       "wild": 2
+    },
+    "4": {
+      "crates": 24,
+      "suits": 5,
+      "perSuit": 4,
+      "wild": 4
     }
   },
   "adjacency": null,

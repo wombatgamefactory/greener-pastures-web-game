@@ -26,6 +26,7 @@
  */
 
 import type { GameData, Suit, WorkerAction } from '@gp/data';
+import { deliveriesPerTile } from '@gp/data';
 import type { CardId, GameEvent, GameState, Move, ScoreBreakdown, Seat, Task } from '@gp/engine';
 import {
   MOVE_TYPES,
@@ -35,7 +36,6 @@ import {
   handlerFor,
   player,
   score,
-  tileLevel,
   visitOptions,
 } from '@gp/engine';
 import type { PolicyId } from '@gp/bots';
@@ -184,12 +184,14 @@ export interface GameMetrics {
   plainVisitRounds: number[];
   /**
    * The doc's exploit probe: deliveries whose whole card cost was covered by
-   * market buys made since the seat's last harvest (so the slot could have been
-   * bought entirely at market), indexed by island level 1-3.
+   * market buys made since the seat's last harvest, so the slot could have been
+   * bought outright at market with no farming between. It used to be split by
+   * island level, because a Level 3 slot was the big prize; the flat island
+   * (2026-08-09) makes every tile the same 4 cards, so it is one count.
    */
-  marketFundedDeliveriesByLevel: number[];
-  /** The doc's sharpest case: such a delivery at Level 3 by a Vegetable seat. */
-  marketFundedL3Veg: number;
+  marketFundedDeliveries: number;
+  /** Of those, the ones by a Vegetable seat - the doc's sharpest case. */
+  marketFundedVeg: number;
   visitsBySeat: number[];
   visitsToLeaderBySeat: number[];
   deliveriesBySeat: number[];
@@ -309,8 +311,8 @@ export class Fold {
       workOwnBySeat: zeros(),
       marketRounds: [],
       plainVisitRounds: [],
-      marketFundedDeliveriesByLevel: [0, 0, 0],
-      marketFundedL3Veg: 0,
+      marketFundedDeliveries: 0,
+      marketFundedVeg: 0,
       visitsBySeat: zeros(),
       visitsToLeaderBySeat: zeros(),
       deliveriesBySeat: zeros(),
@@ -547,12 +549,8 @@ export class Fold {
         // barn identity is inert and the engine spends arbitrary ids.
         const cost = Object.values(e.spend).reduce((a, n) => a + (n ?? 0), 0);
         if (cost > 0 && (this.marketSinceHarvest[e.seat] ?? 0) >= cost) {
-          const level = tileLevel(this.data, e.tile);
-          m.marketFundedDeliveriesByLevel[level - 1] =
-            (m.marketFundedDeliveriesByLevel[level - 1] ?? 0) + 1;
-          if (level === 3 && player(d.post, e.seat).suit === 'vegetable') {
-            m.marketFundedL3Veg += 1;
-          }
+          m.marketFundedDeliveries += 1;
+          if (player(d.post, e.seat).suit === 'vegetable') m.marketFundedVeg += 1;
         }
         return;
       }
@@ -706,7 +704,7 @@ export class Fold {
     for (const life of this.open.values()) m.workerLifetimes.push(life);
     this.open.clear();
 
-    const capacity = state.island.tiles.length * this.data.island.deliveriesPerTile;
+    const capacity = state.island.tiles.length * deliveriesPerTile(this.data);
     const made = state.island.tiles.reduce((n, t) => n + t.deliveredBy.length, 0);
     m.islandFill = capacity === 0 ? NaN : made / capacity;
 

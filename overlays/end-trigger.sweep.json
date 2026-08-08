@@ -1,0 +1,6 @@
+{
+  "name": "end-trigger",
+  "description": "The flat island's clock. The game ends when one seat completes its Nth island delivery, and N is FLAT across seat counts, so the same N is half the 2-seat island's 12 delivery spaces, a third of the 3-seat island's 18 and a quarter of the 4-seat island's 24. Shipped at 6. Sweep it and read game length, unfinished games, the island fill fraction at the end and the winning score off each cell - and read them PER SEAT COUNT, because a value that suits 4p may leave 2p grinding. If the 2-seat game is the one that misbehaves, the alternatives to a bigger N are a per-seat row here or a smaller 2p island in slotsBySeats; do not reach for the VP.",
+  "schemaVersion": 1,
+  "sweep": [{ "knob": "rules.endGame.deliveriesToTrigger", "values": [4, 5, 6, 7, 8] }]
+}

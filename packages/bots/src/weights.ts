@@ -66,7 +66,6 @@ export const BALANCED: WeightTable = {
   barnSpend: 0.5,
 
   deliver: 3,
-  deliverClimb: 5,
   /**
    * **A balloon is worth its reward and nothing else** - the same sentence
    * ticket 40 applied to the visit, for the same measured reason (ticket 49).
@@ -250,7 +249,12 @@ export const PROFILES: Readonly<Record<string, WeightTable>> = {
   // the cheaper cost it reads as. Carried across as the same distance from the
   // reference it always had (0.3 below), which now says what it meant - a racer
   // discounts freight, because freight in the barn does not win the race.
-  racer: { deliver: 6, deliverClimb: 10, barnSpend: 0.2, harvest: 2.5, drawAction: 0.8 },
+  // The flat island deleted `deliverClimb`, which was this profile's defining
+  // taste. Nothing replaces it, because nothing needs to: the `deliver` feature
+  // is now the receipt itself, 6 at a fresh tile against 3 at a half-taken one,
+  // so a raised `deliver` weight IS a taste for getting there first. Untuned -
+  // carried across at the number it already had.
+  racer: { deliver: 6, barnSpend: 0.2, harvest: 2.5, drawAction: 0.8 },
 };
 
 export function weightsFor(profile: string): WeightTable {

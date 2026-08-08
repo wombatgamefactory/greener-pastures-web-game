@@ -1,0 +1,8 @@
+{
+  "name": "flat-receipts",
+  "description": "The control arm for the flat island's ONE remaining gradient. Shipped, a tile pays 6 to whoever gets there first and 3 to whoever is second, which is the whole reason to hurry now that the level gate, the ascending 4/8/16 and the fill-order bonus strip have all gone. This arm pays 5 and 4 instead: the same 9 VP per tile, the same island total, the same everything else - only the slope flattened. Read the shipped rule as the delta against it. What it is looking for is whether the race is real: if barn-at-game-end, game length and the delivery rate are identical between the two arms, then 6/3 is a number on a tile that nobody plays around, and the honest report is that the island has no time gradient the bots can act on. Note the standing warning from 2026-08-08: the bots take a delivery at a 97.9% rate whenever one is available, so they cannot dawdle and therefore cannot be paid to hurry. A null result here is EXPECTED and is not evidence against the rule - the instrument that can answer it is a table of humans. What a null result does rule out is any claim that 6/3 changes bot behaviour.",
+  "schemaVersion": 1,
+  "set": {
+    "island.vpByDeliveryOrder": [5, 4]
+  }
+}

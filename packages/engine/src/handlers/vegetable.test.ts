@@ -5,10 +5,10 @@
  * afterDeliver hook (Farmstead coin, Barn freight refund, V16's island-only
  * gate) and the afterBalloonMove raid hook (V17).
  *
- * Testkit island at 2 seats (['vegetable', 'wheat']): pool order deals
- * A1/A2/A5 = 1 vegetable crate each (2 veg cards), B1 = 2 wheat crates,
- * B4 = wheat + orchard, D1 = orchard, orchard, wild. Balloons all start at
- * the centre (ruling J).
+ * Testkit island at 2 seats (['vegetable', 'wheat']): every tile carries TWO
+ * crates since the flat island, and the unshuffled pool order deals
+ * A1/A2 = 2 vegetable crates each (4 veg cards), A5/B1 = 2 wheat crates,
+ * B4/D1 = 2 apiary crates. Balloons all start at the centre (ruling J).
  */
 
 import { BASE_GAME_DATA as data } from '@gp/data';
@@ -146,16 +146,16 @@ describe('the balloon move as the Deliver action (DL-12)', () => {
 describe('V2 Farmstead - the deliver coin', () => {
   it('mints £1 on an island delivery, £2 upgraded, on top of the tile coins', () => {
     const s = base();
-    barnTo(s, VEG, 'V4', 'V5');
-    const out = apply(data, s, { type: 'deliver', seat: VEG, tile: 'A1', spend: { vegetable: 2 } });
-    expect(player(out.state, VEG).coins).toBe(3); // £2 tile + £1 Farmstead
-    expect(player(out.state, VEG).receipts).toEqual([7]); // 4 + the level's first fill-order bonus
+    barnTo(s, VEG, 'V4', 'V5', 'V9', 'V10');
+    const out = apply(data, s, { type: 'deliver', seat: VEG, tile: 'A1', spend: { vegetable: 4 } });
+    expect(player(out.state, VEG).coins).toBe(2); // £1 tile + £1 Farmstead
+    expect(player(out.state, VEG).receipts).toEqual([6]); // first to A1
 
     const t = base();
     buildingOf(t, VEG, 'V2').upgraded = true;
-    barnTo(t, VEG, 'V4', 'V5');
-    const up = apply(data, t, { type: 'deliver', seat: VEG, tile: 'A1', spend: { vegetable: 2 } });
-    expect(player(up.state, VEG).coins).toBe(4);
+    barnTo(t, VEG, 'V4', 'V5', 'V9', 'V10');
+    const up = apply(data, t, { type: 'deliver', seat: VEG, tile: 'A1', spend: { vegetable: 4 } });
+    expect(player(up.state, VEG).coins).toBe(3);
   });
 
   it('never fires for a non-vegetable deliverer', () => {
@@ -176,16 +176,16 @@ describe('V1 Barn - the upgraded freight refund', () => {
   it('returns one just-spent Vegetable from the discard to the barn', () => {
     const s = base();
     buildingOf(s, VEG, 'V1').upgraded = true;
-    barnTo(s, VEG, 'V4', 'V5');
-    const out = apply(data, s, { type: 'deliver', seat: VEG, tile: 'A1', spend: { vegetable: 2 } });
+    barnTo(s, VEG, 'V4', 'V5', 'V9', 'V10');
+    const out = apply(data, s, { type: 'deliver', seat: VEG, tile: 'A1', spend: { vegetable: 4 } });
     expect(player(out.state, VEG).barn).toHaveLength(1);
-    expect(out.state.discards.vegetable).toHaveLength(1);
+    expect(out.state.discards.vegetable).toHaveLength(3);
   });
 
   it('does nothing on the base face or when no Vegetable was spent', () => {
     const s = base();
-    barnTo(s, VEG, 'V4', 'V5');
-    const out = apply(data, s, { type: 'deliver', seat: VEG, tile: 'A1', spend: { vegetable: 2 } });
+    barnTo(s, VEG, 'V4', 'V5', 'V9', 'V10');
+    const out = apply(data, s, { type: 'deliver', seat: VEG, tile: 'A1', spend: { vegetable: 4 } });
     expect(player(out.state, VEG).barn).toHaveLength(0);
   });
 });
@@ -219,21 +219,21 @@ describe('the deliver cards', () => {
   it('V6 delivers again when the delivery included a Vegetable, once, not chaining', () => {
     const s = base();
     buildFor(data, s, VEG, 'V6');
-    barnTo(s, VEG, 'V4', 'V5', 'V9', 'V10');
+    barnTo(s, VEG, 'V4', 'V5', 'V9', 'V10', 'V11', 'V12', 'V13', 'V14');
     dealTo(data, s, VEG, 'V7');
     const out = growBuilding(data, s, VEG, 'V6', 'V7');
-    // First deliver: A1 for 2 vegetables -> includes a Vegetable -> one more deliver.
+    // First deliver: A1 for 4 vegetables -> includes a Vegetable -> one more deliver.
     let state = answerTask(data, out.state, {
       kind: 'deliver',
       tile: 'A1',
-      spend: { vegetable: 2 },
+      spend: { vegetable: 4 },
     }).state;
     expect(state.tasks).toHaveLength(1);
     // Second deliver also spends vegetables, but "the delivery" was the first: no third.
     state = answerTask(data, state, {
       kind: 'deliver',
       tile: 'A2',
-      spend: { vegetable: 2 },
+      spend: { vegetable: 4 },
     }).state;
     expect(state.tasks).toHaveLength(0);
   });
@@ -255,18 +255,18 @@ describe('the deliver cards', () => {
   it('V7 delivers up to twice and is skippable', () => {
     const s = base();
     buildFor(data, s, VEG, 'V7');
-    barnTo(s, VEG, 'V4', 'V5', 'V9', 'V10');
+    barnTo(s, VEG, 'V4', 'V5', 'V9', 'V10', 'V11', 'V12', 'V13', 'V14');
     dealTo(data, s, VEG, 'V6');
     const out = growBuilding(data, s, VEG, 'V7', 'V6');
     let state = answerTask(data, out.state, {
       kind: 'deliver',
       tile: 'A1',
-      spend: { vegetable: 2 },
+      spend: { vegetable: 4 },
     }).state;
     expect(pendingAnswers(data, state).some((a) => a.kind === 'skip')).toBe(true);
     state = answerTask(data, state, { kind: 'skip' }).state;
     expect(state.tasks).toHaveLength(0);
-    expect(player(state, VEG).receipts).toEqual([7]); // 4 + the level's first fill-order bonus
+    expect(player(state, VEG).receipts).toEqual([6]); // first to A1
   });
 
   it('V8 prices the whole effect at £1 and runs both steps', () => {
@@ -279,14 +279,14 @@ describe('the deliver cards', () => {
     const s = base();
     buildFor(data, s, VEG, 'V8');
     player(s, VEG).coins = 1;
-    barnTo(s, VEG, 'V4', 'V5', 'W4', 'O4');
+    barnTo(s, VEG, 'V4', 'V5', 'V9', 'V10', 'W4', 'O4');
     dealTo(data, s, VEG, 'V6');
     const out = growBuilding(data, s, VEG, 'V8', 'V6');
     expect(player(out.state, VEG).coins).toBe(0);
     let state = answerTask(data, out.state, {
       kind: 'deliver',
       tile: 'A1',
-      spend: { vegetable: 2 },
+      spend: { vegetable: 4 },
     }).state;
     // "Then move a Balloon": the second task is balloon-only.
     const answers = pendingAnswers(data, state);
@@ -323,69 +323,67 @@ describe('the deliver cards', () => {
   it('V11 draws one per card delivered - island and freight alike', () => {
     const s = base();
     buildFor(data, s, VEG, 'V11');
-    barnTo(s, VEG, 'V4', 'V5');
+    barnTo(s, VEG, 'V4', 'V5', 'V9', 'V10');
     dealTo(data, s, VEG, 'V6');
     const out = growBuilding(data, s, VEG, 'V11', 'V6');
     const state = answerTask(data, out.state, {
       kind: 'deliver',
       tile: 'A1',
-      spend: { vegetable: 2 },
+      spend: { vegetable: 4 },
     }).state;
-    expect(state.tasks[0]).toMatchObject({ t: 'draw', see: 2, keep: 2 });
+    expect(state.tasks[0]).toMatchObject({ t: 'draw', see: 4, keep: 4 });
   });
 
   it("V12 pays one Vegetable crate card with another suit ('treat as a Vegetable')", () => {
     const s = base();
     buildFor(data, s, VEG, 'V12');
-    barnTo(s, VEG, 'V4', 'W4'); // one veg short of A1's 2-veg demand
+    barnTo(s, VEG, 'V4', 'V5', 'V9', 'W4'); // one veg short of A1's 4-veg demand
     dealTo(data, s, VEG, 'V6');
     const out = growBuilding(data, s, VEG, 'V12', 'V6');
     const answers = pendingAnswers(data, out.state);
     const sub = answers.find((a) => a.kind === 'card');
     expect(sub).toMatchObject({
       kind: 'card',
-      payload: { tile: 'A1', spend: { vegetable: 1, wheat: 1 }, sub: 'wheat' },
+      payload: { tile: 'A1', spend: { vegetable: 3, wheat: 1 }, sub: 'wheat' },
     });
     const state = answerTask(data, out.state, sub as TaskAnswer).state;
-    expect(player(state, VEG).receipts).toEqual([7]); // 4 + the level's first fill-order bonus
+    expect(player(state, VEG).receipts).toEqual([6]); // first to A1
     expect(player(state, VEG).barn).toHaveLength(0);
   });
 
   it('V13 re-offers deliver steps inside the 4-card budget, then stops', () => {
     const s = base();
     buildFor(data, s, VEG, 'V13');
-    barnTo(s, VEG, 'V4', 'V5', 'V9', 'V10');
+    barnTo(s, VEG, 'V4', 'V5', 'V9', 'V10', 'V11', 'V12');
     dealTo(data, s, VEG, 'V6');
     const out = growBuilding(data, s, VEG, 'V13', 'V6');
-    let state = answerTask(data, out.state, {
+    const state = answerTask(data, out.state, {
       kind: 'deliver',
       tile: 'A1',
-      spend: { vegetable: 2 },
+      spend: { vegetable: 4 },
     }).state;
-    expect(state.tasks).toHaveLength(1); // 2 cards of budget left
-    state = answerTask(data, state, {
-      kind: 'deliver',
-      tile: 'A2',
-      spend: { vegetable: 2 },
-    }).state;
-    expect(state.tasks).toHaveLength(0); // budget spent
-    expect(player(state, VEG).receipts).toEqual([7, 6]); // 4 + the level's +3 / +2 fill-order bonus
+    // A tile costs 4 cards flat now, so one delivery eats the whole 4-card
+    // budget and the re-offer stops after a single step.
+    expect(state.tasks).toHaveLength(0);
+    expect(player(state, VEG).receipts).toEqual([6]); // first to A1
   });
 
   it('V14 delivers once per built Depot', () => {
     const s = base();
     buildFor(data, s, VEG, 'V14', 'V4', 'V5');
-    barnTo(s, VEG, 'V6', 'V9', 'V10', 'V11');
+    barnTo(s, VEG, 'V6', 'V9', 'V10', 'V11', 'V12', 'V13', 'V15', 'V16');
     dealTo(data, s, VEG, 'V7');
     const out = growBuilding(data, s, VEG, 'V14', 'V7');
     expect(out.state.tasks).toHaveLength(2);
     let state = answerTask(data, out.state, {
       kind: 'deliver',
       tile: 'A1',
-      spend: { vegetable: 2 },
+      spend: { vegetable: 4 },
     }).state;
-    state = answerTask(data, state, { kind: 'deliver', tile: 'A2', spend: { vegetable: 2 } }).state;
-    expect(player(state, VEG).receipts).toEqual([7, 6]); // 4 + the level's +3 / +2 fill-order bonus
+    state = answerTask(data, state, { kind: 'deliver', tile: 'A2', spend: { vegetable: 4 } }).state;
+    // First to BOTH tiles, so both pay the head of the schedule. Under the old
+    // per-level queue the second was docked for being second to the level.
+    expect(player(state, VEG).receipts).toEqual([6, 6]);
   });
 
   it('V15 raids one balloon from each neighbour, each raid skippable, paying per raid', () => {
@@ -419,8 +417,8 @@ describe('the deliver cards', () => {
   it('V16 offers a free balloon move after an island delivery only', () => {
     const s = base();
     buildFor(data, s, VEG, 'V16');
-    barnTo(s, VEG, 'V4', 'V5');
-    const out = apply(data, s, { type: 'deliver', seat: VEG, tile: 'A1', spend: { vegetable: 2 } });
+    barnTo(s, VEG, 'V4', 'V5', 'V9', 'V10');
+    const out = apply(data, s, { type: 'deliver', seat: VEG, tile: 'A1', spend: { vegetable: 4 } });
     expect(out.state.tasks[0]).toMatchObject({ t: 'card', kind: 'freeMove' });
     const answers = pendingAnswers(data, out.state);
     expect(answers.some((a) => a.kind === 'skip')).toBe(true);
@@ -429,8 +427,8 @@ describe('the deliver cards', () => {
     ) as TaskAnswer;
     const state = answerTask(data, out.state, free).state;
     expect(balloonAt(state, 'balloonCoins')).toBe(VEG);
-    // £2 tile + £1 Farmstead (island) + £1 Farmstead (the free move is a Deliver too) + £4 reward.
-    expect(player(state, VEG).coins).toBe(8);
+    // £1 tile + £1 Farmstead (island) + £1 Farmstead (the free move is a Deliver too) + £4 reward.
+    expect(player(state, VEG).coins).toBe(7);
     // The free move fired the ungated hook only: no second freeMove task (DL-15).
     expect(state.tasks).toHaveLength(0);
   });

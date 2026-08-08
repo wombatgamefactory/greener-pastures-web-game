@@ -101,14 +101,18 @@ export interface CardsFile {
   readonly catalogue: readonly Card[];
 }
 
+/**
+ * A tile's printed row. LAYOUT ONLY since the flat island (2026-08-09): it picks
+ * which faces are on the table and how the pyramid is built, and no rule reads
+ * it. See the LEVEL IS NOW ART note in island.json.
+ */
 export type IslandLevel = 1 | 2 | 3;
 
-export interface IslandLevelRule {
-  readonly vp: number;
-  readonly coinsPerDelivery: number;
+/** What every tile in play costs and pays, identically. Replaced levelRules. */
+export interface IslandTileRule {
   readonly crates: number;
   readonly cardsPerCrate: number;
-  readonly triggersGameEnd: boolean;
+  readonly coinsPerDelivery: number;
 }
 
 export interface IslandTile {
@@ -128,7 +132,16 @@ export interface IslandFile {
   readonly meta: DataMeta;
   readonly seats: { readonly min: number; readonly max: number };
   readonly decksInPlayBySeats: Readonly<Record<string, number>>;
-  readonly deliveriesPerTile: number;
+  /**
+   * The flat island's VP schedule AND its capacity rule, in one array
+   * (2026-08-09). Entry i is the VP the (i+1)th delivery to a tile takes, and
+   * `length` is how many deliveries a tile accepts before it closes. Printed
+   * `[6, 3]`: first deliverer 6, second 3, third illegal.
+   *
+   * There is no separate deliveriesPerTile, on purpose. Opening a third delivery
+   * space means writing down what it pays, in the same edit.
+   */
+  readonly vpByDeliveryOrder: readonly number[];
   /**
    * The wild substitution (2026-08-08): paying the island, any ONE card it asks
    * for may instead be paid with this many cards of any crops. null switches the
@@ -136,25 +149,8 @@ export interface IslandFile {
    * warning in island.json, which is the part that must not drift.
    */
   readonly cardsPerSubstitution: number | null;
-  /**
-   * The time gradient (2026-08-08), one queue per seat count. Bonus VP paid on
-   * top of the printed receipt to the first, second, ... delivery made to a
-   * level BY ANYONE, in fill order across the table. A delivery past the end of
-   * the queue takes no bonus, and an empty queue switches the gradient off,
-   * which is what the sim compares against. The queue is seats + 1 long, so it
-   * matches the Level 1 slot count. See the meta notes in island.json for why it
-   * is table-wide, why it is additive rather than a reduction of the printed VP,
-   * and for the sweep that found it inert against the bots.
-   */
-  readonly fillOrderBonusBySeats: Readonly<Record<string, readonly number[]>>;
-  /**
-   * The per-player level gate (ticket 07): deliver to a level only while
-   * already holding a receipt from the level below. False removes the climb
-   * entirely and every tile is deliverable at any time, which is what the
-   * engine shipped before ticket 29.
-   */
-  readonly levelGate: boolean;
-  readonly levelRules: Readonly<Record<string, IslandLevelRule>>;
+  /** What every tile costs and pays. Flat since 2026-08-09; was levelRules. */
+  readonly tileRule: IslandTileRule;
   readonly slotsBySeats: Readonly<Record<string, Readonly<Record<string, number>>>>;
   readonly levelThreeTilesBySeats: Readonly<Record<string, readonly string[]>>;
   readonly demandTokensBySeats: Readonly<Record<string, DemandTokenPool>>;
@@ -264,7 +260,13 @@ export interface RulesFile {
     readonly farmsteadFlipAtOwnColourBuilds: number;
   };
   readonly endGame: {
-    readonly trigger: 'levelThreeDelivery';
+    /**
+     * The flat island's clock (2026-08-09): the end fires when one seat
+     * completes its `deliveriesToTrigger`-th ISLAND delivery. Balloon moves are
+     * Deliver actions but not island deliveries and never count.
+     */
+    readonly trigger: 'deliveryCount';
+    readonly deliveriesToTrigger: number;
     readonly furtherTurnsEach: number;
   };
 }

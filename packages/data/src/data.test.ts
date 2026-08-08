@@ -17,7 +17,9 @@ import {
   activeCards,
   applyOverlay,
   deadTemplates,
+  deliveriesPerTile,
   deliveryCost,
+  deliveryVp,
   expandSweep,
   flatten,
   listKnobs,
@@ -81,7 +83,13 @@ describe('the extract', () => {
 
   it('records provenance on every file', () => {
     for (const [name, file] of Object.entries(BASE_GAME_DATA)) {
-      expect(file.meta.schemaVersion, name).toBe(1);
+      // A positive integer, not a fixed 1: island.json went to 2 when the flat
+      // island (2026-08-09) changed its shape incompatibly - levelRules out,
+      // tileRule and vpByDeliveryOrder in. Nothing reads the number, so it is a
+      // signal to whoever opens the file, and a file whose shape breaks should
+      // say so rather than keep a stamp that no longer means anything.
+      expect(Number.isInteger(file.meta.schemaVersion), name).toBe(true);
+      expect(file.meta.schemaVersion, name).toBeGreaterThan(0);
       expect(['generated', 'authored'], name).toContain(file.meta.kind);
     }
     // Only cards.json is machine-generated, and it fingerprints its source so a
@@ -92,20 +100,31 @@ describe('the extract', () => {
 });
 
 describe('the island', () => {
-  // Ticket 14 read the sheet's quantity label as the per-crate RATE rather than the
-  // tile total, and settled 2 / 6 / 9. Ticket 38 overturned the rate itself: a set is
-  // TWO of a kind at every level, so a tile wants 2 of one crop / 2 of each of 2 crops
-  // / 2 of each of 3 crops. The RATE-not-total reading survives; only the rate moved.
-  it('derives delivery cost from crates times cards-per-crate', () => {
-    expect(deliveryCost(BASE_GAME_DATA, 1)).toBe(2);
-    expect(deliveryCost(BASE_GAME_DATA, 2)).toBe(4);
-    expect(deliveryCost(BASE_GAME_DATA, 3)).toBe(6);
+  // The flat island (2026-08-09): every tile is 2 crates of 2 cards. The
+  // RATE-not-total reading of the sheet's quantity label survives from ticket
+  // 14; what went is the per-level chain (2 / 6 / 9, then 2 / 4 / 6).
+  it('derives delivery cost from crates times cards-per-crate, the same at every tile', () => {
+    expect(deliveryCost(BASE_GAME_DATA)).toBe(4);
   });
 
   it('lets one knob move the whole cost, because cost is never stored twice', () => {
-    const dearer = loadGameData(overlay({ 'island.levelRules.3.cardsPerCrate': 3 }));
-    expect(deliveryCost(dearer, 3)).toBe(9);
-    expect(deliveryCost(BASE_GAME_DATA, 3)).toBe(6);
+    expect(deliveryCost(loadGameData(overlay({ 'island.tileRule.cardsPerCrate': 3 })))).toBe(6);
+    expect(deliveryCost(loadGameData(overlay({ 'island.tileRule.crates': 3 })))).toBe(6);
+    expect(deliveryCost(BASE_GAME_DATA)).toBe(4);
+  });
+
+  // The VP schedule is also the capacity rule, so there is no second number to
+  // drift out of step with it. This is the invariant that replaces one.
+  it('reads capacity off the VP schedule, so a tile can never pay a receipt it has no room for', () => {
+    expect(deliveriesPerTile(BASE_GAME_DATA)).toBe(BASE_GAME_DATA.island.vpByDeliveryOrder.length);
+    expect(BASE_GAME_DATA.island.vpByDeliveryOrder).toEqual([6, 3]);
+    expect(deliveryVp(BASE_GAME_DATA, 0)).toBe(6);
+    expect(deliveryVp(BASE_GAME_DATA, 1)).toBe(3);
+    // Past the end: no VP, which is the same condition as no room.
+    expect(deliveryVp(BASE_GAME_DATA, 2)).toBe(0);
+    // Descending, or arriving first is not worth racing for.
+    const vp = BASE_GAME_DATA.island.vpByDeliveryOrder;
+    for (let i = 1; i < vp.length; i++) expect(vp[i]!).toBeLessThan(vp[i - 1]!);
   });
 
   it('names a level-3 tile for every seat count', () => {
@@ -126,13 +145,8 @@ describe('the island', () => {
       const slots = BASE_GAME_DATA.island.slotsBySeats[seats];
       const pool = BASE_GAME_DATA.island.demandTokensBySeats[seats];
       if (!slots || !pool) throw new Error(`no data for ${seats} seats`);
-      const crates = ([1, 2, 3] as const).reduce(
-        (n, level) =>
-          n +
-          (slots[String(level)] ?? 0) *
-            (BASE_GAME_DATA.island.levelRules[String(level)]?.crates ?? 0),
-        0,
-      );
+      const tiles = ([1, 2, 3] as const).reduce((n, row) => n + (slots[String(row)] ?? 0), 0);
+      const crates = tiles * BASE_GAME_DATA.island.tileRule.crates;
       expect(pool.crates, `${seats} seats`).toBe(crates);
       expect(pool.suits * pool.perSuit + pool.wild, `${seats} seats pool size`).toBe(crates);
     }

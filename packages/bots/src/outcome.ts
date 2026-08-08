@@ -149,20 +149,20 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
 
     case 'delivered': {
       if (event.seat !== me) return 0;
-      const climb = weight(w, 'deliverClimb');
       const coins = weight(w, 'coinGain') * coinWorth(s, event.coins);
       // The freight, charged at the price the move table puts on a barn card
       // leaving (ticket 48). Without it a delivery inside a rollout - a rented
       // Deliver Worker, a Vegetable card's own deliver - was free where the same
-      // delivery as a move costs 2, 6 or 9 cards, which is the split ticket 47
-      // found in `built` arriving on the other action. Blind: a count off the
-      // event's own spend, never a card.
+      // delivery as a move costs 4 cards, which is the split ticket 47 found in
+      // `built` arriving on the other action. Blind: a count off the event's own
+      // spend, never a card.
       const freight = weight(w, 'barnSpend') * spendSize(event.spend);
-      // The fill-order bonus rides on the same term as the receipt, deliberately
-      // and with no taste weight of its own: it is plain VP on the same delivery,
-      // and a bot that priced it separately would be tuned to chase the gradient
-      // rather than measuring whether the gradient is worth chasing.
-      return weight(w, 'deliver') * (event.vp + event.bonus) + climb + coins - freight;
+      // `event.vp` is already the fill-order gradient since the flat island - 6
+      // for arriving first at this tile, 3 for second - so the race is priced by
+      // the receipt itself with no taste weight of its own. That is deliberate:
+      // a bot given a separate appetite for going first would be tuned to chase
+      // the gradient rather than measuring whether the gradient is worth chasing.
+      return weight(w, 'deliver') * event.vp + coins - freight;
     }
 
     case 'balloonMoved':

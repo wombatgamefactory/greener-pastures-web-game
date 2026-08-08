@@ -160,7 +160,7 @@ describe('the result screen renders', () => {
     // it reads as a bug unless the screen names the rule.
     expect(html).not.toContain('coins ÷');
     expect(html).toContain('Leftover coins score nothing');
-    expect(html).toContain('delivered to Level 3');
+    expect(html).toContain('island delivery, which ended the game');
     expect(html).toContain('Another game');
     // The design instrument: the island's share of the winning score, printed.
     expect(html).toContain('of the winning score');

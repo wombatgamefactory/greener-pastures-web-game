@@ -21,8 +21,8 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
+import { deliveryVp } from '@gp/data';
 import type { CardId, Move, MoveType } from '@gp/engine';
-import { tileLevel } from '@gp/engine';
 
 import type { Act } from './acts.js';
 import { spendSize } from './acts.js';
@@ -158,13 +158,20 @@ function isProbed(act: Act): boolean {
  * of the two to spend. That trade needs both sides in one currency, so it is
  * priced here rather than by a second weight that could drift from this one.
  */
+/**
+ * The receipt a delivery to this tile would take, read off how many seats have
+ * already delivered there. 0 for a tile with no room, which never reaches here
+ * because a full tile offers no move.
+ */
+function deliverVpOf(s: Scratch, tileId: string): number {
+  const tile = s.view.island.tiles.find((t) => t.tile === tileId);
+  return tile ? deliveryVp(s.data, tile.deliveredBy.length) : 0;
+}
+
 function coinsMinted(act: Act, s: Scratch): number {
   if (act.a === 'visit') return visitPayout(s, act);
   if (act.a === 'build') return -act.coinWild;
-  if (act.a === 'deliver') {
-    const level = String(tileLevel(s.data, act.tile));
-    return s.data.island.levelRules[level]?.coinsPerDelivery ?? 0;
-  }
+  if (act.a === 'deliver') return s.data.island.tileRule.coinsPerDelivery;
   // The market's fee (ticket 56), priced at the bot's ONE coin price like D7's
   // wilds: `coinWorth` signs a spend symmetrically, so a hoarder's £3 above the
   // runway costs nothing and a poor seat's £3 costs what it would have bought.
@@ -371,21 +378,16 @@ export const TERMS: readonly Term[] = [
   // --- the island -----------------------------------------------------------
   {
     // DL-78. The one rule that makes a game terminate, so it carries the
-    // biggest feature in the table: the printed VP of the tile, 4 / 8 / 16.
+    // biggest feature in the table: the VP this delivery would actually take.
+    //
+    // Since the flat island (2026-08-09) that is no longer a property of the
+    // tile but of its fill order - 6 for arriving first, 3 for second - so this
+    // one feature now carries the whole race that `deliverClimb` and the
+    // fill-order bonus used to carry between them. It is why the bot prefers a
+    // fresh tile to a half-taken one without any term saying so.
     name: 'deliver',
     claims: ['deliver', ...ACTION_AND_TASK],
-    feature: (act, s) =>
-      act.a === 'deliver'
-        ? (s.data.island.levelRules[String(tileLevel(s.data, act.tile))]?.vp ?? 0)
-        : 0,
-  },
-  {
-    // The level gate (ticket 07) makes a first delivery at a level worth more
-    // than the VP on it: it opens the level above, and Level 3 ends the game.
-    name: 'deliverClimb',
-    claims: ['deliver', ...ACTION_AND_TASK],
-    feature: (act, s) =>
-      act.a === 'deliver' && !s.heldLevels.has(tileLevel(s.data, act.tile)) ? 1 : 0,
+    feature: (act, s) => (act.a === 'deliver' ? deliverVpOf(s, act.tile) : 0),
   },
   {
     /**

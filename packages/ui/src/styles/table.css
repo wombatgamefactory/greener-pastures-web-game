@@ -325,48 +325,13 @@
   gap: 6px;
 }
 
-.island-level {
-  display: grid;
+/* Every tile is identical under the flat island, so the rule is stated once
+   under the pyramid instead of on a label beside each decorative row. */
+.island-legend {
+  margin: 2px 0 0;
   font-size: 9px;
   color: var(--ink-soft);
-  text-align: right;
-  line-height: 1.15;
-  min-width: 38px;
-}
-
-.island-level b {
-  font-family: var(--font-display);
-  font-size: 12px;
-  color: var(--ink);
-}
-
-.island-row-open .island-level b {
-  color: #3f7a3a;
-}
-
-.island-locked {
-  color: #a2493a;
-}
-
-/* The time gradient's queue. Sits under the level's VP and coins so the two
-   gradients read together: what a slot is worth, then what getting there first
-   is worth on top. */
-.island-bonus {
-  display: flex;
-  gap: 3px;
-  justify-content: flex-end;
-}
-
-.island-row .island-level .island-bonus b {
-  font-family: var(--font-display);
-  font-size: 9px;
-  color: #3f7a3a;
-}
-
-.island-row .island-level .island-bonus b.island-bonus-spent {
-  color: var(--ink-soft);
-  opacity: 0.5;
-  text-decoration: line-through;
+  text-align: center;
 }
 
 .island-tiles {
@@ -459,6 +424,16 @@
 .receipt-empty {
   background: rgb(255 255 255 / 55%);
   border-style: dashed;
+}
+
+/* What an untaken slot pays. The tile's own gradient - 6 then 3 - is the only
+   one left in the game, so it has to be legible on the board. */
+.receipt-empty i {
+  font-family: var(--font-display);
+  font-style: normal;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--ink);
 }
 
 /* ---- aerodrome ---------------------------------------------------------- */
