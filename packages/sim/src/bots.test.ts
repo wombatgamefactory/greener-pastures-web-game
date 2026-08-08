@@ -344,6 +344,14 @@ describe('the decision budget', () => {
    * The published pair - a 120us decision against an 18us `apply` - is the
    * RATIO this keeps, so a slower machine moves both sides together and only a
    * rollout that actually grew fails.
+   *
+   * The ratio is not perfectly machine-independent, though, and CI proved it
+   * (run #12, 8 Aug 2026: `306us / 38.0us`, i.e. 8.04 against a gate of 8, on a
+   * commit that reads 5.9-6.4 locally). The calibration loop replays one move
+   * after another over a hot state, and the decision path does not, so slow
+   * shared hardware inflates the decision side harder than the `apply` side and
+   * the ratio drifts UP. Budget for that drift rather than measuring the
+   * runner: see the gate below.
    */
   it('keeps a whole game inside the throughput a balance run is built on', () => {
     const spec = {
@@ -377,13 +385,16 @@ describe('the decision budget', () => {
     // 8,300 fails on a real regression rather than on a busy machine.
     expect((wallMs * 1000) / applyUs, `whole game, in applies`).toBeLessThan(8300);
     // And the decision cost itself: ticket 40's published pair is a 120us
-    // decision against an 18us apply, or 6.7. Live it reads 5.9-6.4, and the
-    // calibration carries about a tenth either way, so the gate is 8.
+    // decision against an 18us apply, or 6.7. Live it reads 5.9-6.4, the
+    // calibration carries about a tenth either way, and a GitHub runner adds
+    // about 25% of CI drift on top (8.04 measured), so the gate is 10. What
+    // this is guarding against is a grown rollout branch, and that arrives as
+    // a multiple rather than a nudge: the 8,300 above is the tighter guard.
     const perDecision = (result.chooseMs * 1000) / result.decisions;
     expect(
       perDecision / applyUs,
       `${perDecision.toFixed(0)}us / ${applyUs.toFixed(1)}us`,
-    ).toBeLessThan(8);
+    ).toBeLessThan(10);
   });
 });
 
