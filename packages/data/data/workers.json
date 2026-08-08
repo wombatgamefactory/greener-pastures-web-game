@@ -5,67 +5,76 @@
     "generatedBy": null,
     "sourceSheet": null,
     "notes": [
-      "Hand-authored from the current rules. Deliberately NOT in any sheet: the spreadsheet's Components tab is stale material from an older edition (retired player meeples and food tokens) and must never be imported.",
-      "Five Hired Worker cards sit in a central Hiring Fair, each tied to one core action, each with a big meeple standing on a Working Week track. These are the only meeples in the game; player-coloured worker meeples are dead.",
-      "Hiring is a Build action costing hireFee to the bank. Maximum one hired Worker per player. The meeple arrives on the track's first space (no wage) and can be worked the same turn.",
-      "Every use advances the meeple one space, INCLUDING the owner's own free uses. The wage on the space the meeple moves onto is paid by the BANK to the card's owner, and only when a RIVAL uses it via a Visit. The owner's own uses pay nothing.",
-      "The wages array lists the paying spaces in order after arrival: advancing onto paying space i pays wages[i - 1]. When the meeple advances past the last paying space it walks home, and the card returns to the Hiring Fair, hireable again by anyone. A full track is therefore wages.length + 1 uses.",
-      "Workers perform PLAIN base actions. The Draw Worker is the load-bearing exception: it draws 3 and keeps 2, not the plain draw-2-keep-1. Because every rental is paid with a card, a Worker whose action produces cards is worthless to rent unless it over-delivers. If it ever reverts to a plain Draw it becomes pointless to rent. Do not tidy this away.",
-      "The Draw Worker's track is deliberately short. It is the only Worker that refunds its own fee, so track length is its only brake.",
-      "There is deliberately no Grow Worker of the activate-a-building kind: building text must never fire twice in a turn. The Sow Worker sows onto one of your OWN buildings, which is a placement, not an activation.",
-      "linkedSuit is the suit whose Farmstead power composes with this Worker's action, because a Worker performs YOUR action and so your suit power applies. It is flavour and coupling, not a hiring restriction: anyone may hire any Worker."
+      "THE SUIT SERVICES (Dean, 2026-08-10). Each suit owns one Service, printed as its FOURTH starter and in its tableau from setup. There is no Hiring Fair, no hire fee, no Working Week track, no expiry and no meeple: the Service belongs to the suit, permanently, and the only Services on the table are the ones the seats' suits brought.",
+      "The Service is an ordinary building in every respect that matters: it has a threshold, it clogs when full, and its owner clears it with a Harvest action. What is NOT ordinary is who may put a card on it - a rival may, as their bonus slot, and that is the only building in the game besides the Notice Board that a rival may touch.",
+      "TWO WAYS IN, and the asymmetry is the whole rule. A RIVAL places 1 card from hand onto the Service (advancing its threshold), takes the Service's action, and that is the whole transaction. The OWNER pays ownerActivationCost to the bank, takes the action, and places NOTHING - so an owner never clogs their own Service and never earns from their own farm.",
+      "THE CARD IS THE PAYMENT (Dean, 2026-08-10). visitWage is 0: a rival's use pays the owner nothing but the card that lands on their Service. That card rides into their barn on the next harvest as exactly the mixed colour the island demands of them, so being useful is paid in FREIGHT rather than in coin - 'your junk is their treasure', now the only thing a visit gives. The GBP 1 wage the first build shipped was measured and removed; keep the wage at 0 unless a table says the owner feels unrewarded, and reach for overlays/service-wage-one.overlay.json before inventing anything new.",
+      "So the bonus slot is one option per currency: a CARD buys a neighbour's action, a CARD buys GBP 1 at their Notice Board, a COIN buys your own action, GBP 3 buys a card at market. The Notice Board is now the only cross-table faucet in the game, which makes it the thing to watch if coins dry up.",
+      "Every Service performs an ENHANCED version of its action, not the plain one. The reason is the self-cancellation law generalised: a visitor pays a card, so an action that also SPENDS cards (sow, build) is priced in the currency it consumes and is worthless to buy unless it over-delivers. Help is therefore inversely proportional to how card-hungry the action is - draw and sow and build carry real enhancements, harvest and deliver carry small ones.",
+      "THE SELF-CANCELLATION LAW, restated for Draw 2 (2026-08-09). The Draw Service is a plain Draw 2 - see 2, keep 2. The law it obeys is about VOLUME, not selection: a buyer pays 1 card and gains 2, so it is card-POSITIVE and worth buying. If anybody ever tidies this to Draw 1 the Service becomes exactly worthless to visit overnight, which is the trap the old printed exception (Draw 3, keep 2) was written to avoid. The selection was measured and found to be doing nothing - see the arms - so it went, and the only player who now gets selection on it is the Orchard seat, through their Farmstead modifier. That is a better statement of \"this is the draw suit\" than everyone getting best-2-of-3.",
+      "Sow takes its card from the TOP OF A DECK, not from the visitor's hand. A hand-sow would cost the buyer two cards (the fee and the sown card) for one threshold step, which is the Draw problem in reverse; drawing the sown card off a deck fixes it and is the better theme besides - the pollinator carries something in from elsewhere.",
+      "Build waives the crop requirements rather than discounting the price. A discount of 2 was measured against total throughput and rejected: it saves a Dairy player roughly as many cards over a game as base Draw supplies, and it stacks with the Dairy Farmstead's own-crop discount. Waiving the match costs the card economy nothing and unblocks the thing that actually stops a build, which is holding the wrong colours.",
+      "Harvest and Deliver share one primitive, `handToBarn`: an optional hand card into your own barn. On Harvest it lands after (a junk sink, worth a real half-crate since the wild substitution). On Deliver it lands before, which is exactly 'you may pay up to 1 card of the cost from your hand' with no second code path. Both are OPTIONAL, so neither can ever be a downside.",
+      "linkedSuit is now ownership, not flavour: the seat playing that suit owns that Service and nobody else can. A Service whose suit is not at the table is simply not in the game, and that is a feature - the table's menu of buyable actions is decided by which suits were chosen.",
+      "RULING (carried over, unchanged): suit powers apply to actions performed by a Service. It is your action, done on someone else's premises."
     ],
-    "unresolved": []
+    "unresolved": [
+      "THE THRESHOLD IS THE BALANCE LEVER, and it is 2 (Dean, 2026-08-09). It is not a flavour number and it must not be raised without re-running the suite. A Service that fills in two cards clogs often, and a clogged Service refuses visits, so the threshold throttles the FREIGHT a popular farm collects - which is the only thing ever measured to touch the suit balance. Monotone and self-targeting across three paired n=1580 arms: at t=4 Orchard won 80.8%, at t=3 62.8%, at t=2 42.0% against an even share of 36.4%. A farm taking 22 rival cards a game feels it; one taking 2.8 does not. Never played at a table.",
+      "visitWage is RULED at 0 (Dean, 2026-08-10): the card is reward enough. overlays/service-wage-one.overlay.json restores the GBP 1 as the paired control, so the question can always be re-read as a delta.",
+      "A10 The Cross-Pollinator printed 'HIRE a Hired Worker, paying GBP 1 less' and hiring no longer exists. Retexted in the handler to 'Your Service costs GBP 1 less to activate', which the sheet has not caught up with."
+    ]
   },
-  "hireFee": 2,
-  "maxPerPlayer": 1,
+  "serviceThreshold": 2,
+  "ownerActivationCost": 1,
+  "visitWage": 0,
   "roster": [
     {
       "id": "harvest",
-      "name": "Harvest Worker",
+      "name": "The Threshing Mill",
       "action": "harvest",
-      "actionText": "Harvest.",
+      "actionText": "Harvest. You may then put 1 card from your hand into your barn.",
       "linkedSuit": "wheat",
-      "wages": [1, 2, 3]
+      "handToBarn": 1
     },
     {
       "id": "deliver",
-      "name": "Deliver Worker",
+      "name": "The Market Stall",
       "action": "deliver",
-      "actionText": "Deliver.",
+      "actionText": "You may put 1 card from your hand into your barn, then Deliver.",
       "linkedSuit": "vegetable",
-      "wages": [1, 2, 3]
+      "handToBarn": 1
     },
     {
       "id": "draw",
-      "name": "Draw Worker",
+      "name": "The Nursery",
       "action": "draw",
-      "actionText": "Draw 3, keep 2.",
+      "actionText": "Draw 2.",
       "linkedSuit": "orchard",
       "draw": {
-        "see": 3,
+        "see": 2,
         "keep": 2
-      },
-      "wages": [1, 2]
+      }
     },
     {
       "id": "sow",
-      "name": "Sow Worker",
+      "name": "The Seed Store",
       "action": "sow",
-      "actionText": "Sow 1 card from your hand onto one of your own buildings.",
+      "actionText": "Sow the top card of any deck onto one of your buildings.",
       "linkedSuit": "apiary",
       "sow": {
-        "amount": 1
-      },
-      "wages": [1, 2, 3]
+        "amount": 1,
+        "from": "deck"
+      }
     },
     {
       "id": "build",
-      "name": "Build Worker",
+      "name": "The Builder's Yard",
       "action": "build",
-      "actionText": "Build.",
+      "actionText": "Build. Cards of any crop may satisfy its crop requirements.",
       "linkedSuit": "dairy",
-      "wages": [1, 2, 3]
+      "build": {
+        "substitute": true
+      }
     }
   ]
 }

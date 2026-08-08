@@ -110,7 +110,6 @@ function reachable(position: Position, move: Move): boolean {
     case 'moveBalloon':
       return has(clickBalloon(moves, IDLE, move.balloon));
 
-    case 'hire':
     case 'workOwnWorker':
       return has(clickWorker(moves, IDLE, move.workerId));
 
@@ -208,9 +207,11 @@ function taskReachable(position: Position, move: Move): boolean {
       return subsetAnswer(moves, 'keep', answer.cards) === move;
     case 'discard':
       return subsetAnswer(moves, 'discard', answer.cards) === move;
+    case 'deckSow':
+    case 'handToBarn':
     case 'skip':
     case 'card':
-      // The prompt lists both explicitly; nothing to resolve.
+      // The prompt lists these explicitly; nothing to resolve.
       return moves.includes(move);
     default:
       return answer satisfies never;

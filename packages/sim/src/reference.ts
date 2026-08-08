@@ -474,6 +474,11 @@ export const NOISE_FLOOR: NoiseFloor | null = {
     'last as % of winner': 0.027,
     'tied top score': 0,
     'seat deviation': 6.186,
+    // NOT MEASURED: 'deck reshuffles per game' and 'reshuffles, played crop',
+    // added 2026-08-09. `noiseNote` filters an absent key rather than inventing
+    // one, so the report simply will not quote a floor for them - which is the
+    // honest state and is left visible rather than filled in with a guess.
+    // Re-run `--noise` and paste both in.
   },
 };
 

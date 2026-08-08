@@ -47,6 +47,20 @@ export const HEADLINE_METRICS: readonly Metric[] = [
     fmt: (x) => pct(x, 1),
   },
   {
+    // The C1 metric, tracked from 2026-08-09 (the pile-of-cards lens review).
+    // Split played/neutral in the report; pooled here because a sweep needs one
+    // number per metric, and because the pooled figure is the one that answers
+    // "did this change make the game churn its pool harder".
+    label: 'deck reshuffles per game',
+    of: reshufflesPerGame,
+    fmt: (x) => num(x, 2),
+  },
+  {
+    label: 'reshuffles, played crop',
+    of: (p) => reshufflesPerDeck(p, 'played'),
+    fmt: (x) => num(x, 2),
+  },
+  {
     // The single most sensitive number in the method, so it is the one the noise
     // floor most needs to bound. Summarised as the WORST chair at any seat
     // count, in percentage points, because that is what a reader judges against
@@ -68,6 +82,28 @@ export function endBarn(p: Pooled): number {
 export function visitsPerTurn(p: Pooled): number {
   const turns = sum(p.ended.map((g) => sum(g.turnsBySeat)));
   return turns === 0 ? NaN : sum(p.ended.map((g) => sum(g.visitsBySeat))) / turns;
+}
+
+/** Total discard-to-deck reshuffles in a game, all crops, median over ended games. */
+export function reshufflesPerGame(p: Pooled): number {
+  return median(p.ended.map((g) => sum(Object.values(g.reshufflesByCrop))));
+}
+
+/**
+ * Reshuffles per DECK per game, split by whether that crop is being farmed.
+ *
+ * The split is the whole point and the pooled figure hides it: a played crop's
+ * central deck is 12 cards and a neutral crop's is 18, so they churn at wildly
+ * different rates and averaging them describes neither. Per deck rather than
+ * per game so the two halves are comparable at any seat count.
+ */
+export function reshufflesPerDeck(p: Pooled, which: 'played' | 'neutral'): number {
+  const perDeck: number[] = [];
+  for (const g of p.ended) {
+    const crops = which === 'played' ? g.suits : g.neutral;
+    for (const crop of crops) perDeck.push(g.reshufflesByCrop[crop] ?? 0);
+  }
+  return median(perDeck);
 }
 
 export function winningScore(p: Pooled): number {

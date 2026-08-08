@@ -2,8 +2,15 @@
  * A Helping Hand - one Power card per suit (W18/V18/O18/A18/D18), identical
  * text on all five copies:
  *
- *   "When you VISIT a neighbour and WORK their Hired Worker, you may place a
- *    second card on their Notice Board to work it again."
+ *   "When you VISIT a neighbour and use their Service, you may place a second
+ *    card on it to use it again."
+ *
+ * RETEXTED 2026-08-10 with the suit Services, and the change is not cosmetic:
+ * the second card lands on the SERVICE, not the Notice Board, because the
+ * Service is the building the visit targeted. So a repeat drives the Service
+ * toward its own threshold twice as fast, which is the denial play in its new
+ * clothes - use their Service twice and you clog it, shutting the table out of
+ * that action until they spend a Harvest on it.
  *
  * (Ticket 06 ruling A wording; the trigger is the visit's worker payoff, so it
  * can never fire off the Herb Hive's or the Prosperity Wagon's card-granted
@@ -18,8 +25,8 @@
  * cards are the scarce resource and the master clock.
  */
 
-import { workerActionLegal } from '../actions.js';
-import { builtCopies, canTakeCard, noticeBoardOf, player, workerState } from '../query.js';
+import { payServiceWage, workerActionLegal } from '../actions.js';
+import { builtCopies, canTakeCard, player, serviceOf, workerState } from '../query.js';
 import { workWorker } from '../workers.js';
 import type { CardHandler, CardMove } from './types.js';
 
@@ -31,8 +38,8 @@ export const helpingHand: CardHandler = {
     notes:
       'The card that forced standing moves (handler.moves/applyMove) into the API. Not a ' +
       'prompt: the repeat is a fully-fledged optional MOVE between moves, offered by ' +
-      'legalMoves while the visit gate is open. Denial is intended: repeating burns the ' +
-      'Worker down its Working Week in half the turns.',
+      'legalMoves while the visit gate is open. Denial is intended: repeating fills the ' +
+      'Service toward its clog in half the turns.',
   },
 
   moves(data, state, self) {
@@ -42,7 +49,7 @@ export const helpingHand: CardHandler = {
     const worker = workerState(state, visit.workerId);
     if (worker.owner === null) return []; // walked home during this visit
     if (!workerActionLegal(data, state, self.seat, visit.workerId)) return [];
-    if (!canTakeCard(data, noticeBoardOf(data, state, visit.host))) return [];
+    if (!canTakeCard(data, serviceOf(data, state, visit.host))) return [];
     return player(state, self.seat).hand.map((fee): CardMove => ({
       type: 'cardMove',
       seat: self.seat,
@@ -55,15 +62,16 @@ export const helpingHand: CardHandler = {
   applyMove(fx, self, move) {
     const visit = fx.state.turn.visit;
     if (!visit) throw new Error('Helping Hand repeat with no visit in flight');
-    const board = noticeBoardOf(fx.data, fx.state, visit.host);
+    const service = serviceOf(fx.data, fx.state, visit.host);
     fx.placeOnBuilding(
       self.seat,
-      { seat: visit.host, card: board.card },
+      { seat: visit.host, card: service.card },
       move.payload.fee as string,
     );
     visit.repeats += 1;
-    // Re-work the same Worker: normal mode, so the meeple advances and the
-    // host takes the next wage from the bank.
+    // Another card on their Service is another use bought, so the bank pays the
+    // host another wage - the same funnel the visit itself uses.
+    payServiceWage(fx, self.seat, visit.host, visit.workerId);
     workWorker(fx, self.seat, visit.workerId, { progress: true });
   },
 };

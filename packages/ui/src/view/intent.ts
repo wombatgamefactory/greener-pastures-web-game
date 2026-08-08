@@ -172,7 +172,6 @@ export function clickWorker(
     if (answer.workerId === workerId) out.push(move);
   }
   for (const move of moves) {
-    if (move.type === 'hire' && move.workerId === workerId && armed(intent, 'hire')) out.push(move);
     if (
       move.type === 'workOwnWorker' &&
       move.workerId === workerId &&
@@ -542,7 +541,6 @@ export const MOVE_ROUTES = {
   buy: 'deck',
   market: 'deck',
   build: 'build-panel',
-  hire: 'worker',
   upgrade: 'building',
   grow: 'building',
   harvest: 'building',

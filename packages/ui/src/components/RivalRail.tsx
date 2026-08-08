@@ -130,7 +130,6 @@ export function RivalRail({
                     key={w.id}
                     track={workerTrack(data, w)}
                     ownerLabel="theirs"
-                    hireFee={data.workers.hireFee}
                     size="rail"
                     play={play}
                   />

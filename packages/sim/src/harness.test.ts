@@ -145,7 +145,29 @@ describe('the metric fold', () => {
     expect(games.some((g) => g.barnByRound.length > 0)).toBe(true);
     expect(games.some((g) => g.turnsBySeat.some((t) => t > 0))).toBe(true);
     expect(games.some((g) => g.visitsBySeat.some((v) => v > 0))).toBe(true);
-    expect(games.some((g) => g.workerLifetimes.length > 0)).toBe(true);
+    expect(games.some((g) => g.serviceClogSampledBySeat.some((n) => n > 0))).toBe(true);
+  });
+
+  it('counts a reshuffle for every crop in play and none for a crop that is not', () => {
+    // The C1 stat, tracked from 2026-08-09. Two things can rot it and this
+    // catches both: the event being re-claimed as uninteresting (the counter
+    // silently stops), and a crop out of the game acquiring a count (the
+    // played/neutral split in the report stops meaning anything). It does NOT
+    // assert a rate - four games per cell is far too few, and a rate here would
+    // be a verdict, which this file does not do.
+    for (const game of result.games) {
+      const inPlay = new Set([...game.suits, ...game.neutral]);
+      for (const crop of inPlay) expect(game.reshufflesByCrop, crop).toHaveProperty(crop);
+      for (const crop of Object.keys(game.reshufflesByCrop)) {
+        expect(inPlay.has(crop as never), crop).toBe(true);
+        expect(game.reshufflesByCrop[crop]).toBeGreaterThanOrEqual(0);
+      }
+    }
+    // A played crop's deck is 12 cards, so at least one game in any real run
+    // must have cycled one. If this ever fails, the counter is not wired up.
+    expect(result.games.some((g) => g.suits.some((s) => (g.reshufflesByCrop[s] ?? 0) > 0))).toBe(
+      true,
+    );
   });
 
   it('never counts a card whose deck was out of the game', () => {

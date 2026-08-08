@@ -1,8 +1,0 @@
-{
-  "name": "draw-track-long",
-  "description": "Watch-list 7's prescribed remedy: 'the dial is track length, never the card text'. The Draw Worker is the only Worker that refunds its own fee, so it has no natural brake; this lengthens its Working Week from two paying spaces to three, matching the other four. Draw 3 keep 2 is untouched, deliberately - a Worker priced in cards must over-deliver cards to be worth renting.",
-  "schemaVersion": 1,
-  "set": {
-    "workers.roster.draw.wages": [1, 2, 3]
-  }
-}

@@ -13,8 +13,15 @@ export const SUITS: readonly Suit[] = ['wheat', 'vegetable', 'orchard', 'apiary'
 
 export type CardType = 'starter' | 'tier1' | 'tier2' | 'tier3' | 'power' | 'endgame';
 
-/** Which of the three printed starters a starter card is. Null for deck cards. */
-export type StarterSlot = 'barn' | 'farmstead' | 'noticeboard';
+/**
+ * Which of the FOUR printed starters a starter card is. Null for deck cards.
+ *
+ * `service` joined the set on 2026-08-10 with the suit Services. It is the only
+ * starter the extractor does not produce: the sheet has no Service row yet, so
+ * the five Service cards are synthesised from workers.json at load (see
+ * `withServices` in index.ts) and cards.json stays a faithful extract.
+ */
+export type StarterSlot = 'barn' | 'farmstead' | 'noticeboard' | 'service';
 
 /**
  * Trigger keywords detected in the printed text. This is keyword detection, not a
@@ -160,29 +167,49 @@ export interface IslandFile {
 
 export type WorkerAction = 'harvest' | 'deliver' | 'draw' | 'sow' | 'build';
 
-export interface HiredWorker {
+/**
+ * One suit's SERVICE: the fourth starter, owned by whoever plays that suit and
+ * by nobody else. `id` is still the action it performs, so every existing
+ * "which worker" reference keeps working.
+ *
+ * Each Service performs an ENHANCED version of its action. The optional blocks
+ * below are that enhancement, and which of them a Service carries is set by how
+ * card-hungry its action is - see the note block in workers.json.
+ */
+export interface SuitService {
   readonly id: WorkerAction;
   readonly name: string;
   readonly action: WorkerAction;
   readonly actionText: string;
+  /** Ownership, not flavour: the seat playing this suit owns this Service. */
   readonly linkedSuit: Suit;
-  /**
-   * Wages on the paying spaces after arrival, in order. Advancing onto paying
-   * space i pays wages[i - 1]; advancing past the last one sends the Worker home.
-   * A full track is therefore `wages.length + 1` uses.
-   */
-  readonly wages: readonly number[];
+  /** Draw's printed see/keep. Never the base action's - see the self-cancellation note. */
   readonly draw?: { readonly see: number; readonly keep: number };
-  readonly sow?: { readonly amount: number };
+  /** `from: 'deck'` is the Apiary Service: the sown card comes off a deck top, not the hand. */
+  readonly sow?: { readonly amount: number; readonly from?: 'hand' | 'deck' };
+  /** The Dairy Service: crop requirements waived, price unchanged. */
+  readonly build?: { readonly substitute?: boolean; readonly discount?: number };
+  /**
+   * Wheat and Vegetable: this many OPTIONAL hand cards into your own barn,
+   * after the harvest and before the delivery respectively.
+   */
+  readonly handToBarn?: number;
 }
 
 export interface WorkersFile {
   readonly meta: DataMeta;
-  readonly hireFee: number;
-  readonly maxPerPlayer: number;
+  /** Cards a Service holds before it clogs. Printed on the card; a knob here. */
+  readonly serviceThreshold: number;
+  /** What the OWNER pays the bank to activate their own Service from the bonus slot. */
+  readonly ownerActivationCost: number;
+  /** What the bank mints to the OWNER when a RIVAL activates their Service. 0 switches the wage off. */
+  readonly visitWage: number;
   /** Named `roster` for the same reason `catalogue` is: no `workers.workers`. */
-  readonly roster: readonly HiredWorker[];
+  readonly roster: readonly SuitService[];
 }
+
+/** @deprecated The Hiring Fair is gone (2026-08-10). Alias kept so old imports fail loudly at review, not silently. */
+export type HiredWorker = SuitService;
 
 export type BalloonRewardType = 'draw' | 'buildDiscount' | 'sowFromHand' | 'gainCoins';
 

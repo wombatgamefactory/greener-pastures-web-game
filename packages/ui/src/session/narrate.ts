@@ -108,15 +108,9 @@ export function narrate(
       );
     case 'workerWorked':
       return line(
-        `${who(event.seat)} works the ${event.workerId} Worker${event.free ? ' for free' : ''}`,
+        `${who(event.seat)} uses the ${event.workerId} Service${event.free ? ' for free' : ''}`,
         event.seat,
       );
-    case 'workerAdvanced':
-      return event.paidTo === null
-        ? null
-        : line(`the bank pays ${who(event.paidTo)} a £${event.wage} wage`, event.paidTo);
-    case 'workerExpired':
-      return line(`the ${event.workerId} Worker walks home to the Hiring Fair`);
     case 'reshuffled':
       return line(
         `the ${SUIT_META[event.suit].label} discard is reshuffled (${event.count} cards)`,
@@ -127,8 +121,6 @@ export function narrate(
       return line(`${who(event.seat)} builds over ${cardWord(data, event.card)}`, event.seat);
     case 'demolished':
       return line(`${who(event.seat)} demolishes ${cardWord(data, event.card)}`, event.seat);
-    case 'hired':
-      return line(`${who(event.seat)} hires the ${event.workerId} Worker`, event.seat);
     case 'starterUpgraded':
       return event.free
         ? line(

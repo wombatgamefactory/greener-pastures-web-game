@@ -21,7 +21,7 @@ export * from './query.js';
 export * from './actions.js';
 export { Fx, fireHook, wireHookBus } from './fx.js';
 export type { CardInPlay, FxAudit, HookEvents, HookName } from './fx.js';
-export { workWorker, advanceWorker } from './workers.js';
+export { workWorker } from './workers.js';
 export type { WorkOptions } from './workers.js';
 export { taskAnswers, resolveTask, drainTasks } from './tasks.js';
 export { handlerFor, registeredCards } from './handlers/registry.js';

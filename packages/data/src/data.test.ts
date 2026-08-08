@@ -35,15 +35,15 @@ const overlay = (set: Overlay['set'], name = 'test'): Overlay => ({
 });
 
 describe('the extract', () => {
-  it('holds 105 cards: 15 starters and 90 shuffled', () => {
+  it('holds 110 cards: 20 starters and 90 shuffled', () => {
     const cards = BASE_GAME_DATA.cards.catalogue;
-    expect(cards).toHaveLength(105);
+    expect(cards).toHaveLength(110);
     expect(cards.filter((c) => c.inDeck)).toHaveLength(90);
-    expect(cards.filter((c) => !c.inDeck)).toHaveLength(15);
+    expect(cards.filter((c) => !c.inDeck)).toHaveLength(20);
   });
 
   it('gives every suit the same shape', () => {
-    const expected = { starter: 3, tier1: 5, tier2: 4, tier3: 3, power: 3, endgame: 3 };
+    const expected = { starter: 4, tier1: 5, tier2: 4, tier3: 3, power: 3, endgame: 3 };
     for (const suit of BASE_GAME_DATA.cards.suits) {
       const ofSuit = BASE_GAME_DATA.cards.catalogue.filter((c) => c.suit === suit);
       for (const [type, count] of Object.entries(expected)) {
@@ -61,7 +61,7 @@ describe('the extract', () => {
         .filter((c) => c.suit === suit && c.type === 'starter')
         .map((c) => c.slot)
         .sort();
-      expect(slots, suit).toEqual(['barn', 'farmstead', 'noticeboard']);
+      expect(slots, suit).toEqual(['barn', 'farmstead', 'noticeboard', 'service']);
     }
   });
 
@@ -71,7 +71,7 @@ describe('the extract', () => {
   });
 
   it('ships every card enabled', () => {
-    expect(activeCards()).toHaveLength(105);
+    expect(activeCards()).toHaveLength(110);
   });
 
   it('is frozen, so a caller cannot mutate shared data', () => {
@@ -153,27 +153,42 @@ describe('the island', () => {
   });
 });
 
-describe('the Hired Workers', () => {
-  it('has one Worker per core action', () => {
+describe('the suit Services', () => {
+  it('has one Service per core action', () => {
     const actions = BASE_GAME_DATA.workers.roster.map((w) => w.action).sort();
     expect(actions).toEqual(['build', 'deliver', 'draw', 'harvest', 'sow']);
   });
 
-  it('gives the Draw Worker the shortest track, its only brake', () => {
-    const tracks = new Map(BASE_GAME_DATA.workers.roster.map((w) => [w.id, w.wages.length]));
-    const draw = tracks.get('draw');
-    expect(draw).toBe(2);
-    for (const [id, length] of tracks) {
-      if (id !== 'draw') expect(length, id).toBeGreaterThan(draw!);
+  it('gives every suit exactly one Service, and every Service one suit', () => {
+    const suits = BASE_GAME_DATA.workers.roster.map((w) => w.linkedSuit).sort();
+    expect(suits).toEqual([...BASE_GAME_DATA.cards.suits].sort());
+  });
+
+  it('prints a Service starter per suit, at the shared threshold', () => {
+    const services = BASE_GAME_DATA.cards.catalogue.filter((c) => c.slot === 'service');
+    expect(services).toHaveLength(5);
+    for (const c of services) {
+      expect(c.type, c.id).toBe('starter');
+      expect(c.inDeck, c.id).toBe(false);
+      expect(c.threshold, c.id).toBe(BASE_GAME_DATA.workers.serviceThreshold);
+      // Never a Grow target: the owner pays coins from the bonus slot instead.
+      expect(c.activationType, c.id).toBeNull();
+      // A fourth starter must not quietly hand every seat more points.
+      expect(c.printedVp, c.id).toBe(0);
     }
   });
 
-  it('keeps the Draw Worker over-delivering against a plain Draw', () => {
-    // A rental is paid with a card. Keep must exceed the 1 card a plain Draw
-    // keeps, or renting it is net zero and the Worker is pointless.
+  it('keeps the Draw Service card-POSITIVE, which is the whole self-cancellation law', () => {
+    // A visit is paid with 1 card, so the Service must hand back more than 1 or
+    // buying it is net zero and nobody ever visits it. The law is about VOLUME,
+    // not selection: 'Draw 2' satisfies it exactly as 'Draw 3, keep 2' did, and
+    // the selection was measured doing nothing (2026-08-09). Tidy this to Draw 1
+    // and the Service becomes worthless to visit overnight.
     const draw = BASE_GAME_DATA.workers.roster.find((w) => w.id === 'draw');
-    expect(draw?.draw?.keep ?? 0).toBeGreaterThan(1);
-    expect(draw?.draw?.see ?? 0).toBeGreaterThan(draw?.draw?.keep ?? 0);
+    const fee = 1;
+    expect(draw?.draw?.keep ?? 0).toBeGreaterThan(fee);
+    // See can equal keep (a plain draw); it may never be less.
+    expect(draw?.draw?.see ?? 0).toBeGreaterThanOrEqual(draw?.draw?.keep ?? 0);
   });
 });
 
@@ -212,20 +227,22 @@ describe('the knob registry', () => {
 
 describe('applying an overlay', () => {
   it('replaces a leaf and leaves the rest alone', () => {
-    const cheap = loadGameData(overlay({ 'workers.hireFee': 1 }));
-    expect(cheap.workers.hireFee).toBe(1);
-    expect(cheap.workers.maxPerPlayer).toBe(BASE_GAME_DATA.workers.maxPerPlayer);
-    expect(BASE_GAME_DATA.workers.hireFee).toBe(2);
+    const free = loadGameData(overlay({ 'workers.ownerActivationCost': 0 }));
+    expect(free.workers.ownerActivationCost).toBe(0);
+    expect(free.workers.visitWage).toBe(BASE_GAME_DATA.workers.visitWage);
+    expect(BASE_GAME_DATA.workers.ownerActivationCost).toBe(1);
   });
 
-  it('replaces an array whole rather than merging it', () => {
-    const shortened = loadGameData(overlay({ 'workers.roster.harvest.wages': [1, 2] }));
-    expect(shortened.workers.roster.find((w) => w.id === 'harvest')?.wages).toEqual([1, 2]);
+  it('reaches the synthesised Service faces, which are built after the overlay', () => {
+    const tight = loadGameData(overlay({ 'workers.serviceThreshold': 3 }));
+    for (const c of tight.cards.catalogue.filter((x) => x.slot === 'service')) {
+      expect(c.threshold, c.id).toBe(3);
+    }
   });
 
   it('switches a card out', () => {
     const withoutBreadHall = loadGameData(overlay({ 'cards.catalogue.W21.enabled': false }));
-    expect(activeCards(withoutBreadHall)).toHaveLength(104);
+    expect(activeCards(withoutBreadHall)).toHaveLength(109);
     expect(activeCards(withoutBreadHall).some((c) => c.id === 'W21')).toBe(false);
   });
 
@@ -258,7 +275,7 @@ describe('applying an overlay', () => {
   });
 
   it('rejects a type mismatch', () => {
-    expect(() => validateOverlay(overlay({ 'workers.hireFee': 1.5 }), BASE_GAME_DATA)).toThrow(
+    expect(() => validateOverlay(overlay({ 'workers.visitWage': 1.5 }), BASE_GAME_DATA)).toThrow(
       /is int/,
     );
   });
@@ -282,7 +299,7 @@ describe('applying an overlay', () => {
 
   it('does not mutate the data it was given', () => {
     const before = JSON.stringify(BASE_GAME_DATA.workers);
-    applyOverlay(BASE_GAME_DATA, overlay({ 'workers.hireFee': 4 }));
+    applyOverlay(BASE_GAME_DATA, overlay({ 'workers.visitWage': 4 }));
     expect(JSON.stringify(BASE_GAME_DATA.workers)).toBe(before);
   });
 });
@@ -329,9 +346,11 @@ describe('sweeps', () => {
 
   it('produces overlays that validate and apply', () => {
     for (const cell of expandSweep(
-      sweep({ sweep: [{ knob: 'workers.hireFee', values: [1, 5] }] }),
+      sweep({ sweep: [{ knob: 'workers.visitWage', values: [1, 5] }] }),
     )) {
-      expect(loadGameData(cell.overlay).workers.hireFee).toBe(cell.overlay.set['workers.hireFee']);
+      expect(loadGameData(cell.overlay).workers.visitWage).toBe(
+        cell.overlay.set['workers.visitWage'],
+      );
     }
   });
 
@@ -341,7 +360,7 @@ describe('sweeps', () => {
       expandSweep(
         sweep({
           sweep: [
-            { knob: 'workers.hireFee', values },
+            { knob: 'workers.visitWage', values },
             { knob: 'rules.setup.startingCoins', values },
           ],
         }),

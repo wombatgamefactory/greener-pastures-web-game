@@ -25,7 +25,7 @@
  * silence.
  */
 
-import type { GameData, Suit, WorkerAction } from '@gp/data';
+import type { GameData, Suit } from '@gp/data';
 import { deliveriesPerTile } from '@gp/data';
 import type { CardId, GameEvent, GameState, Move, ScoreBreakdown, Seat, Task } from '@gp/engine';
 import {
@@ -34,8 +34,10 @@ import {
   faceOf,
   gameEndScores,
   handlerFor,
+  isFull,
   player,
   score,
+  serviceOf,
   visitOptions,
 } from '@gp/engine';
 import type { PolicyId } from '@gp/bots';
@@ -57,13 +59,10 @@ export const EVENT_KINDS = {
   stackToBarn: true,
   harvested: true,
   workerWorked: true,
-  workerAdvanced: true,
-  workerExpired: true,
-  reshuffled: false,
+  reshuffled: true,
   built: true,
   covered: true,
   demolished: true,
-  hired: true,
   starterUpgraded: true,
   delivered: true,
   balloonMoved: true,
@@ -83,7 +82,6 @@ export const MOVE_KINDS = {
   buy: true,
   market: true,
   build: true,
-  hire: true,
   upgrade: true,
   grow: true,
   harvest: true,
@@ -116,15 +114,6 @@ export interface CardFacts {
   coins: number[];
   /** Seats that built it. */
   builtBy: Seat[];
-}
-
-export interface WorkerLifetime {
-  readonly worker: WorkerAction;
-  readonly owner: Seat;
-  /** Furthest paying space the meeple reached. `wages.length` is the top. */
-  maxPos: number;
-  /** True when the meeple walked home; false when the game ended first. */
-  expired: boolean;
 }
 
 /** One worker-visit, priced both ways: what the host minted, what the visitor gave up. */
@@ -199,15 +188,43 @@ export interface GameMetrics {
   foreignCropBuildsBySeat: number[];
   wageCoinsBySeat: number[];
   upgradesBySeat: number[];
-  /** The seat's own turn number when it first hired, or null. */
-  firstHireTurnBySeat: (number | null)[];
+  /**
+   * The seat's own turn number when it first activated its OWN Service, or null.
+   * The bootstrap question since the Services (2026-08-10): every seat has one
+   * from turn 1 but starts at GBP 0, so the first own-activation cannot happen
+   * until income has, and income means visiting somebody.
+   */
+  firstOwnServiceTurnBySeat: (number | null)[];
   /** Turns the seat began holding cards with no legal visit anywhere. */
   clogTurnsBySeat: number[];
   /** Turns the seat began, counted only when the clog question was askable. */
   clogSampledBySeat: number[];
 
-  workerLifetimes: WorkerLifetime[];
-  /** Uses of a worker by somebody other than its owner, by worker. */
+  /**
+   * Turn ends at which a seat's OWN Service stood clogged, and the turn ends
+   * sampled. The Service threshold is the only brake left on a popular farm now
+   * the Working Week is gone, so this is what replaced the track metrics: too
+   * high and popularity is a harvest tax, too low and the brake never bites.
+   */
+  serviceClogTurnsBySeat: number[];
+  serviceClogSampledBySeat: number[];
+  /**
+   * Times each crop's discard was shuffled back into its deck, by crop. The
+   * C1 metric: a pool that cycles is not a pool that is sampled, and until
+   * 2026-08-09 this event was claimed as "uninteresting for balance" and
+   * dropped, so nobody knew the number. It is not a balance figure and it is
+   * not meant to be - it is the only direct evidence the instrument can give
+   * about whether the 105 cards behave as a pool or as a deck.
+   *
+   * Read it SPLIT, never pooled. A played crop's central deck holds 12 cards
+   * (setup takes 6 of its 18 into a hand and a barn); a neutral crop's holds
+   * 18 and nothing is taken out. The two behave nothing alike, and the split
+   * is the finding: `report.ts` prints played and neutral on separate lines
+   * for that reason. Keyed by crop so the split can be re-derived from
+   * `suits` and `neutral` without re-running.
+   */
+  reshufflesByCrop: Record<string, number>;
+  /** Uses of a Service by somebody other than its owner, by Service. */
   rivalUsesByWorker: Record<string, number>;
   workerVisits: WorkerVisit[];
 
@@ -277,7 +294,6 @@ export class Fold {
   private leader: Seat | null = null;
   /** Working counter for the exploit probe: market buys since the seat's last harvest. */
   private marketSinceHarvest: number[] = [];
-  private readonly open = new Map<string, WorkerLifetime>();
   private seeded = false;
   private leaderCache: { d: Decision; v: Seat | null } | null = null;
 
@@ -320,10 +336,12 @@ export class Fold {
       foreignCropBuildsBySeat: zeros(),
       wageCoinsBySeat: zeros(),
       upgradesBySeat: zeros(),
-      firstHireTurnBySeat: Array<number | null>(seats).fill(null),
+      firstOwnServiceTurnBySeat: Array<number | null>(seats).fill(null),
       clogTurnsBySeat: zeros(),
       clogSampledBySeat: zeros(),
-      workerLifetimes: [],
+      serviceClogTurnsBySeat: zeros(),
+      serviceClogSampledBySeat: zeros(),
+      reshufflesByCrop: Object.fromEntries([...spec.suits, ...spec.neutral].map((s) => [s, 0])),
       rivalUsesByWorker: {},
       workerVisits: [],
       wagonSelfWorks: 0,
@@ -437,7 +455,6 @@ export class Fold {
       case 'cardMove':
       case 'draw':
       case 'buy':
-      case 'hire':
       case 'upgrade':
       case 'harvest':
       case 'deliver':
@@ -506,37 +523,13 @@ export class Fold {
         else m.foreignCropBuildsBySeat[e.seat] = (m.foreignCropBuildsBySeat[e.seat] ?? 0) + 1;
         return;
       }
-      case 'hired': {
-        if (m.firstHireTurnBySeat[e.seat] === null) {
-          m.firstHireTurnBySeat[e.seat] = (m.turnsBySeat[e.seat] ?? 0) + 1;
-        }
-        this.open.set(e.workerId, {
-          worker: e.workerId,
-          owner: e.seat,
-          maxPos: 0,
-          expired: false,
-        });
-        return;
-      }
       case 'workerWorked':
         if (e.owner !== null && e.owner !== e.seat) {
           m.rivalUsesByWorker[e.workerId] = (m.rivalUsesByWorker[e.workerId] ?? 0) + 1;
+        } else if (e.owner !== null && m.firstOwnServiceTurnBySeat[e.seat] === null) {
+          m.firstOwnServiceTurnBySeat[e.seat] = (m.turnsBySeat[e.seat] ?? 0) + 1;
         }
         return;
-      case 'workerAdvanced': {
-        const life = this.open.get(e.workerId);
-        if (life) life.maxPos = Math.max(life.maxPos, e.to);
-        return;
-      }
-      case 'workerExpired': {
-        const life = this.open.get(e.workerId);
-        if (life) {
-          life.expired = true;
-          m.workerLifetimes.push(life);
-          this.open.delete(e.workerId);
-        }
-        return;
-      }
       case 'starterUpgraded':
         if (!e.free) m.upgradesBySeat[e.seat] = (m.upgradesBySeat[e.seat] ?? 0) + 1;
         return;
@@ -596,12 +589,24 @@ export class Fold {
         if (d.pre.turn.bonusSpent || d.move.type === 'visit' || d.move.type === 'workOwnWorker') {
           m.bonusTurnsBySeat[seat] = (m.bonusTurnsBySeat[seat] ?? 0) + 1;
         }
+        // The Service clog, sampled once per turn boundary for EVERY seat: a
+        // clogged Service is a state of the table, not an event, and it is the
+        // brake that replaced the Working Week.
+        for (let s2 = 0; s2 < m.seats; s2++) {
+          m.serviceClogSampledBySeat[s2] = (m.serviceClogSampledBySeat[s2] ?? 0) + 1;
+          if (isFull(this.data, serviceOf(this.data, d.post, s2))) {
+            m.serviceClogTurnsBySeat[s2] = (m.serviceClogTurnsBySeat[s2] ?? 0) + 1;
+          }
+        }
         this.turnsEnded += 1;
         if (this.turnsEnded % m.seats === 0) this.roundBoundary(d.post);
         return;
       }
       case 'endTriggered':
         m.endTriggerRound = Math.floor(this.turnsEnded / m.seats) + 1;
+        return;
+      case 'reshuffled':
+        m.reshufflesByCrop[e.suit] = (m.reshufflesByCrop[e.suit] ?? 0) + 1;
         return;
       // Claimed and uninteresting for balance: card movement between zones that
       // no assertion and no funnel layer reads.
@@ -613,7 +618,6 @@ export class Fold {
       case 'demolished':
       case 'discardToBarn':
       case 'handToBarn':
-      case 'reshuffled':
       case 'gameEnded':
         return;
       default:
@@ -701,8 +705,6 @@ export class Fold {
     m.ended = outcome === 'ended';
     m.error = error;
     m.chooseMs = chooseMs;
-    for (const life of this.open.values()) m.workerLifetimes.push(life);
-    this.open.clear();
 
     const capacity = state.island.tiles.length * deliveriesPerTile(this.data);
     const made = state.island.tiles.reduce((n, t) => n + t.deliveredBy.length, 0);

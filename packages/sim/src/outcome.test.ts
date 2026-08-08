@@ -20,7 +20,16 @@
 import { loadGameData } from '@gp/data';
 import type { Suit } from '@gp/data';
 import type { GameState, Move } from '@gp/engine';
-import { apply, legalMoves, makeProber, newGame, seedRng, shuffle, viewFor } from '@gp/engine';
+import {
+  apply,
+  legalMoves,
+  makeProber,
+  newGame,
+  player,
+  seedRng,
+  shuffle,
+  viewFor,
+} from '@gp/engine';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -209,10 +218,18 @@ describe('a pending draw', () => {
     const noRoom: number[] = [];
     const nonZeroWithNoRoom: number[] = [];
 
+    // Widened from 3 seeds on 2026-08-09. The Service threshold locked at 2, so
+    // a Draw Service is clogged about two turns in five and the offer is simply
+    // rarer - the full-hand subcase stopped appearing at all in six games, which
+    // made the last assertion below vacuous. More samples, same assertions.
     for (const seats of [2, 3]) {
-      for (let n = 0; n < 3; n++) {
+      for (let n = 0; n < 8; n++) {
         const seed = `drawworker-${seats}-${n}`;
-        const suits = SUITS.slice(n, n + seats);
+        // Rotate rather than slice: n now runs past 5 and a slice runs off the end.
+        const suits = Array.from(
+          { length: seats },
+          (_, i) => SUITS[(n + i) % SUITS.length] as Suit,
+        );
         const result = runGame(data, {
           seed,
           seats,
@@ -232,7 +249,19 @@ describe('a pending draw', () => {
               act.payoff.workerId === 'draw'
             );
           });
-          if (rented.length > 0) {
+          // O16 The Orchard Keeper pays the VISITOR a card just for visiting,
+          // independently of the Draw. Before the suit Services (2026-08-10) that
+          // co-occurrence was rare - the host had to have hired the Draw Worker
+          // AND built O16 - and now every Orchard seat owns the Draw Service from
+          // turn 1, so it is common. Those positions are excluded rather than
+          // asserted away: the cap under test is on what the DRAW keeps, and a
+          // card arriving from somewhere else is not that cap failing.
+          const hostHasKeeper = rented.some((m) =>
+            player(state, (m as Extract<Move, { type: 'visit' }>).host).tableau.some(
+              (b) => b.card === 'O16',
+            ),
+          );
+          if (rented.length > 0 && !hostHasKeeper) {
             const scratch = makeScratch(data, viewFor(data, state, seat));
             const prober = makeProber(data, state, seat);
             const outcomes = makeOutcomes(scratch, BALANCED, prober);
@@ -385,14 +414,13 @@ describe('the coin runway', () => {
   });
 
   it('sees the cheapest thing the seat still wants, affordable or not', () => {
-    // A fresh seat wants a Worker and two starter flips. The gap is the cheapest
-    // of them, and it stays the cheapest of them once the seat can pay - which
-    // is the whole point: "would buying leave me short" is not "am I short now".
-    // Filtering to the unaffordable ones made a seat on exactly £2 read null,
-    // buy a card, and lose the Worker it was one coin away from.
+    // A fresh seat wants two starter flips (the hire is gone: every seat owns
+    // its Service from setup). The gap is the cheapest of them, and it stays
+    // the cheapest once the seat can pay - which is the whole point: "would
+    // buying leave me short" is not "am I short now".
+    const cheapest = data.rules.economy.upgradeCostCoins;
     const broke = newGame(data, { seats: 2, suits: ['wheat', 'orchard'], seed: 'runway' });
     const poor = makeScratch(data, viewFor(data, broke, broke.turnPlayer));
-    const cheapest = Math.min(data.workers.hireFee, data.rules.economy.upgradeCostCoins);
     expect(poor.sinkGap).toBe(cheapest);
 
     const flush = loadGameData({

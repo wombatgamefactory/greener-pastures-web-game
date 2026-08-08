@@ -98,44 +98,39 @@ export function noticeBoardOf(data: GameData, farm: Farm): BoardState | null {
   };
 }
 
+/**
+ * A Service as the interface needs it. The Working Week is gone (2026-08-10), so
+ * there is no track to draw: what a player needs to see is what the Service
+ * DOES, what it pays its owner when a rival buys it, and what it costs its owner
+ * to run. The clog is already visible - the Service is an ordinary building in
+ * the tableau with an ordinary stack.
+ */
 export interface WorkerTrack {
   readonly worker: WorkerState;
   readonly name: string;
   readonly actionText: string;
   readonly linkedSuit: Suit;
-  /** Every space on the Working Week: the sun, then the paying spaces. */
-  readonly spaces: readonly { readonly wage: number | null; readonly here: boolean }[];
-  /** What the owner takes from the bank the next time a RIVAL works it. */
-  readonly nextWage: number | null;
-  /** True when one more use walks the meeple home and the card returns to the Fair. */
-  readonly lastUse: boolean;
+  /** Minted by the bank to the OWNER when a RIVAL places a card here. */
+  readonly wage: number;
+  /** Paid to the bank by the OWNER to activate it from their own bonus slot. */
+  readonly ownCost: number;
 }
 
 export function workerTrack(data: GameData, worker: WorkerState): WorkerTrack {
   const spec = data.workers.roster.find((w) => w.id === worker.id);
-  if (!spec) throw new Error(`Unknown worker ${worker.id}`);
-  const spaces = [
-    { wage: null, here: worker.trackPos === 0 },
-    ...spec.wages.map((wage, i) => ({ wage, here: worker.trackPos === i + 1 })),
-  ];
-  const next = spec.wages[worker.trackPos] ?? null;
+  if (!spec) throw new Error(`Unknown Service ${worker.id}`);
   return {
     worker,
     name: spec.name,
     actionText: spec.actionText,
     linkedSuit: spec.linkedSuit,
-    spaces,
-    nextWage: next,
-    lastUse: next === null,
+    wage: data.workers.visitWage,
+    ownCost: data.workers.ownerActivationCost,
   };
 }
 
 export function workersOwnedBy(view: PlayerView, seat: Seat): WorkerState[] {
   return view.fair.filter((w) => w.owner === seat);
-}
-
-export function workersForHire(view: PlayerView): WorkerState[] {
-  return view.fair.filter((w) => w.owner === null);
 }
 
 export function receiptTotal(receipts: readonly number[]): number {

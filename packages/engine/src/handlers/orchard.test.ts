@@ -81,17 +81,21 @@ describe('the Orchard Farmstead (O2) - the draw modifier', () => {
     expect(headDraw(applied.state)).toMatchObject({ see: 2, keep: 1 });
   });
 
-  it('composes with the Draw Worker: (3,2) -> (4,2) base, (4,3) upgraded', () => {
+  it('composes with the Draw Service: (2,2) -> (3,2) base, (3,3) upgraded', () => {
     const s = base();
     hireFor(s, ORCHARD, 'draw');
+    // The bonus slot's own-Service option is no longer free: pay the bank.
+    player(s, ORCHARD).coins += data.workers.ownerActivationCost;
     const worked = apply(data, s, { type: 'workOwnWorker', seat: ORCHARD, workerId: 'draw' });
-    expect(headDraw(worked.state)).toMatchObject({ see: 4, keep: 2 });
+    // The Orchard seat is the ONLY one who gets any selection on a Draw 2.
+    expect(headDraw(worked.state)).toMatchObject({ see: 3, keep: 2 });
 
     const t = base();
     buildingOf(t, ORCHARD, 'O2').upgraded = true;
     hireFor(t, ORCHARD, 'draw');
+    player(t, ORCHARD).coins += data.workers.ownerActivationCost;
     const upgraded = apply(data, t, { type: 'workOwnWorker', seat: ORCHARD, workerId: 'draw' });
-    expect(headDraw(upgraded.state)).toMatchObject({ see: 4, keep: 3 });
+    expect(headDraw(upgraded.state)).toMatchObject({ see: 3, keep: 3 });
   });
 
   it('never applies to a card-ability draw (DL-47)', () => {

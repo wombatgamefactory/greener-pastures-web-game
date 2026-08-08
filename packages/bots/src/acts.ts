@@ -33,7 +33,6 @@ export type Act =
    * would be surface for nothing.
    */
   | { a: 'build'; card: CardId; payment: readonly CardId[]; coinWild: number; barn: number }
-  | { a: 'hire'; workerId: WorkerAction }
   | { a: 'upgrade'; card: CardId }
   | { a: 'grow'; building: CardId; payment: CardId }
   | { a: 'harvest'; building: CardId }
@@ -54,6 +53,10 @@ export type Act =
   | { a: 'deckPick'; suit: Suit }
   | { a: 'keep'; cards: readonly CardId[] }
   | { a: 'sow'; card: CardId; onto: CardId }
+  /** The Apiary Service: a deck top onto one of your buildings, never a hand card. */
+  | { a: 'deckSow'; suit: Suit; onto: CardId }
+  /** The Wheat and Vegetable Services' optional hand card into your own barn. */
+  | { a: 'handToBarn'; card: CardId }
   | { a: 'discard'; cards: readonly CardId[] }
   | { a: 'skip' }
   | { a: 'cardTask'; payload: Record<string, unknown> };
@@ -83,6 +86,10 @@ function actOfAnswer(answer: TaskAnswer): Act {
       return { a: 'deliver', tile: answer.tile, spend: answer.spend };
     case 'balloon':
       return { a: 'balloon', balloon: answer.balloon, spend: answer.spend };
+    case 'deckSow':
+      return { a: 'deckSow', suit: answer.suit, onto: answer.onto };
+    case 'handToBarn':
+      return { a: 'handToBarn', card: answer.card };
     case 'discard':
       return { a: 'discard', cards: answer.cards };
     case 'skip':
@@ -109,8 +116,6 @@ export function actOf(move: Move): Act {
       return { a: 'market', suit: move.suit };
     case 'build':
       return { a: 'build', card: move.card, payment: move.payment, coinWild: 0, barn: 0 };
-    case 'hire':
-      return { a: 'hire', workerId: move.workerId };
     case 'upgrade':
       return { a: 'upgrade', card: move.card };
     case 'grow':

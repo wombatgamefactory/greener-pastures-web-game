@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 import { apply, legalMoves } from '../game.js';
 import { answerTask, gameEndScores, growBuilding, pendingAnswers } from '../runtime.js';
-import { buildingOf, player, workerState } from '../query.js';
+import { buildingOf, player } from '../query.js';
 import type { GameState, Move, Task, TaskAnswer } from '../state.js';
 import { buildFor, dealTo, hireFor, loadStack, makeState } from '../testkit.js';
 import { handlerFor } from './registry.js';
@@ -100,7 +100,7 @@ describe('the Dairy Farmstead (D2) - the two engine seams', () => {
     expect(second).toBeDefined();
     const twice = apply(data, built.state, second as Move);
     expect(twice.state.turn.again).toBeNull();
-    expect(player(twice.state, DAIRY).tableau.filter((b) => b.stack.length === 0).length).toBe(5);
+    expect(player(twice.state, DAIRY).tableau.filter((b) => b.stack.length === 0).length).toBe(6);
   });
 
   it('the repeat is declined by endTurn, and never armed on the base face', () => {
@@ -265,12 +265,11 @@ describe('D9 The Prosperity Wagon - the card-granted work (ruling E)', () => {
     const grown = growBuilding(data, s, DAIRY, 'D9', 'D5');
     // The build auto-skips (empty hand); the worker choice is next, and optional.
     const state = answerAll(grown.state, (a) => a.find((x) => x.kind === 'worker') ?? a[0]!);
-    expect(player(state, DAIRY).coins).toBe(2); // the £2, no wage on your own worker
-    expect(workerState(state, 'draw').trackPos).toBe(1); // the meeple DID advance
+    expect(player(state, DAIRY).coins).toBe(2); // the £2, no wage on your own Service
     expect(state.turn.bonusSpent).toBe(false); // not a visit: the slot survives
   });
 
-  it('pays the rival owner the normal track wage, and the £2 to the actor', () => {
+  it('pays the rival owner NOTHING - a card-granted work places no card - and £2 to the actor', () => {
     const s = base();
     buildFor(data, s, DAIRY, 'D9');
     hireFor(s, WHEAT, 'draw');
@@ -278,7 +277,11 @@ describe('D9 The Prosperity Wagon - the card-granted work (ruling E)', () => {
     const grown = growBuilding(data, s, DAIRY, 'D9', 'D5');
     const state = answerAll(grown.state, (a) => a.find((x) => x.kind === 'worker') ?? a[0]!);
     expect(player(state, DAIRY).coins).toBe(2);
-    expect(player(state, WHEAT).coins).toBe(1); // wage space 1
+    // RULING (2026-08-10): a card-granted work places no card on the Service,
+    // so its threshold does not move and the visit wage never fires. D9 prints
+    // no rider of its own, so the owner takes nothing. The Herb Hive, which DOES
+    // print 'the owner gains £1', still pays - through its own rider.
+    expect(player(state, WHEAT).coins).toBe(0);
   });
 
   it('mints nothing when the work is declined', () => {
@@ -291,7 +294,6 @@ describe('D9 The Prosperity Wagon - the card-granted work (ruling E)', () => {
     expect(skip).toBeDefined();
     const done = answerTask(data, grown.state, skip as TaskAnswer);
     expect(player(done.state, DAIRY).coins).toBe(0);
-    expect(workerState(done.state, 'draw').trackPos).toBe(0);
   });
 });
 
@@ -475,19 +477,19 @@ describe('D16 The Ledger and D17 The Strongbox - the reactors', () => {
     expect(built.state.tasks.some((t) => t.t === 'draw' && t.src === 'D16')).toBe(false);
   });
 
-  it('D17 pays £1 on your own hire and £1 on every work you make', () => {
+  it('D17 pays £1 on every Service use you make, rebating the activation cost', () => {
     const s = base();
-    player(s, DAIRY).coins = data.workers.hireFee;
+    player(s, DAIRY).coins = data.workers.ownerActivationCost;
     buildFor(data, s, DAIRY, 'D17');
-    const hired = apply(data, s, { type: 'hire', seat: DAIRY, workerId: 'draw' });
-    expect(player(hired.state, DAIRY).coins).toBe(1); // fee paid, £1 rebated
+    hireFor(s, DAIRY, 'build');
 
-    const worked = apply(data, hired.state, {
+    const worked = apply(data, s, {
       type: 'workOwnWorker',
       seat: DAIRY,
-      workerId: 'draw',
+      workerId: 'build',
     });
-    expect(player(worked.state, DAIRY).coins).toBe(2);
+    // Paid the activation cost, took £1 straight back: a full rebate at £1.
+    expect(player(worked.state, DAIRY).coins).toBe(1);
   });
 
   it("D17 does not pay when a RIVAL works its owner's worker", () => {
@@ -503,8 +505,9 @@ describe('D16 The Ledger and D17 The Strongbox - the reactors', () => {
       fee: ['W4'],
       payoff: { mode: 'worker', workerId: 'draw' },
     });
-    // Only the £1 track wage - the Strongbox is actor-scoped, and the actor is Wheat.
-    expect(player(applied.state, DAIRY).coins).toBe(1);
+    // Nothing at all: the Strongbox is actor-scoped and the actor is Wheat, and
+    // since 2026-08-10 a rival's use pays the owner no wage either - just the card.
+    expect(player(applied.state, DAIRY).coins).toBe(0);
   });
 });
 
@@ -543,7 +546,7 @@ describe('the endgame cards - D19, D20, D21', () => {
   // cost at all) and every £2 Power/Endgame card (a card cost of 0).
   it('D21: the printed cost band and the old tier filter select the same Dairy cards', () => {
     const dairy = data.cards.catalogue.filter((c) => c.suit === 'dairy');
-    expect(dairy).toHaveLength(21);
+    expect(dairy).toHaveLength(22);
 
     const cardCost = (c: (typeof dairy)[number]) =>
       c.buildCost ? c.buildCost.suit + c.buildCost.wild : 0;

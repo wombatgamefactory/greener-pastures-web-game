@@ -57,6 +57,7 @@ import {
   versatileShed,
 } from './dairy.js';
 import { helpingHand } from './helpingHand.js';
+import { suitService } from './service.js';
 import type { CardHandler } from './types.js';
 import {
   appleOrchard,
@@ -127,6 +128,13 @@ import {
 
 const HANDLERS = new Map<CardId, CardHandler>([
   // Wheat - the full suit (ticket 18).
+  // The five Services (2026-08-10). One shared entry: same card, five texts.
+  ['W0', suitService],
+  ['V0', suitService],
+  ['O0', suitService],
+  ['A0', suitService],
+  ['D0', suitService],
+
   ['W1', wheatBarn],
   ['W2', wheatFarmstead],
   ['W3', wheatNoticeBoard],

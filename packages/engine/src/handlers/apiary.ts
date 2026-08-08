@@ -20,7 +20,6 @@
 
 import type { GameData } from '@gp/data';
 
-import { doHire, hireOptions } from '../actions.js';
 import type { Fx } from '../fx.js';
 import { canTakeCard, cardById, isFull, player, upgradedBuildingCount } from '../query.js';
 import type { BuildingState, CardId, GameState, Seat, TaskAnswer } from '../state.js';
@@ -280,31 +279,27 @@ export const pollinatorTrail: CardHandler = {
   },
 };
 
-/** A10 The Cross-Pollinator - "HIRE a Hired Worker, paying £1 less." */
+/**
+ * A10 The Cross-Pollinator - RETEXTED 2026-08-10, and the sheet has not caught
+ * up. It printed "HIRE a Hired Worker, paying £1 less" and there is no hiring
+ * any more, so the £1 was repointed at the only other place a player pays for
+ * their own labour: "Your Service costs £1 less to activate."
+ *
+ * A passive, not an activation, which is why it has no `activate` and no task.
+ * At the shipped ownerActivationCost of £1 it makes the owner's own Service
+ * free - deliberately the strongest reading, because the card was a discount on
+ * a one-off fee and is now a discount on a per-turn one, and an Apiary player
+ * who takes it has bought the hermit option outright. Watch it.
+ */
 export const crossPollinator: CardHandler = {
   difficulty: {
-    score: 2,
-    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
+    score: 1,
+    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'Imperative = mandatory when legal (the player chose to grow it). Rides the real ' +
-      'hire funnel with a £1 discount (fee floors at 0), so the max-1-per-player gate and ' +
-      'the Fair-only rule hold; auto-skips when already staffed, broke or the Fair is empty.',
-  },
-  activate(fx, self) {
-    fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'hire', riders: {} });
-  },
-  tasks: {
-    hire: {
-      answers(data, state, task) {
-        return hireOptions(data, state, task.pid, 1).map((w) => ({ kind: 'worker', workerId: w }));
-      },
-      resolve(fx, task, answer) {
-        if (answer.kind !== 'worker') throw new Error('hire expects a worker answer');
-        doHire(fx, task.pid, answer.workerId, 1);
-        return true;
-      },
-    },
+      'Passive discount read by ownServiceCost through the bonus-slot funnel, so it needs ' +
+      'no primitive and no task. Floors at 0. Owed a sheet edit: the printed text still ' +
+      'says HIRE, which is a rule that no longer exists.',
   },
 };
 

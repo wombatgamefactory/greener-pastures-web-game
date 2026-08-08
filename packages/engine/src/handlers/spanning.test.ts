@@ -18,7 +18,7 @@ import {
   visitWork,
   workOwnWorker,
 } from '../runtime.js';
-import { buildingOf, noticeBoardOf, player, thresholdOf, workerState } from '../query.js';
+import { buildingOf, player, serviceOf, thresholdOf, workerState } from '../query.js';
 import type { GameState, TaskAnswer } from '../state.js';
 import { buildFor, dealTo, hireFor, loadStack, makeState } from '../testkit.js';
 import { handlerFor } from './registry.js';
@@ -116,16 +116,17 @@ describe('3. The Pie Shop (W17) - "£1 per non-wheat card in the harvest"', () =
     // Fill W4 entirely with apiary cards (sow is suit-free, so this is a real position).
     loadStack(data, s, WHEAT, 'W4', w4Threshold, 'apiary');
     hireFor(s, WHEAT, 'harvest');
+    // The bonus slot's own-Service option is no longer free: pay the bank.
+    player(s, WHEAT).coins += data.workers.ownerActivationCost;
 
-    // Harvest through the Harvest Worker: chooseBuilding task -> pick W4.
+    // Harvest through the Harvest Service: chooseBuilding task -> pick W4.
     const out = workOwnWorker(data, s, WHEAT, 'harvest');
     const state = answerAll(out.state);
     // Pie Shop pays per non-wheat card, plus W4's own printed £1 on harvest
     // (its handler landed with ticket 18).
     expect(player(state, WHEAT).coins).toBe(w4Threshold + 1);
     expect(player(state, WHEAT).barn).toHaveLength(w4Threshold);
-    // Own use: meeple advanced, no wage minted for anyone.
-    expect(workerState(state, 'harvest').trackPos).toBe(1);
+    // Own use: no wage minted for anyone.
   });
 
   it('pays nothing when a RIVAL harvests (scope is the listener, not the bus)', () => {
@@ -134,6 +135,8 @@ describe('3. The Pie Shop (W17) - "£1 per non-wheat card in the harvest"', () =
     buildFor(data, s, APIARY, 'A5');
     loadStack(data, s, APIARY, 'A5', thresholdOf(data, buildingOf(s, APIARY, 'A5')) as number);
     hireFor(s, APIARY, 'harvest');
+    // The bonus slot's own-Service option is no longer free: pay the bank.
+    player(s, APIARY).coins += data.workers.ownerActivationCost;
     const out = workOwnWorker(data, s, APIARY, 'harvest');
     const state = answerAll(out.state);
     expect(player(state, WHEAT).coins).toBe(0);
@@ -161,9 +164,9 @@ describe('4. The Herb Hive (A4) - cross-player free WORK', () => {
     const state = answerAll(worked.state, (a) => a[0] as TaskAnswer);
     expect(player(state, APIARY).hand).toHaveLength(2);
     expect(player(state, WHEAT).coins).toBe(1); // the owner's rider
-    const ws = workerState(state, 'draw');
-    expect(ws.trackPos).toBe(0); // "Do not progress the worker"
-    expect(ws.owner).toBe(WHEAT);
+    // "Do not progress the worker": no card lands on the Service, so its
+    // threshold does not move and the visit wage never fires.
+    expect(workerState(state, 'draw').owner).toBe(WHEAT);
   });
 
   it('is skipped cleanly when no rival has a hired Worker', () => {
@@ -197,11 +200,13 @@ describe('5. A Helping Hand (W18) - the standing repeat gate', () => {
     return s;
   }
 
-  it('offers the repeat after a rival-Worker visit, prices it in cards, pays the host', () => {
+  it('offers the repeat after a rival-Service visit, prices it in cards, pays the host', () => {
     const s = visitScenario();
     const visited = visitWork(data, s, WHEAT, APIARY, 'draw', 'W4');
     expect(visited.state.turn.visit).toMatchObject({ host: APIARY, workerId: 'draw', repeats: 0 });
-    expect(player(visited.state, APIARY).coins).toBe(1); // wage space 1, minted by the bank
+    // visitWage is 0 since 2026-08-10: a rival's use pays the owner the CARD
+    // that lands on their Service and nothing else.
+    expect(player(visited.state, APIARY).coins).toBe(0);
     let state = answerAll(visited.state, (a) => a[0] as TaskAnswer); // resolve draw 3 keep 2
 
     const offers = standingMoves(data, state, WHEAT);
@@ -213,9 +218,13 @@ describe('5. A Helping Hand (W18) - the standing repeat gate', () => {
     state = answerAll(repeated.state, (a) => a[0] as TaskAnswer);
 
     expect(repeated.audit.crossSeat).toBe(true);
-    expect(player(state, APIARY).coins).toBe(3); // wage space 2 minted on top
-    expect(noticeBoardOf(data, state, APIARY).stack).toContain(fee);
-    expect(noticeBoardOf(data, state, APIARY).stack).toHaveLength(2);
+    // A repeat is a second CARD on their Service, and that is the entire
+    // reward - twice the freight, twice the clog, no coins either time.
+    expect(player(state, APIARY).coins).toBe(0);
+    // Both cards land on the SERVICE, not the Notice Board: the repeat is a
+    // second use of the building the visit targeted.
+    expect(serviceOf(data, state, APIARY).stack).toContain(fee);
+    expect(serviceOf(data, state, APIARY).stack).toHaveLength(2);
     expect(state.turn.visit?.repeats).toBe(1);
     // One copy built = one repeat: the gate closes.
     expect(standingMoves(data, state, WHEAT)).toEqual([]);

@@ -112,9 +112,9 @@ export function VisitPanel({
                     <span>
                       {track?.actionText}
                       {' - '}
-                      {track === null || track.lastUse
-                        ? 'and they walk home to the Fair'
-                        : `the bank pays them £${track.nextWage}`}
+                      {(track?.wage ?? 0) > 0
+                        ? `your card lands on it, and the bank pays them £${track?.wage}`
+                        : 'your card lands on it, and rides into their barn'}
                     </span>
                   </button>
                 );

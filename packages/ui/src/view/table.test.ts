@@ -16,7 +16,6 @@ import {
   receiptTotal,
   seatSuits,
   workerTrack,
-  workersForHire,
   workersOwnedBy,
 } from './table';
 
@@ -90,34 +89,28 @@ describe('noticeBoardOf', () => {
 });
 
 describe('workerTrack', () => {
-  it('lays out the sun space plus one space per printed wage', () => {
+  it('carries the printed action, the wage and the owner cost', () => {
     const view = table();
     for (const worker of view.fair) {
       const spec = data.workers.roster.find((w) => w.id === worker.id)!;
       const track = workerTrack(data, worker);
-      expect(track.spaces).toHaveLength(spec.wages.length + 1);
-      expect(track.spaces[0]!.wage).toBeNull();
-      expect(track.spaces.filter((s) => s.here)).toHaveLength(1);
+      expect(track.actionText).toBe(spec.actionText);
+      expect(track.linkedSuit).toBe(spec.linkedSuit);
+      expect(track.wage).toBe(data.workers.visitWage);
+      expect(track.ownCost).toBe(data.workers.ownerActivationCost);
     }
   });
 
-  it('names the wage a RIVAL use would mint, and flags the last use', () => {
-    const view = table();
-    const draw = view.fair.find((w) => w.id === 'draw')!;
-    const spec = data.workers.roster.find((w) => w.id === 'draw')!;
-    const track = workerTrack(data, { ...draw, trackPos: 0 });
-    expect(track.nextWage).toBe(spec.wages[0]);
-    expect(track.lastUse).toBe(false);
-    const spent = workerTrack(data, { ...draw, trackPos: spec.wages.length });
-    expect(spent.nextWage).toBeNull();
-    expect(spent.lastUse).toBe(true);
-  });
-
-  it('partitions the Fair into hired and for hire', () => {
+  it('gives every seat exactly one Service, and leaves the absent suits unowned', () => {
     const view = table();
     const owned = view.rivals.flatMap((r) => workersOwnedBy(view, r.seat));
     const mine = workersOwnedBy(view, view.seat);
-    expect(workersForHire(view).length + owned.length + mine.length).toBe(view.fair.length);
+    expect(mine).toHaveLength(1);
+    // Four seats, five Services: the suit nobody chose has no Service on the
+    // table at all, which is the rule that makes the menu of buyable actions
+    // depend on which suits were picked.
+    expect(owned.length + mine.length).toBe(4);
+    expect(view.fair.filter((w) => w.owner === null)).toHaveLength(1);
   });
 });
 

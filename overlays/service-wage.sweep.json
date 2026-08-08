@@ -1,0 +1,11 @@
+{
+  "name": "service-wage",
+  "schemaVersion": 1,
+  "note": "What the bank mints to a Service's owner when a rival uses it. 0 is Dean's original, 1 is shipped, 2-3 reach back toward the v14 Working Week's top wages and the coin flood that came with them.",
+  "sweep": [
+    {
+      "knob": "workers.visitWage",
+      "values": [0, 1, 2, 3]
+    }
+  ]
+}

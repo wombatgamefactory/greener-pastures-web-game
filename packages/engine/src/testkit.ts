@@ -118,12 +118,15 @@ export function deliveredAt(state: GameState, seat: Seat, ...tiles: string[]): v
   }
 }
 
-/** Put a hired Worker in play. */
-export function hireFor(state: GameState, seat: Seat, workerId: string, trackPos = 0): void {
+/**
+ * Force a Service's ownership. Setup already assigns every Service from its
+ * suit, so this is only for tests that want an ownership the suits do not give -
+ * it can no longer happen in a real game.
+ */
+export function hireFor(state: GameState, seat: Seat, workerId: string): void {
   const w = state.fair.find((x) => x.id === workerId);
-  if (!w) throw new Error(`Unknown worker ${workerId}`);
+  if (!w) throw new Error(`Unknown Service ${workerId}`);
   w.owner = seat;
-  w.trackPos = trackPos;
 }
 
 /** Fill a building's stack from its own suit's deck top (testing clogs and harvests). */

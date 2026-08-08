@@ -104,8 +104,8 @@ describe('printedFace, across the whole catalogue', () => {
       : [printedFace(data, card.id)],
   );
 
-  it('covers all 105 cards and both faces of the 15 starters', () => {
-    expect(every).toHaveLength(105 + 15);
+  it('covers all 110 cards and both faces of the 15 flipping starters', () => {
+    expect(every).toHaveLength(110 + 15);
   });
 
   it('never asks for a cost bar art the export does not have', () => {

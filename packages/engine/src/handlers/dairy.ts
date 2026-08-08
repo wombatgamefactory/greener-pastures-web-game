@@ -523,7 +523,11 @@ export const ledger: CardHandler = {
   },
 };
 
-/** D17 The Strongbox - "Gain £1 from the bank whenever you HIRE or WORK a Hired Worker." */
+/**
+ * D17 The Strongbox - printed "whenever you HIRE or WORK a Hired Worker". The
+ * HIRE half died with the Hiring Fair (2026-08-10); the WORK half is untouched
+ * and is now the whole card. Owed a sheet edit.
+ */
 export const strongbox: CardHandler = {
   difficulty: {
     score: 2,
@@ -532,17 +536,13 @@ export const strongbox: CardHandler = {
     notes:
       'Actor-scoped, and the mirror image of A17 The Smoke Pot on the same afterWork hook: ' +
       'the Pot pays the OWNER when a rival works, the Strongbox pays YOU whenever you work ' +
-      "anyone's - your own Worker on the bonus slot, a rival's via a visit, a Helping Hand " +
-      'repeat, a Herb Hive free work, a Prosperity Wagon work. Plus £1 on your own hire ' +
-      '(the afterHire hook), which is a straight rebate on half the fee.',
+      "anyone's - your own Service on the bonus slot (where it rebates the whole " +
+      "activation cost), a rival's via a visit, a Helping Hand repeat, a Herb Hive free " +
+      'work, a Prosperity Wagon work.',
   },
   on: {
     afterWork(fx, event, self) {
       if (event.actor !== self.seat) return;
-      fx.gainCoins(self.seat, 1, 'D17');
-    },
-    afterHire(fx, event, self) {
-      if (event.seat !== self.seat) return;
       fx.gainCoins(self.seat, 1, 'D17');
     },
   },

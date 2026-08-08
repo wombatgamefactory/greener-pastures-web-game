@@ -150,6 +150,43 @@ export function workerData(data: GameData, id: string): HiredWorker {
 }
 
 /**
+ * A seat's SERVICE building - its fourth starter, the one a rival may place a
+ * card on to buy its action.
+ *
+ * Throws for the same reason noticeBoardOf does: every seat has one for the
+ * whole game (nothing in the game removes a starter since ticket 30), so a miss
+ * is a broken invariant and must not be averaged over by a balance run.
+ */
+export function serviceOf(data: GameData, state: GameState, seat: Seat): BuildingState {
+  const b = player(state, seat).tableau.find((x) => cardById(data, x.card).slot === 'service');
+  if (!b) throw new Error(`Seat ${seat} has no Service`);
+  return b;
+}
+
+/** The Service action a seat owns, from its suit. Every seat owns exactly one. */
+export function serviceIdOf(data: GameData, state: GameState, seat: Seat): string {
+  const suit = player(state, seat).suit;
+  const svc = data.workers.roster.find((w) => w.linkedSuit === suit);
+  if (!svc) throw new Error(`No Service for suit ${suit}`);
+  return svc.id;
+}
+
+/**
+ * The building a visit's fee lands on. The payoff mode picks it: a Service visit
+ * puts the card on the Service (so popularity clogs the thing being bought), a
+ * coin visit puts it on the Notice Board. They clog independently, which is the
+ * whole reason there are two.
+ */
+export function visitTargetOf(
+  data: GameData,
+  state: GameState,
+  host: Seat,
+  mode: 'coin' | 'worker' | 'special',
+): BuildingState {
+  return mode === 'worker' ? serviceOf(data, state, host) : noticeBoardOf(data, state, host);
+}
+
+/**
  * INVARIANT: every seat has a Notice Board for the whole game, so this throw is
  * an assertion, not a reachable error path.
  *

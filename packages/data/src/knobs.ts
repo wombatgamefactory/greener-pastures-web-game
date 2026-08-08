@@ -136,38 +136,46 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'Island deliveries by one seat that fire the end of the game. The whole clock of the flat island, and flat across seat counts - at 6 that is half the 2-seat board, a third of the 3-seat and a quarter of the 4-seat, so this is the dial if 2p runs long.',
   },
 
-  // --- Hired Workers -------------------------------------------------------
+  // --- The suit Services ---------------------------------------------------
   {
-    template: 'workers.hireFee',
+    template: 'workers.serviceThreshold',
     type: 'int',
-    description: 'Coins paid to the bank to hire a Worker.',
-  },
-  {
-    template: 'workers.maxPerPlayer',
-    type: 'int',
-    description: 'How many Workers one player may own at once.',
-  },
-  {
-    template: 'workers.roster.{}.wages',
-    type: 'intArray',
     description:
-      'The Working Week track, replaced whole. Its LENGTH is the brake on a Worker, especially the Draw Worker; its values are the mint rate.',
+      "Cards a Service holds before it clogs and its owner must Harvest it. The brake that replaced the Working Week track: a popular Service fills faster, so popularity buys its owner a barn of mixed colour and costs them a Harvest action. 4 against the Notice Board's 5, because the card supply did not double when the second visit target arrived.",
+  },
+  {
+    template: 'workers.ownerActivationCost',
+    type: 'int',
+    description:
+      'Coins the OWNER pays the bank to activate their own Service from the bonus slot. The reason a coin is never dead and the reason income is compulsory: a seat that never visits anybody eventually cannot afford to run their own farm. 0 makes the own-use free, which is the hermit-battery shape v14 had to kill once already.',
+  },
+  {
+    template: 'workers.visitWage',
+    type: 'int',
+    description:
+      'Coins the bank mints to the OWNER when a RIVAL activates their Service. SHIPPED AT 0 (Dean, 2026-08-10): the card that lands on the Service is the payment, and being useful is paid in freight rather than coin. Raising it turns the Service back into a faucet, which is what the first build shipped and what overlays/service-wage-one.overlay.json restores.',
   },
   {
     template: 'workers.roster.{}.draw.see',
     type: 'int',
-    description: 'Cards the Draw Worker looks at.',
+    description: 'Cards the Draw Service looks at.',
   },
   {
     template: 'workers.roster.{}.draw.keep',
     type: 'int',
     description:
-      'Cards the Draw Worker keeps. Must over-deliver against a plain Draw or renting it is net zero.',
+      'Cards the Draw Service keeps. Must over-deliver against a plain Draw or buying it is net zero.',
   },
   {
     template: 'workers.roster.{}.sow.amount',
     type: 'int',
-    description: 'Cards the Sow Worker sows.',
+    description: 'Cards the Sow Service sows off the deck tops.',
+  },
+  {
+    template: 'workers.roster.{}.handToBarn',
+    type: 'int',
+    description:
+      "Optional hand cards into your own barn on the Wheat and Vegetable Services. Wheat's lands after the harvest (a junk sink), Vegetable's before the delivery (which IS 'pay 1 card of the cost from hand').",
   },
 
   // --- The island ----------------------------------------------------------

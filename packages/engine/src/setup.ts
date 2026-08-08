@@ -4,10 +4,13 @@
  * reproducibility contract starts at move zero.
  *
  * Setup follows rules.json and island.json: seats + 1 suit decks in play (one
- * passive), 3 starters pre-built per seat, a hand and one face-down barn card
- * from the own deck, the island tiled by seat count with demand tokens dealt
- * onto the crates, five Workers in the Fair, balloons only when Vegetable is
- * on the table.
+ * passive), FOUR starters pre-built per seat (Barn, Farmstead, Notice Board and
+ * the suit's Service), a hand and one face-down barn card from the own deck, the
+ * island tiled by seat count with demand tokens dealt onto the crates, balloons
+ * only when Vegetable is on the table.
+ *
+ * There is no Hiring Fair step any more: `state.fair` is written once here as the
+ * suit-to-seat ownership index and never touched again.
  */
 
 import type { GameData, Suit } from '@gp/data';
@@ -217,7 +220,14 @@ export function newGame(data: GameData, opts: NewGameOptions): GameState {
     players,
     decks,
     discards,
-    fair: data.workers.roster.map((w) => ({ id: w.id, owner: null, trackPos: 0 })),
+    // The Services, owned from setup by the suit that brought them and never
+    // changing hands. A Service whose suit is not at the table has no owner and
+    // is simply not in the game - which is how the table's menu of buyable
+    // actions comes to be decided by which suits the seats chose.
+    fair: data.workers.roster.map((w) => {
+      const owner = playerSuits.indexOf(w.linkedSuit);
+      return { id: w.id, owner: owner < 0 ? null : owner };
+    }),
     island,
     aerodrome,
     turn: freshTurn(),

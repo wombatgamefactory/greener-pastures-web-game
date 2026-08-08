@@ -64,7 +64,6 @@ export const GREEDY_PRIORITY: readonly MoveType[] = [
   'moveBalloon',
   'harvest',
   'build',
-  'hire',
   'upgrade',
   'grow',
   'draw',

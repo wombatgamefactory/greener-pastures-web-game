@@ -28,6 +28,9 @@ import {
   noticeBoardOf,
   player,
   roomOn,
+  serviceIdOf,
+  serviceOf,
+  visitTargetOf,
   withDrawModifier,
   workerData,
   workerState,
@@ -214,16 +217,21 @@ export function buildOptions(
   return out;
 }
 
-/** Early-exit form of buildOptions, for legality checks. */
+/**
+ * Early-exit form of buildOptions, for legality checks. `granted` is a
+ * substitution the BUILD itself carries (the Dairy Service waives crop
+ * requirements for whoever buys it), ORed with the seat's own Farmstead power.
+ */
 export function anyBuildOption(
   data: GameData,
   state: GameState,
   seat: Seat,
   hand?: CardId[],
+  granted = false,
 ): boolean {
   const p = player(state, seat);
   const cards = hand ?? p.hand;
-  const substitute = buildSubstitutePower(state, seat);
+  const substitute = granted || buildSubstitutePower(state, seat);
   return cards.some((id) => {
     const cost = cardById(data, id).buildCost;
     if (!cost || p.coins < cost.coins) return false;
@@ -325,30 +333,25 @@ export function checkFarmsteadFlip(fx: Fx, seat: Seat): void {
   fx.emit({ e: 'starterUpgraded', seat, card: farmstead.card, free: true });
 }
 
-/** `discount` is A10 The Cross-Pollinator's "paying £1 less" (fee floors at 0). */
-export function hireOptions(
-  data: GameData,
-  state: GameState,
-  seat: Seat,
-  discount = 0,
-): WorkerAction[] {
-  const p = player(state, seat);
-  if (p.coins < Math.max(0, data.workers.hireFee - discount)) return [];
-  const owned = state.fair.filter((w) => w.owner === seat).length;
-  if (owned >= data.workers.maxPerPlayer) return [];
-  return state.fair.filter((w) => w.owner === null).map((w) => w.id);
+/**
+ * A10 The Cross-Pollinator, retexted when hiring died (2026-08-10): "Your
+ * Service costs £1 less to activate." The one card id named in a funnel rather
+ * than in a handler, for the same reason W8's surcharge is: it modifies a PRICE
+ * the legality check reads, and a handler cannot reach into a cost lookup. The
+ * £1 is printed text, exactly like every ability number in a handler.
+ */
+const CROSS_POLLINATOR = 'A10';
+
+export function ownServiceDiscount(state: GameState, seat: Seat): number {
+  return player(state, seat).tableau.filter((b) => b.card === CROSS_POLLINATOR).length;
 }
 
-export function doHire(fx: Fx, seat: Seat, workerId: WorkerAction, discount = 0): void {
-  if (!hireOptions(fx.data, fx.state, seat, discount).includes(workerId)) {
-    throw new Error(`Seat ${seat} cannot hire ${workerId}`);
-  }
-  fx.payCoins(seat, Math.max(0, fx.data.workers.hireFee - discount), `hire:${workerId}`);
-  const ws = workerState(fx.state, workerId);
-  ws.owner = seat;
-  ws.trackPos = 0;
-  fx.emit({ e: 'hired', seat, workerId });
-  fireHook(fx, 'afterHire', { seat, workerId });
+/**
+ * What it costs this seat to activate their OWN Service from the bonus slot.
+ * Floors at 0.
+ */
+export function ownServiceCost(data: GameData, discount = 0): number {
+  return Math.max(0, data.workers.ownerActivationCost - discount);
 }
 
 /** Starters a seat can pay to flip: Barn and Notice Board only - the Farmstead flips free. */
@@ -1003,14 +1006,22 @@ export function workerActionLegal(
     case 'draw':
       return drawableSuits(data, state).length > 0;
     case 'harvest':
-      // harvestOptions, not fullBuildings: suit powers apply to Worker actions.
+      // harvestOptions, not fullBuildings: suit powers apply to Service actions.
+      // The handToBarn tail is optional, so it never gates legality.
       return harvestOptions(data, state, seat).length > 0;
     case 'sow':
-      return hand.length > 0 && player(state, seat).tableau.some((b) => canTakeCard(data, b));
+      // The deck-sowing Service needs a live deck, not a hand card - which is
+      // exactly what makes it worth a visitor's card instead of costing them two.
+      return worker.sow?.from === 'deck'
+        ? drawableSuits(data, state).length > 0 &&
+            player(state, seat).tableau.some((b) => canTakeCard(data, b))
+        : hand.length > 0 && player(state, seat).tableau.some((b) => canTakeCard(data, b));
     case 'build':
-      return anyBuildOption(data, state, seat, hand);
+      return anyBuildOption(data, state, seat, hand, worker.build?.substitute === true);
     case 'deliver':
-      // Island or freight: a balloon move IS the Deliver action (DL-12).
+      // Island or freight: a balloon move IS the Deliver action (DL-12). The
+      // handToBarn head is optional, so a seat with a payable barn qualifies
+      // whether or not it wants to top it up first.
       return anyDeliverOption(data, state, seat) || anyBalloonMoveOption(data, state, seat);
     default:
       return worker.action satisfies never;
@@ -1026,6 +1037,17 @@ function withoutFirst(items: readonly CardId[], drop: CardId): CardId[] {
 
 export type VisitOption = Extract<Move, { type: 'visit' }>;
 
+/**
+ * Every visit on offer. Since the Services (2026-08-10) a host has TWO
+ * targetable buildings and they clog independently:
+ *
+ *   their NOTICE BOARD -> the printed coins, to the VISITOR.
+ *   their SERVICE      -> its action for the visitor, and `visitWage` minted to
+ *                         the HOST by the bank.
+ *
+ * A clogged Notice Board no longer locks a rival out of the host's action, which
+ * was the denial worry (v14 watch-list 5) and is now structurally halved.
+ */
 export function visitOptions(data: GameData, state: GameState, seat: Seat): VisitOption[] {
   if (state.turn.bonusSpent) return [];
   const out: VisitOption[] = [];
@@ -1033,26 +1055,31 @@ export function visitOptions(data: GameData, state: GameState, seat: Seat): Visi
   for (let host = 0; host < state.players.length; host++) {
     if (host === seat) continue;
     const board = noticeBoardOf(data, state, host);
-    if (isFull(data, board)) continue;
-    const workers = state.fair.filter((w) => w.owner === host);
+    const service = serviceOf(data, state, host);
+    const serviceId = serviceIdOf(data, state, host);
+    const boardOpen = !isFull(data, board);
+    const serviceOpen = !isFull(data, service);
     for (const fee of hand) {
-      out.push({ type: 'visit', seat, host, fee: [fee], payoff: { mode: 'coin' } });
-      for (const w of workers) {
-        if (workerActionLegal(data, state, seat, w.id, { excludingHandCard: fee })) {
-          out.push({
-            type: 'visit',
-            seat,
-            host,
-            fee: [fee],
-            payoff: { mode: 'worker', workerId: w.id },
-          });
-        }
+      if (boardOpen) {
+        out.push({ type: 'visit', seat, host, fee: [fee], payoff: { mode: 'coin' } });
+      }
+      if (
+        serviceOpen &&
+        workerActionLegal(data, state, seat, serviceId, { excludingHandCard: fee })
+      ) {
+        out.push({
+          type: 'visit',
+          seat,
+          host,
+          fee: [fee],
+          payoff: { mode: 'worker', workerId: serviceId as WorkerAction },
+        });
       }
     }
     // Special Orders' second line, upgraded face only: two distinct cards for a
     // bigger payout, gated up front on room for BOTH (a board at 4-of-5 refuses
     // the whole visit rather than taking one card and paying the smaller rate).
-    if (board.upgraded && roomOn(data, board) >= 2) {
+    if (boardOpen && board.upgraded && roomOn(data, board) >= 2) {
       for (const pair of subsets(hand, 2)) {
         out.push({ type: 'visit', seat, host, fee: pair, payoff: { mode: 'special' } });
       }
@@ -1061,11 +1088,17 @@ export function visitOptions(data: GameData, state: GameState, seat: Seat): Visi
   return out;
 }
 
+/**
+ * Activating your OWN Service: one option, always your suit's, and only when you
+ * can pay the bank for it. A seat with no coins simply has no own-Service
+ * option, which is the rule doing its job - the money to run your farm comes
+ * from your neighbours or it does not come.
+ */
 export function workOwnOptions(data: GameData, state: GameState, seat: Seat): WorkerAction[] {
   if (state.turn.bonusSpent) return [];
-  return state.fair
-    .filter((w) => w.owner === seat && workerActionLegal(data, state, seat, w.id))
-    .map((w) => w.id);
+  if (player(state, seat).coins < ownServiceCost(data, ownServiceDiscount(state, seat))) return [];
+  const id = serviceIdOf(data, state, seat);
+  return workerActionLegal(data, state, seat, id) ? [id as WorkerAction] : [];
 }
 
 /**
@@ -1117,14 +1150,18 @@ export function doMarket(fx: Fx, seat: Seat, suit: Suit): void {
 }
 
 /**
- * The unified visit: cards from hand onto the host's Notice Board, then either
- * the printed coins (to the VISITOR) or one of the host's Workers (wage minted
- * to the HOST). A full board refuses the whole visit.
+ * The unified visit: cards from hand onto ONE of the host's two targetable
+ * buildings, then that building's printed payoff.
  *
- * Three payoffs, one price in cards: `coin` and `worker` place 1, and Special
- * Orders' `special` places 2 distinct cards for the bigger printed payout. The
- * 2-card mode never offers a Worker and so never arms a Helping Hand, which
- * falls out of `turn.visit` staying null rather than needing its own flag.
+ *   coin / special -> the NOTICE BOARD; the bank pays the VISITOR.
+ *   worker         -> the SERVICE;      the bank pays the HOST `visitWage`.
+ *
+ * The mode picks the building, so the two clog independently and a leader
+ * sitting on a full Notice Board no longer denies access to their action.
+ *
+ * The wage is paid HERE rather than inside workWorker, because since the Working
+ * Week died the card landing on the Service IS the use being paid for - a Herb
+ * Hive free work places no card and correctly mints nothing.
  */
 export function doVisit(
   fx: Fx,
@@ -1136,34 +1173,36 @@ export function doVisit(
   if (visitor === host) throw new Error('You may never visit your own farm');
   const state = fx.state;
   if (state.turn.bonusSpent) throw new Error('Bonus slot already spent this turn');
-  const board = noticeBoardOf(fx.data, state, host);
+  const target = visitTargetOf(fx.data, state, host, payoff.mode);
 
   const cards = payoff.mode === 'special' ? 2 : 1;
   if (fee.length !== cards) {
     throw new Error(`A ${payoff.mode} visit places exactly ${cards} card(s), not ${fee.length}`);
   }
+  if (isFull(fx.data, target)) throw new Error(`${target.card} is full`);
 
   if (payoff.mode === 'special') {
-    if (!board.upgraded) throw new Error(`${board.card} does not print the 2-card visit`);
+    if (!target.upgraded) throw new Error(`${target.card} does not print the 2-card visit`);
     if (new Set(fee).size !== fee.length) throw new Error('The two cards must be distinct');
     // Room for BOTH, checked before anything moves.
-    if (roomOn(fx.data, board) < cards) {
-      throw new Error(`${board.card} has no room for ${cards} cards`);
+    if (roomOn(fx.data, target) < cards) {
+      throw new Error(`${target.card} has no room for ${cards} cards`);
     }
   }
 
   if (payoff.mode === 'worker') {
-    const worker = workerState(state, payoff.workerId);
-    if (worker.owner !== host) throw new Error(`Worker ${payoff.workerId} is not the host's`);
+    if (workerState(state, payoff.workerId).owner !== host) {
+      throw new Error(`Service ${payoff.workerId} is not the host's`);
+    }
     const spent = fee[0] as CardId;
     if (
       !workerActionLegal(fx.data, state, visitor, payoff.workerId, { excludingHandCard: spent })
     ) {
-      throw new Error(`Worker ${payoff.workerId} has nothing legal to do for seat ${visitor}`);
+      throw new Error(`Service ${payoff.workerId} has nothing legal to do for seat ${visitor}`);
     }
   }
 
-  for (const card of fee) fx.placeOnBuilding(visitor, { seat: host, card: board.card }, card);
+  for (const card of fee) fx.placeOnBuilding(visitor, { seat: host, card: target.card }, card);
   state.turn.bonusSpent = true;
   // O16 The Orchard Keeper reacts host-side in every branch, once per visit,
   // after the fee lands and before the payoff (the reference fires it here too).
@@ -1172,22 +1211,40 @@ export function doVisit(
   if (payoff.mode === 'worker') {
     state.turn.visit = { host, workerId: payoff.workerId, repeats: 0 };
     fx.emit({ e: 'visited', seat: visitor, host, mode: 'worker' });
+    payServiceWage(fx, visitor, host, payoff.workerId);
     workWorker(fx, visitor, payoff.workerId, { progress: true });
   } else {
     const rates = fx.data.rules.economy.visitPayout;
     const paid =
-      payoff.mode === 'special' ? rates.twoCard : board.upgraded ? rates.upgraded : rates.base;
+      payoff.mode === 'special' ? rates.twoCard : target.upgraded ? rates.upgraded : rates.base;
     fx.gainCoins(visitor, paid, 'visit');
     fx.emit({ e: 'visited', seat: visitor, host, mode: payoff.mode });
   }
 }
 
-/** The bonus slot's other half: work your own Worker. Free, no wage. */
+/**
+ * The bank mints `visitWage` to a Service's owner, and only for a RIVAL's use -
+ * the standing law that you never earn from your own farm. Shared by the visit
+ * and by a Helping Hand repeat, since a repeat is another card on the Service.
+ */
+export function payServiceWage(fx: Fx, actor: Seat, owner: Seat, workerId: string): void {
+  if (actor === owner) return;
+  const wage = fx.data.workers.visitWage;
+  if (wage > 0) fx.gainCoins(owner, wage, `wage:${workerId}`);
+}
+
+/**
+ * The bonus slot's other half: activate your OWN Service. Pay the bank, take the
+ * action, place NOTHING - so an owner never clogs their own Service, never
+ * advances it toward a harvest, and never earns from it.
+ */
 export function doWorkOwn(fx: Fx, seat: Seat, workerId: WorkerAction): void {
   if (fx.state.turn.bonusSpent) throw new Error('Bonus slot already spent this turn');
   if (workerState(fx.state, workerId).owner !== seat) {
-    throw new Error(`Worker ${workerId} is not yours`);
+    throw new Error(`Service ${workerId} is not yours`);
   }
+  const cost = ownServiceCost(fx.data, ownServiceDiscount(fx.state, seat));
+  if (cost > 0) fx.payCoins(seat, cost, `service:${workerId}`);
   fx.state.turn.bonusSpent = true;
   workWorker(fx, seat, workerId, { progress: true });
 }
@@ -1199,7 +1256,6 @@ export function hasMainOption(data: GameData, state: GameState, seat: Seat): boo
   return (
     drawableSuits(data, state).length > 0 ||
     anyBuildOption(data, state, seat) ||
-    hireOptions(data, state, seat).length > 0 ||
     upgradeOptions(data, state, seat).length > 0 ||
     growOptions(data, state, seat).length > 0 ||
     harvestOptions(data, state, seat).length > 0 ||

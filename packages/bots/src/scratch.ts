@@ -96,7 +96,6 @@ export interface Scratch {
    * the deletion could not have moved these terms.
    */
   readonly demandSuits: ReadonlySet<Suit>;
-  readonly ownsWorker: boolean;
   readonly coins: number;
   /**
    * Every coin this seat could still SPEND, from here (ticket 40).
@@ -178,10 +177,10 @@ function sinksOf(
   const you = view.you;
   const sinks: number[] = [];
 
-  // Hiring: one Worker per player, and only while one is left in the Fair.
-  const canHire =
-    !view.fair.some((w) => w.owner === view.seat) && view.fair.some((w) => w.owner === null);
-  if (canHire) sinks.push(data.workers.hireFee);
+  // The own-Service activation is deliberately NOT a sink here: it is a
+  // repeating per-turn price, and a repeating sink in the gap would have the bot
+  // save for a thing it pays for every turn (the same reason the market excludes
+  // itself). Only bounded, once-only sinks belong in this list.
 
   for (const building of tableau.values()) {
     const card = cardById(data, building.card);
@@ -379,7 +378,6 @@ export function makeScratch(data: GameData, view: PlayerView): Scratch {
     farmsteadUpgraded,
     noticeBoard,
     demandSuits,
-    ownsWorker: view.fair.some((w) => w.owner === view.seat),
     coins: you.coins,
     coinRunway: purse.runway,
     sinkGap: purse.gap,

@@ -11,7 +11,8 @@ import { describe, expect, it } from 'vitest';
 
 import { apply, legalMoves } from '../game.js';
 import { answerTask, gameEndScores, growBuilding, pendingAnswers } from '../runtime.js';
-import { buildingOf, player, workerState } from '../query.js';
+import { buildingOf, player } from '../query.js';
+import { ownServiceCost, ownServiceDiscount } from '../actions.js';
 import type { GameState, Task, TaskAnswer } from '../state.js';
 import { buildFor, dealTo, hireFor, loadStack, makeState } from '../testkit.js';
 import { isHiveCard } from './apiary.js';
@@ -223,18 +224,27 @@ describe('A9 The Pollinator Trail - a paid sow per hive', () => {
   });
 });
 
-describe('A10 The Cross-Pollinator - hire at £1 off', () => {
-  it('hires for hireFee - 1 through the real hire funnel', () => {
+describe('A10 The Cross-Pollinator - the Service discount', () => {
+  it('takes £1 off activating your own Service, floored at 0', () => {
+    // RETEXTED 2026-08-10: it printed "HIRE a Hired Worker, paying £1 less" and
+    // hiring no longer exists, so the £1 was repointed at the only other place a
+    // player pays for their own labour. At the shipped £1 that makes the
+    // owner's own Service free, which is the strongest reading and is watched.
     const s = base();
-    player(s, APIARY).coins = 1; // hireFee is £2; £1 is enough with the discount
+    const without = base();
     buildFor(data, s, APIARY, 'A10');
-    dealTo(data, s, APIARY, 'A7');
-    const grown = growBuilding(data, s, APIARY, 'A10', 'A7');
-    const answers = pendingAnswers(data, grown.state);
-    expect(answers.length).toBe(data.workers.roster.length);
-    const hired = answerTask(data, grown.state, answers[0] as TaskAnswer);
-    expect(player(hired.state, APIARY).coins).toBe(0);
-    expect(hired.state.fair.filter((w) => w.owner === APIARY)).toHaveLength(1);
+    expect(ownServiceCost(data, ownServiceDiscount(s, APIARY))).toBe(0);
+    expect(ownServiceCost(data, ownServiceDiscount(without, APIARY))).toBe(
+      data.workers.ownerActivationCost,
+    );
+  });
+
+  it('lets a broke owner activate their own Service, which nothing else does', () => {
+    const s = base();
+    buildFor(data, s, APIARY, 'A10');
+    hireFor(s, APIARY, 'sow');
+    player(s, APIARY).coins = 0;
+    expect(legalMoves(data, s).some((m) => m.type === 'workOwnWorker')).toBe(true);
   });
 
   it('auto-skips when the seat already has its one Worker', () => {
@@ -429,14 +439,17 @@ describe('A17 The Smoke Pot - the rival-work reactor', () => {
     // The owner's autoDraw landed without a picker; the visitor's Draw 3 waits.
     expect(player(applied.state, APIARY).hand).toHaveLength(1);
     expect(headDraw(applied.state).pid).toBe(WHEAT);
-    // The wage still minted on top of it.
-    expect(player(applied.state, APIARY).coins).toBe(1);
+    // visitWage is 0 since 2026-08-10: a rival's use pays the owner the CARD
+    // that lands on their Service and nothing else.
+    expect(player(applied.state, APIARY).coins).toBe(0);
   });
 
   it("never fires on the owner's own work", () => {
     const s = base();
     buildFor(data, s, APIARY, 'A17');
     hireFor(s, APIARY, 'draw');
+    // The bonus slot's own-Service option is no longer free: pay the bank.
+    player(s, APIARY).coins += data.workers.ownerActivationCost;
     const applied = apply(data, s, { type: 'workOwnWorker', seat: APIARY, workerId: 'draw' });
     expect(player(applied.state, APIARY).hand).toHaveLength(0);
     expect(player(applied.state, APIARY).coins).toBe(0);
@@ -454,7 +467,6 @@ describe('A17 The Smoke Pot - the rival-work reactor', () => {
       grown.state,
       pendingAnswers(data, grown.state)[0] as TaskAnswer,
     );
-    expect(workerState(worked.state, 'draw').trackPos).toBe(0); // free: no advance
     expect(player(worked.state, WHEAT).coins).toBe(1); // A4's flat £1, not a wage
     expect(player(worked.state, WHEAT).hand).toHaveLength(1); // the Smoke Pot draw
   });

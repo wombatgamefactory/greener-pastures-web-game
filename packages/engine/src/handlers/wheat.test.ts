@@ -17,7 +17,7 @@ import {
   pendingAnswers,
   workOwnWorker,
 } from '../runtime.js';
-import { buildingOf, cardById, player, thresholdOf, workerState } from '../query.js';
+import { buildingOf, cardById, player, thresholdOf } from '../query.js';
 import type { GameState, Move, TaskAnswer } from '../state.js';
 import { buildFor, dealTo, hireFor, loadStack, makeState } from '../testkit.js';
 import { handlerFor } from './registry.js';
@@ -75,6 +75,8 @@ describe('the Wheat Farmstead (W2) - the relaxed harvest gate', () => {
     buildFor(data, s, WHEAT, 'W11');
     loadStack(data, s, WHEAT, 'W11', 2);
     hireFor(s, WHEAT, 'harvest');
+    // The bonus slot's own-Service option is no longer free: pay the bank.
+    player(s, WHEAT).coins += data.workers.ownerActivationCost;
     const out = workOwnWorker(data, s, WHEAT, 'harvest');
     const answers = pendingAnswers(data, out.state);
     expect(answers).toContainEqual({ kind: 'building', card: 'W11' });
@@ -104,6 +106,8 @@ describe('the Wheat Farmstead (W2) - the relaxed harvest gate', () => {
     buildFor(data, s, WHEAT, 'W11');
     loadStack(data, s, WHEAT, 'W11', 4);
     hireFor(s, WHEAT, 'harvest');
+    // The bonus slot's own-Service option is no longer free: pay the bank.
+    player(s, WHEAT).coins += data.workers.ownerActivationCost;
     const moved = apply(data, s, { type: 'workOwnWorker', seat: WHEAT, workerId: 'harvest' });
     const done = answerAll(moved.state);
     expect(done.turn.again).toBeNull();
@@ -445,15 +449,16 @@ describe('difficulty metadata stays honest across the suit', () => {
     }
   });
 
-  it('workers stay consistent: a wheat Harvest Worker use advances the meeple', () => {
+  it('suit powers compose: a wheat Harvest Service use takes a relaxed-gate building', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W11');
     loadStack(data, s, WHEAT, 'W11', 2); // relaxed-gate target only
     hireFor(s, WHEAT, 'harvest');
+    // The bonus slot's own-Service option is no longer free: pay the bank.
+    player(s, WHEAT).coins += data.workers.ownerActivationCost;
     const out = workOwnWorker(data, s, WHEAT, 'harvest');
     const done = answerAll(out.state);
     expect(player(done, WHEAT).barn).toHaveLength(2);
-    expect(workerState(done, 'harvest').trackPos).toBe(1);
   });
 
   it('the FIELD keyword matches exactly W4-W8', () => {

@@ -25,15 +25,15 @@ import { describe, expect, it } from 'vitest';
 import { player } from './query.js';
 import { makeState } from './testkit.js';
 
-describe('every seat keeps three starters', () => {
-  it('deals exactly one Farmstead, Barn and Notice Board per seat', () => {
+describe('every seat keeps four starters', () => {
+  it('deals exactly one Farmstead, Barn, Notice Board and Service per seat', () => {
     const state = makeState(data, ['dairy', 'wheat', 'orchard']);
     for (const seat of [0, 1, 2]) {
       const slots = player(state, seat)
         .tableau.map((b) => data.cards.catalogue.find((c) => c.id === b.card)?.slot)
         .filter((slot) => slot !== undefined)
         .sort();
-      expect(slots, `seat ${seat}`).toEqual(['barn', 'farmstead', 'noticeboard']);
+      expect(slots, `seat ${seat}`).toEqual(['barn', 'farmstead', 'noticeboard', 'service']);
     }
   });
 });

@@ -200,6 +200,25 @@ export class Fx {
     this.emit({ e: 'discardToBarn', seat, card });
   }
 
+  /**
+   * Top of a deck straight onto one of the seat's own buildings - the Apiary
+   * Service's sow. The sown card never passes through a hand, which is the whole
+   * economic point: a hand-sow would cost a visitor the fee card AND the sown
+   * card for one threshold step.
+   *
+   * Lands through the same tail as every other placement, so the placement
+   * reactors fire identically. No-op when the suit is exhausted.
+   */
+  deckTopToBuilding(seat: Seat, suit: Suit, onto: CardId): void {
+    const building = this.buildingDraft({ seat, card: onto });
+    if (!canTakeCard(this.data, building)) {
+      throw new Error(`${onto} cannot take a card (full or no stack)`);
+    }
+    const card = this.takeDeckTop(suit);
+    if (card === null) return;
+    this.land(seat, { seat, card: onto }, card);
+  }
+
   /** Top of a deck straight into a barn (the Patisserie / Meadow Hive shape). No-op when the suit is exhausted. */
   deckTopToBarn(seat: Seat, suit: Suit): void {
     const card = this.takeDeckTop(suit);
@@ -371,11 +390,10 @@ export interface HookEvents {
    */
   afterDrawKeep: { seat: Seat; cards: CardId[] };
   /**
-   * A Hired Worker was WORKED - any path: the bonus slot, a visit's payoff, a
-   * card-granted work (Herb Hive's free mode included, `free: true`). `owner`
-   * is captured before the advance, so an expiring use still reports him.
-   * A17 The Smoke Pot reacts owner-side when `actor !== owner`; D17 The
-   * Strongbox reacts actor-side on every work.
+   * A Service was ACTIVATED - any path: the bonus slot, a visit's payoff, a
+   * Helping Hand repeat, a card-granted work (`free: true` when no card was
+   * placed on it). A17 The Smoke Pot reacts owner-side when `actor !== owner`;
+   * D17 The Strongbox reacts actor-side on every activation.
    */
   afterWork: { actor: Seat; owner: Seat; workerId: string; free: boolean };
   /**
@@ -385,8 +403,6 @@ export interface HookEvents {
    * build while D16 The Ledger reacts to every one.
    */
   afterBuild: { seat: Seat; card: CardId; payment: CardId[]; src: CardId | null };
-  /** A Worker was hired from the Fair (D17 The Strongbox). */
-  afterHire: { seat: Seat; workerId: string };
 }
 
 export type HookName = keyof HookEvents;

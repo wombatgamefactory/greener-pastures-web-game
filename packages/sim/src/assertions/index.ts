@@ -11,7 +11,7 @@
 import { coinFlood } from './a01-coin-flood.js';
 import { generosity } from './a02-generosity.js';
 import { bootstrap } from './a03-bootstrap.js';
-import { trackCherryPicking } from './a04-track-cherry-picking.js';
+import { serviceClog } from './a04-track-cherry-picking.js';
 import { clogDenial } from './a05-clog-denial.js';
 import { barnGlut } from './a06-barn-glut.js';
 import { drawWorker } from './a07-draw-worker.js';
@@ -28,7 +28,7 @@ export const WATCHLIST: readonly Assertion[] = [
   coinFlood,
   generosity,
   bootstrap,
-  trackCherryPicking,
+  serviceClog,
   clogDenial,
   barnGlut,
   drawWorker,

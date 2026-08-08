@@ -15,7 +15,7 @@ import { mark } from '../session/play';
 import type { Play } from '../session/play';
 import { balloonArt } from '../view/art';
 import { SUIT_META, seatName } from '../view/suits';
-import { seatSuits, workerTrack, workersForHire, workersOwnedBy } from '../view/table';
+import { seatSuits, workerTrack, workersOwnedBy } from '../view/table';
 import { printedFace } from '../view/printed';
 import { Card, CardBack } from './Card';
 import { IslandPanel } from './Island';
@@ -89,7 +89,6 @@ export function Commons({
   play?: Play | undefined;
 }) {
   const suits = seatSuits(view);
-  const forHire = workersForHire(view);
   const yours = workersOwnedBy(view, view.seat);
 
   return (
@@ -120,29 +119,17 @@ export function Commons({
       <div className="commons-right">
         <div className="panel panel-fair">
           <h2 className="panel-title">
-            Hiring Fair <em>£{data.workers.hireFee}</em>
+            Your Service <em>£{data.workers.ownerActivationCost}</em>
           </h2>
           <div className="fair">
-            {forHire.map((w) => (
-              <WorkerPanel
-                key={w.id}
-                track={workerTrack(data, w)}
-                ownerLabel={null}
-                hireFee={data.workers.hireFee}
-                size="rail"
-                play={play}
-              />
-            ))}
-            {forHire.length === 0 && <p className="empty-note">Every Worker is out on hire.</p>}
-            {/* Your own Worker had nowhere to live in ticket 24's static build.
-                It needs one now: working it is half the bonus slot, and it is
-                the half that pays no wage. */}
+            {/* One entry, always: every seat owns its suit's Service from setup
+                and can never own another. The rivals' Services live on the rival
+                rail, which is where the cross-table read belongs. */}
             {yours.map((w) => (
               <WorkerPanel
                 key={w.id}
                 track={workerTrack(data, w)}
                 ownerLabel="yours"
-                hireFee={data.workers.hireFee}
                 size="rail"
                 play={play}
               />

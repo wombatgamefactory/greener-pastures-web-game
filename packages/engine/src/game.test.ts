@@ -64,7 +64,7 @@ describe('newGame', () => {
       expect(p.hand).toHaveLength(5);
       expect(p.barn).toHaveLength(1);
       expect(p.coins).toBe(0);
-      expect(p.tableau).toHaveLength(3);
+      expect(p.tableau).toHaveLength(4);
       // Own deck holds 12 after dealing hand + barn card.
       expect(state.decks[p.suit]).toHaveLength(12);
       for (const id of [...p.hand, ...p.barn]) expect(cardById(data, id).suit).toBe(p.suit);
@@ -80,7 +80,15 @@ describe('newGame', () => {
     for (const tok of tokens) {
       expect(tok === 'wild' || state.suitsInPlay.includes(tok)).toBe(true);
     }
-    expect(state.fair.every((w) => w.owner === null && w.trackPos === 0)).toBe(true);
+    // Every Service is owned from setup by the suit that brought it, and a
+    // Service whose suit is absent has no owner at all.
+    const owned = state.fair.filter((w) => w.owner !== null);
+    expect(owned).toHaveLength(2);
+    for (const w of state.fair) {
+      const spec = data.workers.roster.find((r) => r.id === w.id)!;
+      const seat = state.players.findIndex((p) => p.suit === spec.linkedSuit);
+      expect(w.owner, w.id).toBe(seat < 0 ? null : seat);
+    }
   });
 
   it('parks balloons only when Vegetable is on the table', () => {
@@ -173,14 +181,7 @@ describe('main actions through apply', () => {
     expect(events.filter((e) => e.e === 'starterUpgraded' && e.free)).toHaveLength(1);
   });
 
-  it('hire and upgrade are Build-action branches priced from data', () => {
-    const state = base();
-    state.players[WHEAT]!.coins = 4;
-    const applied = apply(data, state, { type: 'hire', seat: WHEAT, workerId: 'draw' });
-    expect(applied.state.players[WHEAT]!.coins).toBe(4 - data.workers.hireFee);
-    expect(applied.state.fair.find((w) => w.id === 'draw')?.owner).toBe(WHEAT);
-    expect(applied.state.turn.actionSpent).toBe(true);
-
+  it('upgrade is a Build-action branch priced from data', () => {
     const s2 = base();
     s2.players[WHEAT]!.coins = 2;
     const barnCard = s2.players[WHEAT]!.tableau.find(
@@ -549,7 +550,7 @@ describe('the bonus slot through apply', () => {
       payoff: { mode: 'worker', workerId: 'draw' },
     });
     expect(applied.state.turn.visit).toMatchObject({ host: APIARY, workerId: 'draw' });
-    expect(applied.state.tasks[0]).toMatchObject({ t: 'draw', see: 3, keep: 2, pid: WHEAT });
+    expect(applied.state.tasks[0]).toMatchObject({ t: 'draw', see: 2, keep: 2, pid: WHEAT });
   });
 
   it("Special Orders' 2-card visit places both cards and mints the bigger payout", () => {
@@ -941,7 +942,6 @@ const PRIORITY: Move['type'][] = [
   'deliver',
   'harvest',
   'build',
-  'hire',
   'upgrade',
   'grow',
   'draw',

@@ -62,13 +62,15 @@ describe('narrate', () => {
     expect(line({ e: 'turnEnded', seat: 1, next: 2 })?.kind).toBe('boundary');
   });
 
-  it('says who the bank paid, and drops the wage line when nobody was paid', () => {
+  it('names the Service used, and whether it was free', () => {
+    // The wage is a plain `coins` event since the Working Week died, so there
+    // is no wage line of its own to narrate any more.
     expect(
-      line({ e: 'workerAdvanced', workerId: 'draw', to: 1, wage: 1, paidTo: 3 })?.text,
-    ).toContain('Apiary farm');
+      line({ e: 'workerWorked', seat: 1, workerId: 'draw', owner: 0, free: false })?.text,
+    ).toContain('draw Service');
     expect(
-      line({ e: 'workerAdvanced', workerId: 'draw', to: 1, wage: 0, paidTo: null }),
-    ).toBeNull();
+      line({ e: 'workerWorked', seat: 1, workerId: 'draw', owner: 0, free: true })?.text,
+    ).toContain('for free');
   });
 
   it('narrates a whole real game without producing an empty or id-shaped line', () => {

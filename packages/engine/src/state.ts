@@ -49,12 +49,19 @@ export interface PlayerState {
   receipts: number[];
 }
 
+/**
+ * Which seat owns each Service. Set at setup from the suit that brought it and
+ * NEVER changed: there is no hiring, no expiry and no track since 2026-08-10.
+ * `owner: null` means that suit is not at the table, so that Service is not in
+ * the game at all.
+ *
+ * Derivable from `players[].suit`, and kept anyway: it is the index every
+ * "whose Service performs action X" lookup wants, and it is one line of setup
+ * against a scan in a dozen hot call sites.
+ */
 export interface WorkerState {
   id: WorkerAction;
-  /** null = in the Hiring Fair. */
   owner: Seat | null;
-  /** 0 = arrival space (no wage); 1..wages.length = paying spaces. Advancing past the end sends the Worker home. */
-  trackPos: number;
 }
 
 /**
@@ -111,8 +118,9 @@ export interface TurnState {
    */
   ending: boolean;
   /**
-   * The Helping Hand gate. Set only by a visit's worker payoff; a repeat
-   * re-works this worker. `repeats` counts repeats taken this visit.
+   * The Helping Hand gate. Set only by a visit's Service payoff; a repeat
+   * re-works that Service by placing another card ON IT. `repeats` counts
+   * repeats taken this visit.
    */
   visit: { host: Seat; workerId: WorkerAction; repeats: number } | null;
   /**
@@ -144,15 +152,20 @@ export interface TurnState {
  */
 export type Task =
   | {
-      /** Pick a Hired Worker and perform its action. */
+      /** Pick a Service and perform its action. */
       t: 'chooseWorker';
       pid: Seat;
       src: CardId;
-      /** Whose workers qualify. */
+      /** Whose Services qualify. */
       owned: 'rival' | 'own' | 'any';
-      /** false = the Herb Hive mode: no meeple advance, therefore no wage. */
+      /**
+       * false = the Herb Hive mode: the action happens but NO card is placed on
+       * the Service, so its threshold does not move and no wage is minted. It
+       * was "the meeple does not advance" until the Working Week died; the
+       * meaning ("this use is off the books") is unchanged.
+       */
       progress: boolean;
-      /** Coins the worker's owner mints from the bank when the pick resolves. */
+      /** Coins the Service's owner mints from the bank when the pick resolves. */
       ownerCoins: number;
       /** Coins the ACTOR mints if the work happens (D9's "if you do, gain £2"). */
       actorCoins?: number;
@@ -229,6 +242,34 @@ export type Task =
       optional?: boolean;
     }
   | {
+      /**
+       * The Apiary Service: sow the top card of a DECK onto one of your own
+       * non-full buildings. Its own task rather than a rider on `sow`, because
+       * the answer names a deck instead of a hand card - and because the whole
+       * point is that the sown card never touches the actor's hand. Sowing from
+       * hand would cost a visitor two cards for one threshold step.
+       */
+      t: 'sowFromDeck';
+      pid: Seat;
+      src: CardId | null;
+      remaining: number;
+    }
+  | {
+      /**
+       * Put one card from your own hand into your own barn. The Wheat Service's
+       * tail and the Vegetable Service's head, and the same primitive both
+       * times: before a Deliver it IS "you may pay 1 card of the cost from your
+       * hand", because the barn is where a delivery is paid from.
+       *
+       * Always optional in practice, so it can never be a downside.
+       */
+      t: 'handToBarn';
+      pid: Seat;
+      src: CardId | null;
+      remaining: number;
+      optional?: boolean;
+    }
+  | {
       /** End-of-turn discard down to the printed Barn hand size. */
       t: 'discard';
       pid: Seat;
@@ -254,6 +295,9 @@ export type TaskAnswer =
   | { kind: 'keep'; cards: CardId[] }
   | { kind: 'building'; card: CardId }
   | { kind: 'sow'; card: CardId; onto: CardId }
+  /** sowFromDeck: which deck top, onto which of your buildings. */
+  | { kind: 'deckSow'; suit: Suit; onto: CardId }
+  | { kind: 'handToBarn'; card: CardId }
   | {
       kind: 'build';
       card: CardId;
@@ -338,8 +382,6 @@ export type Move =
   | { type: 'market'; seat: Seat; suit: Suit }
   /** Build a card from hand. `payment` is the chosen card ids; a coin-priced card pays coins and an empty payment. */
   | { type: 'build'; seat: Seat; card: CardId; payment: CardId[] }
-  /** Hire a Worker from the Fair - a Build-action branch. */
-  | { type: 'hire'; seat: Seat; workerId: WorkerAction }
   /** Flip a starter (Barn or Notice Board) for coins - a Build-action branch. The Farmstead only ever flips free. */
   | { type: 'upgrade'; seat: Seat; card: CardId }
   | { type: 'grow'; seat: Seat; building: CardId; payment: CardId }
@@ -353,11 +395,18 @@ export type Move =
    */
   | { type: 'moveBalloon'; seat: Seat; balloon: string; spend: Partial<Record<Suit, number>> }
   /**
-   * The visit half of the bonus slot: cards from hand onto a neighbour's Notice
-   * Board, then the payoff printed on the face they landed on. `fee` is exactly
-   * 1 card for `coin` and `worker`, and exactly 2 distinct cards for `special` -
-   * Special Orders' "2 cards, take £3", which the upgraded face alone prints and
-   * which never offers a Worker.
+   * The visit half of the bonus slot: cards from hand onto a neighbour's
+   * building, then the payoff printed on it. The MODE PICKS THE BUILDING, which
+   * is why there is no separate target field:
+   *
+   *   coin / special -> their NOTICE BOARD, and the bank pays the VISITOR.
+   *   worker         -> their SERVICE, and the bank pays the HOST.
+   *
+   * `fee` is exactly 1 card for `coin` and `worker`, and exactly 2 distinct
+   * cards for `special` (Special Orders' "2 cards, take £3", upgraded face only,
+   * which never offers a Service). Either building refuses the whole visit when
+   * it is clogged, and they clog independently - which is the point of there
+   * being two of them.
    */
   | {
       type: 'visit';
@@ -366,7 +415,11 @@ export type Move =
       fee: CardId[];
       payoff: { mode: 'coin' } | { mode: 'worker'; workerId: WorkerAction } | { mode: 'special' };
     }
-  /** The other half of the bonus slot. Free, no wage. */
+  /**
+   * The other half of the bonus slot: activate your OWN Service. Costs
+   * `workers.ownerActivationCost` to the bank, places no card, moves no
+   * threshold and earns nothing - you never earn from your own farm.
+   */
   | { type: 'workOwnWorker'; seat: Seat; workerId: WorkerAction }
   /** Legal only when no main action is: spends the action, keeps the bonus slot. */
   | { type: 'pass'; seat: Seat }
@@ -391,7 +444,6 @@ const MOVE_TYPE_KEYS = {
   buy: true,
   market: true,
   build: true,
-  hire: true,
   upgrade: true,
   grow: true,
   harvest: true,
@@ -416,15 +468,12 @@ export type GameEvent =
   | { e: 'stackToBarn'; seat: Seat; building: CardId; card: CardId }
   | { e: 'harvested'; seat: Seat; building: CardId; cards: CardId[] }
   | { e: 'workerWorked'; seat: Seat; workerId: WorkerAction; owner: Seat | null; free: boolean }
-  | { e: 'workerAdvanced'; workerId: WorkerAction; to: number; wage: number; paidTo: Seat | null }
-  | { e: 'workerExpired'; workerId: WorkerAction }
   | { e: 'reshuffled'; suit: Suit; count: number }
   | { e: 'built'; seat: Seat; card: CardId; payment: CardId[]; coins: number }
   /** A card buried under a D11 cover-build: no longer a building, printed VP still scores. */
   | { e: 'covered'; seat: Seat; card: CardId }
   /** An empty building demolished into its owner's barn (D14). */
   | { e: 'demolished'; seat: Seat; card: CardId }
-  | { e: 'hired'; seat: Seat; workerId: WorkerAction }
   /** free = the Farmstead milestone flip (3rd own-colour build); false = a paid Barn/Notice Board flip. */
   | { e: 'starterUpgraded'; seat: Seat; card: CardId; free: boolean }
   | {

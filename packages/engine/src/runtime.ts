@@ -97,9 +97,10 @@ export function growBuilding(
 }
 
 /**
- * The visit's worker payoff: place the fee card on the host's Notice Board,
- * work one of the host's Hired Workers as the visitor (meeple advances, the
- * bank pays the host the wage), and open the Helping Hand gate.
+ * The visit's Service payoff: place the fee card on the host's SERVICE (not
+ * their Notice Board - the mode picks the building), take its action as the
+ * visitor, mint the host their wage from the bank, and open the Helping Hand
+ * gate.
  */
 export function visitWork(
   data: GameData,
@@ -117,8 +118,9 @@ export function visitWork(
 }
 
 /**
- * The bonus slot's other half: work your own Hired Worker. Free, the meeple
- * advances, no wage - you never earn from your own farm.
+ * The bonus slot's other half: activate your own Service. Costs
+ * `workers.ownerActivationCost` to the bank, places no card, earns nothing -
+ * you never earn from your own farm.
  */
 export function workOwnWorker(
   data: GameData,

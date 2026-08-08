@@ -1,11 +1,13 @@
 /**
- * Hired Worker mechanics: performing a Worker's action, and the Working Week
- * track arithmetic (advance, wage, expiry).
+ * Suit Service mechanics: performing a Service's ENHANCED action.
  *
- * The one derivation that replaces every own-vs-visit mode flag, confirmed
- * against the reference implementation: the wage is minted by the bank to the
- * OWNER, and only when actor !== owner. The visitor never pays it (their price
- * was the fee card); an owner's own uses advance the meeple but pay nothing.
+ * What used to live here as well - the Working Week track's advance, wage and
+ * expiry arithmetic - is gone with the Hiring Fair (2026-08-10). The wage is now
+ * minted where the card is placed (doVisit), because the card landing on the
+ * Service IS the use, and the Service's own threshold is the only brake.
+ *
+ * The rule that survived intact: the owner never earns from their own farm, so
+ * every payment to an owner is gated on `actor !== owner` at its call site.
  */
 
 import { withDrawModifier, workerData, workerState } from './query.js';
@@ -15,23 +17,26 @@ import type { Seat } from './state.js';
 
 export interface WorkOptions {
   /**
-   * false = the Herb Hive's free mode: the action happens but the meeple does
-   * not advance, so no wage is paid and the Working Week is not consumed.
+   * false = the Herb Hive's free mode: the action happens but no card is placed
+   * on the Service, so its threshold does not move and no wage is minted.
    */
   progress: boolean;
 }
 
 /**
- * Perform a Worker's action as `actor`, then advance the meeple (unless the
- * work was free). RULING (locked): suit powers apply to actions performed by a
- * Hired Worker - it is your action, done by hired muscle. Suit-power modifiers
- * attach here when the Farmstead handlers land.
+ * Perform a Service's action as `actor`. RULING (locked, carried over from the
+ * Hired Workers): suit powers apply to actions performed by a Service - it is
+ * your action, done on someone else's premises. That is why the Orchard draw
+ * modifier and the Wheat relaxed-harvest gate compose below.
+ *
+ * Every branch performs the ENHANCED action, never the plain one. The
+ * enhancements are printed in workers.json and the sizing rule is there too:
+ * a visitor pays a card, so an action that also spends cards has to over-deliver
+ * or buying it is worse than doing it yourself.
  */
 export function workWorker(fx: Fx, actor: Seat, workerId: string, opts: WorkOptions): void {
   const worker = workerData(fx.data, workerId);
-  const ws = workerState(fx.state, workerId);
-  // Captured before the advance: an expiring use still knows who was paid.
-  const owner = ws.owner;
+  const owner = workerState(fx.state, workerId).owner;
   fx.emit({
     e: 'workerWorked',
     seat: actor,
@@ -42,11 +47,11 @@ export function workWorker(fx: Fx, actor: Seat, workerId: string, opts: WorkOpti
 
   switch (worker.action) {
     case 'draw': {
-      // The one printed exception, load-bearing: Draw 3 keep 2, never a plain
-      // draw. A Worker priced in cards must over-deliver cards to be worth
-      // renting - do not "tidy" this to the base draw. The Orchard Farmstead's
-      // draw modifier composes here (suit powers apply to Worker actions):
-      // (3,2) -> (4,2) base, (4,3) upgraded.
+      // The load-bearing exception, older than the Services: Draw 3 keep 2,
+      // never a plain draw. A Service priced in cards must over-deliver cards or
+      // it is precisely worthless to buy - do not "tidy" it to the base draw.
+      // The Orchard Farmstead's modifier composes: (3,2) -> (4,2) base, (4,3)
+      // upgraded.
       const spec = withDrawModifier(fx.data, fx.state, actor, worker.draw ?? { see: 1, keep: 1 });
       fx.pushTask({
         t: 'draw',
@@ -59,7 +64,7 @@ export function workWorker(fx: Fx, actor: Seat, workerId: string, opts: WorkOpti
       break;
     }
     case 'harvest':
-      // 'harvestable', not 'full': the Worker performs the actor's Harvest
+      // 'harvestable', not 'full': the Service performs the ACTOR's Harvest
       // action, so the Wheat Farmstead's relaxed gate composes (locked ruling).
       fx.pushTask({
         t: 'chooseBuilding',
@@ -68,60 +73,49 @@ export function workWorker(fx: Fx, actor: Seat, workerId: string, opts: WorkOpti
         filter: 'harvestable',
         then: 'harvest',
       });
+      // The tail, queued AFTER the harvest: a junk hand card into your barn.
+      // Only worth taking because the wild substitution (2026-08-08) made an odd
+      // card in a barn worth half a crate instead of exactly nothing.
+      pushHandToBarn(fx, actor, worker.handToBarn);
       break;
     case 'sow':
-      fx.pushTask({ t: 'sow', pid: actor, src: null, remaining: worker.sow?.amount ?? 1 });
+      if (worker.sow?.from === 'deck') {
+        fx.pushTask({ t: 'sowFromDeck', pid: actor, src: null, remaining: worker.sow.amount });
+      } else {
+        fx.pushTask({ t: 'sow', pid: actor, src: null, remaining: worker.sow?.amount ?? 1 });
+      }
       break;
     case 'build':
-      // A plain Build, chosen via the same enumerator the Build move uses.
-      // Hire and starter upgrades are NOT offered through a Worker (open
-      // ruling; the reference's worker-build is hand-builds only).
-      fx.pushTask({ t: 'build', pid: actor, src: null });
+      // The Dairy Service waives the crop requirements (`substitute`) and never
+      // the price. buildModsFor ORs in the actor's own Farmstead power on top, so
+      // a Dairy player buying it is not double-counted, just unaffected.
+      fx.pushTask({
+        t: 'build',
+        pid: actor,
+        src: null,
+        ...(worker.build ? { mods: { ...worker.build } } : {}),
+      });
       break;
     case 'deliver':
+      // The head, queued BEFORE the delivery: one hand card into the barn is
+      // exactly "you may pay up to 1 card of the cost from your hand", since the
+      // barn is where a delivery is paid from. One primitive, no second path.
+      pushHandToBarn(fx, actor, worker.handToBarn);
       fx.pushTask({ t: 'deliver', pid: actor, src: null });
       break;
     default:
       worker.action satisfies never;
   }
 
-  if (opts.progress) advanceWorker(fx, actor, workerId);
-  // The reference fires the work-completion reactors (A17 The Smoke Pot) in
-  // finishWorkerUse, after the action resolves; here the hook fires before the
-  // action's queued task drains - benign for the same reason the wage timing
-  // is (ticket 17): the reactors are choiceless and independent of the action.
+  // Fires for every path - the bonus slot, a visit's payoff, a Helping Hand
+  // repeat, the Herb Hive's free work. A17 The Smoke Pot reads it owner-side,
+  // D17 The Strongbox actor-side.
   if (owner !== null) {
     fireHook(fx, 'afterWork', { actor, owner, workerId: worker.id, free: !opts.progress });
   }
 }
 
-/**
- * Track arithmetic: arrival(0) -> paying spaces 1..N -> home. Landing on space
- * i pays wages[i-1] to the owner when a rival worked it. Advancing past space
- * N expires the Worker: back to the Fair, hireable by anyone, no wage on the
- * walk home.
- */
-export function advanceWorker(fx: Fx, actor: Seat, workerId: string): void {
-  const worker = workerData(fx.data, workerId);
-  const ws = workerState(fx.state, workerId);
-  const owner = ws.owner;
-  ws.trackPos += 1;
-  if (ws.trackPos > worker.wages.length) {
-    ws.owner = null;
-    ws.trackPos = 0;
-    fx.emit({ e: 'workerExpired', workerId: worker.id });
-    return;
-  }
-  const wage = worker.wages[ws.trackPos - 1] ?? 0;
-  const rivalUse = owner !== null && owner !== actor;
-  if (rivalUse && wage > 0) {
-    fx.gainCoins(owner, wage, `wage:${worker.id}`);
-  }
-  fx.emit({
-    e: 'workerAdvanced',
-    workerId: worker.id,
-    to: ws.trackPos,
-    wage,
-    paidTo: rivalUse ? owner : null,
-  });
+function pushHandToBarn(fx: Fx, actor: Seat, n: number | undefined): void {
+  if (!n || n <= 0) return;
+  fx.pushTask({ t: 'handToBarn', pid: actor, src: null, remaining: n, optional: true });
 }

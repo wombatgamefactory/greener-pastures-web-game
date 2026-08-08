@@ -1,0 +1,11 @@
+{
+  "name": "service-threshold",
+  "schemaVersion": 1,
+  "note": "The Service threshold, the balance lever. 2 is shipped. 3 leaves Orchard at 62.8%, 4 at 80.8%; 1 is unexplored and would clog a Service on every single visit.",
+  "sweep": [
+    {
+      "knob": "workers.serviceThreshold",
+      "values": [1, 2, 3, 4]
+    }
+  ]
+}

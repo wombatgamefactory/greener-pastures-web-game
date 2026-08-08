@@ -126,6 +126,22 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
       return out;
     }
 
+    case 'sowFromDeck': {
+      const suits = drawableSuits(data, state);
+      const targets = player(state, task.pid).tableau.filter((b) => canTakeCard(data, b));
+      return suits.flatMap((suit) =>
+        targets.map((b) => ({ kind: 'deckSow', suit, onto: b.card }) as TaskAnswer),
+      );
+    }
+
+    case 'handToBarn': {
+      const out = player(state, task.pid).hand.map(
+        (card) => ({ kind: 'handToBarn', card }) as TaskAnswer,
+      );
+      if (task.optional === true && out.length > 0) out.push({ kind: 'skip' });
+      return out;
+    }
+
     case 'discard': {
       const hand = player(state, task.pid).hand;
       const excess = hand.length - task.downTo;
@@ -229,6 +245,21 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
         return true;
       }
       throw new Error('deliver expects a deliver or balloon answer');
+    }
+
+    case 'sowFromDeck': {
+      if (answer.kind !== 'deckSow') throw new Error('sowFromDeck expects a deckSow answer');
+      fx.deckTopToBuilding(task.pid, answer.suit, answer.onto);
+      task.remaining -= 1;
+      return task.remaining <= 0;
+    }
+
+    case 'handToBarn': {
+      if (answer.kind === 'skip' && task.optional === true) return true;
+      if (answer.kind !== 'handToBarn') throw new Error('handToBarn expects a handToBarn answer');
+      fx.handToBarn(task.pid, answer.card);
+      task.remaining -= 1;
+      return task.remaining <= 0;
     }
 
     case 'discard': {

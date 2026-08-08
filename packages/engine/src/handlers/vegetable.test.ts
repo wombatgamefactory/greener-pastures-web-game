@@ -137,6 +137,8 @@ describe('the balloon move as the Deliver action (DL-12)', () => {
     const s = base();
     barnTo(s, VEG, 'V4', 'W4');
     hireFor(s, VEG, 'deliver');
+    // The bonus slot's own-Service option is no longer free: pay the bank.
+    player(s, VEG).coins += data.workers.ownerActivationCost;
     const out = workOwnWorker(data, s, VEG, 'deliver');
     const answers = pendingAnswers(data, out.state);
     expect(answers.filter((a) => a.kind === 'balloon')).toHaveLength(4);

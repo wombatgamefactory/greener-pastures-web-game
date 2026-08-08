@@ -20,7 +20,6 @@ import {
   doMarket,
   doMoveBalloon,
   doHarvestAction,
-  doHire,
   doUpgrade,
   doVisit,
   doWorkOwn,
@@ -29,7 +28,6 @@ import {
   harvestAgainPower,
   harvestOptions,
   hasMainOption,
-  hireOptions,
   upgradeOptions,
   visitOptions,
   workOwnOptions,
@@ -79,8 +77,6 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
     for (const o of mainBuildOptions(data, state, seat)) {
       moves.push({ type: 'build', seat, card: o.card, payment: o.payment });
     }
-    for (const workerId of hireOptions(data, state, seat))
-      moves.push({ type: 'hire', seat, workerId });
     for (const card of upgradeOptions(data, state, seat))
       moves.push({ type: 'upgrade', seat, card });
     for (const o of growOptions(data, state, seat)) {
@@ -138,7 +134,6 @@ function mainBuildOptions(data: GameData, state: GameState, seat: Seat) {
 const MAIN_ACTIONS = new Set<Move['type']>([
   'draw',
   'build',
-  'hire',
   'upgrade',
   'grow',
   'harvest',
@@ -212,9 +207,6 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
       }
       break;
     }
-    case 'hire':
-      doHire(fx, move.seat, move.workerId);
-      break;
     case 'upgrade':
       doUpgrade(fx, move.seat, move.card);
       break;

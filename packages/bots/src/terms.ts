@@ -497,11 +497,6 @@ export const TERMS: readonly Term[] = [
     cost: true,
   },
   {
-    name: 'hire',
-    claims: ['hire'],
-    feature: (act, s) => (act.a === 'hire' && !s.ownsWorker ? 1 : 0),
-  },
-  {
     name: 'upgrade',
     claims: ['upgrade'],
     feature: (act) => (act.a === 'upgrade' ? 1 : 0),
@@ -554,9 +549,9 @@ export const TERMS: readonly Term[] = [
     /**
      * The only saving instinct the bot has.
      *
-     * The term table prices moves, not plans, so a seat on £1 with a £2 Worker
+     * The term table prices moves, not plans, so a seat on £1 with a £2 upgrade
      * in front of it will otherwise buy a card every single turn and never
-     * hire - an instrument artefact that would be read as a rule effect.
+     * flip it - an instrument artefact that would be read as a rule effect.
      *
      * The question is "would this leave me short of the cheapest thing I still
      * want", which is what a person at the table asks. It stops firing the
@@ -616,7 +611,7 @@ export const TERMS: readonly Term[] = [
      * leave me short of the cheapest bounded thing I still want? `sinkGap`
      * deliberately excludes the market itself (a repeating sink in the gap
      * would suppress the market to save for the market), so this guards the
-     * hire and the upgrades, nothing else. Same derived weight as `buySaving`:
+     * upgrades and the Power cards, nothing else. Same derived weight as `buySaving`:
      * it has to clear the `endTurn` floor to decide anything.
      */
     name: 'marketSaving',

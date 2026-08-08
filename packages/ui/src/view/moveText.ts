@@ -62,6 +62,10 @@ export function describeAnswer(data: GameData, answer: TaskAnswer): string {
       return `island ${answer.tile}, spending ${spendText(answer.spend)}`;
     case 'balloon':
       return `the ${balloonWord(answer.balloon)} balloon, spending ${spendText(answer.spend)}`;
+    case 'deckSow':
+      return `the top ${SUIT_META[answer.suit].label} card onto ${cardName(data, answer.onto)}`;
+    case 'handToBarn':
+      return `${cardName(data, answer.card)} into your barn`;
     case 'discard':
       return `discard ${cardList(data, answer.cards)}`;
     case 'skip':
@@ -97,8 +101,6 @@ export function describeMove(data: GameData, view: PlayerView, move: Move): stri
       return `Buy at market: the top ${SUIT_META[move.suit].label} card into your barn, for £${data.rules.turn.marketCost ?? 0}`;
     case 'build':
       return `Build ${cardName(data, move.card)}, paying ${cardList(data, move.payment)}`;
-    case 'hire':
-      return `Hire the ${workerName(data, move.workerId)} for £${data.workers.hireFee}`;
     case 'upgrade':
       return `Upgrade ${cardName(data, move.card)} for £${data.rules.economy.upgradeCostCoins}`;
     case 'grow':
@@ -143,6 +145,10 @@ export function describeTask(data: GameData, task: Task): string {
       return 'Choose one of your buildings to harvest.';
     case 'sow':
       return `Sow ${task.remaining} card${task.remaining === 1 ? '' : 's'}: pick one from your hand, then a building to place it on. Any suit will do.`;
+    case 'sowFromDeck':
+      return `Sow ${task.remaining} card${task.remaining === 1 ? '' : 's'} off a DECK TOP: pick a crop, then one of your buildings. The card never touches your hand.`;
+    case 'handToBarn':
+      return `You may put ${task.remaining} card${task.remaining === 1 ? '' : 's'} from your hand into your barn.`;
     case 'build':
       return 'Build a card from your hand.';
     case 'deliver':
@@ -187,7 +193,6 @@ const FAMILIES: readonly {
     needsTarget: true,
   },
   { type: 'build', label: 'Build', hint: 'Pay cards from hand', needsTarget: true },
-  { type: 'hire', label: 'Hire', hint: 'Build a Worker out of the Fair', needsTarget: true },
   { type: 'upgrade', label: 'Upgrade', hint: 'Flip a starter for coins', needsTarget: true },
   { type: 'grow', label: 'Grow', hint: 'Activate one of your buildings', needsTarget: true },
   {

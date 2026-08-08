@@ -199,18 +199,13 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
     case 'covered':
       return event.seat === me ? weight(w, 'build') : 0;
 
-    case 'hired':
-      return event.seat === me ? weight(w, 'hire') : 0;
-
     case 'starterUpgraded':
       return event.seat === me ? weight(w, 'upgrade') : 0;
 
-    // The wage a Worker pays arrives as its own `coins` event, and the action
-    // it performs arrives as that action's events, so these two would double
-    // count. `workerExpired` is a cost to the owner, not a gain to anyone.
+    // A Service's wage arrives as its own `coins` event and the action it
+    // performs arrives as that action's events, so scoring the activation too
+    // would double count.
     case 'workerWorked':
-    case 'workerAdvanced':
-    case 'workerExpired':
     case 'reshuffled':
     case 'cardsDiscarded':
     case 'visited':

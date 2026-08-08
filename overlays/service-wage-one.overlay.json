@@ -1,0 +1,8 @@
+{
+  "name": "service-wage-one",
+  "schemaVersion": 1,
+  "note": "Puts GBP 1 back in the owner's hand every time a rival uses their Service. The shipped rule is 0 - the card that lands on the Service IS the payment, and it rides into the owner's barn as exactly the mixed colour the island wants of them. This is the paired control for that ruling: run it if a table says being useful feels unrewarded, or if the coin supply dries up now that the Notice Board is the only cross-table faucet left.",
+  "set": {
+    "workers.visitWage": 1
+  }
+}

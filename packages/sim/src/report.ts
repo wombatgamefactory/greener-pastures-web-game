@@ -234,6 +234,33 @@ function seriesSection({ pooled }: ReportInput): string[] {
       pooled.bySeats.map((s) => pad(pct(s.tieRate, 1), 20)).join(''),
   );
   line('island filled at game end', (g) => pct(median(g.map((x) => x.islandFill)), 0));
+  // The C1 lines, tracked from 2026-08-09. Per DECK, not per game, and split,
+  // because a played crop's central deck is 12 cards and a neutral crop's is 18
+  // - they churn at completely different rates and one pooled number describes
+  // neither. See the note below the table.
+  line('reshuffles per played deck', (g) => num(median(perDeck(g, 'played')), 2));
+  line('reshuffles per neutral deck', (g) => num(median(perDeck(g, 'neutral')), 2));
+  out.push('');
+  out.push(
+    'Reshuffles are the C1 line: a pool that cycles is not a pool that is sampled. A played',
+  );
+  out.push(
+    "crop's deck holds 12 cards (setup takes 6 of its 18 into a hand and a barn); a neutral",
+  );
+  out.push("crop's holds 18 and loses none, which is why the two lines are printed apart. If the");
+  out.push(
+    'played figure is above about 1, that crop is a cycling deck rather than a sampled pool,',
+  );
+  out.push(
+    'and any claim that the 105 cards give variety WITHIN a game is being made off the wrong',
+  );
+  out.push(
+    'half of the pool. First recorded 2026-08-09 on reference-v9 at n=1580: played 6 / 5 / 5',
+  );
+  out.push(
+    'by seat count, neutral 0 / 0 / 0. No noise floor for these two yet - run --noise before',
+  );
+  out.push('reading a movement in them as a finding.');
   out.push('');
   out.push('End reasons. `stalled` drained the card supply; `maxMoves` hit the ceiling; `crashed`');
   out.push('is a bug. They are three different things and only the first is a design fact.');
@@ -638,6 +665,17 @@ function noiseNote(metrics: readonly string[]): string[] {
     'per chair the movement was under 5 points. The +/-3 band is a design target, not a detection',
     'threshold, and at this n the instrument cannot separate the two.',
   ];
+}
+
+/** One entry per crop deck of the given kind, across the given games. */
+function perDeck(games: readonly GameMetrics[], which: 'played' | 'neutral'): number[] {
+  const out: number[] = [];
+  for (const g of games) {
+    for (const crop of which === 'played' ? g.suits : g.neutral) {
+      out.push(g.reshufflesByCrop[crop] ?? 0);
+    }
+  }
+  return out;
 }
 
 function pad(s: string, n: number): string {

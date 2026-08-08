@@ -21,7 +21,7 @@ export type WeightTable = Readonly<Record<string, number>>;
  * `balanced` - the reference table, and the `normal` rung of the ladder.
  *
  * Rough intended ordering at a typical decision: deliver a Level 2/3 tile >
- * unclog your own Notice Board > hire > visit > build > harvest > grow > draw >
+ * unclog your own Notice Board > visit > build > harvest > grow > draw >
  * end the turn. Deliver's feature is the tile's printed VP (4 / 8 / 16), so its
  * weight of 3 puts a Level 1 delivery at 12 and a Level 3 at 48.
  */
@@ -141,7 +141,6 @@ export const BALANCED: WeightTable = {
    * term left and the bot preferred to spend more.
    */
   buildSpend: 0.3,
-  hire: 8,
   upgrade: 4,
   upgradeMilestone: 6,
 
@@ -153,8 +152,8 @@ export const BALANCED: WeightTable = {
    * `buySaving` at 6 is DERIVED, not chosen: a bot takes its highest-scoring
    * move and declining costs -2, so the saver only becomes a reachable decision
    * once `3 - buySaving < -2`. Measured on the ladder, and the difference is the
-   * whole of watch-list assertion 3: at 4 the first hire lands on turn 8.0
-   * (FAIL), at 6 on turn 3.0 (PASS) with 96.8% of seats hiring. Above 6 it
+   * whole of what watch-list assertion 3 used to measure, when there was a hire
+   * to save for: at 4 the first hire landed on turn 8.0, at 6 on turn 3.0. Above 6 it
    * saturates - the term is binary and a negative buy already loses to
    * everything. A number below 6 measures the bot, not the rule.
    */

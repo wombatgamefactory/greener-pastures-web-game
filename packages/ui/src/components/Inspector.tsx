@@ -95,12 +95,7 @@ export function Inspector({
         {workers.length > 0 && (
           <div className="inspector-workers">
             {workers.map((w) => (
-              <WorkerPanel
-                key={w.id}
-                track={workerTrack(data, w)}
-                ownerLabel="theirs"
-                hireFee={data.workers.hireFee}
-              />
+              <WorkerPanel key={w.id} track={workerTrack(data, w)} ownerLabel="theirs" />
             ))}
           </div>
         )}
