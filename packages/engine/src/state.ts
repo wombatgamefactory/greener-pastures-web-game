@@ -197,7 +197,14 @@ export type Task =
       t: 'chooseBuilding';
       pid: Seat;
       src: CardId | null;
-      filter: 'full' | 'notFull' | 'harvestable';
+      /**
+       * 'loaded' is the Wheat rebuild's gate: any building of yours with 1 or
+       * more cards on it, however far off its threshold. It is deliberately NOT
+       * a relaxation of the Harvest ACTION - the Wheat Farmstead's 2+ rule lives
+       * in `harvestable` - but the printed exception W11 and W13 spell out in
+       * words ("however many cards are on it").
+       */
+      filter: 'full' | 'notFull' | 'harvestable' | 'loaded';
       /** Never a legal target (W5's "Harvest another card"). */
       exclude?: CardId;
       then: 'harvest';
@@ -253,6 +260,12 @@ export type Task =
       pid: Seat;
       src: CardId | null;
       remaining: number;
+      /**
+       * Restrict targets to these buildings, exactly as `sow` does. The Wheat
+       * rebuild's shared line "Sow 1 FIELD from the deck" is this task with the
+       * seat's FIELDs listed, and W7's "onto this FIELD" is it with one.
+       */
+      targets?: CardId[];
     }
   | {
       /**

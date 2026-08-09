@@ -180,7 +180,7 @@
       "type": "visit",
       "seat": 0,
       "host": 1,
-      "fee": ["W15"],
+      "fee": ["W14"],
       "payoff": {
         "mode": "coin"
       }
@@ -261,7 +261,7 @@
       "type": "visit",
       "seat": 0,
       "host": 1,
-      "fee": ["W14"],
+      "fee": ["W15"],
       "payoff": {
         "mode": "coin"
       }
@@ -627,14 +627,14 @@
       "seat": 0,
       "answer": {
         "kind": "keep",
-        "cards": ["W15"]
+        "cards": ["W14"]
       }
     },
     {
       "type": "visit",
       "seat": 0,
       "host": 1,
-      "fee": ["W15"],
+      "fee": ["W14"],
       "payoff": {
         "mode": "coin"
       }
@@ -1167,14 +1167,14 @@
       "seat": 0,
       "answer": {
         "kind": "keep",
-        "cards": ["W15"]
+        "cards": ["W14"]
       }
     },
     {
       "type": "visit",
       "seat": 0,
       "host": 1,
-      "fee": ["W15"],
+      "fee": ["W14"],
       "payoff": {
         "mode": "coin"
       }
@@ -1601,5 +1601,5 @@
     }
   ],
   "expect": "plays",
-  "dataFingerprint": "6f94a17248b7109ab8b93639ce6fe9a98e37dca1a138cdd5c1c71b51906e6360+base"
+  "dataFingerprint": "6dac19716be71cf3897ab66caa06efc9a13e650ec808eca44cdd6f72393cc2fe+base"
 }

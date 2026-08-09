@@ -218,12 +218,16 @@ describe('a pending draw', () => {
     const noRoom: number[] = [];
     const nonZeroWithNoRoom: number[] = [];
 
-    // Widened from 3 seeds on 2026-08-09. The Service threshold locked at 2, so
-    // a Draw Service is clogged about two turns in five and the offer is simply
-    // rarer - the full-hand subcase stopped appearing at all in six games, which
-    // made the last assertion below vacuous. More samples, same assertions.
-    for (const seats of [2, 3]) {
-      for (let n = 0; n < 8; n++) {
+    // Widened from 3 seeds on 2026-08-09, and widened AGAIN for the Wheat
+    // rebuild - this time across seat counts rather than seeds, which is where
+    // the missing subcase actually lives. Neither widening weakens an assertion:
+    // the full-hand case is a property of the corpus, not of the pricer, and when
+    // the corpus moves it can vanish and leave the last assertion below vacuous.
+    // Measured after the rebuild: 901 offers over 2/3/4 seats hold 100 full-hand
+    // positions, and none of them are at 2 or 3 seats once the O16 hosts are
+    // excluded. A fourth seat is a tighter table, which is the whole reason.
+    for (const seats of [2, 3, 4]) {
+      for (let n = 0; n < 12; n++) {
         const seed = `drawworker-${seats}-${n}`;
         // Rotate rather than slice: n now runs past 5 and a slice runs off the end.
         const suits = Array.from(

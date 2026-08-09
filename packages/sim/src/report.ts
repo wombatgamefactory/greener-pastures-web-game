@@ -356,11 +356,16 @@ function actionMix({ pooled, data }: ReportInput): string[] {
   // the sentence stale.
   const enabled = data.cards.catalogue.filter((c) => c.enabled);
   const gated = enabled.filter((c) => c.abilityTrigger.includes('onActivate')).length;
+  // The ACTION cards are deliberately NOT in `gated`: they are taken instead of
+  // a main action, so their ceiling is the `cardMove:action` row, not GROW.
+  const acted = enabled.filter((c) => c.abilityTrigger.includes('action')).length;
   out.push(
     `${decisions} decisions across ${pooled.ended.length} ended games. GROW is what fires a ` +
       `card's printed ability, so the\nGROW row bounds how often the ${gated} ` +
       `activation-gated cards do anything - not the other ${enabled.length - gated}, which ` +
-      'score at\ngame end, fire on hooks, or are the starters carrying the suit powers.',
+      `score at\ngame end, fire on hooks, are the starters carrying the suit powers, or (${acted} ` +
+      'of them) print an ACTION\ntaken instead of a main action, whose ceiling is the ' +
+      'cardMove:action row above.',
   );
   out.push('');
   return out;

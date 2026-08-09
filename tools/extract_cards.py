@@ -151,11 +151,16 @@ TRIGGER_PATTERNS = [
 ]
 
 
-def triggers_for(card_type, text):
+def triggers_for(card_type, text, threshold=None, activation=None):
     """Detected trigger keywords. Compound/absent detections are flagged, not guessed.
 
     Keyword detection over the printed text, NOT a resolved ruling. needsDesignReview
-    just means 0 or >1 triggers matched and a human must look."""
+    just means 0 or >1 triggers matched and a human must look.
+
+    The one STRUCTURAL detection is `action`, and it is structural because it has
+    to be: an ACTION card prints no prefix on the sheet, but it prints no threshold
+    and no activation type either, so it can be neither grown nor sown. A tier card
+    with text and no way to be activated fires as a main action instead."""
     if card_type == "power":
         low = (text or "").lower()
         deliver = [name for name, pat in TRIGGER_PATTERNS
@@ -165,6 +170,8 @@ def triggers_for(card_type, text):
         return ["gameEnd"], False
     if card_type == "starter" or not text:
         return [], False
+    if threshold is None and activation is None:
+        return ["action"], False
 
     low = text.lower()
     found = [name for name, pat in TRIGGER_PATTERNS if re.search(pat, low)]
@@ -295,7 +302,7 @@ def main():
         if upgraded:
             warnings.append(f"r{r} {ref}: non-starter marked upgraded")
         text = clean(g("effect")) or clean(g("ability"))
-        trigger, ambiguous = triggers_for(ctype, text)
+        trigger, ambiguous = triggers_for(ctype, text, threshold, activation)
         cards[(suit, ref)] = {
             "id": ref, "suit": suit, "type": ctype, "name": clean(name), "inDeck": True,
             "enabled": True,
@@ -359,6 +366,11 @@ def main():
                 "abilityTrigger is keyword detection over the printed text, not a resolved"
                 " ruling. needsDesignReview=true means 0 or >1 triggers matched, and those"
                 " cards are re-read by hand when their handlers are written.",
+                "The one STRUCTURAL trigger is `action`: a tier card with printed text but"
+                " no threshold and no activation type can be neither grown nor sown, so its"
+                " text fires as a MAIN ACTION instead - taken in place of Draw, Build, Grow,"
+                " Harvest or Deliver. The sheet prints no prefix for it, which is why it is"
+                " read off the shape of the card rather than off a keyword.",
                 "The Deliver trigger has TWO keys: onDeliver ('When you Deliver...', fires on"
                 " island claims and balloon moves) and onDeliverIsland ('When you Deliver to"
                 " the island...', island claims only).",

@@ -8,6 +8,7 @@
 import { BASE_GAME_DATA as data } from '@gp/data';
 import { describe, expect, it } from 'vitest';
 
+import { apply, legalMoves } from '../game.js';
 import {
   answerTask,
   applyCardMove,
@@ -16,10 +17,9 @@ import {
   pendingAnswers,
   standingMoves,
   visitWork,
-  workOwnWorker,
 } from '../runtime.js';
-import { buildingOf, player, serviceOf, thresholdOf, workerState } from '../query.js';
-import type { GameState, TaskAnswer } from '../state.js';
+import { buildingOf, cardById, player, serviceOf, thresholdOf, workerState } from '../query.js';
+import type { GameState, Move, TaskAnswer } from '../state.js';
 import { buildFor, dealTo, hireFor, loadStack, makeState } from '../testkit.js';
 import { handlerFor } from './registry.js';
 
@@ -80,65 +80,108 @@ describe('1. The Meadow Hive (A5) - plain activate-and-gain', () => {
   });
 });
 
-describe('2. The Bakery (W13) - "Harvest all your full buildings"', () => {
-  it('harvests every full building, including itself when the payment fills it', () => {
+/**
+ * The Bakery moved from a GROW-fired Tier 3 to a printed ACTION with the Wheat
+ * rebuild, which makes it a BETTER spanning case than it was: it is now the only
+ * shape in the game where a card's standing move IS the main action.
+ */
+describe('2. The Bakery (W13) - a printed ACTION, taken instead of a main action', () => {
+  /** W13 built, W4 loaded to `w4` cards, the Bakery's own stack irrelevant (it has none). */
+  function bakeryState(w4: number): GameState {
     const s = base();
     buildFor(data, s, WHEAT, 'W13', 'W4');
-    dealTo(data, s, WHEAT, 'W5');
-    const w4Threshold = thresholdOf(data, buildingOf(s, WHEAT, 'W4')) as number;
-    loadStack(data, s, WHEAT, 'W4', w4Threshold);
-    // W13 threshold is 2: load 1, so the grow payment fills it.
-    loadStack(data, s, WHEAT, 'W13', 1);
+    if (w4 > 0) loadStack(data, s, WHEAT, 'W4', w4, 'apiary');
+    return s;
+  }
 
-    const { state } = growBuilding(data, s, WHEAT, 'W13', 'W5');
-    expect(buildingOf(state, WHEAT, 'W4').stack).toEqual([]);
-    expect(buildingOf(state, WHEAT, 'W13').stack).toEqual([]);
-    expect(player(state, WHEAT).barn).toHaveLength(w4Threshold + 2);
+  function bakeryMove(state: GameState) {
+    return standingMoves(data, state, WHEAT).find((m) => m.card === 'W13');
+  }
+
+  it('has no threshold, so it can be neither grown nor sown', () => {
+    const s = bakeryState(0);
+    expect(thresholdOf(data, buildingOf(s, WHEAT, 'W13'))).toBeNull();
+    expect(legalMoves(data, s).some((m) => m.type === 'grow' && m.building === 'W13')).toBe(false);
   });
 
-  it('does not harvest buildings that are not full', () => {
+  it('harvests every loaded building, however many cards are on it, and spends the action', () => {
+    const s = bakeryState(1); // 1 of 2: nowhere near full
+    const move = bakeryMove(s);
+    expect(move).toBeDefined();
+
+    const applied = apply(data, s, move as Move);
+    expect(applied.state.turn.actionSpent).toBe(true);
+    expect(buildingOf(applied.state, WHEAT, 'W4').stack).toEqual([]);
+    expect(player(applied.state, WHEAT).barn).toHaveLength(1);
+    // Spent: the action is gone and the Bakery offers nothing more this turn.
+    expect(bakeryMove(applied.state)).toBeUndefined();
+  });
+
+  it('offers nothing with no loaded building, so it never holds a turn open', () => {
+    expect(bakeryMove(bakeryState(0))).toBeUndefined();
+  });
+
+  it('suppresses `pass`, because it IS a main action', () => {
+    const s = bakeryState(1);
+    // Strip the hand and empty every deck so no printed action is legal: only
+    // the Bakery is left, and `pass` must not be offered beside it.
+    player(s, WHEAT).hand = [];
+    for (const suit of data.cards.suits) {
+      s.decks[suit] = [];
+      s.discards[suit] = [];
+    }
+    const moves = legalMoves(data, s);
+    expect(moves.some((m) => m.type === 'cardMove' && m.card === 'W13')).toBe(true);
+    expect(moves.some((m) => m.type === 'pass')).toBe(false);
+    expect(() => apply(data, s, { type: 'pass', seat: WHEAT })).toThrow(/only when no main action/);
+  });
+
+  /**
+   * The cross-handler case the rebuild's ruling turns on: The Granary fires
+   * ONCE per harvest action, not once per building, or a Bakery over eight
+   * buildings draws eight cards.
+   */
+  it('fires The Granary (W16) once for the whole cascade, not once per building', () => {
     const s = base();
-    buildFor(data, s, WHEAT, 'W13', 'W4');
-    dealTo(data, s, WHEAT, 'W5');
-    loadStack(data, s, WHEAT, 'W13', 1);
-    // W4 stays empty: not full, not harvested.
-    const { state } = growBuilding(data, s, WHEAT, 'W13', 'W5');
-    expect(buildingOf(state, WHEAT, 'W4').stack).toEqual([]);
-    expect(player(state, WHEAT).barn).toHaveLength(2); // only the Bakery's own stack
+    buildFor(data, s, WHEAT, 'W13', 'W16', 'W4', 'W5');
+    loadStack(data, s, WHEAT, 'W4', 2, 'apiary');
+    loadStack(data, s, WHEAT, 'W5', 2, 'apiary');
+    const applied = apply(data, s, bakeryMove(s) as Move);
+
+    expect(buildingOf(applied.state, WHEAT, 'W4').stack).toEqual([]);
+    expect(buildingOf(applied.state, WHEAT, 'W5').stack).toEqual([]);
+    // Two buildings harvested. The Granary contributes exactly one Draw 1; the
+    // rest of the queue is W4's and W5's own harvest lines.
+    const granaryDraws = applied.state.tasks.filter(
+      (t) => t.t === 'draw' && t.src === 'W16' && t.see === 1,
+    );
+    expect(granaryDraws).toHaveLength(1);
   });
 });
 
-describe('3. The Pie Shop (W17) - "£1 per non-wheat card in the harvest"', () => {
-  it('counts non-wheat cards on any harvest by its owner, however triggered', () => {
-    const s = base();
-    buildFor(data, s, WHEAT, 'W17', 'W4');
-    const w4Threshold = thresholdOf(data, buildingOf(s, WHEAT, 'W4')) as number;
-    // Fill W4 entirely with apiary cards (sow is suit-free, so this is a real position).
-    loadStack(data, s, WHEAT, 'W4', w4Threshold, 'apiary');
-    hireFor(s, WHEAT, 'harvest');
-    // The bonus slot's own-Service option is no longer free: pay the bank.
-    player(s, WHEAT).coins += data.workers.ownerActivationCost;
-
-    // Harvest through the Harvest Service: chooseBuilding task -> pick W4.
-    const out = workOwnWorker(data, s, WHEAT, 'harvest');
-    const state = answerAll(out.state);
-    // Pie Shop pays per non-wheat card, plus W4's own printed £1 on harvest
-    // (its handler landed with ticket 18).
-    expect(player(state, WHEAT).coins).toBe(w4Threshold + 1);
-    expect(player(state, WHEAT).barn).toHaveLength(w4Threshold);
-    // Own use: no wage minted for anyone.
-  });
-
-  it('pays nothing when a RIVAL harvests (scope is the listener, not the bus)', () => {
+describe('3. The Pie Shop (W17) - "gain £1 when a neighbour places a card on one of your buildings"', () => {
+  it('pays its owner when a rival places, wherever the card lands', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W17');
-    buildFor(data, s, APIARY, 'A5');
-    loadStack(data, s, APIARY, 'A5', thresholdOf(data, buildingOf(s, APIARY, 'A5')) as number);
-    hireFor(s, APIARY, 'harvest');
-    // The bonus slot's own-Service option is no longer free: pay the bank.
-    player(s, APIARY).coins += data.workers.ownerActivationCost;
-    const out = workOwnWorker(data, s, APIARY, 'harvest');
-    const state = answerAll(out.state);
+    dealTo(data, s, APIARY, 'A6');
+    s.turnPlayer = APIARY;
+    // A plain coin visit: the fee lands on the Wheat seat's Notice Board.
+    const applied = apply(data, s, {
+      type: 'visit',
+      seat: APIARY,
+      host: WHEAT,
+      fee: ['A6'],
+      payoff: { mode: 'coin' },
+    });
+    expect(applied.audit.crossSeat).toBe(true); // it minted for somebody else
+    expect(player(applied.state, WHEAT).coins).toBe(1);
+  });
+
+  it("pays nothing for its OWNER's own placements (scope is the listener, not the bus)", () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W17', 'W4');
+    dealTo(data, s, WHEAT, 'W5');
+    const { state } = growBuilding(data, s, WHEAT, 'W4', 'W5');
     expect(player(state, WHEAT).coins).toBe(0);
   });
 });
@@ -250,22 +293,35 @@ describe('5. A Helping Hand (W18) - the standing repeat gate', () => {
 });
 
 describe('6. The Wheat Exchange (W19) - end-game scoring', () => {
-  it('scores 3 VP per upgraded building through the four-source breakdown', () => {
+  it('scores 2 VP per different crop in the tableau, through the four-source breakdown', () => {
     const s = base();
-    buildFor(data, s, WHEAT, 'W19');
-    for (const b of player(s, WHEAT).tableau.slice(0, 2)) b.upgraded = true;
+    // W19 itself (wheat) plus an apiary and an orchard building: three crops.
+    buildFor(data, s, WHEAT, 'W19', 'A9', 'O9');
     player(s, WHEAT).coins = 7;
     player(s, WHEAT).receipts.push(4, 8);
 
     const scores = gameEndScores(data, s);
     const wheat = scores[WHEAT]!;
+    // Base starters print the generic starting-building icon, so they belong to
+    // no crop and add nothing here (ticket 07's cropOf rule).
     expect(wheat.endgame).toBe(6);
     expect(wheat.receipts).toBe(12);
     expect(wheat.coinPity).toBe(0); // ticket 37: coins are worth no VP at all
-    // Printed VP includes the two upgraded starter faces (2 VP each).
-    expect(wheat.printed).toBe(4);
-    expect(wheat.total).toBe(22);
+    // Printed VP: W19 prints 0, A9 and O9 print their own.
+    const printed = (cardById(data, 'A9').printedVp ?? 0) + (cardById(data, 'O9').printedVp ?? 0);
+    expect(wheat.printed).toBe(printed);
+    expect(wheat.total).toBe(6 + 12 + printed);
     expect(scores[APIARY]!.total).toBe(0);
+  });
+
+  it('an upgraded starter DOES print a crop, so a flip can add to it', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W19');
+    expect(gameEndScores(data, s)[WHEAT]!.endgame).toBe(2); // wheat, from W19 itself
+    // Flipping a starter prints the wheat icon - a crop already counted, so the
+    // count does not move. This is the rule, not an accident of the fixture.
+    buildingOf(s, WHEAT, 'W1').upgraded = true;
+    expect(gameEndScores(data, s)[WHEAT]!.endgame).toBe(2);
   });
 });
 

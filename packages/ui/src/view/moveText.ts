@@ -92,7 +92,11 @@ export function describeMove(data: GameData, view: PlayerView, move: Move): stri
     case 'task':
       return describeAnswer(data, move.answer);
     case 'cardMove':
-      return `${cardName(data, move.card)}: ${move.kind}`;
+      // A Tier 3 ACTION card is a main action, so it reads as one rather than
+      // as an internal move kind. Everything else keeps the generic form.
+      return move.kind === 'action'
+        ? `${cardName(data, move.card)}: take its ACTION (instead of your action)`
+        : `${cardName(data, move.card)}: ${move.kind}`;
     case 'draw':
       return 'Draw';
     case 'buy':

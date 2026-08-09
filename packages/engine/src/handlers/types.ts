@@ -89,6 +89,18 @@ export interface CardHandler {
   moves?: (data: GameData, state: GameState, self: CardInPlay) => CardMove[];
   applyMove?: (fx: Fx, self: CardInPlay, move: CardMove) => void;
 
+  /**
+   * This card's standing moves ARE the main action (the Wheat Tier 3 ACTIONs).
+   *
+   * Declared on the handler rather than inferred per move, because a card either
+   * always spends the action or never does. Two things read it, both in game.ts:
+   * `pass` must not be offered beside a live ACTION card, and `apply` must not
+   * accept one. The spend itself is the handler's own job - `applyMove` sets
+   * `turn.actionSpent` before it does anything - so this flag is about the
+   * OTHER moves' legality, never about bookkeeping.
+   */
+  actionMoves?: true;
+
   /** Card-specific tasks, keyed by `task.kind`. Prefer the generic vocabulary. */
   tasks?: Record<string, CustomTask>;
 

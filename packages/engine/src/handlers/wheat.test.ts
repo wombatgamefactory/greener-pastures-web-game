@@ -1,12 +1,16 @@
 /**
- * Ticket 18: the Wheat suit, all 21 cards, in the spanning-test style. The
- * load-bearing pieces are the Farmstead seams (the relaxed harvest gate as a
- * modifier the action AND the Harvest Worker compose with, and the upgraded
- * face's one optional repeat), W4's auto-harvest on the placement funnel, and
- * W8's surcharge on every harvest path.
+ * The Wheat suit, all 21 cards, REBUILT (docs/wheat-suit-rebuild-v5.md), in the
+ * spanning-test style.
+ *
+ * The load-bearing pieces are new. The FIELDs' two-line shape - GROW draws, the
+ * HARVEST pays and reseeds - is what the rebuild is for, so every Tier 1 test
+ * asserts BOTH lines and the reseed. The Tier 3 ACTION seam is tested where it
+ * bites (spending the main action, holding nothing open, suppressing `pass`) in
+ * spanning.test.ts §2, and here for what each card actually does. The Farmstead
+ * seams are unchanged and still tested first.
  */
 
-import { BASE_GAME_DATA as data, loadGameData } from '@gp/data';
+import { BASE_GAME_DATA as data } from '@gp/data';
 import { describe, expect, it } from 'vitest';
 
 import { apply, legalMoves } from '../game.js';
@@ -15,6 +19,7 @@ import {
   gameEndScores,
   growBuilding,
   pendingAnswers,
+  standingMoves,
   workOwnWorker,
 } from '../runtime.js';
 import { buildingOf, cardById, player, thresholdOf } from '../query.js';
@@ -32,7 +37,7 @@ function base(): GameState {
 /** Answer pending tasks with the first legal answer until the queue drains. */
 function answerAll(state: GameState, pick?: (answers: TaskAnswer[]) => TaskAnswer): GameState {
   let s = state;
-  for (let guard = 0; guard < 32 && s.tasks.length > 0; guard++) {
+  for (let guard = 0; guard < 64 && s.tasks.length > 0; guard++) {
     const answers = pendingAnswers(data, s);
     const answer = pick ? pick(answers) : answers[0];
     if (!answer) throw new Error('No legal answer to a live task');
@@ -46,12 +51,23 @@ function harvestMoves(state: GameState): Move[] {
   return legalMoves(data, state).filter((m) => m.type === 'harvest');
 }
 
-describe('the Wheat Farmstead (W2) - the relaxed harvest gate', () => {
+/** The one standing move a Tier 3 ACTION card offers, if it is offering one. */
+function actionMoveFor(state: GameState, card: string): Move | undefined {
+  return standingMoves(data, state, WHEAT).find((m) => m.card === card);
+}
+
+/** Fill a building to its printed threshold from the apiary deck (keeps wheat ids free). */
+function fill(s: GameState, card: string): void {
+  const threshold = thresholdOf(data, buildingOf(s, WHEAT, card)) as number;
+  loadStack(data, s, WHEAT, card, threshold, 'apiary');
+}
+
+describe('the Wheat Farmstead (W2) - the relaxed harvest gate, unchanged', () => {
   it('offers a 2+-loaded not-full building to the Harvest ACTION, wheat seat only', () => {
     const s = base();
-    buildFor(data, s, WHEAT, 'W11'); // threshold 4
-    loadStack(data, s, WHEAT, 'W11', 2);
-    expect(harvestMoves(s).map((m) => m.type === 'harvest' && m.building)).toContain('W11');
+    buildFor(data, s, WHEAT, 'W7'); // threshold 3
+    loadStack(data, s, WHEAT, 'W7', 2);
+    expect(harvestMoves(s).map((m) => m.type === 'harvest' && m.building)).toContain('W7');
 
     // The same position for the apiary seat: 2-loaded, not full, NOT harvestable.
     const t = base();
@@ -63,377 +79,369 @@ describe('the Wheat Farmstead (W2) - the relaxed harvest gate', () => {
     expect(harvestMoves(t)).toEqual([]);
   });
 
-  it('the gates cross: a full threshold-1 building harvests strictly, never relaxed', () => {
+  it('composes with the Harvest Service (suit powers apply to Service actions)', () => {
     const s = base();
-    buildFor(data, s, WHEAT, 'W5'); // threshold 1
-    loadStack(data, s, WHEAT, 'W5', 1);
-    expect(harvestMoves(s).map((m) => m.type === 'harvest' && m.building)).toContain('W5');
-  });
-
-  it('composes with the Harvest Worker (suit powers apply to Worker actions)', () => {
-    const s = base();
-    buildFor(data, s, WHEAT, 'W11');
-    loadStack(data, s, WHEAT, 'W11', 2);
+    buildFor(data, s, WHEAT, 'W7');
+    loadStack(data, s, WHEAT, 'W7', 2);
     hireFor(s, WHEAT, 'harvest');
-    // The bonus slot's own-Service option is no longer free: pay the bank.
     player(s, WHEAT).coins += data.workers.ownerActivationCost;
     const out = workOwnWorker(data, s, WHEAT, 'harvest');
-    const answers = pendingAnswers(data, out.state);
-    expect(answers).toContainEqual({ kind: 'building', card: 'W11' });
+    expect(pendingAnswers(data, out.state)).toContainEqual({ kind: 'building', card: 'W7' });
   });
 
   it('upgraded: one optional repeat of the main Harvest action, then no more', () => {
     const s = base();
     buildingOf(s, WHEAT, 'W2').upgraded = true;
-    buildFor(data, s, WHEAT, 'W4', 'W11');
-    loadStack(data, s, WHEAT, 'W4', 2);
-    loadStack(data, s, WHEAT, 'W11', 4);
+    buildFor(data, s, WHEAT, 'W4', 'W7');
+    fill(s, 'W4');
+    fill(s, 'W7');
 
-    const first = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W11' });
+    const first = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W7' });
     expect(first.state.turn.again).toBe('harvest');
-    const repeats = harvestMoves(first.state);
+    // W7's harvest queued a build and a reseed; clear them before the repeat.
+    const cleared = answerAll(first.state);
+    const repeats = harvestMoves(cleared);
     expect(repeats.length).toBeGreaterThan(0);
 
-    const second = apply(data, first.state, repeats[0] as Move);
-    // Consumed: no third harvest, and the gate is closed.
+    const second = apply(data, cleared, repeats[0] as Move);
     expect(second.state.turn.again).toBeNull();
-    expect(harvestMoves(second.state)).toEqual([]);
   });
 
-  it('a Worker harvest never arms the repeat', () => {
+  it('a card-effect harvest never arms the repeat (the suit-power ruling)', () => {
     const s = base();
     buildingOf(s, WHEAT, 'W2').upgraded = true;
-    buildFor(data, s, WHEAT, 'W11');
-    loadStack(data, s, WHEAT, 'W11', 4);
-    hireFor(s, WHEAT, 'harvest');
-    // The bonus slot's own-Service option is no longer free: pay the bank.
-    player(s, WHEAT).coins += data.workers.ownerActivationCost;
-    const moved = apply(data, s, { type: 'workOwnWorker', seat: WHEAT, workerId: 'harvest' });
-    const done = answerAll(moved.state);
-    expect(done.turn.again).toBeNull();
+    buildFor(data, s, WHEAT, 'W13', 'W4');
+    loadStack(data, s, WHEAT, 'W4', 1, 'apiary');
+    const applied = apply(data, s, actionMoveFor(s, 'W13') as Move);
+    expect(applied.state.turn.again).toBeNull();
   });
 });
 
-describe('W4 Wheat Field - auto-harvest at the placement funnel', () => {
-  it('harvests itself for its owner the moment a placement fills it, and pays the £1', () => {
+describe('the shared FIELD line - "Sow 1 FIELD from the deck"', () => {
+  it("reseeds the just-harvested FIELD off a deck of the owner's choosing", () => {
     const s = base();
-    buildFor(data, s, WHEAT, 'W4'); // threshold 2
-    loadStack(data, s, WHEAT, 'W4', 1);
+    buildFor(data, s, WHEAT, 'W5'); // threshold 2
+    fill(s, 'W5');
+    const expected = s.decks.orchard[0];
+
+    const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W5' });
+    expect(buildingOf(applied.state, WHEAT, 'W5').stack).toEqual([]);
+    const reseed = applied.state.tasks.find((t) => t.t === 'sowFromDeck');
+    expect(reseed).toMatchObject({ src: 'W5', remaining: 1, targets: ['W5'] });
+
+    // Answer the Draw 2 first (it was queued ahead), then the reseed.
+    let state = answerAll(applied.state, (answers) => {
+      const seed = answers.find((a) => a.kind === 'deckSow' && a.suit === 'orchard');
+      return (seed ?? answers[0]) as TaskAnswer;
+    });
+    expect(buildingOf(state, WHEAT, 'W5').stack).toEqual([expected]);
+    // Which is the whole point: with the seed down, ONE grow refills it.
+    const pay = state.decks.wheat[0] as string;
+    dealTo(data, state, WHEAT, pay);
+    state = growBuilding(data, state, WHEAT, 'W5', pay).state;
+    expect(buildingOf(state, WHEAT, 'W5').stack).toHaveLength(2);
+  });
+
+  it('skips silently when no FIELD has room', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W4', 'W5');
+    fill(s, 'W4');
+    fill(s, 'W5'); // both FIELDs full; W5 empties on harvest, W4 stays clogged
+    // Empty every deck so the reseed has nothing to draw either.
+    for (const suit of data.cards.suits) {
+      s.decks[suit] = [];
+      s.discards[suit] = [];
+    }
+    const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W5' });
+    expect(answerAll(applied.state).tasks).toEqual([]);
+  });
+});
+
+describe('Tier 1 - the five FIELDs, both printed lines each', () => {
+  it('W4 Wheat Field: GROW draws 1; HARVEST banks a hand card, then reseeds', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W4');
     dealTo(data, s, WHEAT, 'W6');
-    // The GROW payment is a placement like any other and fills W4. (A rival's
-    // sow through A12 fills it the same way - same funnel, ticket 21.)
-    const { state } = growBuilding(data, s, WHEAT, 'W4', 'W6');
-    expect(buildingOf(state, WHEAT, 'W4').stack).toEqual([]);
-    expect(player(state, WHEAT).barn).toHaveLength(2);
-    expect(player(state, WHEAT).coins).toBe(1); // "When this card is harvested: gain £1"
-  });
-});
+    const grown = growBuilding(data, s, WHEAT, 'W4', 'W6');
+    expect(grown.state.tasks[0]).toMatchObject({ t: 'draw', see: 1, keep: 1 });
+    // No auto-harvest any more: the stack holds the payment.
+    expect(buildingOf(grown.state, WHEAT, 'W4').stack).toEqual(['W6']);
 
-describe('W5 Rye Field - "Harvest another card"', () => {
-  it('draws 1 and harvests a full building other than itself', () => {
-    const s = base();
-    buildFor(data, s, WHEAT, 'W5', 'W4');
-    dealTo(data, s, WHEAT, 'W6'); // deal before loading: loadStack eats deck tops
-    loadStack(data, s, WHEAT, 'W4', 2);
-    const grown = growBuilding(data, s, WHEAT, 'W5', 'W6');
-    // First task: the Draw 1. Then the harvest picker.
-    const afterDraw = answerAll(grown.state, (a) => a[0] as TaskAnswer);
-    // W5 itself became full (threshold 1) but is excluded; W4 was the only target.
-    expect(buildingOf(afterDraw, WHEAT, 'W4').stack).toEqual([]);
-    expect(buildingOf(afterDraw, WHEAT, 'W5').stack).toHaveLength(1);
-    // W4's harvest paid its own £1; W5 was not harvested so no W5 coin.
-    expect(player(afterDraw, WHEAT).coins).toBe(1);
+    const t = base();
+    buildFor(data, t, WHEAT, 'W4');
+    dealTo(data, t, WHEAT, 'W7');
+    fill(t, 'W4');
+    const applied = apply(data, t, { type: 'harvest', seat: WHEAT, building: 'W4' });
+    expect(applied.state.tasks.map((x) => x.t)).toEqual(['handToBarn', 'sowFromDeck']);
+    const done = answerAll(applied.state);
+    // 2 harvested cards plus the banked hand card, and no coin: W4's old £1 is gone.
+    expect(player(done, WHEAT).barn).toContain('W7');
+    expect(player(done, WHEAT).coins).toBe(0);
   });
-});
 
-describe('W6 / W7 - on-harvest draws and the build', () => {
-  it('W6 draws 2 for its owner when harvested', () => {
+  it('W5 Rye Field: HARVEST draws 2', () => {
     const s = base();
-    buildFor(data, s, WHEAT, 'W6');
-    loadStack(data, s, WHEAT, 'W6', 1); // threshold 1: full
+    buildFor(data, s, WHEAT, 'W5');
+    fill(s, 'W5');
+    const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W5' });
+    expect(applied.state.tasks[0]).toMatchObject({ t: 'draw', see: 2, keep: 2, src: 'W5' });
+  });
+
+  it('W6 Barley Field: HARVEST sows one HAND card onto each of your FIELDs', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W6', 'W4'); // W6 threshold 3, W4 threshold 2
+    dealTo(data, s, WHEAT, 'W7', 'W8');
+    fill(s, 'W6');
     const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W6' });
-    expect(applied.state.tasks[0]).toMatchObject({ t: 'draw', see: 2, keep: 2, pid: WHEAT });
-    const done = answerAll(applied.state, (a) => a[0] as TaskAnswer);
-    expect(player(done, WHEAT).hand).toHaveLength(2);
+    // One sow task per FIELD owned - W6 itself included, since it just emptied.
+    const sows = applied.state.tasks.filter((t) => t.t === 'sow');
+    expect(sows).toHaveLength(2);
+    expect(sows.map((t) => (t.t === 'sow' ? t.targets : null))).toEqual([['W6'], ['W4']]);
+    // Mandatory as printed: no skip answer while a hand card and a target exist.
+    expect(pendingAnswers(data, applied.state).some((a) => a.kind === 'skip')).toBe(false);
   });
 
-  it('W7 draws 1 and offers a PAID build when harvested', () => {
+  it('W7 Golden Field: GROW adds a deck card too, so one activation fills it from the seed', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W7'); // threshold 3
+    dealTo(data, s, WHEAT, 'W6');
+    loadStack(data, s, WHEAT, 'W7', 1, 'apiary'); // the seed from a previous harvest
+    const grown = growBuilding(data, s, WHEAT, 'W7', 'W6');
+    expect(grown.state.tasks.map((t) => t.t)).toEqual(['draw', 'sowFromDeck']);
+    const sow = grown.state.tasks[1];
+    expect(sow).toMatchObject({ targets: ['W7'] });
+    const done = answerAll(grown.state);
+    // seed + payment + deck card = 3: full.
+    expect(buildingOf(done, WHEAT, 'W7').stack).toHaveLength(3);
+  });
+
+  it('W7 Golden Field: HARVEST is a real Build at a discount of 1', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W7');
-    // A buildable position: W4 costs 1 wheat card, so hold W4 + one payment card.
-    dealTo(data, s, WHEAT, 'W4', 'W5');
-    loadStack(data, s, WHEAT, 'W7', 1);
+    dealTo(data, s, WHEAT, 'W8'); // costs 2 wheat, so 1 at a discount of 1 - but the
+    dealTo(data, s, WHEAT, 'W6'); // discount waives the own-suit half, so W6 can pay.
+    fill(s, 'W7');
     const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W7' });
-    expect(applied.state.tasks.map((t) => t.t)).toEqual(['draw', 'build']);
-    let state = applied.state;
-    // Resolve the draw (keep whatever), then take the first build option.
-    state = answerAll(state, (answers) => answers[0] as TaskAnswer);
-    const built = player(state, WHEAT).tableau.map((b) => b.card);
-    expect(built).toContain('W4');
-    // The build was paid: the payment card left the hand for the discard.
-    expect(state.discards.wheat.length).toBeGreaterThan(0);
-  });
-});
-
-describe('W8 Heritage Field - the £1 harvest surcharge', () => {
-  function w8Full(coins: number): GameState {
-    const s = base();
-    buildFor(data, s, WHEAT, 'W8');
-    // Load from apiary so the wheat deck keeps its ids for dealTo.
-    loadStack(data, s, WHEAT, 'W8', 1, 'apiary'); // threshold 1: full
-    player(s, WHEAT).coins = coins;
-    return s;
-  }
-
-  it('is not offered to the action (or the Worker) when the £1 is unaffordable', () => {
-    const s = w8Full(0);
-    expect(harvestMoves(s)).toEqual([]);
-    hireFor(s, WHEAT, 'harvest');
-    // The Worker has nothing legal to do either.
-    expect(legalMoves(data, s).some((m) => m.type === 'workOwnWorker')).toBe(false);
-  });
-
-  it('charges the £1 before the stack moves, then draws 3', () => {
-    const s = w8Full(1);
-    const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W8' });
-    expect(player(applied.state, WHEAT).coins).toBe(0);
-    expect(player(applied.state, WHEAT).barn).toHaveLength(1);
-    expect(applied.state.tasks[0]).toMatchObject({ t: 'draw', see: 3, keep: 3 });
-  });
-
-  it('becomes a pay-or-skip task inside the Bakery cascade', () => {
-    const s = w8Full(1);
-    buildFor(data, s, WHEAT, 'W13', 'W4');
-    dealTo(data, s, WHEAT, 'W6');
-    loadStack(data, s, WHEAT, 'W4', 2);
-    loadStack(data, s, WHEAT, 'W13', 1);
-    const grown = growBuilding(data, s, WHEAT, 'W13', 'W6');
-    // W4 and W13 harvested inline; W8 deferred to its surcharge task.
-    expect(buildingOf(grown.state, WHEAT, 'W4').stack).toEqual([]);
-    expect(buildingOf(grown.state, WHEAT, 'W8').stack).toHaveLength(1);
-    const surcharge = grown.state.tasks.find((t) => t.t === 'card' && t.kind === 'surcharge');
-    expect(surcharge).toMatchObject({ src: 'W8' });
-
-    // Skipping leaves W8 loaded and the £1 unspent.
-    const skipped = answerAll(grown.state, (answers) => {
-      const skip = answers.find((a) => a.kind === 'skip');
-      return (skip ?? answers[0]) as TaskAnswer;
-    });
-    expect(buildingOf(skipped, WHEAT, 'W8').stack).toHaveLength(1);
-    // The £1 started with, plus W4's on-harvest £1; nothing paid for W8.
-    expect(player(skipped, WHEAT).coins).toBe(2);
-  });
-});
-
-describe('W9 Mill House - loaded-FIELD count and the per-FIELD sows', () => {
-  it('pays £1 per card on your FIELDs and offers one optional sow per FIELD', () => {
-    const s = base();
-    buildFor(data, s, WHEAT, 'W9', 'W4', 'W11');
-    dealTo(data, s, WHEAT, 'W6');
-    loadStack(data, s, WHEAT, 'W9', 2); // threshold 2: full
-    loadStack(data, s, WHEAT, 'W4', 1); // 1 FIELD card
-    loadStack(data, s, WHEAT, 'W11', 3); // not a FIELD: never counted
-    const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W9' });
-    expect(player(applied.state, WHEAT).coins).toBe(1); // W4's single loaded card
-    // One sow task per FIELD (W4), optional.
-    const sows = applied.state.tasks.filter((t) => t.t === 'sow');
-    expect(sows).toHaveLength(1);
-    expect(sows[0]).toMatchObject({ targets: ['W4'], optional: true });
+    const build = applied.state.tasks.find((t) => t.t === 'build');
+    expect(build).toMatchObject({ src: 'W7', mods: { discount: 1 } });
     const answers = pendingAnswers(data, applied.state);
-    expect(answers).toContainEqual({ kind: 'skip' });
-    // Sow the held card onto W4 - it fills to 2 and AUTO-HARVESTS (W4's tail).
-    const sown = answerTask(data, applied.state, {
-      kind: 'sow',
-      card: 'W6',
-      onto: 'W4',
-    } as TaskAnswer);
-    expect(buildingOf(sown.state, WHEAT, 'W4').stack).toEqual([]);
+    expect(
+      answers.some((a) => a.kind === 'build' && a.card === 'W8' && a.payment.length === 1),
+    ).toBe(true);
+  });
+
+  it('W8 Heritage Field: GROW banks a hand card; HARVEST harvests another building', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W8', 'W5');
+    dealTo(data, s, WHEAT, 'W6', 'W7');
+    loadStack(data, s, WHEAT, 'W8', 1, 'apiary');
+    const grown = growBuilding(data, s, WHEAT, 'W8', 'W6');
+    expect(grown.state.tasks.map((t) => t.t)).toEqual(['draw', 'handToBarn']);
+
+    const t = base();
+    buildFor(data, t, WHEAT, 'W8', 'W5');
+    fill(t, 'W8');
+    fill(t, 'W5');
+    const applied = apply(data, t, { type: 'harvest', seat: WHEAT, building: 'W8' });
+    const chooser = applied.state.tasks.find((x) => x.t === 'chooseBuilding');
+    // The STRICT full gate, and never itself.
+    expect(chooser).toMatchObject({ filter: 'full', exclude: 'W8', then: 'harvest' });
+    expect(pendingAnswers(data, applied.state)).toEqual([{ kind: 'building', card: 'W5' }]);
+    // No surcharge left on this card: the £1 is gone from the design.
+    expect(cardById(data, 'W8').abilityTrigger).not.toContain('harvestSurcharge');
   });
 });
 
-describe('W10 The Furrow - harvest, £1, and the £1 FIELD build', () => {
-  it('runs the full chain and the free build counts toward the Farmstead milestone', () => {
+describe('Tier 2', () => {
+  it('W9 Mill House: one deck-top sow per FIELD you own', () => {
     const s = base();
-    buildFor(data, s, WHEAT, 'W10', 'W6');
-    dealTo(data, s, WHEAT, 'W4', 'W5');
-    loadStack(data, s, WHEAT, 'W6', 1);
-    loadStack(data, s, WHEAT, 'W10', 1); // threshold 2: the grow payment fills it
-    const grown = growBuilding(data, s, WHEAT, 'W10', 'W5');
-    // Tasks: chooseBuilding (harvest), then the fieldBuild gate. The £1 paid inline.
-    let state = grown.state;
-    // Pick W10 itself (now full) to harvest.
-    state = answerTask(data, state, { kind: 'building', card: 'W10' } as TaskAnswer).state;
-    // W6's on-harvest? W6 was not harvested. Now the fieldBuild: W4 is in hand.
-    const buildAnswers = pendingAnswers(data, state);
-    expect(buildAnswers.some((a) => a.kind === 'card')).toBe(true);
-    state = answerTask(data, state, {
-      kind: 'card',
-      payload: { card: 'W4' },
-    } as TaskAnswer).state;
-    const tableau = player(state, WHEAT).tableau.map((b) => b.card);
-    expect(tableau).toContain('W4');
-    // £1 gained, £1 spent on the field build.
-    expect(player(state, WHEAT).coins).toBe(0);
-    // Third own-colour deck build (W10, W6, W4): the Farmstead flipped free.
-    expect(buildingOf(state, WHEAT, 'W2').upgraded).toBe(true);
-  });
-});
-
-describe('W11 The Bakehouse - the cross-player harvest', () => {
-  it("harvests a neighbour's full building to THEIR barn, pays the activator per card", () => {
-    const s = base();
-    buildFor(data, s, WHEAT, 'W11');
+    buildFor(data, s, WHEAT, 'W9', 'W4', 'W5');
     dealTo(data, s, WHEAT, 'W6');
-    loadStack(data, s, WHEAT, 'W11', 3); // threshold 4: the grow payment must still fit
-    buildFor(data, s, APIARY, 'A5');
-    const a5Threshold = thresholdOf(data, buildingOf(s, APIARY, 'A5')) as number;
-    loadStack(data, s, APIARY, 'A5', a5Threshold);
-    const grown = growBuilding(data, s, WHEAT, 'W11', 'W6');
-    const answers = pendingAnswers(data, grown.state);
-    expect(answers).toContainEqual({
-      kind: 'card',
-      payload: { seat: APIARY, building: 'A5' },
-    });
-    const done = answerTask(data, grown.state, {
-      kind: 'card',
-      payload: { seat: APIARY, building: 'A5' },
-    } as TaskAnswer);
-    expect(done.audit.crossSeat).toBe(true);
-    expect(player(done.state, APIARY).barn).toHaveLength(a5Threshold);
-    expect(player(done.state, WHEAT).coins).toBe(a5Threshold);
+    loadStack(data, s, WHEAT, 'W9', 1, 'apiary'); // threshold 2: the payment fills it
+    const grown = growBuilding(data, s, WHEAT, 'W9', 'W6');
+    const sows = grown.state.tasks.filter((t) => t.t === 'sowFromDeck');
+    expect(sows).toHaveLength(2);
+    expect(sows.map((t) => (t.t === 'sowFromDeck' ? t.targets : null))).toEqual([['W4'], ['W5']]);
+    const done = answerAll(grown.state);
+    expect(buildingOf(done, WHEAT, 'W4').stack).toHaveLength(1);
+    expect(buildingOf(done, WHEAT, 'W5').stack).toHaveLength(1);
   });
 
-  it('auto-skips with no full neighbour building', () => {
+  it('W10 The Furrow: the entire hand into the barn, with no choice at all', () => {
     const s = base();
-    buildFor(data, s, WHEAT, 'W11');
+    buildFor(data, s, WHEAT, 'W10');
+    dealTo(data, s, WHEAT, 'W4', 'W5', 'W6', 'W7');
+    loadStack(data, s, WHEAT, 'W10', 1, 'apiary'); // threshold 2
+    const grown = growBuilding(data, s, WHEAT, 'W10', 'W7');
+    expect(grown.audit.tasksPushed).toBe(0);
+    expect(player(grown.state, WHEAT).hand).toEqual([]);
+    expect(player(grown.state, WHEAT).barn).toEqual(['W4', 'W5', 'W6']);
+  });
+
+  it('W11 The Bakehouse: harvest a LOADED building, then Deliver', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W11', 'W4');
     dealTo(data, s, WHEAT, 'W6');
-    loadStack(data, s, WHEAT, 'W11', 3);
+    loadStack(data, s, WHEAT, 'W4', 1, 'apiary'); // 1 of 2: nowhere near full
+    loadStack(data, s, WHEAT, 'W11', 1, 'apiary'); // threshold 2: the payment fills it
     const grown = growBuilding(data, s, WHEAT, 'W11', 'W6');
-    expect(grown.state.tasks).toHaveLength(0);
+    expect(grown.state.tasks.map((t) => t.t)).toEqual(['chooseBuilding', 'deliver']);
+    const chooser = grown.state.tasks[0];
+    expect(chooser).toMatchObject({ filter: 'loaded' });
+    // The half-full W4 is a legal target, which the strict gate would refuse.
+    expect(pendingAnswers(data, grown.state)).toContainEqual({ kind: 'building', card: 'W4' });
   });
-});
 
-describe('W12 Crop Rotation - the FIELD cascade', () => {
-  it('harvests all full FIELDs and offers a sow on every FIELD', () => {
+  it('W12 Crop Rotation: every FIELD with 1 or more cards, never itself', () => {
     const s = base();
-    buildFor(data, s, WHEAT, 'W12', 'W4', 'W6');
-    dealTo(data, s, WHEAT, 'W5');
-    loadStack(data, s, WHEAT, 'W4', 2); // full FIELD
-    loadStack(data, s, WHEAT, 'W6', 1); // full FIELD (threshold 1)
-    loadStack(data, s, WHEAT, 'W12', 3); // threshold 4: fills with the payment
-    const grown = growBuilding(data, s, WHEAT, 'W12', 'W5');
+    buildFor(data, s, WHEAT, 'W12', 'W4', 'W5', 'W6');
+    dealTo(data, s, WHEAT, 'W7');
+    loadStack(data, s, WHEAT, 'W4', 1, 'apiary'); // partial
+    loadStack(data, s, WHEAT, 'W5', 2, 'apiary'); // full
+    // W6 left empty: nothing to harvest there.
+    loadStack(data, s, WHEAT, 'W12', 1, 'apiary'); // threshold 2
+    const grown = growBuilding(data, s, WHEAT, 'W12', 'W7');
     expect(buildingOf(grown.state, WHEAT, 'W4').stack).toEqual([]);
-    expect(buildingOf(grown.state, WHEAT, 'W6').stack).toEqual([]);
-    // W12 is not a FIELD: not harvested by its own cascade.
-    expect(buildingOf(grown.state, WHEAT, 'W12').stack).toHaveLength(4);
-    // W4 paid £1 on harvest; W6 queued its Draw 2; a sow task waits per FIELD.
-    expect(player(grown.state, WHEAT).coins).toBe(1);
-    const kinds = grown.state.tasks.map((t) => t.t);
-    expect(kinds.filter((k) => k === 'sow')).toHaveLength(2);
-    expect(kinds).toContain('draw');
+    expect(buildingOf(grown.state, WHEAT, 'W5').stack).toEqual([]);
+    expect(player(grown.state, WHEAT).barn).toHaveLength(3);
+    // W12 is not a FIELD: its own stack survives its own cascade.
+    expect(buildingOf(grown.state, WHEAT, 'W12').stack).toHaveLength(2);
   });
 });
 
-describe('W14 The Pizzeria - take up to 4', () => {
-  it('takes chosen stack cards to the barn, stops on skip, and is not a harvest', () => {
+describe('Tier 3 - the ACTION cards', () => {
+  it('all three print no threshold and no activation type, so none can be grown', () => {
+    for (const id of ['W13', 'W14', 'W15']) {
+      expect(cardById(data, id).threshold, id).toBeNull();
+      expect(cardById(data, id).activationType, id).toBeNull();
+      expect(cardById(data, id).abilityTrigger, id).toEqual(['action']);
+      expect(handlerFor(id)?.actionMoves, id).toBe(true);
+    }
+  });
+
+  it('W14 The Pizzeria: every rival is OFFERED a draw, and each may decline', () => {
     const s = base();
-    buildFor(data, s, WHEAT, 'W14', 'W16', 'W11');
-    loadStack(data, s, WHEAT, 'W11', 3, 'apiary');
-    loadStack(data, s, WHEAT, 'W14', 1); // threshold 2: payment fills it
-    dealTo(data, s, WHEAT, 'W6');
-    const grown = growBuilding(data, s, WHEAT, 'W14', 'W6');
-    let state = grown.state;
-    // Every card on every stack is on offer (W14's own included); take 2 of
-    // the 3 apiary cards off W11 specifically, then stop.
-    const offW11 = () =>
-      pendingAnswers(data, state).find(
-        (a) => a.kind === 'card' && a.payload.building === 'W11',
-      ) as TaskAnswer;
-    state = answerTask(data, state, offW11()).state;
-    state = answerTask(data, state, offW11()).state;
-    state = answerTask(data, state, { kind: 'skip' } as TaskAnswer).state;
-    expect(player(state, WHEAT).barn).toHaveLength(2);
-    expect(buildingOf(state, WHEAT, 'W11').stack).toHaveLength(1);
-    // NOT a harvest: the Granary (W16) never drew.
-    expect(state.tasks).toHaveLength(0);
-  });
-});
+    buildFor(data, s, WHEAT, 'W14');
+    const applied = apply(data, s, actionMoveFor(s, 'W14') as Move);
+    expect(applied.state.turn.actionSpent).toBe(true);
+    const offer = applied.state.tasks[0];
+    expect(offer).toMatchObject({ t: 'card', kind: 'offerDraw', pid: APIARY, src: 'W14' });
+    // A real decision: take the card, or refuse and keep the baker poor.
+    expect(pendingAnswers(data, applied.state)).toEqual([
+      { kind: 'card', payload: { take: true } },
+      { kind: 'skip' },
+    ]);
 
-describe('W15 / W16 - Patisserie and Granary', () => {
-  it('W15 banks a chosen deck top and the £1 pays regardless', () => {
+    const declined = answerTask(data, applied.state, { kind: 'skip' } as TaskAnswer);
+    expect(player(declined.state, WHEAT).coins).toBe(0);
+    expect(player(declined.state, APIARY).hand).toEqual([]);
+
+    const accepted = answerAll(applied.state, (answers) => answers[0] as TaskAnswer);
+    expect(player(accepted, WHEAT).coins).toBe(1);
+    expect(player(accepted, APIARY).hand).toHaveLength(1);
+  });
+
+  it('W15 The Patisserie: the top card of every live deck, straight to the barn', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W15');
-    loadStack(data, s, WHEAT, 'W15', 1);
-    dealTo(data, s, WHEAT, 'W6');
-    const expected = s.decks.apiary[0];
-    const grown = growBuilding(data, s, WHEAT, 'W15', 'W6');
-    expect(player(grown.state, WHEAT).coins).toBe(1);
-    const done = answerTask(data, grown.state, {
-      kind: 'card',
-      payload: { suit: 'apiary' },
-    } as TaskAnswer);
-    expect(player(done.state, WHEAT).barn).toEqual([expected]);
+    const tops = data.cards.suits.map((suit) => s.decks[suit][0]);
+    const applied = apply(data, s, actionMoveFor(s, 'W15') as Move);
+    expect(applied.audit.tasksPushed).toBe(0);
+    expect(player(applied.state, WHEAT).barn).toEqual(tops);
   });
 
-  it('W16 draws once per building harvested, owner-scoped', () => {
+  it('W15 offers nothing once every deck is dry', () => {
     const s = base();
-    buildFor(data, s, WHEAT, 'W16', 'W6');
-    loadStack(data, s, WHEAT, 'W6', 1);
-    const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W6' });
-    // W6's own Draw 2 plus the Granary's Draw 1.
-    const draws = applied.state.tasks.filter((t) => t.t === 'draw');
-    expect(draws).toHaveLength(2);
+    buildFor(data, s, WHEAT, 'W15');
+    for (const suit of data.cards.suits) {
+      s.decks[suit] = [];
+      s.discards[suit] = [];
+    }
+    expect(actionMoveFor(s, 'W15')).toBeUndefined();
   });
 });
 
-describe('endgame cards - W20 and W21', () => {
-  it('W20 scores 2 per empty deck-built threshold building', () => {
-    const s = base();
-    buildFor(data, s, WHEAT, 'W20', 'W4', 'W6', 'W16');
-    loadStack(data, s, WHEAT, 'W6', 1); // loaded: does not count
-    // W4 empty (counts), W6 loaded (no), W16 no threshold (no), starters (no).
-    const scores = gameEndScores(data, s);
-    expect(scores[WHEAT]?.endgame).toBe(2);
+describe('the Power cards', () => {
+  it('W1 Barn: building a FIELD draws 2, on both faces', () => {
+    for (const upgraded of [false, true]) {
+      const s = base();
+      buildingOf(s, WHEAT, 'W1').upgraded = upgraded;
+      dealTo(data, s, WHEAT, 'W4', 'W5'); // W4 costs 1 wheat, paid with W5
+      const applied = apply(data, s, {
+        type: 'build',
+        seat: WHEAT,
+        card: 'W4',
+        payment: ['W5'],
+      });
+      const draw = applied.state.tasks.find((t) => t.t === 'draw');
+      expect(draw, String(upgraded)).toMatchObject({ src: 'W1', see: 2, keep: 2 });
+    }
   });
 
-  /**
-   * Ticket 37 deleted the coin pity (`coinPityDivisor: null`), so W21 is no
-   * longer a better rate than everybody else's - it is the only rate. Both
-   * halves are worth holding: the live rule, and the knob still doing its job
-   * if the pity is ever switched back on.
-   */
-  it('W21 is the only way coins score at all, now the pity is off', () => {
+  it('W1 Barn: building a non-FIELD draws nothing', () => {
     const s = base();
-    buildFor(data, s, WHEAT, 'W21');
-    player(s, WHEAT).coins = 7;
-    player(s, APIARY).coins = 7;
-    const scores = gameEndScores(data, s);
-    // Holder: floor(7/2) = 3, all of it from the card.
-    expect(scores[WHEAT]?.endgame).toBe(3);
-    expect(scores[WHEAT]?.coinPity).toBe(0);
-    // Non-holder: £7 is worth nothing.
-    expect(scores[APIARY]?.coinPity).toBe(0);
-    expect(scores[APIARY]?.endgame).toBe(0);
-  });
-
-  it("W21 still replaces its holder's pity when the knob is switched back on", () => {
-    const pity = loadGameData({
-      name: 'pity-on',
-      schemaVersion: 1,
-      set: { 'rules.economy.coinPityDivisor': 5 },
+    dealTo(data, s, WHEAT, 'W9', 'W5', 'W6', 'W7'); // W9 costs 2 wheat + 1 any
+    const applied = apply(data, s, {
+      type: 'build',
+      seat: WHEAT,
+      card: 'W9',
+      payment: ['W5', 'W6', 'W7'],
     });
-    const s = makeState(pity, ['wheat', 'apiary']);
-    buildFor(pity, s, WHEAT, 'W21');
+    expect(applied.state.tasks.filter((t) => t.t === 'draw' && t.src === 'W1')).toEqual([]);
+  });
+
+  it('W16 The Granary: once per harvest ACTION, not once per building', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W16', 'W12', 'W4', 'W5');
+    dealTo(data, s, WHEAT, 'W7');
+    loadStack(data, s, WHEAT, 'W4', 2, 'apiary');
+    loadStack(data, s, WHEAT, 'W5', 2, 'apiary');
+    loadStack(data, s, WHEAT, 'W12', 1, 'apiary');
+    const grown = growBuilding(data, s, WHEAT, 'W12', 'W7');
+    const granary = grown.state.tasks.filter((t) => t.t === 'draw' && t.src === 'W16');
+    expect(granary).toHaveLength(1);
+  });
+
+  it('W17 The Pie Shop: £1 whenever a NEIGHBOUR places on one of your buildings', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W17');
+    dealTo(data, s, APIARY, 'A6');
+    s.turnPlayer = APIARY;
+    const applied = apply(data, s, {
+      type: 'visit',
+      seat: APIARY,
+      host: WHEAT,
+      fee: ['A6'],
+      payoff: { mode: 'coin' },
+    });
+    expect(player(applied.state, WHEAT).coins).toBe(1);
+    expect(applied.audit.crossSeat).toBe(true);
+  });
+});
+
+describe('the Endgame cards - three shapes of tableau', () => {
+  it('W19 The Wheat Exchange: 2 VP per different crop built', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W19', 'W4', 'W5', 'A9'); // wheat + apiary = 2 crops
+    expect(gameEndScores(data, s)[WHEAT]?.endgame).toBe(4);
+  });
+
+  it('W20 The Grand Granary: 1 VP per DECK-built building, never a starter', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W20', 'W4', 'W5');
+    // W20, W4, W5 = 3. The four starters arrive pre-built and nobody built them.
+    expect(gameEndScores(data, s)[WHEAT]?.endgame).toBe(3);
+  });
+
+  it('W21 The Bread Hall: 2 VP per FIELD, and no longer a coin rate', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W21', 'W4', 'W5', 'W9'); // two FIELDs; W9 is not one
     player(s, WHEAT).coins = 7;
-    player(s, APIARY).coins = 7;
-    const scores = gameEndScores(pity, s);
-    // Holder: floor(7/2) = 3 from the card, and its pity line is zeroed rather
-    // than added on top (ticket 27 - the screen must reconcile).
-    expect(scores[WHEAT]?.endgame).toBe(3);
-    expect(scores[WHEAT]?.coinPity).toBe(0);
-    expect(scores[WHEAT]?.coinPityReplacedBy).toBe('W21');
-    // Non-holder: plain pity, floor(7/5) = 1.
-    expect(scores[APIARY]?.coinPity).toBe(1);
+    const scores = gameEndScores(data, s);
+    expect(scores[WHEAT]?.endgame).toBe(4);
+    // The coin-pity replacement is gone with the coin rate.
+    expect(scores[WHEAT]?.coinPityReplacedBy).toBeNull();
+    expect(handlerFor('W21')?.replacesCoinPity).toBeUndefined();
   });
 });
 
@@ -446,24 +454,21 @@ describe('difficulty metadata stays honest across the suit', () => {
       expect(h, id).toBeDefined();
       expect(h?.difficulty.verified.endgame, id).toBe(typeof h?.gameEnd === 'function');
       expect(h?.difficulty.verified.addsMoves, id).toBe(typeof h?.moves === 'function');
+      // Only an ACTION card declares actionMoves, and only a card with moves may.
+      if (h?.actionMoves) expect(typeof h.moves, id).toBe('function');
     }
-  });
-
-  it('suit powers compose: a wheat Harvest Service use takes a relaxed-gate building', () => {
-    const s = base();
-    buildFor(data, s, WHEAT, 'W11');
-    loadStack(data, s, WHEAT, 'W11', 2); // relaxed-gate target only
-    hireFor(s, WHEAT, 'harvest');
-    // The bonus slot's own-Service option is no longer free: pay the bank.
-    player(s, WHEAT).coins += data.workers.ownerActivationCost;
-    const out = workOwnWorker(data, s, WHEAT, 'harvest');
-    const done = answerAll(out.state);
-    expect(player(done, WHEAT).barn).toHaveLength(2);
   });
 
   it('the FIELD keyword matches exactly W4-W8', () => {
     const fields = data.cards.catalogue.filter((c) => /\bField\b/.test(c.name)).map((c) => c.id);
     expect(fields).toEqual(['W4', 'W5', 'W6', 'W7', 'W8']);
     expect(cardById(data, 'W9').name).toBe('Mill House');
+  });
+
+  it('no Wheat card prints a harvest surcharge any more', () => {
+    for (const id of WHEAT_IDS) {
+      expect(cardById(data, id).abilityTrigger, id).not.toContain('harvestSurcharge');
+      expect(cardById(data, id).abilityTrigger, id).not.toContain('autoHarvest');
+    }
   });
 });

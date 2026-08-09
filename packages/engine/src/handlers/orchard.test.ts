@@ -351,7 +351,7 @@ describe('O16 The Orchard Keeper - the host-side visit reactor', () => {
     hireFor(s, ORCHARD, 'harvest');
     buildFor(data, s, WHEAT, 'W6');
     dealTo(data, s, WHEAT, 'W4'); // deal before loading: loadStack eats deck tops
-    loadStack(data, s, WHEAT, 'W6', 1); // full: the Harvest Worker has work
+    loadStack(data, s, WHEAT, 'W6', 3); // threshold 3, full: the Harvest Service has work
     s.turnPlayer = WHEAT;
     const applied = apply(data, s, {
       type: 'visit',

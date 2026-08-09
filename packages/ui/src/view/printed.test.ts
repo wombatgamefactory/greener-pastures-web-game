@@ -70,10 +70,9 @@ describe('printedFace, against the sheet', () => {
     expect(face.threshold).toBe(5);
   });
 
-  it('W10 The Furrow: three wheat and a cornucopia, in that order', () => {
+  it('W10 The Furrow: two wheat and a cornucopia, in that order', () => {
     const face = printedFace(data, 'W10');
     expect(face.cost).toEqual([
-      { kind: 'crop', suit: 'wheat' },
       { kind: 'crop', suit: 'wheat' },
       { kind: 'crop', suit: 'wheat' },
       { kind: 'wild' },

@@ -83,7 +83,9 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
             )
           : task.filter === 'full'
             ? fullBuildings(data, state, task.pid)
-            : p.tableau.filter((b) => canTakeCard(data, b));
+            : task.filter === 'loaded'
+              ? p.tableau.filter((b) => b.stack.length >= 1)
+              : p.tableau.filter((b) => canTakeCard(data, b));
       if (task.exclude !== undefined) pool = pool.filter((b) => b.card !== task.exclude);
       // A harvest pays the target's printed surcharge (W8): unaffordable
       // targets are never offered, matching the action gate.
@@ -128,7 +130,8 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
 
     case 'sowFromDeck': {
       const suits = drawableSuits(data, state);
-      const targets = player(state, task.pid).tableau.filter((b) => canTakeCard(data, b));
+      let targets = player(state, task.pid).tableau.filter((b) => canTakeCard(data, b));
+      if (task.targets) targets = targets.filter((b) => task.targets?.includes(b.card));
       return suits.flatMap((suit) =>
         targets.map((b) => ({ kind: 'deckSow', suit, onto: b.card }) as TaskAnswer),
       );

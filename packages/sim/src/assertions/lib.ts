@@ -57,6 +57,31 @@ export function totalBonusTurns(games: readonly GameMetrics[]): number {
   return sum(games.map((g) => sum(g.bonusTurnsBySeat)));
 }
 
+/**
+ * Visits per turn, split by the SUIT the seat was playing.
+ *
+ * The table average alone cannot answer a per-suit question, and the design asks
+ * one of every suit it changes: does this suit's engine pull its player away from
+ * their neighbours? It arrived with the Wheat rebuild, where W10 The Furrow banks
+ * the whole hand and a visit costs a card, so a Furrow turn is a turn the hook
+ * does not get. Nothing here is Wheat-specific - every suit gets a row, and the
+ * comparison that matters is against the table's own mean.
+ */
+export function visitsPerTurnBySuit(games: readonly GameMetrics[]): Map<Suit, number> {
+  const visits = new Map<Suit, number>();
+  const turns = new Map<Suit, number>();
+  for (const g of games) {
+    g.suits.forEach((suit, seat) => {
+      visits.set(suit, (visits.get(suit) ?? 0) + (g.visitsBySeat[seat] ?? 0));
+      turns.set(suit, (turns.get(suit) ?? 0) + (g.turnsBySeat[seat] ?? 0));
+    });
+  }
+  const out = new Map<Suit, number>();
+  for (const [suit, played] of turns)
+    out.set(suit, played === 0 ? NaN : (visits.get(suit) ?? 0) / played);
+  return out;
+}
+
 /** Rival uses of every Worker, by worker id. */
 export function rivalUses(games: readonly GameMetrics[]): Map<string, number> {
   const out = new Map<string, number>();

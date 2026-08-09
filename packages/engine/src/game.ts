@@ -92,7 +92,12 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
     for (const o of balloonMoveOptions(data, state, seat)) {
       moves.push({ type: 'moveBalloon', seat, balloon: o.balloon, spend: o.spend });
     }
-    if (moves.length === 0) moves.push({ type: 'pass', seat });
+    // A Tier 3 ACTION card is a main action too, so it has to suppress `pass`
+    // exactly as the five printed actions do - otherwise a seat whose only
+    // action is The Bakery is offered "no action is legal" beside it.
+    if (moves.length === 0 && actionCardMoves(data, state, seat).length === 0) {
+      moves.push({ type: 'pass', seat });
+    }
   } else if (turn.again === 'harvest') {
     // The upgraded Wheat Farmstead's optional second harvest, declinable via
     // endTurn (or by taking a bonus-slot move first - the gate stays open).
@@ -129,6 +134,21 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
 function mainBuildOptions(data: GameData, state: GameState, seat: Seat) {
   const mods: BuildMods = buildSubstitutePower(state, seat) ? { substitute: true } : {};
   return buildOptions(data, state, seat, undefined, mods);
+}
+
+/**
+ * The standing moves that ARE main actions - the Wheat Tier 3 ACTION cards,
+ * which declare `actionMoves` on their handler.
+ *
+ * Only `pass` needs the distinction, and it needs it in both directions: a
+ * Helping Hand repeat must not suppress `pass` (it is a bonus-slot tail, not an
+ * action), and an ACTION card must. `hasMainOption` cannot answer this because
+ * actions.ts may not import the handler registry.
+ */
+function actionCardMoves(data: GameData, state: GameState, seat: Seat) {
+  return standingMoves(data, state, seat).filter(
+    (m) => handlerFor(m.card)?.actionMoves === true && !state.turn.actionSpent,
+  );
 }
 
 const MAIN_ACTIONS = new Set<Move['type']>([
@@ -229,7 +249,7 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
       doMoveBalloon(fx, move.seat, move.balloon, move.spend);
       break;
     case 'pass':
-      if (hasMainOption(data, state, move.seat)) {
+      if (hasMainOption(data, state, move.seat) || actionCardMoves(data, state, move.seat).length) {
         throw new Error('Pass is legal only when no main action is');
       }
       break;

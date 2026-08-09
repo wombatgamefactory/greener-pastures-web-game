@@ -119,8 +119,19 @@ function cardMoveSpend(payload: Record<string, unknown>): CardId | null {
  * GROW fires a card's ability, and the ability is the entire value of the move.
  * A Worker's action is likewise whatever that Worker does - renting a rival's
  * Draw Worker (Draw 3, keep 2) and their Sow Worker both scored a flat +2
- * before this. `cardMove` is the Helping Hand's repeat, which is worth exactly
- * what the repeated work is worth.
+ * before this.
+ *
+ * `cardMove` is now two unrelated things and the probe is what makes one term
+ * serve both. It was the Helping Hand's repeat, worth what the repeated work is
+ * worth; since the Wheat rebuild it is ALSO a Tier 3 ACTION card, which is a
+ * main action competing with Draw, Build, Harvest and Deliver. Nothing here
+ * distinguishes them, deliberately: a rollout prices The Bakery by the stacks it
+ * harvests and a repeat by the work it repeats, both in this table's own
+ * currency, which is exactly what a label-based weight could not do.
+ *
+ * The known understatement is W14 The Pizzeria, whose payoff arrives only after
+ * rivals accept - and a probe stops at a rival's task, by design. It is valued
+ * at its flat `cardMove` weight and no more.
  *
  * A balloon move joined them in ticket 49. `grantBalloonReward` pushes a real
  * ability - Draw 4, Sow 4 from hand, a build at a discount, or £4 - and all four

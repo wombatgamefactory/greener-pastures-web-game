@@ -1,0 +1,10 @@
+{
+  "name": "wheat-rebuild-v5",
+  "description": "The Wheat rebuild's ACTION layer, switched off. READ THIS BEFORE READING THE ARM: the rebuild itself is a data-and-handler change, not a set of numbers, so no overlay can express \"the Wheat suit as it was\" - a knob cannot restore a threshold that has become a printed action, nor unwrite the reseed line five cards now share. Against the shipped game this arm therefore isolates the ONE piece of the rebuild an overlay can reach: W13 The Bakery, W14 The Pizzeria and W15 The Patisserie, the three Tier 3 cards that print an ACTION taken instead of a main action. Base is the rebuild with them in, this cell is the rebuild with them out, and the delta is what the action layer is worth. The rebuild's other pass conditions - Tier 3 firings per card built up from 0.63, Wheat's activations per card built up from 0.29, reshuffles per played deck flat at 5 to 8, median game length flat at 27 / 24 / 23 rounds, a Wheat seat's visits per turn at or above 0.51 - are before-and-after against the committed reference run, not against this cell. Read the noise floor before believing any of it.",
+  "schemaVersion": 1,
+  "set": {
+    "cards.catalogue.W13.enabled": false,
+    "cards.catalogue.W14.enabled": false,
+    "cards.catalogue.W15.enabled": false
+  }
+}

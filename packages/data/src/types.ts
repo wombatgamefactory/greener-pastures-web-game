@@ -30,6 +30,18 @@ export type StarterSlot = 'barn' | 'farmstead' | 'noticeboard' | 'service';
  */
 export type AbilityTrigger =
   | 'onActivate'
+  /**
+   * The card prints an ACTION: on your turn you may take it INSTEAD of Draw,
+   * Build, Grow, Harvest or Deliver. Detected structurally rather than by
+   * keyword - a deck card with no threshold and no activation type cannot be
+   * grown or sown, so its text has to fire some other way - which is what keeps
+   * the extract free of a printed prefix the sheet does not carry.
+   *
+   * Nearly documentation, with one real consumer: the sim's action-mix note
+   * counts `onActivate` cards to say how much of the set is GROW-gated, and an
+   * ACTION card must not be counted there.
+   */
+  | 'action'
   | 'onHarvest'
   | 'autoHarvest'
   | 'onDeliver'

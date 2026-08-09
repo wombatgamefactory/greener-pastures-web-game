@@ -10,8 +10,13 @@
  *     the moment a `keep` answer is applied. The reveal is not in an event, but
  *     the harness holds `GameState` (it is in @gp/sim, which is allowed to), so
  *     it never needed to be.
- *   - **Activation count** is exactly the count of `grow` moves on a building,
- *     because `handlerFor().activate()` fires only from `doGrow`.
+ *   - **Activation count** is the count of `grow` moves on a building plus the
+ *     count of `cardMove`s it offered, because those are the only two ways a
+ *     card's own text fires by its owner's choice: `handlerFor().activate()`
+ *     fires only from `doGrow`, and `applyMove` only from the card-move branch.
+ *     The Wheat Tier 3 ACTION cards are the reason the second half exists - they
+ *     have no threshold and are never grown, so a grow-only count would report
+ *     them as never doing anything.
  *
  * The honest gap, recorded rather than papered over: a passive that fires but
  * emits no card-tagged event - the Orchard Farmstead's draw modifier is the
@@ -259,6 +264,20 @@ export interface GameMetrics {
 const WAGE = /^wage:/;
 const RIDER = /^rider:(.+)$/;
 
+/**
+ * The action mix's row label. Move type everywhere except `cardMove`, which is
+ * split by its handler-defined `kind`.
+ *
+ * One move type now carries two unrelated things: the Helping Hand's
+ * `repeatWork`, a bonus-slot tail, and the Wheat Tier 3 cards' `action`, which
+ * IS the main action. Pooling them into one row would report a take rate that
+ * means nothing, and the rebuild's first pass condition is the ACTION cards'
+ * play rate specifically.
+ */
+function moveLabel(move: Move): string {
+  return move.type === 'cardMove' ? `cardMove:${move.kind}` : move.type;
+}
+
 function emptyFacts(seats: number, inSupply: boolean): CardFacts {
   return {
     inSupply,
@@ -391,9 +410,10 @@ export class Fold {
     // The action mix: what was taken against what was on the table. A take rate
     // is the only way to tell "nobody wants to GROW" from "GROW is rarely
     // legal", and the two send a card change in opposite directions.
-    this.m.movesChosen[d.move.type] = (this.m.movesChosen[d.move.type] ?? 0) + 1;
-    for (const type of new Set(d.legal.map((m) => m.type))) {
-      this.m.movesOffered[type] = (this.m.movesOffered[type] ?? 0) + 1;
+    const taken = moveLabel(d.move);
+    this.m.movesChosen[taken] = (this.m.movesChosen[taken] ?? 0) + 1;
+    for (const label of new Set(d.legal.map(moveLabel))) {
+      this.m.movesOffered[label] = (this.m.movesOffered[label] ?? 0) + 1;
     }
     this.turnStart(d);
     this.move(d);
@@ -448,11 +468,17 @@ export class Fold {
       case 'task':
         this.taskAnswer(d, pre.tasks[0]);
         return;
+      case 'cardMove': {
+        // The other half of the activation count. A Wheat Tier 3 card is never
+        // grown, so `grow` alone would report it as never firing; a Helping Hand
+        // repeat is a firing of the Helping Hand by the same standard.
+        this.facts(move.card).activations += 1;
+        return;
+      }
       // Claimed and uninteresting: their effect is measured through events.
       // `buy` included - the action-mix table counts it, the `coins` event pays
       // for it, and the card it takes is blind, so there is nothing card-level
       // to fold.
-      case 'cardMove':
       case 'draw':
       case 'buy':
       case 'upgrade':

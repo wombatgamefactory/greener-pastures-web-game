@@ -1,6 +1,6 @@
 import type { Assertion } from './types.js';
 import { NO_REMEDY } from './types.js';
-import { totalBonusTurns, totalTurns, totalVisits } from './lib.js';
+import { totalBonusTurns, totalTurns, totalVisits, visitsPerTurnBySuit } from './lib.js';
 import { num, pct, sum } from '../stats.js';
 
 /**
@@ -45,6 +45,14 @@ export const theHook: Assertion = {
       headline: `${num(value, 2)} visits per player per turn (${visits} visits over ${turns} turns)`,
       detail: [
         `bonus slot used on ${pct(turns === 0 ? NaN : bonus / turns)} of turns`,
+        // Per suit, because the table average cannot answer a per-suit question
+        // and every suit change asks one: does this engine pull its player away
+        // from their neighbours? Reported, not judged - the threshold above is
+        // the table's, and a suit below it is a thing to look at, not a failure.
+        `visits per turn by suit: ${[...visitsPerTurnBySuit(games)]
+          .sort((a, b) => b[1] - a[1])
+          .map(([suit, rate]) => `${suit} ${num(rate, 2)}`)
+          .join('  ')}`,
         `builds: ${pct(own + foreign === 0 ? NaN : own / (own + foreign))} own crop, ` +
           `${pct(own + foreign === 0 ? NaN : foreign / (own + foreign))} foreign crop ` +
           `(${own + foreign} builds)`,
