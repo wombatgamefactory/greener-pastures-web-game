@@ -30,6 +30,7 @@
 
 import type { GameData } from '@gp/data';
 
+import { payableTileCount } from './actions.js';
 import { apply, legalMoves } from './game.js';
 import type { GameEvent, GameState, Move, Seat, Task } from './state.js';
 import { redactEvents, redactTask } from './view.js';
@@ -90,6 +91,28 @@ export interface Probe {
    * No redaction question: it is the probing seat's own hand.
    */
   readonly handSize: number;
+  /**
+   * DELIVERABILITY either side of this probe's move: open island tiles the
+   * probing seat could pay for out of its barn, before and after.
+   *
+   * The Vegetable rebuild's mutable demand tokens (V5, V6) change the SHARED
+   * BOARD and produce no delta at all in the acting seat's own zones, so a
+   * pricer that reads only its own events values them at exactly zero - the
+   * cards would report a ~0% play rate and read as a design failure when it is a
+   * pricing gap. (Change 8's log records the same trap costing a day on Orchard:
+   * "the pricer had to be FIXED before the power fired at all".)
+   *
+   * COMPUTED ONLY WHEN A DEMAND TOKEN ACTUALLY MOVED, and both fields are 0
+   * otherwise, so the delta is zero and the scan is never paid for on the
+   * overwhelming majority of probes. That gate reads the EVENT STREAM, not a
+   * card id, so it is a term rather than a special case: any future card that
+   * moves a demand token is priced by it for free.
+   *
+   * Both readings are of public information (the island) plus the probing seat's
+   * own barn, so there is no redaction question.
+   */
+  readonly deliverableBefore: number;
+  readonly deliverable: number;
   /** Walk into one of `next`. Shares this probe's budget. */
   step(move: Move): Probe;
 }
@@ -102,6 +125,8 @@ const CUT: Probe = {
   truncated: true,
   pending: null,
   handSize: 0,
+  deliverableBefore: 0,
+  deliverable: 0,
   step: () => CUT,
 };
 
@@ -115,6 +140,11 @@ function probeAt(data: GameData, state: GameState, seat: Seat, budget: ProbeBudg
     const post = applied.state;
     const head = post.tasks[0];
     const mine = head !== undefined && head.pid === seat && post.phase === 'playing';
+    // The gate on the deliverability reading: a demand token actually moved.
+    // Off the events, never off a card id, and skipped entirely otherwise - the
+    // scan walks every tile against every nomination of its wild crates, which
+    // is far too dear to pay on all 96 applies a decision may spend.
+    const shifted = applied.events.some((e) => e.e === 'demandSwapped' || e.e === 'demandFaceDown');
 
     return {
       events: redactEvents(applied.events, seat),
@@ -122,6 +152,8 @@ function probeAt(data: GameData, state: GameState, seat: Seat, budget: ProbeBudg
       truncated: false,
       pending: mine && head !== undefined ? redactTask(head, seat) : null,
       handSize: post.players[seat]?.hand.length ?? 0,
+      deliverableBefore: shifted ? payableTileCount(data, state, seat) : 0,
+      deliverable: shifted ? payableTileCount(data, post, seat) : 0,
       step: probeAt(data, post, seat, budget),
     };
   };

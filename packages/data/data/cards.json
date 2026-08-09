@@ -4,7 +4,7 @@
     "kind": "generated",
     "generatedBy": "tools/extract_cards.py",
     "sourceSheet": "worksheet 'cards' of the designer spreadsheet (kept outside this repo)",
-    "sourceSha256": "6dac19716be71cf3897ab66caa06efc9a13e650ec808eca44cdd6f72393cc2fe",
+    "sourceSha256": "29254fd76b073d7aa7e183c7fec7ef1a73812040596e3a8a02419baba2b8183c",
     "notes": [
       "buildCost is derived from the @cost1..@cost6 icon columns, which are authoritative; the sheet's 'Build Cost' text column is lossy.",
       "A suit has THREE starters - Barn (ref 1), Farmstead (ref 2), Notice Board (ref 3) - plus the 18-card deck (refs 4..21). 105 cards total (15 starters + 90 deck).",
@@ -73,14 +73,14 @@
           "printedVp": 0,
           "threshold": null,
           "activationType": null,
-          "abilityText": "GROW: You may use any card.\nFlips free when you have 3 Apiary buildings."
+          "abilityText": "You may use any card.\nFlips free when you have 3 Apiary buildings."
         },
         "upgraded": {
           "name": "Upgraded Farmstead",
           "printedVp": 2,
           "threshold": null,
           "activationType": null,
-          "abilityText": "GROW: You may use any card.\nWhen you GROW, you may also SOW 1 card from your hand onto another of your buildings."
+          "abilityText": "You may use any card.\nWhen you GROW, you may also SOW 1 card from your hand onto another of your buildings."
         }
       }
     },
@@ -102,14 +102,14 @@
           "printedVp": 0,
           "threshold": 5,
           "activationType": "wild",
-          "abilityText": "VISITOR: Take £1 from bank."
+          "abilityText": "VISITOR: Take £1 from bank\nOR GROW one of your buildings."
         },
         "upgraded": {
           "name": "Special Orders",
-          "printedVp": 2,
+          "printedVp": 0,
           "threshold": 5,
           "activationType": "wild",
-          "abilityText": "VISITOR: Take £2 from the bank.\n2 cards for £3."
+          "abilityText": null
         }
       }
     },
@@ -569,14 +569,14 @@
           "printedVp": 0,
           "threshold": 5,
           "activationType": "wild",
-          "abilityText": "VISITOR: Take £1 from bank."
+          "abilityText": "VISITOR: Take £1 from bank\nOR Build. Any crop may pay its crop costs."
         },
         "upgraded": {
           "name": "Special Orders",
-          "printedVp": 2,
+          "printedVp": 0,
           "threshold": 5,
           "activationType": "wild",
-          "abilityText": "VISITOR: Take £2 from the bank.\n2 cards for £3."
+          "abilityText": null
         }
       }
     },
@@ -976,7 +976,7 @@
           "printedVp": 0,
           "threshold": null,
           "activationType": null,
-          "abilityText": "Hand size 4.\nWhen you build an ORCHARD, Draw 2.",
+          "abilityText": "Hand size 4. When you build an ORCHARD, Draw 2.",
           "handSize": 4
         },
         "upgraded": {
@@ -984,7 +984,7 @@
           "printedVp": 2,
           "threshold": null,
           "activationType": null,
-          "abilityText": "Hand size 7.\nWhen you build an ORCHARD, Draw 2.",
+          "abilityText": "Hand size 7. When you build an ORCHARD, Draw 2.",
           "handSize": 7
         }
       }
@@ -1035,14 +1035,14 @@
           "printedVp": 0,
           "threshold": 5,
           "activationType": "wild",
-          "abilityText": "VISITOR: Take £1 from bank."
+          "abilityText": "VISITOR: Take £1 from bank\nOR Draw 2."
         },
         "upgraded": {
           "name": "Special Orders",
-          "printedVp": 2,
+          "printedVp": 0,
           "threshold": 5,
           "activationType": "wild",
-          "abilityText": "VISITOR: Take £2 from the bank.\n2 cards for £3."
+          "abilityText": null
         }
       }
     },
@@ -1355,7 +1355,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 1,
-      "abilityText": "When you VISIT a neighbour and WORK their Hired Worker, you may place a second card on their Notice Board to work it again.",
+      "abilityText": "When you VISIT a neighbour, you may place a second card on their Notice Board and take its action again.",
       "abilityTrigger": [
         "passive"
       ],
@@ -1442,7 +1442,7 @@
           "printedVp": 0,
           "threshold": null,
           "activationType": null,
-          "abilityText": "Hand size 5.",
+          "abilityText": "Hand size 5. When you build a DEPOT, Draw 2.",
           "handSize": 5
         },
         "upgraded": {
@@ -1450,8 +1450,8 @@
           "printedVp": 2,
           "threshold": null,
           "activationType": null,
-          "abilityText": "Hand size 6.\nWhen you Deliver and the delivery has a Vegetable, return 1 Vegetable to barn.",
-          "handSize": 6
+          "abilityText": "Hand size 7. When you build a DEPOT, Draw 2.",
+          "handSize": 7
         }
       }
     },
@@ -1472,14 +1472,14 @@
           "printedVp": 0,
           "threshold": null,
           "activationType": null,
-          "abilityText": "When you Deliver, gain £1.\nFlips free when you have 3 Vegetable buildings."
+          "abilityText": "When you Deliver to the island, put 1 card from your hand into your barn.\nFlips free when you have 3 Vegetable buildings."
         },
         "upgraded": {
           "name": "Upgraded Farmstead",
           "printedVp": 2,
           "threshold": null,
           "activationType": null,
-          "abilityText": "When you Deliver, gain £2."
+          "abilityText": "When you Deliver to the island, put 1 card from your hand into your barn, and you may swap 1 card in your barn for the top card of any deck."
         }
       }
     },
@@ -1501,14 +1501,14 @@
           "printedVp": 0,
           "threshold": 5,
           "activationType": "wild",
-          "abilityText": "VISITOR: Take £1 from bank."
+          "abilityText": "VISITOR: Take £1 from bank\nOR You may put 1 card from your hand into your barn, then Deliver."
         },
         "upgraded": {
           "name": "Special Orders",
-          "printedVp": 2,
+          "printedVp": 0,
           "threshold": 5,
           "activationType": "wild",
-          "abilityText": "VISITOR: Take £2 from the bank.\n2 cards for £3."
+          "abilityText": null
         }
       }
     },
@@ -1525,9 +1525,9 @@
         "coins": 0
       },
       "activationType": "vegetable",
-      "threshold": 4,
+      "threshold": 2,
       "printedVp": 1,
-      "abilityText": "Deliver.",
+      "abilityText": "Discard 2 cards to move a Balloon to your Aerodrome and take its reward.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1541,14 +1541,14 @@
       "inDeck": true,
       "enabled": true,
       "buildCost": {
-        "suit": 2,
+        "suit": 1,
         "wild": 0,
         "coins": 0
       },
       "activationType": "vegetable",
-      "threshold": 3,
+      "threshold": 2,
       "printedVp": 1,
-      "abilityText": "Move a Balloon to your Aerodrome and collect the reward.",
+      "abilityText": "You may swap two demand tokens on the island.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1562,14 +1562,14 @@
       "inDeck": true,
       "enabled": true,
       "buildCost": {
-        "suit": 1,
+        "suit": 2,
         "wild": 0,
         "coins": 0
       },
       "activationType": "vegetable",
-      "threshold": 5,
+      "threshold": 3,
       "printedVp": 1,
-      "abilityText": "Deliver; if the delivery included a Vegetable, Deliver again.",
+      "abilityText": "Turn face down a demand token on a tile where a receipt has already been taken.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1590,7 +1590,7 @@
       "activationType": "vegetable",
       "threshold": 4,
       "printedVp": 1,
-      "abilityText": "Deliver up to twice (any mix of island and freight).",
+      "abilityText": "Harvest one of your buildings, then Deliver.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1609,9 +1609,9 @@
         "coins": 0
       },
       "activationType": "vegetable",
-      "threshold": 2,
+      "threshold": 3,
       "printedVp": 1,
-      "abilityText": "Pay £1: Deliver, then move a Balloon and collect the reward.",
+      "abilityText": "Discard 2 cards to move a Balloon to your Aerodrome and take the reward of any Balloon.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1625,14 +1625,14 @@
       "inDeck": true,
       "enabled": true,
       "buildCost": {
-        "suit": 3,
-        "wild": 0,
+        "suit": 2,
+        "wild": 1,
         "coins": 0
       },
       "activationType": "vegetable",
-      "threshold": 4,
+      "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Deliver, then harvest 1 of your full buildings.",
+      "abilityText": "Draw 1 for each different crop in your barn.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1646,14 +1646,14 @@
       "inDeck": true,
       "enabled": true,
       "buildCost": {
-        "suit": 3,
+        "suit": 2,
         "wild": 1,
         "coins": 0
       },
       "activationType": "vegetable",
-      "threshold": 3,
+      "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Deliver, then SOW up to 2 cards onto your own buildings.",
+      "abilityText": "Draw 1 for each receipt you have taken.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1667,14 +1667,14 @@
       "inDeck": true,
       "enabled": true,
       "buildCost": {
-        "suit": 3,
+        "suit": 2,
         "wild": 1,
         "coins": 0
       },
       "activationType": "vegetable",
-      "threshold": 3,
+      "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Deliver; draw 1 for each card you delivered.",
+      "abilityText": "SOW up to 1 card from your hand onto your buildings for each card in your barn.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1688,14 +1688,14 @@
       "inDeck": true,
       "enabled": true,
       "buildCost": {
-        "suit": 3,
+        "suit": 2,
         "wild": 1,
         "coins": 0
       },
       "activationType": "vegetable",
-      "threshold": 3,
+      "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Deliver; you may treat any 1 card as a Vegetable for this delivery.",
+      "abilityText": "Put up to 1 card from your hand into your barn for each DEPOT you have built.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1710,15 +1710,15 @@
       "enabled": true,
       "buildCost": {
         "suit": 3,
-        "wild": 2,
+        "wild": 1,
         "coins": 0
       },
-      "activationType": "wild",
-      "threshold": 2,
+      "activationType": null,
+      "threshold": null,
       "printedVp": 3,
-      "abilityText": "Deliver up to 4 cards (any mix of island and freight).",
+      "abilityText": "Discard any number of cards from your barn, then put the top card of any deck into your barn for each card discarded.",
       "abilityTrigger": [
-        "onActivate"
+        "action"
       ],
       "needsDesignReview": false
     },
@@ -1731,15 +1731,15 @@
       "enabled": true,
       "buildCost": {
         "suit": 3,
-        "wild": 3,
+        "wild": 1,
         "coins": 0
       },
-      "activationType": "wild",
-      "threshold": 2,
+      "activationType": null,
+      "threshold": null,
       "printedVp": 3,
-      "abilityText": "Deliver once for each Depot you have built.",
+      "abilityText": "Deliver to a tile where nobody has delivered, and take both of its receipts.",
       "abilityTrigger": [
-        "onActivate"
+        "action"
       ],
       "needsDesignReview": false
     },
@@ -1752,15 +1752,15 @@
       "enabled": true,
       "buildCost": {
         "suit": 3,
-        "wild": 2,
+        "wild": 1,
         "coins": 0
       },
-      "activationType": "wild",
-      "threshold": 2,
+      "activationType": null,
+      "threshold": null,
       "printedVp": 3,
-      "abilityText": "Move one Balloon from each neighbour's Aerodrome (pay the normal cost for each) and collect the rewards.",
+      "abilityText": "Put the top card of any deck into each other player's barn, take £1 for each, then Deliver.",
       "abilityTrigger": [
-        "onActivate"
+        "action"
       ],
       "needsDesignReview": false
     },
@@ -1779,10 +1779,9 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 1,
-      "abilityText": "When you Deliver to the island, you may also move a Balloon for free and collect the reward",
+      "abilityText": "Whenever a neighbour moves a Balloon from your Aerodrome, take £2.",
       "abilityTrigger": [
-        "passive",
-        "onDeliverIsland"
+        "passive"
       ],
       "needsDesignReview": false
     },
@@ -1801,7 +1800,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 1,
-      "abilityText": "When a neighbour moves a Balloon away from your Aerodrome, Draw 1.",
+      "abilityText": "Whenever you move a Balloon, Draw 1.",
       "abilityTrigger": [
         "passive"
       ],
@@ -1822,7 +1821,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 1,
-      "abilityText": "When you VISIT a neighbour and WORK their Hired Worker, you may place a second card on their Notice Board to work it again.",
+      "abilityText": "When you VISIT a neighbour, you may place a second card on their Notice Board and take its action again.",
       "abilityTrigger": [
         "passive"
       ],
@@ -1843,7 +1842,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Game end: Gain 5VP if you trigger the end of the game.",
+      "abilityText": "Game end: 2 VP for each Balloon at your Aerodrome.",
       "abilityTrigger": [
         "gameEnd"
       ],
@@ -1864,7 +1863,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Game end: 1 VP per Depot you have built.",
+      "abilityText": "Game end: 2 VP for each DEPOT you have built.",
       "abilityTrigger": [
         "gameEnd"
       ],
@@ -1885,7 +1884,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Game end: 2 VP per different crop colour in your barn.",
+      "abilityText": "Game end: 1 VP for every 2 cards in your barn.",
       "abilityTrigger": [
         "gameEnd"
       ],
@@ -1968,14 +1967,14 @@
           "printedVp": 0,
           "threshold": 5,
           "activationType": "wild",
-          "abilityText": "VISITOR: Take £1 from bank."
+          "abilityText": "VISITOR: Take £1 from bank\nOR Harvest, then you may put 1 card from your hand into your barn."
         },
         "upgraded": {
           "name": "Special Orders",
-          "printedVp": 2,
+          "printedVp": 0,
           "threshold": 5,
           "activationType": "wild",
-          "abilityText": "VISITOR: Take £2 from the bank.\n2 cards, take £3."
+          "abilityText": null
         }
       }
     },

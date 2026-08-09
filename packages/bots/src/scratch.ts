@@ -306,6 +306,30 @@ function tallyPays(
 }
 
 /**
+ * A tile's demand, over the view: named crates as cards, plus a count of the
+ * crates that will take anything.
+ *
+ * THE FACE-DOWN TOKENS BELONG HERE (the Vegetable rebuild, 2026-08-09). V6 turns
+ * a demand token blank and a blank token accepts any crops at the normal rate,
+ * which is exactly what a cornucopia does - so both must count as wild capacity
+ * or the bots would keep reading a tile as unpayable after somebody opened it.
+ * Mirrors the engine's `namedDemand`, and both readers below go through it so
+ * the two cannot learn the rule separately.
+ */
+function demandOf(
+  tile: { crates: readonly (Suit | 'wild')[]; faceDown?: readonly boolean[] },
+  per: number,
+): { base: Partial<Record<Suit, number>>; wilds: number } {
+  const base: Partial<Record<Suit, number>> = {};
+  let wilds = 0;
+  for (const [i, crate] of tile.crates.entries()) {
+    if (crate === 'wild' || tile.faceDown?.[i] === true) wilds += 1;
+    else base[crate] = (base[crate] ?? 0) + per;
+  }
+  return { base, wilds };
+}
+
+/**
  * The market's ordering feature (ticket 56): for each suit, how many tiles with
  * a free receipt space flip from unpayable to payable with one more barn card of
  * that suit. Adding a card is monotone, so the count is a plain delta.
@@ -323,12 +347,7 @@ function payabilityBySuit(data: GameData, view: PlayerView): Map<Suit, number> {
   for (const suit of suits) out.set(suit, 0);
   for (const tile of view.island.tiles) {
     if (tile.deliveredBy.length >= deliveriesPerTile(data)) continue;
-    const base: Partial<Record<Suit, number>> = {};
-    let wilds = 0;
-    for (const crate of tile.crates) {
-      if (crate === 'wild') wilds += 1;
-      else base[crate] = (base[crate] ?? 0) + per;
-    }
+    const { base, wilds } = demandOf(tile, per);
     if (tallyPays(suits, tally, base, wilds, per)) continue;
     for (const suit of suits) {
       tally[suit] = (tally[suit] ?? 0) + 1;
@@ -358,12 +377,12 @@ export function makeScratch(data: GameData, view: PlayerView): Scratch {
 
   const purse = coinsOf(data, view, buildings);
   const demandSuits = new Set<Suit>();
+  const per = data.island.tileRule.cardsPerCrate;
   for (const tile of view.island.tiles) {
     if (tile.deliveredBy.length >= deliveriesPerTile(data)) continue;
-    for (const crate of tile.crates) {
-      if (crate === 'wild') for (const suit of view.suitsInPlay) demandSuits.add(suit);
-      else demandSuits.add(crate);
-    }
+    const { base, wilds } = demandOf(tile, per);
+    if (wilds > 0) for (const suit of view.suitsInPlay) demandSuits.add(suit);
+    for (const suit of Object.keys(base) as Suit[]) demandSuits.add(suit);
   }
 
   return {

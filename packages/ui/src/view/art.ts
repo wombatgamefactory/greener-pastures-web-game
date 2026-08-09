@@ -78,7 +78,15 @@ export function frame(layer: string): string {
  * standing in for itself, not a placeholder rectangle, and it needs no code
  * change when the painted token lands: only this function.
  */
-export function demandTokenLayers(demand: Suit | 'wild'): string[] {
+export function demandTokenLayers(demand: Suit | 'wild', faceDown = false): string[] {
+  // A token turned FACE DOWN by V6 The Trade Depot (the Vegetable rebuild,
+  // 2026-08-09) shows its BACK. Deliberately the generic token back rather than
+  // the cornucopia, even though the two pay the same: a blank is not a horn of
+  // plenty, V6 may never target a cornucopia, and a player has to be able to see
+  // from across the table which crates the bag dealt and which somebody opened.
+  // The design's component note asks for exactly this - a uniform blank back -
+  // so this is a real component standing in for itself.
+  if (faceDown) return [token('token-back')];
   // The wild demand used to be composed from the cost bar's cornucopia over an
   // empty crate slot, because no cornucopia token art existed. Ticket 33 built
   // the real one, so all six demands are now one painted token.

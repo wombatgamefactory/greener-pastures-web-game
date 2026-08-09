@@ -181,6 +181,10 @@ describe('the probe answers NOW', () => {
       truncated: false,
       pending: null,
       handSize: 0,
+      // No demand token moved, so the deliverability term is a zero delta - the
+      // same reading `probeAt` gives every probe that leaves the island alone.
+      deliverableBefore: 0,
+      deliverable: 0,
       step: () => {
         throw new Error('no step expected');
       },
@@ -226,8 +230,15 @@ describe('a pending draw', () => {
     // Measured after the rebuild: 901 offers over 2/3/4 seats hold 100 full-hand
     // positions, and none of them are at 2 or 3 seats once the O16 hosts are
     // excluded. A fourth seat is a tighter table, which is the whole reason.
+    //
+    // Widened a THIRD time for the Vegetable rebuild (2026-08-09), and the same
+    // sentence applies: the suit's cards moved, the corpus moved with them, and
+    // the full-hand subcase fell out of a 12-seed sweep. Nothing about the
+    // pricer changed - the assertions below are untouched. If this keeps
+    // happening, the honest fix is a constructed position rather than a wider
+    // net, because a corpus property is not a test.
     for (const seats of [2, 3, 4]) {
-      for (let n = 0; n < 12; n++) {
+      for (let n = 0; n < 20; n++) {
         const seed = `drawworker-${seats}-${n}`;
         // Rotate rather than slice: n now runs past 5 and a slice runs off the end.
         const suits = Array.from(
@@ -302,7 +313,10 @@ describe('a pending draw', () => {
     // no room means no cards kept means nothing gained. Any non-zero here is
     // the cap failing to bite.
     expect(nonZeroWithNoRoom).toEqual([]);
-  });
+    // 60 full games of probing, so it wants more than the 5s default - and it
+    // wants it stated here rather than raised globally, because every OTHER
+    // test in the suite finishing inside 5s is worth knowing.
+  }, 30_000);
 });
 
 /**

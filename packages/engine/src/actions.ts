@@ -35,7 +35,15 @@ import {
   workerData,
   workerState,
 } from './query.js';
-import type { CardId, GameState, IslandTileState, Move, Seat, TaskAnswer } from './state.js';
+import type {
+  AerodromeState,
+  CardId,
+  GameState,
+  IslandTileState,
+  Move,
+  Seat,
+  TaskAnswer,
+} from './state.js';
 import { workWorker } from './workers.js';
 
 /** All k-card subsets. Bounded: hands are 6-8, costs at most 5 cards. */
@@ -587,7 +595,18 @@ function wildFills(suits: readonly Suit[], k: number): Suit[][] {
   return out;
 }
 
-/** The demand a tile's crates make, before wild choices: suit -> cards. */
+/**
+ * The demand a tile's crates make, before wild choices: suit -> cards.
+ *
+ * THE WHOLE OF THE FACE-DOWN RULE IS THE ONE DISJUNCTION BELOW. A token turned
+ * face down by V6 The Trade Depot accepts cards of any crops at the normal rate,
+ * which is exactly what a cornucopia does, so it counts as a wild crate here and
+ * `deliverDemands`, `deliverOptions`, `substitutedSpends`, `canPay`,
+ * `anyDeliverOption` and `doDeliver`'s validation all inherit it for free. It is
+ * a separate flag from `'wild'` rather than a rewrite of the crate because the
+ * two are different objects on the table: V6 may never target a cornucopia, and
+ * the UI has to draw a blank differently from a horn of plenty.
+ */
 function namedDemand(
   data: GameData,
   tile: IslandTileState,
@@ -595,11 +614,106 @@ function namedDemand(
   const { cardsPerCrate } = data.island.tileRule;
   const base: Partial<Record<Suit, number>> = {};
   let wilds = 0;
-  for (const crate of tile.crates) {
-    if (crate === 'wild') wilds += 1;
+  for (const [i, crate] of tile.crates.entries()) {
+    if (crate === 'wild' || tile.faceDown?.[i] === true) wilds += 1;
     else base[crate] = (base[crate] ?? 0) + cardsPerCrate;
   }
   return { base, wilds, cardsPerCrate };
+}
+
+// --- Mutable demand tokens (the Vegetable rebuild, 2026-08-09) --------------
+//
+// Two verbs, one card each, and they are the reason the suit exists: in 105
+// cards nothing else touches the island's colour puzzle after setup.
+//
+// The shared gate is `tileHasRoom`. A tile whose receipts are both taken is
+// FINISHED, and re-pricing a delivery somebody has already paid for is the one
+// thing neither verb may ever do.
+
+/** A crate on the island, addressed the way both verbs and both events do. */
+export interface DemandRef {
+  tile: string;
+  crate: number;
+}
+
+/** What a crate is asking for right now: its suit, or 'down' once turned. */
+function tokenValue(tile: IslandTileState, crate: number): Suit | 'wild' | 'down' {
+  return tile.faceDown?.[crate] === true ? 'down' : (tile.crates[crate] as Suit | 'wild');
+}
+
+/**
+ * V5's targets: every pair of crates on tiles that still have a receipt space.
+ *
+ * De-duped by the island configuration each swap would produce, so a pair of
+ * identical tokens is never offered (it is a no-op) and neither are two ways of
+ * reaching the same board. Both tiles must have room, including when they are
+ * the same tile.
+ */
+export function demandSwapOptions(data: GameData, state: GameState): [DemandRef, DemandRef][] {
+  const open = state.island.tiles.filter((t) => tileHasRoom(data, t));
+  const refs: DemandRef[] = open.flatMap((t) =>
+    t.crates.map((_, i) => ({ tile: t.tile, crate: i })),
+  );
+  const byTile = new Map(open.map((t) => [t.tile, t]));
+  const out: [DemandRef, DemandRef][] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < refs.length; i++) {
+    for (let j = i + 1; j < refs.length; j++) {
+      const a = refs[i] as DemandRef;
+      const b = refs[j] as DemandRef;
+      const ta = byTile.get(a.tile) as IslandTileState;
+      const tb = byTile.get(b.tile) as IslandTileState;
+      if (tokenValue(ta, a.crate) === tokenValue(tb, b.crate)) continue;
+      const key = swapKey(ta, a, tb, b);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push([a, b]);
+    }
+  }
+  return out;
+}
+
+/** The island configuration a swap would leave behind, as a stable key. */
+function swapKey(ta: IslandTileState, a: DemandRef, tb: IslandTileState, b: DemandRef): string {
+  const after = (tile: IslandTileState): string =>
+    tile.crates
+      .map((_, i) => {
+        if (tile.tile === ta.tile && i === a.crate) return tokenValue(tb, b.crate);
+        if (tile.tile === tb.tile && i === b.crate) return tokenValue(ta, a.crate);
+        return tokenValue(tile, i);
+      })
+      .sort()
+      .join(',');
+  return [`${ta.tile}|${after(ta)}`, `${tb.tile}|${after(tb)}`].sort().join('||');
+}
+
+/**
+ * V6's targets: one token per open tile where a receipt has ALREADY been taken.
+ *
+ * That gate is the timing dial, not flavour - it is what replaced promoting the
+ * card to Tier 2, so it is enumerated here rather than merely asserted in the
+ * verb. The card cannot fire at all until somebody has delivered, and it opens
+ * only the half-run tiles: "the second buyer isn't fussy".
+ *
+ * A cornucopia and an already-blank token are both skipped, because turning
+ * either buys nothing. De-duped by token value per tile for the same reason
+ * `demandSwapOptions` is.
+ */
+export function demandFaceDownOptions(data: GameData, state: GameState): DemandRef[] {
+  const out: DemandRef[] = [];
+  for (const tile of state.island.tiles) {
+    if (tile.deliveredBy.length < 1) continue;
+    if (!tileHasRoom(data, tile)) continue;
+    const seen = new Set<string>();
+    for (let i = 0; i < tile.crates.length; i++) {
+      const value = tokenValue(tile, i);
+      if (value === 'wild' || value === 'down') continue;
+      if (seen.has(value)) continue;
+      seen.add(value);
+      out.push({ tile: tile.tile, crate: i });
+    }
+  }
+  return out;
 }
 
 /**
@@ -782,15 +896,40 @@ export function deliverOptions(data: GameData, state: GameState, seat: Seat): De
  */
 export function anyDeliverOption(data: GameData, state: GameState, seat: Seat): boolean {
   const tally = barnTally(data, state, seat);
-  return state.island.tiles.some((tile) => {
-    if (!tileHasRoom(data, tile)) return false;
-    const { base, wilds, cardsPerCrate } = namedDemand(data, tile);
-    return wildFills(state.suitsInPlay, wilds).some((fill) => {
-      const need: Partial<Record<Suit, number>> = { ...base };
-      for (const s of fill) need[s] = (need[s] ?? 0) + cardsPerCrate;
-      return canPay(data, need, tally);
-    });
+  return state.island.tiles.some((tile) => payableBy(data, state, tile, tally));
+}
+
+/** Could this barn pay this open tile, by any nomination of its wild crates? */
+function payableBy(
+  data: GameData,
+  state: GameState,
+  tile: IslandTileState,
+  tally: Partial<Record<Suit, number>>,
+): boolean {
+  if (!tileHasRoom(data, tile)) return false;
+  const { base, wilds, cardsPerCrate } = namedDemand(data, tile);
+  return wildFills(state.suitsInPlay, wilds).some((fill) => {
+    const need: Partial<Record<Suit, number>> = { ...base };
+    for (const s of fill) need[s] = (need[s] ?? 0) + cardsPerCrate;
+    return canPay(data, need, tally);
   });
+}
+
+/**
+ * DELIVERABILITY: how many open tiles this seat could pay for right now.
+ *
+ * `anyDeliverOption` asks the same question and stops at the first yes; this
+ * counts, because the bots' pricer needs a POSITION rather than a boolean. It
+ * exists for the mutable demand tokens (V5, V6), whose whole effect is to change
+ * this number and which produce no delta at all in the acting seat's own
+ * resources - so a pricer that reads only its own zones values them at zero.
+ *
+ * Reads through `namedDemand`, so face-down tokens and the wild substitution are
+ * both already in it.
+ */
+export function payableTileCount(data: GameData, state: GameState, seat: Seat): number {
+  const tally = barnTally(data, state, seat);
+  return state.island.tiles.filter((tile) => payableBy(data, state, tile, tally)).length;
 }
 
 export function doDeliver(
@@ -800,12 +939,25 @@ export function doDeliver(
   spend: Partial<Record<Suit, number>>,
   /** V12's "treat any 1 card as a Vegetable": each entry relabels one spent card for validation only. */
   countAs?: { from: Suit; to: Suit }[],
+  /**
+   * V14 The Distribution Center: "take BOTH of its receipts" - receipts taken
+   * for ONE payment. Defaults to 1, which is every other delivery in the game.
+   * The tile must have room for all of them, so V14's own "where nobody has
+   * delivered" gate falls out of the capacity check below rather than being
+   * asserted twice.
+   */
+  receipts = 1,
 ): void {
   const state = fx.state;
   const tile = state.island.tiles.find((t) => t.tile === tileId);
   if (!tile) throw new Error(`Tile ${tileId} is not in play`);
-  if (!tileHasRoom(fx.data, tile)) {
-    throw new Error(`Tile ${tileId} has no delivery slots left`);
+  if (receipts < 1) throw new Error('A delivery takes at least one receipt');
+  if (tile.deliveredBy.length + receipts > deliveriesPerTile(fx.data)) {
+    throw new Error(
+      receipts === 1
+        ? `Tile ${tileId} has no delivery slots left`
+        : `Tile ${tileId} has no delivery slots left for ${receipts} receipts at once`,
+    );
   }
   const virtual: Partial<Record<Suit, number>> = { ...spend };
   for (const sub of countAs ?? []) {
@@ -841,19 +993,28 @@ export function doDeliver(
 
   const cards = fx.spendFromBarn(seat, spend);
   const coins = fx.data.island.tileRule.coinsPerDelivery;
-  // Read the VP BEFORE this delivery joins the tile, or the first deliverer
+  // Read each VP BEFORE its delivery joins the tile, or the first deliverer
   // would be paid the second deliverer's rate. The tile's own fill order is the
-  // whole gradient now: 6 for being first here, 3 for being second.
-  const vp = deliveryVp(fx.data, tile.deliveredBy.length);
-  player(state, seat).receipts.push(vp);
-  tile.deliveredBy.push(seat);
-  fx.gainCoins(seat, coins, `deliver:${tileId}`);
-  fx.emit({ e: 'delivered', seat, tile: tileId, vp, coins, spend });
+  // whole gradient now: 6 for being first here, 3 for being second - so V14's
+  // "both receipts" is 6 + 3 = 9 with no scoring rule of its own. One
+  // `delivered` event per receipt, so nothing counting deliveries has to learn
+  // that one of them can be double; only the first carries the spend, because
+  // only one payment was made.
+  for (let i = 0; i < receipts; i++) {
+    const vp = deliveryVp(fx.data, tile.deliveredBy.length);
+    player(state, seat).receipts.push(vp);
+    tile.deliveredBy.push(seat);
+    fx.gainCoins(seat, coins, `deliver:${tileId}`);
+    fx.emit({ e: 'delivered', seat, tile: tileId, vp, coins, spend: i === 0 ? spend : {} });
+  }
+  // ONE Deliver, so one afterDeliver: the rebuilt Farmstead puts one card in the
+  // barn for a delivery, not one per receipt taken.
   fireHook(fx, 'afterDeliver', { seat, island: true, tile: tileId, cards });
-  // The clock: one seat's Nth ISLAND delivery ends the game. Counted after the
-  // push, and off the island rather than off `receipts`, because receipts is a
-  // VP list that other rules could one day write to and the trigger must stay a
-  // count of things visible on the board.
+  // The clock: one seat's Nth ISLAND delivery ends the game. Counted after every
+  // push (RULING G, recommended: V14's two receipts are two deliveries toward
+  // the trigger), and off the island rather than off `receipts`, because
+  // receipts is a VP list that other rules could one day write to and the
+  // trigger must stay a count of things visible on the board.
   const target = fx.data.rules.endGame.deliveriesToTrigger;
   if (state.endTrigger === null && islandDeliveriesBy(state, seat) >= target) {
     state.endTrigger = { seat };
@@ -908,10 +1069,56 @@ export function anyBalloonMoveOption(data: GameData, state: GameState, seat: Sea
 }
 
 /**
+ * The four steps every balloon move shares, whatever paid for it: the balloon
+ * changes Aerodrome, the raid hook fires, the deliver hook fires, the reward is
+ * granted. Factored out so the barn-paid and hand-paid entry points cannot
+ * drift - the two differ ONLY in what they take off the payer.
+ *
+ * `grantReward: false` is V8 The Regional Depot, which takes the reward of a
+ * balloon of its choosing instead: suppressed here rather than granted twice.
+ */
+function landBalloon(
+  fx: Fx,
+  seat: Seat,
+  balloonId: string,
+  spend: Partial<Record<Suit, number>>,
+  cards: CardId[],
+  /** Cards of the payment that came out of the HAND rather than the barn. */
+  hand: number,
+  free: boolean,
+  grantReward = true,
+): void {
+  const aero = fx.state.aerodrome as AerodromeState;
+  const balloon = aero.balloons.find((b) => b.id === balloonId) as {
+    id: string;
+    at: Seat | 'centre';
+  };
+  const from = balloon.at;
+  balloon.at = seat;
+  fx.emit({ e: 'balloonMoved', seat, balloon: balloonId, from, spend, hand, free });
+  fireHook(fx, 'afterBalloonMove', { seat, balloon: balloonId, from });
+  fireHook(fx, 'afterDeliver', { seat, island: false, cards });
+  if (grantReward) grantBalloonReward(fx, seat, balloonId);
+}
+
+/** The shared source rule: the centre or a rival's Aerodrome, never your own. */
+function movableBalloon(fx: Fx, seat: Seat, balloonId: string): void {
+  const aero = fx.state.aerodrome;
+  if (!aero) throw new Error('The Aerodrome module is not in play');
+  const balloon = aero.balloons.find((b) => b.id === balloonId);
+  if (!balloon) throw new Error(`Unknown balloon ${balloonId}`);
+  if (balloon.at === seat) throw new Error('A balloon is never moved from your own Aerodrome');
+}
+
+/**
  * Move a balloon to your Aerodrome and collect its reward. `spend` is the
- * printed cost; null is a card effect's FREE move (V16 - no cards, but still a
+ * printed BARN cost; null is a card effect's FREE move (no cards, but still a
  * balloon move, so the raid hook and the deliver hook both fire). The raided
  * player is not compensated (ruling J - on the sim watch list).
+ *
+ * This is the base rule and it is UNCHANGED for everybody, including Vegetable:
+ * 2 barn cards of differing crops, spent as the Deliver action. It is what keeps
+ * the balloon the table's orphan sink.
  */
 export function doMoveBalloon(
   fx: Fx,
@@ -919,11 +1126,7 @@ export function doMoveBalloon(
   balloonId: string,
   spend: Partial<Record<Suit, number>> | null,
 ): void {
-  const aero = fx.state.aerodrome;
-  if (!aero) throw new Error('The Aerodrome module is not in play');
-  const balloon = aero.balloons.find((b) => b.id === balloonId);
-  if (!balloon) throw new Error(`Unknown balloon ${balloonId}`);
-  if (balloon.at === seat) throw new Error('A balloon is never moved from your own Aerodrome');
+  movableBalloon(fx, seat, balloonId);
 
   let cards: CardId[] = [];
   if (spend !== null) {
@@ -939,19 +1142,66 @@ export function doMoveBalloon(
     cards = fx.spendFromBarn(seat, spend);
   }
 
-  const from = balloon.at;
-  balloon.at = seat;
-  fx.emit({
-    e: 'balloonMoved',
-    seat,
-    balloon: balloonId,
-    from,
-    spend: spend ?? {},
-    free: spend === null,
-  });
-  fireHook(fx, 'afterBalloonMove', { seat, balloon: balloonId, from });
-  fireHook(fx, 'afterDeliver', { seat, island: false, cards });
-  grantBalloonReward(fx, seat, balloonId);
+  landBalloon(fx, seat, balloonId, spend ?? {}, cards, 0, spend === null);
+}
+
+/**
+ * THE HAND-PAID FLIGHT (the Vegetable rebuild, 2026-08-09). A sibling of
+ * doMoveBalloon, not a branch inside it: the base rule is untouched for everyone
+ * and Vegetable's Depots simply print a second way in.
+ *
+ * Two differences from the barn payment, both deliberate:
+ *
+ *  - The cards come out of the HAND. That is the whole change. In the v3 draft
+ *    both of the suit's outlets ate barn cards, so a Vegetable seat chose every
+ *    turn between flying freight and scoring it; moving flights onto the hand
+ *    removes the choice, and the island keeps the barn to itself.
+ *  - NO SUIT CONSTRAINT. The differing-crops rule belongs to the barn payment,
+ *    where it is what makes the balloon a sink for odd cards. Vegetable's route
+ *    is deliberately unfussy, so the fee is the worst two cards in hand.
+ *
+ * ⚠️ It fires `afterDeliver` with `island: false`, exactly as the barn payment
+ * does, on the grounds that one funnel is worth more than the purity - see the
+ * handler notes on V4. The rebuilt Vegetable Farmstead guards on `island` and is
+ * unaffected, and nothing else in the catalogue reads a non-island deliver.
+ */
+export function doMoveBalloonFromHand(
+  fx: Fx,
+  seat: Seat,
+  balloonId: string,
+  cards: CardId[],
+  opts?: { grantReward?: boolean },
+): void {
+  movableBalloon(fx, seat, balloonId);
+  const cost = fx.data.aerodrome.handMoveCost;
+  if (cards.length !== cost) {
+    throw new Error(`A hand-paid balloon move costs ${cost} cards, got ${cards.length}`);
+  }
+  if (new Set(cards).size !== cards.length) throw new Error('Duplicate card in the flight fee');
+  for (const card of cards) fx.removeFromHand(seat, card);
+  fx.discard(cards);
+  landBalloon(fx, seat, balloonId, {}, cards, cards.length, false, opts?.grantReward ?? true);
+}
+
+/**
+ * The hand-paid flights on offer: every balloon not already yours, against every
+ * way to pay for it out of hand. Enumerated concretely, like every other option
+ * set, so `apply` re-validates exactly what was offered.
+ *
+ * Bounded by hand size: `subsets(hand, 2)` over a hand of 5-7 is at most 21 fee
+ * choices per balloon.
+ */
+export function handBalloonMoveOptions(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+): { balloon: string; cards: CardId[] }[] {
+  const aero = state.aerodrome;
+  if (!aero) return [];
+  const movable = aero.balloons.filter((b) => b.at !== seat);
+  if (movable.length === 0) return [];
+  const fees = subsets(player(state, seat).hand, data.aerodrome.handMoveCost);
+  return movable.flatMap((b) => fees.map((cards) => ({ balloon: b.id, cards })));
 }
 
 /** The reward printed under the balloon, from aerodrome.json (overlay-tunable). */

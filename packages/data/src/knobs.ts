@@ -243,6 +243,12 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     description: 'Barn cards, of differing suits, spent to move a balloon.',
   },
   {
+    template: 'aerodrome.handMoveCost',
+    type: 'int',
+    description:
+      "Cards discarded from HAND by the alternative flight payment Vegetable's Depots print (V4, V8). The base barn cost is untouched and this is a second route in, not a discount. THE SUIT'S FIRST DIAL: its central risk is the hand starving, because activation costs, sowing, consignment, the visit and this all come out of a hand of 5, and an empty hand cannot visit. Drop it to 1 if a Vegetable seat's visits per turn fall below the table's 0.52.",
+  },
+  {
     template: 'aerodrome.balloons.{}.reward.amount',
     type: 'int',
     description: 'Size of a balloon reward.',

@@ -188,7 +188,22 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
       // taste stays a MOVE term, the way `grow`'s does, because a taste is a
       // thing a seat has about an action rather than a thing that happens in a
       // position - and paying it here as well would charge it twice.
-      return event.seat === me ? -weight(w, 'barnSpend') * spendSize(event.spend) : 0;
+      //
+      // THE HAND LEG IS THE VEGETABLE REBUILD'S (2026-08-09) and it is not
+      // optional. V4 and V8 pay for a flight out of the HAND, and nothing else
+      // in the event stream charges for a card leaving a hand: `removeFromHand`
+      // emits nothing and `cardsDiscarded` is priced at zero because whatever
+      // sent the cards there is already paying for them. So without this a
+      // hand-paid flight read as FREE - full balloon reward, no cost - and the
+      // bots dumped their hands for balloons. Measured: it cost the Vegetable
+      // seat 12 points of win rate. Charged at `handSpend` against a COUNT, the
+      // same shape and the same weight the `built` event charges its payment at,
+      // and blind for the same reason.
+      if (event.seat !== me) return 0;
+      return (
+        -weight(w, 'barnSpend') * spendSize(event.spend) -
+        weight(w, 'handSpend') * handSpendCost(s, event.hand)
+      );
 
     case 'built':
       // Priced for happening, not for what was built: the card's identity is
@@ -210,6 +225,15 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
 
     case 'starterUpgraded':
       return event.seat === me ? weight(w, 'upgrade') : 0;
+
+    // THE MUTABLE DEMAND TOKENS (V5, V6) are priced POSITIONALLY, not here.
+    // Their whole effect is on the shared board, so there is no delta in the
+    // acting seat's own resources for an event price to read and they would
+    // score exactly zero - see `deliverabilityValue` below and the note on
+    // `Probe.deliverable`.
+    case 'demandSwapped':
+    case 'demandFaceDown':
+      return 0;
 
     // A Service's wage arrives as its own `coins` event and the action it
     // performs arrives as that action's events, so scoring the activation too
@@ -290,6 +314,41 @@ function pendingDrawValue(probe: ReturnType<Prober>, s: Scratch, w: WeightTable)
 }
 
 /**
+ * THE DELIVERABILITY TERM (the Vegetable rebuild, 2026-08-09).
+ *
+ * `priceEvent` reads what happened to the acting seat's own zones, which is the
+ * right rule for 103 of 105 cards and prices the other two at exactly zero: V5
+ * swaps two of the island's demand tokens and V6 turns one face down, and
+ * neither moves a card, a coin or a receipt. Left alone, the bots would never
+ * play two of the five Depots, the arm would report them at ~0% and the report
+ * would read as a design failure when it is a pricing gap. Change 8's log
+ * records the identical trap on Orchard: *"the pricer had to be FIXED before the
+ * power fired at all"*.
+ *
+ * The fix is a TERM, not a card-identity special case: the probe reports how
+ * many open tiles this seat could pay for either side of the move, and the
+ * difference is worth what an unlocked delivery is worth. A swap that turns an
+ * unaffordable tile into an affordable one prices at roughly a delivery; a swap
+ * that changes nothing prices at zero, which is correct and is also what makes
+ * `skip` the right answer most of the time.
+ *
+ * It shares `marketPayability`'s weight, and that is exactness rather than
+ * thrift: that term converts "a tile that flipped from unpayable to payable"
+ * into score, and this is the same quantity arriving through a different door.
+ * If one moves, move both.
+ *
+ * ⚠️ THE BOTS CANNOT JUDGE V5'S DENIAL USE, and no weight fixes that. This file
+ * prices what a seat GAINS and never rival harm, so every swap a bot takes is
+ * self-serving. Whether swapping a token out from under a rival's hoarded pair
+ * lands as clever or as the predecessor's "reverse engine-building" resentment
+ * is a table question and only a table question.
+ */
+function deliverabilityValue(probe: ReturnType<Prober>, w: WeightTable): number {
+  if (probe.truncated) return 0;
+  return weight(w, 'marketPayability') * (probe.deliverable - probe.deliverableBefore);
+}
+
+/**
  * Depth-limited rollout, beam of one: price what the move did, pick the single
  * most promising answer to the choice it stopped on, and walk into that.
  *
@@ -314,7 +373,7 @@ function rollout(
   me: Seat,
   depth: number,
 ): number {
-  let total = priceEvents(probe.events, s, w, me);
+  let total = priceEvents(probe.events, s, w, me) + deliverabilityValue(probe, w);
   const draw = pendingDrawValue(probe, s, w);
   if (draw !== null) return total + draw;
   if (depth <= 0 || probe.next.length === 0) return total;
@@ -325,9 +384,13 @@ function rollout(
   for (let i = 0; i < limit; i++) {
     const stepped = probe.step(probe.next[i] as Move);
     // Ranked by the same valuation the rollout would give it, so an answer
-    // leading into a draw is not scored at zero against one that pays a coin.
+    // leading into a draw is not scored at zero against one that pays a coin -
+    // and so a demand-token swap, whose whole worth is positional, can win a
+    // level it would otherwise tie flat and lose to enumeration order.
     const immediate =
-      priceEvents(stepped.events, s, w, me) + (pendingDrawValue(stepped, s, w) ?? 0);
+      priceEvents(stepped.events, s, w, me) +
+      deliverabilityValue(stepped, w) +
+      (pendingDrawValue(stepped, s, w) ?? 0);
     if (immediate > bestImmediate) {
       bestImmediate = immediate;
       leader = stepped;

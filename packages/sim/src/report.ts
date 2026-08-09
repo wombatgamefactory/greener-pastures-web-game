@@ -46,6 +46,7 @@ export function renderReport(input: ReportInput): string {
   out.push(...watchlistSection(input));
   out.push(...seriesSection(input));
   out.push(...giveawaySection(input));
+  out.push(...freightSection(input));
   out.push(...actionMix(input));
   out.push(...seatTable(input));
   out.push(...suitTable(input));
@@ -379,6 +380,145 @@ function giveawaySection({ pooled }: ReportInput): string[] {
   out.push('whether a human hands a rival free cards is a table question, not a simulator one.');
   out.push('');
   return out;
+}
+
+/**
+ * THE SKY, THE MANIFEST AND THE RACE - the five lines the Vegetable rebuild's
+ * pass conditions need and no previous run recorded (2026-08-09).
+ *
+ * Like the giveaway section, these are general questions asked of the whole
+ * table rather than Vegetable diagnostics: how much freight flies (the balloon
+ * has been the table's orphan sink since it existed, and this rebuild is the
+ * first change that gives one suit a second way in), whether the island's colour
+ * puzzle is still decided once by the bag, and whether anybody is racing for a
+ * tile - the flat island's only remaining time gradient.
+ *
+ * ⚠️ NO NOISE FLOOR YET for any of them. Run --noise before reading a movement
+ * in one as a finding.
+ *
+ * ⚠️ AND THE BOTS CANNOT PRICE THE DENIAL HALF OF A SWAP. `outcome.ts` values
+ * what a seat gains and never rival harm, so a swap here is always self-serving
+ * and the swap count is an upper bound on the useful ones and no bound at all on
+ * the spiteful ones.
+ */
+function freightSection({ data, pooled }: ReportInput): string[] {
+  const games = pooled.ended;
+  const out = [THIN, 'THE SKY, THE MANIFEST AND THE RACE  (ended games)', THIN, ''];
+  if (games.length === 0) {
+    out.push('  no ended games', '');
+    return out;
+  }
+  // MEANS, not medians: only a Vegetable seat can build the cards that fly on
+  // hand cards or touch a demand token, so most cells have none and the median
+  // of every line here is a structural 0 that says nothing.
+  const per = (f: (g: GameMetrics) => number) => mean(games.map(f));
+  const vegGames = games.filter((g) => g.suits.includes('vegetable'));
+  const aeroGames = games.filter(
+    (g) => g.suits.includes('vegetable') || g.neutral.includes('vegetable'),
+  );
+
+  out.push(
+    `  balloon moves per game                ${num(
+      per((g) => g.balloonMoves),
+      2,
+    )}` +
+      `   (games with the Aerodrome in play: ${num(mean(aeroGames.map((g) => g.balloonMoves)), 2)})`,
+  );
+  out.push(
+    `    of which the Vegetable seat's       ${num(vegSeatShare(vegGames), 2)}` +
+      `   (its share of the table's, against an even ${num(evenShare(vegGames), 2)})`,
+  );
+  out.push(
+    `    paid out of HAND (V4, V8)           ${num(
+      per((g) => sum(g.handFlightsBySeat)),
+      2,
+    )}` + `   (the suit's own route in; 0 means the Depots never fired)`,
+  );
+  out.push('');
+  // DELIVERIES BY SUIT. Not a Vegetable diagnostic either, though it was added
+  // for one: the island carries most of a winning score, so a suit's delivery
+  // count is close to its scoring rate, and this is the line that says whether a
+  // suit whose IDENTITY is Deliver actually delivers. It is the number the
+  // Vegetable rebuild moved furthest and the one its own pass conditions never
+  // thought to ask for.
+  out.push('  island deliveries per seat, by suit:');
+  out.push(
+    `    ${data.cards.suits
+      .map((suit) => `${suit} ${num(deliveriesBySuit(games, suit), 2)}`)
+      .join('   ')}`,
+  );
+  out.push('');
+  out.push(
+    `  demand tokens altered per game        ` +
+      `${num(
+        per((g) => g.demandSwaps + g.demandFaceDowns),
+        2,
+      )}` +
+      `   (swap ${num(
+        per((g) => g.demandSwaps),
+        2,
+      )}, face down ${num(
+        per((g) => g.demandFaceDowns),
+        2,
+      )})`,
+  );
+  out.push(
+    `  deliveries only payable because of one ${num(
+      per((g) => g.deliveriesUnlockedByAlteration),
+      2,
+    )}` + `   - the number that says whether the rules earned their keep`,
+  );
+  out.push('');
+  const firsts = sum(games.map((g) => sum(g.receiptsByOrderBySeat.map((r) => r[0] ?? 0))));
+  const seconds = sum(games.map((g) => sum(g.receiptsByOrderBySeat.map((r) => r[1] ?? 0))));
+  const schedule = data.island.vpByDeliveryOrder;
+  out.push(
+    `  receipts by fill order                first ${firsts} (${schedule[0] ?? 0} VP)` +
+      `   second ${seconds} (${schedule[1] ?? 0} VP)` +
+      `   first share ${pct(firsts / Math.max(1, firsts + seconds), 1)}`,
+  );
+  out.push('');
+  out.push(
+    "A hand-paid flight is the Vegetable rebuild's privilege and nothing else may use it, so the",
+  );
+  out.push(
+    'third line is the direct test of whether the Depots are being played at all. The demand-token',
+  );
+  out.push(
+    "lines are the first time in 105 cards that the island's colour puzzle has changed after setup;",
+  );
+  out.push('if the last of them is near zero, V5 and V6 are rules nobody needed.');
+  out.push('');
+  return out;
+}
+
+/** Island deliveries made by the seats actually farming a given suit, per game. */
+function deliveriesBySuit(games: readonly GameMetrics[], suit: string): number {
+  const per: number[] = [];
+  for (const g of games) {
+    g.suits.forEach((s, seat) => {
+      if (s === suit) per.push(g.deliveriesBySeat[seat] ?? 0);
+    });
+  }
+  return per.length === 0 ? NaN : mean(per);
+}
+
+/** Balloon moves made by the seats actually farming Vegetable, per game. */
+function vegSeatShare(games: readonly GameMetrics[]): number {
+  const per: number[] = [];
+  for (const g of games) {
+    let mine = 0;
+    g.suits.forEach((suit, seat) => {
+      if (suit === 'vegetable') mine += g.balloonMovesBySeat[seat] ?? 0;
+    });
+    per.push(g.balloonMoves === 0 ? 0 : mine / g.balloonMoves);
+  }
+  return per.length === 0 ? NaN : mean(per);
+}
+
+/** What one seat's share would be if every chair flew equally. */
+function evenShare(games: readonly GameMetrics[]): number {
+  return games.length === 0 ? NaN : mean(games.map((g) => 1 / g.seats));
 }
 
 /** ORCHARDs built, counted only in the seats that actually farmed Orchard. */

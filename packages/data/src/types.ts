@@ -246,6 +246,14 @@ export interface AerodromeFile {
     readonly mustDiffer: boolean;
     readonly differBy: 'suit';
   };
+  /**
+   * Cards discarded FROM HAND by the alternative payment Vegetable's Depots
+   * print (V4, V8). The base `moveCost` above is unchanged for everybody; this
+   * is a second entry point, not an edit to the first, and nothing outside those
+   * cards may use it. No suit constraint by design - see the note in
+   * aerodrome.json.
+   */
+  readonly handMoveCost: number;
   readonly balloons: readonly Balloon[];
   readonly referencedBy: readonly string[];
 }

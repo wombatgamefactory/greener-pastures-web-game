@@ -13,6 +13,19 @@ import { mean, num, pct, separated, meanInterval } from '../stats.js';
  * score gap is not proof. What is reported is the gap AND whether it is
  * separated from noise; the interpretation stays with the reader, which is what
  * OBSERVE means.
+ *
+ * ⚠️ RE-READ IT SINCE THE VEGETABLE REBUILD (2026-08-09), and this is a change
+ * of MEANING rather than of arithmetic. "Uncompensated" is no longer the whole
+ * truth: V16 The Market Signal Tower pays its owner £2 whenever a neighbour
+ * takes a balloon from their Aerodrome, and V19 The Market Gazette pays 2 VP
+ * for every balloon still parked there at game end - so being raided is now
+ * deliberately profitable for a seat that has bought either, and being raided
+ * off a fleet is deliberately expensive for one holding V19. A gap here that
+ * used to read as "the raid hurts" can now read as "the raided seat had not
+ * bought the Tower", which is a card question rather than a rule question.
+ * The assertion still measures the right thing and its verdict is still
+ * OBSERVE; what changed is what an answer means, so the detail line below
+ * reports the two cards' presence alongside the gap.
  */
 export const balloonRaid: Assertion = {
   id: 12,
@@ -44,6 +57,15 @@ export const balloonRaid: Assertion = {
     }
     const gap = mean(raided) - mean(safe);
     const clear = separated(meanInterval(raided), meanInterval(safe));
+    // The two cards that deliberately make being raided pay (the Vegetable
+    // rebuild). Counted so the gap is never read as a pure rule effect while
+    // either of them is on the table.
+    let towers = 0;
+    let gazettes = 0;
+    for (const g of withBalloons) {
+      if ((g.cards.get('V16')?.played ?? false) === true) towers += 1;
+      if ((g.cards.get('V19')?.played ?? false) === true) gazettes += 1;
+    }
     return {
       value: gap,
       headline:
@@ -63,6 +85,11 @@ export const balloonRaid: Assertion = {
                     withBalloons.reduce((a, g) => a + g.balloonMoves, 0),
                   ),
           )} were raids on a seat rather than takes from the centre`,
+        `V16 The Market Signal Tower built in ${pct(
+          withBalloons.length === 0 ? NaN : towers / withBalloons.length,
+        )} of these games and V19 The Market Gazette in ${pct(
+          withBalloons.length === 0 ? NaN : gazettes / withBalloons.length,
+        )} - both make being raided pay, so read the gap against them rather than as a pure rule effect`,
       ],
       verdict: 'OBSERVE',
     };

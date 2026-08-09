@@ -33,11 +33,27 @@ export function levelOf(data: GameData, tile: string): Level {
   return spec.level;
 }
 
-function DemandToken({ demand, size }: { demand: Suit | 'wild'; size: number }) {
-  const label = demand === 'wild' ? 'any crop (cornucopia)' : SUIT_META[demand].label;
+function DemandToken({
+  demand,
+  size,
+  faceDown = false,
+}: {
+  demand: Suit | 'wild';
+  size: number;
+  faceDown?: boolean;
+}) {
+  // A face-down token pays like a cornucopia but is not one, and the label says
+  // so: what a player needs to know is that this crate WAS a named crop and has
+  // been opened - which is a different fact about the board from a crate the bag
+  // dealt wild.
+  const label = faceDown
+    ? 'turned face down: any crop'
+    : demand === 'wild'
+      ? 'any crop (cornucopia)'
+      : SUIT_META[demand].label;
   return (
     <span className="demand" style={{ width: `${size}px`, height: `${size}px` }} title={label}>
-      {demandTokenLayers(demand).map((src) => (
+      {demandTokenLayers(demand, faceDown).map((src) => (
         <img key={src} src={src} alt="" />
       ))}
       <span className="visually-hidden">{label}</span>
@@ -114,7 +130,11 @@ export function IslandPanel({
                     <div className="island-demands">
                       {tile.crates.map((demand, i) => (
                         <span key={i} className="island-crate">
-                          <DemandToken demand={demand} size={Math.round(tileWidth * 0.34)} />
+                          <DemandToken
+                            demand={demand}
+                            faceDown={tile.faceDown?.[i] === true}
+                            size={Math.round(tileWidth * 0.34)}
+                          />
                           <b>{cardsPerCrate}</b>
                         </span>
                       ))}

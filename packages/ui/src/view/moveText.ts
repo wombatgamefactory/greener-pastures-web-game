@@ -71,10 +71,60 @@ export function describeAnswer(data: GameData, answer: TaskAnswer): string {
     case 'skip':
       return 'decline';
     case 'card':
-      return JSON.stringify(answer.payload);
+      return describeCardPayload(data, answer.payload);
     default:
       return answer satisfies never;
   }
+}
+
+/**
+ * The escape-hatch answer, said in words.
+ *
+ * A `card` payload is whatever its handler decided, so this cannot be
+ * exhaustive and does not pretend to be: it recognises the shapes in play and
+ * falls back to the raw JSON, which is what the whole family used to print. The
+ * Vegetable rebuild made that fallback unacceptable at the table - the two cards
+ * that reach the island's demand tokens are the suit, and `{"a":{"tile":"A5",…}}`
+ * is not a choice anybody can make.
+ */
+function describeCardPayload(data: GameData, payload: Record<string, unknown>): string {
+  const crate = (ref: unknown): string => {
+    const r = ref as { tile?: string; crate?: number };
+    return r.tile === undefined ? '?' : `${r.tile} crate ${(r.crate ?? 0) + 1}`;
+  };
+  // V5: swap two of the island's demand tokens.
+  if (payload.a !== undefined && payload.b !== undefined) {
+    return `swap the demand on ${crate(payload.a)} with ${crate(payload.b)}`;
+  }
+  // V6: turn one face down.
+  if (payload.tile !== undefined && payload.crate !== undefined) {
+    return `turn the demand on ${crate(payload)} face down`;
+  }
+  // V14: one payment, both receipts.
+  if (payload.tile !== undefined && payload.spend !== undefined) {
+    return `island ${String(payload.tile)}, spending ${spendText(
+      payload.spend as Partial<Record<Suit, number>>,
+    )} for BOTH receipts`;
+  }
+  // V4 / V8: a flight paid out of hand, and V8's choice of cargo.
+  if (payload.balloon !== undefined) {
+    const cards = payload.cards as string[] | undefined;
+    return cards === undefined
+      ? `the ${balloonWord(String(payload.balloon))} balloon's reward`
+      : `the ${balloonWord(String(payload.balloon))} balloon, discarding ${cardList(data, cards)}`;
+  }
+  // V2's upgraded Farmstead: a barn card traded for a deck top.
+  if (payload.gone !== undefined && payload.into !== undefined) {
+    return `swap a ${SUIT_META[payload.gone as Suit].label} card for the top ${
+      SUIT_META[payload.into as Suit].label
+    } card`;
+  }
+  // V13: one barn card at a time out, and the deck each one comes back from.
+  if (payload.suit !== undefined) {
+    return `discard a ${SUIT_META[payload.suit as Suit].label} card from your barn`;
+  }
+  if (payload.take === true) return 'accept';
+  return JSON.stringify(payload);
 }
 
 export function balloonWord(id: string): string {

@@ -78,6 +78,8 @@ export const EVENT_KINDS = {
   visited: true,
   endTriggered: true,
   turnEnded: true,
+  demandSwapped: true,
+  demandFaceDown: true,
   gameEnded: false,
 } satisfies Record<GameEvent['e'], boolean>;
 
@@ -259,6 +261,46 @@ export interface GameMetrics {
   /** A balloon taken from another seat's Aerodrome, by victim. */
   raidsByVictim: number[];
 
+  // --- The Vegetable rebuild, 2026-08-09 -----------------------------------
+  //
+  // Five lines its pass conditions need and no previous run recorded. ⚠️ NONE
+  // OF THEM HAS A NOISE FLOOR YET - run --noise before reading a movement in one
+  // as a finding.
+
+  /**
+   * Balloon moves BY SEAT, so the report can split them by suit. The draft's
+   * central prediction is that this climbs sharply from 5.1 a game with a
+   * Vegetable seat taking well over an even share, and a table total cannot
+   * answer it.
+   */
+  balloonMovesBySeat: number[];
+  /**
+   * Of those, the ones paid OUT OF HAND (V4, V8) rather than out of the barn.
+   * The suit's whole privilege, so it is the direct measurement of whether the
+   * privilege is used - a Vegetable seat still taking the barn route is a
+   * Vegetable seat not playing its Depots.
+   */
+  handFlightsBySeat: number[];
+  /** Demand tokens altered, split by verb: V5's swap and V6's turn. */
+  demandSwaps: number;
+  demandFaceDowns: number;
+  /**
+   * DELIVERIES THAT WERE ONLY PAYABLE BECAUSE A DEMAND TOKEN HAD BEEN ALTERED -
+   * the number that says whether the mutable tokens earned their rules.
+   *
+   * Measured against the tokens AS DEALT: the spend actually made is re-tested
+   * against the tile's original demand, and counted only when the original
+   * refuses it. So it is not "deliveries to a tile somebody touched", which
+   * would count every delivery to a tile whose swap was irrelevant.
+   */
+  deliveriesUnlockedByAlteration: number;
+  /**
+   * Island receipts by FILL ORDER, by seat: index 0 is arriving first at a tile
+   * (6 VP), index 1 second (3 VP). The flat island's only remaining time
+   * gradient, and the thing V14 takes both of at once.
+   */
+  receiptsByOrderBySeat: number[][];
+
   /**
    * THE GIVEAWAY (the Orchard rebuild, 2026-08-09): cards handed across the
    * table, by GIVER. The rebuilt Orchard turns cards it does not want into a
@@ -336,6 +378,13 @@ export class Fold {
   /** Working counter for the exploit probe: market buys since the seat's last harvest. */
   private marketSinceHarvest: number[] = [];
   private seeded = false;
+  /**
+   * The island's demand tokens AS DEALT, captured once off the first pre-state.
+   * The baseline for `deliveriesUnlockedByAlteration`: without it the best that
+   * can be measured is "a delivery to a tile somebody touched", which counts
+   * every irrelevant swap.
+   */
+  private dealtCrates = new Map<string, (Suit | 'wild')[]>();
   private leaderCache: { d: Decision; v: Seat | null } | null = null;
 
   constructor(data: GameData, spec: FoldSpec, seats: number) {
@@ -394,6 +443,12 @@ export class Fold {
       movesOffered: {},
       balloonMoves: 0,
       raidsByVictim: zeros(),
+      balloonMovesBySeat: zeros(),
+      handFlightsBySeat: zeros(),
+      demandSwaps: 0,
+      demandFaceDowns: 0,
+      deliveriesUnlockedByAlteration: 0,
+      receiptsByOrderBySeat: Array.from({ length: seats }, () => []),
       giftsBySeat: zeros(),
       barnInByRoute: { harvest: 0, hand: 0, deck: 0, stack: 0, discard: 0 },
       divertsBySeat: zeros(),
@@ -406,6 +461,60 @@ export class Fold {
         emptyFacts(seats, spec.suits.includes(card.suit) || spec.neutral.includes(card.suit)),
       );
     }
+  }
+
+  /**
+   * Would this spend have paid this tile with its demand tokens AS DEALT?
+   *
+   * The measurement behind `deliveriesUnlockedByAlteration`. It re-runs
+   * `doDeliver`'s own legality arithmetic - match what the demand names, pay for
+   * the rest at the substitution rate - against the original crates instead of
+   * the current ones. Cheap and exact, and it short-circuits to `true` on the
+   * overwhelmingly common case of a tile nobody has touched, so a game with no
+   * Vegetable seat pays nothing for it.
+   */
+  private dealtWouldPay(
+    state: GameState,
+    tileId: string,
+    spend: Partial<Record<Suit, number>>,
+  ): boolean {
+    const dealt = this.dealtCrates.get(tileId);
+    const tile = state.island.tiles.find((t) => t.tile === tileId);
+    if (!dealt || !tile) return true;
+    const unchanged =
+      tile.faceDown?.some(Boolean) !== true &&
+      dealt.length === tile.crates.length &&
+      dealt.every((crate, i) => crate === tile.crates[i]);
+    if (unchanged) return true;
+
+    const per = this.data.island.tileRule.cardsPerCrate;
+    const rate = this.data.island.cardsPerSubstitution;
+    const paid = Object.values(spend).reduce((a: number, n) => a + (n ?? 0), 0);
+    const base: Partial<Record<Suit, number>> = {};
+    let wilds = 0;
+    for (const crate of dealt) {
+      if (crate === 'wild') wilds += 1;
+      else base[crate] = (base[crate] ?? 0) + per;
+    }
+    // Every way the wild crates could have been nominated, exactly as the engine
+    // validates: accept if any of them balances.
+    const suits = state.suitsInPlay;
+    const fills = (k: number): Suit[][] =>
+      k === 0 ? [[]] : suits.flatMap((s) => fills(k - 1).map((rest) => [s, ...rest]));
+    return fills(wilds).some((fill) => {
+      const need: Partial<Record<Suit, number>> = { ...base };
+      for (const s of fill) need[s] = (need[s] ?? 0) + per;
+      let matched = 0;
+      let total = 0;
+      for (const [suit, want] of Object.entries(need) as [Suit, number][]) {
+        matched += Math.min(spend[suit] ?? 0, want);
+        total += want;
+      }
+      const substituted = total - matched;
+      if (substituted === 0) return paid === matched;
+      if (rate === null) return false;
+      return paid - matched === rate * substituted;
+    });
   }
 
   private facts(id: CardId): CardFacts {
@@ -421,6 +530,7 @@ export class Fold {
   private seed(state: GameState): void {
     if (this.seeded) return;
     this.seeded = true;
+    for (const tile of state.island.tiles) this.dealtCrates.set(tile.tile, [...tile.crates]);
     for (const p of state.players) {
       for (const id of p.hand) this.facts(id).held = true;
       // Starters arrive pre-built: they are in play in every game, never drawn
@@ -597,12 +707,27 @@ export class Fold {
         return;
       case 'delivered': {
         m.deliveriesBySeat[e.seat] = (m.deliveriesBySeat[e.seat] ?? 0) + 1;
+        // First to a tile against second - the flat island's only remaining
+        // time gradient, read off the receipt rather than off the tile so it
+        // survives a knob on the VP schedule.
+        const order = this.data.island.vpByDeliveryOrder.indexOf(e.vp);
+        if (order >= 0) {
+          const byOrder = m.receiptsByOrderBySeat[e.seat] as number[];
+          byOrder[order] = (byOrder[order] ?? 0) + 1;
+        }
         // The exploit probe (ticket 56): could this slot have been bought
         // entirely at market, with no harvest between? Conservative in the
         // exploit's favour - it asks whether the market buys since the last
         // harvest COVER the cost, not which physical cards were spent, because
         // barn identity is inert and the engine spends arbitrary ids.
         const cost = Object.values(e.spend).reduce((a, n) => a + (n ?? 0), 0);
+        // Was this delivery only payable because a demand token had moved? The
+        // spend actually made, re-tested against the tokens AS DEALT. V14 emits
+        // a SECOND `delivered` with an empty spend for the same payment, so the
+        // cost gate is what stops one delivery being counted twice.
+        if (cost > 0 && !this.dealtWouldPay(d.pre, e.tile, e.spend)) {
+          m.deliveriesUnlockedByAlteration += 1;
+        }
         if (cost > 0 && (this.marketSinceHarvest[e.seat] ?? 0) >= cost) {
           m.marketFundedDeliveries += 1;
           if (player(d.post, e.seat).suit === 'vegetable') m.marketFundedVeg += 1;
@@ -618,11 +743,21 @@ export class Fold {
         return;
       case 'balloonMoved': {
         m.balloonMoves += 1;
+        m.balloonMovesBySeat[e.seat] = (m.balloonMovesBySeat[e.seat] ?? 0) + 1;
+        // Paid out of HAND (V4, V8) rather than out of the barn, read off the
+        // event's own count rather than inferred from an empty barn spend.
+        if (e.hand > 0) m.handFlightsBySeat[e.seat] = (m.handFlightsBySeat[e.seat] ?? 0) + 1;
         if (typeof e.from === 'number' && e.from !== e.seat) {
           m.raidsByVictim[e.from] = (m.raidsByVictim[e.from] ?? 0) + 1;
         }
         return;
       }
+      case 'demandSwapped':
+        m.demandSwaps += 1;
+        return;
+      case 'demandFaceDown':
+        m.demandFaceDowns += 1;
+        return;
       case 'visited': {
         m.visitsBySeat[e.seat] = (m.visitsBySeat[e.seat] ?? 0) + 1;
         // The plain £1 visit - a coin payoff on a BASE board - is the floor

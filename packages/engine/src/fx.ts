@@ -17,7 +17,7 @@ import type { GameData, Suit } from '@gp/data';
 
 import { cardById, canTakeCard, drawableSuits, player } from './query.js';
 import { shuffle } from './rng.js';
-import type { CardId, GameEvent, GameState, Seat, Task } from './state.js';
+import type { CardId, GameEvent, GameState, IslandTileState, Seat, Task } from './state.js';
 
 /** A built card owned by a seat - the `self` every handler callback receives. */
 export interface CardInPlay {
@@ -255,6 +255,70 @@ export class Fx {
     this.touch(seat);
     player(this.state, seat).barn.push(card);
     this.emit({ e: 'deckToBarn', seat, suit, card });
+  }
+
+  // --- the island's demand tokens ----------------------------------------
+  //
+  // The first primitives in the game that write to the shared board rather than
+  // to a player's own zones. Both are Vegetable's (V5 and V6) and nothing else
+  // reaches them. Legality lives in actions.ts beside `tileHasRoom`, because it
+  // is the same question every delivery path already asks; these two verbs do
+  // the moving and say so in the event stream.
+
+  /**
+   * V5 The Coastal Trading Depot: exchange the demand tokens on two crates.
+   *
+   * The FACE-DOWN FLAG TRAVELS WITH THE TOKEN, because physically it is the
+   * token that moves - a blank token swapped onto another tile is still blank
+   * there. Same tile is legal (the crates just trade places, which is a no-op the
+   * enumerator declines to offer).
+   */
+  swapDemandTokens(
+    seat: Seat,
+    a: { tile: string; crate: number },
+    b: { tile: string; crate: number },
+  ): void {
+    const ta = this.tileDraft(a.tile);
+    const tb = this.tileDraft(b.tile);
+    const ca = ta.crates[a.crate];
+    const cb = tb.crates[b.crate];
+    if (ca === undefined) throw new Error(`Tile ${a.tile} has no crate ${a.crate}`);
+    if (cb === undefined) throw new Error(`Tile ${b.tile} has no crate ${b.crate}`);
+    const downA = ta.faceDown?.[a.crate] === true;
+    const downB = tb.faceDown?.[b.crate] === true;
+    ta.crates[a.crate] = cb;
+    tb.crates[b.crate] = ca;
+    this.setFaceDown(ta, a.crate, downB);
+    this.setFaceDown(tb, b.crate, downA);
+    this.emit({ e: 'demandSwapped', seat, a: { ...a }, b: { ...b } });
+  }
+
+  /**
+   * V6 The Trade Depot: turn one demand token face down, after which it accepts
+   * cards of any crops at the normal rate. Idempotence is not silently allowed -
+   * turning an already-blank token is a wasted effect, so the enumerator never
+   * offers it and this throws if it is asked for anyway.
+   */
+  turnDemandFaceDown(seat: Seat, tileId: string, crate: number): void {
+    const tile = this.tileDraft(tileId);
+    if (tile.crates[crate] === undefined) throw new Error(`Tile ${tileId} has no crate ${crate}`);
+    if (tile.faceDown?.[crate] === true)
+      throw new Error(`${tileId} crate ${crate} is already down`);
+    this.setFaceDown(tile, crate, true);
+    this.emit({ e: 'demandFaceDown', seat, tile: tileId, crate });
+  }
+
+  /** Write one entry of a tile's parallel flags, materialising the array on first use. */
+  private setFaceDown(tile: IslandTileState, crate: number, down: boolean): void {
+    if (!down && tile.faceDown === undefined) return;
+    tile.faceDown ??= tile.crates.map(() => false);
+    tile.faceDown[crate] = down;
+  }
+
+  private tileDraft(tileId: string): IslandTileState {
+    const tile = this.state.island.tiles.find((t) => t.tile === tileId);
+    if (!tile) throw new Error(`Tile ${tileId} is not in play`);
+    return tile;
   }
 
   // --- the placement funnel ----------------------------------------------

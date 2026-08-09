@@ -891,6 +891,25 @@ describe('views and redaction', () => {
     expect(view.decks.wheat).toBeTypeOf('number');
   });
 
+  /**
+   * A face-down demand token is PUBLIC. It sits on the board as a visible blank,
+   * so it must cross the view boundary unredacted for every seat - and the
+   * failure mode the Vegetable rebuild's ticket names is precisely a swap that
+   * renders correctly for the acting seat and wrongly for everybody else.
+   * `viewFor` spreads the tile, so this holds by construction; asserting it is
+   * what stops a future redaction pass quietly dropping the flag.
+   */
+  it('shows a face-down demand token to every seat, not just the one who turned it', () => {
+    const state = base();
+    const tile = state.island.tiles[0]!;
+    tile.faceDown = tile.crates.map((_, i) => i === 0);
+    for (let seat = 0; seat < state.players.length; seat++) {
+      const seen = viewFor(data, state, seat).island.tiles.find((t) => t.tile === tile.tile);
+      expect(seen?.faceDown, `seat ${seat}`).toEqual(tile.faceDown);
+      expect(seen?.crates, `seat ${seat}`).toEqual(tile.crates);
+    }
+  });
+
   it('redactEvents masks ids down to their suit letter for other seats', () => {
     const events: GameEvent[] = [
       { e: 'cardsToHand', seat: APIARY, cards: ['A5'] },

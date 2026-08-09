@@ -68,7 +68,7 @@ FARMSTEAD_MILESTONE = 3
 # hand); its upgraded face prints 7.
 BARN_HAND_SIZE = {
     "wheat": (5, 7), "apiary": (5, 7), "dairy": (6, 8),
-    "orchard": (4, 7), "vegetable": (5, 6),
+    "orchard": (4, 7), "vegetable": (5, 7),
 }
 NOTICE_BOARD_THRESHOLD = 5
 
@@ -97,6 +97,18 @@ def sheet_path():
     return p
 
 
+# The printed TRIGGER PREFIX, stripped. From v17 the sheet prefixes a card's
+# effect line with `GROW: ` or `ACTION: ` (Orchard and Vegetable carry it; the
+# earlier suits do not, and Wheat's rows are unprefixed to this day). It is a
+# LAYOUT label naming the trigger, not part of the effect sentence, and the
+# trigger is already carried structurally in `abilityTrigger` - so keeping it
+# would put the same fact in two places and make one suit's text read
+# differently from another's for no reason. NOT a text override: nothing is
+# rewritten, a prefix the art prints in its own right is simply not duplicated
+# into the effect string.
+TRIGGER_PREFIX = re.compile(r"^\s*(?:GROW|ACTION)\s*:\s*", re.IGNORECASE)
+
+
 def clean(v):
     """Cells encode art line-breaks as a literal backslash-n."""
     if v is None:
@@ -106,6 +118,7 @@ def clean(v):
     # sheet's "Hired Hand" strings are stale (flagged for the next sheet edit).
     # No card is *named* "Hired Hand", so a global replace is safe.
     text = text.replace("Hired Hand", "Hired Worker")
+    text = TRIGGER_PREFIX.sub("", text)
     return text or None
 
 

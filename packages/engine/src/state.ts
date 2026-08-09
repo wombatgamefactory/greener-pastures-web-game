@@ -75,6 +75,24 @@ export interface IslandTileState {
   /** One demand token per crate, dealt at setup. 'wild' is the cornucopia. */
   crates: (Suit | 'wild')[];
   /**
+   * THE DEMAND TOKENS ARE MUTABLE (the Vegetable rebuild, 2026-08-09). Parallel
+   * to `crates`: entry i true = that token has been turned FACE DOWN by V6 The
+   * Trade Depot, and a face-down token accepts cards of any crops at the normal
+   * rate. Absent (the overwhelmingly common case) = nothing on this tile has
+   * been turned.
+   *
+   * A PARALLEL ARRAY rather than making `crates` hold objects, deliberately. A
+   * face-down token BEHAVES as wild but is not a cornucopia: the UI must draw it
+   * differently, and V6 must never be offered a token that is already wild. This
+   * shape leaves every existing reader of `crates` untouched, and `namedDemand`
+   * is the single place that has to know - which is what makes the rule one edit
+   * rather than an audit of every affordability path.
+   *
+   * V5's SWAP moves a token between crates, and the face-down flag travels with
+   * the token it belongs to, because physically it is the token that moves.
+   */
+  faceDown?: boolean[];
+  /**
    * Seats that have delivered here, IN ORDER, and the order is the payment: the
    * seat at index i took `island.vpByDeliveryOrder[i]`. Full at that array's
    * length. This is why nothing else has to be stored per delivery - the public
@@ -531,12 +549,38 @@ export type GameEvent =
       seat: Seat;
       balloon: string;
       from: Seat | 'centre';
+      /** BARN cards paid, by suit. Empty for a hand-paid flight and for a free move. */
       spend: Partial<Record<Suit, number>>;
-      /** True for a card effect's free move (V16) - no barn cards paid. */
+      /**
+       * HAND cards discarded to pay for it - Vegetable's alternative route
+       * (V4, V8). A COUNT and not the ids, on purpose: a barn payment is already
+       * reported as an anonymous tally, and a count is all anything downstream
+       * needs. The bots' pricer is the reason this exists at all - without it a
+       * hand-paid flight reads as costing nothing, because nothing else in the
+       * event stream charges for a card leaving a hand.
+       */
+      hand: number;
+      /** True for a card effect's free move - no cards paid from anywhere. */
       free: boolean;
     }
   /** A face-up discard reclaimed into a barn (the upgraded Vegetable Barn's freight refund). */
   | { e: 'discardToBarn'; seat: Seat; card: CardId }
+  /**
+   * THE ISLAND'S DEMAND TOKENS CHANGED - the two events nothing in 105 cards
+   * could emit before the Vegetable rebuild. Both are fully public: the tokens
+   * sit face up (or visibly blank) on the board for everyone to read, so neither
+   * is redacted.
+   *
+   * `crate` is the index into the tile's `crates` array, so a UI can animate the
+   * exact token rather than re-diffing the tile.
+   */
+  | {
+      e: 'demandSwapped';
+      seat: Seat;
+      a: { tile: string; crate: number };
+      b: { tile: string; crate: number };
+    }
+  | { e: 'demandFaceDown'; seat: Seat; tile: string; crate: number }
   /**
    * A card given from one seat to another (the Orchard gift family). Identity
    * travels with it.

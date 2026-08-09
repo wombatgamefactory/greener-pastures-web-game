@@ -83,8 +83,32 @@
     {
       "type": "build",
       "seat": 1,
-      "card": "V6",
-      "payment": ["V5"]
+      "card": "V5",
+      "payment": ["V6"]
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "keep",
+        "cards": ["V9", "V10"]
+      }
     },
     {
       "type": "endTurn",
@@ -200,8 +224,10 @@
       }
     },
     {
-      "type": "draw",
-      "seat": 1
+      "type": "build",
+      "seat": 1,
+      "card": "V8",
+      "payment": ["V9", "V10"]
     },
     {
       "type": "task",
@@ -224,7 +250,7 @@
       "seat": 1,
       "answer": {
         "kind": "keep",
-        "cards": ["V21"]
+        "cards": ["V11", "V16"]
       }
     },
     {
@@ -355,32 +381,36 @@
       }
     },
     {
-      "type": "draw",
-      "seat": 1
+      "type": "grow",
+      "seat": 1,
+      "building": "V8",
+      "payment": "V11"
     },
     {
       "type": "task",
       "seat": 1,
       "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
+        "kind": "card",
+        "payload": {
+          "balloon": "balloonBuild",
+          "cards": ["V15", "V12"]
+        }
       }
     },
     {
       "type": "task",
       "seat": 1,
       "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
+        "kind": "card",
+        "payload": {
+          "balloon": "balloonCoins"
+        }
       }
     },
     {
-      "type": "task",
+      "type": "buy",
       "seat": 1,
-      "answer": {
-        "kind": "keep",
-        "cards": ["V16"]
-      }
+      "suit": "wheat"
     },
     {
       "type": "endTurn",
@@ -566,14 +596,13 @@
       "seat": 0,
       "answer": {
         "kind": "keep",
-        "cards": ["W18"]
+        "cards": ["W6"]
       }
     },
     {
-      "type": "build",
+      "type": "upgrade",
       "seat": 1,
-      "card": "V8",
-      "payment": ["V15", "V12"]
+      "card": "V3"
     },
     {
       "type": "endTurn",
@@ -692,7 +721,7 @@
       "type": "visit",
       "seat": 0,
       "host": 2,
-      "fee": ["W21"],
+      "fee": ["W6"],
       "payoff": {
         "mode": "worker",
         "workerId": "draw"
@@ -719,37 +748,29 @@
       "seat": 0,
       "answer": {
         "kind": "keep",
-        "cards": ["W6", "W7"]
+        "cards": ["W7", "W8"]
       }
     },
     {
-      "type": "build",
+      "type": "harvest",
       "seat": 0,
-      "card": "W6",
-      "payment": ["W7"]
+      "building": "W4"
     },
     {
       "type": "task",
       "seat": 0,
       "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deck",
-        "suit": "wheat"
+        "kind": "handToBarn",
+        "card": "W8"
       }
     },
     {
       "type": "task",
       "seat": 0,
       "answer": {
-        "kind": "keep",
-        "cards": ["W10", "W9"]
+        "kind": "deckSow",
+        "suit": "dairy",
+        "onto": "W4"
       }
     },
     {
@@ -940,7 +961,7 @@
       "type": "visit",
       "seat": 0,
       "host": 3,
-      "fee": ["W9"],
+      "fee": ["W7"],
       "payoff": {
         "mode": "worker",
         "workerId": "sow"
@@ -952,67 +973,53 @@
       "answer": {
         "kind": "deckSow",
         "suit": "wheat",
-        "onto": "W6"
-      }
-    },
-    {
-      "type": "harvest",
-      "seat": 0,
-      "building": "W4"
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "handToBarn",
-        "card": "W16"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deckSow",
-        "suit": "wheat",
-        "onto": "W6"
-      }
-    },
-    {
-      "type": "harvest",
-      "seat": 0,
-      "building": "W6"
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "sow",
-        "card": "W18",
         "onto": "W4"
       }
     },
     {
-      "type": "task",
+      "type": "moveBalloon",
       "seat": 0,
-      "answer": {
-        "kind": "sow",
-        "card": "W10",
-        "onto": "W6"
+      "balloon": "balloonBuild",
+      "spend": {
+        "wheat": 1,
+        "dairy": 1
       }
     },
     {
       "type": "task",
       "seat": 0,
       "answer": {
-        "kind": "deckSow",
-        "suit": "dairy",
-        "onto": "W6"
+        "kind": "build",
+        "card": "W16",
+        "payment": []
       }
     },
     {
-      "type": "harvest",
+      "type": "grow",
       "seat": 1,
-      "building": "V0"
+      "building": "V8",
+      "payment": "V16"
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "card",
+        "payload": {
+          "balloon": "balloonCoins",
+          "cards": ["W18", "V18"]
+        }
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "card",
+        "payload": {
+          "balloon": "balloonSow"
+        }
+      }
     },
     {
       "type": "endTurn",
@@ -1063,15 +1070,16 @@
     {
       "type": "visit",
       "seat": 2,
-      "host": 3,
-      "fee": ["O7"],
+      "host": 1,
+      "fee": ["O7", "O8"],
       "payoff": {
-        "mode": "coin"
+        "mode": "special"
       }
     },
     {
-      "type": "endTurn",
-      "seat": 2
+      "type": "buy",
+      "seat": 2,
+      "suit": "vegetable"
     },
     {
       "type": "workOwnWorker",
@@ -1095,22 +1103,1534 @@
     {
       "type": "visit",
       "seat": 0,
-      "host": 1,
-      "fee": ["W17"],
+      "host": 3,
+      "fee": ["W21"],
       "payoff": {
         "mode": "worker",
-        "workerId": "deliver"
+        "workerId": "sow"
       }
     },
     {
       "type": "task",
       "seat": 0,
       "answer": {
-        "kind": "deliver",
-        "tile": "B2",
-        "spend": {
-          "wheat": 4
+        "kind": "deckSow",
+        "suit": "orchard",
+        "onto": "W3"
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 0
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W11"]
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 1
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "keep",
+        "cards": ["V17"]
+      }
+    },
+    {
+      "type": "endTurn",
+      "seat": 1
+    },
+    {
+      "type": "build",
+      "seat": 2,
+      "card": "O17",
+      "payment": []
+    },
+    {
+      "type": "visit",
+      "seat": 2,
+      "host": 3,
+      "fee": ["O11"],
+      "payoff": {
+        "mode": "worker",
+        "workerId": "sow"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "deckSow",
+        "suit": "vegetable",
+        "onto": "O4"
+      }
+    },
+    {
+      "type": "harvest",
+      "seat": 3,
+      "building": "A0"
+    },
+    {
+      "type": "visit",
+      "seat": 3,
+      "host": 1,
+      "fee": ["A9"],
+      "payoff": {
+        "mode": "coin"
+      }
+    },
+    {
+      "type": "endTurn",
+      "seat": 3
+    },
+    {
+      "type": "visit",
+      "seat": 0,
+      "host": 3,
+      "fee": ["W11"],
+      "payoff": {
+        "mode": "worker",
+        "workerId": "sow"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deckSow",
+        "suit": "orchard",
+        "onto": "W3"
+      }
+    },
+    {
+      "type": "harvest",
+      "seat": 0,
+      "building": "W3"
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W13"]
+      }
+    },
+    {
+      "type": "harvest",
+      "seat": 0,
+      "building": "W5"
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W10", "W14"]
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deckSow",
+        "suit": "wheat",
+        "onto": "W5"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W18"]
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 1
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "keep",
+        "cards": ["V15"]
+      }
+    },
+    {
+      "type": "endTurn",
+      "seat": 1
+    },
+    {
+      "type": "harvest",
+      "seat": 2,
+      "building": "O4"
+    },
+    {
+      "type": "visit",
+      "seat": 2,
+      "host": 3,
+      "fee": ["V20"],
+      "payoff": {
+        "mode": "worker",
+        "workerId": "sow"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "deckSow",
+        "suit": "dairy",
+        "onto": "O3"
+      }
+    },
+    {
+      "type": "workOwnWorker",
+      "seat": 3,
+      "workerId": "sow"
+    },
+    {
+      "type": "task",
+      "seat": 3,
+      "answer": {
+        "kind": "deckSow",
+        "suit": "orchard",
+        "onto": "A7"
+      }
+    },
+    {
+      "type": "moveBalloon",
+      "seat": 3,
+      "balloon": "balloonCoins",
+      "spend": {
+        "wheat": 1,
+        "orchard": 1
+      }
+    },
+    {
+      "type": "buy",
+      "seat": 3,
+      "suit": "vegetable"
+    },
+    {
+      "type": "deliver",
+      "seat": 0,
+      "tile": "A1",
+      "spend": {
+        "orchard": 2,
+        "wheat": 2
+      }
+    },
+    {
+      "type": "workOwnWorker",
+      "seat": 0,
+      "workerId": "harvest"
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "building",
+        "card": "W4"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "W10"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "W17"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deckSow",
+        "suit": "orchard",
+        "onto": "W4"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W20"]
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 1
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "keep",
+        "cards": ["V14"]
+      }
+    },
+    {
+      "type": "endTurn",
+      "seat": 1
+    },
+    {
+      "type": "cardMove",
+      "seat": 2,
+      "card": "O13",
+      "kind": "action",
+      "payload": {}
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "card",
+        "payload": {
+          "building": "O4",
+          "payment": "O16"
         }
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "deck",
+        "suit": "orchard"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "deck",
+        "suit": "orchard"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "keep",
+        "cards": ["O6", "O12"]
+      }
+    },
+    {
+      "type": "visit",
+      "seat": 2,
+      "host": 1,
+      "fee": ["O6"],
+      "payoff": {
+        "mode": "coin"
+      }
+    },
+    {
+      "type": "endTurn",
+      "seat": 2
+    },
+    {
+      "type": "workOwnWorker",
+      "seat": 3,
+      "workerId": "sow"
+    },
+    {
+      "type": "task",
+      "seat": 3,
+      "answer": {
+        "kind": "deckSow",
+        "suit": "wheat",
+        "onto": "A7"
+      }
+    },
+    {
+      "type": "build",
+      "seat": 3,
+      "card": "A19",
+      "payment": []
+    },
+    {
+      "type": "endTurn",
+      "seat": 3
+    },
+    {
+      "type": "deliver",
+      "seat": 0,
+      "tile": "B2",
+      "spend": {
+        "wheat": 4
+      }
+    },
+    {
+      "type": "workOwnWorker",
+      "seat": 0,
+      "workerId": "harvest"
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "building",
+        "card": "W0"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "W14"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W15"]
+      }
+    },
+    {
+      "type": "harvest",
+      "seat": 1,
+      "building": "V3"
+    },
+    {
+      "type": "workOwnWorker",
+      "seat": 1,
+      "workerId": "deliver"
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "V14"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deliver",
+        "tile": "A5",
+        "spend": {
+          "apiary": 2,
+          "orchard": 2
+        }
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "V15"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "card",
+        "payload": {
+          "gone": "vegetable",
+          "into": "orchard"
+        }
+      }
+    },
+    {
+      "type": "endTurn",
+      "seat": 1
+    },
+    {
+      "type": "workOwnWorker",
+      "seat": 2,
+      "workerId": "draw"
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "deck",
+        "suit": "orchard"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "deck",
+        "suit": "orchard"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "deck",
+        "suit": "orchard"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "keep",
+        "cards": ["O5", "O11", "O7"]
+      }
+    },
+    {
+      "type": "cardMove",
+      "seat": 2,
+      "card": "O13",
+      "kind": "action",
+      "payload": {}
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "card",
+        "payload": {
+          "building": "O4",
+          "payment": "O11"
+        }
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "deck",
+        "suit": "orchard"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "deck",
+        "suit": "dairy"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "keep",
+        "cards": ["O9", "D19"]
+      }
+    },
+    {
+      "type": "endTurn",
+      "seat": 2
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "discard",
+        "cards": ["O5"]
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "card",
+        "payload": {
+          "card": "O5",
+          "barn": true
+        }
+      }
+    },
+    {
+      "type": "visit",
+      "seat": 3,
+      "host": 0,
+      "fee": ["V6"],
+      "payoff": {
+        "mode": "worker",
+        "workerId": "harvest"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 3,
+      "answer": {
+        "kind": "building",
+        "card": "A0"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 3,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "A20"
+      }
+    },
+    {
+      "type": "deliver",
+      "seat": 3,
+      "tile": "C1",
+      "spend": {
+        "apiary": 1,
+        "wheat": 3,
+        "vegetable": 1
+      }
+    },
+    {
+      "type": "endTurn",
+      "seat": 3
+    },
+    {
+      "type": "deliver",
+      "seat": 0,
+      "tile": "B3",
+      "spend": {
+        "orchard": 2,
+        "dairy": 1,
+        "vegetable": 1,
+        "wheat": 1
+      }
+    },
+    {
+      "type": "visit",
+      "seat": 0,
+      "host": 3,
+      "fee": ["W13"],
+      "payoff": {
+        "mode": "worker",
+        "workerId": "sow"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deckSow",
+        "suit": "dairy",
+        "onto": "W4"
+      }
+    },
+    {
+      "type": "endTurn",
+      "seat": 0
+    },
+    {
+      "type": "workOwnWorker",
+      "seat": 1,
+      "workerId": "deliver"
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "V17"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deliver",
+        "tile": "C2",
+        "spend": {
+          "vegetable": 2,
+          "orchard": 2
+        }
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "card",
+        "payload": {
+          "gone": "vegetable",
+          "into": "dairy"
+        }
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 1
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "keep",
+        "cards": ["V18"]
+      }
+    },
+    {
+      "type": "endTurn",
+      "seat": 1
+    },
+    {
+      "type": "deliver",
+      "seat": 2,
+      "tile": "A3",
+      "spend": {
+        "apiary": 1,
+        "orchard": 3,
+        "vegetable": 1
+      }
+    },
+    {
+      "type": "workOwnWorker",
+      "seat": 2,
+      "workerId": "draw"
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "deck",
+        "suit": "orchard"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "deck",
+        "suit": "orchard"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "deck",
+        "suit": "orchard"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "keep",
+        "cards": ["O8", "O20", "O19"]
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "discard",
+        "cards": ["O7", "O9", "O8"]
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "skip"
+      }
+    },
+    {
+      "type": "upgrade",
+      "seat": 3,
+      "card": "A1"
+    },
+    {
+      "type": "visit",
+      "seat": 0,
+      "host": 3,
+      "fee": ["W15"],
+      "payoff": {
+        "mode": "worker",
+        "workerId": "sow"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deckSow",
+        "suit": "wheat",
+        "onto": "W3"
+      }
+    },
+    {
+      "type": "grow",
+      "seat": 0,
+      "building": "W5",
+      "payment": "W20"
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W21"]
+      }
+    },
+    {
+      "type": "endTurn",
+      "seat": 0
+    },
+    {
+      "type": "draw",
+      "seat": 1
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "keep",
+        "cards": ["V12"]
+      }
+    },
+    {
+      "type": "endTurn",
+      "seat": 1
+    },
+    {
+      "type": "cardMove",
+      "seat": 2,
+      "card": "O13",
+      "kind": "action",
+      "payload": {}
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "card",
+        "payload": {
+          "building": "O4",
+          "payment": "O19"
+        }
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "deck",
+        "suit": "orchard"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "deck",
+        "suit": "orchard"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "keep",
+        "cards": ["O14", "O5"]
+      }
+    },
+    {
+      "type": "visit",
+      "seat": 2,
+      "host": 0,
+      "fee": ["O5"],
+      "payoff": {
+        "mode": "worker",
+        "workerId": "harvest"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "building",
+        "card": "O4"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "O12"
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 3
+    },
+    {
+      "type": "task",
+      "seat": 3,
+      "answer": {
+        "kind": "deck",
+        "suit": "apiary"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 3,
+      "answer": {
+        "kind": "deck",
+        "suit": "apiary"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 3,
+      "answer": {
+        "kind": "keep",
+        "cards": ["A18"]
+      }
+    },
+    {
+      "type": "visit",
+      "seat": 3,
+      "host": 1,
+      "fee": ["A18"],
+      "payoff": {
+        "mode": "coin"
+      }
+    },
+    {
+      "type": "endTurn",
+      "seat": 3
+    },
+    {
+      "type": "visit",
+      "seat": 0,
+      "host": 1,
+      "fee": ["W18", "W21"],
+      "payoff": {
+        "mode": "special"
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 0
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W19"]
+      }
+    },
+    {
+      "type": "buy",
+      "seat": 0,
+      "suit": "dairy"
+    },
+    {
+      "type": "draw",
+      "seat": 1
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "keep",
+        "cards": ["V9"]
+      }
+    },
+    {
+      "type": "endTurn",
+      "seat": 1
+    },
+    {
+      "type": "cardMove",
+      "seat": 2,
+      "card": "O13",
+      "kind": "action",
+      "payload": {}
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "card",
+        "payload": {
+          "building": "O4",
+          "payment": "O20"
+        }
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "deck",
+        "suit": "orchard"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "deck",
+        "suit": "orchard"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "keep",
+        "cards": ["O6", "O15"]
+      }
+    },
+    {
+      "type": "visit",
+      "seat": 2,
+      "host": 1,
+      "fee": ["O14", "O6"],
+      "payoff": {
+        "mode": "special"
+      }
+    },
+    {
+      "type": "buy",
+      "seat": 2,
+      "suit": "vegetable"
+    },
+    {
+      "type": "workOwnWorker",
+      "seat": 3,
+      "workerId": "sow"
+    },
+    {
+      "type": "task",
+      "seat": 3,
+      "answer": {
+        "kind": "deckSow",
+        "suit": "wheat",
+        "onto": "A7"
+      }
+    },
+    {
+      "type": "harvest",
+      "seat": 3,
+      "building": "A7"
+    },
+    {
+      "type": "endTurn",
+      "seat": 3
+    },
+    {
+      "type": "workOwnWorker",
+      "seat": 0,
+      "workerId": "harvest"
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "building",
+        "card": "W5"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "D15"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W17", "W10"]
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deckSow",
+        "suit": "vegetable",
+        "onto": "W5"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W14"]
+      }
+    },
+    {
+      "type": "build",
+      "seat": 0,
+      "card": "W17",
+      "payment": []
+    },
+    {
+      "type": "harvest",
+      "seat": 1,
+      "building": "V3"
+    },
+    {
+      "type": "workOwnWorker",
+      "seat": 1,
+      "workerId": "deliver"
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "V12"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deliver",
+        "tile": "A4",
+        "spend": {
+          "dairy": 1,
+          "wheat": 2,
+          "orchard": 2
+        }
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "V9"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "card",
+        "payload": {
+          "gone": "apiary",
+          "into": "vegetable"
+        }
+      }
+    },
+    {
+      "type": "endTurn",
+      "seat": 1
+    },
+    {
+      "type": "cardMove",
+      "seat": 2,
+      "card": "O13",
+      "kind": "action",
+      "payload": {}
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "card",
+        "payload": {
+          "building": "O4",
+          "payment": "O15"
+        }
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "deck",
+        "suit": "orchard"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "deck",
+        "suit": "orchard"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "keep",
+        "cards": ["O14", "O6"]
+      }
+    },
+    {
+      "type": "workOwnWorker",
+      "seat": 2,
+      "workerId": "draw"
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "deck",
+        "suit": "orchard"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "deck",
+        "suit": "orchard"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "deck",
+        "suit": "orchard"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "keep",
+        "cards": ["O9", "O7", "O8"]
+      }
+    },
+    {
+      "type": "endTurn",
+      "seat": 2
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "discard",
+        "cards": ["O6", "O7", "O8"]
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "card",
+        "payload": {
+          "card": "O6",
+          "barn": true
+        }
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "skip"
+      }
+    },
+    {
+      "type": "moveBalloon",
+      "seat": 3,
+      "balloon": "balloonDraw",
+      "spend": {
+        "wheat": 1,
+        "orchard": 1
+      }
+    },
+    {
+      "type": "task",
+      "seat": 3,
+      "answer": {
+        "kind": "deck",
+        "suit": "apiary"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 3,
+      "answer": {
+        "kind": "deck",
+        "suit": "apiary"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 3,
+      "answer": {
+        "kind": "deck",
+        "suit": "apiary"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 3,
+      "answer": {
+        "kind": "deck",
+        "suit": "apiary"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 3,
+      "answer": {
+        "kind": "keep",
+        "cards": ["A14", "A4", "A15", "A11"]
+      }
+    },
+    {
+      "type": "workOwnWorker",
+      "seat": 3,
+      "workerId": "sow"
+    },
+    {
+      "type": "task",
+      "seat": 3,
+      "answer": {
+        "kind": "deckSow",
+        "suit": "apiary",
+        "onto": "A7"
+      }
+    },
+    {
+      "type": "visit",
+      "seat": 0,
+      "host": 1,
+      "fee": ["W10", "W14"],
+      "payoff": {
+        "mode": "special"
       }
     },
     {
@@ -1159,29 +2679,48 @@
       "seat": 0,
       "answer": {
         "kind": "keep",
-        "cards": ["W8", "W16", "W14", "W11"]
+        "cards": ["W8", "W11", "W12", "W18"]
       }
     },
     {
-      "type": "endTurn",
-      "seat": 0
+      "type": "buy",
+      "seat": 0,
+      "suit": "orchard"
     },
     {
-      "type": "moveBalloon",
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "discard",
+        "cards": ["O7"]
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 1
+    },
+    {
+      "type": "task",
       "seat": 1,
-      "balloon": "balloonBuild",
-      "spend": {
-        "vegetable": 1,
-        "apiary": 1
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
       }
     },
     {
       "type": "task",
       "seat": 1,
       "answer": {
-        "kind": "build",
-        "card": "V16",
-        "payment": []
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "keep",
+        "cards": ["V14"]
       }
     },
     {
@@ -1202,7 +2741,7 @@
         "kind": "card",
         "payload": {
           "building": "O4",
-          "payment": "O17"
+          "payment": "O14"
         }
       }
     },
@@ -1227,8 +2766,138 @@
       "seat": 2,
       "answer": {
         "kind": "keep",
-        "cards": ["O12", "O9"]
+        "cards": ["O8", "O10"]
       }
+    },
+    {
+      "type": "visit",
+      "seat": 2,
+      "host": 1,
+      "fee": ["O9", "O8"],
+      "payoff": {
+        "mode": "special"
+      }
+    },
+    {
+      "type": "buy",
+      "seat": 2,
+      "suit": "vegetable"
+    },
+    {
+      "type": "harvest",
+      "seat": 3,
+      "building": "A0"
+    },
+    {
+      "type": "visit",
+      "seat": 3,
+      "host": 1,
+      "fee": ["A4"],
+      "payoff": {
+        "mode": "coin"
+      }
+    },
+    {
+      "type": "endTurn",
+      "seat": 3
+    },
+    {
+      "type": "visit",
+      "seat": 0,
+      "host": 3,
+      "fee": ["W8"],
+      "payoff": {
+        "mode": "worker",
+        "workerId": "sow"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deckSow",
+        "suit": "vegetable",
+        "onto": "W5"
+      }
+    },
+    {
+      "type": "build",
+      "seat": 0,
+      "card": "W18",
+      "payment": []
+    },
+    {
+      "type": "cardMove",
+      "seat": 0,
+      "card": "W18",
+      "kind": "repeatWork",
+      "payload": {
+        "fee": "W11"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deckSow",
+        "suit": "wheat",
+        "onto": "W3"
+      }
+    },
+    {
+      "type": "harvest",
+      "seat": 1,
+      "building": "V3"
+    },
+    {
+      "type": "workOwnWorker",
+      "seat": 1,
+      "workerId": "deliver"
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "V14"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deliver",
+        "tile": "B1",
+        "spend": {
+          "vegetable": 2,
+          "apiary": 1,
+          "orchard": 1,
+          "wheat": 1
+        }
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "V18"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "card",
+        "payload": {
+          "gone": "vegetable",
+          "into": "wheat"
+        }
+      }
+    },
+    {
+      "type": "endTurn",
+      "seat": 1
     },
     {
       "type": "workOwnWorker",
@@ -1256,64 +2925,45 @@
       "seat": 2,
       "answer": {
         "kind": "deck",
-        "suit": "orchard"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "keep",
-        "cards": ["O10", "O5", "O21"]
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "discard",
-        "cards": ["O8", "O9", "O10", "O5"]
-      }
-    },
-    {
-      "type": "grow",
-      "seat": 3,
-      "building": "A7",
-      "payment": "A9"
-    },
-    {
-      "type": "task",
-      "seat": 3,
-      "answer": {
-        "kind": "sow",
-        "card": "A19",
-        "onto": "A7"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 3,
-      "answer": {
-        "kind": "deck",
         "suit": "apiary"
       }
     },
     {
       "type": "task",
-      "seat": 3,
+      "seat": 2,
       "answer": {
         "kind": "keep",
-        "cards": ["A18"]
+        "cards": ["O9", "O7", "A17"]
       }
     },
     {
-      "type": "visit",
+      "type": "build",
+      "seat": 2,
+      "card": "O10",
+      "payment": ["D19", "O9", "O7"]
+    },
+    {
+      "type": "endTurn",
+      "seat": 2
+    },
+    {
+      "type": "workOwnWorker",
       "seat": 3,
-      "host": 1,
-      "fee": ["A20"],
-      "payoff": {
-        "mode": "coin"
+      "workerId": "sow"
+    },
+    {
+      "type": "task",
+      "seat": 3,
+      "answer": {
+        "kind": "deckSow",
+        "suit": "apiary",
+        "onto": "A7"
       }
+    },
+    {
+      "type": "harvest",
+      "seat": 3,
+      "building": "A0"
     },
     {
       "type": "endTurn",
@@ -1323,7 +2973,7 @@
       "type": "visit",
       "seat": 0,
       "host": 3,
-      "fee": ["W8"],
+      "fee": ["W12"],
       "payoff": {
         "mode": "worker",
         "workerId": "sow"
@@ -1334,22 +2984,21 @@
       "seat": 0,
       "answer": {
         "kind": "deckSow",
-        "suit": "wheat",
-        "onto": "W6"
+        "suit": "apiary",
+        "onto": "W3"
       }
     },
     {
-      "type": "grow",
+      "type": "harvest",
       "seat": 0,
-      "building": "W4",
-      "payment": "W11"
+      "building": "W3"
     },
     {
       "type": "task",
       "seat": 0,
       "answer": {
         "kind": "deck",
-        "suit": "wheat"
+        "suit": "orchard"
       }
     },
     {
@@ -1357,12 +3006,92 @@
       "seat": 0,
       "answer": {
         "kind": "keep",
-        "cards": ["W20"]
+        "cards": ["O9"]
       }
     },
     {
-      "type": "endTurn",
-      "seat": 0
+      "type": "cardMove",
+      "seat": 0,
+      "card": "W18",
+      "kind": "repeatWork",
+      "payload": {
+        "fee": "O9"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deckSow",
+        "suit": "vegetable",
+        "onto": "W3"
+      }
+    },
+    {
+      "type": "harvest",
+      "seat": 0,
+      "building": "W4"
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "W19"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deckSow",
+        "suit": "orchard",
+        "onto": "W4"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "apiary"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["A13"]
+      }
+    },
+    {
+      "type": "workOwnWorker",
+      "seat": 1,
+      "workerId": "deliver"
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deliver",
+        "tile": "C2",
+        "spend": {
+          "vegetable": 2,
+          "wheat": 2
+        }
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "card",
+        "payload": {
+          "gone": "orchard",
+          "into": "dairy"
+        }
+      }
     },
     {
       "type": "draw",
@@ -1397,150 +3126,6 @@
       "seat": 1
     },
     {
-      "type": "harvest",
-      "seat": 2,
-      "building": "O4"
-    },
-    {
-      "type": "visit",
-      "seat": 2,
-      "host": 1,
-      "fee": ["O11"],
-      "payoff": {
-        "mode": "worker",
-        "workerId": "deliver"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "handToBarn",
-        "card": "O21"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deliver",
-        "tile": "A5",
-        "spend": {
-          "apiary": 1,
-          "orchard": 4
-        }
-      }
-    },
-    {
-      "type": "endTurn",
-      "seat": 2
-    },
-    {
-      "type": "workOwnWorker",
-      "seat": 3,
-      "workerId": "sow"
-    },
-    {
-      "type": "task",
-      "seat": 3,
-      "answer": {
-        "kind": "deckSow",
-        "suit": "wheat",
-        "onto": "A0"
-      }
-    },
-    {
-      "type": "harvest",
-      "seat": 3,
-      "building": "A0"
-    },
-    {
-      "type": "visit",
-      "seat": 0,
-      "host": 3,
-      "fee": ["W14"],
-      "payoff": {
-        "mode": "worker",
-        "workerId": "sow"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deckSow",
-        "suit": "apiary",
-        "onto": "W3"
-      }
-    },
-    {
-      "type": "harvest",
-      "seat": 0,
-      "building": "W6"
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "sow",
-        "card": "W20",
-        "onto": "W6"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deckSow",
-        "suit": "orchard",
-        "onto": "W6"
-      }
-    },
-    {
-      "type": "harvest",
-      "seat": 0,
-      "building": "W0"
-    },
-    {
-      "type": "endTurn",
-      "seat": 0
-    },
-    {
-      "type": "harvest",
-      "seat": 1,
-      "building": "V0"
-    },
-    {
-      "type": "workOwnWorker",
-      "seat": 1,
-      "workerId": "deliver"
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "handToBarn",
-        "card": "V20"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "balloon",
-        "balloon": "balloonCoins",
-        "spend": {
-          "vegetable": 1,
-          "dairy": 1
-        }
-      }
-    },
-    {
-      "type": "buy",
-      "seat": 1,
-      "suit": "dairy"
-    },
-    {
       "type": "workOwnWorker",
       "seat": 2,
       "workerId": "draw"
@@ -1558,137 +3143,12 @@
       "seat": 2,
       "answer": {
         "kind": "deck",
-        "suit": "orchard"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deck",
-        "suit": "orchard"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "keep",
-        "cards": ["O5", "O20", "O9"]
-      }
-    },
-    {
-      "type": "build",
-      "seat": 2,
-      "card": "O5",
-      "payment": ["O12", "O9"]
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deck",
-        "suit": "orchard"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deck",
-        "suit": "orchard"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "keep",
-        "cards": ["O21", "O17"]
-      }
-    },
-    {
-      "type": "visit",
-      "seat": 3,
-      "host": 1,
-      "fee": ["A18"],
-      "payoff": {
-        "mode": "worker",
-        "workerId": "deliver"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 3,
-      "answer": {
-        "kind": "deliver",
-        "tile": "B2",
-        "spend": {
-          "wheat": 4
-        }
-      }
-    },
-    {
-      "type": "draw",
-      "seat": 3
-    },
-    {
-      "type": "task",
-      "seat": 3,
-      "answer": {
-        "kind": "deck",
         "suit": "apiary"
       }
     },
     {
       "type": "task",
-      "seat": 3,
-      "answer": {
-        "kind": "deck",
-        "suit": "apiary"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 3,
-      "answer": {
-        "kind": "keep",
-        "cards": ["A17"]
-      }
-    },
-    {
-      "type": "endTurn",
-      "seat": 3
-    },
-    {
-      "type": "visit",
-      "seat": 0,
-      "host": 1,
-      "fee": ["W16"],
-      "payoff": {
-        "mode": "worker",
-        "workerId": "deliver"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deliver",
-        "tile": "A1",
-        "spend": {
-          "orchard": 2,
-          "wheat": 2
-        }
-      }
-    },
-    {
-      "type": "draw",
-      "seat": 0
-    },
-    {
-      "type": "task",
-      "seat": 0,
+      "seat": 2,
       "answer": {
         "kind": "deck",
         "suit": "wheat"
@@ -1696,218 +3156,38 @@
     },
     {
       "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
+      "seat": 2,
       "answer": {
         "kind": "keep",
-        "cards": ["W12"]
+        "cards": ["O8", "A21", "W10"]
       }
     },
     {
-      "type": "endTurn",
-      "seat": 0
-    },
-    {
-      "type": "workOwnWorker",
-      "seat": 1,
-      "workerId": "deliver"
+      "type": "harvest",
+      "seat": 2,
+      "building": "O4"
     },
     {
       "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "handToBarn",
-        "card": "V18"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "balloon",
-        "balloon": "balloonDraw",
-        "spend": {
-          "vegetable": 1,
-          "orchard": 1
-        }
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "keep",
-        "cards": ["V17", "V13", "V4", "V5"]
-      }
-    },
-    {
-      "type": "build",
-      "seat": 1,
-      "card": "V17",
-      "payment": []
-    },
-    {
-      "type": "buy",
-      "seat": 1,
-      "suit": "apiary"
-    },
-    {
-      "type": "task",
-      "seat": 1,
+      "seat": 2,
       "answer": {
         "kind": "discard",
-        "cards": ["V4"]
-      }
-    },
-    {
-      "type": "cardMove",
-      "seat": 2,
-      "card": "O13",
-      "kind": "action",
-      "payload": {}
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "card",
-        "payload": {
-          "building": "O5",
-          "payment": "O16"
-        }
+        "cards": ["O8", "W10"]
       }
     },
     {
       "type": "task",
       "seat": 2,
       "answer": {
-        "kind": "deck",
-        "suit": "orchard"
+        "kind": "skip"
       }
     },
     {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deck",
-        "suit": "orchard"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "keep",
-        "cards": ["O10", "O8"]
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "sow",
-        "card": "O17",
-        "onto": "O5"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "card",
-        "payload": {
-          "building": "O4",
-          "payment": "O8"
-        }
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deck",
-        "suit": "orchard"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deck",
-        "suit": "orchard"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "keep",
-        "cards": ["O14", "O11"]
-      }
-    },
-    {
-      "type": "visit",
-      "seat": 2,
-      "host": 0,
-      "fee": ["O10"],
-      "payoff": {
-        "mode": "worker",
-        "workerId": "harvest"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "building",
-        "card": "O0"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "handToBarn",
-        "card": "O20"
+      "type": "deliver",
+      "seat": 3,
+      "tile": "B2",
+      "spend": {
+        "wheat": 4
       }
     },
     {
@@ -1925,114 +3205,134 @@
       }
     },
     {
-      "type": "grow",
-      "seat": 3,
-      "building": "A7",
-      "payment": "A17"
-    },
-    {
-      "type": "task",
-      "seat": 3,
-      "answer": {
-        "kind": "deck",
-        "suit": "apiary"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 3,
-      "answer": {
-        "kind": "keep",
-        "cards": ["A14"]
-      }
-    },
-    {
-      "type": "visit",
-      "seat": 0,
-      "host": 2,
-      "fee": ["W12"],
-      "payoff": {
-        "mode": "worker",
-        "workerId": "draw"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "keep",
-        "cards": ["W10", "W15"]
-      }
-    },
-    {
-      "type": "grow",
-      "seat": 0,
-      "building": "W6",
-      "payment": "W10"
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "keep",
-        "cards": ["W8"]
-      }
-    },
-    {
       "type": "endTurn",
-      "seat": 0
+      "seat": 3
     },
     {
-      "type": "build",
+      "type": "deliver",
+      "seat": 0,
+      "tile": "C3",
+      "spend": {
+        "dairy": 1,
+        "apiary": 1,
+        "orchard": 1,
+        "wheat": 4
+      }
+    },
+    {
+      "type": "workOwnWorker",
+      "seat": 0,
+      "workerId": "harvest"
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "building",
+        "card": "W5"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "A13"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W14", "W19"]
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deckSow",
+        "suit": "vegetable",
+        "onto": "W4"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W10"]
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 1
+    },
+    {
+      "type": "task",
       "seat": 1,
-      "card": "V21",
-      "payment": []
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "keep",
+        "cards": ["V9"]
+      }
     },
     {
       "type": "endTurn",
       "seat": 1
     },
     {
-      "type": "cardMove",
+      "type": "deliver",
       "seat": 2,
-      "card": "O13",
-      "kind": "action",
-      "payload": {}
+      "tile": "B4",
+      "spend": {
+        "orchard": 8
+      }
     },
     {
-      "type": "task",
+      "type": "workOwnWorker",
       "seat": 2,
-      "answer": {
-        "kind": "card",
-        "payload": {
-          "building": "O4",
-          "payment": "O11"
-        }
-      }
+      "workerId": "draw"
     },
     {
       "type": "task",
@@ -2040,33 +3340,6 @@
       "answer": {
         "kind": "deck",
         "suit": "orchard"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deck",
-        "suit": "orchard"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "keep",
-        "cards": ["O12", "O9"]
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "card",
-        "payload": {
-          "building": "O5",
-          "payment": "O12"
-        }
       }
     },
     {
@@ -2090,42 +3363,36 @@
       "seat": 2,
       "answer": {
         "kind": "keep",
-        "cards": ["O19", "O15"]
+        "cards": ["O6", "O20", "O12"]
       }
     },
     {
       "type": "task",
       "seat": 2,
       "answer": {
-        "kind": "sow",
-        "card": "O14",
-        "onto": "O5"
-      }
-    },
-    {
-      "type": "visit",
-      "seat": 2,
-      "host": 0,
-      "fee": ["O9"],
-      "payoff": {
-        "mode": "worker",
-        "workerId": "harvest"
+        "kind": "discard",
+        "cards": ["O6", "O20", "O12"]
       }
     },
     {
       "type": "task",
       "seat": 2,
       "answer": {
-        "kind": "building",
-        "card": "O5"
+        "kind": "skip"
       }
     },
     {
+      "type": "workOwnWorker",
+      "seat": 3,
+      "workerId": "sow"
+    },
+    {
       "type": "task",
-      "seat": 2,
+      "seat": 3,
       "answer": {
-        "kind": "handToBarn",
-        "card": "O19"
+        "kind": "deckSow",
+        "suit": "wheat",
+        "onto": "A7"
       }
     },
     {
@@ -2135,660 +3402,26 @@
     },
     {
       "type": "visit",
-      "seat": 3,
-      "host": 2,
-      "fee": ["A14"],
-      "payoff": {
-        "mode": "worker",
-        "workerId": "draw"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 3,
-      "answer": {
-        "kind": "deck",
-        "suit": "apiary"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 3,
-      "answer": {
-        "kind": "deck",
-        "suit": "apiary"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 3,
-      "answer": {
-        "kind": "keep",
-        "cards": ["A4", "A5"]
-      }
-    },
-    {
-      "type": "visit",
       "seat": 0,
-      "host": 3,
-      "fee": ["W8"],
-      "payoff": {
-        "mode": "worker",
-        "workerId": "sow"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deckSow",
-        "suit": "vegetable",
-        "onto": "W3"
-      }
-    },
-    {
-      "type": "harvest",
-      "seat": 0,
-      "building": "W3"
-    },
-    {
-      "type": "harvest",
-      "seat": 0,
-      "building": "W6"
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "sow",
-        "card": "W15",
-        "onto": "W6"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deckSow",
-        "suit": "dairy",
-        "onto": "W6"
-      }
-    },
-    {
-      "type": "endTurn",
-      "seat": 0
-    },
-    {
-      "type": "harvest",
-      "seat": 1,
-      "building": "V0"
-    },
-    {
-      "type": "workOwnWorker",
-      "seat": 1,
-      "workerId": "deliver"
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "handToBarn",
-        "card": "A15"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deliver",
-        "tile": "C1",
-        "spend": {
-          "apiary": 2,
-          "wheat": 2
-        }
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "card",
-        "payload": {
-          "balloon": "balloonSow"
-        }
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "sow",
-        "card": "D21",
-        "onto": "V8"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "sow",
-        "card": "V13",
-        "onto": "V8"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "sow",
-        "card": "V5",
-        "onto": "V0"
-      }
-    },
-    {
-      "type": "buy",
-      "seat": 1,
-      "suit": "dairy"
-    },
-    {
-      "type": "visit",
-      "seat": 2,
       "host": 1,
-      "fee": ["O15"],
+      "fee": ["W14", "W10"],
       "payoff": {
-        "mode": "worker",
-        "workerId": "deliver"
+        "mode": "special"
       }
     },
     {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "handToBarn",
-        "card": "O21"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deliver",
-        "tile": "A3",
-        "spend": {
-          "apiary": 1,
-          "orchard": 3,
-          "wheat": 1
-        }
-      }
-    },
-    {
-      "type": "draw",
-      "seat": 2
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deck",
-        "suit": "orchard"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deck",
-        "suit": "orchard"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deck",
-        "suit": "orchard"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "keep",
-        "cards": ["O17", "O16"]
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "card",
-        "payload": {
-          "card": "O20",
-          "to": 0
-        }
-      }
-    },
-    {
-      "type": "endTurn",
-      "seat": 2
-    },
-    {
-      "type": "harvest",
-      "seat": 3,
-      "building": "A0"
-    },
-    {
-      "type": "visit",
-      "seat": 3,
-      "host": 0,
-      "fee": ["A5"],
-      "payoff": {
-        "mode": "coin"
-      }
-    },
-    {
-      "type": "endTurn",
-      "seat": 3
-    },
-    {
-      "type": "deliver",
+      "type": "moveBalloon",
       "seat": 0,
-      "tile": "A4",
+      "balloon": "balloonCoins",
       "spend": {
-        "dairy": 1,
-        "wheat": 2,
-        "apiary": 1,
-        "orchard": 1
-      }
-    },
-    {
-      "type": "visit",
-      "seat": 0,
-      "host": 3,
-      "fee": ["O20"],
-      "payoff": {
-        "mode": "worker",
-        "workerId": "sow"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deckSow",
-        "suit": "dairy",
-        "onto": "W6"
+        "vegetable": 1,
+        "apiary": 1
       }
     },
     {
       "type": "buy",
       "seat": 0,
-      "suit": "vegetable"
-    },
-    {
-      "type": "draw",
-      "seat": 1
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "keep",
-        "cards": ["V20"]
-      }
-    },
-    {
-      "type": "buy",
-      "seat": 1,
-      "suit": "orchard"
-    },
-    {
-      "type": "endTurn",
-      "seat": 1
-    },
-    {
-      "type": "workOwnWorker",
-      "seat": 2,
-      "workerId": "draw"
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deck",
-        "suit": "dairy"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deck",
-        "suit": "dairy"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "keep",
-        "cards": ["W9", "D9", "D11"]
-      }
-    },
-    {
-      "type": "grow",
-      "seat": 2,
-      "building": "O4",
-      "payment": "O16"
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deck",
-        "suit": "dairy"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "keep",
-        "cards": ["D5", "W13"]
-      }
-    },
-    {
-      "type": "endTurn",
-      "seat": 2
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "discard",
-        "cards": ["D9", "D5"]
-      }
-    },
-    {
-      "type": "deliver",
-      "seat": 3,
-      "tile": "C1",
-      "spend": {
-        "apiary": 2,
-        "wheat": 2
-      }
-    },
-    {
-      "type": "workOwnWorker",
-      "seat": 3,
-      "workerId": "sow"
-    },
-    {
-      "type": "task",
-      "seat": 3,
-      "answer": {
-        "kind": "deckSow",
-        "suit": "apiary",
-        "onto": "A0"
-      }
-    },
-    {
-      "type": "endTurn",
-      "seat": 3
-    },
-    {
-      "type": "workOwnWorker",
-      "seat": 0,
-      "workerId": "harvest"
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "building",
-        "card": "W6"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "handToBarn",
-        "card": "V15"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deckSow",
-        "suit": "dairy",
-        "onto": "W6"
-      }
-    },
-    {
-      "type": "deliver",
-      "seat": 0,
-      "tile": "C2",
-      "spend": {
-        "vegetable": 2,
-        "dairy": 2
-      }
-    },
-    {
-      "type": "endTurn",
-      "seat": 0
-    },
-    {
-      "type": "build",
-      "seat": 1,
-      "card": "V20",
-      "payment": []
-    },
-    {
-      "type": "endTurn",
-      "seat": 1
-    },
-    {
-      "type": "cardMove",
-      "seat": 2,
-      "card": "O13",
-      "kind": "action",
-      "payload": {}
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "card",
-        "payload": {
-          "building": "O5",
-          "payment": "O17"
-        }
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deck",
-        "suit": "dairy"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "keep",
-        "cards": ["V10", "D13"]
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "sow",
-        "card": "D11",
-        "onto": "O5"
-      }
-    },
-    {
-      "type": "workOwnWorker",
-      "seat": 2,
-      "workerId": "draw"
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deck",
-        "suit": "apiary"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deck",
-        "suit": "apiary"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "keep",
-        "cards": ["A11", "V12", "A13"]
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "discard",
-        "cards": ["W9", "V10", "A11"]
-      }
-    },
-    {
-      "type": "workOwnWorker",
-      "seat": 3,
-      "workerId": "sow"
-    },
-    {
-      "type": "task",
-      "seat": 3,
-      "answer": {
-        "kind": "deckSow",
-        "suit": "apiary",
-        "onto": "A7"
-      }
-    },
-    {
-      "type": "harvest",
-      "seat": 3,
-      "building": "A0"
-    },
-    {
-      "type": "workOwnWorker",
-      "seat": 0,
-      "workerId": "harvest"
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "building",
-        "card": "W4"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deckSow",
-        "suit": "vegetable",
-        "onto": "W6"
-      }
-    },
-    {
-      "type": "draw",
-      "seat": 0
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "keep",
-        "cards": ["W20"]
-      }
-    },
-    {
-      "type": "endTurn",
-      "seat": 0
+      "suit": "dairy"
     },
     {
       "type": "draw",
@@ -2825,230 +3458,31 @@
     {
       "type": "harvest",
       "seat": 2,
-      "building": "O4"
-    },
-    {
-      "type": "visit",
-      "seat": 2,
-      "host": 3,
-      "fee": ["V12"],
-      "payoff": {
-        "mode": "worker",
-        "workerId": "sow"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deckSow",
-        "suit": "dairy",
-        "onto": "O5"
-      }
-    },
-    {
-      "type": "cardMove",
-      "seat": 2,
-      "card": "O18",
-      "kind": "repeatWork",
-      "payload": {
-        "fee": "W13"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deckSow",
-        "suit": "dairy",
-        "onto": "O5"
-      }
-    },
-    {
-      "type": "moveBalloon",
-      "seat": 3,
-      "balloon": "balloonCoins",
-      "spend": {
-        "orchard": 1,
-        "apiary": 1
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "keep",
-        "cards": ["V10"]
-      }
-    },
-    {
-      "type": "workOwnWorker",
-      "seat": 3,
-      "workerId": "sow"
-    },
-    {
-      "type": "task",
-      "seat": 3,
-      "answer": {
-        "kind": "deckSow",
-        "suit": "wheat",
-        "onto": "A7"
-      }
-    },
-    {
-      "type": "buy",
-      "seat": 3,
-      "suit": "orchard"
-    },
-    {
-      "type": "workOwnWorker",
-      "seat": 0,
-      "workerId": "harvest"
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "building",
-        "card": "W5"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "handToBarn",
-        "card": "W20"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "keep",
-        "cards": ["W10", "W8"]
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deckSow",
-        "suit": "vegetable",
-        "onto": "W6"
-      }
-    },
-    {
-      "type": "deliver",
-      "seat": 0,
-      "tile": "A2",
-      "spend": {
-        "wheat": 4
-      }
-    },
-    {
-      "type": "endTurn",
-      "seat": 0
-    },
-    {
-      "type": "harvest",
-      "seat": 1,
-      "building": "V0"
-    },
-    {
-      "type": "workOwnWorker",
-      "seat": 1,
-      "workerId": "deliver"
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "handToBarn",
-        "card": "V10"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "balloon",
-        "balloon": "balloonCoins",
-        "spend": {
-          "vegetable": 1,
-          "orchard": 1
-        }
-      }
-    },
-    {
-      "type": "buy",
-      "seat": 1,
-      "suit": "dairy"
+      "building": "O0"
     },
     {
       "type": "visit",
       "seat": 2,
       "host": 1,
-      "fee": ["A13"],
+      "fee": ["V21"],
       "payoff": {
-        "mode": "worker",
-        "workerId": "deliver"
+        "mode": "coin"
       }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "handToBarn",
-        "card": "D13"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deliver",
-        "tile": "B3",
-        "spend": {
-          "orchard": 4,
-          "dairy": 1
-        }
-      }
-    },
-    {
-      "type": "harvest",
-      "seat": 2,
-      "building": "O5"
     },
     {
       "type": "endTurn",
       "seat": 2
     },
     {
+      "type": "deliver",
+      "seat": 3,
+      "tile": "A2",
+      "spend": {
+        "wheat": 2,
+        "apiary": 2
+      }
+    },
+    {
       "type": "workOwnWorker",
       "seat": 3,
       "workerId": "sow"
@@ -3058,68 +3492,19 @@
       "seat": 3,
       "answer": {
         "kind": "deckSow",
-        "suit": "wheat",
-        "onto": "A7"
+        "suit": "apiary",
+        "onto": "A3"
       }
-    },
-    {
-      "type": "harvest",
-      "seat": 3,
-      "building": "A7"
-    },
-    {
-      "type": "endTurn",
-      "seat": 3
     },
     {
       "type": "visit",
       "seat": 0,
-      "host": 1,
-      "fee": ["W8"],
+      "host": 2,
+      "fee": ["D5"],
       "payoff": {
         "mode": "worker",
-        "workerId": "deliver"
+        "workerId": "draw"
       }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "handToBarn",
-        "card": "W10"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "balloon",
-        "balloon": "balloonCoins",
-        "spend": {
-          "wheat": 1,
-          "vegetable": 1
-        }
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "keep",
-        "cards": ["V11"]
-      }
-    },
-    {
-      "type": "draw",
-      "seat": 0
     },
     {
       "type": "task",
@@ -3142,8 +3527,47 @@
       "seat": 0,
       "answer": {
         "kind": "keep",
-        "cards": ["W21"]
+        "cards": ["W13", "W9"]
       }
+    },
+    {
+      "type": "cardMove",
+      "seat": 0,
+      "card": "W18",
+      "kind": "repeatWork",
+      "payload": {
+        "fee": "W9"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W20", "W7"]
+      }
+    },
+    {
+      "type": "build",
+      "seat": 0,
+      "card": "W19",
+      "payment": []
     },
     {
       "type": "buy",
@@ -3151,28 +3575,75 @@
       "suit": "vegetable"
     },
     {
-      "type": "build",
+      "type": "grow",
       "seat": 1,
-      "card": "V18",
-      "payment": []
+      "building": "V8",
+      "payment": "V9"
     },
     {
-      "type": "buy",
+      "type": "task",
       "seat": 1,
-      "suit": "dairy"
+      "answer": {
+        "kind": "card",
+        "payload": {
+          "balloon": "balloonBuild",
+          "cards": ["V20", "V18"]
+        }
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "card",
+        "payload": {
+          "balloon": "balloonDraw"
+        }
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "keep",
+        "cards": ["V20", "V19", "V12", "V15"]
+      }
     },
     {
       "type": "endTurn",
       "seat": 1
-    },
-    {
-      "type": "deliver",
-      "seat": 2,
-      "tile": "C3",
-      "spend": {
-        "dairy": 2,
-        "orchard": 4
-      }
     },
     {
       "type": "workOwnWorker",
@@ -3208,7 +3679,37 @@
       "seat": 2,
       "answer": {
         "kind": "keep",
-        "cards": ["O21", "O14", "O15"]
+        "cards": ["O21", "O8", "O16"]
+      }
+    },
+    {
+      "type": "build",
+      "seat": 2,
+      "card": "O8",
+      "payment": ["O21", "O16"]
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "deck",
+        "suit": "orchard"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "deck",
+        "suit": "orchard"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "keep",
+        "cards": ["O11", "O14"]
       }
     },
     {
@@ -3216,61 +3717,112 @@
       "seat": 2
     },
     {
-      "type": "workOwnWorker",
-      "seat": 3,
-      "workerId": "sow"
-    },
-    {
       "type": "task",
-      "seat": 3,
+      "seat": 2,
       "answer": {
-        "kind": "deckSow",
-        "suit": "dairy",
-        "onto": "A3"
+        "kind": "discard",
+        "cards": ["O11"]
       }
     },
     {
-      "type": "moveBalloon",
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "card",
+        "payload": {
+          "card": "O11",
+          "barn": true
+        }
+      }
+    },
+    {
+      "type": "harvest",
       "seat": 3,
-      "balloon": "balloonCoins",
-      "spend": {
-        "wheat": 1,
-        "apiary": 1
+      "building": "A0"
+    },
+    {
+      "type": "visit",
+      "seat": 3,
+      "host": 1,
+      "fee": ["A14", "A11"],
+      "payoff": {
+        "mode": "special"
       }
     },
     {
       "type": "buy",
       "seat": 3,
-      "suit": "dairy"
+      "suit": "orchard"
     },
     {
-      "type": "workOwnWorker",
+      "type": "visit",
       "seat": 0,
-      "workerId": "harvest"
+      "host": 3,
+      "fee": ["W7"],
+      "payoff": {
+        "mode": "worker",
+        "workerId": "sow"
+      }
     },
     {
       "type": "task",
       "seat": 0,
       "answer": {
-        "kind": "building",
-        "card": "W6"
+        "kind": "deckSow",
+        "suit": "wheat",
+        "onto": "W3"
       }
+    },
+    {
+      "type": "harvest",
+      "seat": 0,
+      "building": "W3"
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W15"]
+      }
+    },
+    {
+      "type": "cardMove",
+      "seat": 0,
+      "card": "W18",
+      "kind": "repeatWork",
+      "payload": {
+        "fee": "W13"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deckSow",
+        "suit": "dairy",
+        "onto": "W5"
+      }
+    },
+    {
+      "type": "harvest",
+      "seat": 0,
+      "building": "W4"
     },
     {
       "type": "task",
       "seat": 0,
       "answer": {
         "kind": "handToBarn",
-        "card": "W21"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "sow",
-        "card": "V7",
-        "onto": "W5"
+        "card": "V14"
       }
     },
     {
@@ -3279,28 +3831,78 @@
       "answer": {
         "kind": "deckSow",
         "suit": "vegetable",
-        "onto": "W5"
+        "onto": "W4"
       }
     },
     {
-      "type": "deliver",
+      "type": "task",
       "seat": 0,
-      "tile": "B4",
-      "spend": {
-        "dairy": 1,
-        "vegetable": 2,
-        "wheat": 2
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W21"]
       }
     },
     {
       "type": "buy",
       "seat": 0,
-      "suit": "vegetable"
+      "suit": "orchard"
     },
     {
-      "type": "upgrade",
+      "type": "harvest",
       "seat": 1,
-      "card": "V3"
+      "building": "V3"
+    },
+    {
+      "type": "workOwnWorker",
+      "seat": 1,
+      "workerId": "deliver"
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "V20"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deliver",
+        "tile": "B1",
+        "spend": {
+          "vegetable": 2,
+          "apiary": 2
+        }
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "V19"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "card",
+        "payload": {
+          "gone": "dairy",
+          "into": "dairy"
+        }
+      }
     },
     {
       "type": "endTurn",
@@ -3319,7 +3921,7 @@
       "answer": {
         "kind": "card",
         "payload": {
-          "building": "O5",
+          "building": "O4",
           "payment": "O14"
         }
       }
@@ -3345,16 +3947,7 @@
       "seat": 2,
       "answer": {
         "kind": "keep",
-        "cards": ["O17", "O12"]
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "sow",
-        "card": "O21",
-        "onto": "O5"
+        "cards": ["O6", "O16"]
       }
     },
     {
@@ -3363,8 +3956,8 @@
       "answer": {
         "kind": "card",
         "payload": {
-          "building": "O4",
-          "payment": "O15"
+          "building": "O8",
+          "payment": "O6"
         }
       }
     },
@@ -3389,52 +3982,89 @@
       "seat": 2,
       "answer": {
         "kind": "keep",
-        "cards": ["O8", "O19"]
+        "cards": ["O20", "O21"]
       }
     },
     {
-      "type": "workOwnWorker",
+      "type": "visit",
       "seat": 2,
-      "workerId": "draw"
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deck",
-        "suit": "orchard"
+      "host": 1,
+      "fee": ["O20", "O21"],
+      "payoff": {
+        "mode": "special"
       }
     },
     {
-      "type": "task",
+      "type": "buy",
       "seat": 2,
-      "answer": {
-        "kind": "deck",
-        "suit": "orchard"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "deck",
-        "suit": "dairy"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 2,
-      "answer": {
-        "kind": "keep",
-        "cards": ["O16", "O11", "D6"]
-      }
+      "suit": "vegetable"
     },
     {
       "type": "task",
       "seat": 2,
       "answer": {
         "kind": "discard",
-        "cards": ["O8", "O11", "D6"]
+        "cards": ["V7"]
+      }
+    },
+    {
+      "type": "task",
+      "seat": 2,
+      "answer": {
+        "kind": "card",
+        "payload": {
+          "card": "V7",
+          "barn": true
+        }
+      }
+    },
+    {
+      "type": "moveBalloon",
+      "seat": 3,
+      "balloon": "balloonDraw",
+      "spend": {
+        "wheat": 1,
+        "orchard": 1
+      }
+    },
+    {
+      "type": "task",
+      "seat": 3,
+      "answer": {
+        "kind": "deck",
+        "suit": "apiary"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 3,
+      "answer": {
+        "kind": "deck",
+        "suit": "apiary"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 3,
+      "answer": {
+        "kind": "deck",
+        "suit": "apiary"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 3,
+      "answer": {
+        "kind": "deck",
+        "suit": "apiary"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 3,
+      "answer": {
+        "kind": "keep",
+        "cards": ["A14", "A4", "A11", "A20"]
       }
     },
     {
@@ -3447,20 +4077,39 @@
       "seat": 3,
       "answer": {
         "kind": "deckSow",
-        "suit": "orchard",
+        "suit": "vegetable",
         "onto": "A3"
       }
     },
     {
-      "type": "harvest",
-      "seat": 3,
-      "building": "A3"
-    },
-    {
       "type": "endTurn",
       "seat": 3
+    },
+    {
+      "type": "visit",
+      "seat": 0,
+      "host": 1,
+      "fee": ["W15", "O19"],
+      "payoff": {
+        "mode": "special"
+      }
+    },
+    {
+      "type": "deliver",
+      "seat": 0,
+      "tile": "B4",
+      "spend": {
+        "vegetable": 4,
+        "orchard": 1,
+        "wheat": 1
+      }
+    },
+    {
+      "type": "buy",
+      "seat": 0,
+      "suit": "vegetable"
     }
   ],
   "expect": "plays",
-  "dataFingerprint": "6dac19716be71cf3897ab66caa06efc9a13e650ec808eca44cdd6f72393cc2fe+base"
+  "dataFingerprint": "29254fd76b073d7aa7e183c7fec7ef1a73812040596e3a8a02419baba2b8183c+base"
 }
