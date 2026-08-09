@@ -325,7 +325,7 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
     case 'deliver': {
       if (answer.kind === 'skip' && task.optional === true) return true;
       if (answer.kind === 'deliver') {
-        doDeliver(fx, task.pid, answer.tile, answer.spend);
+        doDeliver(fx, task.pid, answer.tile, answer.spend, undefined, 1, answer.head);
         return true;
       }
       if (answer.kind === 'balloon') {

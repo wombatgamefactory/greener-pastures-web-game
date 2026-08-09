@@ -366,7 +366,7 @@ export type TaskAnswer =
       /** D7: coins spent as wild cards, on top of the card's printed coin price. */
       coinWild?: number;
     }
-  | { kind: 'deliver'; tile: string; spend: Partial<Record<Suit, number>> }
+  | { kind: 'deliver'; tile: string; spend: Partial<Record<Suit, number>>; head?: CardId[] }
   | { kind: 'balloon'; balloon: string; spend: Partial<Record<Suit, number>> }
   | { kind: 'discard'; cards: CardId[] }
   | { kind: 'skip' }
@@ -445,8 +445,19 @@ export type Move =
   | { type: 'upgrade'; seat: Seat; card: CardId }
   | { type: 'grow'; seat: Seat; building: CardId; payment: CardId }
   | { type: 'harvest'; seat: Seat; building: CardId }
-  /** Deliver from barn to an island tile. `spend` is a per-suit map - barn identity is inert. */
-  | { type: 'deliver'; seat: Seat; tile: string; spend: Partial<Record<Suit, number>> }
+  /**
+   * Deliver from barn to an island tile. `spend` is a per-suit map - barn identity
+   * is inert. `head` is V2 The Vegetable Farmstead's "you may FIRST put N cards
+   * from your hand into your barn", moved before the payment is made and absent
+   * for every other suit.
+   */
+  | {
+      type: 'deliver';
+      seat: Seat;
+      tile: string;
+      spend: Partial<Record<Suit, number>>;
+      head?: CardId[];
+    }
   /**
    * The Deliver action's freight branch (reference DL-12): pay 2 differing
    * barn cards, take a balloon that is not on your own Aerodrome, collect its

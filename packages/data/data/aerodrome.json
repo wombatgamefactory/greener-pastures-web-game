@@ -10,7 +10,7 @@
       "The Aerodrome is the freight delivery destination that several Vegetable cards reference. Unlike an island slot, a balloon is MOVED rather than claimed, so it can be collected repeatedly. It is deliberately unrationed.",
       "Moving a balloon IS the Deliver action, not a free action and not a card-only effect.",
       "moveCost is the printed 'two crates, not equal' icon: two barn cards of two DIFFERENT suits.",
-      "handMoveCost is the ALTERNATIVE payment printed on Vegetable's Depots (V4 and V8, the rebuild of 2026-08-09): discard this many cards from your HAND instead. The base rule above is unchanged for everybody, including a Vegetable seat taking the plain Deliver action; nothing else in the game may use the hand route. No suit constraint: the differing-crops rule belongs to the barn payment, and is what makes the balloon the table's sink for odd cards. This is the suit's first dial - its central risk is the hand starving, because activation costs, sowing, consignment, the visit AND 2 cards per flight all come out of a hand of 5.",
+      "handMoveCost is the ALTERNATIVE payment printed on Vegetable's Depots (V4 and V8, the rebuild of 2026-08-09): discard this many cards from your HAND instead. The base rule above is unchanged for everybody, including a Vegetable seat taking the plain Deliver action; nothing else in the game may use the hand route. No suit constraint: the differing-crops rule belongs to the barn payment, and is what makes the balloon the table's sink for odd cards. LOWERED 2 -> 1 on 2026-08-09, and the reason is worth keeping because it was an arithmetic error rather than a taste call: at 2 the printed route cost a GROW action plus 1 matching card into the Depot's stack plus 2 discards, which is THREE cards of the scarce resource against the base rule's TWO of the abundant one, so the route was a surcharge and the Vegetable seat correctly declined it (0.54 hand-paid flights a game against the 4.2 the same seat took by the ordinary Deliver action). At 1 a flight is two hand cards on a GROW, which leaves the Deliver action free for the island - the point of the privilege. Measured paired at n=1580: flights 0.54 -> 1.22, island deliveries 2.89 -> 3.20, win rate 14.8% -> 18.9%, visits per turn 0.62 -> 0.61 (the hand did NOT starve), game length flat. The dial back up is this number.",
       "Setup: all four balloons start unowned beside the play area (the centre) - no per-seat parking and no draft (ticket 06 ruling J). The reference implementation and rulebook v1 park one per seat instead; ruling J explicitly supersedes that, and the divergence is flagged to the rulings audit (ticket 07). No reward is collected at setup - rewards pay only on arrival by a move.",
       "Legal source for a move is a NEIGHBOUR's Port or the unowned central Aerodrome. Never your own Port.",
       "A balloon move is a Deliver but is NOT a 'Deliver to the island'. Cards gate themselves by printed phrase, which is why the ability dispatcher needs both onDeliver and onDeliverIsland trigger keys. A card printing the gated form cannot re-trigger itself off a balloon move, so no recursion guard is needed."
@@ -28,7 +28,7 @@
     "mustDiffer": true,
     "differBy": "suit"
   },
-  "handMoveCost": 2,
+  "handMoveCost": 1,
   "balloons": [
     {
       "id": "balloonDraw",

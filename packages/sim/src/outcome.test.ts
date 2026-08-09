@@ -19,7 +19,7 @@
 
 import { loadGameData } from '@gp/data';
 import type { Suit } from '@gp/data';
-import type { GameState, Move } from '@gp/engine';
+import type { CardId, GameState, Move } from '@gp/engine';
 import {
   apply,
   legalMoves,
@@ -284,9 +284,20 @@ describe('a pending draw', () => {
             const value = outcomes.value(move);
             values.push(value);
             if (value === 0) zeroes.push(value);
-            // The room the pricer itself sees: after the fee has left hand.
+            // The room the pricer itself sees, measured BEFORE the draw and
+            // AFTER the visit fee has left hand - which is the moment the cap
+            // is applied at. Read off the hand and the fee, NOT off
+            // `prober(move).handSize`: that is the hand once the draw has
+            // already resolved, so a seat at the limit that kept exactly one
+            // card comes back at the limit too, and the two cases are then
+            // indistinguishable. First hit on 2026-08-09 by a Wheat seat at
+            // 7/7 whose kept card exactly replaced its fee, which the old
+            // reading filed under "no room" and then failed for pricing at a
+            // correct 1.95.
             const limit = scratch.handLimit ?? Infinity;
-            if (prober(move).handSize < limit) {
+            const roomBeforeDraw =
+              limit - (player(state, seat).hand.length - (move as { fee: CardId[] }).fee.length);
+            if (roomBeforeDraw > 0) {
               withRoom.push(value);
               if (value === 0) zeroesWithRoom.push(value);
             } else {

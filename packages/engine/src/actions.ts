@@ -557,6 +557,80 @@ export function doHarvestAction(fx: Fx, seat: Seat, building: CardId): void {
 export interface DeliverOption {
   tile: string;
   spend: Partial<Record<Suit, number>>;
+  /**
+   * V2 The Vegetable Farmstead: hand cards loaded into the barn BEFORE the
+   * payment is made. Absent on every other option and for every other suit.
+   */
+  head?: CardId[];
+}
+
+/**
+ * THE VEGETABLE FARMSTEAD'S HEAD: "When you Deliver to the island, you may
+ * FIRST put N cards from your hand into your barn." 0 for every other suit.
+ *
+ * The word "first" is the whole card (changed 2026-08-09). Before it, the
+ * Farmstead fired on `afterDeliver`, so the card it moved could not help pay for
+ * the delivery that triggered it - you had to already be able to deliver in
+ * order to earn the fuel for the next delivery, which is a circle. Wheat's
+ * Farmstead relaxes the harvest and Orchard's modifies the draw; both sit
+ * UPSTREAM of their suit's bottleneck, and this one now does too.
+ *
+ * It composes with the wild substitution rather than duplicating it: 2 cards of
+ * any crops pay any single card the island asks for, so one hand card plus one
+ * spare barn card is a card of the crate. Live from turn 1 like every Farmstead
+ * base power; the flip takes it to 2.
+ */
+export function deliverHeadSize(data: GameData, state: GameState, seat: Seat): number {
+  const p = player(state, seat);
+  if (p.suit !== 'vegetable') return 0;
+  const farmstead = p.tableau.find((b) => cardById(data, b.card).slot === 'farmstead');
+  if (farmstead === undefined) return 0;
+  return farmstead.upgraded ? 2 : 1;
+}
+
+/**
+ * Every head worth offering, shortest first.
+ *
+ * BARN IDENTITY IS INERT - a barn is a per-crop tally - so two hand cards of the
+ * same crop make the same head, and enumerating by CROP rather than by card
+ * collapses a hand of seven to at most five heads of one. Each crop contributes
+ * its first cards, which is a canonical choice and not a preference: the cards
+ * are interchangeable once they land.
+ */
+function headCandidates(data: GameData, state: GameState, seat: Seat, max: number): CardId[][] {
+  if (max <= 0) return [];
+  const byCrop = new Map<Suit, CardId[]>();
+  for (const card of player(state, seat).hand) {
+    const suit = cardById(data, card).suit;
+    byCrop.set(suit, [...(byCrop.get(suit) ?? []), card]);
+  }
+  const groups = [...byCrop.values()];
+  const out: CardId[][] = [];
+  const walk = (i: number, chosen: CardId[]): void => {
+    if (i === groups.length) {
+      if (chosen.length > 0) out.push(chosen);
+      return;
+    }
+    const cards = groups[i] as CardId[];
+    for (let take = 0; take <= Math.min(cards.length, max - chosen.length); take++) {
+      walk(i + 1, take === 0 ? chosen : [...chosen, ...cards.slice(0, take)]);
+    }
+  };
+  walk(0, []);
+  return out.sort((a, b) => a.length - b.length);
+}
+
+function withHead(
+  data: GameData,
+  tally: Partial<Record<Suit, number>>,
+  head: readonly CardId[],
+): Partial<Record<Suit, number>> {
+  const out = { ...tally };
+  for (const card of head) {
+    const suit = cardById(data, card).suit;
+    out[suit] = (out[suit] ?? 0) + 1;
+  }
+  return out;
 }
 
 /**
@@ -864,25 +938,37 @@ function spendKey(tile: string, spend: Partial<Record<Suit, number>>): string {
  * enough of the tile is paid in filler.
  */
 export function deliverOptions(data: GameData, state: GameState, seat: Seat): DeliverOption[] {
-  const tally = barnTally(data, state, seat);
+  const barn = barnTally(data, state, seat);
+  const demands = deliverDemands(data, state, seat);
   const out: DeliverOption[] = [];
   const seen = new Set<string>();
-  const add = (tile: string, spend: Partial<Record<Suit, number>>) => {
-    const key = spendKey(tile, spend);
-    if (seen.has(key)) return;
-    seen.add(key);
-    out.push({ tile, spend });
-  };
-  for (const demand of deliverDemands(data, state, seat)) {
-    const affordable = (Object.entries(demand.spend) as [Suit, number][]).every(
-      ([s, n]) => (tally[s] ?? 0) >= n,
-    );
-    if (affordable) add(demand.tile, demand.spend);
-    else {
-      for (const spend of substitutedSpends(data, state.suitsInPlay, demand.spend, tally)) {
-        add(demand.tile, spend);
+  const collect = (tally: Partial<Record<Suit, number>>, head?: CardId[]) => {
+    for (const demand of demands) {
+      const affordable = (Object.entries(demand.spend) as [Suit, number][]).every(
+        ([s, n]) => (tally[s] ?? 0) >= n,
+      );
+      const spends = affordable
+        ? [demand.spend]
+        : substitutedSpends(data, state.suitsInPlay, demand.spend, tally);
+      for (const spend of spends) {
+        const key = spendKey(demand.tile, spend);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(
+          head === undefined ? { tile: demand.tile, spend } : { tile: demand.tile, spend, head },
+        );
       }
     }
+  };
+  collect(barn);
+  // V2's head, run AFTER the plain barn and de-duped against it, shortest head
+  // first. So a payment the barn already covers is never offered at the price of
+  // a hand card, and a payment it does not cover is offered with the cheapest
+  // head that unlocks it. THE PRUNING LOSES NOTHING: loading a card you are not
+  // about to spend is exactly the same move as loading it on your next delivery
+  // instead, so the only head worth taking is one that changes what you can pay.
+  for (const head of headCandidates(data, state, seat, deliverHeadSize(data, state, seat))) {
+    collect(withHead(data, barn, head), head);
   }
   return out;
 }
@@ -895,8 +981,15 @@ export function deliverOptions(data: GameData, state: GameState, seat: Seat): De
  * barn is not a seat with no deliveries.
  */
 export function anyDeliverOption(data: GameData, state: GameState, seat: Seat): boolean {
-  const tally = barnTally(data, state, seat);
-  return state.island.tiles.some((tile) => payableBy(data, state, tile, tally));
+  const barn = barnTally(data, state, seat);
+  if (state.island.tiles.some((tile) => payableBy(data, state, tile, barn))) return true;
+  // V2's head has to be visible to LEGALITY and not only to enumeration, or the
+  // Deliver action is never offered to the seat whose Farmstead exists to make
+  // it payable - which is the whole point of moving the card upstream.
+  return headCandidates(data, state, seat, deliverHeadSize(data, state, seat)).some((head) => {
+    const tally = withHead(data, barn, head);
+    return state.island.tiles.some((tile) => payableBy(data, state, tile, tally));
+  });
 }
 
 /** Could this barn pay this open tile, by any nomination of its wild crates? */
@@ -947,10 +1040,30 @@ export function doDeliver(
    * asserted twice.
    */
   receipts = 1,
+  /**
+   * V2 The Vegetable Farmstead's "you may FIRST put N cards from your hand into
+   * your barn". Applied before anything is validated, because the whole point is
+   * that these cards are part of the payment.
+   */
+  head?: readonly CardId[],
 ): void {
   const state = fx.state;
   const tile = state.island.tiles.find((t) => t.tile === tileId);
   if (!tile) throw new Error(`Tile ${tileId} is not in play`);
+  if (head !== undefined && head.length > 0) {
+    if (head.length > deliverHeadSize(fx.data, state, seat)) {
+      throw new Error(
+        `Seat ${seat} may load at most ${deliverHeadSize(fx.data, state, seat)} cards`,
+      );
+    }
+    const hand = [...player(state, seat).hand];
+    for (const card of head) {
+      const i = hand.indexOf(card);
+      if (i < 0) throw new Error(`${card} is not in seat ${seat}'s hand`);
+      hand.splice(i, 1);
+    }
+    for (const card of head) fx.handToBarn(seat, card);
+  }
   if (receipts < 1) throw new Error('A delivery takes at least one receipt');
   if (tile.deliveredBy.length + receipts > deliveriesPerTile(fx.data)) {
     throw new Error(
@@ -1237,7 +1350,13 @@ export function grantBalloonReward(fx: Fx, seat: Seat, balloonId: string): void 
 export function deliverAnswers(data: GameData, state: GameState, seat: Seat): TaskAnswer[] {
   return [
     ...deliverOptions(data, state, seat).map(
-      (o) => ({ kind: 'deliver', tile: o.tile, spend: o.spend }) as TaskAnswer,
+      (o) =>
+        ({
+          kind: 'deliver',
+          tile: o.tile,
+          spend: o.spend,
+          ...(o.head ? { head: o.head } : {}),
+        }) as TaskAnswer,
     ),
     ...balloonMoveOptions(data, state, seat).map(
       (o) => ({ kind: 'balloon', balloon: o.balloon, spend: o.spend }) as TaskAnswer,

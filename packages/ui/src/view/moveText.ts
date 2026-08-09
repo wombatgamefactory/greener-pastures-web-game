@@ -42,6 +42,17 @@ function cardList(data: GameData, ids: readonly string[]): string {
   return ids.length === 0 ? 'nothing' : ids.map((id) => cardName(data, id)).join(', ');
 }
 
+/**
+ * V2 The Vegetable Farmstead's head, spelled out on the option. Without it two
+ * deliveries to the same tile read identically and one of them silently costs a
+ * hand card, which is the difference between the option list explaining the
+ * card and the option list hiding it.
+ */
+function headText(data: GameData, head: readonly string[] | undefined): string {
+  if (head === undefined || head.length === 0) return '';
+  return ` (loading ${cardList(data, head)} from your hand first)`;
+}
+
 export function describeAnswer(data: GameData, answer: TaskAnswer): string {
   switch (answer.kind) {
     case 'worker':
@@ -59,7 +70,7 @@ export function describeAnswer(data: GameData, answer: TaskAnswer): string {
         answer.barn ? ` + ${spendText(answer.barn)} from the barn` : ''
       }${answer.coinWild ? ` + £${answer.coinWild} as cards` : ''}`;
     case 'deliver':
-      return `island ${answer.tile}, spending ${spendText(answer.spend)}`;
+      return `island ${answer.tile}, spending ${spendText(answer.spend)}${headText(data, answer.head)}`;
     case 'balloon':
       return `the ${balloonWord(answer.balloon)} balloon, spending ${spendText(answer.spend)}`;
     case 'deckSow':
@@ -162,7 +173,7 @@ export function describeMove(data: GameData, view: PlayerView, move: Move): stri
     case 'harvest':
       return `Harvest ${cardName(data, move.building)}`;
     case 'deliver':
-      return `Deliver to island ${move.tile}: ${spendText(move.spend)}`;
+      return `Deliver to island ${move.tile}: ${spendText(move.spend)}${headText(data, move.head)}`;
     case 'moveBalloon':
       return `Bring in the ${balloonWord(move.balloon)} balloon: ${spendText(move.spend)}`;
     case 'visit':

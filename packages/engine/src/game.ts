@@ -86,7 +86,13 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
       moves.push({ type: 'harvest', seat, building });
     }
     for (const o of deliverOptions(data, state, seat)) {
-      moves.push({ type: 'deliver', seat, tile: o.tile, spend: o.spend });
+      moves.push({
+        type: 'deliver',
+        seat,
+        tile: o.tile,
+        spend: o.spend,
+        ...(o.head ? { head: o.head } : {}),
+      });
     }
     // The Deliver action's freight branch (DL-12): balloon moves.
     for (const o of balloonMoveOptions(data, state, seat)) {
@@ -243,7 +249,7 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
       }
       break;
     case 'deliver':
-      doDeliver(fx, move.seat, move.tile, move.spend);
+      doDeliver(fx, move.seat, move.tile, move.spend, undefined, 1, move.head);
       break;
     case 'moveBalloon':
       doMoveBalloon(fx, move.seat, move.balloon, move.spend);
