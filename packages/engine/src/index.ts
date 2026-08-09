@@ -25,6 +25,11 @@ export { workWorker } from './workers.js';
 export type { WorkOptions } from './workers.js';
 export { taskAnswers, resolveTask, drainTasks } from './tasks.js';
 export { handlerFor, registeredCards } from './handlers/registry.js';
+// The two sub-type predicates the sim's per-suit metrics count with. Exported so
+// the D1 / DL-42 rulings have ONE definition each and the sim cannot drift from
+// the engine's.
+export { isFieldCard } from './handlers/wheat.js';
+export { isOrchardCard } from './handlers/orchard.js';
 export type { CardHandler, CardMove, CustomTask, Difficulty } from './handlers/types.js';
 export {
   cloneState,

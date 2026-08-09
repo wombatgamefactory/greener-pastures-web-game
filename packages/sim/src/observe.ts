@@ -40,6 +40,7 @@ import {
   gameEndScores,
   handlerFor,
   isFull,
+  isOrchardCard,
   player,
   score,
   serviceOf,
@@ -258,6 +259,27 @@ export interface GameMetrics {
   /** A balloon taken from another seat's Aerodrome, by victim. */
   raidsByVictim: number[];
 
+  /**
+   * THE GIVEAWAY (the Orchard rebuild, 2026-08-09): cards handed across the
+   * table, by GIVER. The rebuilt Orchard turns cards it does not want into a
+   * neighbour's hand rather than into a discard, on five different cards plus
+   * the Farmstead, and the design's own risk 7 is that this loosens the table's
+   * card clock - the master brake. Read against the table's total draw.
+   */
+  giftsBySeat: number[];
+  /**
+   * HOW THE BARN FILLED, by route. `harvest` is the ordinary one (cards off a
+   * stack); the rest are the shortcuts, and the Orchard rebuild's claim that the
+   * suit is "rich in cards and deliberately poor in freight" lives or dies on
+   * their share. Keys: harvest, hand (O12 and the Wheat hand-to-barn line),
+   * deck (W15, the market), stack, discard (V1's refund).
+   */
+  barnInByRoute: Record<string, number>;
+  /** O17's £1 divert specifically, counted off the answer rather than the event. */
+  divertsBySeat: number[];
+  /** ORCHARDs BUILT (the D1 sub-type), by seat - what O1's refund and O20 both pay for. */
+  orchardsBuiltBySeat: number[];
+
   cards: Map<CardId, CardFacts>;
 }
 
@@ -372,6 +394,10 @@ export class Fold {
       movesOffered: {},
       balloonMoves: 0,
       raidsByVictim: zeros(),
+      giftsBySeat: zeros(),
+      barnInByRoute: { harvest: 0, hand: 0, deck: 0, stack: 0, discard: 0 },
+      divertsBySeat: zeros(),
+      orchardsBuiltBySeat: zeros(),
       cards: new Map(),
     };
     for (const card of data.cards.catalogue) {
@@ -508,6 +534,12 @@ export class Fold {
     if (a.kind === 'build') for (const id of a.payment) this.facts(id).junked = true;
     if (a.kind === 'discard') for (const id of a.cards) this.facts(id).junked = true;
 
+    // O17's £1 divert, counted off the ANSWER: the event it emits is the shared
+    // `handToBarn`, so the route table cannot tell it from The Fruit Press.
+    if (task.t === 'divert' && a.kind === 'card' && a.payload.barn === true) {
+      this.m.divertsBySeat[task.pid] = (this.m.divertsBySeat[task.pid] ?? 0) + 1;
+    }
+
     // D9 The Prosperity Wagon works any Worker including your own (ruling E),
     // which permits a hermit battery. Assertion 11 is the measurement.
     if (task.t === 'chooseWorker' && task.src === 'D9') {
@@ -539,6 +571,7 @@ export class Fold {
         return;
       case 'cardGifted':
         this.facts(e.card).held = true;
+        m.giftsBySeat[e.from] = (m.giftsBySeat[e.from] ?? 0) + 1;
         return;
       case 'built': {
         const f = this.facts(e.card);
@@ -547,6 +580,9 @@ export class Fold {
         const own = cardById(this.data, e.card).suit === player(d.post, e.seat).suit;
         if (own) m.ownCropBuildsBySeat[e.seat] = (m.ownCropBuildsBySeat[e.seat] ?? 0) + 1;
         else m.foreignCropBuildsBySeat[e.seat] = (m.foreignCropBuildsBySeat[e.seat] ?? 0) + 1;
+        if (isOrchardCard(this.data, e.card)) {
+          m.orchardsBuiltBySeat[e.seat] = (m.orchardsBuiltBySeat[e.seat] ?? 0) + 1;
+        }
         return;
       }
       case 'workerWorked':
@@ -578,6 +614,7 @@ export class Fold {
         // carries are folded elsewhere (stack cards were counted as they
         // arrived on the building).
         this.marketSinceHarvest[e.seat] = 0;
+        m.barnInByRoute.harvest = (m.barnInByRoute.harvest ?? 0) + e.cards.length;
         return;
       case 'balloonMoved': {
         m.balloonMoves += 1;
@@ -634,16 +671,26 @@ export class Fold {
       case 'reshuffled':
         m.reshufflesByCrop[e.suit] = (m.reshufflesByCrop[e.suit] ?? 0) + 1;
         return;
+      // The barn's non-harvest routes (the Orchard rebuild's "poor in freight"
+      // claim is a share of these against `harvest`).
+      case 'deckToBarn':
+        m.barnInByRoute.deck = (m.barnInByRoute.deck ?? 0) + 1;
+        return;
+      case 'stackToBarn':
+        m.barnInByRoute.stack = (m.barnInByRoute.stack ?? 0) + 1;
+        return;
+      case 'discardToBarn':
+        m.barnInByRoute.discard = (m.barnInByRoute.discard ?? 0) + 1;
+        return;
+      case 'handToBarn':
+        m.barnInByRoute.hand = (m.barnInByRoute.hand ?? 0) + 1;
+        return;
       // Claimed and uninteresting for balance: card movement between zones that
       // no assertion and no funnel layer reads.
       case 'cardPlaced':
       case 'cardsDiscarded':
-      case 'deckToBarn':
-      case 'stackToBarn':
       case 'covered':
       case 'demolished':
-      case 'discardToBarn':
-      case 'handToBarn':
       case 'gameEnded':
         return;
       default:

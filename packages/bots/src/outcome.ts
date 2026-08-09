@@ -136,7 +136,16 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
 
     case 'cardGifted':
       if (event.to === me) return weight(w, 'keepValue') * meanCardValue(s.data);
-      if (event.from === me) return -weight(w, 'keepValue') * meanCardValue(s.data);
+      // The giver is charged only when the card came OUT OF A HAND (O6, O9).
+      // The divert seam's gift hands over a card that was already on its way to
+      // a discard pile, so there is nothing to charge - and charging it made the
+      // plain discard strictly better and the rebuilt Farmstead never fire.
+      // Priced at 0 rather than at what it does for the RECIPIENT, following
+      // this file's one rule: the bot values what it gains and never rival harm,
+      // so an acceptance rate here is an upper bound and the table decides.
+      if (event.from === me && event.fromHand) {
+        return -weight(w, 'keepValue') * meanCardValue(s.data);
+      }
       return 0;
 
     // Only placements onto your OWN buildings are a gain. A fee landing on a

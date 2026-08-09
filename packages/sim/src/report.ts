@@ -45,6 +45,7 @@ export function renderReport(input: ReportInput): string {
   out.push(...header(input));
   out.push(...watchlistSection(input));
   out.push(...seriesSection(input));
+  out.push(...giveawaySection(input));
   out.push(...actionMix(input));
   out.push(...seatTable(input));
   out.push(...suitTable(input));
@@ -299,6 +300,96 @@ function seriesSection({ pooled }: ReportInput): string[] {
   );
   out.push('');
   return out;
+}
+
+/**
+ * The giveaway, the barn's routes and the grove - the three lines the Orchard
+ * rebuild's pass conditions need and no previous run recorded (2026-08-09).
+ *
+ * All three are general questions asked of the whole table, not Orchard
+ * diagnostics: how many cards cross the table in a game (the design's own risk
+ * 7 - the giveaway loosens the table's card clock, which is the master brake),
+ * how the barn actually filled (the rebuild claims Orchard is "rich in cards and
+ * poor in freight", and the harvest share is where that is true or false), and
+ * how deep the grove got (what O1's build refund and O20 both pay for).
+ *
+ * ⚠️ NO NOISE FLOOR YET for any of them. Run --noise before reading a movement
+ * in one as a finding.
+ */
+function giveawaySection({ pooled }: ReportInput): string[] {
+  const games = pooled.ended;
+  const out = [THIN, 'THE GIVEAWAY, THE BARN AND THE GROVE  (ended games)', THIN, ''];
+  if (games.length === 0) {
+    out.push('  no ended games', '');
+    return out;
+  }
+  // MEANS, not medians, and deliberately: every giving card in the game is an
+  // Orchard card, so most cells have no Orchard seat at all and the median of
+  // the giveaway across all games is a structural 0 that says nothing.
+  const per = (f: (g: GameMetrics) => number) => mean(games.map(f));
+  const orchardGames = games.filter((g) => g.suits.includes('orchard'));
+  const route = (key: string) => median(games.map((g) => g.barnInByRoute[key] ?? 0));
+
+  out.push(
+    `  cards given to rivals per game        ${num(
+      per((g) => sum(g.giftsBySeat)),
+      2,
+    )}` +
+      `   (games with an Orchard seat: ` +
+      `${num(mean(orchardGames.map((g) => sum(g.giftsBySeat))), 2)})`,
+  );
+  out.push(
+    `  ORCHARDs built per Orchard seat       ${num(orchardsPerOrchardSeat(games), 2)}` +
+      `   (median; any seat, mean ${num(
+        per((g) => sum(g.orchardsBuiltBySeat) / g.seats),
+        2,
+      )})`,
+  );
+  out.push(
+    `  O17's £1 discard divert per game      ${num(
+      per((g) => sum(g.divertsBySeat)),
+      2,
+    )}` +
+      `   (games with an Orchard seat: ` +
+      `${num(mean(orchardGames.map((g) => sum(g.divertsBySeat))), 2)})`,
+  );
+  out.push('');
+  out.push('  barn cards in, by route (median cards per game):');
+  out.push(
+    `    harvest ${num(route('harvest'), 1)}   hand ${num(route('hand'), 1)}   ` +
+      `deck ${num(route('deck'), 1)}   stack ${num(route('stack'), 1)}   ` +
+      `discard ${num(route('discard'), 1)}`,
+  );
+  out.push('');
+  out.push(
+    'The hand route is O12 The Fruit Press, the Wheat hand-to-barn lines and O17 pooled; the',
+  );
+  out.push("divert line splits O17 back out, counted off its answer because it emits the others'");
+  out.push('event. No noise floor for any of these three - run --noise before believing a delta.');
+  out.push('');
+  out.push(
+    '⚠️ THE BOTS GIVE FREELY, by construction and not by accident: the divert seam hands over',
+  );
+  out.push(
+    'a card that was going to a discard anyway, so the pricer - which values what a seat GAINS',
+  );
+  out.push(
+    'and never rival harm - sees no cost at all. The giveaway figure is an UPPER BOUND, and',
+  );
+  out.push('whether a human hands a rival free cards is a table question, not a simulator one.');
+  out.push('');
+  return out;
+}
+
+/** ORCHARDs built, counted only in the seats that actually farmed Orchard. */
+function orchardsPerOrchardSeat(games: readonly GameMetrics[]): number {
+  const per: number[] = [];
+  for (const g of games) {
+    g.suits.forEach((suit, seat) => {
+      if (suit === 'orchard') per.push(g.orchardsBuiltBySeat[seat] ?? 0);
+    });
+  }
+  return per.length === 0 ? NaN : median(per);
 }
 
 /**

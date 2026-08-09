@@ -292,6 +292,13 @@ export interface RulesFile {
       readonly twoCard: number;
     };
     /**
+     * The coin the UPGRADED Orchard Farmstead mints per card it gives away at
+     * the discard divert seam. 0 leaves the gift free, which is the paired
+     * control (`overlays/orchard-farmstead-coin.overlay.json`). The base face
+     * never pays it; the coin is the whole of what the upgrade buys.
+     */
+    readonly giftDiscardCoins: number;
+    /**
      * The Farmstead flips FREE at this many buildings printing the player's own
      * crop icon. Ticket 07: base starters print the starting-building icon and
      * do not count; upgraded ones print the crop icon and do.

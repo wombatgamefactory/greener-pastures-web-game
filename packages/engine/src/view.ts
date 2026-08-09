@@ -80,15 +80,22 @@ export function maskCard(id: CardId): CardId {
 
 /**
  * One pending task as a seat may see it: another seat's in-flight draw reveals
- * masked, everything else public.
+ * masked, and another seat's in-flight DIVERT cards with them, everything else
+ * public.
+ *
+ * A divert holds cards in limbo on their way to a discard (the Orchard
+ * rebuild). Their owner has seen them - they came off that seat's own reveal or
+ * out of its own hand, and the answers name them - so the owner's copy is
+ * unmasked and everybody else's is not, exactly as a draw's reveal is.
  *
  * Shared by `viewFor` and the probe (ticket 50), which needed to hand a rollout
  * the task it stopped on. One function so the two can never redact differently.
  */
 export function redactTask(task: Task, seat: Seat): Task {
-  return task.t === 'draw' && task.pid !== seat
-    ? { ...task, revealed: task.revealed.map(maskCard) }
-    : { ...task };
+  if (task.pid === seat) return { ...task };
+  if (task.t === 'draw') return { ...task, revealed: task.revealed.map(maskCard) };
+  if (task.t === 'divert') return { ...task, cards: task.cards.map(maskCard) };
+  return { ...task };
 }
 
 function buildingView(

@@ -118,4 +118,14 @@ export interface CardHandler {
    * two, and no player could check it.
    */
   replacesCoinPity?: true;
+
+  /**
+   * This built card lets its owner buy a card OUT of a discard for £1 (O17 The
+   * Fruit Basket). Declared here rather than named in `tasks.ts` for the same
+   * reason `replacesCoinPity` is: the divert seam is engine-level - it sits on
+   * the one funnel every discard goes through - and the engine may not know a
+   * card id. `handToBarn`'s free-hand-space and once-per-turn caps are
+   * deliberately absent: the wallet is the cap.
+   */
+  divertsDiscard?: true;
 }

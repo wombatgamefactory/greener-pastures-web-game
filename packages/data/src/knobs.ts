@@ -119,6 +119,14 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'instead of one. Upgraded boards only, and never a Worker payoff.',
   },
   {
+    template: 'rules.economy.giftDiscardCoins',
+    type: 'int',
+    description:
+      'The coin the upgraded Orchard Farmstead mints per card it gives away at the discard ' +
+      'divert seam. Flagged in the rebuild as the number most likely to be wrong, at roughly £8-10 ' +
+      'a game where seats currently end with £1. 0 leaves the gift free.',
+  },
+  {
     template: 'rules.economy.farmsteadFlipAtOwnColourBuilds',
     type: 'int',
     description:

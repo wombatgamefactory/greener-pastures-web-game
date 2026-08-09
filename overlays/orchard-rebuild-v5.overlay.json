@@ -1,0 +1,10 @@
+{
+  "name": "orchard-rebuild-v5",
+  "description": "The Orchard rebuild's ACTION layer, switched off. READ THIS BEFORE READING THE ARM, because it is the same caveat the Wheat arm carries and it is load-bearing: a suit rebuild is a data-and-handler change, not a set of numbers, so NO OVERLAY CAN EXPRESS \"the Orchard suit as it was\". A knob cannot un-write a threshold that has become a printed action, cannot restore a Farmstead that looked at a third card instead of keeping it, cannot un-turn O16 The Orchard Keeper from paying for going out back to paying for being visited, and cannot put back the once-per-turn cap O17 lost. Against the shipped game this arm therefore isolates the ONE piece of the rebuild an overlay can reach: O13 The Grand Orchard, O14 The Conservatory and O15 The Garden Library, the three Tier 3 cards that print an ACTION taken instead of a main action. Base is the rebuild with them in, this cell is the rebuild with them out, and the delta is what the action layer is worth. Every other pass condition - Tier 3 firings per card built up from 0.63, Orchard's activations per card built up from 0.34, ORCHARDS BUILT PER ORCHARD SEAT (the number the Barn's refund lives or dies on), CARDS GIVEN TO RIVALS PER GAME and BARN CARDS IN BY ROUTE (the number the \"rich in cards, poor in freight\" claim lives or dies on), reshuffles per played deck flat at 5 to 8, visits per turn at or above 0.57, the bonus-slot mix still at least 70% visit, and above all ORCHARD'S WIN RATE NOT UP from 80.8% - is before-and-after against the committed reference run, not against this cell. And the win rate is not expected to move at all: the measured cause is the Draw Service welded to the suit, no card in this rebuild is the fix, and a flat win rate is the EXPECTED result rather than a failure of the arm. Read the noise floor before believing any of it.",
+  "schemaVersion": 1,
+  "set": {
+    "cards.catalogue.O13.enabled": false,
+    "cards.catalogue.O14.enabled": false,
+    "cards.catalogue.O15.enabled": false
+  }
+}

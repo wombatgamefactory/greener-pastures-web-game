@@ -219,11 +219,19 @@ export function upgradedBuildingCount(state: GameState, seat: Seat): number {
 
 /**
  * The Orchard Farmstead suit power as a DRAW MODIFIER (the reference's
- * `Farmstead::orchardDraw`, DL-34): base face sees +1, upgraded face sees +1
- * AND keeps +1. Applied where a Draw ACTION's numbers are set - the base Draw
- * and the Draw Worker (suit powers apply to Worker actions) - so it composes:
- * (2,1)->(3,1)/(3,2), Draw Worker (3,2)->(4,2)/(4,3). Deliberately NOT applied
- * to card-ability draws (DL-47); handlers push their printed numbers directly.
+ * `Farmstead::orchardDraw`, DL-34), REBUILT 2026-08-09.
+ *
+ * Both faces now read "Your Draw is Draw 3, discard 1", so the modifier is
+ * `see +1, keep +1` on BOTH - the upgrade stopped being a bigger number and
+ * became £1 per card given away, which lives in the divert seam and not here.
+ * Applied where a Draw ACTION's numbers are set - the base Draw and the Draw
+ * Service (suit powers apply to Service actions) - so it composes:
+ * (2,1)->(3,2), Draw Service (2,2)->(3,3). Deliberately NOT applied to
+ * card-ability draws (DL-47); handlers push their printed numbers directly.
+ *
+ * ⚠️ This makes the BASE Farmstead strictly stronger than it was (a keep of 2
+ * from turn 1 where it used to be a keep of 1). Expected, and it is exactly why
+ * the upgrade had to stop being a bigger number.
  */
 export function withDrawModifier(
   data: GameData,
@@ -235,9 +243,32 @@ export function withDrawModifier(
   if (p.suit !== 'orchard') return spec;
   const farmstead = p.tableau.find((b) => cardById(data, b.card).slot === 'farmstead');
   if (!farmstead) return spec;
-  return farmstead.upgraded
-    ? { see: spec.see + 1, keep: spec.keep + 1 }
-    : { see: spec.see + 1, keep: spec.keep };
+  return { see: spec.see + 1, keep: spec.keep + 1 };
+}
+
+/**
+ * The OTHER half of the rebuilt Orchard Farmstead: "when one of your draws
+ * discards a card, give it to a neighbour instead", and on the upgraded face
+ * "and take £1 from the bank".
+ *
+ * Returns the coins the giver mints per card given (0 base, 1 upgraded), or
+ * null when the seat has no such power.
+ *
+ * THE WORDING SCOPES ITSELF, which is why there is no exception list. The base
+ * Draw is see 2 keep 1, which with the modifier becomes see 3 keep 2 - one
+ * discard, one gift. A Service's Draw 2 is see 2 keep 2, which becomes see 3
+ * keep 3 - no discard, so there is nothing to give. Card-ability draws already
+ * bypass the modifier under DL-47. And the end-of-turn discard to hand limit is
+ * not a draw, which closes the four-cards-for-£4 exploit with no special case at
+ * all: `discardOrDivert` passes `fromDraw: false` there and this power is not
+ * offered.
+ */
+export function drawGiftPower(data: GameData, state: GameState, seat: Seat): number | null {
+  const p = player(state, seat);
+  if (p.suit !== 'orchard') return null;
+  const farmstead = p.tableau.find((b) => cardById(data, b.card).slot === 'farmstead');
+  if (!farmstead) return null;
+  return farmstead.upgraded ? data.rules.economy.giftDiscardCoins : 0;
 }
 
 /** Suits whose deck or discard still has cards - the drawable suits. */

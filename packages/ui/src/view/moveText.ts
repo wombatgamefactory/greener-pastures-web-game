@@ -159,6 +159,10 @@ export function describeTask(data: GameData, task: Task): string {
       return 'Deliver: choose an island tile, or bring in a balloon.';
     case 'discard':
       return `Your barn caps your hand at ${task.downTo}. Choose what to discard.`;
+    case 'divert':
+      return task.fromDraw
+        ? `${task.cards.length} card${task.cards.length === 1 ? '' : 's'} heading for the discard: give one to a neighbour, buy one into your barn for £1, or let them go.`
+        : `${task.cards.length} card${task.cards.length === 1 ? '' : 's'} heading for the discard: buy one into your barn for £1, or let them go.`;
     case 'card':
       return `${cardName(data, task.src)}: choose.`;
     default:

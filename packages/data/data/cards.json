@@ -976,7 +976,7 @@
           "printedVp": 0,
           "threshold": null,
           "activationType": null,
-          "abilityText": "Hand size 4.",
+          "abilityText": "Hand size 4.\nWhen you build an ORCHARD, Draw 2.",
           "handSize": 4
         },
         "upgraded": {
@@ -984,7 +984,7 @@
           "printedVp": 2,
           "threshold": null,
           "activationType": null,
-          "abilityText": "Hand size 7.\nOnce per turn: gift 1 card from your hand, gain £1",
+          "abilityText": "Hand size 7.\nWhen you build an ORCHARD, Draw 2.",
           "handSize": 7
         }
       }
@@ -1006,14 +1006,14 @@
           "printedVp": 0,
           "threshold": null,
           "activationType": null,
-          "abilityText": "When you Draw, see 1 extra card.\nFlips free when you have 3 Orchard buildings."
+          "abilityText": "Your Draw is Draw 3, discard 1. Give the discarded card to a neighbour.\nFlips free when you have 3 Orchard buildings."
         },
         "upgraded": {
           "name": "Upgraded Farmstead",
           "printedVp": 2,
           "threshold": null,
           "activationType": null,
-          "abilityText": "When you Draw, see 1 extra card and keep 1 extra card."
+          "abilityText": "Your Draw is Draw 3, discard 1. Give the discarded card to a neighbour and take £1 from the bank."
         }
       }
     },
@@ -1058,10 +1058,10 @@
         "wild": 0,
         "coins": 0
       },
-      "activationType": "wild",
-      "threshold": 4,
+      "activationType": "orchard",
+      "threshold": 3,
       "printedVp": 1,
-      "abilityText": "Draw 1.",
+      "abilityText": "Draw 2.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1080,9 +1080,9 @@
         "coins": 0
       },
       "activationType": "orchard",
-      "threshold": 3,
+      "threshold": 4,
       "printedVp": 1,
-      "abilityText": "Draw 1, then you may SOW 1 onto one of your ORCHARDs",
+      "abilityText": "Draw 2, then SOW 1 card from your hand onto this ORCHARD.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1096,14 +1096,14 @@
       "inDeck": true,
       "enabled": true,
       "buildCost": {
-        "suit": 1,
+        "suit": 2,
         "wild": 0,
         "coins": 0
       },
       "activationType": "orchard",
-      "threshold": 4,
+      "threshold": 3,
       "printedVp": 1,
-      "abilityText": "Draw 2, then gain £1.",
+      "abilityText": "Draw 2, then give 1 card from your hand to a neighbour and take £1 from the bank.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1122,9 +1122,9 @@
         "coins": 0
       },
       "activationType": "orchard",
-      "threshold": 4,
+      "threshold": 3,
       "printedVp": 1,
-      "abilityText": "Draw 2",
+      "abilityText": "Draw 2, then you may Harvest one of your ORCHARDs.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1143,9 +1143,9 @@
         "coins": 0
       },
       "activationType": "orchard",
-      "threshold": 2,
+      "threshold": 3,
       "printedVp": 1,
-      "abilityText": "Pay £1: Draw 4.",
+      "abilityText": "Draw 2, then you may Build.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1159,14 +1159,14 @@
       "inDeck": true,
       "enabled": true,
       "buildCost": {
-        "suit": 3,
-        "wild": 0,
+        "suit": 2,
+        "wild": 1,
         "coins": 0
       },
       "activationType": "orchard",
-      "threshold": 4,
+      "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Draw 1 per empty ORCHARD you have. Then you may SOW onto all your ORCHARDs.",
+      "abilityText": "Give any number of cards from your hand to your neighbours, one each. Draw 2 for each.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1180,14 +1180,14 @@
       "inDeck": true,
       "enabled": true,
       "buildCost": {
-        "suit": 3,
+        "suit": 2,
         "wild": 1,
         "coins": 0
       },
       "activationType": "orchard",
-      "threshold": 3,
+      "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Draw 2. You may give any number of cards to your neighbours; draw 1 for each.",
+      "abilityText": "SOW 1 card from your hand onto each of your ORCHARDs.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1201,14 +1201,14 @@
       "inDeck": true,
       "enabled": true,
       "buildCost": {
-        "suit": 3,
+        "suit": 2,
         "wild": 1,
         "coins": 0
       },
       "activationType": "orchard",
-      "threshold": 3,
+      "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Draw 1 for each ORCHARD you have built.",
+      "abilityText": "Harvest this ORCHARD, however many cards are on it, then Draw 1 for each card harvested.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1222,14 +1222,14 @@
       "inDeck": true,
       "enabled": true,
       "buildCost": {
-        "suit": 3,
+        "suit": 2,
         "wild": 1,
         "coins": 0
       },
       "activationType": "orchard",
-      "threshold": 3,
+      "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Draw 2 for every neighbour at their hand limit.",
+      "abilityText": "Put any number of cards from your hand into your barn.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1244,15 +1244,15 @@
       "enabled": true,
       "buildCost": {
         "suit": 3,
-        "wild": 2,
+        "wild": 1,
         "coins": 0
       },
-      "activationType": "wild",
-      "threshold": 2,
+      "activationType": null,
+      "threshold": null,
       "printedVp": 3,
-      "abilityText": "Pay £1: Draw 1 for each ORCHARD you have, then you may SOW onto each of your ORCHARDs.",
+      "abilityText": "GROW each of your ORCHARDs in turn, paying each cost as you go. Skip any you cannot or do not want to pay.",
       "abilityTrigger": [
-        "onActivate"
+        "action"
       ],
       "needsDesignReview": false
     },
@@ -1265,15 +1265,15 @@
       "enabled": true,
       "buildCost": {
         "suit": 3,
-        "wild": 3,
+        "wild": 1,
         "coins": 0
       },
-      "activationType": "wild",
-      "threshold": 2,
+      "activationType": null,
+      "threshold": null,
       "printedVp": 3,
-      "abilityText": "Pay £1: Draw up to your hand limit, then gift any number. Draw 1 for each card you gift.",
+      "abilityText": "SOW every card in your hand onto your buildings, then draw until your hand is full.",
       "abilityTrigger": [
-        "onActivate"
+        "action"
       ],
       "needsDesignReview": false
     },
@@ -1286,15 +1286,15 @@
       "enabled": true,
       "buildCost": {
         "suit": 3,
-        "wild": 2,
+        "wild": 1,
         "coins": 0
       },
-      "activationType": "wild",
-      "threshold": 2,
+      "activationType": null,
+      "threshold": null,
       "printedVp": 3,
-      "abilityText": "Draw 3, then immediately deliver.",
+      "abilityText": "Take the top card of each deck. Give 1 to each other player, keep the rest, and take £1 from the bank for each card given.",
       "abilityTrigger": [
-        "onActivate"
+        "action"
       ],
       "needsDesignReview": false
     },
@@ -1313,7 +1313,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 1,
-      "abilityText": "When a neighbour VISITs, you draw 1 and they draw 1.",
+      "abilityText": "Whenever you VISIT a neighbour, Draw 1.",
       "abilityTrigger": [
         "passive"
       ],
@@ -1334,7 +1334,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 1,
-      "abilityText": "When you draw a card, you may pay £1 to place it directly into your barn.",
+      "abilityText": "Whenever you discard a card, you may pay £1 to put it into your barn instead.",
       "abilityTrigger": [
         "passive"
       ],
@@ -1376,7 +1376,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Score 1 VP for each empty space in your hand at game end. (max 4)",
+      "abilityText": "Game end: 1 VP for each empty space in your hand.",
       "abilityTrigger": [
         "gameEnd"
       ],
@@ -1397,7 +1397,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Score 1 VP for each ORCHARD you have built.",
+      "abilityText": "Game end: 2 VP for each ORCHARD you have built.",
       "abilityTrigger": [
         "gameEnd"
       ],
@@ -1418,7 +1418,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Score 1 VP for every 2 cards in other players' hands at game end.",
+      "abilityText": "Game end: 1 VP for every 2 cards in other players' hands.",
       "abilityTrigger": [
         "gameEnd"
       ],

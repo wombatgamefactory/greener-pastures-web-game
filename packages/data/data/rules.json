@@ -12,7 +12,8 @@
       "turn.marketCost is BUY AT MARKET as the parent design adopted it (docs/Market Bonus Action 2026-08-03.md): a third bonus-slot option beside the coin visit and the worker visit. Pay the bank, take the top card of ANY one deck in play - own suit included - straight into the BARN, revealed as it goes. It consumes the bonus slot, because competing with the visit is the entire point; it is not a visit (no Helping Hand, no afterVisit, no wage) and not a Draw (no reveal-and-keep, no draw modifier). Own suit is legal here and illegal at the buy, both deliberately: the barn destination makes own-suit harmless colour for delivery, the hand destination made it a second Draw. Null deletes the rule. Ticket 56 holds this and buyCost side by side so the paired arms can decide which coin sink is the game's - they are two different rules, not two prices for one.",
       "startingBarnCards is the single card each player starts with in their barn. startingHand is drawn from their own suit deck, which is why an owned deck holds 12 cards after setup.",
       "endGame.trigger is deliveryCount (owner, 2026-08-09, with the flat island): the game ends when any ONE seat completes its deliveriesToTrigger-th island delivery, after which every other player takes furtherTurnsEach more turns. It replaces levelThreeDelivery, which cannot survive an island with no levels. Two properties carried over deliberately. It is still ONE observable trigger read off public state - now a receipt count in front of a player rather than a token on the top row - and it is still a thing a player does rather than a deck running out. Balloon moves are Deliver actions but not island deliveries, so they do not count toward it. deliveriesToTrigger is FLAT at every seat count, which means the trigger fires at half the 2-seat island, a third of the 3-seat one and a quarter of the 4-seat one; that asymmetry is known and taken, and 2p is where to watch it.",
-      "farmsteadFlipAtOwnColourBuilds counts buildings printing the player's own CROP icon, not own-suit builds. Ticket 07: a base starter prints the generic starting-building icon and counts for nothing, an upgraded starter prints the crop icon and counts, so paying £2 to flip a Barn or a Notice Board can also be the third own-crop building and flip the Farmstead free."
+      "farmsteadFlipAtOwnColourBuilds counts buildings printing the player's own CROP icon, not own-suit builds. Ticket 07: a base starter prints the generic starting-building icon and counts for nothing, an upgraded starter prints the crop icon and counts, so paying £2 to flip a Barn or a Notice Board can also be the third own-crop building and flip the Farmstead free.",
+      "economy.giftDiscardCoins is the coin on the UPGRADED Orchard Farmstead's rebuilt power (docs/orchard-suit-rebuild-v5.md): \"give the discarded card to a neighbour AND take GBP 1 from the bank\". Its own knob because the rebuild's own risk list names it as the number most likely to be wrong - roughly GBP 8-10 a game where seats currently end with GBP 1 - and because it is the one part of a data-and-handler rebuild an overlay CAN express cleanly. 0 leaves the gift free, which is overlays/orchard-farmstead-coin.overlay.json. The base face never pays whatever this says; the coin is the whole of what the upgrade buys."
     ],
     "unresolved": [
       "W21 The Bread Hall prints \"Game end: 1 VP for every GBP 2\" and declares replacesCoinPity. With the pity now null there is nothing left to replace, so the card is no longer a better rate than everyone else's - it is the ONLY rate. Ticket 37 flagged it; the card's own value is a separate open question.",
@@ -27,15 +28,23 @@
   "turn": {
     "actionsPerTurn": 1,
     "bonusSlotsPerTurn": 1,
-    "baseDraw": { "see": 2, "keep": 1 },
+    "baseDraw": {
+      "see": 2,
+      "keep": 1
+    },
     "buyCost": 1,
     "marketCost": 3
   },
   "economy": {
     "upgradeCostCoins": 2,
     "coinPityDivisor": null,
-    "visitPayout": { "base": 1, "upgraded": 2, "twoCard": 3 },
-    "farmsteadFlipAtOwnColourBuilds": 3
+    "visitPayout": {
+      "base": 1,
+      "upgraded": 2,
+      "twoCard": 3
+    },
+    "farmsteadFlipAtOwnColourBuilds": 3,
+    "giftDiscardCoins": 1
   },
   "endGame": {
     "trigger": "deliveryCount",

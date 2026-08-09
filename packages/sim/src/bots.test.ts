@@ -101,8 +101,12 @@ function knowableIds(view: PlayerView): Set<CardId> {
   }
   for (const pile of Object.values(view.discards)) for (const id of pile) ok.add(id);
   // Your own in-flight draw: you have seen these, and `keep` answers name them.
+  // Same for your own divert - cards in limbo on their way to a discard, off
+  // your own reveal or out of your own hand, which its answers name.
   for (const task of view.tasks) {
-    if (task.t === 'draw' && task.pid === view.seat) for (const id of task.revealed) ok.add(id);
+    if (task.pid !== view.seat) continue;
+    if (task.t === 'draw') for (const id of task.revealed) ok.add(id);
+    if (task.t === 'divert') for (const id of task.cards) ok.add(id);
   }
   return ok;
 }

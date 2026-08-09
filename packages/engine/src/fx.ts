@@ -126,16 +126,45 @@ export class Fx {
     }
   }
 
-  /** Move one card from a hand to another hand (the Orchard gift family). Identity travels with it. */
+  /**
+   * Move one card OUT OF A HAND into another hand (O6, O9). Identity travels
+   * with it, and so does the cost: `fromHand: true` is what tells a bot the
+   * giver is genuinely a card down, unlike the divert seam's `passCard`.
+   */
   giveCard(from: Seat, to: Seat, card: CardId): void {
     if (from === to) throw new Error('A gift goes to a neighbour, never yourself');
     this.removeFromHand(from, card);
     this.touch(to);
     player(this.state, to).hand.push(card);
-    this.emit({ e: 'cardGifted', from, to, card });
+    this.emit({ e: 'cardGifted', from, to, card, fromHand: true });
   }
 
-  /** Move one card from a seat's hand into their own barn (O17's divert). */
+  /**
+   * The DIVERT SEAM's two destinations for a card in LIMBO - lifted out of a
+   * reveal or out of a hand and not yet in any pile (see the `divert` task).
+   *
+   * Neither can reuse `giveCard` or `handToBarn`, which both start by removing
+   * the card from a hand it is no longer in. The EVENTS are deliberately the
+   * same ones: `cardGifted` still counts every card that crossed the table and
+   * `handToBarn` still counts every card that reached a barn by a route other
+   * than the harvest, so no metric has to learn a second name for the same
+   * movement.
+   */
+  passCard(from: Seat, to: Seat, card: CardId): void {
+    if (from === to) throw new Error('A gift goes to a neighbour, never yourself');
+    this.touch(to);
+    player(this.state, to).hand.push(card);
+    this.emit({ e: 'cardGifted', from, to, card, fromHand: false });
+  }
+
+  /** A card in limbo straight into its holder's barn (O17's £1 divert). */
+  stashCard(seat: Seat, card: CardId): void {
+    this.touch(seat);
+    player(this.state, seat).barn.push(card);
+    this.emit({ e: 'handToBarn', seat, card });
+  }
+
+  /** Move one card from a seat's hand into their own barn (O12's press). */
   handToBarn(seat: Seat, card: CardId): void {
     this.removeFromHand(seat, card);
     player(this.state, seat).barn.push(card);

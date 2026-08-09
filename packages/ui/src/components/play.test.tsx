@@ -77,6 +77,17 @@ function positionWith(what: string, wanted: (move: Move) => boolean) {
   throw new Error(`no warmed position offers ${what}`);
 }
 
+/** A warmed position that leaves you holding a card. Searched, for the same reason. */
+function positionWithHand() {
+  for (const seed of ['play-a', 'play-b', 'play-c', 'play-d', 'play-e', 'play-f']) {
+    for (const depth of [80, 160, 260]) {
+      const snap = position(seed, depth);
+      if (snap.yours && snap.view.you.hand.length > 0) return snap;
+    }
+  }
+  throw new Error('no warmed position leaves you holding a card');
+}
+
 /** A warmed session sitting on your turn, with a hand and a developed board. */
 function position(seed: string, depth = 260) {
   const session = new Session(data, {
@@ -164,8 +175,13 @@ describe('the playable table renders', () => {
   });
 
   it('renders the held-card state and its targets', () => {
-    const card = snap.view.you.hand[0] as string;
-    const html = render(snap, { k: 'hold', card });
+    // Searched rather than taken off the shared snap, for the same reason
+    // `positionWith` searches: whether a given seed leaves you holding a card
+    // at a given depth moves whenever the card data does, and it did with the
+    // Orchard rebuild.
+    const held = positionWithHand();
+    const card = held.view.you.hand[0] as string;
+    const html = render(held, { k: 'hold', card });
     expect(html).toContain('is-held');
     expect(html).toContain('Card in hand');
   });

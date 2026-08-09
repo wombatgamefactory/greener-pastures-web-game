@@ -55,6 +55,18 @@ export function handLimitOf(data: GameData, state: GameState, seat: Seat): numbe
   return faceOf(data, barn).handSize ?? null;
 }
 
+/**
+ * A seat's free hand space (reference DL-63): limit minus hand size, floored at
+ * 0. The gift family's capacity rule - a gift never forces an out-of-turn
+ * discard, so a neighbour at their limit cannot be given anything. Lives beside
+ * `handLimitOf` because both the divert seam and the Orchard handlers ask it.
+ */
+export function freeHandSpace(data: GameData, state: GameState, seat: Seat): number {
+  const limit = handLimitOf(data, state, seat);
+  if (limit === null) return 0;
+  return Math.max(0, limit - player(state, seat).hand.length);
+}
+
 /** The barn as the per-suit tally every rule reads it as - identity is inert there. */
 export function barnTally(
   data: GameData,

@@ -23,6 +23,7 @@ import {
   doBuild,
   doDeliver,
   doMoveBalloon,
+  freeHandSpace,
   harvestOptions,
   harvestSurchargeOf,
   subsets,
@@ -31,8 +32,15 @@ import {
 import type { BuildMods } from './actions.js';
 import type { Fx } from './fx.js';
 import { fireHook } from './fx.js';
-import { canTakeCard, drawableSuits, fullBuildings, player, workerState } from './query.js';
-import type { BuildingState, GameState, Task, TaskAnswer } from './state.js';
+import {
+  canTakeCard,
+  drawGiftPower,
+  drawableSuits,
+  fullBuildings,
+  player,
+  workerState,
+} from './query.js';
+import type { BuildingState, CardId, GameState, Seat, Task, TaskAnswer } from './state.js';
 import { workWorker } from './workers.js';
 import { handlerFor } from './handlers/registry.js';
 
@@ -45,6 +53,74 @@ function buildModsFor(state: GameState, task: Extract<Task, { t: 'build' }>): Bu
   const mods: BuildMods = { ...(task.mods ?? {}) };
   if (buildSubstitutePower(state, task.pid)) mods.substitute = true;
   return mods;
+}
+
+// --- the discard divert seam ------------------------------------------------
+
+/** O17 The Fruit Basket's printed price for taking a discard into the barn. */
+const DIVERT_COST = 1;
+
+/** The seat's built card that buys discards into the barn (O17), or null. */
+function discardDiverterOf(state: GameState, seat: Seat): CardId | null {
+  return player(state, seat).tableau.find((b) => handlerFor(b.card)?.divertsDiscard)?.card ?? null;
+}
+
+/**
+ * THE ONE FUNNEL every discard of a player's OWN cards goes through, and the
+ * hinge of the Orchard rebuild. Both new powers act on the same moment - the
+ * card a see/keep draw throws away - so there is one seam and not two.
+ *
+ * With neither permanent in play (the overwhelming majority of discards) this
+ * is `fx.discard` with an extra branch and nothing queues. With one, a `divert`
+ * task takes the cards into limbo and offers a destination for each.
+ *
+ * Deliberately NOT wired to `spendFromBarn`: paying the island is a SPEND, not
+ * a discard, and letting the Basket buy a just-spent delivery card back into the
+ * barn would turn the barn from a dead end into a loop.
+ */
+export function discardOrDivert(
+  fx: Fx,
+  pid: Seat,
+  cards: readonly CardId[],
+  fromDraw: boolean,
+): void {
+  if (cards.length === 0) return;
+  const gift = fromDraw && drawGiftPower(fx.data, fx.state, pid) !== null;
+  const basket = discardDiverterOf(fx.state, pid) !== null;
+  if (!gift && !basket) {
+    fx.discard([...cards]);
+    return;
+  }
+  fx.pushTask({ t: 'divert', pid, src: null, cards: [...cards], fromDraw });
+}
+
+/**
+ * Destinations for the head card of a divert task.
+ *
+ * `skip` is offered whenever a card is still held, which is what makes the task
+ * safe: the drain loop drops a task with NO legal answer, and a dropped divert
+ * would take its limbo cards out of the game. Skip discards everything left.
+ */
+function divertAnswers(
+  data: GameData,
+  state: GameState,
+  task: Extract<Task, { t: 'divert' }>,
+): TaskAnswer[] {
+  const card = task.cards[0];
+  if (card === undefined) return [];
+  const out: TaskAnswer[] = [];
+  if (task.fromDraw && drawGiftPower(data, state, task.pid) !== null) {
+    for (let seat = 0; seat < state.players.length; seat++) {
+      if (seat === task.pid) continue;
+      if (freeHandSpace(data, state, seat) < 1) continue;
+      out.push({ kind: 'card', payload: { card, to: seat } });
+    }
+  }
+  if (discardDiverterOf(state, task.pid) !== null && player(state, task.pid).coins >= DIVERT_COST) {
+    out.push({ kind: 'card', payload: { card, barn: true } });
+  }
+  out.push({ kind: 'skip' });
+  return out;
 }
 
 /** Legal answers to a task. Empty = the task has nothing to do and is skipped. */
@@ -87,12 +163,15 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
               ? p.tableau.filter((b) => b.stack.length >= 1)
               : p.tableau.filter((b) => canTakeCard(data, b));
       if (task.exclude !== undefined) pool = pool.filter((b) => b.card !== task.exclude);
+      if (task.targets) pool = pool.filter((b) => task.targets?.includes(b.card));
       // A harvest pays the target's printed surcharge (W8): unaffordable
       // targets are never offered, matching the action gate.
       if (task.then === 'harvest') {
         pool = pool.filter((b) => harvestSurchargeOf(data, b.card) <= p.coins);
       }
-      return pool.map((b) => ({ kind: 'building', card: b.card }));
+      const out: TaskAnswer[] = pool.map((b) => ({ kind: 'building', card: b.card }));
+      if (task.optional === true && out.length > 0) out.push({ kind: 'skip' });
+      return out;
     }
 
     case 'sow': {
@@ -152,6 +231,9 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
       return subsets(hand, excess).map((cards) => ({ kind: 'discard', cards }) as TaskAnswer);
     }
 
+    case 'divert':
+      return divertAnswers(data, state, task);
+
     case 'card': {
       const custom = handlerFor(task.src)?.tasks?.[task.kind];
       if (!custom) throw new Error(`No task resolver '${task.kind}' on handler ${task.src}`);
@@ -193,7 +275,9 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
       if (answer.kind !== 'keep') throw new Error('draw expects a deck or keep answer');
       const rest = task.revealed.filter((c) => !answer.cards.includes(c));
       fx.cardsToHand(task.pid, answer.cards);
-      fx.discard(rest);
+      // The rebuilt Orchard Farmstead's gift and O17's £1 both act HERE, on the
+      // card a see/keep draw throws away, so the discard goes through the seam.
+      discardOrDivert(fx, task.pid, rest, true);
       // The reference's onDraw moment (keepFromReveal): fires for every
       // see/keep draw - base action, Draw Worker, card abilities - and never
       // for autoDraw. O17 The Fruit Basket is its consumer.
@@ -204,6 +288,7 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
     }
 
     case 'chooseBuilding': {
+      if (answer.kind === 'skip' && task.optional === true) return true;
       if (answer.kind !== 'building') throw new Error('chooseBuilding expects a building answer');
       const fee = harvestSurchargeOf(fx.data, answer.card);
       if (fee > 0) fx.payCoins(task.pid, fee, `surcharge:${answer.card}`);
@@ -268,8 +353,31 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
     case 'discard': {
       if (answer.kind !== 'discard') throw new Error('discard expects a discard answer');
       for (const card of answer.cards) fx.removeFromHand(task.pid, card);
-      fx.discard(answer.cards);
+      // O17 reaches the end-of-turn overflow too ("whenever you discard a
+      // card"); the Farmstead's gift does not, because this is not a draw.
+      discardOrDivert(fx, task.pid, answer.cards, false);
       return true;
+    }
+
+    case 'divert': {
+      if (answer.kind === 'skip') {
+        fx.discard([...task.cards]);
+        task.cards = [];
+        return true;
+      }
+      if (answer.kind !== 'card') throw new Error('divert expects a card or skip answer');
+      const card = answer.payload.card as CardId;
+      if (answer.payload.barn === true) {
+        fx.payCoins(task.pid, DIVERT_COST, 'divert');
+        fx.stashCard(task.pid, card);
+      } else {
+        const to = answer.payload.to as Seat;
+        fx.passCard(task.pid, to, card);
+        const coins = drawGiftPower(fx.data, fx.state, task.pid) ?? 0;
+        if (coins > 0) fx.gainCoins(task.pid, coins, 'divert');
+      }
+      task.cards = task.cards.filter((c) => c !== card);
+      return task.cards.length === 0;
     }
 
     case 'card': {

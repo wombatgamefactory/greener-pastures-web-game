@@ -50,7 +50,8 @@ import { harvestSurchargeOf } from '../actions.js';
 import type { Fx } from '../fx.js';
 import { cardById, cropOf, drawableSuits, player } from '../query.js';
 import type { BuildingState, CardId, GameState, Seat } from '../state.js';
-import type { CardHandler, CardMove } from './types.js';
+import { actionMove, actionOpen } from './actionCard.js';
+import type { CardHandler } from './types.js';
 
 const FIELD_NAME = /\bField\b/;
 
@@ -121,24 +122,6 @@ function harvestCascade(fx: Fx, seat: Seat, buildings: CardId[]): void {
       fx.harvest(seat, card);
     }
   }
-}
-
-/**
- * A Tier 3 ACTION card's standing move, when it has something to do.
- *
- * One move, never one per option: where the action needs choices (which
- * building, which deck) the choices are pushed as tasks from `applyMove`. The
- * Helping Hand enumerates one move per fee card because the fee IS the decision;
- * these are not that shape.
- */
-function actionMove(self: { seat: Seat; card: CardId }, live: boolean): CardMove[] {
-  if (!live) return [];
-  return [{ type: 'cardMove', seat: self.seat, card: self.card, kind: 'action', payload: {} }];
-}
-
-/** Every ACTION card gates the same way: your turn, the main action unspent. */
-function actionOpen(state: GameState, self: { seat: Seat }): boolean {
-  return state.turnPlayer === self.seat && !state.turn.actionSpent;
 }
 
 /**

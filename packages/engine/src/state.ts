@@ -207,6 +207,10 @@ export type Task =
       filter: 'full' | 'notFull' | 'harvestable' | 'loaded';
       /** Never a legal target (W5's "Harvest another card"). */
       exclude?: CardId;
+      /** Restrict targets to these buildings (O7's "one of your ORCHARDs"), as `sow` does. */
+      targets?: CardId[];
+      /** "You may Harvest" (O7): a skip answer is offered and ends the task. */
+      optional?: boolean;
       then: 'harvest';
     }
   | {
@@ -287,6 +291,30 @@ export type Task =
       t: 'discard';
       pid: Seat;
       downTo: number;
+    }
+  | {
+      /**
+       * THE DISCARD DIVERT SEAM (the Orchard rebuild, 2026-08-09). One task,
+       * two cards: the rebuilt Orchard Farmstead ("when one of your draws
+       * discards a card, give it to a neighbour instead") and O17 The Fruit
+       * Basket ("whenever you discard a card, you may pay £1 to put it into
+       * your barn instead"). They are mutually exclusive PER CARD by
+       * construction - a discard either crosses the fence for +£1 or goes in
+       * your barn for -£1 - so it is one seam, not two.
+       *
+       * `cards` are in LIMBO: out of the reveal or out of the hand, not yet in
+       * any pile. That is exactly what `draw.revealed` already does, and it is
+       * why the task is never enumerated empty - `skip` is always offered while
+       * a card is still held, so the drain loop can never drop the task and
+       * lose the cards. A seat with neither permanent never gets one at all;
+       * `discardOrDivert` discards inline instead.
+       */
+      t: 'divert';
+      pid: Seat;
+      src: CardId | null;
+      cards: CardId[];
+      /** A DRAW produced these: the Farmstead's gift is offered here and nowhere else. */
+      fromDraw: boolean;
     }
   | {
       /**
@@ -509,8 +537,18 @@ export type GameEvent =
     }
   /** A face-up discard reclaimed into a barn (the upgraded Vegetable Barn's freight refund). */
   | { e: 'discardToBarn'; seat: Seat; card: CardId }
-  /** A card given from one hand to another (the Orchard gift family). Identity travels with it. */
-  | { e: 'cardGifted'; from: Seat; to: Seat; card: CardId }
+  /**
+   * A card given from one seat to another (the Orchard gift family). Identity
+   * travels with it.
+   *
+   * `fromHand` is the difference between the two shapes of gift, and a bot
+   * cannot price them the same. O6 and O9 give a card OUT OF HAND: the giver
+   * really is a card down. The divert seam's gift (the rebuilt Farmstead) hands
+   * over a card that was already on its way to a discard pile: the giver loses
+   * nothing at all, and charging it as a lost card makes the plain discard
+   * always look better and the power never fire.
+   */
+  | { e: 'cardGifted'; from: Seat; to: Seat; card: CardId; fromHand: boolean }
   /** A card sent from its owner's hand into their own barn (O17's £1 divert). */
   | { e: 'handToBarn'; seat: Seat; card: CardId }
   | { e: 'visited'; seat: Seat; host: Seat; mode: 'coin' | 'worker' | 'special' }
