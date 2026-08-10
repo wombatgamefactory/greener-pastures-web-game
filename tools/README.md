@@ -53,6 +53,34 @@ The second time it happened, it was caught by this mode and not the default one.
 
 Widening the forbidden list is cheap. Narrowing it needs a reason.
 
+## `verify-webkit.mjs` - will a Mac see this?
+
+```
+npx playwright-core install webkit chromium   # once
+npm run build && npm run verify:webkit
+```
+
+Renders the table, the island, the hand and one enlarged card in **WebKit** and in
+**Chromium** into `reports/webkit/` for a human to compare, and asserts the thing a
+screenshot cannot: that no surface is **load-bearing on a browser capability an older
+Safari may lack**.
+
+The trap it exists for: Playwright's WebKit tracks Safari Tech Preview, so it is always
+_newer_ than the Safari on anybody's Mac. Rendering in it proves the page works on next
+year's Safari, not on the one in front of the player. So each fragile capability is
+instead switched **off** in a current WebKit and the page is diffed against itself: same
+engine, same antialiasing, so the difference is caused by the capability alone. If the
+picture changes, a Mac without it sees something else.
+
+Add to `FRAGILE` in the script any property that
+
+- cannot be feature-detected honestly (`paint-order` is the worst kind: `CSS.supports()`
+  answers **true** on the very Safari versions that ignore it, so `@supports` cannot gate
+  a fallback), or
+- degrades into something unreadable rather than something plain.
+
+`reports/` is private (gitignored), so the renders never ship.
+
 ## Tuning overlays
 
 Not a tool, but this is where the extract's numbers get varied.

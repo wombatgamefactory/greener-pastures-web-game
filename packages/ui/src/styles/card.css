@@ -85,6 +85,10 @@
   width: 7.5%;
 }
 
+/* Every outlined string below pairs `paint-order` with a `data-text` attribute
+   in Card.tsx. Both are load-bearing and neither is optional: see the
+   `[data-text]::after` block in base.css for why an outline that relies on
+   paint-order alone is unreadable on Safari before 17.4. */
 .card-ability {
   position: absolute;
   inset: 4% 2.5% 4% 21%;

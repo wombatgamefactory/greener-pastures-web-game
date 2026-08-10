@@ -372,6 +372,8 @@
   place-items: center;
 }
 
+/* Carries `data-text` in Island.tsx - the outline needs both halves, see the
+   `[data-text]::after` block in base.css. */
 .island-crate b {
   position: absolute;
   bottom: -3px;

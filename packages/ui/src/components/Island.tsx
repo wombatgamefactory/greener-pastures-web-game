@@ -135,7 +135,7 @@ export function IslandPanel({
                             faceDown={tile.faceDown?.[i] === true}
                             size={Math.round(tileWidth * 0.34)}
                           />
-                          <b>{cardsPerCrate}</b>
+                          <b data-text={String(cardsPerCrate)}>{cardsPerCrate}</b>
                         </span>
                       ))}
                     </div>

@@ -139,6 +139,46 @@ img {
   -webkit-user-drag: none;
 }
 
+/*
+ * The printed keyline on card text: white fill, sepia outline.
+ *
+ * `-webkit-text-stroke` centres the stroke on the glyph edge, so half of it
+ * lands INSIDE the letter. At the widths the card uses (up to 1.1cqw, ~9px on
+ * a zoomed card) that is most of the letter, and the one-line cure is
+ * `paint-order: stroke fill`, which paints the stroke first and lets the fill
+ * cover the inner half.
+ *
+ * WebKit did not honour `paint-order` for HTML text until Safari 17.4
+ * (March 2024). Before that the stroke paints LAST, over the fill, and every
+ * outlined string on the card turns into brown mush - which is exactly what a
+ * Mac on Ventura or older showed. Two things make it a nasty one:
+ *
+ *   - it degrades into illegibility rather than into plain text, and
+ *   - `CSS.supports('paint-order', 'stroke')` answers TRUE on those versions
+ *     (the property parses; it just does nothing here), so `@supports` cannot
+ *     detect it and a fallback cannot be gated on it.
+ *
+ * So the fill is simply painted a second time, by a pseudo-element that
+ * carries no stroke and sits on top. It inherits every font, wrapping and
+ * alignment property from its element and is laid out in the same box, so the
+ * two copies are identical by construction - there is no second set of numbers
+ * to keep in step. Where `paint-order` works this is invisible; where it does
+ * not, it IS the outline.
+ *
+ * The hook is the attribute: any element that carries `data-text` gets the
+ * layer, and the attribute must hold the same string the element renders. Its
+ * element must be positioned (all of them already are - the layer needs the
+ * element as its containing block).
+ */
+[data-text]::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  /* Inherited, so it has to be turned off rather than merely not set. */
+  -webkit-text-stroke-width: 0;
+  pointer-events: none;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;

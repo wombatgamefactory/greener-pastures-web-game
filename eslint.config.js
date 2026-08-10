@@ -38,7 +38,7 @@ export default tseslint.config(
   {
     // The browser verifiers ship callbacks to `page.evaluate`, so their source
     // legitimately contains browser code alongside its Node code.
-    files: ['tools/verify-layout.mjs', 'tools/verify-drag.mjs'],
+    files: ['tools/verify-layout.mjs', 'tools/verify-drag.mjs', 'tools/verify-webkit.mjs'],
     languageOptions: {
       globals: {
         process: 'readonly',
@@ -47,6 +47,7 @@ export default tseslint.config(
         document: 'readonly',
         window: 'readonly',
         getComputedStyle: 'readonly',
+        Image: 'readonly',
       },
     },
   },

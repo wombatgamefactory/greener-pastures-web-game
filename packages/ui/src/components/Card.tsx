@@ -129,10 +129,14 @@ export function Card({ face, width, zoomTier = false, children, className = '' }
             alt=""
           />
         )}
-        <p className="card-ability">{face.abilityText}</p>
+        <p className="card-ability" data-text={face.abilityText}>
+          {face.abilityText}
+        </p>
       </div>
 
-      <h3 className="card-name">{face.name}</h3>
+      <h3 className="card-name" data-text={face.name}>
+        {face.name}
+      </h3>
 
       {face.printedVp > 0 && (
         <div className="card-vp" title={`${face.printedVp} victory points`}>
@@ -149,10 +153,16 @@ export function Card({ face, width, zoomTier = false, children, className = '' }
           alt=""
         />
       </div>
-      <span className="card-ref">{face.id}</span>
+      <span className="card-ref" data-text={face.id}>
+        {face.id}
+      </span>
 
       {face.threshold !== null && (
-        <span className="card-threshold" title={`Full at ${face.threshold} cards`}>
+        <span
+          className="card-threshold"
+          title={`Full at ${face.threshold} cards`}
+          data-text={String(face.threshold)}
+        >
           {face.threshold}
         </span>
       )}
@@ -184,7 +194,11 @@ export function CardBack({
       aria-label={`${SUIT_META[suit].label} deck${count === undefined ? '' : `, ${count} cards`}`}
     >
       <img className="card-art" src={deckBack(suit)} alt="" draggable={false} />
-      {count !== undefined && <span className="card-count">{count}</span>}
+      {count !== undefined && (
+        <span className="card-count" data-text={String(count)}>
+          {count}
+        </span>
+      )}
     </div>
   );
 }
