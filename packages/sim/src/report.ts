@@ -47,6 +47,7 @@ export function renderReport(input: ReportInput): string {
   out.push(...seriesSection(input));
   out.push(...giveawaySection(input));
   out.push(...freightSection(input));
+  out.push(...dairySection(input));
   out.push(...actionMix(input));
   out.push(...seatTable(input));
   out.push(...suitTable(input));
@@ -488,6 +489,77 @@ function freightSection({ data, pooled }: ReportInput): string[] {
     "lines are the first time in 105 cards that the island's colour puzzle has changed after setup;",
   );
   out.push('if the last of them is near zero, V5 and V6 are rules nobody needed.');
+  out.push('');
+  return out;
+}
+
+/**
+ * THE YARD (the Dairy rebuild, 2026-08-10).
+ *
+ * The four lines its pass conditions need that nothing else in this report
+ * prints. Two of them decide the rebuild and are NOT here, because they already
+ * have homes that read them against every suit: cards into a Dairy seat's barn
+ * (the freight section's route table) and deliveries per Dairy seat (the
+ * by-suit delivery line above). What is here is the diagnosis.
+ *
+ * MEANS, not medians, and per DAIRY SEAT rather than per game: most cells have
+ * no Dairy seat at all, so a table-wide median is a structural 0 that says
+ * nothing - the same reasoning the freight section states for the balloons.
+ */
+function dairySection({ pooled }: ReportInput): string[] {
+  const games = pooled.ended;
+  const out = [THIN, 'THE YARD  (the Dairy rebuild, ended games)', THIN, ''];
+  if (games.length === 0) {
+    out.push('  no ended games', '');
+    return out;
+  }
+
+  const builds: number[] = [];
+  let blocked = 0;
+  let sampled = 0;
+  const runs: number[] = [];
+  for (const g of games) {
+    runs.push(...g.creameryRuns);
+    g.suits.forEach((suit, seat) => {
+      if (suit !== 'dairy') return;
+      builds.push(g.buildsBySeat[seat] ?? 0);
+      blocked += g.noBuildTurnsBySeat[seat] ?? 0;
+      sampled += g.buildSampledBySeat[seat] ?? 0;
+    });
+  }
+
+  if (builds.length === 0) {
+    out.push('  no Dairy seat in this data set', '');
+    return out;
+  }
+
+  out.push(`  builds per Dairy seat per game        ${num(mean(builds), 2)}`);
+  out.push(
+    `  Dairy turns with NO build available   ${pct(sampled === 0 ? NaN : blocked / sampled, 1)}` +
+      `   (of ${sampled} turns; the design's own risk 1)`,
+  );
+  out.push(
+    `  cards taken off deck tops per game    ${num(mean(games.map((g) => g.deckTopsTaken)), 1)}` +
+      `   (read beside reshuffles per played deck, which must stay flat)`,
+  );
+  out.push(
+    `  Grand Creamery runs                   ${runs.length}` +
+      `   median length ${runs.length === 0 ? 'n/a' : num(median(runs), 1)}` +
+      `   longest ${runs.length === 0 ? 'n/a' : Math.max(...runs)}`,
+  );
+  out.push('');
+  out.push(
+    'A median Creamery run of 1 is a disappointment machine and 3 is too strong; the dial is whether',
+  );
+  out.push(
+    'a coin-priced card counts as cost 0 or busts the run. Deck-top pressure is the rebuild’s',
+  );
+  out.push(
+    'likeliest external breakage - three Dairy cards pull off deck tops and D15 BUILDS them, so',
+  );
+  out.push(
+    'they never come back. The no-build share is the screen most likely to fail at a table.',
+  );
   out.push('');
   return out;
 }

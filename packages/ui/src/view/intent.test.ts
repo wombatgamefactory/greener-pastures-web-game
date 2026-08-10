@@ -39,7 +39,7 @@ import {
   subsetAnswer,
   visitOffers,
   visitPayoffs,
-  withBarn,
+  withStackPayment,
   withPayment,
 } from './intent';
 import type { BuildDraft, Intent } from './intent';
@@ -115,7 +115,7 @@ function reachable(position: Position, move: Move): boolean {
 
     case 'build': {
       // The panel: name the card, then add payment one click at a time.
-      const assembled = assembleBuild(moves, move.card, move.payment, {}, 0);
+      const assembled = assembleBuild(moves, move.card, move.payment, []);
       return assembled?.move === move;
     }
 
@@ -146,18 +146,17 @@ function assembleBuild(
   moves: readonly Move[],
   card: string,
   payment: readonly string[],
-  barn: Partial<Record<Suit, number>>,
-  coinWild: number,
+  stacks: readonly string[],
 ): ReturnType<typeof buildComplete> {
   let draft: BuildDraft = emptyBuildDraft(card);
   for (const paid of payment) {
     draft = withPayment(draft, paid);
     if (buildCandidates(moves, draft).length === 0) return null;
   }
-  for (const [suit, n] of Object.entries(barn) as [Suit, number][]) {
-    for (let i = 0; i < n; i++) draft = withBarn(draft, suit, 1);
+  for (const paid of stacks) {
+    draft = withStackPayment(draft, paid);
+    if (buildCandidates(moves, draft).length === 0) return null;
   }
-  if (coinWild > 0) draft = { ...draft, coinWild };
   return buildComplete(moves, draft);
 }
 
@@ -200,8 +199,7 @@ function taskReachable(position: Position, move: Move): boolean {
     case 'build':
       return (
         buildPanelOpens(position, answer.card) &&
-        assembleBuild(moves, answer.card, answer.payment, answer.barn ?? {}, answer.coinWild ?? 0)
-          ?.move === move
+        assembleBuild(moves, answer.card, answer.payment, answer.stacks ?? [])?.move === move
       );
     case 'keep':
       return subsetAnswer(moves, 'keep', answer.cards) === move;

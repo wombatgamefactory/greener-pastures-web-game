@@ -980,14 +980,38 @@ function pickMove(rng: [number, number, number, number], moves: Move[]): Move {
   throw new Error('no move to pick');
 }
 
+/**
+ * Every card id the game still holds, wherever it is - including the two places
+ * a card can be in LIMBO, out of every pile and not yet anywhere.
+ *
+ * The limbo holders are the point of this function and the reason it is not
+ * just "the zones". A `draw` task holds what it has revealed; the `divert` seam
+ * (the Orchard Farmstead, O17) holds the card a draw threw away; and the Dairy
+ * rebuild added two more - D2's `divertSpent` holds a build's payment between
+ * the build and the choice of what goes to the barn, and D10's `scout` holds
+ * the revealed deck tops until one is built and the rest go back. A card task's
+ * riders are untyped, so both are read by their rider names.
+ *
+ * `covered` is a zone rather than limbo (D11 buries a card there permanently)
+ * and was simply missing.
+ */
 function inPlayCardIds(state: GameState): string[] {
   const ids: string[] = [];
   for (const suit of data.cards.suits) ids.push(...state.decks[suit], ...state.discards[suit]);
   for (const p of state.players) {
-    ids.push(...p.hand, ...p.barn);
+    ids.push(...p.hand, ...p.barn, ...p.covered);
     for (const b of p.tableau) ids.push(b.card, ...b.stack);
   }
-  for (const task of state.tasks) if (task.t === 'draw') ids.push(...task.revealed);
+  for (const task of state.tasks) {
+    if (task.t === 'draw') ids.push(...task.revealed);
+    if (task.t === 'divert') ids.push(...task.cards);
+    if (task.t === 'card') {
+      for (const key of ['cards', 'revealed']) {
+        const held = task.riders[key];
+        if (Array.isArray(held)) ids.push(...(held as string[]));
+      }
+    }
+  }
   return ids;
 }
 

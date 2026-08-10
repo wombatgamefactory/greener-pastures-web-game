@@ -20,19 +20,20 @@ export type Act =
   /** BUY AT MARKET (ticket 56): the bonus-slot coin sink. Top of `suit`'s deck into the BARN. */
   | { a: 'market'; suit: Suit }
   /**
-   * `payment` is hand cards, `coinWild` coins standing in for cards (D7) and
-   * `barn` barn cards joining the payment (D8). The engine holds
-   * `payment.length + barn + coinWild === cardsNeeded`, so the three are ways of
-   * paying ONE price and a term that reads only their sum can never tell them
+   * `payment` is hand cards and `stacks` cards lifted off the seat's OWN
+   * buildings (D7 The Versatile Shed). The engine holds
+   * `payment.length + stacks.length === cardsNeeded`, so the two are ways of
+   * paying ONE price and a term reading only their sum can never tell them
    * apart - which is what ticket 47 found `buildSpend` doing.
    *
-   * `barn` is a COUNT and its suits are deliberately dropped. Ticket 51 went
-   * looking for them, to price WHICH barn card a D8 build burns, and measured the
-   * leg as empty: 0.2% of 896 build groups over 55 games offered a barn card at
-   * all, and no chosen move ever spent one. Carrying the suit map to serve that
-   * would be surface for nothing.
+   * `stacks` is a COUNT. The Dairy rebuild (2026-08-10) deleted the two legs
+   * this used to carry - `coinWild` (coins as cards) and `barn` (barn cards in
+   * the payment) - and replaced them with this one; unlike the barn leg, which
+   * ticket 51 measured as dead (0.2% of 896 build groups offered one and no
+   * chosen move ever spent one), a stack card is a REAL alternative to a hand
+   * card, so it is charged as one. See `handSpend`.
    */
-  | { a: 'build'; card: CardId; payment: readonly CardId[]; coinWild: number; barn: number }
+  | { a: 'build'; card: CardId; payment: readonly CardId[]; stacks: number }
   | { a: 'upgrade'; card: CardId }
   | { a: 'grow'; building: CardId; payment: CardId }
   | { a: 'harvest'; building: CardId }
@@ -79,8 +80,7 @@ function actOfAnswer(answer: TaskAnswer): Act {
         a: 'build',
         card: answer.card,
         payment: answer.payment,
-        coinWild: answer.coinWild ?? 0,
-        barn: spendSize(answer.barn ?? {}),
+        stacks: (answer.stacks ?? []).length,
       };
     case 'deliver':
       return { a: 'deliver', tile: answer.tile, spend: answer.spend };
@@ -115,7 +115,7 @@ export function actOf(move: Move): Act {
     case 'market':
       return { a: 'market', suit: move.suit };
     case 'build':
-      return { a: 'build', card: move.card, payment: move.payment, coinWild: 0, barn: 0 };
+      return { a: 'build', card: move.card, payment: move.payment, stacks: 0 };
     case 'upgrade':
       return { a: 'upgrade', card: move.card };
     case 'grow':

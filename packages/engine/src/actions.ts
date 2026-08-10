@@ -106,46 +106,71 @@ export function tileLevel(data: GameData, tileId: string): 1 | 2 | 3 {
 /**
  * Modifiers a Build runs under. Absent = the plain printed rules, so every
  * pre-Dairy call site keeps its behaviour. All of them compose.
+ *
+ * Two mods died with the Dairy rebuild (2026-08-10) and their deletion is a
+ * DESIGN deletion rather than a tidy-up, so it is recorded here:
+ *
+ *  - `fromBarn` (the old D8) let barn cards join a payment. The barn is a dead
+ *    end - nothing may move barn to hand or barn to stack - and barn to build
+ *    was the same violation wearing a different hat: it is what let the barn
+ *    accelerate an engine instead of only buying score.
+ *  - `coinWild` (the old D7) let coins stand in for cards. Seats end games on
+ *    about £1, so a coin-priced build option was dead text. If the Notice
+ *    Board faucet is ever widened, the Versatile Shed is where it comes back.
  */
 export interface BuildMods {
-  /** Card count reduction (the cream balloon, D4/D8/D9/D12/D15). Waives the own-suit half. */
+  /** Card count reduction (the cream balloon, the Builder's Yard, D4/D9/D11/D12). Waives the own-suit half. */
   discount?: number;
-  /** The Dairy Farmstead: any card pays any slot - the own-suit minimum is waived, never coins. */
+  /** The Builder's Yard: any card pays any slot - the own-suit minimum is waived, never coins. */
   substitute?: boolean;
-  /** D7 The Versatile Shed (ruling H): up to N coins each stand in for one required card. */
-  coinWild?: number;
-  /** D8 The Abundant Shed: barn cards may join the payment, by suit tally. */
-  fromBarn?: boolean;
+  /** D7 The Versatile Shed: cards on the seat's OWN buildings may join the payment. */
+  fromStacks?: boolean;
 }
 
 /**
- * A concrete, fully-chosen build. `payment` is hand cards; `barn` is a per-suit
- * tally (barn identity is inert, and views anonymise it, so a policy can only
- * ever name a suit there); `coinWild` is coins spent AS CARDS, on top of the
- * card's printed coin price.
+ * A concrete, fully-chosen build. `payment` is hand cards; `stacks` is cards
+ * lifted off the seat's own buildings (D7 only).
+ *
+ * The two are kept apart rather than pooled because two rules read the
+ * difference: the Dairy Farmstead diverts cards spent FROM HAND and never a
+ * stack card (or D2 + D7 is a free Harvest - stack to build cost to barn with
+ * no Harvest action spent), and `doBuild` has to take them out of different
+ * zones. `stacks` names cards by id, unlike the old barn payment's per-suit
+ * tally, because a stack is public and ordered where a barn is anonymous.
  */
 export interface BuildOption {
   card: CardId;
   payment: CardId[];
-  barn?: Partial<Record<Suit, number>>;
-  coinWild?: number;
-}
-
-/** The Dairy Farmstead's base power, live from turn 1: substitution on every Build. */
-export function buildSubstitutePower(state: GameState, seat: Seat): boolean {
-  return player(state, seat).suit === 'dairy';
+  stacks?: CardId[];
 }
 
 /**
- * The upgraded Dairy Farmstead's "BUILD: you may BUILD again" - one optional
- * repeat of the Build ACTION, the same `turn.again` gate the Wheat harvest
- * repeat uses. Main action only, following the reference's afterMainAction.
+ * THE DAIRY FARMSTEAD, rebuilt 2026-08-10: "When you Build, put 1 card you
+ * spend from your hand into your barn instead of discarding it", and on the
+ * upgraded face, every card.
+ *
+ * It replaces both of the old faces - permanent crop substitution from turn 1,
+ * and a second Build ACTION every turn for £2 - and it is the suit's whole
+ * compensation. Dairy measured 10.2 cards into its barn against Orchard's 25.7
+ * because its cards left the pipeline into the tableau and never came back;
+ * this is the line that puts them back. Substitution survives only as a mod the
+ * Builder's Yard grants to whoever visits it, so a Dairy seat now matches crops
+ * like everybody else - which is exactly what makes its own Service worth
+ * buying.
+ *
+ * Returns the Farmstead's card id (the `src` the divert task is resolved by)
+ * and how many spent cards it may take, or null for a seat without the power.
  */
-export function buildAgainPower(data: GameData, state: GameState, seat: Seat): boolean {
+export function buildDivertPower(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+): { card: CardId; limit: number } | null {
   const p = player(state, seat);
-  if (p.suit !== 'dairy') return false;
+  if (p.suit !== 'dairy') return null;
   const farmstead = p.tableau.find((b) => cardById(data, b.card).slot === 'farmstead');
-  return farmstead?.upgraded ?? false;
+  if (farmstead === undefined) return null;
+  return { card: farmstead.card, limit: farmstead.upgraded ? Infinity : 1 };
 }
 
 /** How many cards and coins a build actually costs under its modifiers. */
@@ -161,25 +186,77 @@ function priceOf(
   const cardsNeeded = Math.max(0, totalCards - discount);
   const coinsNeeded = discount - totalCards >= cost.coins ? 0 : cost.coins;
   // A discount waives the own-suit half (reference buildDiscount), and so does
-  // the Dairy Farmstead's substitution.
+  // the Builder's Yard's granted substitution.
   const ownSuitMin = discount > 0 || mods.substitute === true ? 0 : cost.suit;
   return { cardsNeeded, coinsNeeded, ownSuitMin };
 }
 
-/** Multisets of size k over the suits a seat's barn can actually cover. */
-function barnFills(
-  tally: Partial<Record<Suit, number>>,
-  suits: readonly Suit[],
-  k: number,
-): Partial<Record<Suit, number>>[] {
-  if (k === 0) return [{}];
-  if (suits.length === 0) return [];
-  const [head, ...rest] = suits as [Suit, ...Suit[]];
-  const out: Partial<Record<Suit, number>>[] = [];
-  const max = Math.min(k, tally[head] ?? 0);
-  for (let n = max; n >= 0; n--) {
-    for (const tail of barnFills(tally, rest, k - n)) {
-      out.push(n > 0 ? { [head]: n, ...tail } : tail);
+/**
+ * D7's payment pool from the tableau, as INTERCHANGEABILITY GROUPS: the cards
+ * on the seat's own buildings, split by (building, crop).
+ *
+ * Two wheat cards on the same stack differ in nothing a rule or a player can
+ * read - same crop, same building freed, same discard - so a payment is decided
+ * by HOW MANY come out of each group, never by which. Grouping and then filling
+ * canonically (the first n of a group) is what keeps the option set finite: a
+ * plain subset enumeration over stack ids would offer C(3,2) ways to take two
+ * wheat off one building and call them three different builds.
+ *
+ * What genuinely varies survives intact: WHICH building loses cards (D7 is the
+ * suit's only Tier 1 un-clog) and WHAT CROP they are (the own-suit minimum).
+ */
+function stackGroups(data: GameData, state: GameState, seat: Seat): CardId[][] {
+  const out: CardId[][] = [];
+  for (const b of player(state, seat).tableau) {
+    const byCrop = new Map<Suit, CardId[]>();
+    for (const id of b.stack) {
+      const suit = cardById(data, id).suit;
+      byCrop.set(suit, [...(byCrop.get(suit) ?? []), id]);
+    }
+    out.push(...byCrop.values());
+  }
+  return out;
+}
+
+/** Canonical selections of k cards across the groups - the first n of each. */
+function stackFills(groups: readonly CardId[][], k: number): CardId[][] {
+  if (k === 0) return [[]];
+  if (groups.length === 0) return [];
+  const [head, ...rest] = groups as [CardId[], ...CardId[][]];
+  const out: CardId[][] = [];
+  for (let n = Math.min(k, head.length); n >= 0; n--) {
+    for (const tail of stackFills(rest, k - n)) out.push([...head.slice(0, n), ...tail]);
+  }
+  return out;
+}
+
+/**
+ * Ways to pay for ONE named card under `mods`, out of `hand` and `groups`. The
+ * inner half of `buildOptions`, split out because D10 The Scout's Post has to
+ * price a card that is NOT in the hand - a revealed deck top - and must reach
+ * exactly the same arithmetic rather than a second copy of it.
+ *
+ * The own-suit minimum counts across BOTH sources: a stack card of the built
+ * card's crop pays its crop requirement, because the rule is about what the
+ * payment is made of and not where it came from.
+ */
+function paymentsFor(
+  data: GameData,
+  card: CardId,
+  hand: readonly CardId[],
+  groups: readonly CardId[][],
+  price: { cardsNeeded: number; ownSuitMin: number },
+): BuildOption[] {
+  const suit = cardById(data, card).suit;
+  const out: BuildOption[] = [];
+  const maxStacks = groups.length === 0 ? 0 : price.cardsNeeded;
+  for (let n = 0; n <= maxStacks; n++) {
+    for (const stacks of stackFills(groups, n)) {
+      for (const payment of subsets(hand, price.cardsNeeded - n)) {
+        const own = [...payment, ...stacks].filter((c) => cardById(data, c).suit === suit).length;
+        if (own < price.ownSuitMin) continue;
+        out.push(stacks.length > 0 ? { card, payment, stacks } : { card, payment });
+      }
     }
   }
   return out;
@@ -191,10 +268,10 @@ function barnFills(
  * suit cards may fill the wild half. `hand` overrides the seat's hand for the
  * post-fee re-check a visit's worker payoff needs.
  *
- * Under `mods` the price and the own-suit minimum move (see priceOf), coins may
- * stand in for cards (D7) and barn cards may join the payment (D8). The
- * enumeration stays exhaustive and concrete: one option per fully-decided way
- * to pay, so apply can re-validate exactly what was offered.
+ * Under `mods` the price and the own-suit minimum move (see priceOf) and cards
+ * on the seat's own buildings may join the payment (D7). The enumeration stays
+ * exhaustive and concrete: one option per fully-decided way to pay, so apply
+ * can re-validate exactly what was offered.
  */
 export function buildOptions(
   data: GameData,
@@ -205,60 +282,70 @@ export function buildOptions(
 ): BuildOption[] {
   const p = player(state, seat);
   const cards = hand ?? p.hand;
-  const tally = mods.fromBarn === true ? barnTally(data, state, seat) : {};
+  const groups = mods.fromStacks === true ? stackGroups(data, state, seat) : [];
   const out: BuildOption[] = [];
   for (const id of cards) {
     const price = priceOf(data, id, mods);
     if (!price) continue;
-    const suit = cardById(data, id).suit;
-    const others = cards.filter((h) => h !== id);
-    const maxCoinWild = Math.min(mods.coinWild ?? 0, price.cardsNeeded);
-    for (let coinWild = 0; coinWild <= maxCoinWild; coinWild++) {
-      const coinsSpent = price.coinsNeeded + coinWild;
-      if (p.coins < coinsSpent) continue;
-      const cardsLeft = price.cardsNeeded - coinWild;
-      // A coin is a wild card, so it can never satisfy the own-suit minimum.
-      for (let fromHand = cardsLeft; fromHand >= 0; fromHand--) {
-        const fromBarn = cardsLeft - fromHand;
-        if (fromBarn > 0 && mods.fromBarn !== true) continue;
-        for (const payment of subsets(others, fromHand)) {
-          const own = payment.filter((c) => cardById(data, c).suit === suit).length;
-          if (own < price.ownSuitMin) continue;
-          for (const barn of barnFills(tally, state.suitsInPlay, fromBarn)) {
-            const option: BuildOption = { card: id, payment };
-            if (fromBarn > 0) option.barn = barn;
-            if (coinWild > 0) option.coinWild = coinWild;
-            out.push(option);
-          }
-        }
-      }
-    }
+    if (p.coins < price.coinsNeeded) continue;
+    out.push(
+      ...paymentsFor(
+        data,
+        id,
+        cards.filter((h) => h !== id),
+        groups,
+        price,
+      ),
+    );
   }
   return out;
 }
 
 /**
- * Early-exit form of buildOptions, for legality checks. `granted` is a
- * substitution the BUILD itself carries (the Dairy Service waives crop
- * requirements for whoever buys it), ORed with the seat's own Farmstead power.
+ * Ways this seat could pay for a card that is NOT in their hand - D10's
+ * revealed deck top, which is in limbo and never touches the hand. Returns []
+ * when the card has no build cost or the coins are not there.
+ */
+export function paymentOptions(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+  card: CardId,
+  mods: BuildMods = {},
+): { payment: CardId[]; coins: number }[] {
+  const price = priceOf(data, card, mods);
+  if (!price) return [];
+  const p = player(state, seat);
+  if (p.coins < price.coinsNeeded) return [];
+  return paymentsFor(data, card, p.hand, [], price).map((o) => ({
+    payment: o.payment,
+    coins: price.coinsNeeded,
+  }));
+}
+
+/**
+ * Early-exit form of buildOptions, for legality checks. `mods` is what the
+ * BUILD itself carries - the Builder's Yard waives crop requirements AND takes
+ * a card off the price for whoever buys it, and both halves have to be visible
+ * here or the Service is offered when it is affordable and refused when it is
+ * not.
  */
 export function anyBuildOption(
   data: GameData,
   state: GameState,
   seat: Seat,
   hand?: CardId[],
-  granted = false,
+  mods: BuildMods = {},
 ): boolean {
   const p = player(state, seat);
   const cards = hand ?? p.hand;
-  const substitute = granted || buildSubstitutePower(state, seat);
   return cards.some((id) => {
-    const cost = cardById(data, id).buildCost;
-    if (!cost || p.coins < cost.coins) return false;
+    const price = priceOf(data, id, mods);
+    if (!price || p.coins < price.coinsNeeded) return false;
     const suit = cardById(data, id).suit;
     const others = cards.filter((h) => h !== id);
     const own = others.filter((c) => cardById(data, c).suit === suit).length;
-    return others.length >= cost.suit + cost.wild && (substitute || own >= cost.suit);
+    return others.length >= price.cardsNeeded && own >= price.ownSuitMin;
   });
 }
 
@@ -275,39 +362,68 @@ export function doBuild(
   src: CardId | null = null,
 ): void {
   const { card, payment } = choice;
-  const barn = choice.barn ?? {};
-  const coinWild = choice.coinWild ?? 0;
+  const stacks = choice.stacks ?? [];
   const p = player(fx.state, seat);
   const c = cardById(fx.data, card);
   const price = priceOf(fx.data, card, mods);
   if (!price) throw new Error(`${card} has no build cost`);
   if (!p.hand.includes(card)) throw new Error(`${card} is not in seat ${seat}'s hand`);
-  if (payment.includes(card)) throw new Error(`${card} cannot pay for itself`);
-  if (new Set(payment).size !== payment.length) throw new Error('Duplicate payment card');
-  if (coinWild > (mods.coinWild ?? 0))
-    throw new Error(`${card} may not spend £${coinWild} as cards`);
-  const fromBarn = (Object.values(barn) as number[]).reduce((a, b) => a + b, 0);
-  if (fromBarn > 0 && mods.fromBarn !== true)
-    throw new Error('This Build may not spend barn cards');
-  if (payment.length + fromBarn + coinWild !== price.cardsNeeded) {
-    throw new Error(
-      `${card} costs ${price.cardsNeeded} cards, got ${payment.length + fromBarn + coinWild}`,
-    );
+  const spent = [...payment, ...stacks];
+  if (spent.includes(card)) throw new Error(`${card} cannot pay for itself`);
+  if (new Set(spent).size !== spent.length) throw new Error('Duplicate payment card');
+  if (stacks.length > 0 && mods.fromStacks !== true) {
+    throw new Error('This Build may not spend cards off your buildings');
   }
-  const own = payment.filter((id) => cardById(fx.data, id).suit === c.suit).length;
+  if (spent.length !== price.cardsNeeded) {
+    throw new Error(`${card} costs ${price.cardsNeeded} cards, got ${spent.length}`);
+  }
+  const own = spent.filter((id) => cardById(fx.data, id).suit === c.suit).length;
   if (own < price.ownSuitMin) {
     throw new Error(`${card} needs ${price.ownSuitMin} ${c.suit} cards in payment`);
   }
 
-  const coinsSpent = price.coinsNeeded + coinWild;
-  if (coinsSpent > 0) fx.payCoins(seat, coinsSpent, `build:${card}`);
+  if (price.coinsNeeded > 0) fx.payCoins(seat, price.coinsNeeded, `build:${card}`);
   fx.removeFromHand(seat, card);
   for (const id of payment) fx.removeFromHand(seat, id);
-  fx.discard(payment);
-  // Barn cards leave for their suits' discards through the shared funnel, so
-  // they are spent exactly as a delivery spends them.
-  const barnCards = fromBarn > 0 ? fx.spendFromBarn(seat, barn) : [];
-  placeBuilt(fx, seat, card, [...payment, ...barnCards], coinsSpent, src);
+  // SPENT, not harvested (D7's ruling): the cards come straight off the stack,
+  // no afterHarvest fires, and they are not divertible.
+  for (const id of stacks) fx.spendFromStack(seat, id);
+  divertOrDiscard(fx, seat, payment);
+  fx.discard(stacks);
+  placeBuilt(fx, seat, card, spent, price.coinsNeeded, src);
+}
+
+/**
+ * THE DIVERT SEAM FOR A BUILD PAYMENT, and it sits BEFORE the discard rather
+ * than reclaiming from it afterwards.
+ *
+ * That placement is the whole design. D5 The Churning Shed sows the cards this
+ * build spent and D6 The Trading Shed gives one away, and both reach into the
+ * discard for them on `afterBuild`; a Farmstead that also reclaimed from the
+ * pile would be a third consumer racing over one pile, which is how a card ends
+ * up in two places. Taking the diversion out first means the pile only ever
+ * holds what nobody else claimed, so ONE DESTINATION PER SPENT CARD falls out of
+ * the ordering instead of being asserted three times.
+ *
+ * The task is PREPENDED so it resolves before anything already queued - the
+ * second half of D12's two builds, say - and `placeBuilt`'s own reactors append
+ * behind it. So the order is always: choose the diversion, discard the rest,
+ * then D5 and D6 pick over what is left.
+ */
+function divertOrDiscard(fx: Fx, seat: Seat, payment: readonly CardId[]): void {
+  if (payment.length === 0) return;
+  const power = buildDivertPower(fx.data, fx.state, seat);
+  if (power === null) {
+    fx.discard([...payment]);
+    return;
+  }
+  fx.prependTask({
+    t: 'card',
+    pid: seat,
+    src: power.card,
+    kind: 'divertSpent',
+    riders: { cards: [...payment], remaining: Math.min(power.limit, payment.length) },
+  });
 }
 
 /**
@@ -327,6 +443,9 @@ export function placeBuilt(
 ): void {
   player(fx.state, seat).tableau.push({ card, stack: [], upgraded: false });
   fx.emit({ e: 'built', seat, card, payment, coins });
+  // Recorded BEFORE the hook fires, so a listener counting "have I already paid
+  // out for this source this turn" sees this build in the list (D16 The Ledger).
+  fx.state.turn.buildSources.push(src);
   checkFarmsteadFlip(fx, seat);
   fireHook(fx, 'afterBuild', { seat, card, payment, src });
 }
@@ -1398,7 +1517,11 @@ export function workerActionLegal(
             player(state, seat).tableau.some((b) => canTakeCard(data, b))
         : hand.length > 0 && player(state, seat).tableau.some((b) => canTakeCard(data, b));
     case 'build':
-      return anyBuildOption(data, state, seat, hand, worker.build?.substitute === true);
+      // The Service's OWN mods, both of them: the Builder's Yard waives the crop
+      // requirements and takes a card off the price (2026-08-10). A legality
+      // check that saw only the waiver would offer the Service and then refuse
+      // the build it granted.
+      return anyBuildOption(data, state, seat, hand, { ...(worker.build ?? {}) });
     case 'deliver':
       // Island or freight: a balloon move IS the Deliver action (DL-12). The
       // handToBarn head is optional, so a seat with a payable barn qualifies

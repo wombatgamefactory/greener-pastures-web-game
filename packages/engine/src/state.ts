@@ -144,18 +144,40 @@ export interface TurnState {
   /**
    * The ActionAgain gate (the reference's state 14): an upgraded Farmstead's
    * one optional repeat of the main action just taken. 'harvest' = the Wheat
-   * "Harvest is 2 buildings", 'build' = the Dairy "BUILD: you may BUILD again".
-   * Armed by apply after the qualifying MAIN action (never a Worker's - the
-   * reference offers the repeat from afterMainAction only), consumed by the
-   * repeat move, declined by endTurn or by the turn settling.
+   * "Harvest is 2 buildings". Armed by apply after the qualifying MAIN action
+   * (never a Worker's - the reference offers the repeat from afterMainAction
+   * only), consumed by the repeat move, declined by endTurn or by the turn
+   * settling.
+   *
+   * It used to have a second value, 'build', for the upgraded Dairy Farmstead's
+   * "BUILD: you may BUILD again". That card is gone (2026-08-10): it sold a
+   * second Build ACTION - the scarcest resource in the game - for £2, and the
+   * suit still came last by a distance. Wheat's repeat is the only one left,
+   * and the union is narrowed to say so.
    */
-  again: 'harvest' | 'build' | null;
+  again: 'harvest' | null;
   /**
    * Built cards whose once-per-turn standing move has been taken this turn
    * (the upgraded Orchard Barn's gift). A handler's moves() checks membership;
    * turn end resets by replacing the whole object.
    */
   onceUsed: CardId[];
+  /**
+   * The SOURCE of every build made this turn, in order: null for the plain
+   * Build action (and for a Service's build), the granting card otherwise.
+   *
+   * Generic turn bookkeeping rather than a card's private state, and D16 The
+   * Ledger is its consumer. "Whenever you Build, Draw 1" is RULED to fire once
+   * per Build ACTION rather than once per building, or The Grand Creamery draws
+   * four and The Butter Factory two. W16 The Granary answers the same question
+   * by counting its own events inside one `apply`, and that shape cannot work
+   * here: D15's run and D12's pair each place their buildings across SEVERAL
+   * applies, one per player decision. A card source that has already built this
+   * turn does not pay out again; a null source is never deduped, because two
+   * action-level builds in one turn (the Build action and the Builder's Yard on
+   * the bonus slot) genuinely are two Build actions.
+   */
+  buildSources: (CardId | null)[];
 }
 
 /**
@@ -185,9 +207,7 @@ export type Task =
       progress: boolean;
       /** Coins the Service's owner mints from the bank when the pick resolves. */
       ownerCoins: number;
-      /** Coins the ACTOR mints if the work happens (D9's "if you do, gain £2"). */
-      actorCoins?: number;
-      /** "You may then WORK" (D9): a skip answer is offered. */
+      /** "You may then WORK": a skip answer is offered. */
       optional?: boolean;
     }
   | {
@@ -249,9 +269,10 @@ export type Task =
       src: CardId | null;
       /**
        * The modifiers this build runs under: the cream balloon's and Dairy's
-       * discounts, D7's coins-as-cards, D8's barn payment. Absent = the plain
-       * printed rules. The seat's own Farmstead substitution is added on top by
-       * the enumerator, so a card never has to remember it.
+       * discounts, the Builder's Yard's crop waiver, D7's stack payment. Absent
+       * = the plain printed rules. Nothing is folded in on top any more - the
+       * Dairy Farmstead stopped granting substitution on 2026-08-10, so what a
+       * build carries is exactly what granted it.
        */
       mods?: BuildMods;
       /** "You may Build" (D12's two builds): a skip answer is offered. */
@@ -361,10 +382,8 @@ export type TaskAnswer =
       kind: 'build';
       card: CardId;
       payment: CardId[];
-      /** D8: barn cards joining the payment, by suit tally (barn identity is inert). */
-      barn?: Partial<Record<Suit, number>>;
-      /** D7: coins spent as wild cards, on top of the card's printed coin price. */
-      coinWild?: number;
+      /** D7: cards lifted off the seat's OWN buildings to help pay, by id. */
+      stacks?: CardId[];
     }
   | { kind: 'deliver'; tile: string; spend: Partial<Record<Suit, number>>; head?: CardId[] }
   | { kind: 'balloon'; balloon: string; spend: Partial<Record<Suit, number>> }

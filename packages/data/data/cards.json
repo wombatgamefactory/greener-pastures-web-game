@@ -4,7 +4,7 @@
     "kind": "generated",
     "generatedBy": "tools/extract_cards.py",
     "sourceSheet": "worksheet 'cards' of the designer spreadsheet (kept outside this repo)",
-    "sourceSha256": "f7028169751f6e00d9c3e2994cdec94e8bd4b51ecefeaf2ea0e0b29703346037",
+    "sourceSha256": "7940acbdcae740d3e159dbf79a23ad72632dd8cc563230ae60dfccd40b4769c2",
     "notes": [
       "buildCost is derived from the @cost1..@cost6 icon columns, which are authoritative; the sheet's 'Build Cost' text column is lossy.",
       "A suit has THREE starters - Barn (ref 1), Farmstead (ref 2), Notice Board (ref 3) - plus the 18-card deck (refs 4..21). 105 cards total (15 starters + 90 deck).",
@@ -510,7 +510,7 @@
           "printedVp": 0,
           "threshold": null,
           "activationType": null,
-          "abilityText": "Hand size 6.",
+          "abilityText": "Hand size 6. When you build a SHED, Draw 2.",
           "handSize": 6
         },
         "upgraded": {
@@ -518,7 +518,7 @@
           "printedVp": 2,
           "threshold": null,
           "activationType": null,
-          "abilityText": "Hand size 8.",
+          "abilityText": "Hand size 8. When you build a SHED, Draw 2.",
           "handSize": 8
         }
       }
@@ -540,14 +540,14 @@
           "printedVp": 0,
           "threshold": null,
           "activationType": null,
-          "abilityText": "BUILD: Substitute any card for another (not £).\nFlips free when you have 3 Dairy buildings."
+          "abilityText": "When you Build, put 1 card you spend from your hand into your barn instead of discarding it.\nFlips free when you have 3 Dairy buildings."
         },
         "upgraded": {
           "name": "Upgraded Farmstead",
           "printedVp": 2,
           "threshold": null,
           "activationType": null,
-          "abilityText": "BUILD: Substitute any card for another (not £).\nBUILD: you may BUILD again."
+          "abilityText": "When you Build, put every card you spend from your hand into your barn instead of discarding it."
         }
       }
     },
@@ -569,7 +569,7 @@
           "printedVp": 0,
           "threshold": 5,
           "activationType": "wild",
-          "abilityText": "VISITOR: Take £1 from bank\nOR Build. Any crop may pay its crop costs."
+          "abilityText": "VISITOR: Take £1 from bank\nOR Build at a discount of 1. Any crop may pay its crop costs."
         },
         "upgraded": {
           "name": "Special Orders",
@@ -593,9 +593,9 @@
         "coins": 0
       },
       "activationType": "dairy",
-      "threshold": 4,
+      "threshold": 2,
       "printedVp": 1,
-      "abilityText": "Build, paying 1 fewer resource for each card already on the Milking Shed.",
+      "abilityText": "Build at a discount of 2.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -609,14 +609,14 @@
       "inDeck": true,
       "enabled": true,
       "buildCost": {
-        "suit": 1,
+        "suit": 2,
         "wild": 0,
         "coins": 0
       },
       "activationType": "dairy",
-      "threshold": 4,
+      "threshold": 3,
       "printedVp": 1,
-      "abilityText": "Build. You may sow 1 card you spent onto the new building.",
+      "abilityText": "Build. SOW the cards you spend onto the new building.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -630,14 +630,14 @@
       "inDeck": true,
       "enabled": true,
       "buildCost": {
-        "suit": 1,
+        "suit": 2,
         "wild": 0,
         "coins": 0
       },
       "activationType": "dairy",
-      "threshold": 4,
+      "threshold": 3,
       "printedVp": 1,
-      "abilityText": "Build. Gain £1 if you spend 2 or more different card types.",
+      "abilityText": "Build. Give 1 card you spend to a neighbour and take £1 from the bank.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -656,9 +656,9 @@
         "coins": 0
       },
       "activationType": "dairy",
-      "threshold": 5,
+      "threshold": 3,
       "printedVp": 1,
-      "abilityText": "Build. You may spend up to £2 as wild resources.",
+      "abilityText": "Build. You may spend cards from your buildings as well as from your hand.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -672,14 +672,14 @@
       "inDeck": true,
       "enabled": true,
       "buildCost": {
-        "suit": 2,
+        "suit": 1,
         "wild": 0,
         "coins": 0
       },
       "activationType": "dairy",
       "threshold": 2,
       "printedVp": 1,
-      "abilityText": "Build at a discount of 1. You may spend cards from your Barn as well as your hand.",
+      "abilityText": "Build. Draw 2.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -693,14 +693,14 @@
       "inDeck": true,
       "enabled": true,
       "buildCost": {
-        "suit": 3,
-        "wild": 0,
+        "suit": 2,
+        "wild": 1,
         "coins": 0
       },
       "activationType": "dairy",
-      "threshold": 4,
+      "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Build at a discount of 1.\nYou may then WORK a Hired Worker, if you do, gain £2 from bank.",
+      "abilityText": "Build at a discount of 1 for every 2 buildings you have built.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -714,14 +714,14 @@
       "inDeck": true,
       "enabled": true,
       "buildCost": {
-        "suit": 3,
+        "suit": 2,
         "wild": 1,
         "coins": 0
       },
       "activationType": "dairy",
-      "threshold": 3,
+      "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Pay £3: build the top card of any deck for free.",
+      "abilityText": "Reveal the top card of each deck. You may build 1 of them at a discount of 2.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -735,14 +735,14 @@
       "inDeck": true,
       "enabled": true,
       "buildCost": {
-        "suit": 3,
+        "suit": 2,
         "wild": 1,
         "coins": 0
       },
       "activationType": "dairy",
-      "threshold": 3,
+      "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Build on top of one of your empty buildings (never a starter), at a discount of 2. The covered card scores its VP at game end.",
+      "abilityText": "Build on top of one of your buildings (never a starter), at a discount of 2. Put every card on the covered building into your barn. The covered card scores its VP at game end.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -756,14 +756,14 @@
       "inDeck": true,
       "enabled": true,
       "buildCost": {
-        "suit": 3,
+        "suit": 2,
         "wild": 1,
         "coins": 0
       },
       "activationType": "dairy",
-      "threshold": 3,
+      "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Build up to 2 buildings, each at a discount of 1.",
+      "abilityText": "Build 2 buildings, each at a discount of 1.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -778,15 +778,15 @@
       "enabled": true,
       "buildCost": {
         "suit": 3,
-        "wild": 2,
+        "wild": 1,
         "coins": 0
       },
-      "activationType": "wild",
-      "threshold": 2,
+      "activationType": null,
+      "threshold": null,
       "printedVp": 3,
-      "abilityText": "Pay £3: build the top 2 cards of any decks, for free.",
+      "abilityText": "Draw a card for every building you have built. Give any cards over your hand limit to other players, and take £1 from the bank for each.",
       "abilityTrigger": [
-        "onActivate"
+        "action"
       ],
       "needsDesignReview": false
     },
@@ -799,15 +799,15 @@
       "enabled": true,
       "buildCost": {
         "suit": 3,
-        "wild": 3,
+        "wild": 1,
         "coins": 0
       },
-      "activationType": "wild",
-      "threshold": 1,
+      "activationType": null,
+      "threshold": null,
       "printedVp": 3,
-      "abilityText": "Demolish one of your empty buildings (never a starter): put it and the top 2 cards of any decks into your barn.",
+      "abilityText": "Put one of your buildings, and every card on it, into your barn. Then put the top card of any deck into your barn for each card in its build cost.",
       "abilityTrigger": [
-        "onActivate"
+        "action"
       ],
       "needsDesignReview": false
     },
@@ -820,15 +820,15 @@
       "enabled": true,
       "buildCost": {
         "suit": 3,
-        "wild": 2,
+        "wild": 1,
         "coins": 0
       },
-      "activationType": "wild",
-      "threshold": 2,
+      "activationType": null,
+      "threshold": null,
       "printedVp": 3,
-      "abilityText": "Build with a discount of 1 for every Dairy building you have built.",
+      "abilityText": "Reveal deck tops one at a time and build each one free. Each must cost more than the last, or it is discarded and you stop.",
       "abilityTrigger": [
-        "onActivate"
+        "action"
       ],
       "needsDesignReview": false
     },
@@ -868,7 +868,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 1,
-      "abilityText": "Gain £1 from the bank whenever you HIRE or WORK a Hired Worker.",
+      "abilityText": "Whenever a neighbour Builds, take £1 from the bank.",
       "abilityTrigger": [
         "passive"
       ],
@@ -889,7 +889,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 1,
-      "abilityText": "When you VISIT a neighbour and WORK their Hired Worker, you may place a second card on their Notice Board to work it again.",
+      "abilityText": "When you VISIT a neighbour, you may place a second card on their Notice Board and take its action again.",
       "abilityTrigger": [
         "passive"
       ],
@@ -910,7 +910,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Score 1 VP for each non-Dairy building in your tableau.",
+      "abilityText": "Game end: 1 VP for each non-Dairy building you have built.",
       "abilityTrigger": [
         "gameEnd"
       ],
@@ -931,7 +931,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Score 1 VP for each of your buildings with a build cost of 4 or more.",
+      "abilityText": "Game end: 1 VP for each building you have built.",
       "abilityTrigger": [
         "gameEnd"
       ],
@@ -952,7 +952,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Score 1 VP for each Dairy building you have built with a build cost of 1 to 3.",
+      "abilityText": "Game end: 2 VP for each SHED you have built.",
       "abilityTrigger": [
         "gameEnd"
       ],

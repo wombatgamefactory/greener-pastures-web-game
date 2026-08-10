@@ -18,7 +18,7 @@ import { drawWorker } from './a07-draw-worker.js';
 import { theHook } from './a08-the-hook.js';
 import { wheatIdentity } from './a09-wheat-identity.js';
 import { breadHall } from './a10-bread-hall.js';
-import { wagonSelfWork } from './a11-wagon-self-work.js';
+import { dairyNoBuild } from './a11-dairy-no-build.js';
 import { balloonRaid } from './a12-balloon-raid.js';
 import { supplyLock } from './a13-supply-lock.js';
 import { marketMix } from './a14-market-mix.js';
@@ -35,7 +35,7 @@ export const WATCHLIST: readonly Assertion[] = [
   theHook,
   wheatIdentity,
   breadHall,
-  wagonSelfWork,
+  dairyNoBuild,
   balloonRaid,
   supplyLock,
   marketMix,

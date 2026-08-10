@@ -32,7 +32,6 @@ import {
   pendingTask,
   subsetAdditions,
   subsetAnswer,
-  withBarn,
   withPayment,
 } from '../view/intent';
 import type { BuildDraft, Intent, Live } from '../view/intent';
@@ -60,7 +59,6 @@ export interface Play {
   hold(card: CardId): void;
   startBuild(card: CardId): void;
   setDraft(draft: BuildDraft): void;
-  payWithBarn(suit: Suit, delta: number): void;
   setVisitFee(host: Seat, fee: readonly CardId[]): void;
 
   building(card: CardId): void;
@@ -230,10 +228,6 @@ export function usePlay(host: PlayHost): Play {
         startBuild(card);
       },
       setDraft: (draft) => setIntent({ k: 'build', draft }),
-      payWithBarn: (suit, delta) => {
-        if (effective.k !== 'build') return;
-        setIntent({ k: 'build', draft: withBarn(effective.draft, suit, delta) });
-      },
       setVisitFee: (host, fee) => setIntent({ k: 'visit', host, fee }),
 
       building: (card) => {

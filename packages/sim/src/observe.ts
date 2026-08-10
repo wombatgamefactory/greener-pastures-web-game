@@ -35,6 +35,7 @@ import { deliveriesPerTile } from '@gp/data';
 import type { CardId, GameEvent, GameState, Move, ScoreBreakdown, Seat, Task } from '@gp/engine';
 import {
   MOVE_TYPES,
+  anyBuildOption,
   cardById,
   faceOf,
   gameEndScores,
@@ -236,12 +237,48 @@ export interface GameMetrics {
   rivalUsesByWorker: Record<string, number>;
   workerVisits: WorkerVisit[];
 
-  /** D9 The Prosperity Wagon: works targeting the owner's own Worker, and a rival's. */
-  wagonSelfWorks: number;
-  wagonRivalWorks: number;
-  /** Times the Wagon was ACTIVATED at all, and times its optional work was declined. */
-  wagonActivations: number;
-  wagonSkips: number;
+  // --- The Dairy rebuild, 2026-08-10 ---------------------------------------
+  //
+  // Four lines its pass conditions need and no previous run recorded. They
+  // replace the D9 Prosperity Wagon counters, which measured a thing that can no
+  // longer happen: the Wagon's "work a Hired Worker" clause went with the Hiring
+  // Fair and the card is a scaling build discount now. ⚠️ NONE OF THESE HAS A
+  // NOISE FLOOR YET - run --noise before reading a movement in one as a finding.
+
+  /** Buildings put down, by seat. The suit's own ramp, counted. */
+  buildsBySeat: number[];
+  /**
+   * TURNS THAT BEGAN WITH NO BUILD AVAILABLE, by seat, and the turns sampled.
+   *
+   * The design's own headline risk, and the screen most likely to fail at a
+   * table: Dairy's Tiers 1 and 2 are nine cards that all do nothing when you have
+   * nothing you want to build. Sampled at the first decision of a turn, exactly
+   * like the clog probe beside it - but WITHOUT its holding-cards guard, because
+   * an empty hand is the sharpest case of no build available rather than a reason
+   * not to ask.
+   */
+  noBuildTurnsBySeat: number[];
+  buildSampledBySeat: number[];
+  /**
+   * CARDS TAKEN OFF DECK TOPS, all crops, all routes - draws, the market, a
+   * Service's sow, D10's reveal, D14's refill and D15's run.
+   *
+   * The rebuild's likeliest external breakage, and the one it is measured
+   * against: three Dairy cards pull off deck tops and D15 BUILDS them, so they
+   * never return to the deck at all. Read beside `reshufflesByCrop`, which is
+   * the number that must stay flat. Derived by diffing each decision's decks and
+   * adding back whatever a reshuffle put in, so every route is counted whether or
+   * not it emits an event of its own.
+   */
+  deckTopsTaken: number;
+  /**
+   * THE LENGTH OF EVERY GRAND CREAMERY RUN (D15), one entry per firing.
+   *
+   * The card's whole balance question in one list: a median of 1 is a
+   * disappointment machine, a median of 3 is too strong, and the dial is whether
+   * a coin-priced card counts as cost 0 or busts the run.
+   */
+  creameryRuns: number[];
 
   /**
    * How full the island was when the game stopped, 0..1. The design's real
@@ -386,6 +423,8 @@ export class Fold {
    */
   private dealtCrates = new Map<string, (Suit | 'wild')[]>();
   private leaderCache: { d: Decision; v: Seat | null } | null = null;
+  /** Buildings taken by the Grand Creamery run in progress, or null between runs. */
+  private creameryRun: number | null = null;
 
   constructor(data: GameData, spec: FoldSpec, seats: number) {
     this.data = data;
@@ -434,10 +473,11 @@ export class Fold {
       reshufflesByCrop: Object.fromEntries([...spec.suits, ...spec.neutral].map((s) => [s, 0])),
       rivalUsesByWorker: {},
       workerVisits: [],
-      wagonSelfWorks: 0,
-      wagonRivalWorks: 0,
-      wagonActivations: 0,
-      wagonSkips: 0,
+      buildsBySeat: zeros(),
+      noBuildTurnsBySeat: zeros(),
+      buildSampledBySeat: zeros(),
+      deckTopsTaken: 0,
+      creameryRuns: [],
       islandFill: NaN,
       movesChosen: {},
       movesOffered: {},
@@ -551,9 +591,58 @@ export class Fold {
     for (const label of new Set(d.legal.map(moveLabel))) {
       this.m.movesOffered[label] = (this.m.movesOffered[label] ?? 0) + 1;
     }
+    this.deckTops(d);
+    this.creamery(d);
     this.turnStart(d);
     this.move(d);
     for (const e of d.events) this.event(d, e);
+  }
+
+  /**
+   * Cards that left a deck during this decision.
+   *
+   * A diff rather than an event count, because there is no "a card left a deck"
+   * event and the routes are many: a draw's reveal, the market, the Apiary
+   * Service's sow, D10's reveal, D14's refill, D15's flips. A reshuffle refills
+   * the deck mid-decision, so its own event carries the post-shuffle size and
+   * that is added back - `pre - post + shuffled-in` is exactly what was taken,
+   * with or without one. D10's returns show up as a NEGATIVE per-suit diff and
+   * are floored at 0 per suit, which is the honest reading: a card revealed and
+   * put back was not taken.
+   */
+  private deckTops(d: Decision): void {
+    const shuffled: Partial<Record<Suit, number>> = {};
+    for (const e of d.events) {
+      if (e.e === 'reshuffled') shuffled[e.suit] = (shuffled[e.suit] ?? 0) + e.count;
+    }
+    for (const suit of this.data.cards.suits) {
+      const before = d.pre.decks[suit]?.length ?? 0;
+      const after = d.post.decks[suit]?.length ?? 0;
+      this.m.deckTopsTaken += Math.max(0, before - after + (shuffled[suit] ?? 0));
+    }
+  }
+
+  /**
+   * D15 The Grand Creamery's run length, counted off the flip task rather than
+   * off an event, because "the run ended" is not something the engine emits: a
+   * flip that busts discards a card and a flip that is declined does nothing at
+   * all, and both look the same from outside. So the run opens when the ACTION
+   * move is taken and closes on the first flip that builds nothing.
+   */
+  private creamery(d: Decision): void {
+    if (d.move.type === 'cardMove' && d.move.card === 'D15') {
+      this.creameryRun = 0;
+      return;
+    }
+    const head = d.pre.tasks[0];
+    if (this.creameryRun === null) return;
+    if (!head || head.t !== 'card' || head.src !== 'D15' || head.kind !== 'creameryFlip') return;
+    if (d.events.some((e) => e.e === 'built')) {
+      this.creameryRun += 1;
+      return;
+    }
+    this.m.creameryRuns.push(this.creameryRun);
+    this.creameryRun = null;
   }
 
   /**
@@ -568,6 +657,12 @@ export class Fold {
     if (s.tasks.length > 0 || s.turn.actionSpent || s.turn.bonusSpent) return;
     this.sampledTurn = this.turnsEnded;
     const seat = s.turnPlayer;
+    // The Dairy rebuild's headline risk, asked FIRST: an empty hand is the
+    // sharpest case of "no build available", not a reason to skip the question.
+    this.m.buildSampledBySeat[seat] = (this.m.buildSampledBySeat[seat] ?? 0) + 1;
+    if (!anyBuildOption(this.data, s, seat)) {
+      this.m.noBuildTurnsBySeat[seat] = (this.m.noBuildTurnsBySeat[seat] ?? 0) + 1;
+    }
     if (player(s, seat).hand.length === 0) return;
     this.m.clogSampledBySeat[seat] = (this.m.clogSampledBySeat[seat] ?? 0) + 1;
     if (visitOptions(this.data, s, seat).length === 0) {
@@ -579,9 +674,7 @@ export class Fold {
     const { move, pre } = d;
     switch (move.type) {
       case 'grow': {
-        const f = this.facts(move.building);
-        f.activations += 1;
-        if (move.building === 'D9') this.m.wagonActivations += 1;
+        this.facts(move.building).activations += 1;
         return;
       }
       case 'build':
@@ -649,17 +742,6 @@ export class Fold {
     if (task.t === 'divert' && a.kind === 'card' && a.payload.barn === true) {
       this.m.divertsBySeat[task.pid] = (this.m.divertsBySeat[task.pid] ?? 0) + 1;
     }
-
-    // D9 The Prosperity Wagon works any Worker including your own (ruling E),
-    // which permits a hermit battery. Assertion 11 is the measurement.
-    if (task.t === 'chooseWorker' && task.src === 'D9') {
-      if (a.kind === 'skip') this.m.wagonSkips += 1;
-      if (a.kind === 'worker') {
-        const owner = d.pre.fair.find((w) => w.id === a.workerId)?.owner ?? null;
-        if (owner === task.pid) this.m.wagonSelfWorks += 1;
-        else this.m.wagonRivalWorks += 1;
-      }
-    }
   }
 
   private event(d: Decision, e: GameEvent): void {
@@ -687,6 +769,7 @@ export class Fold {
         const f = this.facts(e.card);
         f.played = true;
         f.builtBy.push(e.seat);
+        m.buildsBySeat[e.seat] = (m.buildsBySeat[e.seat] ?? 0) + 1;
         const own = cardById(this.data, e.card).suit === player(d.post, e.seat).suit;
         if (own) m.ownCropBuildsBySeat[e.seat] = (m.ownCropBuildsBySeat[e.seat] ?? 0) + 1;
         else m.foreignCropBuildsBySeat[e.seat] = (m.foreignCropBuildsBySeat[e.seat] ?? 0) + 1;
@@ -913,6 +996,13 @@ export class Fold {
     m.ended = outcome === 'ended';
     m.error = error;
     m.chooseMs = chooseMs;
+
+    // A run left open by the decks running dry: its flip task enumerates
+    // nothing and the drain loop drops it silently, so no decision closes it.
+    if (this.creameryRun !== null) {
+      m.creameryRuns.push(this.creameryRun);
+      this.creameryRun = null;
+    }
 
     const capacity = state.island.tiles.length * deliveriesPerTile(this.data);
     const made = state.island.tiles.reduce((n, t) => n + t.deliveredBy.length, 0);

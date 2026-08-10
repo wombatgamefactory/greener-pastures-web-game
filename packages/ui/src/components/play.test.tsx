@@ -51,7 +51,6 @@ function staticPlay(view: PlayerView, moves: readonly Move[], intent: Intent): P
     hold: noop,
     startBuild: noop,
     setDraft: noop,
-    payWithBarn: noop,
     setVisitFee: noop,
     building: noop,
     rival: noop,

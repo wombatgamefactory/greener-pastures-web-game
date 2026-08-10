@@ -67,8 +67,8 @@ export function describeAnswer(data: GameData, answer: TaskAnswer): string {
       return `${cardName(data, answer.card)} onto ${cardName(data, answer.onto)}`;
     case 'build':
       return `${cardName(data, answer.card)}, paying ${cardList(data, answer.payment)}${
-        answer.barn ? ` + ${spendText(answer.barn)} from the barn` : ''
-      }${answer.coinWild ? ` + £${answer.coinWild} as cards` : ''}`;
+        answer.stacks?.length ? ` + ${cardList(data, answer.stacks)} off your buildings` : ''
+      }`;
     case 'deliver':
       return `island ${answer.tile}, spending ${spendText(answer.spend)}${headText(data, answer.head)}`;
     case 'balloon':

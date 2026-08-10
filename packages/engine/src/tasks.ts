@@ -18,7 +18,6 @@ import type { GameData } from '@gp/data';
 
 import {
   buildOptions,
-  buildSubstitutePower,
   deliverAnswers,
   doBuild,
   doDeliver,
@@ -45,14 +44,18 @@ import { workWorker } from './workers.js';
 import { handlerFor } from './handlers/registry.js';
 
 /**
- * A build task's modifiers, with the actor's own Farmstead substitution folded
- * in. One place decides it, so a card that grants a Build never has to remember
- * whose Build it is, and the enumerator and the resolver cannot disagree.
+ * A build task's modifiers: exactly what granted the build, and nothing folded
+ * in on top.
+ *
+ * It used to OR in the seat's own Dairy Farmstead substitution, so that no card
+ * granting a Build had to remember whose Build it was. That power is gone
+ * (2026-08-10) - a Dairy seat matches crops like everybody else now, and
+ * substitution survives only as a mod the Builder's Yard hands to whoever
+ * visits it. The function stays because the enumerator and the resolver must go
+ * on reading one expression rather than two.
  */
-function buildModsFor(state: GameState, task: Extract<Task, { t: 'build' }>): BuildMods {
-  const mods: BuildMods = { ...(task.mods ?? {}) };
-  if (buildSubstitutePower(state, task.pid)) mods.substitute = true;
-  return mods;
+function buildModsFor(_state: GameState, task: Extract<Task, { t: 'build' }>): BuildMods {
+  return { ...(task.mods ?? {}) };
 }
 
 // --- the discard divert seam ------------------------------------------------
@@ -192,8 +195,7 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
             kind: 'build',
             card: o.card,
             payment: o.payment,
-            ...(o.barn ? { barn: o.barn } : {}),
-            ...(o.coinWild ? { coinWild: o.coinWild } : {}),
+            ...(o.stacks ? { stacks: o.stacks } : {}),
           }) as TaskAnswer,
       );
       if (task.optional === true && out.length > 0) out.push({ kind: 'skip' });
@@ -259,10 +261,6 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
       if (task.ownerCoins > 0 && owner !== null) {
         fx.gainCoins(owner, task.ownerCoins, `rider:${task.src}`);
       }
-      // "If you do, gain £2" (D9): minted only when the work actually happened.
-      if ((task.actorCoins ?? 0) > 0) {
-        fx.gainCoins(task.pid, task.actorCoins as number, `rider:${task.src}`);
-      }
       return true;
     }
 
@@ -313,8 +311,7 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
         {
           card: answer.card,
           payment: answer.payment,
-          ...(answer.barn ? { barn: answer.barn } : {}),
-          ...(answer.coinWild ? { coinWild: answer.coinWild } : {}),
+          ...(answer.stacks ? { stacks: answer.stacks } : {}),
         },
         buildModsFor(fx.state, task),
         task.src,

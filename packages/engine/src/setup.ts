@@ -44,6 +44,7 @@ export function freshTurn(): TurnState {
     visit: null,
     again: null,
     onceUsed: [],
+    buildSources: [],
   };
 }
 

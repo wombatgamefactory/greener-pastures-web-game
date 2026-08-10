@@ -372,107 +372,91 @@ export interface BuildOffer {
   readonly move: Move;
   readonly card: CardId;
   readonly payment: readonly CardId[];
-  readonly barn: Partial<Record<Suit, number>>;
-  readonly coinWild: number;
+  /** D7 The Versatile Shed: cards taken off the seat's own buildings to pay. */
+  readonly stacks: readonly CardId[];
 }
 
 export function buildOffers(moves: readonly Move[], card?: CardId): BuildOffer[] {
   const out: BuildOffer[] = [];
   for (const move of moves) {
     if (move.type === 'build') {
-      out.push({ move, card: move.card, payment: move.payment, barn: {}, coinWild: 0 });
+      out.push({ move, card: move.card, payment: move.payment, stacks: [] });
     } else if (move.type === 'task' && move.answer.kind === 'build') {
       const a = move.answer;
-      out.push({
-        move,
-        card: a.card,
-        payment: a.payment,
-        barn: a.barn ?? {},
-        coinWild: a.coinWild ?? 0,
-      });
+      out.push({ move, card: a.card, payment: a.payment, stacks: a.stacks ?? [] });
     }
   }
   return card === undefined ? out : out.filter((o) => o.card === card);
 }
 
+/**
+ * A part-assembled build. Two lists of card IDS since the Dairy rebuild
+ * (2026-08-10), where there used to be a hand list, a per-suit barn TALLY and a
+ * coin count: D8's barn payment and D7's coins-as-wilds are both deleted, and
+ * D7's replacement pays with cards off the player's own buildings - which are
+ * public and ordered, so they are picked by id exactly like hand cards. The
+ * panel is a card-toggle surface again rather than a card-toggle plus two
+ * steppers.
+ */
 export interface BuildDraft {
   readonly card: CardId;
   readonly payment: readonly CardId[];
-  readonly barn: Partial<Record<Suit, number>>;
-  readonly coinWild: number;
+  readonly stacks: readonly CardId[];
 }
 
 export function emptyBuildDraft(card: CardId): BuildDraft {
-  return { card, payment: [], barn: {}, coinWild: 0 };
-}
-
-function tallyFits(part: Partial<Record<Suit, number>>, whole: Partial<Record<Suit, number>>) {
-  return (Object.entries(part) as [Suit, number][]).every(([s, n]) => (whole[s] ?? 0) >= n);
-}
-
-function tallyTotal(tally: Partial<Record<Suit, number>>): number {
-  return Object.values(tally).reduce((a: number, b) => a + (b ?? 0), 0);
+  return { card, payment: [], stacks: [] };
 }
 
 /** Offers still reachable from a partly-assembled payment. */
 export function buildCandidates(moves: readonly Move[], draft: BuildDraft): BuildOffer[] {
   return buildOffers(moves, draft.card).filter(
-    (o) =>
-      contains(o.payment, draft.payment) &&
-      tallyFits(draft.barn, o.barn) &&
-      o.coinWild >= draft.coinWild,
+    (o) => contains(o.payment, draft.payment) && contains(o.stacks, draft.stacks),
   );
 }
 
 /** The one offer the draft has fully specified, if it has. */
 export function buildComplete(moves: readonly Move[], draft: BuildDraft): BuildOffer | null {
   const exact = buildCandidates(moves, draft).filter(
-    (o) =>
-      sameCards(o.payment, draft.payment) &&
-      tallyTotal(o.barn) === tallyTotal(draft.barn) &&
-      tallyFits(o.barn, draft.barn) &&
-      o.coinWild === draft.coinWild,
+    (o) => sameCards(o.payment, draft.payment) && sameCards(o.stacks, draft.stacks),
   );
   return exact[0] ?? null;
 }
 
-/** What may still be added to a build payment: hand cards, barn suits, coins. */
+/** What may still be added to a build payment: hand cards and stack cards. */
 export interface BuildAdditions {
   readonly hand: ReadonlySet<CardId>;
-  readonly barn: ReadonlySet<Suit>;
-  readonly coins: boolean;
+  readonly stacks: ReadonlySet<CardId>;
   /** Cards still owed, as a range over the surviving candidates. */
   readonly remaining: { readonly min: number; readonly max: number };
 }
 
 export function buildAdditions(moves: readonly Move[], draft: BuildDraft): BuildAdditions {
   const hand = new Set<CardId>();
-  const barn = new Set<Suit>();
-  let coins = false;
+  const stacks = new Set<CardId>();
   let min = Infinity;
   let max = 0;
 
   for (const offer of buildCandidates(moves, draft)) {
     const short =
-      offer.payment.length -
-      draft.payment.length +
-      (tallyTotal(offer.barn) - tallyTotal(draft.barn)) +
-      (offer.coinWild - draft.coinWild);
+      offer.payment.length - draft.payment.length + (offer.stacks.length - draft.stacks.length);
     min = Math.min(min, short);
     max = Math.max(max, short);
-    const pool = [...offer.payment];
-    for (const paid of draft.payment) {
-      const i = pool.indexOf(paid);
-      if (i >= 0) pool.splice(i, 1);
-    }
-    for (const card of pool) hand.add(card);
-    for (const [suit, n] of Object.entries(offer.barn) as [Suit, number][]) {
-      if (n > (draft.barn[suit] ?? 0)) barn.add(suit);
-    }
-    if (offer.coinWild > draft.coinWild) coins = true;
+    addRemainder(hand, offer.payment, draft.payment);
+    addRemainder(stacks, offer.stacks, draft.stacks);
   }
 
-  return { hand, barn, coins, remaining: { min: min === Infinity ? 0 : min, max } };
+  return { hand, stacks, remaining: { min: min === Infinity ? 0 : min, max } };
+}
+
+/** Cards of `offer` this draft has not yet claimed, added to `out`. */
+function addRemainder(out: Set<CardId>, offer: readonly CardId[], chosen: readonly CardId[]): void {
+  const pool = [...offer];
+  for (const paid of chosen) {
+    const i = pool.indexOf(paid);
+    if (i >= 0) pool.splice(i, 1);
+  }
+  for (const card of pool) out.add(card);
 }
 
 export function withPayment(draft: BuildDraft, card: CardId): BuildDraft {
@@ -486,12 +470,16 @@ export function withPayment(draft: BuildDraft, card: CardId): BuildDraft {
   };
 }
 
-export function withBarn(draft: BuildDraft, suit: Suit, delta: number): BuildDraft {
-  const next = Math.max(0, (draft.barn[suit] ?? 0) + delta);
-  const barn = { ...draft.barn };
-  if (next === 0) delete barn[suit];
-  else barn[suit] = next;
-  return { ...draft, barn };
+/** Toggle one of your own stack cards into or out of the payment (D7). */
+export function withStackPayment(draft: BuildDraft, card: CardId): BuildDraft {
+  const i = draft.stacks.indexOf(card);
+  return {
+    ...draft,
+    stacks:
+      i >= 0
+        ? [...draft.stacks.slice(0, i), ...draft.stacks.slice(i + 1)]
+        : [...draft.stacks, card],
+  };
 }
 
 // --- subset answers (keep, discard) -----------------------------------------

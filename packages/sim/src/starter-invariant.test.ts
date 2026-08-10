@@ -2,11 +2,13 @@
  * Ticket 30's structural guard: nothing may remove a starter from a tableau.
  *
  * The ruling is that D11's cover and D14's demolish never target a starter, and
- * the whole fix is one filter inside one function (`emptyBuildings` in
- * `handlers/dairy.ts`). That is cheap to break: a third caller of
- * `fx.coverBuilding` or `fx.demolish`, or a target set assembled by hand, and
- * the invariant is silently false again - at which point `noticeBoardOf` throws
- * from inside `legalMoves` and takes the whole game down for every seat.
+ * the whole fix is one filter inside one function (`builtBuildings` in
+ * `handlers/dairy.ts`, which was `emptyBuildings` until the Dairy rebuild
+ * widened both target sets from empty buildings to any built one). That is cheap
+ * to break: a third caller of `fx.coverBuilding` or `fx.demolish`, or a target
+ * set assembled by hand, and the invariant is silently false again - at which
+ * point `noticeBoardOf` throws from inside `legalMoves` and takes the whole game
+ * down for every seat.
  *
  * So this reads the engine's source rather than trusting the comment. It lives
  * in @gp/sim because file I/O is exactly what the engine may not do (ticket 01),
@@ -51,8 +53,15 @@ describe('nothing can remove a starter from a tableau', () => {
 
   it('funnels both target sets through the starter filter', () => {
     const dairy = files.find((f) => f.rel === REMOVER)?.text ?? '';
-    // One definition plus the two uses (D11's cover, D14's demolish).
-    expect(dairy.match(/emptyBuildings\(/g)?.length).toBe(3);
+    // The shared count IS the target set: `builtBuildings` excludes starters by
+    // definition, and D11's cover and D14's demolish both enumerate from it. Its
+    // other readers (D9's scaling discount, D13's draw, D20's endgame) mean the
+    // call count is no longer a useful pin, so what is pinned is the filter
+    // itself plus the two enumerators reaching for it and nothing else.
     expect(dairy).toMatch(/cardById\(data, b\.card\)\.type !== 'starter'/);
+    for (const kind of ['cover', 'refine']) {
+      const task = dairy.slice(dairy.indexOf(`    ${kind}: {`));
+      expect(task.slice(0, task.indexOf('resolve(')), kind).toMatch(/builtBuildings\(/);
+    }
   });
 });

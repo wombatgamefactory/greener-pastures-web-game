@@ -1,60 +1,77 @@
 import type { Assertion } from './types.js';
-import { NO_REMEDY } from './types.js';
-import { pct } from '../stats.js';
+import { NO_REMEDY, unmeasured } from './types.js';
+import { mean, pct } from '../stats.js';
 
 /**
- * Added by ticket 06 ruling E, which read the Prosperity Wagon as printed - any
- * Hired Worker, including your own - and consciously accepted the risk it
- * creates: grow the Wagon, work your OWN Worker for a free action, mint £2, and
- * never touch the table. A hermit battery, bought with a card.
+ * REPLACED THE PROSPERITY WAGON SELF-WORK PROBE (the Dairy rebuild,
+ * 2026-08-10). That assertion measured the hermit battery - grow D9, work your
+ * OWN Worker for a free action, mint £2, never touch the table - and the clause
+ * it watched no longer exists: the Hiring Fair is gone and the Wagon is a
+ * scaling build discount now. An assertion whose mechanism has been deleted
+ * cannot fail, so it is replaced rather than left to report 0 for ever.
  *
- * OBSERVE, and it feeds assertion 8 rather than standing alone: a high
- * self-work share means the card pays you not to interact, which is a hook
- * problem wearing a card's clothes. Taste-sensitive, so it reports the mirror
- * spread - a hermit mirror taking it 100% of the time says nothing, and a
- * SOCIALITE mirror doing so would say a great deal.
+ * What takes its place is the rebuilt suit's own headline risk, and the design
+ * document names it as risk 1 in so many words: the whole of Dairy's Tier 1 and
+ * Tier 2 - nine cards - is CONDITIONAL ON WANTING TO BUILD. That is the price of
+ * the identity and the right price, but it is the screen most likely to fail at
+ * a table, and this is the number that says whether it does. The three Tier 3
+ * ACTION cards are deliberately immune to it, which is the main structural gain
+ * in v4; if this line is high AND the Tier 3 play rate is low, the suit is
+ * simply idle.
+ *
+ * OBSERVE: the design names no threshold, and setting one from our own first run
+ * would be a snapshot test that can never fail. What is reported beside it is the
+ * TABLE's rate, because a Dairy seat idling at the same rate as everyone else is
+ * a game-wide draw problem and not a suit one - and the two send a change in
+ * opposite directions.
  */
-export const wagonSelfWork: Assertion = {
+export const dairyNoBuild: Assertion = {
   id: 11,
-  title: 'Prosperity Wagon self-work',
+  title: 'Dairy turns with no build available',
   quote:
-    'The hermit-battery risk was raised and consciously accepted: growing the Wagon, working ' +
-    'your own Worker for a free action and minting £2 involves no cross-table contact. It goes ' +
-    'on the sim watch list.',
-  source: 'ticket 06 ruling E',
-  shape: "Share of Wagon activations whose Worker choice is the owner's own.",
-  threshold: 'OBSERVE, taste-sensitive; feeds assertion 8',
+    'The whole suit is conditional on wanting to build, at Tiers 1 and 2. That is the price of ' +
+    'the identity and it is the right price, but it is the screen most likely to fail at a ' +
+    'table. Measure the share of Dairy turns with no build available.',
+  source: 'docs/dairy-suit-rebuild-v4.md, risk 1',
+  shape: 'Share of turns a Dairy seat began with no legal Build, against the table.',
+  threshold: 'OBSERVE; read beside the Tier 3 play rate',
   taste: true,
   remedy: NO_REMEDY,
   measure({ pooled }) {
-    let self = 0;
-    let rival = 0;
-    let skips = 0;
-    let activations = 0;
+    let dairyBlocked = 0;
+    let dairySampled = 0;
+    let otherBlocked = 0;
+    let otherSampled = 0;
+    const buildsPerDairySeat: number[] = [];
+
     for (const g of pooled.ended) {
-      self += g.wagonSelfWorks;
-      rival += g.wagonRivalWorks;
-      skips += g.wagonSkips;
-      activations += g.wagonActivations;
+      g.suits.forEach((suit, seat) => {
+        const blocked = g.noBuildTurnsBySeat[seat] ?? 0;
+        const sampled = g.buildSampledBySeat[seat] ?? 0;
+        if (suit === 'dairy') {
+          dairyBlocked += blocked;
+          dairySampled += sampled;
+          buildsPerDairySeat.push(g.buildsBySeat[seat] ?? 0);
+        } else {
+          otherBlocked += blocked;
+          otherSampled += sampled;
+        }
+      });
     }
-    const total = self + rival;
-    const value = total === 0 ? NaN : self / total;
-    const built = pooled.cards.get('D9');
+
+    if (dairySampled === 0) return unmeasured('no Dairy seat in this data set');
+    const value = dairyBlocked / dairySampled;
+    const table = otherSampled === 0 ? NaN : otherBlocked / otherSampled;
     return {
       value,
       headline:
-        total === 0
-          ? `no Wagon works to measure: the card was ACTIVATED ${activations} times in ` +
-            `${pooled.ended.length} ended games`
-          : `${pct(value)} of ${total} Wagon works target the owner's own Worker`,
+        `${pct(value)} of ${dairySampled} Dairy turns began with no legal Build ` +
+        `(the other suits: ${pct(table)})`,
       detail: [
-        `${self} own, ${rival} rival, ${skips} declined, from ${activations} activations`,
-        // Built-but-never-grown is a different finding from grown-and-hoarded,
-        // and a bare 0% would have hidden which one this is.
-        built
-          ? `D9 was built in ${built.played} of the ${built.inSupply} games its deck was in play, ` +
-            'so a low activation count is a GROW problem rather than a build problem'
-          : 'D9 not present in this data set',
+        `builds per Dairy seat per game: ${mean(buildsPerDairySeat).toFixed(2)}`,
+        'Nine of the suit’s cards do nothing on a turn counted here. Read it against the Tier 3 ' +
+          'play rate: the ACTION cards are immune to this by design, so a high share here with a ' +
+          'low share there is the suit idling rather than the screen biting.',
       ],
       verdict: 'OBSERVE',
     };

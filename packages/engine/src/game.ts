@@ -8,9 +8,7 @@ import type { GameData } from '@gp/data';
 
 import {
   balloonMoveOptions,
-  buildAgainPower,
   buildOptions,
-  buildSubstitutePower,
   buyOptions,
   doBuy,
   deliverOptions,
@@ -37,7 +35,6 @@ import { handlerFor } from './handlers/registry.js';
 import { drawableSuits } from './query.js';
 import type { Applied } from './runtime.js';
 import { cloneState, doGrow, sameShape, standingMoves } from './runtime.js';
-import type { BuildMods } from './actions.js';
 import type { GameState, Move, Resume, Seat, Task } from './state.js';
 import { drainTasks, popTask, resolveTask, taskAnswers } from './tasks.js';
 import { settleTurn } from './turnflow.js';
@@ -74,7 +71,7 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
 
   if (!turn.actionSpent) {
     if (drawableSuits(data, state).length > 0) moves.push({ type: 'draw', seat });
-    for (const o of mainBuildOptions(data, state, seat)) {
+    for (const o of buildOptions(data, state, seat)) {
       moves.push({ type: 'build', seat, card: o.card, payment: o.payment });
     }
     for (const card of upgradeOptions(data, state, seat))
@@ -106,14 +103,10 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
     }
   } else if (turn.again === 'harvest') {
     // The upgraded Wheat Farmstead's optional second harvest, declinable via
-    // endTurn (or by taking a bonus-slot move first - the gate stays open).
+    // endTurn (or by taking a bonus-slot move first - the gate stays open). The
+    // only ActionAgain left: the Dairy "you may BUILD again" is gone.
     for (const building of harvestOptions(data, state, seat)) {
       moves.push({ type: 'harvest', seat, building });
-    }
-  } else if (turn.again === 'build') {
-    // The upgraded Dairy Farmstead's optional second Build, same gate.
-    for (const o of mainBuildOptions(data, state, seat)) {
-      moves.push({ type: 'build', seat, card: o.card, payment: o.payment });
     }
   }
 
@@ -129,17 +122,6 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
   if (turn.actionSpent) moves.push({ type: 'endTurn', seat });
 
   return moves;
-}
-
-/**
- * The Build ACTION's options: the plain enumerator plus the seat's own
- * Farmstead substitution (the Dairy base power, live from turn 1). The main
- * Build move carries no barn or coin-wild payments - those arrive only through
- * cards that grant them - so its option shape is unchanged.
- */
-function mainBuildOptions(data: GameData, state: GameState, seat: Seat) {
-  const mods: BuildMods = buildSubstitutePower(state, seat) ? { substitute: true } : {};
-  return buildOptions(data, state, seat, undefined, mods);
 }
 
 /**
@@ -199,10 +181,7 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
   const fx = new Fx(data, draft, move.seat);
   const turn = draft.turn;
 
-  const againRepeat =
-    turn.actionSpent &&
-    ((move.type === 'harvest' && turn.again === 'harvest') ||
-      (move.type === 'build' && turn.again === 'build'));
+  const againRepeat = turn.actionSpent && move.type === 'harvest' && turn.again === 'harvest';
   if (MAIN_ACTIONS.has(move.type)) {
     if (!turn.actionSpent) {
       turn.actionSpent = true;
@@ -223,16 +202,11 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
     case 'market':
       doMarket(fx, move.seat, move.suit);
       break;
-    case 'build': {
-      const mods: BuildMods = buildSubstitutePower(draft, move.seat) ? { substitute: true } : {};
-      doBuild(fx, move.seat, { card: move.card, payment: move.payment }, mods);
-      // "BUILD: you may BUILD again" (upgraded Dairy Farmstead): arm one
-      // optional repeat off the MAIN action only, as with the Wheat harvest.
-      if (!againRepeat && buildAgainPower(data, draft, move.seat)) {
-        turn.again = 'build';
-      }
+    case 'build':
+      // The plain printed rules: no mods. The Build ACTION carries no
+      // substitution since 2026-08-10 - that is the Builder's Yard's to grant.
+      doBuild(fx, move.seat, { card: move.card, payment: move.payment });
       break;
-    }
     case 'upgrade':
       doUpgrade(fx, move.seat, move.card);
       break;

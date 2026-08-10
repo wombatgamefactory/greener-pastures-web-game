@@ -215,6 +215,30 @@ export class Fx {
   }
 
   /**
+   * D6 The Trading Shed: a face-up discarded card into a NEIGHBOUR's hand -
+   * "give 1 card you spend to a neighbour".
+   *
+   * A sibling of `giveCard` rather than a branch inside it, for the same reason
+   * `passCard` is: the card is not in anybody's hand by the time this runs (its
+   * build already spent it), so the removal step would throw. The EVENT is the
+   * shared one, with `fromHand: false` - the giver is genuinely not a card down,
+   * because that card was on its way to a discard pile either way, and pricing
+   * it as a loss is what would make the plain build strictly better and the
+   * power never fire.
+   */
+  discardToHand(from: Seat, to: Seat, card: CardId): void {
+    if (from === to) throw new Error('A gift goes to a neighbour, never yourself');
+    const suit = cardById(this.data, card).suit;
+    const pile = this.state.discards[suit];
+    const i = pile.indexOf(card);
+    if (i < 0) throw new Error(`${card} is not in the ${suit} discard`);
+    pile.splice(i, 1);
+    this.touch(to);
+    player(this.state, to).hand.push(card);
+    this.emit({ e: 'cardGifted', from, to, card, fromHand: false });
+  }
+
+  /**
    * Pull a face-up card out of its suit's discard into a barn (the upgraded
    * Vegetable Barn's freight refund reclaims a just-spent delivery card).
    */
@@ -246,6 +270,42 @@ export class Fx {
     const card = this.takeDeckTop(suit);
     if (card === null) return;
     this.land(seat, { seat, card: onto }, card);
+  }
+
+  /**
+   * D10 The Scout's Post: a revealed-but-unbuilt deck top goes back where it
+   * came from, face down on top of its own deck.
+   *
+   * RULED (2026-08-10): the Scout's Post reveals every deck and discards
+   * nothing. Discarding four cards an activation would make it the heaviest
+   * deck-top consumer in the game; returning them makes it a free look, which
+   * is what the word "Scout" means. Silent, because a card going back to where
+   * it was is not a movement anything downstream can act on.
+   */
+  returnToDeckTop(suit: Suit, card: CardId): void {
+    this.state.decks[suit].unshift(card);
+  }
+
+  /**
+   * D7 The Versatile Shed: lift a card off one of the seat's OWN stacks in
+   * order to SPEND it on a build.
+   *
+   * Deliberately neither `stackCardToBarn` (which is freight, and this card's
+   * whole point is the fork - a card on a stack is either freight or building
+   * material and never both) nor `harvest` (which fires afterHarvest; these
+   * cards are spent, not harvested, and no harvest hook may fire). The caller
+   * discards them with the rest of the payment.
+   */
+  spendFromStack(seat: Seat, card: CardId): void {
+    this.touch(seat);
+    for (const b of player(this.state, seat).tableau) {
+      const i = b.stack.indexOf(card);
+      if (i >= 0) {
+        b.stack.splice(i, 1);
+        return;
+      }
+    }
+    throw new Error(`${card} is not on any of seat ${seat}'s buildings`);
   }
 
   /** Top of a deck straight into a barn (the Patisserie / Meadow Hive shape). No-op when the suit is exhausted. */
@@ -382,8 +442,12 @@ export class Fx {
    * D11 The Heritage House: the covered card leaves the tableau for the
    * player's `covered` pile. It is no longer a building - invisible to every
    * endgame formula, every count, every placement - but its printed VP still
-   * scores, as a bare sum (the reference's cover semantics). Empty stacks only,
-   * so no cards are ever buried with it.
+   * scores, as a bare sum (the reference's cover semantics).
+   *
+   * The empty-stack guard STAYS an assertion after the 2026-08-10 retext. D11
+   * now targets a loaded building, but it ships that building's cards to the
+   * barn before covering it, so nothing is ever buried; the throw is what keeps
+   * that ordering from silently reversing.
    */
   coverBuilding(seat: Seat, building: CardId): void {
     this.touch(seat);
@@ -398,9 +462,14 @@ export class Fx {
   }
 
   /**
-   * D14 The Cream Refinery: an empty building of yours leaves the tableau for
-   * your barn, where it becomes ordinary delivery freight. Unlike a cover it
-   * scores no printed VP - it is not a building any more, it is stock.
+   * D14 The Cream Refinery: a building of yours leaves the tableau for your
+   * barn, where it becomes ordinary delivery freight. Unlike a cover it scores
+   * no printed VP - it is not a building any more, it is stock, so it stops
+   * counting for D13, D20 and D21 too.
+   *
+   * Same empty-stack assertion as `coverBuilding`, and same reason: D14 puts
+   * the building's own cards into the barn first, and the throw is what stops
+   * that order reversing unnoticed.
    */
   demolish(seat: Seat, building: CardId): void {
     this.touch(seat);

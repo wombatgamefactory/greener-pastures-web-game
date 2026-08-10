@@ -354,3 +354,121 @@ describe('difficulty metadata stays honest', () => {
     expect(hand.addsMoves).toBe(true);
   });
 });
+
+/**
+ * THE DAIRY REBUILD'S CROSS-HANDLER CASES (2026-08-10).
+ *
+ * Four pairs whose interaction is decided by a RULING rather than by either
+ * card's own text, so neither card's own test file can own them. They live here
+ * for the same reason the spanning set does: what is being checked is that the
+ * seams compose, not that a card works.
+ */
+describe('the Dairy rebuild: rulings that live between two cards', () => {
+  const DAIRY = 0;
+  const RIVAL = 1;
+
+  function dairyState(): GameState {
+    return makeState(data, ['dairy', 'wheat']);
+  }
+
+  function actionMoveFor(state: GameState, card: string): Move {
+    const move = legalMoves(data, state).find((m) => m.type === 'cardMove' && m.card === card);
+    if (!move) throw new Error(`${card} offers no ACTION move`);
+    return move;
+  }
+
+  it('D15 + D16: the Ledger draws ONCE for a whole Grand Creamery run', () => {
+    const s = dairyState();
+    buildFor(data, s, DAIRY, 'D15', 'D16');
+    let state = apply(data, s, actionMoveFor(s, 'D15')).state;
+
+    // Flip until the run busts or the queue empties, answering every choice
+    // with a deck pick so the run goes as far as its luck allows.
+    let ledgerDraws = 0;
+    for (let guard = 0; guard < 40 && state.tasks.length > 0; guard++) {
+      const before = state.tasks.filter((t) => t.t === 'draw' && t.src === 'D16').length;
+      const answers = pendingAnswers(data, state);
+      const flip = answers.find((a) => a.kind === 'card') ?? answers[0];
+      state = answerTask(data, state, flip as TaskAnswer).state;
+      const after = state.tasks.filter((t) => t.t === 'draw' && t.src === 'D16').length;
+      if (after > before) ledgerDraws += after - before;
+    }
+    // The run built at least one card, and the Ledger paid for the ACTION once.
+    expect(player(state, DAIRY).tableau.length).toBeGreaterThan(6);
+    expect(ledgerDraws).toBe(1);
+  });
+
+  it('D2 + D7: a card lifted off a stack is not divertible', () => {
+    const s = dairyState();
+    buildingOf(s, DAIRY, 'D2').upgraded = true; // "every card you spend"
+    buildFor(data, s, DAIRY, 'D7', 'D4');
+    dealTo(data, s, DAIRY, 'D5', 'W9');
+    loadStack(data, s, DAIRY, 'D4', 3, 'wheat');
+    const grown = growBuilding(data, s, DAIRY, 'D7', 'D5');
+    const offStacks = pendingAnswers(data, grown.state).find(
+      (a) => a.kind === 'build' && a.card === 'W9' && a.payment.length === 0,
+    );
+    expect(offStacks).toBeDefined();
+    const done = answerTask(data, grown.state, offStacks as TaskAnswer).state;
+    // No divert task, and nothing in the barn: stack to build cost to barn would
+    // be a free Harvest, which is the whole reason the ruling exists.
+    expect(done.tasks.filter((t) => t.t === 'card' && t.kind === 'divertSpent')).toEqual([]);
+    expect(player(done, DAIRY).barn).toEqual([]);
+  });
+
+  it('D2 + D5: one destination per spent card, and the player chooses', () => {
+    const s = dairyState();
+    buildFor(data, s, DAIRY, 'D5');
+    dealTo(data, s, DAIRY, 'D6', 'W7', 'W4', 'W5');
+    const grown = growBuilding(data, s, DAIRY, 'D5', 'D6');
+    const build = pendingAnswers(data, grown.state).find(
+      (a) => a.kind === 'build' && a.card === 'W7',
+    );
+    const spent = (build as { payment: string[] }).payment;
+    let state = answerTask(data, grown.state, build as TaskAnswer).state;
+
+    // Bank one: it leaves the discard, so D5 can never also sow it.
+    const banked = spent[0] as string;
+    const take = pendingAnswers(data, state).find(
+      (a) => a.kind === 'card' && a.payload.card === banked,
+    );
+    state = answerTask(data, state, take as TaskAnswer).state;
+    state = answerAll(state);
+    expect(player(state, DAIRY).barn).toEqual([banked]);
+    expect(buildingOf(state, DAIRY, 'W7').stack).toEqual([spent[1]]);
+  });
+
+  it('D11 + D14: a covered card cannot be demolished, and neither counts as built', () => {
+    const s = dairyState();
+    buildFor(data, s, DAIRY, 'D14', 'D20', 'D4');
+    // D20 scores 1 per building built: D14, D20 and D4 make three.
+    expect(gameEndScores(data, s)[DAIRY]!.endgame).toBe(3);
+
+    // Cover D4 by hand (D11's primitive), then ask D14 for its targets.
+    player(s, DAIRY).tableau = player(s, DAIRY).tableau.filter((b) => b.card !== 'D4');
+    player(s, DAIRY).covered.push('D4');
+    expect(gameEndScores(data, s)[DAIRY]!.endgame).toBe(2);
+
+    const fired = apply(data, s, actionMoveFor(s, 'D14')).state;
+    const targets = pendingAnswers(data, fired)
+      .filter((a) => a.kind === 'card')
+      .map((a) => a.payload.card);
+    expect(targets).not.toContain('D4');
+
+    // And demolishing takes the card out of the count too - it is stock now.
+    const takeD20 = pendingAnswers(data, fired).find(
+      (a) => a.kind === 'card' && a.payload.card === 'D20',
+    );
+    const gone = answerTask(data, fired, takeD20 as TaskAnswer).state;
+    expect(gameEndScores(data, gone)[DAIRY]!.endgame).toBe(0);
+  });
+
+  it('a rival Strongbox pays per BUILDING, which is the flagged asymmetry with D16', () => {
+    const s = dairyState();
+    buildFor(data, s, DAIRY, 'D17');
+    dealTo(data, s, RIVAL, 'W5', 'W4');
+    s.turnPlayer = RIVAL;
+    const built = apply(data, s, { type: 'build', seat: RIVAL, card: 'W5', payment: ['W4'] });
+    expect(player(built.state, DAIRY).coins).toBe(1);
+  });
+});

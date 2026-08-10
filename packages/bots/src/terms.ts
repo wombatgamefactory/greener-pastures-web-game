@@ -133,6 +133,18 @@ function cardMoveSpend(payload: Record<string, unknown>): CardId | null {
  * rivals accept - and a probe stops at a rival's task, by design. It is valued
  * at its flat `cardMove` weight and no more.
  *
+ * ⚠️ **D15 The Grand Creamery is the second, and it is understated on purpose**
+ * (the Dairy rebuild, 2026-08-10). Its value is an EXPECTATION OVER A RANDOM
+ * RUN - reveal a deck top, build it free, reveal again while each card costs
+ * more than the last - and a greedy one-decision-at-a-time rollout cannot hold
+ * that: it walks the flips it can see inside `DEPTH` and prices each `built`
+ * flat and blind, so what comes out is roughly the first flip or two rather than
+ * the run. That is deliberate and it is the safe direction. An under-valued D15
+ * is a readable result (the arm reports a low play rate and the card is
+ * suspected), where an over-valued one is not - the bots would take it every
+ * turn and the report would read as a design finding. If the arm shows D15 never
+ * taken at all, suspect this before suspecting the card.
+ *
  * A balloon move joined them in ticket 49. `grantBalloonReward` pushes a real
  * ability - Draw 4, Sow 4 from hand, a build at a discount, or £4 - and all four
  * scored the identical flat weight, which is precisely the shape ticket 40
@@ -181,7 +193,6 @@ function deliverVpOf(s: Scratch, tileId: string): number {
 
 function coinsMinted(act: Act, s: Scratch): number {
   if (act.a === 'visit') return visitPayout(s, act);
-  if (act.a === 'build') return -act.coinWild;
   if (act.a === 'deliver') return s.data.island.tileRule.coinsPerDelivery;
   // The market's fee (ticket 56), priced at the bot's ONE coin price like D7's
   // wilds: `coinWorth` signs a spend symmetrically, so a hoarder's £3 above the
@@ -191,20 +202,30 @@ function coinsMinted(act: Act, s: Scratch): number {
 }
 
 /**
- * Cards this act takes out of the seat's BARN, by whichever exit (ticket 48).
+ * Cards this act takes out of the seat's STORED FREIGHT, by whichever exit
+ * (ticket 48).
  *
  * Three routes and one price. A tile's card cost is fixed by its crates
  * (`crates x cardsPerCrate`, ticket 14's 2 / 6 / 9) and a wild crate changes
  * which suit pays rather than how many, so this cannot order the spends for one
  * tile - measured over 391 real (decision, tile) pairs it never once varied
  * within a tile. What it prices is the resource leaving.
+ *
+ * The build leg is D7 The Versatile Shed's stack payment since the Dairy rebuild
+ * (2026-08-10), where it used to be D8's barn payment. A card on one of your own
+ * stacks is not in the barn yet, but it is freight in waiting - it goes there on
+ * the next harvest and nowhere else - so spending it on a build costs the seat
+ * the same thing, and D7's whole printed fork is that a stack card is either
+ * freight or building material and never both. That is the fork this weight
+ * prices; the hand cards of the same payment are charged separately, by
+ * `handSpend`.
  */
 function barnCardsSpent(act: Act): number {
   switch (act.a) {
     case 'deliver':
       return spendSize(act.spend);
     case 'build':
-      return act.barn;
+      return act.stacks;
     default:
       return 0;
   }
@@ -361,11 +382,16 @@ export const TERMS: readonly Term[] = [
      *
      * One coin price for the whole bot: the probe pricer values a `coins` event
      * through this same weight, so a wage a card mints and a wage the island
-     * pays are worth the same thing - and so does the one place a coin is spent
-     * INSTEAD of a card rather than to buy something (D7's wilds, ticket 47).
+     * pays are worth the same thing.
+     *
+     * It no longer claims `build`. That claim existed for the one place a coin
+     * was spent INSTEAD of a card rather than to buy something - D7's
+     * coins-as-wilds, ticket 47 - and the Dairy rebuild deleted the mod
+     * (2026-08-10): seats end games on about £1, so a coin-priced build option
+     * was dead text. The market is the surviving coin-against-card trade.
      */
     name: 'coinGain',
-    claims: ['visit', 'deliver', 'build', 'market', ...ACTION_AND_TASK],
+    claims: ['visit', 'deliver', 'market', ...ACTION_AND_TASK],
     feature: (act, s) => coinWorth(s, coinsMinted(act, s)),
   },
   {
@@ -487,11 +513,12 @@ export const TERMS: readonly Term[] = [
      *
      * This used to read `-(payment.length + coinWild)`, which cannot order a
      * build's payments at all: the engine holds
-     * `payment.length + barn + coinWild === cardsNeeded`, so for one built card
-     * that sum is a CONSTANT. Measured over 262 real builds it varied across the
-     * alternatives 2 times, both of them D8's barn leg - so 23.7% of builds had a
-     * real choice of which cards to burn and the term was blind to every one of
-     * them, leaving the pick to the evaluator's random tie-break.
+     * `payment.length + stacks === cardsNeeded` (it was `+ barn + coinWild`
+     * before the Dairy rebuild), so for one built card that sum is a CONSTANT.
+     * Measured over 262 real builds it varied across the alternatives 2 times,
+     * both of them the old barn leg - so 23.7% of builds had a real choice of
+     * which cards to burn and the term was blind to every one of them, leaving
+     * the pick to the evaluator's random tie-break.
      *
      * So it becomes what its siblings already are - `visitFeeJunk`, `growSpend`,
      * `cardMoveSpend`, all `+0.3` on a `-value` feature - and the build's SIZE

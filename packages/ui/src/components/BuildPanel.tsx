@@ -9,22 +9,24 @@
  * addable. The move that finally goes to the engine is one the engine offered,
  * not one this file built.
  *
- * The three exotic payments are the same mechanism with a different chip. D8
- * pays from the BARN, which the view anonymises even to its owner, so the chip
- * is a suit and a count rather than a card. D7 spends coins AS cards. Both only
- * ever appear when a candidate offers them, so a plain Build shows neither.
+ * The one exotic payment is the same mechanism with a different chip: D7 The
+ * Versatile Shed pays with cards off the player's OWN BUILDINGS. It replaced two
+ * that were harder to draw (2026-08-10) - a per-suit tally from the barn, which
+ * the view anonymises even to its owner, and coins standing in for cards - and it
+ * is easier than either, because a stack is public and ordered so a stack card is
+ * a card like any other. It only ever appears when a candidate offers it, so a
+ * plain Build shows a hand and nothing else.
  */
 
-import type { GameData, Suit } from '@gp/data';
+import type { GameData } from '@gp/data';
 
 import type { Play } from '../session/play';
 import { buildAdditions, buildCandidates, buildComplete } from '../view/intent';
 import type { BuildDraft } from '../view/intent';
 import { printedFace } from '../view/printed';
-import { SUIT_META } from '../view/suits';
 import { cardName } from '../view/moveText';
 import { Card } from './Card';
-import { withPayment } from '../view/intent';
+import { withPayment, withStackPayment } from '../view/intent';
 
 export function BuildPanel({
   data,
@@ -40,7 +42,6 @@ export function BuildPanel({
   const additions = buildAdditions(play.moves, draft);
   const complete = buildComplete(play.moves, draft);
   const candidates = buildCandidates(play.moves, draft);
-  const barnTotal = Object.values(draft.barn).reduce((a: number, b) => a + (b ?? 0), 0);
 
   const owed =
     additions.remaining.min === additions.remaining.max
@@ -74,44 +75,33 @@ export function BuildPanel({
               {cardName(data, card)} <span aria-hidden="true">x</span>
             </button>
           ))}
-          {(Object.entries(draft.barn) as [Suit, number][]).map(([suit, n]) => (
+          {draft.stacks.map((card) => (
             <button
-              key={suit}
+              key={card}
               className="chip chip-paid"
-              onClick={() => play.payWithBarn(suit, -1)}
-              title="take it back"
+              onClick={() => play.setDraft(withStackPayment(draft, card))}
+              title="put it back on the building"
             >
-              {n} {SUIT_META[suit].label} from the barn <span aria-hidden="true">x</span>
+              {cardName(data, card)} (off a building) <span aria-hidden="true">x</span>
             </button>
           ))}
-          {draft.coinWild > 0 && (
-            <span className="chip chip-paid">£{draft.coinWild} standing in for cards</span>
-          )}
-          {draft.payment.length + barnTotal + draft.coinWild === 0 && (
+          {draft.payment.length + draft.stacks.length === 0 && (
             <span className="chip chip-empty">nothing paid yet</span>
           )}
         </div>
 
-        {additions.barn.size > 0 && (
+        {additions.stacks.size > 0 && (
           <div className="chips">
-            <span className="chips-label">from the barn:</span>
-            {[...additions.barn].map((suit) => (
-              <button key={suit} className="chip" onClick={() => play.payWithBarn(suit, 1)}>
-                + {SUIT_META[suit].label}
+            <span className="chips-label">off your buildings:</span>
+            {[...additions.stacks].map((card) => (
+              <button
+                key={card}
+                className="chip"
+                onClick={() => play.setDraft(withStackPayment(draft, card))}
+              >
+                + {cardName(data, card)}
               </button>
             ))}
-          </div>
-        )}
-
-        {additions.coins && (
-          <div className="chips">
-            <span className="chips-label">coins as cards:</span>
-            <button
-              className="chip"
-              onClick={() => play.setDraft({ ...draft, coinWild: draft.coinWild + 1 })}
-            >
-              + £1
-            </button>
           </div>
         )}
 

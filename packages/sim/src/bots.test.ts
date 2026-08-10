@@ -26,20 +26,18 @@ function mirror(id: PolicyId, seats: number) {
 interface BuildAct {
   readonly card: CardId;
   readonly payment: readonly CardId[];
-  readonly coinWild: number;
-  readonly barn: number;
+  /** Cards taken off the seat's own buildings (D7). */
+  readonly stacks: number;
 }
 
 function buildAct(move: Move): BuildAct | null {
   const act = actOf(move);
-  return act.a === 'build'
-    ? { card: act.card, payment: act.payment, coinWild: act.coinWild, barn: act.barn }
-    : null;
+  return act.a === 'build' ? { card: act.card, payment: act.payment, stacks: act.stacks } : null;
 }
 
 /** Same card, and paid the same way - so only the cards themselves differ. */
 function sameMethod(a: BuildAct, b: BuildAct): boolean {
-  return a.card === b.card && a.coinWild === b.coinWild && a.barn === b.barn;
+  return a.card === b.card && a.stacks === b.stacks;
 }
 
 // --- view safety -----------------------------------------------------------
@@ -493,17 +491,18 @@ describe('the archetypes', () => {
 
   /**
    * Ticket 47. `buildSpend` read `-(payment.length + coinWild)`, and the engine
-   * holds `payment.length + barn + coinWild === cardsNeeded` - so for one built
-   * card that sum is a CONSTANT and the term could not order a build's payments
-   * at all. Measured over 262 real builds it separated the alternatives twice,
-   * both on D8's barn leg, while 23.7% of builds had a real choice of which
-   * cards to burn. The pick was the evaluator's random tie-break.
+   * holds `payment.length + stacks === cardsNeeded` (it was `+ barn + coinWild`
+   * before the Dairy rebuild) - so for one built card that sum is a CONSTANT and
+   * the term could not order a build's payments at all. Measured over 262 real
+   * builds it separated the alternatives twice, both on the old barn leg, while
+   * 23.7% of builds had a real choice of which cards to burn. The pick was the
+   * evaluator's random tie-break.
    *
    * The claim guarded here is the behaviour, not the sign: given HOW it is
-   * paying (same barn and coin legs), a build spends the junkiest cards it can.
-   * Comparing across payment methods would be a different assertion - a barn or
-   * coin payment is cheaper in hand cards by construction, and `barnSpend` and
-   * `coinGain` are what price that trade.
+   * paying (the same number of cards off its own buildings), a build spends the
+   * junkiest cards it can. Comparing across payment methods would be a different
+   * assertion - a stack payment is cheaper in hand cards by construction, and
+   * `barnSpend` is what prices that trade.
    */
   it('pays a build with the junkiest legal cards, not the most valuable', () => {
     let checked = 0;
