@@ -28,6 +28,7 @@ import {
   player,
   seedRng,
   shuffle,
+  testkit,
   viewFor,
 } from '@gp/engine';
 import { describe, expect, it } from 'vitest';
@@ -211,6 +212,18 @@ describe('the probe answers NOW', () => {
  * either hide a regression or forbid a correct answer. So the rate is measured
  * where there IS room - the only place the old claim can be tested - and the
  * full-hand zeroes are asserted separately as the intended behaviour.
+ *
+ * The full-hand half is now a CONSTRUCTED position rather than a hunt through
+ * the corpus (2026-08-11, the Apiary rebuild). It had been widened three times,
+ * and the comment on the third said what to do if it happened again: "the honest
+ * fix is a constructed position rather than a wider net, because a corpus
+ * property is not a test". This is the fourth, so the net was not widened again.
+ * Measured after the rebuild: over the 60 games the sweep below runs, not one
+ * offer had a hand over its limit, and it takes 180 games to turn up 34 of them
+ * (0 at 2 seats, 22 at 3, 12 at 4, and every one of them priced at 0). The
+ * behaviour is intact and merely rare, which is exactly the thing a sample
+ * cannot promise to contain - so the cap is asserted where it can be stated
+ * outright, and the sweep keeps only the opportunistic version of the check.
  */
 describe('a pending draw', () => {
   it('prices a rented Draw Worker as the cards it will keep, not as zero', () => {
@@ -222,21 +235,14 @@ describe('a pending draw', () => {
     const noRoom: number[] = [];
     const nonZeroWithNoRoom: number[] = [];
 
-    // Widened from 3 seeds on 2026-08-09, and widened AGAIN for the Wheat
-    // rebuild - this time across seat counts rather than seeds, which is where
-    // the missing subcase actually lives. Neither widening weakens an assertion:
-    // the full-hand case is a property of the corpus, not of the pricer, and when
-    // the corpus moves it can vanish and leave the last assertion below vacuous.
-    // Measured after the rebuild: 901 offers over 2/3/4 seats hold 100 full-hand
-    // positions, and none of them are at 2 or 3 seats once the O16 hosts are
-    // excluded. A fourth seat is a tighter table, which is the whole reason.
-    //
-    // Widened a THIRD time for the Vegetable rebuild (2026-08-09), and the same
-    // sentence applies: the suit's cards moved, the corpus moved with them, and
-    // the full-hand subcase fell out of a 12-seed sweep. Nothing about the
-    // pricer changed - the assertions below are untouched. If this keeps
-    // happening, the honest fix is a constructed position rather than a wider
-    // net, because a corpus property is not a test.
+    // Widened from 3 seeds on 2026-08-09, widened AGAIN for the Wheat rebuild
+    // (across seat counts rather than seeds), and a THIRD time for the Vegetable
+    // rebuild. Not widened a fourth time: the Apiary rebuild took the full-hand
+    // subcase out of this net again, and the constructed test below now carries
+    // that half instead. This sweep keeps the half a sample CAN carry - the rate
+    // of zeroes where there is room - which is a property of the corpus in the
+    // only sense that matters, since it is measured over hundreds of positions
+    // rather than waiting on one rare shape to appear.
     for (const seats of [2, 3, 4]) {
       for (let n = 0; n < 20; n++) {
         const seed = `drawworker-${seats}-${n}`;
@@ -310,24 +316,95 @@ describe('a pending draw', () => {
       }
     }
 
-    // Vacuous unless a Draw Worker really was rentable, with both cases met.
+    // Vacuous unless a Draw Worker really was rentable with room in hand.
     expect(values.length, 'no seat was ever offered a rival Draw Worker').toBeGreaterThan(20);
     expect(withRoom.length, 'never offered one with room in hand').toBeGreaterThan(10);
-    expect(noRoom.length, 'never offered one with a full hand').toBeGreaterThan(0);
 
     // Ticket 50's claim, where it can be tested: with room in hand the rollout
     // reaches the draw's payoff. It was 82.2% zero across all positions before
     // that fix, so a stray zero here would be a real regression rather than a
     // legitimate answer.
     expect(zeroesWithRoom.length / withRoom.length).toBeLessThan(0.1);
-    // Ticket 49's cap, stated as an absolute because it is exact arithmetic:
-    // no room means no cards kept means nothing gained. Any non-zero here is
-    // the cap failing to bite.
+    // Ticket 49's cap, opportunistically: `noRoom` is empty in most corpora now,
+    // so this says "and if the sweep did stumble on one, it priced at zero". The
+    // non-vacuous version of the same claim is the next test.
     expect(nonZeroWithNoRoom).toEqual([]);
     // 60 full games of probing, so it wants more than the 5s default - and it
     // wants it stated here rather than raised globally, because every OTHER
     // test in the suite finishing inside 5s is worth knowing.
   }, 30_000);
+
+  /**
+   * Ticket 49's cap, constructed rather than hunted for.
+   *
+   * The shape is a seat OVER its hand limit taking its bonus-slot visit, which
+   * is legal and does happen: the limit is checked at end of turn only, so a
+   * Draw earlier in the turn can leave a seat above it. It is simply rare, and
+   * three widenings of the sweep above proved that a sample cannot be relied on
+   * to hold one.
+   *
+   * Built from a real `newGame` rather than from `testkit.makeState`, on purpose:
+   * setup is what ties each Service to the seat whose suit brought it, and the
+   * visit's ownership check reads that. Everything the position needs is the
+   * opening table plus cards in one hand.
+   */
+  it('prices a rented Draw Service at zero once the hand is over its limit', () => {
+    // The orchard seat owns the Draw Service from setup, so seat 0 is the renter.
+    const rented = (state: GameState): Move | undefined =>
+      legalMoves(data, state).find((m) => {
+        const act = actOf(m);
+        return (
+          m.seat === 0 &&
+          act.a === 'visit' &&
+          act.payoff.mode === 'worker' &&
+          act.payoff.workerId === 'draw'
+        );
+      });
+
+    const opening = (): GameState =>
+      newGame(data, { seats: 2, suits: ['wheat', 'orchard'], seed: 'fullhand' });
+
+    /**
+     * The opening table with seat 0's hand topped up to exactly `size` cards.
+     * Topped up through `testkit.dealTo`, so the cards come out of the deck they
+     * belong to and the 105 ids are still conserved.
+     */
+    const atHandSize = (size: number): GameState => {
+      const state = opening();
+      const hand = player(state, 0).hand;
+      expect(
+        hand.length,
+        'the opening hand is already past the size under test',
+      ).toBeLessThanOrEqual(size);
+      while (hand.length < size) {
+        testkit.dealTo(data, state, 0, state.decks.wheat[0] as CardId);
+      }
+      return state;
+    };
+
+    const limit = makeScratch(data, viewFor(data, opening(), 0)).handLimit as number;
+    expect(limit, 'the wheat Barn must print a hand limit').toBeGreaterThan(0);
+
+    const priceAt = (size: number): number => {
+      const state = atHandSize(size);
+      const move = rented(state);
+      expect(move, `no rival Draw Service was offered at a hand of ${size}`).toBeDefined();
+      const scratch = makeScratch(data, viewFor(data, state, 0));
+      const prober = makeProber(data, state, 0);
+      return makeOutcomes(scratch, BALANCED, prober).value(move as Move);
+    };
+
+    // At the limit the fee makes room for exactly one card, so the rental is
+    // still worth something - the case the sweep above measures in bulk.
+    expect(
+      priceAt(limit),
+      'a hand at the limit still has room once the fee leaves',
+    ).toBeGreaterThan(0);
+    // One over, the fee only gets the seat back TO the limit and the draw keeps
+    // nothing. Exact arithmetic, so the assertion is an absolute.
+    expect(priceAt(limit + 1)).toBe(0);
+    expect(priceAt(limit + 2)).toBe(0);
+  });
 });
 
 /**

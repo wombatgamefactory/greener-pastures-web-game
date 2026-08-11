@@ -48,6 +48,15 @@ function answerAll(state: GameState, pick?: (answers: TaskAnswer[]) => TaskAnswe
   return s;
 }
 
+/**
+ * Sow targets are `BuildingRef`s since the Apiary rebuild - a seat as well as a
+ * card, because A4 and A14 place on a neighbour. Every Orchard sow is still onto
+ * the orchard seat's own tableau, which is what this spells out.
+ */
+function own(...cards: string[]): { seat: number; card: string }[] {
+  return cards.map((card) => ({ seat: ORCHARD, card }));
+}
+
 /** Answer only the head DRAW task through to its keep, taking the first keep offered. */
 function resolveDraw(state: GameState): GameState {
   let s = state;
@@ -297,7 +306,7 @@ describe('the Tier 1 ORCHARDs - one conversion each', () => {
     // The GROW payment is already on the stack; the sow is the second card.
     expect(buildingOf(grown.state, ORCHARD, 'O5').stack).toHaveLength(1);
     const sow = grown.state.tasks.find((t) => t.t === 'sow');
-    expect(sow).toMatchObject({ targets: ['O5'] });
+    expect(sow).toMatchObject({ targets: own('O5') });
     expect(sow && sow.t === 'sow' && sow.optional).toBeUndefined();
     const state = answerAll(grown.state);
     expect(buildingOf(state, ORCHARD, 'O5').stack.length).toBeGreaterThanOrEqual(2);
@@ -399,7 +408,7 @@ describe('the Tier 2 cards - one noun each', () => {
     const grown = growBuilding(data, s, ORCHARD, 'O10', 'O6');
     const sows = grown.state.tasks.filter((t) => t.t === 'sow');
     // O4 and O5 only: O9 is a Tier 2 and O10 is not an ORCHARD either.
-    expect(sows.map((t) => (t.t === 'sow' ? t.targets : null))).toEqual([['O4'], ['O5']]);
+    expect(sows.map((t) => (t.t === 'sow' ? t.targets : null))).toEqual([own('O4'), own('O5')]);
     const state = answerAll(grown.state);
     expect(buildingOf(state, ORCHARD, 'O4').stack).toHaveLength(1);
     expect(buildingOf(state, ORCHARD, 'O5').stack).toHaveLength(1);

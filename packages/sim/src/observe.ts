@@ -37,6 +37,7 @@ import {
   MOVE_TYPES,
   anyBuildOption,
   cardById,
+  cropOf,
   faceOf,
   gameEndScores,
   handlerFor,
@@ -354,16 +355,69 @@ export interface GameMetrics {
    * deck (W15, the market), stack, discard (V1's refund).
    */
   barnInByRoute: Record<string, number>;
+  /**
+   * THE SAME TOTAL, by SEAT (the Dairy rebuild, 2026-08-10). Every route
+   * pooled, because the rebuild's first pass condition is "cards into a Dairy
+   * seat's barn" against every other suit, and route share is a separate
+   * question the table above already answers. Read per suit, never per game:
+   * most cells have no seat of a given suit at all.
+   */
+  barnInBySeat: number[];
   /** O17's £1 divert specifically, counted off the answer rather than the event. */
   divertsBySeat: number[];
   /** ORCHARDs BUILT (the D1 sub-type), by seat - what O1's refund and O20 both pay for. */
   orchardsBuiltBySeat: number[];
+
+  /**
+   * GROW WITHOUT PLACING (the Apiary rebuild, 2026-08-11), by seat. A5 The
+   * Meadow Hive and A12 The Honey Hut fire a building with no card paid, and
+   * this is the suit's whole thesis measured: everybody else is rationed to
+   * about 3.6 GROWs a game, and Apiary buys more of them and aims them.
+   *
+   * Counted off the `activate` task ANSWER rather than off an event, because
+   * there is no "an ability fired" event and by design there never will be -
+   * nothing moves. Read as activations per Apiary TURN (risk 3: three
+   * activations in a turn against a table average of 3.6 GROWs a GAME is a
+   * different order of magnitude).
+   */
+  activationsBySeat: number[];
+  /**
+   * 1-based round of a seat's FIRST activation, or null. Risk 1, the cold
+   * start: every activation card needs a target with a printed ability and an
+   * opening tableau has none. Turn 8 or later means A5 needs a floor.
+   */
+  firstActivationRoundBySeat: (number | null)[];
+  /**
+   * Activations whose target was FULL. ⛔ THE COUNTER THAT MATTERS MOST, and it
+   * matters more than the win rate: the design's central claim is that a
+   * clogged building is a button to this suit and dead weight to every other,
+   * which is why Apiary ships with no harvest valve at all. If this comes back
+   * near zero the claim is wrong and the suit needs a valve.
+   */
+  activationsOfFullBySeat: number[];
+  /**
+   * Activations whose target printed a crop icon that is not the seat's own.
+   * Risk 5, and A19 The Honey Hall pays for it: Apiary pays no crop cost to
+   * fire a building, so a foreign Tier 2 or Tier 3 in an Apiary tableau is a
+   * better card than it is in the tableau of the suit that printed it.
+   */
+  activationsOfForeignBySeat: number[];
+  /**
+   * Coins minted by A14 The Honeycomb Tower, by seat. Risk 2: the first
+   * repeatable coin faucet in the game, and the coin unit is still un-derived.
+   * Every other Tier 3 pays in a resource with a natural cap. Read against
+   * total coins in play and the market's play rate, NEVER against A14's own
+   * play rate. The £1 rate is the dial.
+   */
+  towerCoinsBySeat: number[];
 
   cards: Map<CardId, CardFacts>;
 }
 
 const WAGE = /^wage:/;
 const RIDER = /^rider:(.+)$/;
+/** A14 The Honeycomb Tower's `why` tag - the game's first repeatable coin faucet. */
+const TOWER = 'A14';
 
 /**
  * The action mix's row label. Move type everywhere except `cardMove`, which is
@@ -491,8 +545,14 @@ export class Fold {
       receiptsByOrderBySeat: Array.from({ length: seats }, () => []),
       giftsBySeat: zeros(),
       barnInByRoute: { harvest: 0, hand: 0, deck: 0, stack: 0, discard: 0 },
+      barnInBySeat: zeros(),
       divertsBySeat: zeros(),
       orchardsBuiltBySeat: zeros(),
+      activationsBySeat: zeros(),
+      firstActivationRoundBySeat: Array<number | null>(seats).fill(null),
+      activationsOfFullBySeat: zeros(),
+      activationsOfForeignBySeat: zeros(),
+      towerCoinsBySeat: zeros(),
       cards: new Map(),
     };
     for (const card of data.cards.catalogue) {
@@ -742,6 +802,31 @@ export class Fold {
     if (task.t === 'divert' && a.kind === 'card' && a.payload.barn === true) {
       this.m.divertsBySeat[task.pid] = (this.m.divertsBySeat[task.pid] ?? 0) + 1;
     }
+
+    // GROW WITHOUT PLACING, off the answer for the same reason: nothing moves,
+    // so there is no event to read. The target's fullness and crop are taken
+    // from the PRE state, which is the only moment either is still true - the
+    // ability is about to fire and may harvest, sow or demolish the thing.
+    if (task.t === 'activate' && a.kind === 'activate') {
+      this.activation(d.pre, task.pid, a.card);
+    }
+  }
+
+  /** One firing of a building's text with no card placed (A5, A12). */
+  private activation(pre: GameState, seat: Seat, target: CardId): void {
+    const m = this.m;
+    m.activationsBySeat[seat] = (m.activationsBySeat[seat] ?? 0) + 1;
+    m.firstActivationRoundBySeat[seat] ??= this.round();
+    this.facts(target).activations += 1;
+    const building = pre.players[seat]?.tableau.find((b) => b.card === target);
+    if (!building) return;
+    if (isFull(this.data, building)) {
+      m.activationsOfFullBySeat[seat] = (m.activationsOfFullBySeat[seat] ?? 0) + 1;
+    }
+    const crop = cropOf(this.data, building);
+    if (crop !== null && crop !== pre.players[seat]?.suit) {
+      m.activationsOfForeignBySeat[seat] = (m.activationsOfForeignBySeat[seat] ?? 0) + 1;
+    }
   }
 
   private event(d: Decision, e: GameEvent): void {
@@ -751,6 +836,11 @@ export class Fold {
         if (e.delta <= 0) return;
         if (WAGE.test(e.why))
           m.wageCoinsBySeat[e.seat] = (m.wageCoinsBySeat[e.seat] ?? 0) + e.delta;
+        // A14 The Honeycomb Tower, split out of the per-card coin fold below
+        // because risk 2 is about the FAUCET rather than about the card: it is
+        // read against total coins in play, not against A14's own play rate.
+        if (e.why === TOWER)
+          m.towerCoinsBySeat[e.seat] = (m.towerCoinsBySeat[e.seat] ?? 0) + e.delta;
         const card = this.cardTag(e.why);
         if (card) {
           const f = this.facts(card);
@@ -823,6 +913,7 @@ export class Fold {
         // arrived on the building).
         this.marketSinceHarvest[e.seat] = 0;
         m.barnInByRoute.harvest = (m.barnInByRoute.harvest ?? 0) + e.cards.length;
+        m.barnInBySeat[e.seat] = (m.barnInBySeat[e.seat] ?? 0) + e.cards.length;
         return;
       case 'balloonMoved': {
         m.balloonMoves += 1;
@@ -893,15 +984,19 @@ export class Fold {
       // claim is a share of these against `harvest`).
       case 'deckToBarn':
         m.barnInByRoute.deck = (m.barnInByRoute.deck ?? 0) + 1;
+        m.barnInBySeat[e.seat] = (m.barnInBySeat[e.seat] ?? 0) + 1;
         return;
       case 'stackToBarn':
         m.barnInByRoute.stack = (m.barnInByRoute.stack ?? 0) + 1;
+        m.barnInBySeat[e.seat] = (m.barnInBySeat[e.seat] ?? 0) + 1;
         return;
       case 'discardToBarn':
         m.barnInByRoute.discard = (m.barnInByRoute.discard ?? 0) + 1;
+        m.barnInBySeat[e.seat] = (m.barnInBySeat[e.seat] ?? 0) + 1;
         return;
       case 'handToBarn':
         m.barnInByRoute.hand = (m.barnInByRoute.hand ?? 0) + 1;
+        m.barnInBySeat[e.seat] = (m.barnInBySeat[e.seat] ?? 0) + 1;
         return;
       // Claimed and uninteresting for balance: card movement between zones that
       // no assertion and no funnel layer reads.

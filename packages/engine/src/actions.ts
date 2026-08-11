@@ -473,24 +473,54 @@ export function checkFarmsteadFlip(fx: Fx, seat: Seat): void {
 }
 
 /**
- * A10 The Cross-Pollinator, retexted when hiring died (2026-08-10): "Your
- * Service costs £1 less to activate." The one card id named in a funnel rather
- * than in a handler, for the same reason W8's surcharge is: it modifies a PRICE
- * the legality check reads, and a handler cannot reach into a cost lookup. The
- * £1 is printed text, exactly like every ability number in a handler.
- */
-const CROSS_POLLINATOR = 'A10';
-
-export function ownServiceDiscount(state: GameState, seat: Seat): number {
-  return player(state, seat).tableau.filter((b) => b.card === CROSS_POLLINATOR).length;
-}
-
-/**
  * What it costs this seat to activate their OWN Service from the bonus slot.
  * Floors at 0.
+ *
+ * ⛔ NOTHING DISCOUNTS IT any more. A10 The Cross-Pollinator used to, as the one
+ * card id named in a funnel rather than in a handler; the Apiary rebuild
+ * (2026-08-11) repointed A10 at "Draw 1 for each of your HIVEs", so the
+ * discount and the seat-scoped lookup that read it are both gone. The `discount`
+ * parameter stays because a future card may print one and every call site
+ * already passes through here.
  */
 export function ownServiceCost(data: GameData, discount = 0): number {
   return Math.max(0, data.workers.ownerActivationCost - discount);
+}
+
+/**
+ * THE APIARY FARMSTEAD, and the whole of it: "When you GROW, Draw 1", plus the
+ * upgraded face's "and you may put 1 card from your hand into your barn".
+ *
+ * ⛔ It lives on the GROW ACTION branch in `game.ts` and must NEVER move into
+ * `doGrow`, which is also called by O13 The Grand Orchard and by A6 - a seam
+ * inside `doGrow` would fire once per building grown, so The Honey Hut would
+ * draw three. The standing convention (how-to-design-a-suit §8) is that a suit
+ * power modifies the ACTION, never card text that happens to use the same word,
+ * and Orchard's Farmstead is ruled the same way for the Draw.
+ *
+ * The draw is a card-ability draw and not the Draw action, so no draw modifier
+ * applies (DL-47). The barn task is optional and may whiff on an empty hand,
+ * which is legal and silent.
+ *
+ * It is the suit's card-neutrality guarantee and it had to be: after the
+ * rebuild all five Tier 1 HIVEs are card-negative and nothing else in the suit
+ * refills the hand.
+ */
+export function apiaryGrowBonus(fx: Fx, seat: Seat): void {
+  const p = player(fx.state, seat);
+  if (p.suit !== 'apiary') return;
+  const farmstead = p.tableau.find((b) => cardById(fx.data, b.card).slot === 'farmstead');
+  if (!farmstead) return;
+  fx.pushTask({ t: 'draw', pid: seat, src: farmstead.card, see: 1, keep: 1, revealed: [] });
+  if (farmstead.upgraded) {
+    fx.pushTask({
+      t: 'handToBarn',
+      pid: seat,
+      src: farmstead.card,
+      remaining: 1,
+      optional: true,
+    });
+  }
 }
 
 /** Starters a seat can pay to flip: Barn and Notice Board only - the Farmstead flips free. */
@@ -590,31 +620,87 @@ export function activationSurchargeOf(data: GameData, card: CardId): number {
   return cardById(data, card).abilityTrigger.includes('activationSurcharge') ? 1 : 0;
 }
 
+/** What a caller may relax about a GROW's targeting. */
+export interface GrowOptionMods {
+  /** A6 The Garden Hive: pay with a card of any crop. */
+  anyCrop?: boolean;
+  /** Never these buildings (A6's "ANOTHER of your buildings"). */
+  exclude?: readonly CardId[];
+}
+
 /**
  * Own non-full buildings with a printed activation type, never the Notice
  * Board (porting guard: it passes the placement check but is not a Grow
- * target), paid with a matching hand card ('wild' takes any). The Apiary
- * Farmstead's base power (live from turn 1) waives the match entirely -
- * the reference's `Placement::checkNoType` in the Grow funnel. Surcharged
- * buildings (A8) drop out when the seat cannot pay.
+ * target), paid with a matching hand card ('wild' takes any). Surcharged
+ * buildings drop out when the seat cannot pay.
+ *
+ * ⛔ THE APIARY CROP WAIVER IS GONE (2026-08-11). It used to be the Apiary
+ * Farmstead's base power, live from turn 1 for a whole suit; it now survives
+ * only as `mods.anyCrop`, which one card - A6 The Garden Hive - pays for.
+ *
+ * A card whose text has already FIRED this turn drops out, which is the shared
+ * half of the Apiary recursion guard: the ruling is that no card's text may
+ * fire twice in a turn, and it holds for a real GROW as well as for A5/A12's
+ * activation with no placement. In ordinary play it is not binding - the GROW
+ * action is the first thing that fires anything - and it is what stops O13 The
+ * Grand Orchard re-entering an Apiary card in a mixed tableau.
  */
-export function growOptions(data: GameData, state: GameState, seat: Seat): GrowOption[] {
+export function growOptions(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+  mods: GrowOptionMods = {},
+): GrowOption[] {
   const p = player(state, seat);
-  const anyCard = p.suit === 'apiary';
   const out: GrowOption[] = [];
   for (const b of p.tableau) {
     if (!canTakeCard(data, b)) continue;
     if (cardById(data, b.card).slot === 'noticeboard') continue;
+    if (state.turn.firedThisTurn.includes(b.card)) continue;
+    if (mods.exclude?.includes(b.card)) continue;
     const type = faceOf(data, b).activationType;
     if (type === null) continue;
     if (activationSurchargeOf(data, b.card) > p.coins) continue;
     for (const card of p.hand) {
-      if (anyCard || type === 'wild' || cardById(data, card).suit === type) {
+      if (mods.anyCrop === true || type === 'wild' || cardById(data, card).suit === type) {
         out.push({ building: b.card, payment: card });
       }
     }
   }
   return out;
+}
+
+/**
+ * "ANOTHER OF YOUR BUILDINGS" - the target set for an activation that places no
+ * card (A5 The Meadow Hive, A12 The Honey Hut).
+ *
+ * Deliberately WIDER than `growOptions`: a FULL building is legal, because the
+ * only reason a full building cannot be grown is that no card may be placed on
+ * it, and nothing is being placed. It is also deliberately narrower in one
+ * place - the Notice Board (its text is a VISITOR ability) and the SERVICE are
+ * never targets. ⚠️ The Service exclusion is load-bearing rather than tidiness:
+ * firing your own Service is bonus-slot option 1, so a card that reached it
+ * would be selling a bonus slot.
+ *
+ * `exclude` is the card doing the firing; `turn.firedThisTurn` is everything
+ * that has already fired, and filtering it here rather than throwing at
+ * resolution is what keeps the bots' speculative replays from crashing.
+ */
+export function activateTargets(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+  exclude: readonly CardId[] = [],
+): CardId[] {
+  return player(state, seat)
+    .tableau.filter((b) => faceOf(data, b).activationType !== null)
+    .filter((b) => {
+      const slot = cardById(data, b.card).slot;
+      return slot !== 'noticeboard' && slot !== 'service';
+    })
+    .filter((b) => !exclude.includes(b.card))
+    .filter((b) => !state.turn.firedThisTurn.includes(b.card))
+    .map((b) => b.card);
 }
 
 // --- Harvest ---------------------------------------------------------------
@@ -1600,7 +1686,7 @@ export function visitOptions(data: GameData, state: GameState, seat: Seat): Visi
  */
 export function workOwnOptions(data: GameData, state: GameState, seat: Seat): WorkerAction[] {
   if (state.turn.bonusSpent) return [];
-  if (player(state, seat).coins < ownServiceCost(data, ownServiceDiscount(state, seat))) return [];
+  if (player(state, seat).coins < ownServiceCost(data)) return [];
   const id = serviceIdOf(data, state, seat);
   return workerActionLegal(data, state, seat, id) ? [id as WorkerAction] : [];
 }
@@ -1747,7 +1833,7 @@ export function doWorkOwn(fx: Fx, seat: Seat, workerId: WorkerAction): void {
   if (workerState(fx.state, workerId).owner !== seat) {
     throw new Error(`Service ${workerId} is not yours`);
   }
-  const cost = ownServiceCost(fx.data, ownServiceDiscount(fx.state, seat));
+  const cost = ownServiceCost(fx.data);
   if (cost > 0) fx.payCoins(seat, cost, `service:${workerId}`);
   fx.state.turn.bonusSpent = true;
   workWorker(fx, seat, workerId, { progress: true });

@@ -187,6 +187,7 @@ function taskReachable(position: Position, move: Move): boolean {
     case 'deck':
       return clickDeck(moves, IDLE, answer.suit).includes(move);
     case 'building':
+    case 'activate':
       return clickBuilding(moves, IDLE, answer.card).includes(move);
     case 'sow':
       return clickBuilding(moves, { k: 'hold', card: answer.card }, answer.onto).includes(move);

@@ -200,18 +200,25 @@ export class Fx {
   }
 
   /**
-   * Lift ONE card out of a building's stack into its owner's barn (the
-   * Pizzeria shape; the Dairy/Orchard stack-manipulation cards share it).
-   * Not a harvest: the building may reopen, but no on-harvest passive fires.
+   * Lift ONE card out of a building's stack into a barn (the Pizzeria shape;
+   * the Dairy/Orchard stack-manipulation cards share it).
+   *
+   * Not a harvest: the building may reopen, but NO on-harvest passive fires.
+   * That is load-bearing for A4 The Herb Hive, which takes a card off a
+   * NEIGHBOUR's stack - `to` is the barn it lands in, defaulting to the stack's
+   * own owner, so every pre-Apiary caller is unchanged. The rival's stack
+   * shrinks before anything is sown back into the gap, which is what leaves room
+   * on a building that was full.
    */
-  stackCardToBarn(seat: Seat, building: CardId, card: CardId): void {
-    this.touch(seat);
-    const b = this.buildingDraft({ seat, card: building });
+  stackCardToBarn(from: Seat, building: CardId, card: CardId, to: Seat = from): void {
+    this.touch(from);
+    const b = this.buildingDraft({ seat: from, card: building });
     const i = b.stack.indexOf(card);
     if (i < 0) throw new Error(`${card} is not on ${building}'s stack`);
     b.stack.splice(i, 1);
-    player(this.state, seat).barn.push(card);
-    this.emit({ e: 'stackToBarn', seat, building, card });
+    this.touch(to);
+    player(this.state, to).barn.push(card);
+    this.emit({ e: 'stackToBarn', seat: to, building, card });
   }
 
   /**
@@ -254,22 +261,27 @@ export class Fx {
   }
 
   /**
-   * Top of a deck straight onto one of the seat's own buildings - the Apiary
-   * Service's sow. The sown card never passes through a hand, which is the whole
-   * economic point: a hand-sow would cost a visitor the fee card AND the sown
-   * card for one threshold step.
+   * Top of a deck straight onto a building - the Apiary Service's sow. The sown
+   * card never passes through a hand, which is the whole economic point: a
+   * hand-sow would cost a visitor the fee card AND the sown card for one
+   * threshold step.
+   *
+   * `onto` carries its owner's seat, so A4 and A14 reach a NEIGHBOUR's building
+   * through the same verb. That is a placement and not a visit: it fires
+   * `afterPlacement` like any other card landing (a rival's Beekeeper's Veil may
+   * draw off it) and nothing else.
    *
    * Lands through the same tail as every other placement, so the placement
    * reactors fire identically. No-op when the suit is exhausted.
    */
-  deckTopToBuilding(seat: Seat, suit: Suit, onto: CardId): void {
-    const building = this.buildingDraft({ seat, card: onto });
+  deckTopToBuilding(from: Seat, suit: Suit, onto: CardInPlay): void {
+    const building = this.buildingDraft(onto);
     if (!canTakeCard(this.data, building)) {
-      throw new Error(`${onto} cannot take a card (full or no stack)`);
+      throw new Error(`${onto.card} cannot take a card (full or no stack)`);
     }
     const card = this.takeDeckTop(suit);
     if (card === null) return;
-    this.land(seat, { seat, card: onto }, card);
+    this.land(from, onto, card);
   }
 
   /**

@@ -32,6 +32,17 @@ export function cloneState(state: GameState): GameState {
   return clonePlain(state);
 }
 
+/** What granted this GROW, when it was not the plain action. */
+export interface GrowMods {
+  /**
+   * A6 The Garden Hive: "GROW another of your buildings with a card of any
+   * crop." The crop waiver used to be the Apiary Farmstead's base power, live
+   * from turn 1 for every Apiary seat, which Dean ruled "trivialises the suit"
+   * (2026-08-11). It survives only here, on one card that pays for it.
+   */
+  anyCrop?: boolean;
+}
+
 /**
  * GROW: activate one of your own non-full buildings by paying one matching
  * card from hand into its stack, then gain its ability. "Matching" follows the
@@ -40,8 +51,20 @@ export function cloneState(state: GameState): GameState {
  * Lives here rather than in actions.ts because it dispatches into the handler
  * registry, which actions.ts must not import (the Helping Hand imports
  * actions.ts for workerActionLegal).
+ *
+ * ⛔ NOTHING SUIT-SPECIFIC LIVES HERE any more. This function is called by the
+ * GROW action, by O13 The Grand Orchard and by A6, so anything wired in here
+ * fires once per building grown rather than once per action - which is why the
+ * Apiary Farmstead's draw is in `apiaryGrowBonus`, on the action branch, and
+ * not in this function.
  */
-export function doGrow(fx: Fx, seat: Seat, building: CardId, payment: CardId): void {
+export function doGrow(
+  fx: Fx,
+  seat: Seat,
+  building: CardId,
+  payment: CardId,
+  mods: GrowMods = {},
+): void {
   const p = player(fx.state, seat);
   const b = p.tableau.find((x) => x.card === building);
   if (!b) throw new Error(`Seat ${seat} has not built ${building}`);
@@ -51,34 +74,61 @@ export function doGrow(fx: Fx, seat: Seat, building: CardId, payment: CardId): v
   if (!canTakeCard(fx.data, b)) throw new Error(`${building} is full or has no stack`);
   const activationType = faceOf(fx.data, b).activationType;
   if (activationType === null) throw new Error(`${building} has no activation type`);
-  // The Apiary Farmstead's base power: GROW may pay with any card (no match).
-  if (activationType !== 'wild' && p.suit !== 'apiary') {
+  if (activationType !== 'wild' && mods.anyCrop !== true) {
     const paidSuit = cardById(fx.data, payment).suit;
     if (paidSuit !== activationType) {
       throw new Error(`${building} needs a ${activationType} card, got ${paidSuit}`);
     }
   }
   // A8's £1 activation surcharge: checked before, paid after the card lands
-  // (the reference's order), before the ability fires.
+  // (the reference's order), before the ability fires. Nothing in the catalogue
+  // prints one since the Apiary rebuild; the branch stays, data-driven.
   const surcharge = activationSurchargeOf(fx.data, building);
   if (p.coins < surcharge) throw new Error(`${building} needs £${surcharge} to activate`);
   fx.placeOnBuilding(seat, { seat, card: building }, payment);
   if (surcharge > 0) fx.payCoins(seat, surcharge, `surcharge:${building}`);
+  markFired(fx, building);
   handlerFor(building)?.activate?.(fx, { seat, card: building });
+}
 
-  // The upgraded Apiary Farmstead (ticket 06 ruling F): "When you GROW, you
-  // may also SOW 1 card from your hand onto another of your buildings." An
-  // engine seam, not handler code - GROW is only ever the main action. Queued
-  // after the activation's own tasks, per the reference's afterMainAction.
-  if (p.suit === 'apiary') {
-    const farmstead = p.tableau.find((x) => cardById(fx.data, x.card).slot === 'farmstead');
-    if (farmstead?.upgraded) {
-      const targets = p.tableau
-        .filter((x) => x.card !== building && canTakeCard(fx.data, x))
-        .map((x) => x.card);
-      fx.pushTask({ t: 'sow', pid: seat, src: null, remaining: 1, targets, optional: true });
-    }
+/**
+ * Record that a building's printed ability has fired this turn - the shared
+ * half of the recursion guard (`turn.firedThisTurn`). Both routes into a card's
+ * text go through it: a real GROW and an activation with no placement.
+ */
+function markFired(fx: Fx, building: CardId): void {
+  const fired = fx.state.turn.firedThisTurn;
+  if (!fired.includes(building)) fired.push(building);
+}
+
+/**
+ * GROW WITHOUT PLACING (A5 The Meadow Hive, A12 The Honey Hut): fire a
+ * building's printed ability with no card paid, no crop matched, no stack
+ * advanced and no surcharge. The Apiary suit's signature, and the reason a
+ * clogged farm still works for it - a FULL building is a legal target here,
+ * because the only reason a full building cannot be grown is that no card may
+ * be placed on it.
+ *
+ * It does exactly one thing beyond the dispatch: it marks the card fired. In
+ * particular it does NOT fire `afterPlacement` (nothing was placed), does not
+ * touch the stack, and does NOT trigger the Apiary Farmstead's draw, which
+ * modifies the GROW ACTION and not card text that says GROW.
+ */
+export function activateOnly(fx: Fx, seat: Seat, building: CardId): void {
+  const b = player(fx.state, seat).tableau.find((x) => x.card === building);
+  if (!b) throw new Error(`Seat ${seat} has not built ${building}`);
+  if (faceOf(fx.data, b).activationType === null) {
+    throw new Error(`${building} has no printed activated ability`);
   }
+  const slot = cardById(fx.data, building).slot;
+  if (slot === 'noticeboard' || slot === 'service') {
+    throw new Error(`${building} is never an activation target`);
+  }
+  if (fx.state.turn.firedThisTurn.includes(building)) {
+    throw new Error(`${building} has already fired this turn`);
+  }
+  markFired(fx, building);
+  handlerFor(building)?.activate?.(fx, { seat, card: building });
 }
 
 /** GROW as a bare runtime slice (no action bookkeeping). apply()'s grow branch spends the action first. */

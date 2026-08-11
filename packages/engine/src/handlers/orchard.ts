@@ -198,7 +198,13 @@ export const pearOrchard: CardHandler = {
   },
   activate(fx, self) {
     drawN(fx, self.seat, self.card, 2);
-    fx.pushTask({ t: 'sow', pid: self.seat, src: self.card, remaining: 1, targets: [self.card] });
+    fx.pushTask({
+      t: 'sow',
+      pid: self.seat,
+      src: self.card,
+      remaining: 1,
+      targets: [{ seat: self.seat, card: self.card }],
+    });
   },
 };
 
@@ -367,7 +373,13 @@ export const ciderHouse: CardHandler = {
   },
   activate(fx, self) {
     for (const b of ownOrchards(fx.data, fx.state, self.seat)) {
-      fx.pushTask({ t: 'sow', pid: self.seat, src: self.card, remaining: 1, targets: [b.card] });
+      fx.pushTask({
+        t: 'sow',
+        pid: self.seat,
+        src: self.card,
+        remaining: 1,
+        targets: [{ seat: self.seat, card: b.card }],
+      });
     }
   },
 };

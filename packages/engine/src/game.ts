@@ -7,6 +7,7 @@
 import type { GameData } from '@gp/data';
 
 import {
+  apiaryGrowBonus,
   balloonMoveOptions,
   buildOptions,
   buyOptions,
@@ -212,6 +213,11 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
       break;
     case 'grow':
       doGrow(fx, move.seat, move.building, move.payment);
+      // The Apiary Farmstead ("When you GROW, Draw 1", plus the upgraded face's
+      // optional card into the barn) hangs off the GROW ACTION and nowhere
+      // else, so A5, A6 and A12 do not each trigger it - or The Honey Hut
+      // would draw three. Queued after the activation's own tasks.
+      apiaryGrowBonus(fx, move.seat);
       break;
     case 'harvest':
       doHarvestAction(fx, move.seat, move.building);

@@ -417,6 +417,10 @@ function effectKey(move: Move, act: Act): string {
   switch (act.a) {
     case 'grow':
       return `grow:${act.building}`;
+    // GROW WITHOUT PLACING: nothing is paid, so the building IS the whole
+    // decision and there is nothing for the collapse to fold away.
+    case 'activate':
+      return `activate:${act.building}`;
     case 'visit':
       return `visit:${act.host}:${JSON.stringify(act.payoff)}`;
     case 'workOwn':

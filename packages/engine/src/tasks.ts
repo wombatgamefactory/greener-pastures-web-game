@@ -39,7 +39,16 @@ import {
   player,
   workerState,
 } from './query.js';
-import type { BuildingState, CardId, GameState, Seat, Task, TaskAnswer } from './state.js';
+import { activateOnly } from './runtime.js';
+import type {
+  BuildingRef,
+  BuildingState,
+  CardId,
+  GameState,
+  Seat,
+  Task,
+  TaskAnswer,
+} from './state.js';
 import { workWorker } from './workers.js';
 import { handlerFor } from './handlers/registry.js';
 
@@ -126,6 +135,61 @@ function divertAnswers(
   return out;
 }
 
+/**
+ * THE ONE PLACE a sow's target list is resolved, for both sow tasks.
+ *
+ * An absent list means the actor's own tableau, which is what every caller
+ * before the Apiary rebuild meant and why none of them had to change. A list
+ * that IS present may name a neighbour's building (A4, A14). Either way the
+ * live gate is `canTakeCard`, applied here and not at push time, so a building
+ * that clogs between the push and the answer drops out by itself - and a
+ * neighbour's clogged Notice Board or Service simply is not offered.
+ */
+function sowTargets(
+  data: GameData,
+  state: GameState,
+  task: { pid: Seat; targets?: BuildingRef[] },
+): BuildingRef[] {
+  const refs: BuildingRef[] =
+    task.targets ?? player(state, task.pid).tableau.map((b) => ({ seat: task.pid, card: b.card }));
+  return refs.filter((ref) => {
+    const p = state.players[ref.seat];
+    const b = p?.tableau.find((x) => x.card === ref.card);
+    return b !== undefined && canTakeCard(data, b);
+  });
+}
+
+/** A sow answer's target seat: absent means the actor's own building. */
+function ontoRef(pid: Seat, answer: { onto: CardId; ontoSeat?: Seat }): BuildingRef {
+  return { seat: answer.ontoSeat ?? pid, card: answer.onto };
+}
+
+/** A sow answer, with `ontoSeat` present only when the target is a neighbour's. */
+function sowAnswer(pid: Seat, ref: BuildingRef, rest: Record<string, unknown>): TaskAnswer {
+  return {
+    ...rest,
+    onto: ref.card,
+    ...(ref.seat === pid ? {} : { ontoSeat: ref.seat }),
+  } as TaskAnswer;
+}
+
+/**
+ * The buildings an `activate` task may still fire (the Apiary rebuild).
+ *
+ * The snapshot in `task.targets` was taken when the card activated; this
+ * re-checks it against the live tableau AND against `turn.firedThisTurn`, which
+ * is the whole recursion guard: a card that has already fired this turn is not
+ * offered again, so A12 -> A5 -> A12 cannot be entered rather than being cut off
+ * part way through.
+ */
+function activateAnswers(state: GameState, task: Extract<Task, { t: 'activate' }>): TaskAnswer[] {
+  const tableau = player(state, task.pid).tableau;
+  return task.targets
+    .filter((card) => tableau.some((b) => b.card === card))
+    .filter((card) => !state.turn.firedThisTurn.includes(card))
+    .map((card) => ({ kind: 'activate', card }) as TaskAnswer);
+}
+
 /** Legal answers to a task. Empty = the task has nothing to do and is skipped. */
 export function taskAnswers(data: GameData, state: GameState, task: Task): TaskAnswer[] {
   switch (task.t) {
@@ -179,10 +243,9 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
 
     case 'sow': {
       const hand = player(state, task.pid).hand;
-      let targets = player(state, task.pid).tableau.filter((b) => canTakeCard(data, b));
-      if (task.targets) targets = targets.filter((b) => task.targets?.includes(b.card));
+      const targets = sowTargets(data, state, task);
       const out = hand.flatMap((card) =>
-        targets.map((b) => ({ kind: 'sow', card, onto: b.card }) as TaskAnswer),
+        targets.map((ref) => sowAnswer(task.pid, ref, { kind: 'sow', card })),
       );
       if (task.optional === true && out.length > 0) out.push({ kind: 'skip' });
       return out;
@@ -210,13 +273,20 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
     }
 
     case 'sowFromDeck': {
-      const suits = drawableSuits(data, state);
-      let targets = player(state, task.pid).tableau.filter((b) => canTakeCard(data, b));
-      if (task.targets) targets = targets.filter((b) => task.targets?.includes(b.card));
+      // A fixed deck (A13's "the top card of EACH deck") still has to be
+      // drawable: a suit whose deck and discard are both empty offers nothing
+      // and the task is dropped, which is the printed "whiffs" reading.
+      const suits = drawableSuits(data, state).filter(
+        (s) => task.suit === undefined || s === task.suit,
+      );
+      const targets = sowTargets(data, state, task);
       return suits.flatMap((suit) =>
-        targets.map((b) => ({ kind: 'deckSow', suit, onto: b.card }) as TaskAnswer),
+        targets.map((ref) => sowAnswer(task.pid, ref, { kind: 'deckSow', suit })),
       );
     }
+
+    case 'activate':
+      return activateAnswers(state, task);
 
     case 'handToBarn': {
       const out = player(state, task.pid).hand.map(
@@ -297,7 +367,7 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
     case 'sow': {
       if (answer.kind === 'skip' && task.optional === true) return true;
       if (answer.kind !== 'sow') throw new Error('sow expects a sow answer');
-      fx.placeOnBuilding(task.pid, { seat: task.pid, card: answer.onto }, answer.card);
+      fx.placeOnBuilding(task.pid, ontoRef(task.pid, answer), answer.card);
       task.remaining -= 1;
       return task.remaining <= 0;
     }
@@ -334,7 +404,14 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
 
     case 'sowFromDeck': {
       if (answer.kind !== 'deckSow') throw new Error('sowFromDeck expects a deckSow answer');
-      fx.deckTopToBuilding(task.pid, answer.suit, answer.onto);
+      fx.deckTopToBuilding(task.pid, answer.suit, ontoRef(task.pid, answer));
+      task.remaining -= 1;
+      return task.remaining <= 0;
+    }
+
+    case 'activate': {
+      if (answer.kind !== 'activate') throw new Error('activate expects an activate answer');
+      activateOnly(fx, task.pid, answer.card);
       task.remaining -= 1;
       return task.remaining <= 0;
     }

@@ -48,6 +48,7 @@ export function renderReport(input: ReportInput): string {
   out.push(...giveawaySection(input));
   out.push(...freightSection(input));
   out.push(...dairySection(input));
+  out.push(...apiarySection(input));
   out.push(...actionMix(input));
   out.push(...seatTable(input));
   out.push(...suitTable(input));
@@ -449,6 +450,30 @@ function freightSection({ data, pooled }: ReportInput): string[] {
       .join('   ')}`,
   );
   out.push('');
+  // CARDS INTO THE BARN BY SUIT (the Dairy rebuild, 2026-08-10). The route
+  // table above is per GAME and says HOW a barn filled; this is per SEAT and
+  // says WHOSE. Dairy was rebuilt on the claim that it manufactures no freight
+  // - it builds the most and ships the least - so this line and the delivery
+  // line above are the two that decide it.
+  out.push('  cards into the barn per seat, by suit (all routes):');
+  out.push(
+    `    ${data.cards.suits
+      .map((suit) => `${suit} ${num(barnInBySuit(games, suit), 1)}`)
+      .join('   ')}`,
+  );
+  out.push('');
+  // BUILDS BY SUIT, printed beside the two above because it is the third term
+  // of the same sentence: a build is a card OFF the pipeline and into the
+  // tableau, where it scores printed VP and feeds every "for each building"
+  // scaler. The Build ACTION is one per turn for everybody, so any suit far
+  // above the others is manufacturing builds off its own card text.
+  out.push('  buildings built per seat, by suit:');
+  out.push(
+    `    ${data.cards.suits
+      .map((suit) => `${suit} ${num(buildsBySuit(games, suit), 2)}`)
+      .join('   ')}`,
+  );
+  out.push('');
   out.push(
     `  demand tokens altered per game        ` +
       `${num(
@@ -564,12 +589,140 @@ function dairySection({ pooled }: ReportInput): string[] {
   return out;
 }
 
+/**
+ * THE SWARM - the Apiary rebuild's own counters (2026-08-11).
+ *
+ * Seven numbers, and only two of them decide the arm (Apiary's card play rate
+ * and its win rate, both read off the funnel and the suit table). These are the
+ * diagnosis, and one of them outranks the win rate: if `activations of a FULL
+ * building` comes back near zero, the design's central claim is wrong and the
+ * suit needs a harvest valve after all.
+ */
+function apiarySection({ pooled }: ReportInput): string[] {
+  const games = pooled.ended;
+  const out = [THIN, 'THE SWARM  (the Apiary rebuild, ended games)', THIN, ''];
+  if (games.length === 0) {
+    out.push('  no ended games', '');
+    return out;
+  }
+
+  const acts: number[] = [];
+  const turns: number[] = [];
+  const firsts: number[] = [];
+  let full = 0;
+  let foreign = 0;
+  let total = 0;
+  let towerCoins = 0;
+  let tableWide = 0;
+  let offered = 0;
+  for (const g of games) {
+    // A5 and A12 can be BUILT by any seat, so the table-wide figure and the
+    // Apiary-seat figure are different questions and both are worth printing.
+    // `offered` is the ceiling the two cards bought: one firing per grow of A5,
+    // two per grow of A12. The gap between it and `tableWide` is risk 1 made
+    // arithmetic - activations that were offered and had nothing to aim at.
+    tableWide += sum(g.activationsBySeat);
+    offered += (g.cards.get('A5')?.activations ?? 0) + 2 * (g.cards.get('A12')?.activations ?? 0);
+    g.suits.forEach((suit, seat) => {
+      if (suit !== 'apiary') return;
+      acts.push(g.activationsBySeat[seat] ?? 0);
+      turns.push(g.turnsBySeat[seat] ?? 0);
+      const first = g.firstActivationRoundBySeat[seat];
+      if (first !== null && first !== undefined) firsts.push(first);
+      full += g.activationsOfFullBySeat[seat] ?? 0;
+      foreign += g.activationsOfForeignBySeat[seat] ?? 0;
+      total += g.activationsBySeat[seat] ?? 0;
+      towerCoins += g.towerCoinsBySeat[seat] ?? 0;
+    });
+  }
+
+  if (acts.length === 0) {
+    out.push('  no Apiary seat in this data set', '');
+    return out;
+  }
+
+  const turnTotal = turns.reduce((a, b) => a + b, 0);
+  out.push(
+    `  activations per Apiary TURN           ${num(turnTotal === 0 ? NaN : total / turnTotal, 2)}` +
+      `   (${total} firings over ${turnTotal} turns; risk 3, and the table averages 3.6 GROWs a GAME)`,
+  );
+  out.push(
+    `  round of a seat's FIRST activation    ${firsts.length === 0 ? 'never' : num(median(firsts), 1)}` +
+      `   (median; ${firsts.length} of ${acts.length} seats ever fired one. Risk 1: round 8+ means A5 needs a floor)`,
+  );
+  out.push(
+    `  activations OFFERED, table-wide       ${offered}` +
+      `   (1 per grow of A5, 2 per grow of A12, by any seat of any suit)`,
+  );
+  out.push(
+    `  ...of which AIMED at something        ${pct(offered === 0 ? NaN : tableWide / offered, 1)}` +
+      `   (${tableWide}. ⛔ THE COLD START, as arithmetic: the rest had no legal target and lapsed)`,
+  );
+  out.push(
+    `  activations of a FULL building        ${pct(total === 0 ? NaN : full / total, 1)}` +
+      `   (${full}. ⛔ NEAR ZERO MEANS THE CENTRAL CLAIM IS WRONG and the suit needs a valve)`,
+  );
+  out.push(
+    `  activations of a FOREIGN-crop card    ${pct(total === 0 ? NaN : foreign / total, 1)}` +
+      `   (${foreign}; risk 5, and A19 The Honey Hall pays for it)`,
+  );
+  out.push(
+    `  coins minted by A14 per game          ${num(towerCoins / games.length, 2)}` +
+      `   (risk 2, the first repeatable coin faucet. Read against the coin flood, not against A14's play rate)`,
+  );
+  out.push(
+    `  market buys per game                  ${num(mean(games.map((g) => sum(g.marketBuysBySeat))), 2)}` +
+      `   (was 0.1. A14 and A15 exist to move it)`,
+  );
+  out.push(
+    `  cards into an Apiary seat's barn      ${num(barnInBySuit(games, 'apiary'), 1)}` +
+      `   (risk 4; Dairy ran 10.2 against Orchard's 25.7 and that gap was the win ranking in order)`,
+  );
+  out.push('');
+  out.push(
+    'Apiary ships with NO harvest valve, which no non-Wheat suit has been allowed since 2026-07-04, and',
+  );
+  out.push(
+    'the full-building line is what pays for that: to every other suit a clogged building is dead weight',
+  );
+  out.push(
+    'until an action is spent on it, and to this one it is a button. Two counters decide the arm and',
+  );
+  out.push(
+    'neither is here - Apiary’s card play rate up from 19.9% and its win rate up from 20.7%.',
+  );
+  out.push('');
+  return out;
+}
+
 /** Island deliveries made by the seats actually farming a given suit, per game. */
 function deliveriesBySuit(games: readonly GameMetrics[], suit: string): number {
+  return bySuit(games, suit, (g, seat) => g.deliveriesBySeat[seat] ?? 0);
+}
+
+/**
+ * Cards that reached the barn of a seat actually farming a given suit, per
+ * game, every route pooled. The Dairy rebuild's first pass condition.
+ */
+function barnInBySuit(games: readonly GameMetrics[], suit: string): number {
+  return bySuit(games, suit, (g, seat) => g.barnInBySeat[seat] ?? 0);
+}
+
+/** Buildings put down by the seats actually farming a given suit, per game. */
+function buildsBySuit(games: readonly GameMetrics[], suit: string): number {
+  return bySuit(games, suit, (g, seat) => g.buildsBySeat[seat] ?? 0);
+}
+
+/** Mean of a per-seat counter over the seats actually farming a given suit. */
+function bySuit(
+  games: readonly GameMetrics[],
+  suit: string,
+  of: (g: GameMetrics, seat: number) => number,
+): number {
   const per: number[] = [];
   for (const g of games) {
     g.suits.forEach((s, seat) => {
-      if (s === suit) per.push(g.deliveriesBySeat[seat] ?? 0);
+      if (s === suit) per.push(of(g, seat));
     });
   }
   return per.length === 0 ? NaN : mean(per);

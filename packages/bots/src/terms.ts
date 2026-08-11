@@ -152,6 +152,13 @@ function cardMoveSpend(payload: Record<string, unknown>): CardId | null {
  * against a flat 2, so the weight was not merely imprecise: it was low almost
  * everywhere, and the balloon the bots took was not the balloon worth taking.
  *
+ * GROW WITHOUT PLACING joined them with the Apiary rebuild (2026-08-11). A5's
+ * and A12's value is ENTIRELY the value of what they fire, so a flat weight on
+ * the target choice either never takes them or always does - the exact shape
+ * ticket 40 deleted for GROW. A12's second pick is priced by the same path one
+ * decision later, which is a beam of one over the two rather than an exhaustive
+ * pair, and an under-valued A5 is the safe direction.
+ *
  * Everything NOT in this set has a feature that already reads its own value -
  * a delivery's printed VP, a harvest's stack size, a visit's minted coin - so
  * probing it would spend an `apply` to learn what the table already knows.
@@ -163,6 +170,7 @@ function isProbed(act: Act): boolean {
     case 'worker':
     case 'cardMove':
     case 'balloon':
+    case 'activate':
       return true;
     case 'visit':
       return act.payoff.mode === 'worker';
@@ -476,6 +484,21 @@ export const TERMS: readonly Term[] = [
     claims: ['grow', ...ACTION_AND_TASK],
     feature: (act, s) => (act.a === 'grow' ? -cardValue(s.data, act.payment) : 0),
     cost: true,
+  },
+  {
+    /**
+     * GROW WITHOUT PLACING (A5, A12). A flat taste for firing something, and
+     * deliberately SMALL: the real value comes through `outcome`, because
+     * `isProbed` rolls the activation out. Nothing is spent - no card, no coin,
+     * no stack - so there is no cost term to pair with it.
+     *
+     * ⚠️ Keep it low. A high flat weight here would have the bot picking a
+     * target for the label rather than the payoff, which is the failure mode the
+     * probe exists to prevent.
+     */
+    name: 'activate',
+    claims: ACTION_AND_TASK,
+    feature: (act) => (act.a === 'activate' ? 1 : 0),
   },
   {
     name: 'sow',

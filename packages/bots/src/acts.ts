@@ -56,6 +56,17 @@ export type Act =
   | { a: 'sow'; card: CardId; onto: CardId }
   /** The Apiary Service: a deck top onto one of your buildings, never a hand card. */
   | { a: 'deckSow'; suit: Suit; onto: CardId }
+  /**
+   * GROW WITHOUT PLACING (A5 The Meadow Hive, A12 The Honey Hut): which of your
+   * buildings to FIRE, with nothing paid and nothing placed.
+   *
+   * Its own act rather than `harvest`, even though the answer carries the same
+   * one field, because the two are opposites: a harvest empties a stack and this
+   * does not touch it. Priced by ROLLING IT OUT (`isProbed`), because the value
+   * of an activation is entirely the value of what it fires - a flat weight
+   * would have the bot either never taking A5 or always taking it.
+   */
+  | { a: 'activate'; building: CardId }
   /** The Wheat and Vegetable Services' optional hand card into your own barn. */
   | { a: 'handToBarn'; card: CardId }
   | { a: 'discard'; cards: readonly CardId[] }
@@ -73,6 +84,8 @@ function actOfAnswer(answer: TaskAnswer): Act {
     // chooseBuilding's only `then` is 'harvest', so this IS a harvest.
     case 'building':
       return { a: 'harvest', building: answer.card };
+    case 'activate':
+      return { a: 'activate', building: answer.card };
     case 'sow':
       return { a: 'sow', card: answer.card, onto: answer.onto };
     case 'build':

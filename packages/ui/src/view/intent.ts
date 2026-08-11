@@ -97,6 +97,12 @@ export function clickBuilding(moves: readonly Move[], intent: Intent, building: 
   for (const { move, answer } of answersOfKind(moves, 'building')) {
     if (answer.card === building) out.push(move);
   }
+  // GROW WITHOUT PLACING (A5, A12): clicking the building fires it. Nothing is
+  // held and nothing is placed, so it needs no armed intent - the task is the
+  // only thing on offer while it is pending.
+  for (const { move, answer } of answersOfKind(moves, 'activate')) {
+    if (answer.card === building) out.push(move);
+  }
   for (const { move, answer } of answersOfKind(moves, 'sow')) {
     if (answer.onto !== building) continue;
     if (held !== null && answer.card !== held) continue;

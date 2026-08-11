@@ -56,6 +56,15 @@ function actionMoveFor(state: GameState, card: string): Move | undefined {
   return standingMoves(data, state, WHEAT).find((m) => m.card === card);
 }
 
+/**
+ * Sow targets are `BuildingRef`s since the Apiary rebuild - a seat as well as a
+ * card, because A4 and A14 place on a neighbour. Every Wheat sow is still onto
+ * the wheat seat's own tableau, which is what this spells out.
+ */
+function own(...cards: string[]): { seat: number; card: string }[] {
+  return cards.map((card) => ({ seat: WHEAT, card }));
+}
+
 /** Fill a building to its printed threshold from the apiary deck (keeps wheat ids free). */
 function fill(s: GameState, card: string): void {
   const threshold = thresholdOf(data, buildingOf(s, WHEAT, card)) as number;
@@ -70,11 +79,14 @@ describe('the Wheat Farmstead (W2) - the relaxed harvest gate, unchanged', () =>
     expect(harvestMoves(s).map((m) => m.type === 'harvest' && m.building)).toContain('W7');
 
     // The same position for the apiary seat: 2-loaded, not full, NOT harvestable.
+    // The foil used to be A9; the Apiary rebuild cut its threshold to 2, which
+    // would have made it FULL here and harvestable for the ordinary reason. A7
+    // still prints 3, and the guard below is what catches the next such edit.
     const t = base();
-    buildFor(data, t, APIARY, 'A9');
-    const a9Threshold = thresholdOf(data, buildingOf(t, APIARY, 'A9')) as number;
-    expect(a9Threshold).toBeGreaterThan(2);
-    loadStack(data, t, APIARY, 'A9', 2);
+    buildFor(data, t, APIARY, 'A7');
+    const foilThreshold = thresholdOf(data, buildingOf(t, APIARY, 'A7')) as number;
+    expect(foilThreshold).toBeGreaterThan(2);
+    loadStack(data, t, APIARY, 'A7', 2);
     t.turnPlayer = APIARY;
     expect(harvestMoves(t)).toEqual([]);
   });
@@ -127,7 +139,7 @@ describe('the shared FIELD line - "Sow 1 FIELD from the deck"', () => {
     const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W5' });
     expect(buildingOf(applied.state, WHEAT, 'W5').stack).toEqual([]);
     const reseed = applied.state.tasks.find((t) => t.t === 'sowFromDeck');
-    expect(reseed).toMatchObject({ src: 'W5', remaining: 1, targets: ['W5'] });
+    expect(reseed).toMatchObject({ src: 'W5', remaining: 1, targets: own('W5') });
 
     // Answer the Draw 2 first (it was queued ahead), then the reseed.
     let state = answerAll(applied.state, (answers) => {
@@ -196,7 +208,7 @@ describe('Tier 1 - the five FIELDs, both printed lines each', () => {
     // One sow task per FIELD owned - W6 itself included, since it just emptied.
     const sows = applied.state.tasks.filter((t) => t.t === 'sow');
     expect(sows).toHaveLength(2);
-    expect(sows.map((t) => (t.t === 'sow' ? t.targets : null))).toEqual([['W6'], ['W4']]);
+    expect(sows.map((t) => (t.t === 'sow' ? t.targets : null))).toEqual([own('W6'), own('W4')]);
     // Mandatory as printed: no skip answer while a hand card and a target exist.
     expect(pendingAnswers(data, applied.state).some((a) => a.kind === 'skip')).toBe(false);
   });
@@ -209,7 +221,7 @@ describe('Tier 1 - the five FIELDs, both printed lines each', () => {
     const grown = growBuilding(data, s, WHEAT, 'W7', 'W6');
     expect(grown.state.tasks.map((t) => t.t)).toEqual(['draw', 'sowFromDeck']);
     const sow = grown.state.tasks[1];
-    expect(sow).toMatchObject({ targets: ['W7'] });
+    expect(sow).toMatchObject({ targets: own('W7') });
     const done = answerAll(grown.state);
     // seed + payment + deck card = 3: full.
     expect(buildingOf(done, WHEAT, 'W7').stack).toHaveLength(3);
@@ -261,7 +273,10 @@ describe('Tier 2', () => {
     const grown = growBuilding(data, s, WHEAT, 'W9', 'W6');
     const sows = grown.state.tasks.filter((t) => t.t === 'sowFromDeck');
     expect(sows).toHaveLength(2);
-    expect(sows.map((t) => (t.t === 'sowFromDeck' ? t.targets : null))).toEqual([['W4'], ['W5']]);
+    expect(sows.map((t) => (t.t === 'sowFromDeck' ? t.targets : null))).toEqual([
+      own('W4'),
+      own('W5'),
+    ]);
     const done = answerAll(grown.state);
     expect(buildingOf(done, WHEAT, 'W4').stack).toHaveLength(1);
     expect(buildingOf(done, WHEAT, 'W5').stack).toHaveLength(1);

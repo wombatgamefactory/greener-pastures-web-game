@@ -119,6 +119,10 @@ export const BALANCED: WeightTable = {
    * they were worth as cards. Pay the junk.
    */
   growSpend: 0.3,
+  // A flat taste only - the value of an activation is what it fires, which
+  // arrives through `outcome`. Deliberately below `sow`: a sow at least advances
+  // a threshold, and this is picked for the payoff or not at all.
+  activate: 1,
   sow: 1.5,
   sowCompletes: 2,
 

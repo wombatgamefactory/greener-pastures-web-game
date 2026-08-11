@@ -30,6 +30,7 @@ export { handlerFor, registeredCards } from './handlers/registry.js';
 // the engine's.
 export { isFieldCard } from './handlers/wheat.js';
 export { isOrchardCard } from './handlers/orchard.js';
+export { isHiveCard } from './handlers/apiary.js';
 export type { CardHandler, CardMove, CustomTask, Difficulty } from './handlers/types.js';
 export {
   cloneState,

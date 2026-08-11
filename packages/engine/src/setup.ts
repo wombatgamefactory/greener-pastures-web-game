@@ -45,6 +45,7 @@ export function freshTurn(): TurnState {
     again: null,
     onceUsed: [],
     buildSources: [],
+    firedThisTurn: [],
   };
 }
 

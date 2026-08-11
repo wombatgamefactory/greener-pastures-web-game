@@ -53,6 +53,16 @@ function headText(data: GameData, head: readonly string[] | undefined): string {
   return ` (loading ${cardList(data, head)} from your hand first)`;
 }
 
+/**
+ * "on a neighbour's farm", for the two sows that can leave your own tableau
+ * (A4's replacement card, A14's placement). `describeAnswer` has no view, so it
+ * cannot name the seat; what it must never do is let a cross-table placement
+ * read identically to one of your own.
+ */
+function seatSuffix(ontoSeat: Seat | undefined): string {
+  return ontoSeat === undefined ? '' : " on a neighbour's farm";
+}
+
 export function describeAnswer(data: GameData, answer: TaskAnswer): string {
   switch (answer.kind) {
     case 'worker':
@@ -63,8 +73,10 @@ export function describeAnswer(data: GameData, answer: TaskAnswer): string {
       return `keep ${cardList(data, answer.cards)}`;
     case 'building':
       return cardName(data, answer.card);
+    case 'activate':
+      return `fire ${cardName(data, answer.card)}`;
     case 'sow':
-      return `${cardName(data, answer.card)} onto ${cardName(data, answer.onto)}`;
+      return `${cardName(data, answer.card)} onto ${cardName(data, answer.onto)}${seatSuffix(answer.ontoSeat)}`;
     case 'build':
       return `${cardName(data, answer.card)}, paying ${cardList(data, answer.payment)}${
         answer.stacks?.length ? ` + ${cardList(data, answer.stacks)} off your buildings` : ''
@@ -74,7 +86,7 @@ export function describeAnswer(data: GameData, answer: TaskAnswer): string {
     case 'balloon':
       return `the ${balloonWord(answer.balloon)} balloon, spending ${spendText(answer.spend)}`;
     case 'deckSow':
-      return `the top ${SUIT_META[answer.suit].label} card onto ${cardName(data, answer.onto)}`;
+      return `the top ${SUIT_META[answer.suit].label} card onto ${cardName(data, answer.onto)}${seatSuffix(answer.ontoSeat)}`;
     case 'handToBarn':
       return `${cardName(data, answer.card)} into your barn`;
     case 'discard':
@@ -211,7 +223,9 @@ export function describeTask(data: GameData, task: Task): string {
     case 'sow':
       return `Sow ${task.remaining} card${task.remaining === 1 ? '' : 's'}: pick one from your hand, then a building to place it on. Any suit will do.`;
     case 'sowFromDeck':
-      return `Sow ${task.remaining} card${task.remaining === 1 ? '' : 's'} off a DECK TOP: pick a crop, then one of your buildings. The card never touches your hand.`;
+      return `Sow ${task.remaining} card${task.remaining === 1 ? '' : 's'} off a DECK TOP: pick a crop, then a building. The card never touches your hand.`;
+    case 'activate':
+      return `GROW ${task.remaining} of your buildings WITHOUT PLACING A CARD: pick one and its ability fires. Nothing is paid, nothing is added to its stack, and a full building is a fine target.`;
     case 'handToBarn':
       return `You may put ${task.remaining} card${task.remaining === 1 ? '' : 's'} from your hand into your barn.`;
     case 'build':

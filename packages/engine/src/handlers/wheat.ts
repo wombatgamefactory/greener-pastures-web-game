@@ -91,7 +91,7 @@ function reseed(fx: Fx, seat: Seat, src: CardId): void {
     pid: seat,
     src,
     remaining: 1,
-    targets: ownFields(fx.data, fx.state, seat).map((b) => b.card),
+    targets: ownFields(fx.data, fx.state, seat).map((b) => ({ seat, card: b.card })),
   });
 }
 
@@ -265,7 +265,7 @@ export const barleyField: CardHandler = {
           pid: self.seat,
           src: self.card,
           remaining: 1,
-          targets: [field.card],
+          targets: [{ seat: self.seat, card: field.card }],
         });
       }
       reseed(fx, self.seat, self.card);
@@ -296,7 +296,7 @@ export const goldenField: CardHandler = {
       pid: self.seat,
       src: self.card,
       remaining: 1,
-      targets: [self.card],
+      targets: [{ seat: self.seat, card: self.card }],
     });
   },
   on: {
@@ -364,7 +364,7 @@ export const millHouse: CardHandler = {
         pid: self.seat,
         src: self.card,
         remaining: 1,
-        targets: [field.card],
+        targets: [{ seat: self.seat, card: field.card }],
       });
     }
   },

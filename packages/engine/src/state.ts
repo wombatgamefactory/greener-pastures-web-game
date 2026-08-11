@@ -178,6 +178,33 @@ export interface TurnState {
    * the bonus slot) genuinely are two Build actions.
    */
   buildSources: (CardId | null)[];
+  /**
+   * THE RECURSION GUARD (the Apiary rebuild, 2026-08-11): every building whose
+   * printed ability has FIRED this turn, by any route - the GROW action, a
+   * card-granted grow (A6, O13), or an activation with no placement (A5, A12).
+   *
+   * The ruling it encodes is one line: **no card's text may fire twice in a
+   * turn.** Without it A12 The Honey Hut fires A5 The Meadow Hive, which fires
+   * A12, and the game does not terminate.
+   *
+   * It is enforced by FILTERING THE OPTION OUT (`growOptions`, `activateTargets`)
+   * and never by throwing: the bots probe by cloning and replaying, so a guard
+   * implemented as a runtime exception surfaces as a crash inside `probe.ts`
+   * rather than as a move nobody takes.
+   */
+  firedThisTurn: CardId[];
+}
+
+/**
+ * A building ANYWHERE on the table. Sow targets used to be bare `CardId[]`,
+ * implicitly the actor's own tableau; A4 The Herb Hive and A14 The Honeycomb
+ * Tower place on a NEIGHBOUR's building, so the pair travels together. A target
+ * list left undefined still means "your own buildings", which is what keeps
+ * every pre-Apiary caller unchanged.
+ */
+export interface BuildingRef {
+  seat: Seat;
+  card: CardId;
 }
 
 /**
@@ -252,13 +279,17 @@ export type Task =
       then: 'harvest';
     }
   | {
-      /** Sow: place a card from hand onto one of your own non-full buildings. Suit-free, never activates. */
+      /** Sow: place a card from hand onto a non-full building. Suit-free, never activates. */
       t: 'sow';
       pid: Seat;
       src: CardId | null;
       remaining: number;
-      /** Restrict targets to these buildings (W9/W12's "sow onto your FIELDs"). */
-      targets?: CardId[];
+      /**
+       * Restrict targets to these buildings (W9/W12's "sow onto your FIELDs").
+       * Absent = every non-full building of the actor's OWN, which is what every
+       * caller before the Apiary rebuild meant.
+       */
+      targets?: BuildingRef[];
       /** "You may": a skip answer is offered and ends the task. */
       optional?: boolean;
     }
@@ -306,9 +337,37 @@ export type Task =
       /**
        * Restrict targets to these buildings, exactly as `sow` does. The Wheat
        * rebuild's shared line "Sow 1 FIELD from the deck" is this task with the
-       * seat's FIELDs listed, and W7's "onto this FIELD" is it with one.
+       * seat's FIELDs listed, and W7's "onto this FIELD" is it with one. A
+       * NEIGHBOUR's building is a legal entry (A4, A14) - and a sow onto a
+       * neighbour's farm is not a VISIT: no bonus slot, no wage, no afterVisit.
        */
-      targets?: CardId[];
+      targets?: BuildingRef[];
+      /**
+       * Fix the deck (A13's "the top card of EACH deck": one task per deck, in
+       * a fixed order). Absent = the answer names any drawable deck, which is
+       * every other caller.
+       */
+      suit?: Suit;
+    }
+  | {
+      /**
+       * GROW WITHOUT PLACING (the Apiary rebuild): fire a building's printed
+       * ability with no card paid, no crop matched and no stack advanced. Its
+       * own task rather than a `chooseBuilding` filter because the answer names
+       * a building to FIRE, and because the target set is deliberately WIDER
+       * than any placement's - a FULL building is legal here, since the only
+       * reason a full building cannot be grown is that no card may be placed on
+       * it, and nothing is being placed.
+       *
+       * `targets` is a snapshot taken when the card activated; the enumerator
+       * re-checks each entry against `turn.firedThisTurn` and the live tableau,
+       * which is what makes A12 -> A5 -> A12 terminate.
+       */
+      t: 'activate';
+      pid: Seat;
+      src: CardId;
+      remaining: number;
+      targets: CardId[];
     }
   | {
       /**
@@ -374,9 +433,21 @@ export type TaskAnswer =
   | { kind: 'deck'; suit: Suit }
   | { kind: 'keep'; cards: CardId[] }
   | { kind: 'building'; card: CardId }
-  | { kind: 'sow'; card: CardId; onto: CardId }
-  /** sowFromDeck: which deck top, onto which of your buildings. */
-  | { kind: 'deckSow'; suit: Suit; onto: CardId }
+  /**
+   * The `activate` task's answer: which building to FIRE without placing a card.
+   *
+   * Deliberately NOT `kind: 'building'`, even though the payload is identical.
+   * `chooseBuilding`'s only `then` is 'harvest', so the bots read a bare
+   * `building` answer as a harvest and score it by stack size - which would have
+   * the bot choosing what to activate as if it were emptying it, and would keep
+   * the choice off the probe path entirely. Same reason `deckSow` was split out
+   * of `sow`: when the answer names a different thing, it gets its own kind.
+   */
+  | { kind: 'activate'; card: CardId }
+  /** `ontoSeat` is absent for the actor's own building - which is every sow but A4's and A14's. */
+  | { kind: 'sow'; card: CardId; onto: CardId; ontoSeat?: Seat }
+  /** sowFromDeck: which deck top, onto which building. */
+  | { kind: 'deckSow'; suit: Suit; onto: CardId; ontoSeat?: Seat }
   | { kind: 'handToBarn'; card: CardId }
   | {
       kind: 'build';
