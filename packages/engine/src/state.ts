@@ -163,25 +163,10 @@ export interface TurnState {
    */
   onceUsed: CardId[];
   /**
-   * The SOURCE of every build made this turn, in order: null for the plain
-   * Build action (and for a Service's build), the granting card otherwise.
-   *
-   * Generic turn bookkeeping rather than a card's private state, and D16 The
-   * Ledger is its consumer. "Whenever you Build, Draw 1" is RULED to fire once
-   * per Build ACTION rather than once per building, or The Grand Creamery draws
-   * four and The Butter Factory two. W16 The Granary answers the same question
-   * by counting its own events inside one `apply`, and that shape cannot work
-   * here: D15's run and D12's pair each place their buildings across SEVERAL
-   * applies, one per player decision. A card source that has already built this
-   * turn does not pay out again; a null source is never deduped, because two
-   * action-level builds in one turn (the Build action and the Builder's Yard on
-   * the bonus slot) genuinely are two Build actions.
-   */
-  buildSources: (CardId | null)[];
-  /**
-   * THE RECURSION GUARD (the Apiary rebuild, 2026-08-11): every building whose
+   * THE RECURSION GUARD (the Apiary rebuild, 2026-08-11): every card whose
    * printed ability has FIRED this turn, by any route - the GROW action, a
-   * card-granted grow (A6, O13), or an activation with no placement (A5, A12).
+   * card-granted grow (A6, O13), an activation with no placement (A5, A12), or
+   * a card marking itself from a hook (D16).
    *
    * The ruling it encodes is one line: **no card's text may fire twice in a
    * turn.** Without it A12 The Honey Hut fires A5 The Meadow Hive, which fires
@@ -191,6 +176,17 @@ export interface TurnState {
    * and never by throwing: the bots probe by cloning and replaying, so a guard
    * implemented as a runtime exception surfaces as a crash inside `probe.ts`
    * rather than as a move nobody takes.
+   *
+   * ⚠️ A sibling field, `buildSources`, was DELETED here on 2026-08-12 and the
+   * deletion is recorded because the ruling it held is worth not re-inventing.
+   * It recorded the source of every build made this turn, and D16 The Ledger was
+   * its only reader: the 2026-08-10 ruling paid the Ledger once per build SOURCE
+   * so The Grand Creamery could not draw four, with a deliberate carve-out that
+   * NEVER deduped a null source, on the grounds that a plain Build and a
+   * bonus-slot Build are two genuine Build actions. The Dairy rebalance moved
+   * the Ledger onto this list instead, so the card fires once a turn full stop,
+   * the carve-out is gone, and the field had no readers left. Both
+   * multi-building cards still pay out once - for a simpler reason.
    */
   firedThisTurn: CardId[];
 }

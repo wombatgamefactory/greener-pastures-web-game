@@ -66,8 +66,12 @@ FARMSTEAD_MILESTONE = 3
 # PIN the expected values so a silent sheet edit is caught rather than absorbed.
 # The Orchard barn base face prints 4 (its draw power is paid for with a tight
 # hand); its upgraded face prints 7.
+# Dairy moved 6/8 -> 5/7 in the Dairy rebalance v1 (sheet v21, 2026-08-12,
+# docs/dairy-rebalance-v1.md): it held the largest hand in the game on the suit
+# that needs the fewest cards. Its Barn's SHED build hook went Draw 2 -> Draw 1
+# in the same pass; that is text, so it is not pinned here.
 BARN_HAND_SIZE = {
-    "wheat": (5, 7), "apiary": (5, 7), "dairy": (6, 8),
+    "wheat": (5, 7), "apiary": (5, 7), "dairy": (5, 7),
     "orchard": (4, 7), "vegetable": (5, 7),
 }
 NOTICE_BOARD_THRESHOLD = 5

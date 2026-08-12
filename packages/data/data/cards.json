@@ -4,7 +4,7 @@
     "kind": "generated",
     "generatedBy": "tools/extract_cards.py",
     "sourceSheet": "worksheet 'cards' of the designer spreadsheet (kept outside this repo)",
-    "sourceSha256": "0960de944807a09e647eee099067962fd45b1460087fb30130ff8c980c175037",
+    "sourceSha256": "1eb593447b3fccc2f94b3dbaf62da88db2d2bbfacf82780adc9c7b3f7990edff",
     "notes": [
       "buildCost is derived from the @cost1..@cost6 icon columns, which are authoritative; the sheet's 'Build Cost' text column is lossy.",
       "A suit has THREE starters - Barn (ref 1), Farmstead (ref 2), Notice Board (ref 3) - plus the 18-card deck (refs 4..21). 105 cards total (15 starters + 90 deck).",
@@ -509,16 +509,16 @@
           "printedVp": 0,
           "threshold": null,
           "activationType": null,
-          "abilityText": "Hand size 6. When you build a SHED, Draw 2.",
-          "handSize": 6
+          "abilityText": "Hand size 5. When you build a SHED, Draw 1.",
+          "handSize": 5
         },
         "upgraded": {
           "name": "Upgraded Barn",
           "printedVp": 2,
           "threshold": null,
           "activationType": null,
-          "abilityText": "Hand size 8. When you build a SHED, Draw 2.",
-          "handSize": 8
+          "abilityText": "Hand size 7. When you build a SHED, Draw 1.",
+          "handSize": 7
         }
       }
     },
@@ -546,7 +546,7 @@
           "printedVp": 2,
           "threshold": null,
           "activationType": null,
-          "abilityText": "When you Build, put every card you spend from your hand into your barn instead of discarding it."
+          "abilityText": "When you Build, put up to 2 cards you spend from your hand into your barn instead of discarding them."
         }
       }
     },
@@ -594,7 +594,7 @@
       "activationType": "dairy",
       "threshold": 2,
       "printedVp": 1,
-      "abilityText": "Build at a discount of 2.",
+      "abilityText": "Build at a discount of 1.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -657,7 +657,7 @@
       "activationType": "dairy",
       "threshold": 3,
       "printedVp": 1,
-      "abilityText": "Build. You may spend cards from your buildings as well as from your hand.",
+      "abilityText": "Build. You may spend cards from one of your buildings as well as from your hand.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -678,7 +678,7 @@
       "activationType": "dairy",
       "threshold": 2,
       "printedVp": 1,
-      "abilityText": "Build. Draw 2.",
+      "abilityText": "Build. Draw 1.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -699,7 +699,7 @@
       "activationType": "dairy",
       "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Build at a discount of 1 for every 2 buildings you have built.",
+      "abilityText": "Build at a discount of 1 for each different crop among the buildings you have built.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -741,7 +741,7 @@
       "activationType": "dairy",
       "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Build on top of one of your buildings (never a starter), at a discount of 2. Put every card on the covered building into your barn. The covered card scores its VP at game end.",
+      "abilityText": "Build on top of one of your buildings (never a starter). Put every card on the covered building into your barn. The covered card scores its VP at game end.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -762,7 +762,7 @@
       "activationType": "dairy",
       "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Build 2 buildings, each at a discount of 1.",
+      "abilityText": "Build 2 buildings.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -846,7 +846,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 1,
-      "abilityText": "Whenever you Build, Draw 1.",
+      "abilityText": "Whenever you Build, Draw 1. Once per turn.",
       "abilityTrigger": [
         "passive"
       ],
@@ -930,7 +930,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Game end: 1 VP for each building you have built.",
+      "abilityText": "Game end: 1 VP for every 2 buildings you have built.",
       "abilityTrigger": [
         "gameEnd"
       ],
@@ -951,7 +951,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Game end: 2 VP for each SHED you have built.",
+      "abilityText": "Game end: 2 VP for each of your starters showing its upgraded side.",
       "abilityTrigger": [
         "gameEnd"
       ],

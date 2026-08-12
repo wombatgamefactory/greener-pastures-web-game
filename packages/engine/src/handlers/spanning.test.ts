@@ -17,6 +17,7 @@ import {
   pendingAnswers,
   standingMoves,
   visitWork,
+  workOwnWorker,
 } from '../runtime.js';
 import { growOptions } from '../actions.js';
 import { buildingOf, cardById, player, serviceOf, thresholdOf } from '../query.js';
@@ -375,12 +376,20 @@ describe('difficulty metadata stays honest', () => {
 });
 
 /**
- * THE DAIRY REBUILD'S CROSS-HANDLER CASES (2026-08-10).
+ * THE DAIRY REBUILD'S CROSS-HANDLER CASES (2026-08-10, extended by the rebalance
+ * of 2026-08-12).
  *
- * Four pairs whose interaction is decided by a RULING rather than by either
- * card's own text, so neither card's own test file can own them. They live here
- * for the same reason the spanning set does: what is being checked is that the
- * seams compose, not that a card works.
+ * Pairs whose interaction is decided by a RULING rather than by either card's
+ * own text, so neither card's own test file can own them. They live here for the
+ * same reason the spanning set does: what is being checked is that the seams
+ * compose, not that a card works.
+ *
+ * The rebalance added three, and all three are The Ledger's or the Farmstead's.
+ * D16 moved off the once-per-build-SOURCE guard onto the general once-per-turn
+ * rule, which is a change only a TWO-BUILD TURN can see; and the Farmstead's
+ * diversion cap became "up to 2" in the same pass that took The Butter
+ * Factory's discount away, which is why keeping the diversion is what stops a
+ * discountless D12 being worthless.
  */
 describe('the Dairy rebuild: rulings that live between two cards', () => {
   const DAIRY = 0;
@@ -394,6 +403,33 @@ describe('the Dairy rebuild: rulings that live between two cards', () => {
     const move = legalMoves(data, state).find((m) => m.type === 'cardMove' && m.card === card);
     if (!move) throw new Error(`${card} offers no ACTION move`);
     return move;
+  }
+
+  /**
+   * Drain the queue, counting every Draw The Ledger pushes on the way through.
+   * The draws are consumed as they are answered, so a before/after diff at each
+   * step is the only honest count - a tally of what is left at the end would
+   * read zero however many times the card fired.
+   */
+  function drainCountingLedger(
+    state: GameState,
+    pick?: (answers: TaskAnswer[]) => TaskAnswer,
+  ): { state: GameState; draws: number } {
+    const pending = (s: GameState) =>
+      s.tasks.filter((t) => t.t === 'draw' && t.src === 'D16').length;
+    let s = state;
+    let draws = pending(s);
+    for (let guard = 0; guard < 40 && s.tasks.length > 0; guard++) {
+      const before = pending(s);
+      const answers = pendingAnswers(data, s);
+      const answer = pick ? pick(answers) : answers[0];
+      if (!answer) throw new Error('No legal answer to a live task');
+      s = answerTask(data, s, answer).state;
+      const after = pending(s);
+      if (after > before) draws += after - before;
+    }
+    expect(s.tasks).toHaveLength(0);
+    return { state: s, draws };
   }
 
   it('D15 + D16: the Ledger draws ONCE for a whole Grand Creamery run', () => {
@@ -417,9 +453,98 @@ describe('the Dairy rebuild: rulings that live between two cards', () => {
     expect(ledgerDraws).toBe(1);
   });
 
+  /**
+   * ⛔ THE BEHAVIOURAL CHANGE OF THE REBALANCE, and the only shape that can see
+   * it. The old guard deduped by build SOURCE and DELIBERATELY EXEMPTED A NULL
+   * SOURCE, so a plain Build action and a bonus-slot Build were two genuine
+   * Build actions and drew twice. That carve-out was decided on 2026-08-10; on
+   * 2026-08-11 the Apiary rebuild adopted the general rule that no card's text
+   * may fire twice in a turn, and this pair is the whole of the difference.
+   */
+  it('D16 + a two-Build turn: a plain Build and a bonus-slot Build draw ONCE between them', () => {
+    const s = dairyState();
+    buildFor(data, s, DAIRY, 'D16');
+    hireFor(s, DAIRY, 'build'); // the Builder's Yard: this seat's own Service
+    player(s, DAIRY).coins = 1; // workers.ownerActivationCost
+    dealTo(data, s, DAIRY, 'W5', 'W4', 'W7', 'W6');
+
+    // The main action, and the Ledger pays for it.
+    const built = apply(data, s, { type: 'build', seat: DAIRY, card: 'W5', payment: ['W4'] });
+    const first = drainCountingLedger(built.state);
+    expect(first.draws).toBe(1);
+    expect(first.state.turn.firedThisTurn).toContain('D16');
+
+    // The bonus slot: activate your own Service, which grants a second Build.
+    const bonus = workOwnWorker(data, first.state, DAIRY, 'build');
+    const second = drainCountingLedger(
+      bonus.state,
+      (a) => a.find((x) => x.kind === 'build' && x.card === 'W7') ?? (a[0] as TaskAnswer),
+    );
+    // Two buildings really did land, and the second one drew nothing.
+    expect(player(second.state, DAIRY).tableau.some((b) => b.card === 'W5')).toBe(true);
+    expect(player(second.state, DAIRY).tableau.some((b) => b.card === 'W7')).toBe(true);
+    expect(second.draws).toBe(0);
+  });
+
+  it('D16 + D12: the Butter Factory still draws ONCE, now for the once-per-turn reason', () => {
+    const s = dairyState();
+    buildFor(data, s, DAIRY, 'D16', 'D12');
+    dealTo(data, s, DAIRY, 'D5', 'W4', 'W5', 'W6', 'W7');
+    const grown = growBuilding(data, s, DAIRY, 'D12', 'D5');
+    const drained = drainCountingLedger(
+      grown.state,
+      (a) => a.find((x) => x.kind === 'build') ?? (a[0] as TaskAnswer),
+    );
+    // The number is what it always was. What changed is why: the old guard said
+    // "one Build ACTION, however many buildings", and the new one says "this
+    // card has fired", which is the same answer here and a different one above.
+    expect(drained.draws).toBe(1);
+    expect(drained.state.turn.firedThisTurn).toContain('D16');
+  });
+
+  it('D2 + D12: two builds divert twice, and each diversion caps at 2', () => {
+    const s = dairyState();
+    buildingOf(s, DAIRY, 'D2').upgraded = true; // "up to 2 cards you spend"
+    buildFor(data, s, DAIRY, 'D12');
+    dealTo(data, s, DAIRY, 'D5', 'W9', 'W7', 'W4', 'W5', 'W6', 'W11', 'W12');
+    const grown = growBuilding(data, s, DAIRY, 'D12', 'D5');
+
+    /** Bank the head divert task's first two offers, which is the cap. */
+    function bankTwo(state: GameState): GameState {
+      let out = state;
+      for (let i = 0; i < 2; i++) {
+        out = answerTask(data, out, pendingAnswers(data, out)[0] as TaskAnswer).state;
+      }
+      return out;
+    }
+
+    // W9 costs three cards, so the first build is where the cap bites: two go to
+    // the barn and the third is discarded.
+    const big = pendingAnswers(data, grown.state).find(
+      (a) => a.kind === 'build' && a.card === 'W9' && [...a.payment].sort().join() === 'W4,W5,W6',
+    );
+    expect(big).toBeDefined();
+    let state = answerTask(data, grown.state, big as TaskAnswer).state;
+    expect(state.tasks[0]).toMatchObject({ kind: 'divertSpent', riders: { remaining: 2 } });
+    state = bankTwo(state);
+    expect(player(state, DAIRY).barn).toHaveLength(2);
+
+    // The second build is a second, independent diversion. The Farmstead's
+    // trigger does not re-fire; the COUNT is per card spent, which is the ruling
+    // the rebalance deliberately left alone when D12 lost its discount.
+    const second = pendingAnswers(data, state).find(
+      (a) => a.kind === 'build' && a.card === 'W7' && [...a.payment].sort().join() === 'W11,W12',
+    );
+    expect(second).toBeDefined();
+    state = answerTask(data, state, second as TaskAnswer).state;
+    expect(state.tasks[0]).toMatchObject({ kind: 'divertSpent', riders: { remaining: 2 } });
+    state = bankTwo(state);
+    expect(player(state, DAIRY).barn).toHaveLength(4);
+  });
+
   it('D2 + D7: a card lifted off a stack is not divertible', () => {
     const s = dairyState();
-    buildingOf(s, DAIRY, 'D2').upgraded = true; // "every card you spend"
+    buildingOf(s, DAIRY, 'D2').upgraded = true; // "up to 2 cards you spend"
     buildFor(data, s, DAIRY, 'D7', 'D4');
     dealTo(data, s, DAIRY, 'D5', 'W9');
     loadStack(data, s, DAIRY, 'D4', 3, 'wheat');
@@ -459,14 +584,16 @@ describe('the Dairy rebuild: rulings that live between two cards', () => {
 
   it('D11 + D14: a covered card cannot be demolished, and neither counts as built', () => {
     const s = dairyState();
-    buildFor(data, s, DAIRY, 'D14', 'D20', 'D4');
-    // D20 scores 1 per building built: D14, D20 and D4 make three.
-    expect(gameEndScores(data, s)[DAIRY]!.endgame).toBe(3);
+    buildFor(data, s, DAIRY, 'D14', 'D20', 'D4', 'D5');
+    // D20 scores 1 for every 2 buildings built since the rebalance, so the
+    // fixture carries FOUR: D14, D20, D4 and D5. Three would round down to the
+    // same 1 as two and the cover below would prove nothing.
+    expect(gameEndScores(data, s)[DAIRY]!.endgame).toBe(2);
 
     // Cover D4 by hand (D11's primitive), then ask D14 for its targets.
     player(s, DAIRY).tableau = player(s, DAIRY).tableau.filter((b) => b.card !== 'D4');
     player(s, DAIRY).covered.push('D4');
-    expect(gameEndScores(data, s)[DAIRY]!.endgame).toBe(2);
+    expect(gameEndScores(data, s)[DAIRY]!.endgame).toBe(1);
 
     const fired = apply(data, s, actionMoveFor(s, 'D14')).state;
     const targets = pendingAnswers(data, fired)

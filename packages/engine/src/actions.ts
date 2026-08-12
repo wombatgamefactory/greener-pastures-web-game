@@ -37,6 +37,7 @@ import {
 } from './query.js';
 import type {
   AerodromeState,
+  BuildingState,
   CardId,
   GameState,
   IslandTileState,
@@ -123,7 +124,12 @@ export interface BuildMods {
   discount?: number;
   /** The Builder's Yard: any card pays any slot - the own-suit minimum is waived, never coins. */
   substitute?: boolean;
-  /** D7 The Versatile Shed: cards on the seat's OWN buildings may join the payment. */
+  /**
+   * D7 The Versatile Shed: cards on ONE of the seat's own buildings may join the
+   * payment. The one-building cap is the card's printed text since the Dairy
+   * rebalance (2026-08-12) and is enforced in two places, `buildOptions` when
+   * the options are generated and `doBuild` when one is played.
+   */
   fromStacks?: boolean;
 }
 
@@ -147,7 +153,15 @@ export interface BuildOption {
 /**
  * THE DAIRY FARMSTEAD, rebuilt 2026-08-10: "When you Build, put 1 card you
  * spend from your hand into your barn instead of discarding it", and on the
- * upgraded face, every card.
+ * upgraded face, up to 2.
+ *
+ * ⚠️ THE UPGRADED FACE WAS "EVERY CARD" UNTIL THE DAIRY REBALANCE (2026-08-12),
+ * and this was the single largest lever in that pass. "Every card" meant a Build
+ * cost NOTHING IN CARDS - the whole payment came back - and turned the spend
+ * into island fuel at the same time, so the hand clock, which is the game's
+ * master brake, simply did not apply to a Dairy seat. "Up to 2" reuses the
+ * Vegetable Farmstead's existing upgrade grammar, so it costs no teach. The BASE
+ * face is unchanged at 1.
  *
  * It replaces both of the old faces - permanent crop substitution from turn 1,
  * and a second Build ACTION every turn for £2 - and it is the suit's whole
@@ -170,7 +184,7 @@ export function buildDivertPower(
   if (p.suit !== 'dairy') return null;
   const farmstead = p.tableau.find((b) => cardById(data, b.card).slot === 'farmstead');
   if (farmstead === undefined) return null;
-  return { card: farmstead.card, limit: farmstead.upgraded ? Infinity : 1 };
+  return { card: farmstead.card, limit: farmstead.upgraded ? 2 : 1 };
 }
 
 /** How many cards and coins a build actually costs under its modifiers. */
@@ -192,8 +206,7 @@ function priceOf(
 }
 
 /**
- * D7's payment pool from the tableau, as INTERCHANGEABILITY GROUPS: the cards
- * on the seat's own buildings, split by (building, crop).
+ * ONE building's stack as INTERCHANGEABILITY GROUPS, split by crop.
  *
  * Two wheat cards on the same stack differ in nothing a rule or a player can
  * read - same crop, same building freed, same discard - so a payment is decided
@@ -204,18 +217,46 @@ function priceOf(
  *
  * What genuinely varies survives intact: WHICH building loses cards (D7 is the
  * suit's only Tier 1 un-clog) and WHAT CROP they are (the own-suit minimum).
+ * The first of those is now expressed by the CALLER rather than by pooling -
+ * see `buildOptions`.
  */
-function stackGroups(data: GameData, state: GameState, seat: Seat): CardId[][] {
-  const out: CardId[][] = [];
-  for (const b of player(state, seat).tableau) {
-    const byCrop = new Map<Suit, CardId[]>();
-    for (const id of b.stack) {
-      const suit = cardById(data, id).suit;
-      byCrop.set(suit, [...(byCrop.get(suit) ?? []), id]);
-    }
-    out.push(...byCrop.values());
+function stackGroupsOf(data: GameData, building: BuildingState): CardId[][] {
+  const byCrop = new Map<Suit, CardId[]>();
+  for (const id of building.stack) {
+    const suit = cardById(data, id).suit;
+    byCrop.set(suit, [...(byCrop.get(suit) ?? []), id]);
   }
-  return out;
+  return [...byCrop.values()];
+}
+
+/**
+ * D7's payment sources, ONE PER BUILDING plus a hand-only option.
+ *
+ * ⚠️ THE ONE-BUILDING CAP IS THE WHOLE POINT (Dairy rebalance, 2026-08-12).
+ * The Versatile Shed used to read "spend cards from your buildings", and every
+ * building's stack was flattened into a single pool that `stackFills` combined
+ * across freely - so a single payment could strip three buildings at once, which
+ * is what opened the entire tableau as a second card pool and dissolved the hand
+ * clock. It now reads "from ONE of your buildings", so the option set is
+ * generated once per building and unioned rather than once across a flat pool.
+ *
+ * The leading `[]` is the hand-only payment and MUST SURVIVE: paying with no
+ * stack card at all is legal and is often the right move. The option count goes
+ * DOWN, not up - per-building is a strict subset of the old cross-building set -
+ * so nothing about enumeration grows; the union just reaches a hand-only payment
+ * once per building, which is why `buildOptions` dedupes.
+ */
+function stackSourcesFor(data: GameData, state: GameState, seat: Seat): CardId[][][] {
+  return [[], ...player(state, seat).tableau.map((b) => stackGroupsOf(data, b))];
+}
+
+/** Which of the seat's buildings these stack cards sit on - D7's one-building check. */
+function stackHomes(state: GameState, seat: Seat, stacks: readonly CardId[]): Set<CardId> {
+  const homes = new Set<CardId>();
+  for (const b of player(state, seat).tableau) {
+    if (stacks.some((id) => b.stack.includes(id))) homes.add(b.card);
+  }
+  return homes;
 }
 
 /** Canonical selections of k cards across the groups - the first n of each. */
@@ -269,9 +310,9 @@ function paymentsFor(
  * post-fee re-check a visit's worker payoff needs.
  *
  * Under `mods` the price and the own-suit minimum move (see priceOf) and cards
- * on the seat's own buildings may join the payment (D7). The enumeration stays
- * exhaustive and concrete: one option per fully-decided way to pay, so apply
- * can re-validate exactly what was offered.
+ * on ONE of the seat's own buildings may join the payment (D7). The enumeration
+ * stays exhaustive and concrete: one option per fully-decided way to pay, so
+ * apply can re-validate exactly what was offered.
  */
 export function buildOptions(
   data: GameData,
@@ -282,21 +323,37 @@ export function buildOptions(
 ): BuildOption[] {
   const p = player(state, seat);
   const cards = hand ?? p.hand;
-  const groups = mods.fromStacks === true ? stackGroups(data, state, seat) : [];
+  // D7 pays off ONE building. Enumerate per building and union, rather than
+  // flattening the tableau into a single pool: a payment may mix hand cards with
+  // cards from at most one stack.
+  const sources = mods.fromStacks === true ? stackSourcesFor(data, state, seat) : [[]];
   const out: BuildOption[] = [];
+  const seen = new Set<string>();
   for (const id of cards) {
     const price = priceOf(data, id, mods);
     if (!price) continue;
     if (p.coins < price.coinsNeeded) continue;
-    out.push(
-      ...paymentsFor(
+    for (const groups of sources) {
+      for (const option of paymentsFor(
         data,
         id,
         cards.filter((h) => h !== id),
         groups,
         price,
-      ),
-    );
+      )) {
+        // A hand-only payment is reachable once per building, so dedupe on the
+        // canonical payment. Sorted because two sources can reach the same
+        // multiset by different orders.
+        const key = [
+          option.card,
+          [...option.payment].sort().join(','),
+          [...(option.stacks ?? [])].sort().join(','),
+        ].join('|');
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(option);
+      }
+    }
   }
   return out;
 }
@@ -374,6 +431,11 @@ export function doBuild(
   if (stacks.length > 0 && mods.fromStacks !== true) {
     throw new Error('This Build may not spend cards off your buildings');
   }
+  // "from ONE of your buildings" - re-validated here and not only in the
+  // enumerator, because apply must accept exactly what buildOptions offers.
+  if (stacks.length > 0 && stackHomes(fx.state, seat, stacks).size > 1) {
+    throw new Error('This Build may spend cards off only one of your buildings');
+  }
   if (spent.length !== price.cardsNeeded) {
     throw new Error(`${card} costs ${price.cardsNeeded} cards, got ${spent.length}`);
   }
@@ -443,9 +505,11 @@ export function placeBuilt(
 ): void {
   player(fx.state, seat).tableau.push({ card, stack: [], upgraded: false });
   fx.emit({ e: 'built', seat, card, payment, coins });
-  // Recorded BEFORE the hook fires, so a listener counting "have I already paid
-  // out for this source this turn" sees this build in the list (D16 The Ledger).
-  fx.state.turn.buildSources.push(src);
+  // `turn.buildSources` used to be recorded here, for D16 The Ledger's
+  // once-per-build-SOURCE guard; the Dairy rebalance (2026-08-12) moved the
+  // Ledger onto the general `turn.firedThisTurn` rule and the field lost its
+  // only reader, so it is gone. `src` still travels to the hook, which is what
+  // D5 and D6 read to react to their OWN build.
   checkFarmsteadFlip(fx, seat);
   fireHook(fx, 'afterBuild', { seat, card, payment, src });
 }

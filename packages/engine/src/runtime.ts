@@ -92,11 +92,21 @@ export function doGrow(
 }
 
 /**
- * Record that a building's printed ability has fired this turn - the shared
- * half of the recursion guard (`turn.firedThisTurn`). Both routes into a card's
- * text go through it: a real GROW and an activation with no placement.
+ * Record that a card's printed ability has fired this turn - the shared half of
+ * the recursion guard (`turn.firedThisTurn`), and THE ONE WRITER of that list.
+ * Both routes into a building's text go through it: a real GROW and an
+ * activation with no placement.
+ *
+ * Exported since the Dairy rebalance (2026-08-12) because the guard is no longer
+ * only about buildings. D16 The Ledger is a POWER card with no activation type,
+ * so it is never grown and never activated, and it marks itself from its own
+ * `afterBuild` listener to get "Once per turn." Any future card that has to
+ * self-mark calls this rather than pushing the array, so the dedupe stays in one
+ * place. ✅ Safe for a Power card: `growOptions` and `activateTargets` filter on
+ * this list but also require `activationType !== null`, so an entry for a card
+ * that was never a GROW target removes nothing.
  */
-function markFired(fx: Fx, building: CardId): void {
+export function markFired(fx: Fx, building: CardId): void {
   const fired = fx.state.turn.firedThisTurn;
   if (!fired.includes(building)) fired.push(building);
 }

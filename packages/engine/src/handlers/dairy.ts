@@ -69,6 +69,7 @@ import { doBuild, freeHandSpace, handLimitOf, paymentOptions, placeBuilt } from 
 import type { BuildMods } from '../actions.js';
 import type { Fx } from '../fx.js';
 import { buildingOf, cardById, drawableSuits, foreignCropBuildings, player } from '../query.js';
+import { markFired } from '../runtime.js';
 import type { CardId, GameState, Seat, TaskAnswer } from '../state.js';
 import { actionMove, actionOpen } from './actionCard.js';
 import type { CardHandler } from './types.js';
@@ -146,7 +147,7 @@ function stillDiscarded(data: GameData, state: GameState, spent: readonly CardId
   return spent.filter((id) => state.discards[cardById(data, id).suit]?.includes(id));
 }
 
-/** D1 Barn (starter) - "Hand size 6. When you build a SHED, Draw 2." / upgraded "Hand size 8. ..." */
+/** D1 Barn (starter) - "Hand size 5. When you build a SHED, Draw 1." / upgraded "Hand size 7. ..." */
 export const dairyBarn: CardHandler = {
   difficulty: {
     score: 2,
@@ -159,22 +160,30 @@ export const dairyBarn: CardHandler = {
       "on any build path - the action, the Builder's Yard, a card-granted build, D10's " +
       'revealed deck top - because afterBuild is the one funnel every landing goes through, ' +
       "but NOT on D15's free builds, because a Grand Creamery card is not a SHED. A " +
-      'card-ability draw, so no Orchard modifier (DL-47). The biggest barn in the game at ' +
-      '6 -> 8, which is also what makes D13 The Cheese Vault a harder card than it looks: the ' +
-      'bigger the hand, the less of the Vault leaks across the table.',
+      'card-ability draw, so no Orchard modifier (DL-47). ⚠️ TWO NUMBERS CAME DOWN IN THE ' +
+      'DAIRY REBALANCE (v21, 2026-08-12): the rider was Draw 2 and is Draw 1, and the barn was ' +
+      "6 -> 8 and is 5 -> 7, the field's number. Neither is a correction of the reasoning " +
+      'above - it held while the suit was LAST at 10.6% - it is that the suit crossed the ' +
+      'middle and is now first at 56.5% on 12.02 buildings a seat against a field of about 5. ' +
+      'The rider is printed identically on all five Barns, so at 12.02 builds it paid Dairy ' +
+      "2.4x what it pays anyone else: a line the sheet treats as shared was the suit's " +
+      'largest hidden faucet. The biggest barn in the game sat on the suit needing the fewest ' +
+      'cards, which is also what made D13 The Cheese Vault harder than it looks - the bigger ' +
+      'the hand, the less of the Vault leaks across the table, so the smaller barn should now ' +
+      'push the Vault UP, and its play rate rising is a pass condition of the rebalance.',
   },
   on: {
     afterBuild(fx, event, self) {
       if (event.seat !== self.seat) return;
       if (!isShedCard(fx.data, event.card)) return;
-      drawN(fx, self.seat, self.card, 2);
+      drawN(fx, self.seat, self.card, 1);
     },
   },
 };
 
 /**
  * D2 Farmstead (starter) - "When you Build, put 1 card you spend from your hand
- * into your barn instead of discarding it." / upgraded "... put every card ..."
+ * into your barn instead of discarding it." / upgraded "... put up to 2 cards ..."
  */
 export const dairyFarmstead: CardHandler = {
   difficulty: {
@@ -197,14 +206,23 @@ export const dairyFarmstead: CardHandler = {
       'the card prints "put", because declining is how you leave a card in the discard for D5 ' +
       'to sow or D6 to give. ⚠️ Both old faces are GONE - turn-1 crop substitution and a ' +
       'second Build ACTION for £2 - and the suit still came last with them, because neither ' +
-      'made a single card into freight.',
+      'made a single card into freight. ⚠️ THE UPGRADED FACE IS NOW "UP TO 2", NOT "EVERY ' +
+      'CARD" (Dairy rebalance v21, 2026-08-12), and it was the largest single lever in that ' +
+      'pass: "every card" meant a Build cost NOTHING in cards and shipped the payment as ' +
+      'freight at the same time, so the hand clock did not apply to this suit at all. The base ' +
+      'face is unchanged at 1 and ALL FOUR RULINGS ABOVE STILL HOLD unaltered - in particular ' +
+      'ruling (2), the count being per card spent so D12 diverts twice, is deliberately ' +
+      'untouched, because D12 lost its discount in the same pass and its diversion is what ' +
+      'stops it becoming worthless. The number lives in actions.ts (buildDivertPower); the ' +
+      'resolver below already counts `remaining` down and discards the balance, so nothing ' +
+      'about the task moved.',
   },
   tasks: {
     /**
-     * The divert choice. Re-entrant on the upgraded face (limit = the whole
-     * payment) and one-shot on the base face; either way the resolver DISCARDS
-     * WHATEVER IS LEFT before it finishes, so the limbo cards in `riders.cards`
-     * can never outlive the task. `skip` is always offered while a card is
+     * The divert choice. Re-entrant on the upgraded face (limit 2, capped by
+     * the payment) and one-shot on the base face; either way the resolver
+     * DISCARDS WHATEVER IS LEFT before it finishes, so the limbo cards in
+     * `riders.cards` can never outlive the task. `skip` is always offered while a card is
      * still held, for the same reason it is on the Orchard divert seam: the
      * drain loop drops a task with no legal answer, and a dropped task here
      * would take its cards out of the game.
@@ -263,21 +281,29 @@ export const dairyNoticeBoard: CardHandler = {
   },
 };
 
-/** D4 The Milking Shed - "Build at a discount of 2." */
+/** D4 The Milking Shed - "Build at a discount of 1." */
 export const milkingShed: CardHandler = {
   difficulty: {
     score: 1,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'Alters THE PRICE. The naked skeleton at half price, and the flat 2 is the point: the ' +
-      'old card counted cards on its own stack and therefore opened at a discount of 1, which ' +
-      'against a 1-cost activation is EXACTLY WORTHLESS. A discount of 2 against a cost of 1 ' +
-      'is a straight +1 card, and the card that paid for it is banked in the stack as freight. ' +
-      'The counting task is gone with the counting.',
+      'Alters THE PRICE. The naked skeleton at a discount, and the counting task is gone with ' +
+      'the counting: the old card counted cards on its own stack and therefore opened at a ' +
+      'discount of 1, which against a 1-cost activation is EXACTLY WORTHLESS, so the rebuild ' +
+      'made it a FLAT 2. ⚠️ THE DAIRY REBALANCE (v21, 2026-08-12) CUT IT TO 1, and the ' +
+      'argument that 2 "is the point" is now out of date rather than wrong. What changed is the ' +
+      'baseline it was set against: a flat discount is only worthless when it is CONDITIONAL on ' +
+      'a stack that starts empty. Unconditional at 1, this is a 1-cost card at threshold 2 that ' +
+      'turns one Dairy card into a card of discount every activation, forever - measured the ' +
+      "best rate in the game at 58% play, and now level with the Builder's Yard. The +1 card " +
+      'the flat 2 bought is exactly the card-positivity the rebalance is removing from the ' +
+      'suit; the card that paid for it is still banked in the stack as freight, which is the ' +
+      'half of the old argument that survives. (The rebalance expects this card to shed a ' +
+      'point of difficulty and it cannot: it was already at the floor of 1.)',
   },
   activate(fx, self) {
-    buildWith(fx, self.seat, self.card, { discount: 2 });
+    buildWith(fx, self.seat, self.card, { discount: 1 });
   },
 };
 
@@ -405,10 +431,10 @@ export const tradingShed: CardHandler = {
   },
 };
 
-/** D7 The Versatile Shed - "Build. You may spend cards from your buildings as well as from your hand." */
+/** D7 The Versatile Shed - "Build. You may spend cards from one of your buildings as well as from your hand." */
 export const versatileShed: CardHandler = {
   difficulty: {
-    score: 3,
+    score: 4,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: true, conditional: false, counts: false, interrupts: false },
     notes:
@@ -423,52 +449,82 @@ export const versatileShed: CardHandler = {
       'D7 is a free Harvest. Its OWN stack is legal, including the card that just paid to grow ' +
       'it - not an oversight, but the alternative is a special case nobody at a table would ' +
       'guess. The option set is kept finite by collapsing stack cards to one per (building, ' +
-      'crop); see stackPayables.',
+      'crop); see stackGroupsOf. ⚠️ ONE BUILDING, NOT ALL OF THEM (Dairy rebalance v21, ' +
+      '2026-08-12), and this is the change that earns the extra point of difficulty. Opening ' +
+      'the WHOLE tableau as a second card pool is what dissolves the hand clock: the old ' +
+      'enumerator flattened every stack into one pool and combined across it, so a payment ' +
+      'could strip three buildings at once. Capping to one keeps the flavour and ADDS a ' +
+      'decision - which stack do I strip? - and the arithmetic gets easier rather than harder, ' +
+      'because per-building is a strict SUBSET of the old cross-building option set. Enforced ' +
+      'twice, in buildOptions when the options are generated and in doBuild when one is ' +
+      'played. ALL THREE RULINGS ABOVE ARE UNCHANGED. ⚠️ The hand-only payment must survive ' +
+      'the cap - it is the leading empty source in stackSourcesFor - and because it is then ' +
+      'reachable once per building, buildOptions dedupes on the canonical payment.',
   },
   activate(fx, self) {
     buildWith(fx, self.seat, self.card, { fromStacks: true });
   },
 };
 
-/** D8 The Abundant Shed - "Build. Draw 2." */
+/** D8 The Abundant Shed - "Build. Draw 1." */
 export const abundantShed: CardHandler = {
   difficulty: {
     score: 1,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      "Alters THE REFILL, and it is Dairy's card-neutrality guarantee: pay 1, draw 2, build. " +
-      'Flat and unconditional on purpose - it is the card you can always take, and without it ' +
-      'a Dairy hand empties into the tableau and nothing else in the suit ever fires. ' +
-      '⚠️ ORDER IS LOAD-BEARING AND IT IS NOT THE SHEET\'S. The sheet prints "Build. Draw 2."; ' +
-      'the design\'s justification is "pay 1, draw 2, build", which is the only order that ' +
-      'makes the GROW card-neutral and is the entire reason the card exists. Building first ' +
-      'and drawing after is a materially worse card, so the draw is pushed FIRST and the build ' +
-      'enumerates against the refreshed hand. FLAGGED TO DEAN as a sheet edit: "Draw 2, then ' +
-      'Build."',
+      "Alters THE REFILL, and it is Dairy's card-neutrality guarantee. Flat and unconditional " +
+      'on purpose - it is the card you can always take, and without it a Dairy hand empties ' +
+      'into the tableau and nothing else in the suit ever fires. ⚠️ THE DAIRY REBALANCE (v21, ' +
+      '2026-08-12) CUT THE DRAW FROM 2 TO 1, and that sharpens the card rather than dulling ' +
+      'it: at Draw 2 the guarantee was pay 1, draw 2, build, which is card-POSITIVE, and with ' +
+      "the Barn's SHED rider and The Ledger on top, building through this card drew 5. At " +
+      'Draw 1 it is pay 1, draw 1, build - EXACTLY card-neutral, which is what the guarantee ' +
+      'was ever meant to be and the reason the suit no longer refunds its own core action. ' +
+      "⚠️ ORDER IS LOAD-BEARING AND IT IS NOT THE SHEET'S, AND IT IS MORE LOAD-BEARING AT 1 " +
+      'THAN IT WAS AT 2. The sheet prints "Build. Draw 1."; the draw is pushed FIRST and the ' +
+      'build enumerates against the refreshed hand, because building first spends the card ' +
+      'before the refill arrives and makes this card-NEGATIVE, which kills it outright. ' +
+      'FLAGGED TO DEAN as a sheet edit: "Draw 1, then Build." ⛔ Do not "tidy" the order back ' +
+      'to the printed one.',
   },
   activate(fx, self) {
-    drawN(fx, self.seat, self.card, 2);
+    drawN(fx, self.seat, self.card, 1);
     buildWith(fx, self.seat, self.card, {});
   },
 };
 
-/** D9 The Prosperity Wagon - "Build at a discount of 1 for every 2 buildings you have built." */
+/** D9 The Prosperity Wagon - "Build at a discount of 1 for each different crop among the buildings you have built." */
 export const prosperityWagon: CardHandler = {
   difficulty: {
     score: 2,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
-      "Alters THE PRICE, scaling: the tier's scaling noun and the suit's ramp stated as " +
-      'arithmetic. "Buildings you have built" is the shared count - starters never count, ' +
-      'covered and demolished cards no longer count - and the Wagon itself does, so it opens ' +
-      'at a discount of at least 1 in any realistic tableau. The old chooseWorker task and its ' +
-      '£2 rider are gone with the Hiring Fair; nothing in the suit works a Service any more.',
+      "Alters THE PRICE, scaling: the tier's scaling noun, and the DAIRY REBALANCE (v21, " +
+      '2026-08-12) REPOINTED WHAT IT SCALES ON. It was "1 for every 2 buildings you have ' +
+      'built" - the ramp stated as arithmetic, which at the measured 12.02 buildings a seat ' +
+      "was a discount of 6 and is innovation.md's constraint 2 in its purest form: a card that " +
+      'paid you for owning more of YOURSELF, on the suit where the metric axis and the ' +
+      'specialisation axis are already the same axis. It now counts DIFFERENT CROPS among the ' +
+      'same buildings, so it pays variety instead of volume: it caps at 5 and realistically ' +
+      'reads 2 to 3. ⚠️ THE NOUN IS builtBuildings AND THE PRINTED WORDS ARE NOT ENOUGH TO ' +
+      'TELL YOU THAT. W19 The Wheat Exchange now prints the same eleven words and counts a ' +
+      "DIFFERENT SET - the whole tableau through cropOf, which returns a starter's suit once " +
+      'it is flipped - so an upgraded starter is a crop to W19 and is not a building here. ' +
+      "This suit's established noun excludes starters (D11, D13, D14, D20 all read it) and " +
+      'the Wagon keeps it. The divergence is deliberate reuse of a template, logged as ruling ' +
+      'M in outstanding-rule-changes.md; do NOT reconcile them by changing one. The Wagon ' +
+      'itself counts, so it still opens at a discount of at least 1. The old chooseWorker task ' +
+      'and its £2 rider are gone with the Hiring Fair; nothing in the suit works a Service.',
   },
   activate(fx, self) {
-    const built = builtBuildings(fx.data, fx.state, self.seat).length;
-    buildWith(fx, self.seat, self.card, { discount: Math.floor(built / 2) });
+    // Ruling M: builtBuildings, NOT W19's whole-tableau reading of the same
+    // printed words. Starters never count here even when flipped.
+    const crops = new Set(
+      builtBuildings(fx.data, fx.state, self.seat).map((id) => cardById(fx.data, id).suit),
+    );
+    buildWith(fx, self.seat, self.card, { discount: crops.size });
   },
 };
 
@@ -544,8 +600,8 @@ export const scoutsPost: CardHandler = {
 
 /**
  * D11 The Heritage House - "Build on top of one of your buildings (never a
- * starter), at a discount of 2. Put every card on the covered building into your
- * barn. The covered card scores its VP at game end."
+ * starter). Put every card on the covered building into your barn. The covered
+ * card scores its VP at game end."
  */
 export const heritageHouse: CardHandler = {
   difficulty: {
@@ -571,7 +627,14 @@ export const heritageHouse: CardHandler = {
       "flip; and the Service is the seat's whole cross-table surface. It is also what keeps " +
       "noticeBoardOf's throw an invariant rather than a reachable crash - 3 of 1510 reference " +
       'games died that way before ticket 30. Its own stack is a legal target, which is a real ' +
-      'if strange line: the grow payment ships to the barn and the House buries itself.',
+      'if strange line: the grow payment ships to the barn and the House buries itself. ' +
+      '⚠️ THE DISCOUNT OF 2 IS GONE (Dairy rebalance v21, 2026-08-12) and the build it grants ' +
+      'is now full price. It was the best-designed card in the suit and joint-worst on teach ' +
+      'cost at 5, so the clause that came off is the one that cut free cards AND teach cost ' +
+      'without touching the idea - an upgrade, a harvest and an un-clog in one action is still ' +
+      'the whole card. Nothing else about it moved, and it stays the hardest card in the suit: ' +
+      'the removed clause was a number on the page, and every one of the orderings and target ' +
+      'rulings above is untouched.',
   },
   activate(fx, self) {
     fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'cover', riders: {} });
@@ -591,31 +654,37 @@ export const heritageHouse: CardHandler = {
           fx.stackCardToBarn(task.pid, building, card);
         }
         fx.coverBuilding(task.pid, building);
-        buildWith(fx, task.pid, task.src, { discount: 2 });
+        buildWith(fx, task.pid, task.src, {});
         return true;
       },
     },
   },
 };
 
-/** D12 The Butter Factory - "Build 2 buildings, each at a discount of 1." */
+/** D12 The Butter Factory - "Build 2 buildings." */
 export const butterFactory: CardHandler = {
   difficulty: {
-    score: 2,
+    score: 1,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
       'Alters THE COUNT: the pure multiplier, nothing stapled on. Two OPTIONAL builds, each ' +
-      'independently skippable and each at discount 1 - "optional" rather than forced because ' +
-      'a build task with nothing affordable would drop itself anyway, and a player who wants ' +
-      'only one should be able to say so. The second is enumerated after the first resolves, ' +
-      'so a card built by the first can pay for nothing and the hand it sees is the real one. ' +
-      "Two builds means TWO diversions (the Farmstead's count is per card spent) and ONE " +
-      'Ledger draw (its guard is per build SOURCE per turn).',
+      'independently skippable - "optional" rather than forced because a build task with ' +
+      'nothing affordable would drop itself anyway, and a player who wants only one should be ' +
+      'able to say so. The second is enumerated after the first resolves, so a card built by ' +
+      'the first can pay for nothing and the hand it sees is the real one. ⚠️ EACH BUILD WAS ' +
+      'AT A DISCOUNT OF 1 UNTIL THE DAIRY REBALANCE (v21, 2026-08-12) and both are now full ' +
+      'price. This was the largest build-count multiplier in the suit and the discount made it ' +
+      'nearly free; PAYING FULL PRICE TWICE OUT OF A HAND OF 5 IS THE NATURAL BRAKE, and it ' +
+      'turns the card from a freebie into a real decision about whether the hand can stand it. ' +
+      "Two builds still means TWO diversions - the Farmstead's count is per card spent, and " +
+      'that is deliberately untouched, because keeping the diversion is what stops a ' +
+      'discountless D12 becoming worthless. It now means ONE Ledger draw for a different ' +
+      'reason than before: D16 moved to the general once-per-turn guard.',
   },
   activate(fx, self) {
-    buildWith(fx, self.seat, self.card, { discount: 1 }, true);
-    buildWith(fx, self.seat, self.card, { discount: 1 }, true);
+    buildWith(fx, self.seat, self.card, {}, true);
+    buildWith(fx, self.seat, self.card, {}, true);
   },
 };
 
@@ -838,34 +907,37 @@ export const grandCreamery: CardHandler = {
   },
 };
 
-/** D16 The Ledger - "Whenever you Build, Draw 1." */
+/** D16 The Ledger - "Whenever you Build, Draw 1. Once per turn." */
 export const ledger: CardHandler = {
   difficulty: {
-    score: 3,
+    score: 2,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: true, counts: true, interrupts: false },
+    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
     notes:
-      'Kept word for word, and now the load-bearing Power card of the suit. ⚠️ RULING ' +
-      '(decided): ONCE PER BUILD ACTION, not once per building - otherwise The Grand Creamery ' +
-      'draws four and The Butter Factory two. W16 The Granary answers the same question by ' +
-      "counting its own events inside one `apply`, and that shape CANNOT work here: D15's run " +
-      "and D12's pair each place their buildings across several applies, one per player " +
-      'decision. So the guard reads turn.buildSources, the generic record of what caused each ' +
-      'build this turn: a card source that has already built this turn does not pay out again. ' +
-      'A NULL SOURCE IS NEVER DEDUPED, deliberately - the plain Build action and the ' +
-      "Builder's Yard on the bonus slot are genuinely two Build actions in one turn and " +
-      "should draw twice. Owner-scoped, never a rival's. A card-ability draw, so no Orchard " +
-      'modifier (DL-47).',
+      'The load-bearing Power card of the suit, at 59% play. ⚠️ ITS GUARD CHANGED IN THE DAIRY ' +
+      'REBALANCE (v21, 2026-08-12) and this is a RULE ALIGNMENT RATHER THAN A NERF, so the ' +
+      'history matters. The old ruling (2026-08-10) was ONCE PER BUILD ACTION, not once per ' +
+      'building - otherwise The Grand Creamery draws four and The Butter Factory two - read off ' +
+      'turn.buildSources, the generic record of what caused each build this turn. That guard ' +
+      'DELIBERATELY EXEMPTED A NULL SOURCE, so the plain Build action and a bonus-slot build ' +
+      'were two genuine Build actions and drew twice. On 2026-08-11, the day AFTER that ' +
+      "carve-out was decided, the Apiary rebuild adopted the general rule that NO CARD'S TEXT " +
+      'MAY FIRE TWICE IN A TURN (turn.firedThisTurn). The Ledger was the one card out of step ' +
+      'with it, and the sheet now prints "Once per turn." to match. Both multi-building cards ' +
+      'still pay out once, for the simpler reason, and the two-Build turn now draws once. ' +
+      '✅ Putting a POWER card id into firedThisTurn is safe and was checked, not assumed: ' +
+      'growOptions filters on that list but also requires activationType !== null, and a Power ' +
+      "card's is null, so this card was never a GROW target and cannot be filtered out of one. " +
+      "Owner-scoped, never a rival's. A card-ability draw, so no Orchard modifier (DL-47).",
   },
   on: {
     afterBuild(fx, event, self) {
       if (event.seat !== self.seat) return;
-      if (event.src !== null) {
-        const from = fx.state.turn.buildSources.filter((s) => s === event.src).length;
-        // placeBuilt records this build before firing the hook, so 1 means it
-        // is the first from this source and anything higher is a repeat.
-        if (from !== 1) return;
-      }
+      // The general once-per-turn rule, not a private counter: D12's pair and
+      // D15's run place across several applies, so the guard has to be turn
+      // state rather than events counted inside one apply (W16's shape).
+      if (fx.state.turn.firedThisTurn.includes(self.card)) return;
+      markFired(fx, self.card);
       drawN(fx, self.seat, self.card, 1);
     },
   },
@@ -918,7 +990,7 @@ export const cheeseHall: CardHandler = {
   },
 };
 
-/** D20 The Counting House - "Game end: 1 VP for each building you have built." */
+/** D20 The Counting House - "Game end: 1 VP for every 2 buildings you have built." */
 export const countingHouse: CardHandler = {
   difficulty: {
     score: 1,
@@ -928,32 +1000,64 @@ export const countingHouse: CardHandler = {
       'THE SIZE OF THE FARM. It replaced "build cost of 4 or more", which under the compressed ' +
       'ladder counted only the three Tier 3s. "You have built" is the shared count: the four ' +
       'starters arrive pre-built and nobody built them, a covered card is not a building and a ' +
-      'demolished one is stock. ⚠️ WORD FOR WORD W20 The Grand Granary. Flagged, not resolved, ' +
-      'per Dean: cross-suit duplicates wait for one pass across all five suits. Dairy has the ' +
-      'better claim on the noun - buildings are its ramp, and Wheat only landed here because ' +
-      'the reseed killed its "per empty building". ⚠️ Anti-synergy with D14, deliberately: ' +
-      'this pays for buildings and the Refinery destroys them.',
+      'demolished one is stock. ⚠️ THE DIVISOR IS 2 AS OF THE DAIRY REBALANCE (v21, ' +
+      '2026-08-12); it was a flat count per building and measured the HIGHEST-SCORING SINGLE ' +
+      "CARD IN THE GAME at 3.6 VP. innovation.md's divisor rule is the reasoning: the divisor " +
+      "rises with the metric's abundance, and Dairy's build count is 2.4x the field's. ⚠️ It " +
+      'was also WORD FOR WORD W20 The Grand Granary, and the divisor resolves that too: W20 ' +
+      'KEEPS the flat count, honestly, because Wheat builds about 5 and 5 VP is not 12. So ' +
+      'the two cards no longer print the same sentence and the cross-suit duplicate is closed ' +
+      'here rather than deferred to the five-suit pass. ⚠️ Anti-synergy with D14, ' +
+      'deliberately: this pays for buildings and the Refinery destroys them - now at half the ' +
+      'rate, so the Refinery is a slightly easier call.',
   },
   gameEnd(data, state, seat) {
-    return builtBuildings(data, state, seat).length;
+    return Math.floor(builtBuildings(data, state, seat).length / 2);
   },
 };
 
-/** D21 The Refinery - "Game end: 2 VP for each SHED you have built." */
+/** D21 The Refinery - "Game end: 2 VP for each of your starters showing its upgraded side." */
 export const refinery: CardHandler = {
   difficulty: {
     score: 1,
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: true },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
-      'DEPTH IN THE RAMP, and it matches W21 The Bread Hall and O20 The Orchard Archive in ' +
-      'shape: 2 VP per Tier 1 card, capping at 10. It counts SHEDs rather than barn cards on ' +
-      'purpose - a barn-counting endgame card pays you to hold freight back from the island, ' +
-      'which is the one thing this rebuild is trying to stop. SHED is the title keyword, so ' +
-      'D4 to D8 and nothing else; the old "build cost of 1 to 3" arithmetic is gone with the ' +
-      'compressed ladder that made it ambiguous.',
+      'THE COIN SINK, repointed by the DAIRY REBALANCE (v21, 2026-08-12). It used to read ' +
+      '"2 VP for each SHED you have built", matching W21 The Bread Hall and O20 The Orchard ' +
+      'Archive in shape - 2 VP per Tier 1 card - and it was the "2 VP for each own-suit noun" ' +
+      'template on the suit where that template paid most: Dairy builds 12.02 buildings a seat ' +
+      'against a field of about 5. It now counts UPGRADED STARTER FACES, which is on-identity ' +
+      '(refinement), points at a coin sink in a coin-rich game, and revives the upgrade layer ' +
+      'the 2026-07-14 playtest found nobody touching. ⛔ IT IS THE ONLY DAIRY CARD THAT COUNTS ' +
+      'STARTERS, and builtBuildings - the noun D9, D11, D13, D14 and D20 all share - EXISTS ' +
+      'PRECISELY TO EXCLUDE THEM. Reusing it here out of habit scores 0 forever and no test ' +
+      'that only checks types would catch it, so this filter is written out longhand and ' +
+      'dairy.test.ts pins a two-flipped-starter seat at 4. ⚠️ THE CAP IS 6 TODAY AND MAY ' +
+      'BECOME 4, and the count was CONFIRMED against the live catalogue rather than inferred, ' +
+      "because the handoff's arithmetic was wrong in both halves and right in the total. A " +
+      'seat has THREE starters, not four - the Service stopped being a card when change 6 ' +
+      'absorbed it into the Notice Board - and all three still flip IN THE ENGINE: Barn £2, ' +
+      'Notice Board £2, Farmstead free at the milestone. So 3 x 2 = 6. Change 6 retires the ' +
+      'Notice Board flip in the SHEET but is not built (ruling I in ' +
+      'outstanding-rule-changes.md, which is why its upgraded face already prints 0 VP while ' +
+      'the engine still sells it for £2). ⛔ WHEN CHANGE 6 LANDS, THIS CARD SILENTLY LOSES A ' +
+      'THIRD OF ITS CEILING - re-read it then. ⚠️ RULING L IS OWED AND ' +
+      "IT CHANGES THE CARD'S VALUE: the Farmstead flips FREE at the 3-own-buildings milestone " +
+      "rather than being bought. Implemented as COUNTING, which is Dean's recommendation - " +
+      'the card then reads as 2 free VP plus two £2 purchases worth 2 each, which is the price ' +
+      'the 6 VP cap assumes. If he rules the other way it is a 4 VP card for £4 and probably ' +
+      'dead, and the change is one clause in the filter below.',
   },
   gameEnd(data, state, seat) {
-    return 2 * builtBuildings(data, state, seat).filter((card) => isShedCard(data, card)).length;
+    // Ruling L (owed): the Farmstead's FREE milestone flip counts as "showing
+    // its upgraded side". If Dean rules the other way, exclude slot ===
+    // 'farmstead' here. NOT builtBuildings - see the notes.
+    return (
+      2 *
+      player(state, seat).tableau.filter(
+        (b) => cardById(data, b.card).type === 'starter' && b.upgraded,
+      ).length
+    );
   },
 };
