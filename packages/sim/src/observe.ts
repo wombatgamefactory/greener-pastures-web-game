@@ -199,6 +199,19 @@ export interface GameMetrics {
   wageCoinsBySeat: number[];
   upgradesBySeat: number[];
   /**
+   * The round in which the seat's Farmstead flipped FREE at the own-crop-build
+   * milestone, or null if it never did. Added 2026-08-12 for the Wheat
+   * rebalance, whose headline (W2) rests on a premise nobody had measured: that
+   * most seats reach the flip at all. It was inferred from 5.30 buildings
+   * against a 3-own-crop-building milestone plus an 84.2% own-crop build rate,
+   * which is an average over a distribution nobody had looked at.
+   *
+   * `starterUpgraded` with `free: true` is emitted ONLY by `checkFarmsteadFlip`
+   * (actions.ts); the paid Barn/Notice Board flip emits `free: false`. So the
+   * flag is an exact marker and no card-slot lookup is needed.
+   */
+  farmsteadFlipRoundBySeat: (number | null)[];
+  /**
    * The seat's own turn number when it first activated its OWN Service, or null.
    * The bootstrap question since the Services (2026-08-10): every seat has one
    * from turn 1 but starts at GBP 0, so the first own-activation cannot happen
@@ -519,6 +532,7 @@ export class Fold {
       foreignCropBuildsBySeat: zeros(),
       wageCoinsBySeat: zeros(),
       upgradesBySeat: zeros(),
+      farmsteadFlipRoundBySeat: Array<number | null>(seats).fill(null),
       firstOwnServiceTurnBySeat: Array<number | null>(seats).fill(null),
       clogTurnsBySeat: zeros(),
       clogSampledBySeat: zeros(),
@@ -877,6 +891,9 @@ export class Fold {
         return;
       case 'starterUpgraded':
         if (!e.free) m.upgradesBySeat[e.seat] = (m.upgradesBySeat[e.seat] ?? 0) + 1;
+        else if (m.farmsteadFlipRoundBySeat[e.seat] == null) {
+          m.farmsteadFlipRoundBySeat[e.seat] = this.round();
+        }
         return;
       case 'delivered': {
         m.deliveriesBySeat[e.seat] = (m.deliveriesBySeat[e.seat] ?? 0) + 1;

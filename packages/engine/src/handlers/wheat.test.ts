@@ -71,7 +71,14 @@ function fill(s: GameState, card: string): void {
   loadStack(data, s, WHEAT, card, threshold, 'apiary');
 }
 
-describe('the Wheat Farmstead (W2) - the relaxed harvest gate, unchanged', () => {
+/**
+ * REBALANCED 2026-08-12, and this block carries the headline. W2 used to be two
+ * unrelated powers - a flat 2+ relaxation on both faces, plus "Harvest is 2
+ * buildings" on the upgraded one. The second is gone. The flip now DEEPENS the
+ * first, 2+ to 1+, so the card does one thing on both faces and the milestone
+ * buys flexibility rather than tempo.
+ */
+describe('the Wheat Farmstead (W2) - one relaxed harvest gate, two depths', () => {
   it('offers a 2+-loaded not-full building to the Harvest ACTION, wheat seat only', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W7'); // threshold 3
@@ -101,7 +108,34 @@ describe('the Wheat Farmstead (W2) - the relaxed harvest gate, unchanged', () =>
     expect(pendingAnswers(data, out.state)).toContainEqual({ kind: 'building', card: 'W7' });
   });
 
-  it('upgraded: one optional repeat of the main Harvest action, then no more', () => {
+  /**
+   * ⛔ THE NEW BEHAVIOUR, and the reason `wheatRelaxedMin` became face-aware.
+   * Before the rebalance the 2+ relaxation applied to ANY Wheat seat, flipped or
+   * not, so a 1-loaded building was never a Harvest ACTION target on either
+   * face. It now is, on the upgraded face only - the milestone's whole payoff.
+   */
+  it('base: a 1-loaded building is no target; upgraded: it is', () => {
+    for (const upgraded of [false, true]) {
+      const s = base();
+      buildingOf(s, WHEAT, 'W2').upgraded = upgraded;
+      buildFor(data, s, WHEAT, 'W7'); // threshold 3, so 1 card is nowhere near full
+      loadStack(data, s, WHEAT, 'W7', 1, 'apiary');
+      const targets = harvestMoves(s).map((m) => m.type === 'harvest' && m.building);
+      expect(targets.includes('W7'), `upgraded=${upgraded}`).toBe(upgraded);
+    }
+  });
+
+  /**
+   * ⛔ WHAT THE FLIP NO LONGER BUYS (rebalance, 2026-08-12). The upgraded face
+   * used to print "Harvest is 2 buildings" and arm `turn.again` - a free extra
+   * main action on the suit's own core verb, taken 88.4% of the time, and the
+   * largest single term in Wheat finishing first at 50.0%. `harvestAgainPower`
+   * is stubbed to false, and W2 was the engine's ONLY producer of `turn.again`
+   * (Dairy's "you may BUILD again" went on 2026-08-10), so the flag is now
+   * armed by nothing at all. That is what this pins: not "the repeat is
+   * declinable" but "there is no repeat".
+   */
+  it('upgraded: the second Harvest action is gone, not merely optional', () => {
     const s = base();
     buildingOf(s, WHEAT, 'W2').upgraded = true;
     buildFor(data, s, WHEAT, 'W4', 'W7');
@@ -109,16 +143,22 @@ describe('the Wheat Farmstead (W2) - the relaxed harvest gate, unchanged', () =>
     fill(s, 'W7');
 
     const first = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W7' });
-    expect(first.state.turn.again).toBe('harvest');
-    // W7's harvest queued a build and a reseed; clear them before the repeat.
+    expect(first.state.turn.again).toBeNull();
+    // W7's harvest queued a build and a reseed; drain them, and the full W4 is
+    // still sitting there with no action left to take it.
     const cleared = answerAll(first.state);
-    const repeats = harvestMoves(cleared);
-    expect(repeats.length).toBeGreaterThan(0);
-
-    const second = apply(data, cleared, repeats[0] as Move);
-    expect(second.state.turn.again).toBeNull();
+    expect(cleared.turn.again).toBeNull();
+    expect(cleared.turn.actionSpent).toBe(true);
+    expect(harvestMoves(cleared)).toEqual([]);
+    expect(buildingOf(cleared, WHEAT, 'W4').stack).toHaveLength(2);
   });
 
+  /**
+   * Kept, though the rebalance made it trivially true - nothing arms the repeat
+   * any more, so this can no longer fail for the reason it was written for. The
+   * live half of the suit-power ruling is now the GATE, and it is pinned in
+   * spanning.test.ts: a card-effect harvest inherits neither face of W2.
+   */
   it('a card-effect harvest never arms the repeat (the suit-power ruling)', () => {
     const s = base();
     buildingOf(s, WHEAT, 'W2').upgraded = true;
@@ -152,6 +192,43 @@ describe('the shared FIELD line - "Sow 1 FIELD from the deck"', () => {
     dealTo(data, state, WHEAT, pay);
     state = growBuilding(data, state, WHEAT, 'W5', pay).state;
     expect(buildingOf(state, WHEAT, 'W5').stack).toHaveLength(2);
+  });
+
+  /**
+   * ⛔ NARROWED BY THE REBALANCE (2026-08-12), and this is the shape that can
+   * see it: a second FIELD, owned, empty and with room to spare. The seed used
+   * to be aimable at ANY FIELD the seat owned, which let a wide farm point every
+   * harvest's seed at whichever FIELD was closest to full and turn one harvest
+   * into the next one. The target is now fixed at push time to the building that
+   * just harvested, so the number of FIELDs stops multiplying the line - and the
+   * task drops from a two-part choice (which FIELD, which deck) to a one-part
+   * one, which is teach cost going down as well as power coming off.
+   */
+  it('never lands on another FIELD, however much room that FIELD has', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W5', 'W4'); // both threshold 2; W4 left empty
+    fill(s, 'W5');
+
+    const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W5' });
+    const reseed = applied.state.tasks.find((t) => t.t === 'sowFromDeck');
+    // EXACTLY one target, asserted as the whole array: this is the assertion
+    // the narrowing is about, so a `toMatchObject` subset would not hold it.
+    expect(reseed?.t === 'sowFromDeck' && reseed.targets).toEqual(own('W5'));
+    // And the choice actually OFFERED is only ever "which deck". Walk the queue
+    // to the reseed (W5's own Draw 2 was pushed ahead of it) and read it there:
+    // a target the enumerator would still accept is the only way this could rot.
+    let queued = applied.state;
+    for (let guard = 0; guard < 8 && queued.tasks[0]?.t !== 'sowFromDeck'; guard++) {
+      queued = answerTask(data, queued, pendingAnswers(data, queued)[0] as TaskAnswer).state;
+    }
+    const seeds = pendingAnswers(data, queued);
+    expect(seeds.length).toBeGreaterThan(0);
+    expect(seeds.every((a) => a.kind === 'deckSow' && a.onto === 'W5')).toBe(true);
+
+    // Where the card actually went, not just where it was aimed.
+    const done = answerAll(applied.state, (a) => a[0] as TaskAnswer);
+    expect(buildingOf(done, WHEAT, 'W5').stack).toHaveLength(1);
+    expect(buildingOf(done, WHEAT, 'W4').stack).toEqual([]);
   });
 
   it('skips silently when no FIELD has room', () => {
@@ -356,6 +433,41 @@ describe('Tier 3 - the ACTION cards', () => {
     expect(player(accepted, APIARY).hand).toHaveLength(1);
   });
 
+  /**
+   * RAISED 2026-08-12, the one card in the rebalance pointing UP: an acceptance
+   * now also moves a card out of the OWNER's hand into their barn. ⚠️ It is
+   * CONVERSION, NOT CREATION - it costs the owner a card - which is the only
+   * reason a raise is allowed in a pass whose thesis is that Wheat gets too many
+   * free cards. The decline is untouched and still does nothing at all, which is
+   * what makes the rival's consent the binding constraint rather than the price.
+   */
+  it('W14 The Pizzeria: an acceptance banks a card of the OWNER’s; a decline does nothing', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W14');
+    dealTo(data, s, WHEAT, 'W5', 'W6');
+    const applied = apply(data, s, actionMoveFor(s, 'W14') as Move);
+
+    const declined = answerTask(data, applied.state, { kind: 'skip' } as TaskAnswer);
+    expect(declined.state.tasks).toEqual([]);
+    expect(player(declined.state, WHEAT).coins).toBe(0);
+    expect(player(declined.state, WHEAT).barn).toEqual([]);
+    expect(player(declined.state, WHEAT).hand).toEqual(['W5', 'W6']);
+
+    const accepted = answerTask(data, applied.state, {
+      kind: 'card',
+      payload: { take: true },
+    } as TaskAnswer);
+    // Pushed for the OWNER while a RIVAL's answer resolves, which is only safe
+    // because W14 is an ACTION on the owner's turn: every offer resolves inside
+    // it, so the owner's handToBarn does too.
+    expect(accepted.state.tasks.some((t) => t.t === 'handToBarn' && t.pid === WHEAT)).toBe(true);
+    const done = answerAll(accepted.state);
+    expect(player(done, WHEAT).coins).toBe(1);
+    expect(player(done, WHEAT).barn).toHaveLength(1);
+    expect(player(done, WHEAT).hand).toHaveLength(1);
+    expect(player(done, APIARY).hand).toHaveLength(1);
+  });
+
   it('W15 The Patisserie: the top card of every live deck, straight to the barn', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W15');
@@ -377,7 +489,16 @@ describe('Tier 3 - the ACTION cards', () => {
 });
 
 describe('the Power cards', () => {
-  it('W1 Barn: building a FIELD draws 2, on both faces', () => {
+  /**
+   * CUT TO DRAW 1 BY THE REBALANCE (2026-08-12). At Draw 2 a 1-cost FIELD was
+   * card-POSITIVE to build - a build that paid for itself - and Wheat finished
+   * first at 50.0% on the most cards into the barn in the game. At Draw 1 the
+   * build is card-NEUTRAL: still the turn-1 instruction to build your own suit,
+   * no longer a card faucet bolted to it. BOTH FACES still, which is the part
+   * that must not drift: without the rider on the upgraded face, paying £2 to
+   * upgrade would delete the power.
+   */
+  it('W1 Barn: building a FIELD draws 1, on both faces', () => {
     for (const upgraded of [false, true]) {
       const s = base();
       buildingOf(s, WHEAT, 'W1').upgraded = upgraded;
@@ -389,7 +510,7 @@ describe('the Power cards', () => {
         payment: ['W5'],
       });
       const draw = applied.state.tasks.find((t) => t.t === 'draw');
-      expect(draw, String(upgraded)).toMatchObject({ src: 'W1', see: 2, keep: 2 });
+      expect(draw, String(upgraded)).toMatchObject({ src: 'W1', see: 1, keep: 1 });
     }
   });
 
@@ -457,6 +578,30 @@ describe('the Endgame cards - three shapes of tableau', () => {
     // The coin-pity replacement is gone with the coin rate.
     expect(scores[WHEAT]?.coinPityReplacedBy).toBeNull();
     expect(handlerFor('W21')?.replacesCoinPity).toBeUndefined();
+  });
+
+  /**
+   * CAPPED AT 6 by the rebalance (2026-08-12), which is a TEMPLATE fix rather
+   * than a balance one: an uncapped "for each" on the very axis the suit
+   * specialises in is the shape docs/innovation.md warns about, and every other
+   * endgame scaler in the game carries a cap or a divisor. There are five FIELDs
+   * in the suit, so the cap is reachable and this walks the whole ramp - the 3rd
+   * FIELD is where the rate and the cap agree, and the 4th is where they part.
+   */
+  it('W21 The Bread Hall: 2 VP per FIELD up to the cap, then 6 whatever you own', () => {
+    const FIELDS = ['W4', 'W5', 'W6', 'W7', 'W8'];
+    const ramp: [number, number][] = [
+      [1, 2],
+      [2, 4],
+      [3, 6],
+      [4, 6],
+      [5, 6],
+    ];
+    for (const [count, expected] of ramp) {
+      const s = base();
+      buildFor(data, s, WHEAT, 'W21', ...FIELDS.slice(0, count));
+      expect(gameEndScores(data, s)[WHEAT]?.endgame, `${count} FIELDs`).toBe(expected);
+    }
   });
 });
 

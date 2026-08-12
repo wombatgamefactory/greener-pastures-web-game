@@ -803,3 +803,247 @@ describe('the Apiary rebuild: rulings that live between two cards', () => {
     expect(own.state.tasks.some((t) => t.t === 'draw' && t.src === 'A16')).toBe(true);
   });
 });
+
+/**
+ * THE WHEAT REBALANCE'S CROSS-HANDLER CASES (2026-08-12).
+ *
+ * Two seams came down in that pass and neither is visible from inside one card.
+ *
+ * W16 The Granary moved off an event-stream guard ("fire only if this is the
+ * first `harvested` of this apply") onto the shared `turn.firedThisTurn` guard,
+ * which is a change only a harvest CHAINED THROUGH A TASK ANSWER can see - a
+ * chained harvest is a separate apply, so it used to draw again. Rule change
+ * 12(c) says no card's text may fire twice in a turn; this is that alignment.
+ *
+ * And the W2 Farmstead's relaxed gate got DEEPER (2+ on the base face, 1+ on the
+ * upgraded one, where the flip used to buy a whole second Harvest action). That
+ * changes the suit-power ruling by not one word, and multiplies what the ruling
+ * is worth, which is why the last test in this block is the loudest one.
+ */
+describe('the Wheat rebalance: rulings that live between two cards', () => {
+  function wheatState(): GameState {
+    return makeState(data, ['wheat', 'apiary']);
+  }
+
+  /**
+   * Drain the queue, counting every Draw The Granary pushes on the way through.
+   * The same shape as `drainCountingLedger` above and for the same reason: the
+   * draws are consumed as they are answered, so a before/after diff at each step
+   * is the only honest count - a tally of what is left at the end would read
+   * zero however many times the card fired.
+   */
+  function drainCountingGranary(
+    state: GameState,
+    pick?: (answers: TaskAnswer[]) => TaskAnswer,
+  ): { state: GameState; draws: number } {
+    const pending = (s: GameState) =>
+      s.tasks.filter((t) => t.t === 'draw' && t.src === 'W16').length;
+    let s = state;
+    let draws = pending(s);
+    for (let guard = 0; guard < 40 && s.tasks.length > 0; guard++) {
+      const before = pending(s);
+      const answers = pendingAnswers(data, s);
+      const answer = pick ? pick(answers) : answers[0];
+      if (!answer) throw new Error('No legal answer to a live task');
+      s = answerTask(data, s, answer).state;
+      const after = pending(s);
+      if (after > before) draws += after - before;
+    }
+    expect(s.tasks).toHaveLength(0);
+    return { state: s, draws };
+  }
+
+  /** Hand the wheat seat its own Harvest Service and the coin to fire it. */
+  function withHarvestService(state: GameState): GameState {
+    hireFor(state, WHEAT, 'harvest');
+    player(state, WHEAT).coins += data.workers.ownerActivationCost;
+    return state;
+  }
+
+  /**
+   * ⛔ THE BEHAVIOURAL CHANGE OF THE REBALANCE, and the shape that can see it.
+   * W8's second harvest arrives as the answer to a `chooseBuilding` task, which
+   * is a separate apply from the action that started it, so the old event-stream
+   * guard saw a fresh event stream and fired again. Two harvests, two cards. The
+   * turn-scoped guard sees one turn and pays once.
+   */
+  it('W16 + W8: a harvest CHAINED through a task answer draws ONCE, where it drew twice', () => {
+    const s = wheatState();
+    buildFor(data, s, WHEAT, 'W16', 'W8', 'W5');
+    loadStack(data, s, WHEAT, 'W8', 2, 'apiary'); // threshold 2: full
+    loadStack(data, s, WHEAT, 'W5', 2, 'apiary'); // full, so W8's chooser has a target
+
+    const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W8' });
+    const drained = drainCountingGranary(applied.state);
+
+    // Both buildings really were harvested - four cards into the barn - so the
+    // 1 below is the guard biting and not a chain that never happened.
+    expect(player(drained.state, WHEAT).barn).toHaveLength(4);
+    expect(drained.state.turn.firedThisTurn).toContain('W16');
+    expect(drained.draws).toBe(1);
+  });
+
+  /**
+   * The cascades, which the OLD guard already handled correctly (one apply, one
+   * event stream, one draw). Pinned because the answer must not have moved when
+   * the reason for it did: what used to be "the first harvested event of this
+   * apply" is now "this card has fired this turn", and these two are where the
+   * two rules agree.
+   */
+  it('W16 + W12 / W13: a cascade over two buildings still draws ONCE', () => {
+    // W12 Crop Rotation, fired by a GROW: both FIELDs harvested inside one apply.
+    const rotation = wheatState();
+    buildFor(data, rotation, WHEAT, 'W16', 'W12', 'W4', 'W5');
+    dealTo(data, rotation, WHEAT, 'W7');
+    loadStack(data, rotation, WHEAT, 'W4', 2, 'apiary');
+    loadStack(data, rotation, WHEAT, 'W5', 2, 'apiary');
+    loadStack(data, rotation, WHEAT, 'W12', 1, 'apiary'); // threshold 2: the payment fills it
+    const grown = drainCountingGranary(growBuilding(data, rotation, WHEAT, 'W12', 'W7').state);
+    // Both FIELDs emptied and reseeded, so the cascade really did run: two cards
+    // each into the barn, plus the one W4's own harvest line banks out of hand
+    // (the Granary's draw resolves ahead of it, so there is a card there to bank).
+    expect(buildingOf(grown.state, WHEAT, 'W4').stack).toHaveLength(1);
+    expect(buildingOf(grown.state, WHEAT, 'W5').stack).toHaveLength(1);
+    expect(player(grown.state, WHEAT).barn).toHaveLength(5);
+    expect(grown.draws).toBe(1);
+
+    // W13 The Bakery, the printed ACTION. Its own spanning case is §2 above;
+    // what is added here is that the number survived the guard swap.
+    const bakery = wheatState();
+    buildFor(data, bakery, WHEAT, 'W16', 'W13', 'W4', 'W5');
+    loadStack(data, bakery, WHEAT, 'W4', 2, 'apiary');
+    loadStack(data, bakery, WHEAT, 'W5', 2, 'apiary');
+    const move = legalMoves(data, bakery).find((m) => m.type === 'cardMove' && m.card === 'W13');
+    const baked = drainCountingGranary(apply(data, bakery, move as Move).state);
+    expect(baked.draws).toBe(1);
+  });
+
+  /**
+   * ⚠️ AN OPEN QUESTION, ANSWERED BY MEASUREMENT RATHER THAN FORCED, and written
+   * down here because the ticket asked for the answer whichever way it fell:
+   *
+   *     A SERVICE HARVEST IS INSIDE THE ONCE-PER-TURN BUDGET.
+   *
+   * `turn.firedThisTurn` is turn-scoped and nothing on the Service path clears
+   * it, so a seat that takes the Harvest ACTION and then spends its bonus slot
+   * on its own Harvest Service draws ONE card between the two, not one each.
+   * Alone, the Service harvest pays normally.
+   *
+   * That is the reading the printed text supports ("Whenever you harvest, Draw
+   * 1. Once per turn." - the turn is the unit on the card) and it costs nothing
+   * to teach. ⚠️ The subtlety no card text mentions is that it makes the Service
+   * harvest worth strictly less AFTER a main harvest than before one, so the
+   * order a Wheat seat takes its two harvests in is silently free. If Dean rules
+   * the other way the fix is a per-source guard and this test flips; it is here
+   * so the rule is explicit either way rather than an accident of the guard.
+   */
+  it('W16 + the Harvest Service: the Service harvest is INSIDE the once-per-turn budget', () => {
+    // On its own it is a harvest like any other, and it pays.
+    const alone = withHarvestService(wheatState());
+    buildFor(data, alone, WHEAT, 'W16', 'W4');
+    loadStack(data, alone, WHEAT, 'W4', 2, 'apiary');
+    const solo = drainCountingGranary(workOwnWorker(data, alone, WHEAT, 'harvest').state);
+    expect(solo.draws).toBe(1);
+
+    // After a main Harvest action in the same turn, it pays nothing.
+    const both = withHarvestService(wheatState());
+    buildFor(data, both, WHEAT, 'W16', 'W4', 'W5');
+    loadStack(data, both, WHEAT, 'W4', 2, 'apiary');
+    loadStack(data, both, WHEAT, 'W5', 2, 'apiary');
+    const main = drainCountingGranary(
+      apply(data, both, { type: 'harvest', seat: WHEAT, building: 'W4' }).state,
+    );
+    expect(main.draws).toBe(1);
+    const service = drainCountingGranary(workOwnWorker(data, main.state, WHEAT, 'harvest').state);
+    expect(service.draws).toBe(0);
+    // And the second harvest genuinely happened: W5 emptied and reseeded. The 0
+    // is the guard, not a Service that found nothing to take.
+    expect(buildingOf(service.state, WHEAT, 'W5').stack).toHaveLength(1);
+  });
+
+  /**
+   * The other half of the locked ruling, from the permissive side: suit powers
+   * DO apply to actions performed by a Service - it is your action, done on
+   * someone else's premises - so the relaxed gate composes at whichever depth
+   * the Farmstead is currently on. The `harvestable` task filter is the seam,
+   * and it must keep routing through `harvestOptions` for this to hold.
+   */
+  it('W2 + the Harvest Service: the Service inherits the gate at BOTH depths', () => {
+    for (const upgraded of [false, true]) {
+      const s = withHarvestService(wheatState());
+      buildingOf(s, WHEAT, 'W2').upgraded = upgraded;
+      buildFor(data, s, WHEAT, 'W7'); // threshold 3, holding 1: only the 1+ face reaches it
+      loadStack(data, s, WHEAT, 'W7', 1, 'apiary');
+      const out = workOwnWorker(data, s, WHEAT, 'harvest');
+      const offered = pendingAnswers(data, out.state).some(
+        (a) => a.kind === 'building' && a.card === 'W7',
+      );
+      expect(offered, `upgraded=${upgraded}`).toBe(upgraded);
+    }
+  });
+
+  /**
+   * ⛔ THE RULING THIS BLOCK EXISTS TO PROTECT (decided 2026-08-09): A SUIT
+   * POWER MODIFIES THE ACTION, NEVER CARD TEXT THAT HAPPENS TO USE THE SAME
+   * WORD. W8 Heritage Field says "Harvest another of your buildings" and prints
+   * no exception, so it means the STRICT full gate - W11 and W13 spell their
+   * exception out in words ("however many cards are on it") and W12 in numbers
+   * ("1 or more"), and W8 does neither.
+   *
+   * It is STRUCTURALLY true rather than encoded: only the `harvestable` task
+   * filter reads `wheatRelaxedMin`, and W8 asks for `full`. Nothing in the
+   * rebalance changed that - what changed is the STAKE. Against the old flat 2+
+   * a leak would have handed W8 buildings holding two cards; against the
+   * upgraded 1+ it hands it essentially the whole farm, because the reseed keeps
+   * every FIELD at 1 or more for the rest of the game. Same test, several times
+   * the blast radius, which is why it is the loudest one here.
+   */
+  it('W8 + an upgraded W2: a card-effect harvest inherits NEITHER face of the Farmstead', () => {
+    const RULING =
+      'RULING (2026-08-09): a suit power modifies the ACTION, never card text that ' +
+      'happens to use the same word. W8\'s "another of your buildings" is the STRICT ' +
+      "full gate and must never see the Farmstead's relaxed 2+/1+ gate.";
+
+    const s = wheatState();
+    buildingOf(s, WHEAT, 'W2').upgraded = true; // the relaxed gate at its deepest: 1+
+    buildFor(data, s, WHEAT, 'W8', 'W5', 'W7');
+    loadStack(data, s, WHEAT, 'W8', 2, 'apiary'); // threshold 2: FULL, so the action is legal
+    loadStack(data, s, WHEAT, 'W5', 1, 'apiary'); // 1 of 2
+    loadStack(data, s, WHEAT, 'W7', 2, 'apiary'); // 2 of 3
+
+    // The fixture is LIVE: under the ACTION gate both partials are real targets,
+    // so a leak would have something to leak. Without this the test could pass
+    // against an engine that simply never harvests anything.
+    const actionTargets = legalMoves(data, s)
+      .filter((m) => m.type === 'harvest')
+      .map((m) => (m.type === 'harvest' ? m.building : ''));
+    expect(actionTargets).toContain('W5');
+    expect(actionTargets).toContain('W7');
+
+    const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W8' });
+    // No legal target, so the drain loop drops the chooser outright rather than
+    // leaving it standing offering a partial building.
+    expect(
+      applied.state.tasks.filter((t) => t.t === 'chooseBuilding'),
+      RULING,
+    ).toEqual([]);
+    expect(
+      pendingAnswers(data, applied.state).filter((a) => a.kind === 'building'),
+      RULING,
+    ).toEqual([]);
+
+    const done = answerAll(applied.state, (a) => a[0] as TaskAnswer);
+    expect(buildingOf(done, WHEAT, 'W5').stack, RULING).toHaveLength(1);
+    expect(buildingOf(done, WHEAT, 'W7').stack, RULING).toHaveLength(2);
+
+    // The control: make one of them FULL and the same chooser takes it at once.
+    // What is pinned is the GATE, not a chooser that never offers anything.
+    const control = wheatState();
+    buildingOf(control, WHEAT, 'W2').upgraded = true;
+    buildFor(data, control, WHEAT, 'W8', 'W5');
+    loadStack(data, control, WHEAT, 'W8', 2, 'apiary');
+    loadStack(data, control, WHEAT, 'W5', 2, 'apiary'); // FULL
+    const live = apply(data, control, { type: 'harvest', seat: WHEAT, building: 'W8' });
+    expect(pendingAnswers(data, live.state)).toContainEqual({ kind: 'building', card: 'W5' });
+  });
+});

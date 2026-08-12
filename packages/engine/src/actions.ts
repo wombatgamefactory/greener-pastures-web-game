@@ -778,38 +778,80 @@ export function harvestSurchargeOf(data: GameData, card: CardId): number {
   return cardById(data, card).abilityTrigger.includes('harvestSurcharge') ? 1 : 0;
 }
 
-/** Printed on the Wheat Farmstead: "Harvest: Any card with 2+ cards on it, even if not full." */
+/** Printed on the base Wheat Farmstead: "Harvest: any card with 2+ cards on it." */
 const WHEAT_RELAXED_MIN = 2;
+/** The upgraded face, since the rebalance (2026-08-12): the same gate, deeper. */
+const WHEAT_RELAXED_MIN_UPGRADED = 1;
+
+/** Is this seat's Farmstead on its upgraded face? False for a seat with none. */
+function farmsteadFlipped(data: GameData, state: GameState, seat: Seat): boolean {
+  const farmstead = player(state, seat).tableau.find(
+    (b) => cardById(data, b.card).slot === 'farmstead',
+  );
+  return farmstead?.upgraded ?? false;
+}
+
+/**
+ * How few cards a building may hold and still be a legal Harvest ACTION target
+ * for this seat, ignoring the strict full gate it is unioned with. `Infinity`
+ * for every non-Wheat seat, which is what keeps the union a no-op for them.
+ *
+ * The two faces of the W2 Farmstead, and since the Wheat rebalance
+ * (2026-08-12) this is the WHOLE of W2: the flip deepens the gate from 2+ to
+ * 1+ rather than buying a second action. See `harvestAgainPower` below for why
+ * that trade was made.
+ */
+function wheatRelaxedMin(data: GameData, state: GameState, seat: Seat): number {
+  if (player(state, seat).suit !== 'wheat') return Infinity;
+  return farmsteadFlipped(data, state, seat) ? WHEAT_RELAXED_MIN_UPGRADED : WHEAT_RELAXED_MIN;
+}
 
 /**
  * The Harvest ACTION's targets. Strict gate: full buildings. The Wheat
- * Farmstead's base power (live from turn 1) adds any building with 2+ cards
- * even if not full - a true union, and the gates genuinely cross: a
- * threshold-1 building is strict-harvestable at 1 card but never
- * relaxed-harvestable. Surcharged buildings (W8) drop out when the seat
- * cannot pay. Card-effect harvests do NOT inherit the relaxation; the Harvest
- * Worker does (suit powers apply to Worker actions - the 'harvestable' task
- * filter routes through here).
+ * Farmstead's power (live from turn 1) adds any building at or above
+ * `wheatRelaxedMin` even if not full - a true union, and the gates genuinely
+ * cross: a threshold-1 building is strict-harvestable at 1 card but, on the
+ * base face, never relaxed-harvestable. Surcharged buildings (W8) drop out
+ * when the seat cannot pay. Card-effect harvests do NOT inherit the
+ * relaxation; the Harvest Service does (suit powers apply to Service actions -
+ * the 'harvestable' task filter routes through here, and must keep doing so).
+ *
+ * ⚠️ At the upgraded 1+ gate a Wheat harvest is legal essentially always,
+ * because the reseed keeps every FIELD at 1 or more. That is the intended
+ * shape - the flip buys FLEXIBILITY, not tempo - but it means this function
+ * rarely returns empty for a flipped Wheat seat. Nothing downstream may assume
+ * it can.
  */
 export function harvestOptions(data: GameData, state: GameState, seat: Seat): CardId[] {
   const p = player(state, seat);
-  const relaxed = p.suit === 'wheat';
+  const min = wheatRelaxedMin(data, state, seat);
   return p.tableau
-    .filter((b) => isFull(data, b) || (relaxed && b.stack.length >= WHEAT_RELAXED_MIN))
+    .filter((b) => isFull(data, b) || b.stack.length >= min)
     .filter((b) => harvestSurchargeOf(data, b.card) <= p.coins)
     .map((b) => b.card);
 }
 
 /**
- * The upgraded Wheat Farmstead's "Harvest is 2 buildings": one optional
- * repeat of the Harvest ACTION (the `turn.again` gate). Main action only,
- * following the reference - a Worker's harvest never offers the repeat.
+ * ⛔ DEAD SINCE THE WHEAT REBALANCE (2026-08-12), and deliberately left in
+ * place rather than deleted.
+ *
+ * This was the upgraded Wheat Farmstead's "Harvest is 2 buildings": one
+ * optional repeat of the Harvest ACTION, via the `turn.again` gate. The
+ * rebalance took the repeat off the card - the upgraded face now deepens the
+ * relaxed gate to 1+ instead (`wheatRelaxedMin`) - because Wheat came in first
+ * at 50.0% against an even share of 36.4% and a free extra action on the
+ * suit's own core verb was the largest single term in it.
+ *
+ * ⛔ W2 was the ONLY producer of `turn.again` in the engine; the Dairy "you may
+ * BUILD again" went on 2026-08-10 (state.ts:153). So the whole ActionAgain
+ * machinery - game.ts:105/185/189-190/227-228/252, turnflow.ts:30,
+ * setup.ts:45, state.ts:158 - is now unreachable. It is NOT removed here on
+ * purpose: deleting it changes the `GameState` shape and moves serialisation
+ * and view tests, which is noise inside a balance arm. Ripping it out is a
+ * separate commit, once the arm has been measured and kept.
  */
-export function harvestAgainPower(data: GameData, state: GameState, seat: Seat): boolean {
-  const p = player(state, seat);
-  if (p.suit !== 'wheat') return false;
-  const farmstead = p.tableau.find((b) => cardById(data, b.card).slot === 'farmstead');
-  return farmstead?.upgraded ?? false;
+export function harvestAgainPower(_data: GameData, _state: GameState, _seat: Seat): boolean {
+  return false;
 }
 
 export function doHarvestAction(fx: Fx, seat: Seat, building: CardId): void {

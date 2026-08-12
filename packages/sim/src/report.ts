@@ -474,6 +474,26 @@ function freightSection({ data, pooled }: ReportInput): string[] {
       .join('   ')}`,
   );
   out.push('');
+  // FARMSTEAD FLIP BY SUIT (the Wheat rebalance, 2026-08-12). Printed beside
+  // the builds line because it is that line's threshold: the flip is FREE at
+  // the own-crop-build milestone, so it is the one binary achievement in the
+  // game and the only thing that changes what a starter DOES. Every suit
+  // rebalance that touches an upgraded Farmstead face has so far assumed most
+  // seats get there. Nobody had measured it. Rate first, then the median round
+  // among the seats that flipped - a suit that flips late has the power for a
+  // shorter time than its rate suggests.
+  out.push('  Farmstead FREE flip, by suit (rate, then median round among those that flipped):');
+  out.push(
+    `    ${data.cards.suits
+      .map(
+        (suit) =>
+          `${suit} ${pct(farmsteadFlipRateBySuit(games, suit))}` +
+          ` r${num(farmsteadFlipRoundBySuit(games, suit), 1)}`,
+      )
+      .join('   ')}`,
+  );
+  out.push('    ⚠️ NO NOISE FLOOR YET - new metric, not in the --noise pair.');
+  out.push('');
   out.push(
     `  demand tokens altered per game        ` +
       `${num(
@@ -711,6 +731,32 @@ function barnInBySuit(games: readonly GameMetrics[], suit: string): number {
 /** Buildings put down by the seats actually farming a given suit, per game. */
 function buildsBySuit(games: readonly GameMetrics[], suit: string): number {
   return bySuit(games, suit, (g, seat) => g.buildsBySeat[seat] ?? 0);
+}
+
+/**
+ * Share of the seats farming a given suit whose Farmstead reached the FREE
+ * flip. A 0/1 projection through the same `bySuit` mean everything else uses,
+ * so it is a rate over SEATS rather than over games.
+ */
+function farmsteadFlipRateBySuit(games: readonly GameMetrics[], suit: string): number {
+  return bySuit(games, suit, (g, seat) => (g.farmsteadFlipRoundBySeat[seat] == null ? 0 : 1));
+}
+
+/**
+ * Median round of the flip, counted ONLY over the seats that flipped. Seats
+ * that never flipped are excluded rather than scored as "late": mixing them in
+ * would make the rate and the round the same measurement twice, and the rate
+ * beside it already carries them.
+ */
+function farmsteadFlipRoundBySuit(games: readonly GameMetrics[], suit: string): number {
+  const per: number[] = [];
+  for (const g of games) {
+    g.suits.forEach((s, seat) => {
+      const round = g.farmsteadFlipRoundBySeat[seat];
+      if (s === suit && round != null) per.push(round);
+    });
+  }
+  return per.length === 0 ? NaN : median(per);
 }
 
 /** Mean of a per-seat counter over the seats actually farming a given suit. */

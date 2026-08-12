@@ -27,18 +27,34 @@
  *      fires as often as its owner chooses.
  *   2. **FIELDs reseed on harvest**, via the shared `reseed` below.
  *
+ * REBALANCED 2026-08-12 (docs/wheat-rebalance-v1.md). The rebuild below worked
+ * too well: Wheat came in FIRST at 50.0% against an even share of 36.4%, on the
+ * most cards into the barn in the game (30.5), and island receipts are 69% of a
+ * winning score. Four things in this file and actions.ts came down together, all
+ * of them free-card faucets: W1's Draw 2 to Draw 1, the reseed's free choice of
+ * FIELD to the one that just harvested, W2's upgraded "Harvest is 2 buildings"
+ * to a deeper relaxed gate, and W16 onto the once-per-turn guard. The notes on
+ * each say what the number was and what it is. ⚠️ Those notes made a good case
+ * for the numbers they are losing, and they were RIGHT - for a suit that had
+ * been rebuilt five times for being too slow. The suit has since crossed the
+ * middle; that is the whole of the disagreement.
+ *
  * The Farmstead seams still live in the engine, not here - actions.ts
- * harvestOptions / harvestAgainPower and game.ts's `turn.again` - and W2's entry
- * documents where. W4's auto-harvest and W8's surcharge are GONE from the design;
- * `harvestSurchargeOf` and the cascade's surcharge branch stay in place for the
- * other suits, and nothing in Wheat prints either any more.
+ * harvestOptions / wheatRelaxedMin - and W2's entry documents where.
+ * `harvestAgainPower` is stubbed to `false`, which makes game.ts's entire
+ * `turn.again` machinery unreachable; see its docblock for why that is not
+ * deleted in the same change as the measurement. W4's auto-harvest and W8's
+ * surcharge are GONE from the design; `harvestSurchargeOf` and the cascade's
+ * surcharge branch stay in place for the other suits, and nothing in Wheat
+ * prints either any more.
  *
  * RULING (2026-08-09, decided): a suit power modifies the ACTION, never card text
- * that happens to use the same word. So the upgraded Wheat Farmstead's "Harvest
- * is 2 buildings" does not double W11's "Harvest one of your buildings", and the
- * base face's 2+ relaxation does not loosen any card-effect harvest. It is
- * structurally true rather than encoded: only apply()'s `harvest` branch arms
- * `turn.again`, and only the `harvestable` task filter reads the relaxed gate.
+ * that happens to use the same word. So the Wheat Farmstead's relaxation - 2+ on
+ * the base face, 1+ on the upgraded - does not loosen any card-effect harvest.
+ * W8, W11, W12 and W13 spell their own gates out in words. It is structurally
+ * true rather than encoded: only the `harvestable` task filter reads the relaxed
+ * gate. ⚠️ Deepening the gate to 1+ does not change that, but it does make the
+ * test matter more, and spanning.test.ts pins it.
  *
  * FIELD is a sub-type derived from the whole-word title keyword, following the
  * reference (DL-42): W4-W8, the only cards in the catalogue named Field.
@@ -49,6 +65,7 @@ import type { GameData, Suit } from '@gp/data';
 import { harvestSurchargeOf } from '../actions.js';
 import type { Fx } from '../fx.js';
 import { cardById, cropOf, drawableSuits, player } from '../query.js';
+import { markFired } from '../runtime.js';
 import type { BuildingState, CardId, GameState, Seat } from '../state.js';
 import { actionMove, actionOpen } from './actionCard.js';
 import type { CardHandler } from './types.js';
@@ -71,19 +88,25 @@ function drawN(fx: Fx, pid: Seat, src: CardId, n: number): void {
 
 /**
  * The shared FIELD line: **"Sow 1 FIELD from the deck"** - sow the top card of
- * any deck onto one of your FIELDs. One line on five cards, so it is written
- * once.
+ * any deck onto THE FIELD THAT JUST HARVESTED. One line on five cards, so it is
+ * written once.
  *
- * A task rather than an inline call because it is a two-part choice: which deck,
- * and which of your FIELDs. It skips itself silently when no FIELD has room,
- * which is normal rather than an error - the drain loop drops a task with no
- * legal answer.
+ * ⚠️ NARROWED BY THE WHEAT REBALANCE (2026-08-12). It used to target every FIELD
+ * the seat owned, which let a wide Wheat farm aim each seed at whichever FIELD
+ * was closest to full and turn one harvest into the next one. `src` is the
+ * harvesting building, so the seed now lands back where it came from and
+ * nowhere else. The card's own loop is untouched - the FIELD it just emptied
+ * always has room, so the seed never fails to land - but the seat can no longer
+ * pick, and the number of FIELDs stops multiplying the line.
  *
- * The target list is every FIELD the seat owns, NOT every FIELD with room: the
- * enumerator applies `canTakeCard` live, so a FIELD that fills between the push
- * and the answer drops out by itself. The one thing the snapshot misses is a
- * FIELD BUILT after the push, which W7's "Build ... Sow 1 FIELD" can reach; a
- * seed cannot land on a FIELD built by its own harvest line.
+ * A task rather than an inline call because a choice remains: which deck. It
+ * skips itself silently if the target somehow has no room, which is normal
+ * rather than an error - the drain loop drops a task with no legal answer.
+ *
+ * Two things fall out of the narrowing, both good. The old caveat about a FIELD
+ * BUILT after the push (W7's "Build ... Sow 1 FIELD") is moot, because the
+ * target is fixed at push time and is never a new building. And the task drops
+ * from a two-part choice to a one-part one: TEACH COST GOES DOWN.
  */
 function reseed(fx: Fx, seat: Seat, src: CardId): void {
   fx.pushTask({
@@ -91,7 +114,7 @@ function reseed(fx: Fx, seat: Seat, src: CardId): void {
     pid: seat,
     src,
     remaining: 1,
-    targets: ownFields(fx.data, fx.state, seat).map((b) => ({ seat, card: b.card })),
+    targets: [{ seat, card: src }],
   });
 }
 
@@ -125,8 +148,8 @@ function harvestCascade(fx: Fx, seat: Seat, buildings: CardId[]): void {
 }
 
 /**
- * W1 Barn (starter) - "Hand size 5. When you build a FIELD, Draw 2." /
- * upgraded "Hand size 7. When you build a FIELD, Draw 2."
+ * W1 Barn (starter) - "Hand size 5. When you build a FIELD, Draw 1." /
+ * upgraded "Hand size 7. When you build a FIELD, Draw 1."
  */
 export const wheatBarn: CardHandler = {
   difficulty: {
@@ -138,38 +161,49 @@ export const wheatBarn: CardHandler = {
       'is new is the rider, and it is on BOTH faces deliberately: without it, paying £2 to ' +
       'upgrade would delete the power. It fires on any build path - the action, a Service, ' +
       "W7's discounted build - because afterBuild is the one funnel every landing goes " +
-      'through. A card-ability draw, so the Orchard modifier does not apply (DL-47). This ' +
-      'is what makes a 1-cost FIELD card-POSITIVE to build (pay one, draw two), which is ' +
-      "the turn-1 instruction to build your own suit and the rebuild's likeliest " +
-      'over-tune: the dial is Draw 1 on the base face and Draw 2 on the upgraded.',
+      'through. A card-ability draw, so the Orchard modifier does not apply (DL-47). ' +
+      'WAS Draw 2, and the note here called that "the rebuild\'s likeliest over-tune" and ' +
+      'named Draw 1 as its own dial. The rebalance (2026-08-12) took it: at Draw 2 a ' +
+      '1-cost FIELD was card-POSITIVE to build, which is a build that pays for itself, and ' +
+      'the suit finished first at 50.0% with the most cards into the barn in the game. At ' +
+      'Draw 1 the build is card-NEUTRAL - still the turn-1 instruction to build your own ' +
+      'suit, no longer a card faucet attached to it. The earlier reasoning was not wrong; ' +
+      'it was written for a suit that had been rebuilt five times for being too slow, and ' +
+      'the suit has since crossed the middle.',
   },
   on: {
     afterBuild(fx, event, self) {
       if (event.seat !== self.seat) return;
       if (!isFieldCard(fx.data, event.card)) return;
-      drawN(fx, self.seat, self.card, 2);
+      drawN(fx, self.seat, self.card, 1);
     },
   },
 };
 
 /**
- * W2 Farmstead (starter) - "Harvest: Any card with 2+ cards on it, even if
- * not full." / upgraded adds "Harvest is 2 buildings."
+ * W2 Farmstead (starter) - "Harvest: any card with 2+ cards on it, even if
+ * not full." / upgraded "Harvest: any card with 1+ cards on it, even if not
+ * full."
  */
 export const wheatFarmstead: CardHandler = {
   difficulty: {
-    score: 4,
+    score: 3,
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: true, conditional: true, counts: false, interrupts: true },
+    asserted: { newPrimitive: true, conditional: true, counts: false, interrupts: false },
     notes:
-      'UNCHANGED by the rebuild, and deliberately so: docs/how-to-design-a-suit.md §8 ' +
-      'proposes a build-a-FIELD base power, but the Barn now carries that trigger and two ' +
-      'starters firing on one trigger is a ruling nobody has made. Behaviour lives in the ' +
-      'engine seams: the base power is the relaxed gate in harvestOptions (union with ' +
-      'strict-full; the gates genuinely cross at threshold 1), composing with the Harvest ' +
-      'Service via the harvestable task filter. The upgrade is the turn.again ActionAgain ' +
-      'flow - one optional repeat of the MAIN Harvest action only. Card-effect harvests ' +
-      '(W8/W11/W12/W13) inherit neither half, per the decided suit-power ruling.',
+      'REBALANCED 2026-08-12, and it is the headline of the pass. The upgraded face used ' +
+      'to read "Harvest is 2 buildings" - a free extra main action on the suit\'s own core ' +
+      'verb, taken 88.4% of the time (measured, not assumed) from a median round 6. It is ' +
+      'gone. The flip now DEEPENS the same relaxed gate instead, 2+ to 1+, so both faces ' +
+      'do one thing and the milestone buys flexibility rather than tempo. Lost a ' +
+      'difficulty point with it: no `interrupts`, because there is no longer a mid-turn ' +
+      'repeat prompt. Behaviour still lives in the engine seams, not here: harvestOptions ' +
+      'reads wheatRelaxedMin, which is now FACE-AWARE (it never was before - the 2+ ' +
+      'relaxation applied to any Wheat seat, flipped or not), and it composes with the ' +
+      'Harvest Service via the harvestable task filter. harvestAgainPower is stubbed to ' +
+      'false and its docblock explains why the dead turn.again machinery stays for now. ' +
+      'Card-effect harvests (W8/W11/W12/W13) inherit NEITHER face, per the decided ' +
+      'suit-power ruling - and the deeper gate makes that test matter more, not less.',
   },
 };
 
@@ -482,7 +516,10 @@ export const bakery: CardHandler = {
   },
 };
 
-/** W14 The Pizzeria (ACTION) - "Every other player may Draw 1. Gain £1 for each card drawn." */
+/**
+ * W14 The Pizzeria (ACTION) - "Every other player may Draw 1. For each card
+ * drawn, gain £1 and put 1 card from your hand into your barn."
+ */
 export const pizzeria: CardHandler = {
   difficulty: {
     score: 5,
@@ -499,7 +536,20 @@ export const pizzeria: CardHandler = {
       'gap is a deck emptying mid-effect. Card-ability draws: no Orchard modifier (DL-47). ' +
       '⚠️ THE BOTS ALWAYS ACCEPT, by construction and not by accident - the probe pricer ' +
       "models what a seat GAINS and never rival harm (see outcome.ts's one rule), so a " +
-      "sim's acceptance rate is an upper bound and the decline is a table question.",
+      "sim's acceptance rate is an upper bound and the decline is a table question. " +
+      'RAISED 2026-08-12, the one card in the Wheat rebalance pointing UP: acceptance now ' +
+      "also puts 1 card from the OWNER's hand into their barn. Why raise anything in a " +
+      "nerf pass - the Dairy ticket left D13 alone betting that the suit's cross-table " +
+      'faucet would improve RELATIVELY as its neighbours were cut, and it did not: 13% to ' +
+      '12% to 11%, falling with each arm. This mandated faucet mints £0.1 a game at 11% ' +
+      'play. Relying on relative improvement has been tested once and failed once. ⚠️ The ' +
+      'rider is CONVERSION, NOT CREATION - it costs the owner a hand card - which is the ' +
+      'only reason it is allowed in a pass whose thesis is that Wheat gets too many free ' +
+      "cards. ⚠️ It pushes a task for the OWNER while resolving a RIVAL's answer, which is " +
+      "safe because W14 is an ACTION on the owner's turn and every offerDraw resolves " +
+      "inside that turn, so the owner's handToBarn resolves inside it too. Measured as a " +
+      'SEPARATE ARM from the cuts, and if it moves the win rate it was mispriced: revert ' +
+      'it rather than tuning it.',
   },
   actionMoves: true,
   moves(data, state, self) {
@@ -529,7 +579,9 @@ export const pizzeria: CardHandler = {
       resolve(fx, task, answer) {
         if (answer.kind === 'skip') return true;
         drawN(fx, task.pid, task.src, 1);
-        fx.gainCoins(task.riders.owner as Seat, 1, 'W14');
+        const owner = task.riders.owner as Seat;
+        fx.gainCoins(owner, 1, 'W14');
+        fx.pushTask({ t: 'handToBarn', pid: owner, src: task.src, remaining: 1 });
         return true;
       },
     },
@@ -565,27 +617,34 @@ function liveDecks(data: GameData, state: GameState): Suit[] {
   return drawableSuits(data, state).filter((s) => state.suitsInPlay.includes(s));
 }
 
-/** W16 The Granary - "Whenever you harvest, Draw 1." */
+/** W16 The Granary - "Whenever you harvest, Draw 1. Once per turn." */
 export const granary: CardHandler = {
   difficulty: {
     score: 3,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: true, counts: true, interrupts: false },
     notes:
-      'RULING (decided): once per harvest ACTION, not once per building - otherwise The ' +
-      'Bakery draws eight. `afterHarvest` is emitted per building, so the guard is the ' +
-      "event stream: this fires only when its own building's `harvested` event is the " +
-      "FIRST of the seat's in the current apply. One apply is one move, so a cascade " +
-      '(W12, W13) draws once and a plain Harvest action draws once. The one gap is a ' +
-      'harvest CHAINED through a task answer (W8, W11), which is a separate apply and ' +
-      'draws again - correctly, in that a player decision sits between the two harvests. ' +
-      'A card-ability draw: no Orchard modifier (DL-47).',
+      'RULING (decided): once per harvest, not once per building - otherwise The Bakery ' +
+      'draws eight. The guard USED to be the event stream (fire only if this is the first ' +
+      "`harvested` of the seat's in the current apply), and this note documented its own " +
+      'hole: a harvest CHAINED through a task answer (W8, W11) is a separate apply and ' +
+      "drew again, as did the upgraded Farmstead's repeat. So on a good Wheat turn it " +
+      'drew two or three times. Rule change 12(c) (adopted 2026-08-11 with the Apiary ' +
+      "rebuild) says no card's text may fire twice in a turn, and this was out of step " +
+      'with it exactly as D16 was; the rebalance (2026-08-12) takes the same edit, onto ' +
+      'the shared `turn.firedThisTurn` guard via `markFired` (runtime.ts, THE ONE WRITER ' +
+      'of that list). A rule alignment, not a nerf. ✅ Safe for a Power card, CHECKED not ' +
+      'assumed: growOptions and activateTargets filter the list but also require ' +
+      "activationType !== null, and W16's is null; the two sow-target filters " +
+      '(actions.ts sowTargets, tasks.ts) also read it, and W16 has threshold null, which ' +
+      'makes canPlace false, so it was never a legal sow target to remove. A card-ability ' +
+      'draw: no Orchard modifier (DL-47).',
   },
   on: {
     afterHarvest(fx, event, self) {
       if (event.seat !== self.seat) return;
-      const mine = fx.events.filter((e) => e.e === 'harvested' && e.seat === self.seat);
-      if (mine.length !== 1) return;
+      if (fx.state.turn.firedThisTurn.includes(self.card)) return;
+      markFired(fx, self.card);
       drawN(fx, self.seat, self.card, 1);
     },
   },
@@ -664,9 +723,15 @@ export const breadHall: CardHandler = {
       'across buildings, this deep in FIELDs). It no longer scores coins, so its ' +
       '`replacesCoinPity` declaration is gone: nothing in the game converts coins to VP, ' +
       'and the card that used to reward hoarding against the market now rewards the thing ' +
-      'the suit is built out of.',
+      'the suit is built out of. CAPPED at 6 by the rebalance (2026-08-12), which is a ' +
+      'TEMPLATE fix and not a balance one: an uncapped "for each" on the axis the suit ' +
+      'specialises in is the exact shape docs/innovation.md warns about, and every other ' +
+      'endgame scaler in the game carries a cap or a divisor. ⚠️ Expect it to move ' +
+      'NOTHING - the card measures 0.44 VP a game, 0.98% of a winning score. If it moves ' +
+      'something, that is the finding rather than the fix. A HOLDING fix either way: a ' +
+      'proper re-point is still owed (wheat-rebalance-v1.md §6).',
   },
   gameEnd(data, state, seat) {
-    return 2 * ownFields(data, state, seat).length;
+    return Math.min(6, 2 * ownFields(data, state, seat).length);
   },
 };
