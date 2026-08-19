@@ -24,6 +24,11 @@ here, and the U row carries the full upgraded face. The only loadable starter is
 the Notice Board (threshold 5 / wild); the Farmstead is a passive suit-power card
 with no stack.
 
+The upgraded row carries the same "U" suffix in `Ref` as it does in `Card#` -
+W1 upgrades to W1U - which is a PRINTING convention, not a second card. `Ref` is
+the key the two faces are paired on, so main() strips the trailing "U" before
+using it; see the comment there for what happens when it does not.
+
 Derived from the reference implementation's extractor at its schema v3. Keys are
 camelCase here so the JSON is the TypeScript shape with no mapping layer.
 """
@@ -299,6 +304,20 @@ def main():
         if ctype not in TYPES:
             warnings.append(f"r{r}: skipped unknown type {ctype!r}")
             continue
+
+        # A starter's upgraded row is labelled with a trailing `U` in BOTH `Card#`
+        # and `Ref` (Dean, 2026-08-19): W1 upgrades to W1U. The suffix exists for
+        # the PHYSICAL PRINT RUN - it is how the two faces are told apart on a
+        # printed sheet - so the extract drops it deliberately. `Ref` is the key
+        # the two faces are paired on, and `upgraded` is derived from `Card#`
+        # independently, so an unstripped `U` splits every starter into two
+        # unpaired half-cards: all fifteen extracted with no `faces` key at all,
+        # including the five suit-power Farmsteads, until this line landed. The
+        # `id` written into the JSON is this stripped base ref, which the
+        # registry, the handlers, the tests and the web art filenames all key on.
+        ref = str(ref).strip()
+        if ref.endswith("U"):
+            ref = ref[:-1]
 
         ctype = TYPES[ctype]
         suit = suit.lower()
