@@ -4,7 +4,7 @@
     "kind": "generated",
     "generatedBy": "tools/extract_cards.py",
     "sourceSheet": "worksheet 'cards' of the designer spreadsheet (kept outside this repo)",
-    "sourceSha256": "1eb593447b3fccc2f94b3dbaf62da88db2d2bbfacf82780adc9c7b3f7990edff",
+    "sourceSha256": "81f96a11b17422b238218afe6de7c8ffed07516cab2a05924c8ec884b8a31fe4",
     "notes": [
       "buildCost is derived from the @cost1..@cost6 icon columns, which are authoritative; the sheet's 'Build Cost' text column is lossy.",
       "A suit has THREE starters - Barn (ref 1), Farmstead (ref 2), Notice Board (ref 3) - plus the 18-card deck (refs 4..21). 105 cards total (15 starters + 90 deck).",
@@ -65,6 +65,7 @@
       "inDeck": false,
       "enabled": true,
       "buildCost": null,
+      "upgradeCostCoins": 2,
       "abilityTrigger": [],
       "needsDesignReview": false,
       "faces": {
@@ -73,7 +74,7 @@
           "printedVp": 0,
           "threshold": null,
           "activationType": null,
-          "abilityText": "When you GROW, Draw 1.\nFlips free when you have 3 Apiary buildings."
+          "abilityText": "When you GROW, Draw 1."
         },
         "upgraded": {
           "name": "Upgraded Farmstead",
@@ -102,14 +103,14 @@
           "printedVp": 0,
           "threshold": 5,
           "activationType": "wild",
-          "abilityText": "VISITOR: Take £1 from bank\nOR GROW one of your buildings."
+          "abilityText": "VISITOR: Take £1 from the bank, OR Draw 2, then you may GROW one of your buildings."
         },
         "upgraded": {
-          "name": "Special Orders",
-          "printedVp": 0,
+          "name": "The County Show",
+          "printedVp": 2,
           "threshold": 5,
           "activationType": "wild",
-          "abilityText": null
+          "abilityText": "VISITOR: Take £2 from the bank, OR Take £1 and Draw 2, then you may GROW one of your buildings."
         }
       }
     },
@@ -314,12 +315,12 @@
         "wild": 1,
         "coins": 0
       },
-      "activationType": null,
-      "threshold": null,
+      "activationType": "wild",
+      "threshold": 1,
       "printedVp": 3,
       "abilityText": "Sow the top card of each deck onto your buildings.",
       "abilityTrigger": [
-        "action"
+        "onActivate"
       ],
       "needsDesignReview": false
     },
@@ -335,12 +336,12 @@
         "wild": 1,
         "coins": 0
       },
-      "activationType": null,
-      "threshold": null,
+      "activationType": "wild",
+      "threshold": 2,
       "printedVp": 3,
       "abilityText": "Sow the top card of any deck onto a neighbour's building. Take £1 from the bank for each of your HIVEs.",
       "abilityTrigger": [
-        "action"
+        "onActivate"
       ],
       "needsDesignReview": false
     },
@@ -356,12 +357,12 @@
         "wild": 1,
         "coins": 0
       },
-      "activationType": null,
-      "threshold": null,
+      "activationType": "wild",
+      "threshold": 1,
       "printedVp": 3,
       "abilityText": "Put the top card of each deck into any neighbour's barn. Take £2 from the bank for each.",
       "abilityTrigger": [
-        "action"
+        "onActivate"
       ],
       "needsDesignReview": false
     },
@@ -531,6 +532,7 @@
       "inDeck": false,
       "enabled": true,
       "buildCost": null,
+      "upgradeCostCoins": 2,
       "abilityTrigger": [],
       "needsDesignReview": false,
       "faces": {
@@ -539,7 +541,7 @@
           "printedVp": 0,
           "threshold": null,
           "activationType": null,
-          "abilityText": "When you Build, put 1 card you spend from your hand into your barn instead of discarding it.\nFlips free when you have 3 Dairy buildings."
+          "abilityText": "When you Build, put 1 card you spend from your hand into your barn instead of discarding it."
         },
         "upgraded": {
           "name": "Upgraded Farmstead",
@@ -571,11 +573,11 @@
           "abilityText": "VISITOR: Take £1 from bank\nOR Build at a discount of 1. Any crop may pay its crop costs."
         },
         "upgraded": {
-          "name": "Special Orders",
-          "printedVp": 0,
+          "name": "The County Show",
+          "printedVp": 2,
           "threshold": 5,
           "activationType": "wild",
-          "abilityText": null
+          "abilityText": "VISITOR: Take £2 from bank\nOR take £1 and: Build at a discount of 1. Any crop may pay its crop costs."
         }
       }
     },
@@ -741,7 +743,7 @@
       "activationType": "dairy",
       "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Build on top of one of your buildings (never a starter). Put every card on the covered building into your barn. The covered card scores its VP at game end.",
+      "abilityText": "Build on top of a building (not starter). Every card on the covered building goes into your barn. Covered card still scores its VP.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -780,12 +782,12 @@
         "wild": 1,
         "coins": 0
       },
-      "activationType": null,
-      "threshold": null,
+      "activationType": "wild",
+      "threshold": 2,
       "printedVp": 3,
       "abilityText": "Draw a card for every building you have built. Give any cards over your hand limit to other players, and take £1 from the bank for each.",
       "abilityTrigger": [
-        "action"
+        "onActivate"
       ],
       "needsDesignReview": false
     },
@@ -801,12 +803,12 @@
         "wild": 1,
         "coins": 0
       },
-      "activationType": null,
-      "threshold": null,
+      "activationType": "wild",
+      "threshold": 1,
       "printedVp": 3,
-      "abilityText": "Put one of your buildings, and every card on it, into your barn. Then put the top card of any deck into your barn for each card in its build cost.",
+      "abilityText": "Put one of your buildings, and every card on it, into your barn. For each cost of the building, add 1 deck card into yor barn.",
       "abilityTrigger": [
-        "action"
+        "onActivate"
       ],
       "needsDesignReview": false
     },
@@ -822,12 +824,12 @@
         "wild": 1,
         "coins": 0
       },
-      "activationType": null,
-      "threshold": null,
+      "activationType": "wild",
+      "threshold": 1,
       "printedVp": 3,
-      "abilityText": "Reveal deck tops one at a time and build each one free. Each must cost more than the last, or it is discarded and you stop.",
+      "abilityText": "Reveal deck tops one at a time and build for free. Each must cost more than the last, or it is discarded and you stop.",
       "abilityTrigger": [
-        "action"
+        "onActivate"
       ],
       "needsDesignReview": false
     },
@@ -867,7 +869,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 1,
-      "abilityText": "Whenever a neighbour Builds, take £1 from the bank.",
+      "abilityText": "When you build a card that is not Dairy, take £1 from the bank.",
       "abilityTrigger": [
         "passive"
       ],
@@ -997,6 +999,7 @@
       "inDeck": false,
       "enabled": true,
       "buildCost": null,
+      "upgradeCostCoins": 2,
       "abilityTrigger": [],
       "needsDesignReview": false,
       "faces": {
@@ -1005,7 +1008,7 @@
           "printedVp": 0,
           "threshold": null,
           "activationType": null,
-          "abilityText": "Your Draw is Draw 3, discard 1. Give the discarded card to a neighbour.\nFlips free when you have 3 Orchard buildings."
+          "abilityText": "Your Draw is Draw 3, discard 1. Give the discarded card to a neighbour."
         },
         "upgraded": {
           "name": "Upgraded Farmstead",
@@ -1034,14 +1037,14 @@
           "printedVp": 0,
           "threshold": 5,
           "activationType": "wild",
-          "abilityText": "VISITOR: Take £1 from bank\nOR Draw 2."
+          "abilityText": "VISITOR: Take £1 from bank\nOR Draw 3."
         },
         "upgraded": {
-          "name": "Special Orders",
-          "printedVp": 0,
+          "name": "The County Show",
+          "printedVp": 2,
           "threshold": 5,
           "activationType": "wild",
-          "abilityText": null
+          "abilityText": "VISITOR: Take £2 from bank\nOR take £1 and: Draw 3."
         }
       }
     },
@@ -1246,12 +1249,12 @@
         "wild": 1,
         "coins": 0
       },
-      "activationType": null,
-      "threshold": null,
+      "activationType": "wild",
+      "threshold": 1,
       "printedVp": 3,
       "abilityText": "GROW each of your ORCHARDs in turn, paying each cost as you go. Skip any you cannot or do not want to pay.",
       "abilityTrigger": [
-        "action"
+        "onActivate"
       ],
       "needsDesignReview": false
     },
@@ -1267,12 +1270,12 @@
         "wild": 1,
         "coins": 0
       },
-      "activationType": null,
-      "threshold": null,
+      "activationType": "wild",
+      "threshold": 1,
       "printedVp": 3,
       "abilityText": "SOW every card in your hand onto your buildings, then draw until your hand is full.",
       "abilityTrigger": [
-        "action"
+        "onActivate"
       ],
       "needsDesignReview": false
     },
@@ -1288,12 +1291,12 @@
         "wild": 1,
         "coins": 0
       },
-      "activationType": null,
-      "threshold": null,
+      "activationType": "wild",
+      "threshold": 2,
       "printedVp": 3,
       "abilityText": "Take the top card of each deck. Give 1 to each other player, keep the rest, and take £1 from the bank for each card given.",
       "abilityTrigger": [
-        "action"
+        "onActivate"
       ],
       "needsDesignReview": false
     },
@@ -1463,6 +1466,7 @@
       "inDeck": false,
       "enabled": true,
       "buildCost": null,
+      "upgradeCostCoins": 2,
       "abilityTrigger": [],
       "needsDesignReview": false,
       "faces": {
@@ -1471,14 +1475,14 @@
           "printedVp": 0,
           "threshold": null,
           "activationType": null,
-          "abilityText": "When you Deliver to the island, you may first put 1 card from your hand into your barn.\nFlips free when you have 3 Vegetable buildings."
+          "abilityText": "When you Deliver to the island, you may first put 1 card from your hand into your barn."
         },
         "upgraded": {
           "name": "Upgraded Farmstead",
           "printedVp": 2,
           "threshold": null,
           "activationType": null,
-          "abilityText": "When you Deliver to the island, you may first put up to 2 cards from your hand into your barn, and you may swap 1 card in your barn for the top card of any deck."
+          "abilityText": "When you Deliver to the island, you may first put 1 card from your hand into your barn, and you may swap 1 barn card for the top card of any deck."
         }
       }
     },
@@ -1503,11 +1507,11 @@
           "abilityText": "VISITOR: Take £1 from bank\nOR You may put 1 card from your hand into your barn, then Deliver."
         },
         "upgraded": {
-          "name": "Special Orders",
+          "name": "The County Show",
           "printedVp": 0,
           "threshold": 5,
           "activationType": "wild",
-          "abilityText": null
+          "abilityText": "VISITOR: Take £2 from bank\nOR take £1 and: You may put 1 card from your hand into your barn, then Deliver."
         }
       }
     },
@@ -1712,12 +1716,12 @@
         "wild": 1,
         "coins": 0
       },
-      "activationType": null,
-      "threshold": null,
+      "activationType": "wild",
+      "threshold": 1,
       "printedVp": 3,
       "abilityText": "For each different crop in your barn, put the top card of that crop's deck into your barn.",
       "abilityTrigger": [
-        "action"
+        "onActivate"
       ],
       "needsDesignReview": false
     },
@@ -1733,12 +1737,12 @@
         "wild": 1,
         "coins": 0
       },
-      "activationType": null,
-      "threshold": null,
+      "activationType": "wild",
+      "threshold": 1,
       "printedVp": 3,
       "abilityText": "Deliver to a tile where nobody has delivered, and take both of its receipts.",
       "abilityTrigger": [
-        "action"
+        "onActivate"
       ],
       "needsDesignReview": false
     },
@@ -1754,12 +1758,12 @@
         "wild": 1,
         "coins": 0
       },
-      "activationType": null,
-      "threshold": null,
+      "activationType": "wild",
+      "threshold": 1,
       "printedVp": 3,
       "abilityText": "Put the top card of any deck into each other player's barn, Draw 1 for each, then Deliver.",
       "abilityTrigger": [
-        "action"
+        "onActivate"
       ],
       "needsDesignReview": false
     },
@@ -1907,7 +1911,7 @@
           "printedVp": 0,
           "threshold": null,
           "activationType": null,
-          "abilityText": "Hand size 5. When you build a FIELD, Draw 2.",
+          "abilityText": "Hand size 5. When you build a FIELD, Draw 1.",
           "handSize": 5
         },
         "upgraded": {
@@ -1929,6 +1933,7 @@
       "inDeck": false,
       "enabled": true,
       "buildCost": null,
+      "upgradeCostCoins": 2,
       "abilityTrigger": [],
       "needsDesignReview": false,
       "faces": {
@@ -1937,14 +1942,14 @@
           "printedVp": 0,
           "threshold": null,
           "activationType": null,
-          "abilityText": "Harvest: Any card with 2+ cards on it, even if not full.\nFlips free when you have 3 Wheat buildings."
+          "abilityText": "Harvest: Add a card to the barn from your hand."
         },
         "upgraded": {
           "name": "Upgraded Farmstead",
           "printedVp": 2,
           "threshold": null,
           "activationType": null,
-          "abilityText": "Harvest: Any card with 2+ cards on it, even if not full.\nHarvest is 2 buildings."
+          "abilityText": "Harvest: Add a card to the barn from the top of any deck."
         }
       }
     },
@@ -1966,14 +1971,14 @@
           "printedVp": 0,
           "threshold": 5,
           "activationType": "wild",
-          "abilityText": "VISITOR: Take £1 from bank\nOR Harvest, then you may put 1 card from your hand into your barn."
+          "abilityText": "VISITOR: Take £1 from bank\nOR Harvest a building with 2 or more cards, even if not full."
         },
         "upgraded": {
-          "name": "Special Orders",
-          "printedVp": 0,
+          "name": "The County Show",
+          "printedVp": 2,
           "threshold": 5,
           "activationType": "wild",
-          "abilityText": null
+          "abilityText": "VISITOR: Take £2 from bank\nOR take £1 and: Harvest a building with 2 or more cards, even if not full."
         }
       }
     },
@@ -1992,7 +1997,7 @@
       "activationType": "wheat",
       "threshold": 2,
       "printedVp": 1,
-      "abilityText": "Draw 1.\nHARVEST: Put 1 card from your hand into your barn. Sow 1 FIELD from the deck.",
+      "abilityText": "Draw 1.\nHARVEST: Put 1 card from your hand into your barn.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -2013,7 +2018,7 @@
       "activationType": "wheat",
       "threshold": 2,
       "printedVp": 1,
-      "abilityText": "Draw 1.\nHARVEST: Draw 2. Sow 1 FIELD from the deck.",
+      "abilityText": "Draw 1.\nHARVEST: Draw 2. Sow 1 deck card onto this FIELD.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -2034,7 +2039,7 @@
       "activationType": "wheat",
       "threshold": 3,
       "printedVp": 1,
-      "abilityText": "Draw 1.\nHARVEST: Sow 1 card from your hand onto each of your FIELDs. Sow 1 FIELD from the deck.",
+      "abilityText": "Draw 1.HARVEST: Sow 1 card from your hand onto each of your FIELDs. Sow 1 deck card onto this FIELD.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -2055,7 +2060,7 @@
       "activationType": "wheat",
       "threshold": 3,
       "printedVp": 1,
-      "abilityText": "Draw 1, then sow the top card of any deck onto this FIELD.\nHARVEST: Build, at a discount of 1. Sow 1 FIELD from the deck.",
+      "abilityText": "Draw 1, then sow the top card of any deck onto this FIELD. HARVEST: Build, at a discount of 1.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -2076,7 +2081,7 @@
       "activationType": "wheat",
       "threshold": 2,
       "printedVp": 1,
-      "abilityText": "Draw 1, then put 1 card from your hand into your barn.\nHARVEST: Harvest another of your buildings. Sow 1 FIELD from the deck.",
+      "abilityText": "Draw 1, then put 1 card from your hand into your barn.\nHARVEST: Harvest another of your buildings. Sow 1 deck card onto this FIELD.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -2139,7 +2144,7 @@
       "activationType": "wheat",
       "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Harvest one of your buildings, however many cards are on it, then Deliver.",
+      "abilityText": "Harvest one of your buildings, however many cards are on it.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -2178,12 +2183,12 @@
         "wild": 1,
         "coins": 0
       },
-      "activationType": null,
-      "threshold": null,
+      "activationType": "wild",
+      "threshold": 1,
       "printedVp": 3,
       "abilityText": "Harvest every one of your buildings, however many cards are on them.",
       "abilityTrigger": [
-        "action"
+        "onActivate"
       ],
       "needsDesignReview": false
     },
@@ -2199,12 +2204,12 @@
         "wild": 1,
         "coins": 0
       },
-      "activationType": null,
-      "threshold": null,
+      "activationType": "wild",
+      "threshold": 2,
       "printedVp": 3,
-      "abilityText": "Every other player may Draw 1. Gain £1 for each card drawn.",
+      "abilityText": "Every player, including you, may Draw 1. For each card drawn, gain £1.",
       "abilityTrigger": [
-        "action"
+        "onActivate"
       ],
       "needsDesignReview": false
     },
@@ -2220,12 +2225,12 @@
         "wild": 1,
         "coins": 0
       },
-      "activationType": null,
-      "threshold": null,
+      "activationType": "wild",
+      "threshold": 1,
       "printedVp": 3,
       "abilityText": "Put the top card of each deck into your barn.",
       "abilityTrigger": [
-        "action"
+        "onActivate"
       ],
       "needsDesignReview": false
     },
@@ -2286,7 +2291,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 1,
-      "abilityText": "When you use a neighbour's Service, you may place a second card on it to use it again.",
+      "abilityText": "When you VISIT a neighbour, you may place a second card on their Notice Board and take its action again.",
       "abilityTrigger": [
         "passive"
       ],

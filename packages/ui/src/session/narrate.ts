@@ -122,9 +122,12 @@ export function narrate(
     case 'demolished':
       return line(`${who(event.seat)} demolishes ${cardWord(data, event.card)}`, event.seat);
     case 'starterUpgraded':
-      return event.free
+      // Every flip is a £2 purchase now (2026-08-12), so the Farmstead is told
+      // apart by its slot rather than by a `free` flag. It keeps the alarm: the
+      // upgraded suit power is still the moment a farm changes gear.
+      return data.cards.catalogue.find((c) => c.id === event.card)?.slot === 'farmstead'
         ? line(
-            `${who(event.seat)} flips the Farmstead - the suit power is live`,
+            `${who(event.seat)} flips the Farmstead - the upgraded suit power is live`,
             event.seat,
             'alarm',
           )

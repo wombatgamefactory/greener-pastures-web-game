@@ -19,8 +19,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { BASE_GAME_DATA as data } from '@gp/data';
-import type { Suit } from '@gp/data';
+import { BASE_GAME_DATA as data, loadGameData } from '@gp/data';
+import type { GameData, Overlay, Suit } from '@gp/data';
 import { apply, isOver, legalMoves, makeProber, newGame, viewFor } from '@gp/engine';
 import type { CardId, Move, PlayerView, Seat } from '@gp/engine';
 import { makePolicy, policyRng } from '@gp/bots';
@@ -36,24 +36,43 @@ interface Position {
 }
 
 /** Real positions from real games, the same shape ticket 25's corpus uses. */
-function corpus(seeds: readonly string[], seats: number, suits: Suit[]): Position[] {
+function corpus(
+  seeds: readonly string[],
+  seats: number,
+  suits: Suit[],
+  gd: GameData = data,
+): Position[] {
   const out: Position[] = [];
   for (const seed of seeds) {
-    let state = newGame(data, { seats, suits, seed });
+    let state = newGame(gd, { seats, suits, seed });
     for (let step = 0; step < 500 && !isOver(state); step++) {
-      const moves = legalMoves(data, state);
+      const moves = legalMoves(gd, state);
       if (moves.length === 0) break;
       const actor = state.tasks[0]?.pid ?? state.turnPlayer;
-      const view = viewFor(data, state, actor);
+      const view = viewFor(gd, state, actor);
       out.push({ view, moves });
       const policy = makePolicy(step % 3 === 0 ? 'socialite' : 'balanced');
       const rng = policyRng(seed, actor, 'balanced');
-      const probe = makeProber(data, state, actor);
-      state = apply(data, state, policy.choose({ data, view, moves, rng, probe })).state;
+      const probe = makeProber(gd, state, actor);
+      state = apply(gd, state, policy.choose({ data: gd, view, moves, rng, probe })).state;
     }
   }
   return out;
 }
+
+/**
+ * Special Orders' 2-card line is null in the shipped data since the 2026-08-13
+ * upgraded face replaced that card, so no corpus built from the real rules
+ * contains a two-card visit and the drag that pays the second card would be
+ * asserting over an empty set. The mode is still in the engine, so it keeps its
+ * drag test - against a corpus built from an overlay that prints the line.
+ */
+const twoCardData = loadGameData({
+  name: 'two-card-visit',
+  description: "guards the drag for Special Orders' switched-off 2-card mode",
+  schemaVersion: 1,
+  set: { 'rules.economy.visitPayout.twoCard': 3 },
+} as unknown as Overlay);
 
 // `drop-d` was added on 2026-08-08, not because anything broke but because the
 // wild substitution shifted these seeds toward Deliver and away from Sow, and
@@ -63,6 +82,12 @@ const positions = [
   ...corpus(['drop-a', 'drop-b'], 3, ['wheat', 'vegetable', 'orchard']),
   ...corpus(['drop-c'], 4, ['wheat', 'vegetable', 'orchard', 'dairy']),
   ...corpus(['drop-d'], 3, ['apiary', 'vegetable', 'dairy']),
+];
+
+/** The same shape, under rules that still print the 2-card line. */
+const twoCardPositions = [
+  ...corpus(['drop-a', 'drop-b'], 3, ['wheat', 'vegetable', 'orchard'], twoCardData),
+  ...corpus(['drop-c'], 4, ['wheat', 'vegetable', 'orchard', 'dairy'], twoCardData),
 ];
 
 const held = (card: CardId): Intent => ({ k: 'hold', card });
@@ -137,7 +162,7 @@ describe('a drag reaches what a click reaches', () => {
 
   it('the second card of a two-card visit, by dropping it on the open panel', () => {
     let checked = 0;
-    for (const p of positions) {
+    for (const p of twoCardPositions) {
       for (const move of p.moves) {
         if (move.type !== 'visit' || move.fee.length !== 2) continue;
         const [first, second] = move.fee as [CardId, CardId];

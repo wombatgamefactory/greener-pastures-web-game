@@ -17,6 +17,8 @@ import type { BuildingView, CardId, PlayerView } from '@gp/engine';
 import { deliveriesPerTile } from '@gp/data';
 import { activationSurchargeOf, harvestSurchargeOf } from '@gp/engine';
 
+import { magpieTarget } from './magpie.js';
+
 /**
  * Card lookup by id, indexed per GameData.
  *
@@ -73,15 +75,18 @@ export interface Scratch {
   readonly data: GameData;
   readonly view: PlayerView;
   readonly mySuit: Suit;
+  /**
+   * The magpie's mark: the strongest SEATED crop that is not `mySuit` (see
+   * `magpie.ts`). Derived for every profile because it costs one array scan,
+   * and read only by the three `*TargetCrop` terms - which every profile but
+   * `magpie` weights at 0, so nothing else changes behaviour because of it.
+   */
+  readonly targetSuit: Suit | null;
   /** Printed on the Barn's showing face. Null only if the Barn has somehow gone. */
   readonly handLimit: number | null;
   /** Cards you could draw before the end-of-turn discard bites. */
   readonly handRoom: number;
   readonly buildings: ReadonlyMap<CardId, BuildingView>;
-  /** Buildings printing your own crop icon - the Farmstead free-flip counter. */
-  readonly ownCropBuildings: number;
-  readonly flipAt: number;
-  readonly farmsteadUpgraded: boolean;
   readonly noticeBoard: BuildingView | null;
   /**
    * Suits a tile with a free receipt space still wants. Wild crates count for
@@ -184,9 +189,14 @@ function sinksOf(
 
   for (const building of tableau.values()) {
     const card = cardById(data, building.card);
-    // The Farmstead flips FREE at the own-crop milestone and can never be
-    // bought (ticket 07), so its printed cost bar is not a sink.
-    if (card.slot && card.slot !== 'farmstead' && !building.upgraded) {
+    // All three starters are bought now (2026-08-12), so all three are sinks -
+    // the Farmstead used to be excluded here because it flipped free.
+    //
+    // ⚠️ The Service still slips in and always has: it sits in the tableau with
+    // a slot and no second face, so it adds a phantom £2 nobody can spend.
+    // Left alone deliberately - it is the same constant for every seat in every
+    // arm, and fixing it in the same change as a rule would confound the two.
+    if (card.slot && !building.upgraded) {
       sinks.push(card.upgradeCostCoins ?? data.rules.economy.upgradeCostCoins);
     }
     // Surcharges are printed per card and keyed by data trigger, never by name.
@@ -362,16 +372,12 @@ export function makeScratch(data: GameData, view: PlayerView): Scratch {
   const you = view.you;
   const buildings = new Map<CardId, BuildingView>();
   let handLimit: number | null = null;
-  let ownCropBuildings = 0;
-  let farmsteadUpgraded = false;
   let noticeBoard: BuildingView | null = null;
 
   for (const building of you.tableau) {
     buildings.set(building.card, building);
-    if (cropOfView(data, building) === you.suit) ownCropBuildings += 1;
     const slot = starterSlotOf(cardById(data, building.card));
     if (slot === 'barn') handLimit = faceOfView(data, building).handSize ?? null;
-    if (slot === 'farmstead') farmsteadUpgraded = building.upgraded;
     if (slot === 'noticeboard') noticeBoard = building;
   }
 
@@ -389,12 +395,10 @@ export function makeScratch(data: GameData, view: PlayerView): Scratch {
     data,
     view,
     mySuit: you.suit,
+    targetSuit: magpieTarget(you.suit, view.suitsInPlay),
     handLimit,
     handRoom: handLimit === null ? 0 : Math.max(0, handLimit - you.hand.length),
     buildings,
-    ownCropBuildings,
-    flipAt: data.rules.economy.farmsteadFlipAtOwnColourBuilds,
-    farmsteadUpgraded,
     noticeBoard,
     demandSuits,
     coins: you.coins,

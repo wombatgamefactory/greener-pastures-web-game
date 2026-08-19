@@ -23,12 +23,15 @@ import type { Leaf } from './paths.js';
  * `intArray` covers a Working Week track, which is replaced whole. `boolean`
  * covers the enable flags.
  *
- * There is deliberately no string type. The overlay carries numbers and flags
- * only and may never override card text: the sheet is the single source of truth
- * for wording, and that is what stops the web game and the physical game drifting
- * apart on rules text.
+ * `cropOrWild` is the one and only string-valued type, added 2026-08-16 for the
+ * Tier 3 wild-activation arm. It is NOT a general string knob: its legal values
+ * are the five crop names, `wild` and null, and nothing else, so it can name a
+ * GROW payment rule and can never carry a word a player would read. The ban
+ * below stands unweakened - the overlay may still never override card TEXT,
+ * because the sheet is the single source of truth for wording and that is what
+ * stops the web game and the physical game drifting apart on rules text.
  */
-export type KnobType = 'int' | 'number' | 'intOrNull' | 'intArray' | 'boolean';
+export type KnobType = 'int' | 'number' | 'intOrNull' | 'intArray' | 'boolean' | 'cropOrWild';
 
 export interface KnobTemplate {
   /** Dotted path, `{}` for a wildcard segment. */
@@ -94,7 +97,10 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
   {
     template: 'rules.economy.upgradeCostCoins',
     type: 'int',
-    description: 'Cost to flip a starter to its upgraded face.',
+    description:
+      'Cost to flip a starter to its upgraded face - all three of them since 2026-08-12, when ' +
+      "the Farmstead's free flip at the own-crop milestone was retired and it went on sale at " +
+      'the same price. Now the widest single dial on the upgrade layer.',
   },
   {
     template: 'rules.economy.coinPityDivisor',
@@ -112,11 +118,20 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     description: 'The same, at an upgraded Notice Board.',
   },
   {
-    template: 'rules.economy.visitPayout.twoCard',
+    template: 'rules.economy.visitPayout.upgradedAction',
     type: 'int',
     description:
+      'Coins the bank pays a visitor who takes the ACTION at an upgraded Notice Board. A base ' +
+      'board always pays the action branch nothing. 0 is the paired control for the 2026-08-13 ' +
+      'upgraded face.',
+  },
+  {
+    template: 'rules.economy.visitPayout.twoCard',
+    type: 'intOrNull',
+    description:
       "Special Orders' 2-card mode: the coins the bank pays a visitor who places two cards " +
-      'instead of one. Upgraded boards only, and never a Worker payoff.',
+      'instead of one. Upgraded boards only, and never a Worker payoff. Null deletes the rule, ' +
+      'which is what ships since change 6 retired Special Orders.',
   },
   {
     template: 'rules.economy.giftDiscardCoins',
@@ -125,12 +140,6 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'The coin the upgraded Orchard Farmstead mints per card it gives away at the discard ' +
       'divert seam. Flagged in the rebuild as the number most likely to be wrong, at roughly £8-10 ' +
       'a game where seats currently end with £1. 0 leaves the gift free.',
-  },
-  {
-    template: 'rules.economy.farmsteadFlipAtOwnColourBuilds',
-    type: 'int',
-    description:
-      'Buildings printing your own crop icon at which the Farmstead flips free. Ticket 07 made this a printed-icon count, so an upgraded Barn or Notice Board counts and a base starter does not - which is what gives the £2 upgrade sinks a second job.',
   },
   {
     template: 'rules.endGame.furtherTurnsEach',
@@ -265,6 +274,15 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     template: 'cards.catalogue.{}.threshold',
     type: 'intOrNull',
     description: 'Cards a building holds before it is full and clogged.',
+  },
+  {
+    template: 'cards.catalogue.{}.activationType',
+    type: 'cropOrWild',
+    description:
+      "The crop a GROW must pay into this building, or 'wild' for any card. null is a card " +
+      'that cannot be grown at all, and setting a null one is a design change wearing a ' +
+      "knob's clothes - the extractor reads null threshold plus null activation as the ACTION " +
+      'card, and this knob does not move the threshold with it.',
   },
   {
     template: 'cards.catalogue.{}.printedVp',

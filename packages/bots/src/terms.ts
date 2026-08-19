@@ -87,21 +87,34 @@ function countOwnCrop(s: Scratch, ids: readonly CardId[]): number {
   return n;
 }
 
+function countTargetCrop(s: Scratch, ids: readonly CardId[]): number {
+  if (s.targetSuit === null) return 0;
+  let n = 0;
+  for (const id of ids) if (suitOf(s.data, id) === s.targetSuit) n += 1;
+  return n;
+}
+
 /**
- * The coins a visit would mint, from the host's showing Notice Board face.
+ * The coins a visit would mint to the VISITOR, from the host's showing Notice
+ * Board face. The host's own gain is never priced here: `visitWage` is 0, and
+ * what the host actually gets is freight, which the probe values as the card
+ * landing on their farm.
  *
- * Special Orders' second line lives on the upgraded face only, so the three
- * payouts are exactly the three the card prints. Worker visits mint nothing to
- * the visitor - the wage goes to the host, from the bank - so they price at 0
- * here and are valued by the probe instead.
+ * Since 2026-08-13 the action branch is not free either. An upgraded board pays
+ * `upgradedAction` on top of the action itself, and the bot has to see it or
+ * the whole point of the card - pulling a visitor to THIS farm rather than the
+ * one next door - is invisible to every arm that measures it. A base board
+ * still pays the action branch nothing, which is what makes the upgrade worth
+ * buying.
  */
 function visitPayout(s: Scratch, act: Extract<Act, { a: 'visit' }>): number {
   const payout = s.data.rules.economy.visitPayout;
-  if (act.payoff.mode === 'worker') return 0;
-  if (act.payoff.mode === 'special') return payout.twoCard;
   const host = s.view.rivals.find((r) => r.seat === act.host);
   const board = host?.tableau.find((b) => cardById(s.data, b.card).slot === 'noticeboard');
-  return board?.upgraded ? payout.upgraded : payout.base;
+  const upgraded = board?.upgraded ?? false;
+  if (act.payoff.mode === 'worker') return upgraded ? payout.upgradedAction : 0;
+  if (act.payoff.mode === 'special') return payout.twoCard ?? 0;
+  return upgraded ? payout.upgraded : payout.base;
 }
 
 /** The card a standing move spends out of hand: the Helping Hand's fee, O1's gift. */
@@ -523,11 +536,33 @@ export const TERMS: readonly Term[] = [
     feature: (act, s) => (act.a === 'build' ? (cardById(s.data, act.card).printedVp ?? 0) : 0),
   },
   {
-    // The Farmstead free-flip is the whole own-suit incentive, so a profile's
-    // loyalty lives in this one weight.
+    /**
+     * A profile's loyalty to the crop it was DEALT, in one weight.
+     *
+     * ⚠️ The comment here used to read "the Farmstead free-flip is the whole
+     * own-suit incentive", and change 14 (2026-08-12) retired that flip - so
+     * this weight is now the bot preferring something the rules no longer pay
+     * for. Left at 2 rather than dropped to 0, because moving it would re-mint
+     * the reference in the same breath as adding the bot that exists to
+     * question it. `magpie` is the control that decides whether it should go.
+     */
     name: 'buildOwnCrop',
     claims: ['build', ...ACTION_AND_TASK],
     feature: (act, s) => (act.a === 'build' && suitOf(s.data, act.card) === s.mySuit ? 1 : 0),
+  },
+  {
+    /**
+     * The magpie's build: the strongest seated crop that is not its own.
+     *
+     * Weighted 0 everywhere but `magpie`, so it is inert in the reference and
+     * the four archetype mirrors - adding it cannot move reference-v9.
+     */
+    name: 'buildTargetCrop',
+    claims: ['build', ...ACTION_AND_TASK],
+    feature: (act, s) =>
+      act.a === 'build' && s.targetSuit !== null && suitOf(s.data, act.card) === s.targetSuit
+        ? 1
+        : 0,
   },
   {
     /**
@@ -562,16 +597,17 @@ export const TERMS: readonly Term[] = [
     claims: ['upgrade'],
     feature: (act) => (act.a === 'upgrade' ? 1 : 0),
   },
-  {
-    // Ticket 29's change with teeth: an upgraded starter prints its crop icon,
-    // so a £2 flip can also be the third own-colour building that flips the
-    // Farmstead free. The £2 sinks went unused in the 2026-07-14 playtest;
-    // this is the term that decides whether a bot finds the double duty.
-    name: 'upgradeMilestone',
-    claims: ['upgrade'],
-    feature: (act, s) =>
-      act.a === 'upgrade' && !s.farmsteadUpgraded && s.ownCropBuildings + 1 >= s.flipAt ? 1 : 0,
-  },
+  // `upgradeMilestone` used to sit here: a £2 flip printed a crop icon, so it
+  // could also be the third own-colour building that flipped the Farmstead
+  // free, and this term is what found that double duty. The free flip was
+  // retired on 2026-08-12 (all three starters are simply bought), so the term
+  // measured a rule that no longer exists and went with it.
+  //
+  // ⚠️ WHAT IT LEAVES BEHIND: `upgrade` above is FLAT, so a bot is now
+  // indifferent between the three £2 flips and takes them in tableau order.
+  // That is a systematic artefact, not noise, and the Farmstead is the flip
+  // that doubles a suit power. Before any arm is run on this rule, decide
+  // whether a Farmstead-specific term belongs here.
 
   // --- the hand -------------------------------------------------------------
   {
@@ -605,6 +641,22 @@ export const TERMS: readonly Term[] = [
     name: 'buyDemand',
     claims: ['buy'],
     feature: (act, s) => (act.a === 'buy' && s.demandSuits.has(act.suit) ? 1 : 0),
+  },
+  {
+    /**
+     * The magpie's best lane, and the reason it gets a term of its own rather
+     * than riding on `deckTargetCrop`: the buy takes a card **into hand** and
+     * `buyOptions` already excludes the buyer's own suit, so it is the one
+     * acquisition in the game that is foreign by rule. Left suit-blind, a magpie
+     * would spend its buys on whichever crop `buyDemand` happened to like and
+     * starve the tableau it exists to build.
+     *
+     * 0 in every other profile, like its three siblings.
+     */
+    name: 'buyTargetCrop',
+    claims: ['buy'],
+    feature: (act, s) =>
+      act.a === 'buy' && s.targetSuit !== null && act.suit === s.targetSuit ? 1 : 0,
   },
   {
     /**
@@ -689,6 +741,13 @@ export const TERMS: readonly Term[] = [
     feature: (act, s) => (act.a === 'deckPick' && act.suit === s.mySuit ? 1 : 0),
   },
   {
+    /** The magpie's acquisition lane. 0 in every other profile. */
+    name: 'deckTargetCrop',
+    claims: ACTION_AND_TASK,
+    feature: (act, s) =>
+      act.a === 'deckPick' && s.targetSuit !== null && act.suit === s.targetSuit ? 1 : 0,
+  },
+  {
     /**
      * **Measured dead** (ticket 53), and left in place pending
      * [54](../../../.scratch/web-game/issues/54-draw-always-own-suit.md).
@@ -722,6 +781,12 @@ export const TERMS: readonly Term[] = [
     feature: (act, s) => (act.a === 'keep' ? countOwnCrop(s, act.cards) : 0),
   },
   {
+    /** Which of a Draw's cards the magpie keeps. 0 in every other profile. */
+    name: 'keepTargetCrop',
+    claims: ACTION_AND_TASK,
+    feature: (act, s) => (act.a === 'keep' ? countTargetCrop(s, act.cards) : 0),
+  },
+  {
     // The junk rank, negated: the least valuable discard scores highest.
     name: 'discardJunk',
     claims: ACTION_AND_TASK,
@@ -752,6 +817,22 @@ export const TERMS: readonly Term[] = [
     claims: ['visit'],
     feature: (act, s) => (act.a === 'visit' ? -totalValue(s.data, act.fee) : 0),
     cost: true,
+  },
+  {
+    /**
+     * The magpie's disposal lane, and it needs one: `visitFeeJunk` ranks a fee
+     * by CARD VALUE, which is the right rank for everybody whose own crop is
+     * worth something and the wrong one here. A magpie is dealt six own-crop
+     * cards at setup and will never build one, so they are the only cards it can
+     * spend at no cost at all - and without this term it pays its target crop
+     * away instead, exactly the leak "your junk is their treasure" is about.
+     *
+     * 0 in every other profile: to a loyalist an own-crop card is the LAST thing
+     * it wants to hand over, and this term must never quietly say otherwise.
+     */
+    name: 'visitFeeOwnCrop',
+    claims: ['visit'],
+    feature: (act, s) => (act.a === 'visit' ? countOwnCrop(s, act.fee) : 0),
   },
   {
     name: 'workOwn',

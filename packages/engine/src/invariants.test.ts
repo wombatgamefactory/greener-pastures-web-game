@@ -4,8 +4,8 @@
  * Every seat holds its three starters - Farmstead, Barn, Notice Board - for the
  * whole game. A great deal quietly rests on that: `noticeBoardOf` throws rather
  * than returning null, `handLimitOf` reads a missing Barn as NO hand limit, the
- * suit power and the free-flip milestone live on the Farmstead, and v14's Notice
- * Board is the only visit target in the game.
+ * suit power lives on the Farmstead, and v14's Notice Board is the only visit
+ * target in the game.
  *
  * It was false until ticket 30. D11's cover and D14's demolish took
  * `emptyBuildings` unfiltered, so a seat could remove its own starters, and

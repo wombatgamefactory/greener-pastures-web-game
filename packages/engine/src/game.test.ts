@@ -8,7 +8,7 @@
  */
 
 import { BASE_GAME_DATA as data, loadGameData } from '@gp/data';
-import type { Suit } from '@gp/data';
+import type { Overlay, Suit } from '@gp/data';
 import { describe, expect, it } from 'vitest';
 
 import { anyDeliverOption, deliverOptions, islandDeliveriesBy, tileLevel } from './actions.js';
@@ -36,9 +36,28 @@ function noticeBoard(state: GameState, seat: number) {
   return board;
 }
 
-/** Flip a seat's Notice Board to its Special Orders face without paying for it. */
+/** Flip a seat's Notice Board to its upgraded face without paying for it. */
 function upgradeNoticeBoard(state: GameState, seat: number): void {
   noticeBoard(state, seat).upgraded = true;
+}
+
+/**
+ * Special Orders' 2-card line is off in the shipped data - `twoCard` is null
+ * since the 2026-08-13 upgraded face replaced that card - but the mode is still
+ * in the engine, kept so switching it back on stays a data edit. Its tests
+ * therefore run against an overlay that prints the line. Without this they
+ * could only assert that the mode is unreachable, and the branch would rot
+ * unwatched until somebody deleted it for the wrong reason.
+ */
+const twoCardData = loadGameData({
+  name: 'two-card-visit',
+  description: "guards Special Orders' switched-off 2-card mode",
+  schemaVersion: 1,
+  set: { 'rules.economy.visitPayout.twoCard': 3 },
+} as unknown as Overlay);
+
+function twoCardState(): GameState {
+  return makeState(twoCardData, ['wheat', 'apiary']);
 }
 
 /** A Wheat delivery to A1, which the testkit island stocks with two wheat crates (4 wheat). */
@@ -155,7 +174,10 @@ describe('main actions through apply', () => {
     expect(picks.every((m) => m.type === 'task' && m.seat === WHEAT)).toBe(true);
   });
 
-  it('build pays the printed cost and the 3rd own-colour build flips the Farmstead free', () => {
+  it('build pays the printed cost and never flips the Farmstead - the milestone is retired', () => {
+    // Until 2026-08-12 the third own-crop building flipped the Farmstead free.
+    // Dean retired that: the Farmstead is bought for £2 like its siblings, so
+    // three own-colour builds now leave it on its base face.
     let state = base();
     state.players[WHEAT]!.coins = 10;
     const events: GameEvent[] = [];
@@ -174,11 +196,15 @@ describe('main actions through apply', () => {
       state.turnPlayer = WHEAT;
       state.tasks = [];
     }
+    const built = state.players[WHEAT]!.tableau.filter(
+      (b) => cardById(data, b.card).type !== 'starter',
+    );
+    expect(built).toHaveLength(3);
     const wheatFarm = state.players[WHEAT]!.tableau.find(
       (b) => cardById(data, b.card).slot === 'farmstead',
     );
-    expect(wheatFarm?.upgraded).toBe(true);
-    expect(events.filter((e) => e.e === 'starterUpgraded' && e.free)).toHaveLength(1);
+    expect(wheatFarm?.upgraded).toBe(false);
+    expect(events.filter((e) => e.e === 'starterUpgraded')).toHaveLength(0);
   });
 
   it('upgrade is a Build-action branch priced from data', () => {
@@ -466,42 +492,36 @@ describe('main actions through apply', () => {
     expect(after.players[0]!.receipts).toEqual([]);
   });
 
-  it('the Farmstead milestone counts printed crop icons, so a paid flip can trigger it', () => {
-    // Ticket 07: base starters print the starting-building icon and count for
-    // nothing; an upgraded one prints the crop icon and counts. So £2 spent on
-    // the Barn can be the third own-crop building and flip the Farmstead free.
+  it('the Farmstead is bought for £2 like its siblings, and buying one flips only itself', () => {
+    // The rule change of 2026-08-12: the Farmstead is on the upgrade menu at
+    // the standard price, and nothing on the table flips it for free. The old
+    // knock-on - a paid Barn flip printing the third crop icon and flipping the
+    // Farmstead as well - is gone with the milestone that read it.
     const s = base();
     buildFor(data, s, WHEAT, 'W4', 'W5'); // two own-crop deck builds
     dealTo(data, s, WHEAT, 'W6'); // keep the turn from settling
     s.players[WHEAT]!.coins = 2;
-    expect(s.players[WHEAT]!.tableau.find((b) => b.card === 'W2')?.upgraded).toBe(false);
 
-    const up = apply(data, s, { type: 'upgrade', seat: WHEAT, card: 'W1' });
+    const offered = legalMoves(data, s)
+      .filter((m): m is Extract<Move, { type: 'upgrade' }> => m.type === 'upgrade')
+      .map((m) => m.card);
+    expect(offered).toContain('W2');
+
+    const up = apply(data, s, { type: 'upgrade', seat: WHEAT, card: 'W2' });
     const tableau = up.state.players[WHEAT]!.tableau;
-    expect(tableau.find((b) => b.card === 'W1')?.upgraded).toBe(true);
     expect(tableau.find((b) => b.card === 'W2')?.upgraded).toBe(true);
-    expect(up.events.filter((e) => e.e === 'starterUpgraded').map((e) => [e.card, e.free])).toEqual(
-      [
-        ['W1', false],
-        ['W2', true],
-      ],
-    );
+    expect(tableau.find((b) => b.card === 'W1')?.upgraded).toBe(false);
+    expect(up.state.players[WHEAT]!.coins).toBe(0);
+    expect(up.events.filter((e) => e.e === 'starterUpgraded').map((e) => e.card)).toEqual(['W2']);
   });
 
-  it('two deck builds alone leave the Farmstead unflipped', () => {
+  it('a paid Barn flip no longer flips the Farmstead with it', () => {
     const s = base();
-    buildFor(data, s, WHEAT, 'W4', 'W5');
+    buildFor(data, s, WHEAT, 'W4', 'W5'); // the old milestone's first two icons
     dealTo(data, s, WHEAT, 'W6');
     s.players[WHEAT]!.coins = 2;
     const up = apply(data, s, { type: 'upgrade', seat: WHEAT, card: 'W1' });
-    // Sanity check on the negative: strip the Barn's contribution and nothing flips.
-    const s2 = base();
-    buildFor(data, s2, WHEAT, 'W4');
-    dealTo(data, s2, WHEAT, 'W6');
-    s2.players[WHEAT]!.coins = 2;
-    const up2 = apply(data, s2, { type: 'upgrade', seat: WHEAT, card: 'W1' });
-    expect(up.state.players[WHEAT]!.tableau.find((b) => b.card === 'W2')?.upgraded).toBe(true);
-    expect(up2.state.players[WHEAT]!.tableau.find((b) => b.card === 'W2')?.upgraded).toBe(false);
+    expect(up.state.players[WHEAT]!.tableau.find((b) => b.card === 'W2')?.upgraded).toBe(false);
   });
 
   it('pass is offered only when no main action is legal', () => {
@@ -551,13 +571,54 @@ describe('the bonus slot through apply', () => {
     });
     expect(applied.state.turn.visit).toMatchObject({ host: APIARY, workerId: 'draw' });
     expect(applied.state.tasks[0]).toMatchObject({ t: 'draw', see: 2, keep: 2, pid: WHEAT });
+    // A BASE board pays the action branch nothing. That is what the upgrade buys.
+    expect(applied.state.players[WHEAT]!.coins).toBe(0);
+  });
+
+  /**
+   * The 2026-08-13 upgraded face: "VISIT: gain £2, OR gain £1 and do the special
+   * action". The second half is the new one, and it is the whole card - it is
+   * what stops a visitor swapping to the coin branch on the same farm instead of
+   * choosing that farm over a neighbour's.
+   */
+  it('an upgraded board pays the action branch too, and the owner still gets nothing', () => {
+    const state = base();
+    upgradeNoticeBoard(state, APIARY);
+    hireFor(state, APIARY, 'draw');
+    dealTo(data, state, WHEAT, 'W4');
+    const hostBefore = state.players[APIARY]!.coins;
+    const applied = apply(data, state, {
+      type: 'visit',
+      seat: WHEAT,
+      host: APIARY,
+      fee: ['W4'],
+      payoff: { mode: 'worker', workerId: 'draw' },
+    });
+    expect(applied.state.players[WHEAT]!.coins).toBe(data.rules.economy.visitPayout.upgradedAction);
+    expect(applied.state.players[APIARY]!.coins).toBe(hostBefore);
+    // The action still happens: the coin is on top of it, not instead of it.
+    expect(applied.state.tasks[0]).toMatchObject({ t: 'draw', pid: WHEAT });
+  });
+
+  it('an upgraded board still pays the coin branch its own bigger rate', () => {
+    const state = base();
+    upgradeNoticeBoard(state, APIARY);
+    dealTo(data, state, WHEAT, 'W4');
+    const applied = apply(data, state, {
+      type: 'visit',
+      seat: WHEAT,
+      host: APIARY,
+      fee: ['W4'],
+      payoff: { mode: 'coin' },
+    });
+    expect(applied.state.players[WHEAT]!.coins).toBe(data.rules.economy.visitPayout.upgraded);
   });
 
   it("Special Orders' 2-card visit places both cards and mints the bigger payout", () => {
-    const state = base();
+    const state = twoCardState();
     upgradeNoticeBoard(state, APIARY);
-    dealTo(data, state, WHEAT, 'W4', 'W5', 'W6');
-    const applied = apply(data, state, {
+    dealTo(twoCardData, state, WHEAT, 'W4', 'W5', 'W6');
+    const applied = apply(twoCardData, state, {
       type: 'visit',
       seat: WHEAT,
       host: APIARY,
@@ -565,7 +626,7 @@ describe('the bonus slot through apply', () => {
       payoff: { mode: 'special' },
     });
     const visitor = applied.state.players[WHEAT] as GameState['players'][number];
-    expect(visitor.coins).toBe(data.rules.economy.visitPayout.twoCard);
+    expect(visitor.coins).toBe(twoCardData.rules.economy.visitPayout.twoCard);
     expect(visitor.hand).toEqual(['W6']);
     expect(noticeBoard(applied.state, APIARY).stack).toEqual(['W4', 'W5']);
     expect(applied.state.turn.bonusSpent).toBe(true);
@@ -580,13 +641,13 @@ describe('the bonus slot through apply', () => {
   });
 
   it('offers the 2-card mode only at an upgraded board, and never with a Worker', () => {
-    const state = base();
+    const state = twoCardState();
     hireFor(state, APIARY, 'draw');
-    dealTo(data, state, WHEAT, 'W4', 'W5');
-    const plain = legalMoves(data, state).filter((m) => m.type === 'visit');
+    dealTo(twoCardData, state, WHEAT, 'W4', 'W5');
+    const plain = legalMoves(twoCardData, state).filter((m) => m.type === 'visit');
     expect(plain.some((m) => m.payoff.mode === 'special')).toBe(false);
     expect(() =>
-      apply(data, state, {
+      apply(twoCardData, state, {
         type: 'visit',
         seat: WHEAT,
         host: APIARY,
@@ -596,30 +657,49 @@ describe('the bonus slot through apply', () => {
     ).toThrow(/does not print/);
 
     upgradeNoticeBoard(state, APIARY);
-    const special = legalMoves(data, state).filter(
+    const special = legalMoves(twoCardData, state).filter(
       (m) => m.type === 'visit' && m.payoff.mode === 'special',
     );
     expect(special).toHaveLength(1); // C(2,2), one host
     expect(special[0]).toMatchObject({ fee: ['W4', 'W5'] });
     // A special visit is a pair of DISTINCT cards: no card is ever paid twice.
     expect(
-      legalMoves(data, state).some(
+      legalMoves(twoCardData, state).some(
         (m) => m.type === 'visit' && m.payoff.mode === 'special' && m.fee[0] === m.fee[1],
       ),
     ).toBe(false);
   });
 
-  it('refuses the whole 2-card visit when the board has room for only one', () => {
+  it('never offers the 2-card mode when the line is switched off', () => {
     const state = base();
+    upgradeNoticeBoard(state, APIARY);
+    dealTo(data, state, WHEAT, 'W4', 'W5');
+    expect(data.rules.economy.visitPayout.twoCard).toBeNull();
+    expect(
+      legalMoves(data, state).some((m) => m.type === 'visit' && m.payoff.mode === 'special'),
+    ).toBe(false);
+    expect(() =>
+      apply(data, state, {
+        type: 'visit',
+        seat: WHEAT,
+        host: APIARY,
+        fee: ['W4', 'W5'],
+        payoff: { mode: 'special' },
+      }),
+    ).toThrow(/switched off/);
+  });
+
+  it('refuses the whole 2-card visit when the board has room for only one', () => {
+    const state = twoCardState();
     upgradeNoticeBoard(state, APIARY);
     const board = noticeBoard(state, APIARY);
     board.stack = state.decks.apiary.splice(0, 4); // 4 of 5
-    dealTo(data, state, WHEAT, 'W4', 'W5');
-    const moves = legalMoves(data, state).filter((m) => m.type === 'visit');
+    dealTo(twoCardData, state, WHEAT, 'W4', 'W5');
+    const moves = legalMoves(twoCardData, state).filter((m) => m.type === 'visit');
     expect(moves.some((m) => m.payoff.mode === 'special')).toBe(false);
     expect(moves.some((m) => m.payoff.mode === 'coin')).toBe(true); // one card still fits
     expect(() =>
-      apply(data, state, {
+      apply(twoCardData, state, {
         type: 'visit',
         seat: WHEAT,
         host: APIARY,

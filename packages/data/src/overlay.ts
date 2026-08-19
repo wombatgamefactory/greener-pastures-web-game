@@ -23,6 +23,14 @@ import { cloneData, setPath } from './paths.js';
 import type { Leaf } from './paths.js';
 import { listKnobs } from './knobs.js';
 import type { Knob, KnobType } from './knobs.js';
+import { SUITS } from './types.js';
+
+/**
+ * The closed value set behind `cropOrWild`. Kept here beside `typeMatches` so a
+ * sixth crop or a renamed one cannot pass validation on one side and fail on
+ * the other.
+ */
+const ACTIVATION_VALUES: ReadonlySet<string> = new Set<string>([...SUITS, 'wild']);
 
 /** Bumped when the meaning of a knob path changes, not when a knob is added. */
 export const OVERLAY_SCHEMA_VERSION = 1;
@@ -76,6 +84,8 @@ function typeMatches(type: KnobType, value: Leaf): boolean {
       );
     case 'boolean':
       return typeof value === 'boolean';
+    case 'cropOrWild':
+      return value === null || (typeof value === 'string' && ACTIVATION_VALUES.has(value));
   }
 }
 

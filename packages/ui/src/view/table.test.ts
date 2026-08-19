@@ -65,10 +65,19 @@ describe('noticeBoardOf', () => {
 
   it("offers Special Orders' two-card line only on the upgraded face", () => {
     const view = table();
+    const printed = data.rules.economy.visitPayout.twoCard;
     for (const rival of view.rivals) {
       const board = noticeBoardOf(data, farmOf(view, rival.seat));
       if (!board) continue;
-      expect(board.twoCard === null).toBe(!board.building.upgraded);
+      if (!board.building.upgraded) {
+        // A base face never carries the line, whatever the rules say.
+        expect(board.twoCard).toBeNull();
+      } else {
+        // An upgraded face carries exactly what the rules print, which since
+        // 2026-08-13 is nothing: the new upgraded face replaced Special Orders,
+        // so `twoCard` is null and the line is off everywhere.
+        expect(board.twoCard).toBe(printed);
+      }
     }
   });
 

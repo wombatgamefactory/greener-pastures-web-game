@@ -4,11 +4,13 @@
  * GameState and so live with the driver in @gp/sim.
  */
 
-import { BASE_GAME_DATA as data } from '@gp/data';
+import { BASE_GAME_DATA as data, SUITS } from '@gp/data';
+import type { Suit } from '@gp/data';
 import { MOVE_TYPES } from '@gp/engine';
 import { describe, expect, it } from 'vitest';
 
 import { cardValue, lowestValueCard } from './junk.js';
+import { SUIT_STRENGTH, magpieTarget } from './magpie.js';
 import {
   BALANCE_PROFILES,
   LADDER,
@@ -54,6 +56,31 @@ describe('weight tables', () => {
     expect(weightsFor('hermit')['visit']).toBeLessThan(0);
   });
 
+  it('keeps the magpie control incapable of building its own crop', () => {
+    // Same reasoning as the hermit above: a control that merely dislikes the
+    // thing it is controlling for measures a preference, not the rule.
+    const magpie = weightsFor('magpie');
+    expect(magpie['buildOwnCrop']).toBeLessThan(0);
+    expect(magpie['buildTargetCrop']).toBeGreaterThan(0);
+  });
+
+  it('leaves the magpie terms inert in every other profile', () => {
+    // The whole reason reference-v9 survives this bot's arrival.
+    const targetTerms = [
+      'buildTargetCrop',
+      'deckTargetCrop',
+      'keepTargetCrop',
+      'buyTargetCrop',
+      'visitFeeOwnCrop',
+    ];
+    for (const profile of Object.keys(PROFILES)) {
+      if (profile === 'magpie') continue;
+      for (const name of targetTerms) {
+        expect(weightsFor(profile)[name], `${profile}.${name}`).toBe(0);
+      }
+    }
+  });
+
   /**
    * Half of ticket 48's sign convention; @gp/sim's `bots.test.ts` asserts the
    * other half (the feature itself, over real games).
@@ -74,6 +101,32 @@ describe('weight tables', () => {
         expect(table[name], `${profile}.${name}`).toBeGreaterThanOrEqual(0);
       }
     }
+  });
+});
+
+describe('the magpie target', () => {
+  it('ranks every suit exactly once', () => {
+    // A ranking that dropped a suit would silently send a magpie to whichever
+    // crop happened to be next in the list.
+    expect([...SUIT_STRENGTH].sort()).toEqual([...SUITS].sort());
+  });
+
+  it('never picks its own crop, and prefers the strongest that is seated', () => {
+    expect(magpieTarget('orchard', SUITS)).toBe('wheat');
+    // A wheat seat takes the next one down rather than itself.
+    expect(magpieTarget('wheat', SUITS)).toBe('dairy');
+  });
+
+  it('only ever picks a suit that is actually at the table', () => {
+    // Both acquisition lanes filter to suitsInPlay, so an unseated target would
+    // starve the bot rather than test the strategy.
+    const seated: Suit[] = ['orchard', 'vegetable'];
+    expect(magpieTarget('orchard', seated)).toBe('vegetable');
+    expect(magpieTarget('vegetable', seated)).toBe('orchard');
+  });
+
+  it('has no target when nothing else is seated', () => {
+    expect(magpieTarget('wheat', ['wheat'])).toBeNull();
   });
 });
 

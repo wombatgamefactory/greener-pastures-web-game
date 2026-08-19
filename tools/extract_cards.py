@@ -36,18 +36,29 @@ import sys
 from pathlib import Path
 
 import openpyxl
+from openpyxl.utils import get_column_letter
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "packages" / "data" / "data" / "cards.json"
 
-COL = {
-    "cardback": "E", "suit": "G", "ref": "H", "type": "I", "name": "K",
-    "buildCostText": "L", "activation": "M", "threshold": "N", "vp": "O",
-    "effect": "P", "ability": "Q",
+# Columns are resolved by HEADER TEXT, never pinned by letter, and a missing
+# header is a hard error naming it. tools/make_web_assets.py already does this and
+# says why; here is what it costs not to. A `Notes` column at R was deleted at
+# sheet v22 and everything to its right shifted one place left, which repointed
+# the cost block at @cost2..@cost6 PLUS `total_cost`. The crash that followed was
+# luck: `icons = [i for i in icons if i]` drops falsy values, so a `total_cost` of
+# 0 would have been filtered away silently and every card's build cost written
+# one icon short, with no error at all. Only a non-zero total reached `icon_cost`
+# and raised on an int.
+COL_HEADERS = {
+    "cardback": "Cardback", "suit": "Suit", "ref": "Ref", "type": "Type",
+    "name": "Name", "buildCostText": "Build Cost", "activation": "Activation Cost",
+    "threshold": "Threshold", "vp": "VP", "effect": "Activation Effect",
+    "ability": "Ability",
 }
-COST_COLS = ["Y", "Z", "AA", "AB", "AC", "AD"]
-TOTAL_COST = "AE"
-CARD_NUM = "A"
+COST_HEADERS = [f"@cost{i}" for i in range(1, 7)]
+TOTAL_COST_HEADER = "total_cost"
+CARD_NUM_HEADER = "Card#"
 
 TYPES = {"Starter": "starter", "Tier 1": "tier1", "Tier 2": "tier2",
          "Tier 3": "tier3", "Power": "power", "Endgame": "endgame"}
@@ -55,10 +66,10 @@ TYPES = {"Starter": "starter", "Tier 1": "tier1", "Tier 2": "tier2",
 # The three starter slots, keyed by printed ref number (1/2/3).
 STARTER_SLOT_BY_NUM = {1: "barn", 2: "farmstead", 3: "noticeboard"}
 
-# What the Farmstead's cost bar prints instead of a price (ticket 46): one own-crop
-# icon per building of your own crop that flips it free. Pinned here so a silent
-# sheet edit is caught, exactly as the Barn's hand sizes are.
-FARMSTEAD_MILESTONE = 3
+# The Farmstead's cost bar used to print a MILESTONE rather than a price - three
+# own-crop icons, the buildings that flipped it free (ticket 46). Dean retired
+# that rule on 2026-08-12: all three starters are bought for £2, so the sheet is
+# now checked for the same 2-coin bar on all of them.
 
 # --- Starter mechanical stats --------------------------------------------
 # The Notice Board prints threshold 5 / wild on both faces, and the Barn prints
@@ -87,6 +98,30 @@ NOTICE_BOARD_THRESHOLD = 5
 # A warning containing any of these is a hard failure (non-zero exit), not a note.
 FATAL_MARKERS = ("expected", "cannot be loaded", "Notice Board", "hand size",
                  "unrecognised starter")
+
+
+def resolve_columns(ws):
+    """Map every column this script reads onto its letter, by matching header text.
+
+    Returns (col, cost_cols, total_cost, card_num). Exits naming the header if the
+    sheet does not carry it, because a `None` here is indistinguishable from an
+    empty cell and would be absorbed into the extract rather than reported.
+    """
+    header = {}
+    for i in range(1, ws.max_column + 1):
+        v = ws.cell(row=1, column=i).value
+        if v is not None and str(v).strip():
+            header.setdefault(str(v).strip(), get_column_letter(i))
+
+    missing = [h for h in list(COL_HEADERS.values()) + COST_HEADERS
+               + [TOTAL_COST_HEADER, CARD_NUM_HEADER] if h not in header]
+    if missing:
+        sys.exit(f"sheet worksheet 'cards' is missing {len(missing)} required "
+                 f"column header(s): {', '.join(missing)}")
+
+    return ({k: header[h] for k, h in COL_HEADERS.items()},
+            [header[h] for h in COST_HEADERS],
+            header[TOTAL_COST_HEADER], header[CARD_NUM_HEADER])
 
 
 def sheet_path():
@@ -249,11 +284,12 @@ def main():
     digest = hashlib.sha256(xlsm.read_bytes()).hexdigest()
     wb = openpyxl.load_workbook(xlsm, data_only=True)
     ws = wb["cards"]
+    col, cost_cols, total_cost_col, card_num_col = resolve_columns(ws)
 
     cards, faces, warnings = {}, {}, []
 
     for r in range(2, ws.max_row + 1):
-        g = lambda c: ws[f"{COL[c]}{r}"].value
+        g = lambda c: ws[f"{col[c]}{r}"].value
         suit, ref, ctype, name = g("suit"), g("ref"), g("type"), g("name")
         if not (suit and ref and ctype and name):
             if ctype == "Free Port":
@@ -266,22 +302,32 @@ def main():
 
         ctype = TYPES[ctype]
         suit = suit.lower()
-        icons = [ws[f"{c}{r}"].value for c in COST_COLS]
+        icons = [ws[f"{c}{r}"].value for c in cost_cols]
         icons = [i for i in icons if i]
-        total = ws[f"{TOTAL_COST}{r}"].value or 0
+        total = ws[f"{total_cost_col}{r}"].value or 0
         if total != len(icons):
             warnings.append(f"r{r} {ref}: totalCost={total} but {len(icons)} cost icons")
         cost = icon_cost(icons)
 
-        upgraded = str(ws[f"{CARD_NUM}{r}"].value or "").endswith("U")
+        upgraded = str(ws[f"{card_num_col}{r}"].value or "").endswith("U")
         vp = g("vp") or 0
         threshold = g("threshold")
         activation = clean(g("activation"))
 
         if ctype == "starter":
             # The base row carries `base\nUpgrade:...`; the U row carries the full upgraded face.
+            #
+            # RULED (Dean, 2026-08-13): the two text columns mean something. A card
+            # with an ACTIVATION power prints in `Activation Effect`; a card with a
+            # STATIC effect prints in `Ability`. So a Barn and a Farmstead, both
+            # passive, moved to `Ability` at sheet v22, while the Notice Board -
+            # the one loadable starter - keeps its VISITOR text in `Activation
+            # Effect`. Read whichever is filled, exactly as the deck-card branch
+            # below already does. Reading only `Activation Effect` here cost 10
+            # Barn warnings AND silently blanked all 10 Farmstead faces, which are
+            # the suit-power cards.
             side = "upgraded" if upgraded else "starter"
-            text = clean(g("effect"))
+            text = clean(g("effect")) or clean(g("ability"))
             if not upgraded:
                 text = base_face_text(text)
             face = build_face(clean(name), vp, threshold, activation, text)
@@ -292,24 +338,20 @@ def main():
                 slot = STARTER_SLOT_BY_NUM.get(int(re.sub(r"\D", "", ref)))
                 if not slot:
                     warnings.append(f"r{r} {ref}: unrecognised starter ref")
-                # The Barn and the Notice Board are bought for £2. The FARMSTEAD is
-                # not for sale at any price - it flips free at your third building
-                # printing your own crop (ticket 07) - so ticket 46 replaced its
-                # phantom £2 cost bar with the milestone: three of its own crop.
-                # It therefore carries no upgradeCostCoins at all, and the sheet is
-                # checked for the shape that belongs to each.
-                if slot == "farmstead":
-                    if cost["coins"] or cost["wild"] or cost["suit"] != FARMSTEAD_MILESTONE:
-                        warnings.append(f"r{r} {ref}: Farmstead cost bar is not {FARMSTEAD_MILESTONE} "
-                                        f"own-crop icons ({dict(cost)}) -- it prints the milestone, "
-                                        f"never a price")
-                elif cost["coins"] != 2 or cost["suit"] or cost["wild"]:
+                # All three starters are bought for £2 (Dean, 2026-08-12). The
+                # Farmstead's own-crop milestone bar is retired with the rule it
+                # printed, so one shape is now checked for all of them. Both sheet
+                # edits this used to wait on have landed and are verified: the
+                # "Flips free when you have 3 X buildings." line came off all five
+                # Farmsteads at v22, and the 2-coin bar was restored at v24/v25.
+                # Every starter row passes this check from v25 on.
+                if cost["coins"] != 2 or cost["suit"] or cost["wild"]:
                     warnings.append(f"r{r} {ref}: starter upgrade cost is not exactly 2 coins ({dict(cost)})")
                 cards[key] = {
                     "id": ref, "suit": suit, "type": "starter", "slot": slot,
                     "name": clean(name), "inDeck": False, "enabled": True,
                     "buildCost": None,
-                    **({} if slot == "farmstead" else {"upgradeCostCoins": 2}),
+                    "upgradeCostCoins": 2,
                     "abilityTrigger": [], "needsDesignReview": False,
                 }
             elif cost:

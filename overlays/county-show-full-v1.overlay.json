@@ -1,0 +1,9 @@
+{
+  "name": "county-show-full-v1",
+  "schemaVersion": 1,
+  "note": "The companion to county-show-half-v1: Dean's upgraded Notice Board at FULL DOSE, with the pockets skewed. The proposed card mints +GBP 2 per visit over the base face. There is no knob for the visitor's coin on the action branch or the host's coin on the coin branch, so the full amount can only be minted by doubling up inside the knobs that exist: the coin branch pays the visitor GBP 3 (standing in for GBP 2 visitor + GBP 1 host) and the action branch pays the host GBP 2 (standing in for GBP 1 host + GBP 1 visitor). Total minted per visit is therefore correct at +GBP 2 on both branches, and the SPLIT between visitor and host is wrong in opposite directions on each. Read the two arms together: half-v1 is the honest read on BEHAVIOUR (who is enriched, and whether traffic moves), full-v1 is the honest read on INFLATION (does the coin supply plateau, does the market wake up). Applied to every board from turn 1, so this is the ceiling case. Paired control is the base game.",
+  "set": {
+    "rules.economy.visitPayout.base": 3,
+    "workers.visitWage": 2
+  }
+}

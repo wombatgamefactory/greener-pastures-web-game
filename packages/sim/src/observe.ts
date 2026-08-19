@@ -199,16 +199,17 @@ export interface GameMetrics {
   wageCoinsBySeat: number[];
   upgradesBySeat: number[];
   /**
-   * The round in which the seat's Farmstead flipped FREE at the own-crop-build
-   * milestone, or null if it never did. Added 2026-08-12 for the Wheat
-   * rebalance, whose headline (W2) rests on a premise nobody had measured: that
-   * most seats reach the flip at all. It was inferred from 5.30 buildings
-   * against a 3-own-crop-building milestone plus an 84.2% own-crop build rate,
-   * which is an average over a distribution nobody had looked at.
+   * The round in which the seat's Farmstead reached its upgraded face, or null
+   * if it never did. Added 2026-08-12 for the Wheat rebalance, whose headline
+   * (W2) rests on a premise nobody had measured: that most seats get the
+   * upgraded suit power at all. It was inferred from 5.30 buildings against a
+   * 3-own-crop-building milestone plus an 84.2% own-crop build rate, which is
+   * an average over a distribution nobody had looked at.
    *
-   * `starterUpgraded` with `free: true` is emitted ONLY by `checkFarmsteadFlip`
-   * (actions.ts); the paid Barn/Notice Board flip emits `free: false`. So the
-   * flag is an exact marker and no card-slot lookup is needed.
+   * ⚠️ The rule under it CHANGED the same day: the free flip at the milestone
+   * is gone and the Farmstead is bought for £2 like its siblings, so this is now
+   * a PURCHASE round and not a milestone round. Numbers measured before
+   * 2026-08-12 are not comparable with numbers measured after.
    */
   farmsteadFlipRoundBySeat: (number | null)[];
   /**
@@ -890,8 +891,13 @@ export class Fold {
         }
         return;
       case 'starterUpgraded':
-        if (!e.free) m.upgradesBySeat[e.seat] = (m.upgradesBySeat[e.seat] ?? 0) + 1;
-        else if (m.farmsteadFlipRoundBySeat[e.seat] == null) {
+        // Every flip is bought now, so every one of them counts as an upgrade;
+        // the Farmstead is told apart by its slot for the timing metric.
+        m.upgradesBySeat[e.seat] = (m.upgradesBySeat[e.seat] ?? 0) + 1;
+        if (
+          cardById(this.data, e.card).slot === 'farmstead' &&
+          m.farmsteadFlipRoundBySeat[e.seat] == null
+        ) {
           m.farmsteadFlipRoundBySeat[e.seat] = this.round();
         }
         return;

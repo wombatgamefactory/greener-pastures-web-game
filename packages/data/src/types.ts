@@ -285,19 +285,49 @@ export interface RulesFile {
     readonly marketCost: number | null;
   };
   readonly economy: {
+    /**
+     * What it costs to flip a starter, and since 2026-08-12 that is ALL THREE of
+     * them: the Farmstead's free flip at the own-crop milestone is retired and
+     * it is bought like its siblings. A per-card `upgradeCostCoins` still
+     * overrides this.
+     */
     readonly upgradeCostCoins: number;
     /** VP at game end is `floor(coins / divisor)`. Null disables the rule. */
     readonly coinPityDivisor: number | null;
     /**
-     * What the bank pays a visitor who takes the money. `base` and `upgraded`
-     * are the one-card payouts of the two Notice Board faces; `twoCard` is
-     * Special Orders' second line ("2 cards, take £3"), which the upgraded face
-     * prints and the base face does not.
+     * What the bank pays a VISITOR, by which face the host's Notice Board is
+     * showing and which branch the visitor took. The card prints exactly this:
+     *
+     *   base face        VISIT: gain `base`, or take the action.
+     *   upgraded face    VISIT: gain `upgraded`, or gain `upgradedAction` AND
+     *                    take the action.
+     *
+     * `upgradedAction` is the half added on 2026-08-13 and it is the whole
+     * point of the card. Sweetening only the coin branch (which is what shipped
+     * before it) was measured to move visitors from the host's action branch to
+     * their coin branch rather than from another farm to this one - a swap of
+     * doors on the same farm, worth nothing to the owner once change 6 merges
+     * the two doors into one building. Paying both branches equally removes the
+     * reason to switch and puts the pull where the traffic actually is: per
+     * offer, a visitor takes the action about three times as often as the coin.
+     * Setting it to 0 is the paired control, and restores the old behaviour.
+     *
+     * The OWNER is paid nothing, on either face. Their return is the freight -
+     * one more card landing on their farm per visit they win - which is the
+     * standing "your junk is their treasure" rule and the reason `visitWage`
+     * sits at 0.
+     *
+     * `twoCard` was Special Orders' second line ("2 cards, take £3"). Change 6
+     * retired Special Orders and the 2026-08-13 card replaces its face, so the
+     * line is no longer printed anywhere: NULL switches it off and is what
+     * ships. The mode survives in the engine so switching it back on is a data
+     * edit, not a rebuild.
      */
     readonly visitPayout: {
       readonly base: number;
       readonly upgraded: number;
-      readonly twoCard: number;
+      readonly upgradedAction: number;
+      readonly twoCard: number | null;
     };
     /**
      * The coin the UPGRADED Orchard Farmstead mints per card it gives away at
@@ -306,12 +336,6 @@ export interface RulesFile {
      * never pays it; the coin is the whole of what the upgrade buys.
      */
     readonly giftDiscardCoins: number;
-    /**
-     * The Farmstead flips FREE at this many buildings printing the player's own
-     * crop icon. Ticket 07: base starters print the starting-building icon and
-     * do not count; upgraded ones print the crop icon and do.
-     */
-    readonly farmsteadFlipAtOwnColourBuilds: number;
   };
   readonly endGame: {
     /**

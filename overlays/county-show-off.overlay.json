@@ -1,0 +1,8 @@
+{
+  "name": "county-show-off",
+  "schemaVersion": 1,
+  "note": "The paired control for the upgraded Notice Board adopted 2026-08-13. The shipped face reads \"VISITOR: Take GBP 2 from bank / OR take GBP 1 and: <the suit's action>\"; this overlay takes the action branch's coin back to 0, which is the face as it stood before - GBP 2 on the coin branch only, and nothing for taking the action. So the DELTA IS INVERTED against the usual reading: this arm is the OLD card and the reference is the new one, and a metric that improves here is a metric the new card made worse. Everything else is untouched, including twoCard, which is null in both arms because Special Orders is retired either way.",
+  "set": {
+    "rules.economy.visitPayout.upgradedAction": 0
+  }
+}

@@ -130,6 +130,13 @@ export const BALANCED: WeightTable = {
   buildVp: 1.5,
   buildOwnCrop: 2,
   /**
+   * The magpie's three terms, and the reason they are 0 here rather than absent:
+   * `checkWeightTable` requires every term in every table, and a 0 keeps the
+   * reference and the four archetype mirrors bit-identical to reference-v9. Only
+   * `magpie` lifts them.
+   */
+  buildTargetCrop: 0,
+  /**
    * Ordering only, like `growSpend` and `visitFeeJunk`, and at their weight.
    *
    * Ticket 47: this was **-0.2** against a `-(payment.length + coinWild)`
@@ -146,7 +153,6 @@ export const BALANCED: WeightTable = {
    */
   buildSpend: 0.3,
   upgrade: 4,
-  upgradeMilestone: 6,
 
   drawAction: 1.2,
   /**
@@ -163,6 +169,7 @@ export const BALANCED: WeightTable = {
    */
   buy: 2,
   buyDemand: 1,
+  buyTargetCrop: 0,
   buySaving: 6,
   /**
    * The market's three terms (ticket 56), live only while `rules.turn.marketCost`
@@ -181,9 +188,11 @@ export const BALANCED: WeightTable = {
   marketPayability: 4,
   marketSaving: 6,
   deckOwnCrop: 1,
+  deckTargetCrop: 0,
   deckDemand: 0.8,
   keepValue: 2,
   keepOwnCrop: 1.5,
+  keepTargetCrop: 0,
   discardJunk: 2,
 
   /**
@@ -214,6 +223,7 @@ export const BALANCED: WeightTable = {
   // It used to be the visit's whole cost, which is what let a worthless visit
   // beat ending the turn by 0.05.
   visitFeeJunk: 0.3,
+  visitFeeOwnCrop: 0,
   workOwn: 5,
   workerTask: 3,
 
@@ -247,7 +257,11 @@ export const PROFILES: Readonly<Record<string, WeightTable>> = {
   // it did before. It is now the only profile with an intrinsic taste for it -
   // which is precisely what "a socialite" was supposed to mean.
   socialite: { visit: 8, visitWorker: 5, visitSpecial: 4, workOwn: 2, cardMove: 5 },
-  loyalist: { buildOwnCrop: 6, deckOwnCrop: 4, keepOwnCrop: 4, upgradeMilestone: 10, upgrade: 6 },
+  // Lost `upgradeMilestone: 10` with the free flip it chased (2026-08-12). The
+  // profile keeps its raised `upgrade`, so a loyalist still buys the upgrade
+  // layer sooner than the reference - it just has no reason to prefer one
+  // starter over another any more.
+  loyalist: { buildOwnCrop: 6, deckOwnCrop: 4, keepOwnCrop: 4, upgrade: 6 },
   // Ticket 48: `deliverCost: -0.2` was a SMALLER REWARD for eating freight, not
   // the cheaper cost it reads as. Carried across as the same distance from the
   // reference it always had (0.3 below), which now says what it meant - a racer
@@ -258,6 +272,45 @@ export const PROFILES: Readonly<Record<string, WeightTable>> = {
   // so a raised `deliver` weight IS a taste for getting there first. Untuned -
   // carried across at the number it already had.
   racer: { deliver: 6, barnSpend: 0.2, harvest: 2.5, drawAction: 0.8 },
+  /**
+   * `magpie` - the control for the SUIT, and the exact counterpart of `hermit`.
+   *
+   * A hermit answers "is the visit load-bearing, or is `visit` just a weight we
+   * chose?" by refusing to visit at all. A magpie asks the same question of the
+   * crop a seat was dealt: it **never builds its own suit** and chases the
+   * strongest seated one instead (`magpie.ts` picks the mark). If it lands at or
+   * above `loyalist`, the suit is decoration and the 82.8% own-crop build rate
+   * on reference-v9 was ours, not the game's.
+   *
+   * `buildOwnCrop: -100` is hermit's veto idiom, not a taste: -100 beats
+   * `endTurn`'s -2 by so much that an own-crop build is never the top move, so
+   * "never" means never and the control has teeth. The rest are ordinary
+   * preferences at loyalist magnitude, pointed at the target instead of the own
+   * crop - deliberately the SAME numbers, so a magpie is a loyalist to somebody
+   * else's colour and the comparison is about the crop rather than about how
+   * hard each bot commits.
+   *
+   * ⚠️ Two rules make this strategy cheaper than it sounds, and both are why the
+   * arm is worth running: the market may not buy your OWN suit, so a magpie's
+   * £3 buys are aimed exactly where it wants them; and a Farmstead's suit power
+   * modifies its owner's actions rather than their cards, so the magpie keeps
+   * every bit of its dealt suit's power while building none of its cards.
+   */
+  magpie: {
+    buildOwnCrop: -100,
+    buildTargetCrop: 6,
+    deckOwnCrop: -4,
+    deckTargetCrop: 4,
+    keepOwnCrop: -2,
+    keepTargetCrop: 4,
+    // Set above `buyDemand`'s 1 so the mark outranks the island's appetite when
+    // the two disagree; a magpie that bought for the island would be a balanced
+    // bot with a build ban.
+    buyTargetCrop: 3,
+    // Above `visitFeeJunk`'s 0.3, so "it is my own crop" outranks "it is cheap"
+    // when the two disagree about which card to hand over.
+    visitFeeOwnCrop: 2,
+  },
 };
 
 export function weightsFor(profile: string): WeightTable {

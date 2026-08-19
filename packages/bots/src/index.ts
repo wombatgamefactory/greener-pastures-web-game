@@ -22,6 +22,7 @@ export type { ExplainedMove, Policy, PolicyContext } from './types.js';
 export type { Act } from './acts.js';
 export { actOf, spendSize } from './acts.js';
 export { cardValue, lowestValueCard, totalValue } from './junk.js';
+export { SUIT_STRENGTH, magpieTarget } from './magpie.js';
 export { coinWorth, cropOfView, faceOfView, handSpendCost, makeScratch } from './scratch.js';
 export { makeOutcomes, meanCardValue } from './outcome.js';
 export type { Outcomes } from './outcome.js';

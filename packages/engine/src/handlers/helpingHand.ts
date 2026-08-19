@@ -25,7 +25,7 @@
  * cards are the scarce resource and the master clock.
  */
 
-import { payServiceWage, workerActionLegal } from '../actions.js';
+import { payActionBranch, payServiceWage, workerActionLegal } from '../actions.js';
 import { builtCopies, canTakeCard, player, serviceOf, workerState } from '../query.js';
 import { workWorker } from '../workers.js';
 import type { CardHandler, CardMove } from './types.js';
@@ -70,8 +70,10 @@ export const helpingHand: CardHandler = {
     );
     visit.repeats += 1;
     // Another card on their Service is another use bought, so the bank pays the
-    // host another wage - the same funnel the visit itself uses.
+    // host another wage - the same funnel the visit itself uses - and, at an
+    // upgraded Notice Board, pays the visitor the action branch's coin again.
     payServiceWage(fx, self.seat, visit.host, visit.workerId);
+    payActionBranch(fx, self.seat, visit.host);
     workWorker(fx, self.seat, visit.workerId, { progress: true });
   },
 };

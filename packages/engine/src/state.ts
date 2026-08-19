@@ -527,7 +527,7 @@ export type Move =
   | { type: 'market'; seat: Seat; suit: Suit }
   /** Build a card from hand. `payment` is the chosen card ids; a coin-priced card pays coins and an empty payment. */
   | { type: 'build'; seat: Seat; card: CardId; payment: CardId[] }
-  /** Flip a starter (Barn or Notice Board) for coins - a Build-action branch. The Farmstead only ever flips free. */
+  /** Flip a starter for coins - a Build-action branch, and all three of them since 2026-08-12. */
   | { type: 'upgrade'; seat: Seat; card: CardId }
   | { type: 'grow'; seat: Seat; building: CardId; payment: CardId }
   | { type: 'harvest'; seat: Seat; building: CardId }
@@ -630,8 +630,14 @@ export type GameEvent =
   | { e: 'covered'; seat: Seat; card: CardId }
   /** An empty building demolished into its owner's barn (D14). */
   | { e: 'demolished'; seat: Seat; card: CardId }
-  /** free = the Farmstead milestone flip (3rd own-colour build); false = a paid Barn/Notice Board flip. */
-  | { e: 'starterUpgraded'; seat: Seat; card: CardId; free: boolean }
+  /**
+   * A starter flipped to its upgraded face. Always a purchase since 2026-08-12,
+   * when the Farmstead's free milestone flip was retired - which is why the
+   * event no longer carries a `free` flag. Readers that care WHICH starter (the
+   * Farmstead's arrival is still the moment the suit power doubles) take it off
+   * the card's slot.
+   */
+  | { e: 'starterUpgraded'; seat: Seat; card: CardId }
   | {
       e: 'delivered';
       seat: Seat;

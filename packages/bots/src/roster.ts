@@ -1,5 +1,5 @@
 /**
- * The roster: eight bots from two code paths, plus the difficulty ladder.
+ * The roster: nine bots from two code paths, plus the difficulty ladder.
  */
 
 import { seedRng } from '@gp/engine';
@@ -18,6 +18,7 @@ export const POLICY_IDS = [
   'socialite',
   'loyalist',
   'racer',
+  'magpie',
 ] as const;
 
 export type PolicyId = (typeof POLICY_IDS)[number];
@@ -27,6 +28,12 @@ export type PolicyId = (typeof POLICY_IDS)[number];
  * run seed. Card economics measured against neighbours who all play the same
  * way are an artefact of that way of playing, so the mixed table is the
  * realistic one and a mirror is the diagnostic.
+ *
+ * ⚠️ **`magpie` is deliberately NOT here**, though it is the seat a reader will
+ * want: profiles are assigned from the run seed, so a sixth entry re-deals every
+ * game and the reference moves. It runs as a MIRROR instead, which costs the
+ * reference nothing. Adding it here is a one-line change and a re-minted
+ * reference, in that order - never quietly.
  */
 export const BALANCE_PROFILES: readonly PolicyId[] = [
   'balanced',

@@ -58,3 +58,11 @@ sim-out/
 *.xlsx
 design/
 *.tsbuildinfo
+
+# Python bytecode. This is a DISCLOSURE rule, not a tidiness one: a .pyc embeds
+# the absolute path of the source it was compiled from, so importing
+# tools/extract_cards.py as a module (rather than running it as a script) writes
+# the designer's private directory tree - and the game's unpublished title with
+# it - into a file inside this repo. Caught by check:disclosure on 2026-08-13.
+__pycache__/
+*.pyc

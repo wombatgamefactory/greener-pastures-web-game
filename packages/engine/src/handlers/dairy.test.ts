@@ -786,13 +786,13 @@ describe('the endgame cards - D19, D20, D21', () => {
     const s = base();
     buildFor(data, s, DAIRY, 'D21');
     expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(0);
-    // The two bought flips, at £2 each.
+    // Two flips, at £2 each.
     buildingOf(s, DAIRY, 'D1').upgraded = true;
     buildingOf(s, DAIRY, 'D3').upgraded = true;
     expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(4);
-    // And the Farmstead's FREE milestone flip counts too (ruling L, owed, and
-    // implemented as counting on Dean's recommendation), which is what makes the
-    // ceiling 6 rather than 4.
+    // And the Farmstead counts, which is what makes the ceiling 6 rather than
+    // 4. Ruling L is closed: it is a £2 purchase like the other two since
+    // 2026-08-12, so the 6 VP now costs the full £6.
     buildingOf(s, DAIRY, 'D2').upgraded = true;
     expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(6);
   });

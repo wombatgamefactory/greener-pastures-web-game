@@ -44,12 +44,6 @@ export interface PrintedFace {
   readonly identityIcon: 'starter' | Suit;
   /** Empty when the face is not buildable (an upgraded starter is flipped, never bought). */
   readonly cost: readonly CostIcon[];
-  /**
-   * What the cost bar is SAYING. Everywhere but the Farmstead it is a price;
-   * on the Farmstead the same slot prints the milestone that flips it free
-   * (ticket 46), and the two read identically to a screen reader otherwise.
-   */
-  readonly costMeaning: 'price' | 'milestone';
   /** The icon at the head of the cost bar. Null when there is no cost bar. */
   readonly costIcon: 'build' | 'caboose' | 'game_end' | null;
   /** Absolute printed hand size. Barn faces only. */
@@ -74,16 +68,15 @@ function costIcons(data: GameData, card: Card, upgraded: boolean): CostIcon[] {
   if (upgraded) return [];
   const cost = card.buildCost;
   if (!cost) {
-    // The Farmstead is the one building that is never for sale, so its bar
-    // prints the MILESTONE instead of a price (ticket 46, Dean's call): one
-    // own-crop icon per building of your own crop, which is what flips it free.
-    // Read from the rule, never typed, so a knob and a card cannot disagree.
-    if (card.slot === 'farmstead') {
-      const flipAt = data.rules.economy.farmsteadFlipAtOwnColourBuilds;
-      return Array.from({ length: flipAt }, () => ({ kind: 'crop', suit: card.suit }) as CostIcon);
-    }
-    // The Barn and the Notice Board print their £2 upgrade price there.
-    const upgradeCost = card.upgradeCostCoins ?? 0;
+    // A starter has no build cost, so its bar prints the £2 that flips it -
+    // all three of them since 2026-08-12, when the Farmstead's milestone bar
+    // (three own-crop icons, ticket 46) went with the free flip it printed.
+    // The per-card override falls back to the rule so a card and a knob cannot
+    // disagree, and a non-starter with no cost prints nothing.
+    // The Service is a slot on the Notice Board, not a starter with a face to
+    // buy, so it prints no bar.
+    if (!card.slot || card.slot === 'service') return [];
+    const upgradeCost = card.upgradeCostCoins ?? data.rules.economy.upgradeCostCoins;
     return Array.from({ length: upgradeCost }, () => ({ kind: 'coin' }) as CostIcon);
   }
   return [
@@ -123,7 +116,6 @@ export function printedFace(data: GameData, id: string, upgraded = false): Print
     // upgraded one prints the crop.
     identityIcon: card.type === 'starter' && !upgraded ? 'starter' : card.suit,
     cost,
-    costMeaning: card.slot === 'farmstead' ? 'milestone' : 'price',
     costIcon: cost.length === 0 ? null : costIconFor(card),
     handSize: face.handSize ?? null,
   };

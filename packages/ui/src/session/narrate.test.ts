@@ -57,8 +57,9 @@ describe('narrate', () => {
 
   it('marks the two moments that change the game, not just the state', () => {
     expect(line({ e: 'endTriggered', seat: 1 })?.kind).toBe('alarm');
-    expect(line({ e: 'starterUpgraded', seat: 1, card: 'V2', free: true })?.kind).toBe('alarm');
-    expect(line({ e: 'starterUpgraded', seat: 1, card: 'V1', free: false })?.kind).toBe('normal');
+    // Both are £2 purchases now, so the Farmstead is told apart by its slot.
+    expect(line({ e: 'starterUpgraded', seat: 1, card: 'V2' })?.kind).toBe('alarm');
+    expect(line({ e: 'starterUpgraded', seat: 1, card: 'V1' })?.kind).toBe('normal');
     expect(line({ e: 'turnEnded', seat: 1, next: 2 })?.kind).toBe('boundary');
   });
 

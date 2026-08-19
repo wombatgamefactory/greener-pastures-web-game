@@ -24,8 +24,21 @@ import type { Assertion, Measurement } from './assertions/index.js';
 import type { Pooled, RunOptions } from './run.js';
 import { pool, runBalance } from './run.js';
 
-/** The four archetypes. `balanced` is not a mirror: it is the reference's own centre. */
-export const MIRROR_PROFILES: readonly PolicyId[] = ['hermit', 'socialite', 'loyalist', 'racer'];
+/**
+ * The archetypes. `balanced` is not a mirror: it is the reference's own centre.
+ *
+ * `magpie` joined on 2026-08-12 as the control for the SUIT, the way `hermit` is
+ * the control for the visit. It is a mirror rather than a seat in
+ * `BALANCE_PROFILES` because mirrors run on their own seeded pool and never
+ * enter a verdict, so adding one cannot move the reference.
+ */
+export const MIRROR_PROFILES: readonly PolicyId[] = [
+  'hermit',
+  'socialite',
+  'loyalist',
+  'racer',
+  'magpie',
+];
 
 export interface WatchlistRow {
   readonly assertion: Assertion;

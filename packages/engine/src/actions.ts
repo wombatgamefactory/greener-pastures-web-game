@@ -21,7 +21,6 @@ import { fireHook } from './fx.js';
 import {
   canTakeCard,
   cardById,
-  cropBuildings,
   faceOf,
   drawableSuits,
   isFull,
@@ -490,10 +489,12 @@ function divertOrDiscard(fx: Fx, seat: Seat, payment: readonly CardId[]): void {
 
 /**
  * The build's landing half, shared with cost-waiving effects (W10's free
- * FIELD build, D10/D13's deck-top builds): the card enters the tableau, the
- * Farmstead milestone is checked, and the afterBuild reactors fire. The
- * Farmstead flips FREE at the milestone (own-colour deck builds) - the design
- * docs win over the reference's paid flip, per ticket 04.
+ * FIELD build, D10/D13's deck-top builds): the card enters the tableau and the
+ * afterBuild reactors fire.
+ *
+ * It used to also check the Farmstead's free flip at the 3-own-crop-building
+ * milestone. That rule is GONE (2026-08-12, Dean): the Farmstead is bought for
+ * £2 like the Barn and the Notice Board, so a build no longer flips anything.
  */
 export function placeBuilt(
   fx: Fx,
@@ -510,30 +511,7 @@ export function placeBuilt(
   // Ledger onto the general `turn.firedThisTurn` rule and the field lost its
   // only reader, so it is gone. `src` still travels to the hook, which is what
   // D5 and D6 read to react to their OWN build.
-  checkFarmsteadFlip(fx, seat);
   fireHook(fx, 'afterBuild', { seat, card, payment, src });
-}
-
-/**
- * The Farmstead's FREE flip at the milestone: your Nth building printing your
- * OWN crop icon. Ticket 07 made this a printed-crop count like every other
- * building count, which means an upgraded Barn or Notice Board now counts
- * toward it - the change with teeth, because it makes the £2 upgrade sinks pull
- * double duty and gives the 2026-07-14 coin drought somewhere to spend.
- *
- * So it is checked after everything that can put a crop icon on the table: a
- * build (of any suit - the count decides, not the card) and a paid starter
- * flip. The base Farmstead prints no crop, so it never counts toward its own
- * milestone; once flipped it counts for everything else.
- */
-export function checkFarmsteadFlip(fx: Fx, seat: Seat): void {
-  const p = player(fx.state, seat);
-  const farmstead = p.tableau.find((b) => cardById(fx.data, b.card).slot === 'farmstead');
-  if (!farmstead || farmstead.upgraded) return;
-  const own = cropBuildings(fx.data, fx.state, seat, p.suit).length;
-  if (own < fx.data.rules.economy.farmsteadFlipAtOwnColourBuilds) return;
-  farmstead.upgraded = true;
-  fx.emit({ e: 'starterUpgraded', seat, card: farmstead.card, free: true });
 }
 
 /**
@@ -587,13 +565,23 @@ export function apiaryGrowBonus(fx: Fx, seat: Seat): void {
   }
 }
 
-/** Starters a seat can pay to flip: Barn and Notice Board only - the Farmstead flips free. */
+/**
+ * Starters a seat can pay to flip: all three of them - Barn, Notice Board and,
+ * since 2026-08-12, the Farmstead. The free flip at the 3-own-crop milestone is
+ * retired; the Farmstead is bought at the same £2 as its siblings, so the
+ * upgrade grammar is now one line ("£2 flips any starter") instead of two.
+ *
+ * The Service is deliberately not here: it is a slot on the Notice Board, not a
+ * starter with a second face.
+ */
 export function upgradeOptions(data: GameData, state: GameState, seat: Seat): CardId[] {
   const p = player(state, seat);
   return p.tableau
     .filter((b) => {
       const card = cardById(data, b.card);
-      if (card.slot !== 'barn' && card.slot !== 'noticeboard') return false;
+      if (card.slot !== 'barn' && card.slot !== 'noticeboard' && card.slot !== 'farmstead') {
+        return false;
+      }
       if (b.upgraded) return false;
       const cost = card.upgradeCostCoins ?? data.rules.economy.upgradeCostCoins;
       return p.coins >= cost;
@@ -610,10 +598,7 @@ export function doUpgrade(fx: Fx, seat: Seat, card: CardId): void {
   const cost = cardById(fx.data, card).upgradeCostCoins ?? fx.data.rules.economy.upgradeCostCoins;
   fx.payCoins(seat, cost, `upgrade:${card}`);
   building.upgraded = true;
-  fx.emit({ e: 'starterUpgraded', seat, card, free: false });
-  // The flipped face prints a crop icon, so a paid flip can BE the Farmstead
-  // milestone (ticket 07). Paying £2 can therefore buy two upgrades at once.
-  checkFarmsteadFlip(fx, seat);
+  fx.emit({ e: 'starterUpgraded', seat, card });
 }
 
 // --- Draw ------------------------------------------------------------------
@@ -1775,7 +1760,15 @@ export function visitOptions(data: GameData, state: GameState, seat: Seat): Visi
     // Special Orders' second line, upgraded face only: two distinct cards for a
     // bigger payout, gated up front on room for BOTH (a board at 4-of-5 refuses
     // the whole visit rather than taking one card and paying the smaller rate).
-    if (boardOpen && board.upgraded && roomOn(data, board) >= 2) {
+    // Null since 2026-08-13: the face that printed it is gone, so the mode is
+    // never offered and the branch below is unreachable until a data edit
+    // brings it back.
+    if (
+      data.rules.economy.visitPayout.twoCard !== null &&
+      boardOpen &&
+      board.upgraded &&
+      roomOn(data, board) >= 2
+    ) {
       for (const pair of subsets(hand, 2)) {
         out.push({ type: 'visit', seat, host, fee: pair, payoff: { mode: 'special' } });
       }
@@ -1878,6 +1871,9 @@ export function doVisit(
   if (isFull(fx.data, target)) throw new Error(`${target.card} is full`);
 
   if (payoff.mode === 'special') {
+    if (fx.data.rules.economy.visitPayout.twoCard === null) {
+      throw new Error('The 2-card visit is switched off');
+    }
     if (!target.upgraded) throw new Error(`${target.card} does not print the 2-card visit`);
     if (new Set(fee).size !== fee.length) throw new Error('The two cards must be distinct');
     // Room for BOTH, checked before anything moves.
@@ -1908,11 +1904,16 @@ export function doVisit(
     state.turn.visit = { host, workerId: payoff.workerId, repeats: 0 };
     fx.emit({ e: 'visited', seat: visitor, host, mode: 'worker' });
     payServiceWage(fx, visitor, host, payoff.workerId);
+    payActionBranch(fx, visitor, host);
     workWorker(fx, visitor, payoff.workerId, { progress: true });
   } else {
     const rates = fx.data.rules.economy.visitPayout;
     const paid =
-      payoff.mode === 'special' ? rates.twoCard : target.upgraded ? rates.upgraded : rates.base;
+      payoff.mode === 'special'
+        ? (rates.twoCard ?? 0)
+        : target.upgraded
+          ? rates.upgraded
+          : rates.base;
     fx.gainCoins(visitor, paid, 'visit');
     fx.emit({ e: 'visited', seat: visitor, host, mode: payoff.mode });
   }
@@ -1927,6 +1928,29 @@ export function payServiceWage(fx: Fx, actor: Seat, owner: Seat, workerId: strin
   if (actor === owner) return;
   const wage = fx.data.workers.visitWage;
   if (wage > 0) fx.gainCoins(owner, wage, `wage:${workerId}`);
+}
+
+/**
+ * The upgraded Notice Board's action branch (Dean, 2026-08-13). The card reads
+ * "VISIT: gain £2, OR gain £1 and do the special action", so a visitor who
+ * takes the action at an UPGRADED board is paid too, where at a base board they
+ * are paid nothing.
+ *
+ * It is keyed on the host's NOTICE BOARD face even though this build lands the
+ * action on their Service, because the Notice Board is the card that prints the
+ * rule and change 6 merges the two buildings into it. When that merge reaches
+ * the engine this reads the same building it already names.
+ *
+ * Paid on a Helping Hand repeat as well, on the same reasoning `payServiceWage`
+ * uses: another card on their farm is another use bought, and the card prints
+ * the coin as part of taking the action rather than as part of the visit.
+ */
+export function payActionBranch(fx: Fx, visitor: Seat, host: Seat): void {
+  if (visitor === host) return;
+  const board = noticeBoardOf(fx.data, fx.state, host);
+  if (!board.upgraded) return;
+  const paid = fx.data.rules.economy.visitPayout.upgradedAction;
+  if (paid > 0) fx.gainCoins(visitor, paid, 'visit');
 }
 
 /**

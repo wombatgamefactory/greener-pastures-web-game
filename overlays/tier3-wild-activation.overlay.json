@@ -1,0 +1,22 @@
+{
+  "name": "tier3-wild-activation",
+  "description": "Dean, 2026-08-16. Every Tier 3 card's GROW payment changes from its own crop to a wild: pay ANY card to activate it. Build cost is untouched (still 3 own-suit + 1 wild), and so is the threshold, so this arm isolates ONE seam - what a Tier 3 costs to FIRE - and asks whether the top of the ladder is unbought because it is hard to build or because it is hard to feed. The funnel says the cards are barely built at all: the fifteen Tier 3 play rates run 3% to 10% against 40% to 55% on Tier 1, and 5 of the 15 already read as FUEL rather than as cards. If the block is the feed, this arm moves the play column; if it does not, the price of firing was never the reason and the answer is elsewhere. READ FIRST: play rate on the fifteen Tier 3 rows of the full funnel (A13-A15, D13-D15, O13-O15, V13-V15, W13-W15), then activations per game on the same rows, then Tier 3 firings per card built. GUARDRAILS: this loosens the own-suit tax on the most expensive layer in the game, which is a pull AWAY from monoculture and therefore toward the hook - but watch buildings built per seat by suit for a collapse in own-crop play, the barn glut (a wild-fed GROW competes with the island's wild substitution for the same junk card), and the bonus-slot mix staying at least 70% visit. Run --full-funnel; the headline metrics alone cannot answer the question this arm was written for.",
+  "schemaVersion": 1,
+  "set": {
+    "cards.catalogue.A13.activationType": "wild",
+    "cards.catalogue.A14.activationType": "wild",
+    "cards.catalogue.A15.activationType": "wild",
+    "cards.catalogue.D13.activationType": "wild",
+    "cards.catalogue.D14.activationType": "wild",
+    "cards.catalogue.D15.activationType": "wild",
+    "cards.catalogue.O13.activationType": "wild",
+    "cards.catalogue.O14.activationType": "wild",
+    "cards.catalogue.O15.activationType": "wild",
+    "cards.catalogue.V13.activationType": "wild",
+    "cards.catalogue.V14.activationType": "wild",
+    "cards.catalogue.V15.activationType": "wild",
+    "cards.catalogue.W13.activationType": "wild",
+    "cards.catalogue.W14.activationType": "wild",
+    "cards.catalogue.W15.activationType": "wild"
+  }
+}

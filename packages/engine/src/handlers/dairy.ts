@@ -1038,21 +1038,21 @@ export const refinery: CardHandler = {
       "because the handoff's arithmetic was wrong in both halves and right in the total. A " +
       'seat has THREE starters, not four - the Service stopped being a card when change 6 ' +
       'absorbed it into the Notice Board - and all three still flip IN THE ENGINE: Barn £2, ' +
-      'Notice Board £2, Farmstead free at the milestone. So 3 x 2 = 6. Change 6 retires the ' +
+      'Notice Board £2, Farmstead £2. So 3 x 2 = 6. Change 6 retires the ' +
       'Notice Board flip in the SHEET but is not built (ruling I in ' +
       'outstanding-rule-changes.md, which is why its upgraded face already prints 0 VP while ' +
       'the engine still sells it for £2). ⛔ WHEN CHANGE 6 LANDS, THIS CARD SILENTLY LOSES A ' +
-      'THIRD OF ITS CEILING - re-read it then. ⚠️ RULING L IS OWED AND ' +
-      "IT CHANGES THE CARD'S VALUE: the Farmstead flips FREE at the 3-own-buildings milestone " +
-      "rather than being bought. Implemented as COUNTING, which is Dean's recommendation - " +
-      'the card then reads as 2 free VP plus two £2 purchases worth 2 each, which is the price ' +
-      'the 6 VP cap assumes. If he rules the other way it is a 4 VP card for £4 and probably ' +
-      'dead, and the change is one clause in the filter below.',
+      'THIRD OF ITS CEILING - re-read it then. ⚠️ RULING L IS CLOSED AND IT MOVED THIS ' +
+      "CARD'S PRICE: the Farmstead used to flip FREE at the 3-own-buildings milestone, and the " +
+      'card was written as 2 free VP plus two £2 purchases worth 2 each. Dean put the Farmstead ' +
+      'on sale on 2026-08-12, so the same 6 VP cap now costs the full £6 and the free half of ' +
+      'the card is gone. Re-price it: 6 VP for £6 is 1 VP a coin against an island slot at 4, ' +
+      'and it may want a cap of 4 or a rate above 2.',
   },
   gameEnd(data, state, seat) {
-    // Ruling L (owed): the Farmstead's FREE milestone flip counts as "showing
-    // its upgraded side". If Dean rules the other way, exclude slot ===
-    // 'farmstead' here. NOT builtBuildings - see the notes.
+    // Every starter showing its upgraded side, the Farmstead included - and
+    // since 2026-08-12 every one of those was bought. NOT builtBuildings, which
+    // exists precisely to exclude starters - see the notes.
     return (
       2 *
       player(state, seat).tableau.filter(

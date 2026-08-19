@@ -475,14 +475,17 @@ function freightSection({ data, pooled }: ReportInput): string[] {
   );
   out.push('');
   // FARMSTEAD FLIP BY SUIT (the Wheat rebalance, 2026-08-12). Printed beside
-  // the builds line because it is that line's threshold: the flip is FREE at
-  // the own-crop-build milestone, so it is the one binary achievement in the
-  // game and the only thing that changes what a starter DOES. Every suit
-  // rebalance that touches an upgraded Farmstead face has so far assumed most
-  // seats get there. Nobody had measured it. Rate first, then the median round
-  // among the seats that flipped - a suit that flips late has the power for a
-  // shorter time than its rate suggests.
-  out.push('  Farmstead FREE flip, by suit (rate, then median round among those that flipped):');
+  // the builds line because every suit rebalance that touches an upgraded
+  // Farmstead face has so far assumed most seats get there, and nobody had
+  // measured it. Rate first, then the median round among the seats that
+  // flipped - a suit that flips late has the power for a shorter time than its
+  // rate suggests.
+  //
+  // ⚠️ Later the same day the free flip at the own-crop milestone was retired
+  // and the Farmstead went on sale at £2, so this is now a measure of a COIN
+  // DECISION (does the £2 go here, or on the Barn, or into a hire) and not of a
+  // building count. Do not compare it across that change.
+  out.push('  Farmstead flip, by suit (rate, then median round among those that flipped):');
   out.push(
     `    ${data.cards.suits
       .map(
@@ -734,8 +737,8 @@ function buildsBySuit(games: readonly GameMetrics[], suit: string): number {
 }
 
 /**
- * Share of the seats farming a given suit whose Farmstead reached the FREE
- * flip. A 0/1 projection through the same `bySuit` mean everything else uses,
+ * Share of the seats farming a given suit whose Farmstead reached its upgraded
+ * face. A 0/1 projection through the same `bySuit` mean everything else uses,
  * so it is a rate over SEATS rather than over games.
  */
 function farmsteadFlipRateBySuit(games: readonly GameMetrics[], suit: string): number {
