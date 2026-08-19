@@ -625,7 +625,28 @@ export function apiaryGrowBonus(fx: Fx, seat: Seat): void {
  */
 export function upgradeOptions(data: GameData, state: GameState, seat: Seat): CardId[] {
   const open = data.rules.turn.upgradeIsBonus ? bonusOpen(data, state) : !state.turn.actionSpent;
-  if (!open) return [];
+  return open ? upgradeTargets(data, state, seat) : [];
+}
+
+/**
+ * The starters this seat could flip IF the window were open: built, not already
+ * flipped, and affordable. The WINDOW is deliberately not part of it.
+ *
+ * ⚠️ THIS SPLIT IS A BUG FIX, and the bug is worth recording because the shape
+ * of it recurs. `apply` spends the main action BEFORE it calls the doer, so
+ * under `upgradeIsBonus: false` - the paired control arm, where the flip is a
+ * main action again - `doUpgrade` re-validated through `upgradeOptions`, whose
+ * gate is `!turn.actionSpent`, which `apply` had just made false. So
+ * `legalMoves` offered every upgrade and `apply` refused every one of them,
+ * unconditionally, and five of six seeds crashed under
+ * `overlays/turn-structure-v14.overlay.json` - the one arm the plan says must
+ * be run before any buy/market code is deleted.
+ *
+ * The rule is: a re-validation must check what the move NEEDS, never the window
+ * the caller has already consumed. `doUpgrade` checks these targets, and checks
+ * the bonus window itself only on the branch where the slot is what pays.
+ */
+export function upgradeTargets(data: GameData, state: GameState, seat: Seat): CardId[] {
   const p = player(state, seat);
   return p.tableau
     .filter((b) => {
@@ -641,8 +662,14 @@ export function upgradeOptions(data: GameData, state: GameState, seat: Seat): Ca
 }
 
 export function doUpgrade(fx: Fx, seat: Seat, card: CardId): void {
-  if (!upgradeOptions(fx.data, fx.state, seat).includes(card)) {
+  if (!upgradeTargets(fx.data, fx.state, seat).includes(card)) {
     throw new Error(`Seat ${seat} cannot upgrade ${card}`);
+  }
+  // The window, on the branch where the window is what pays. Under the control
+  // knob the main action pays, and `apply` has already spent it by the time we
+  // get here - see the note on `upgradeTargets` for what checking it here cost.
+  if (fx.data.rules.turn.upgradeIsBonus && !bonusOpen(fx.data, fx.state)) {
+    throw new Error('The bonus slot is shut: spent, or the action is taken');
   }
   const building = player(fx.state, seat).tableau.find((b) => b.card === card);
   if (!building) throw new Error(`Seat ${seat} has not built ${card}`);

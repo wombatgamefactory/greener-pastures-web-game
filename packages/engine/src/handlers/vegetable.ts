@@ -753,20 +753,30 @@ export const distributionCenter: CardHandler = {
           (o) =>
             ({
               kind: 'card',
-              // The head rides on the answer or the spend is validated against a
-              // barn the cards never reached. This is a `card` payload rather
-              // than the shared `deliver` answer, so it does NOT get the wiring
-              // in tasks.ts for free and has to carry it by hand.
-              payload: { tile: o.tile, spend: o.spend, ...(o.head ? { head: o.head } : {}) },
+              // ⚠️ BOTH heads ride on the answer or the spend is validated
+              // against a barn the cards never reached. This is a `card` payload
+              // rather than the shared `deliver` answer, so it does NOT get the
+              // wiring in tasks.ts for free and has to carry it by hand - and
+              // `deckHead` was missed exactly that way when it landed, crashing
+              // roughly 4% of games with "no <crop> card left to spend" on a
+              // spend that was only ever affordable because a deck card was
+              // supposed to arrive first.
+              payload: {
+                tile: o.tile,
+                spend: o.spend,
+                ...(o.head ? { head: o.head } : {}),
+                ...(o.deckHead ? { deckHead: o.deckHead } : {}),
+              },
             }) as TaskAnswer,
         );
       },
       resolve(fx, task, answer) {
         if (answer.kind !== 'card') throw new Error('sweepDeliver expects a card answer');
-        const { tile, spend, head } = answer.payload as {
+        const { tile, spend, head, deckHead } = answer.payload as {
           tile: string;
           spend: Partial<Record<Suit, number>>;
           head?: CardId[];
+          deckHead?: Suit;
         };
         // "Every receipt" = every receipt THIS TILE has left (Dean, 19/08/2026).
         // Read off the live island rather than assumed, so the card takes 2 from
@@ -775,7 +785,7 @@ export const distributionCenter: CardHandler = {
         const target = fx.state.island.tiles.find((t) => t.tile === tile);
         if (!target) throw new Error(`Tile ${tile} is not in play`);
         const receipts = deliveriesPerTile(fx.data) - target.deliveredBy.length;
-        doDeliver(fx, task.pid, tile, spend, undefined, receipts, head);
+        doDeliver(fx, task.pid, tile, spend, undefined, receipts, head, deckHead);
         return true;
       },
     },
