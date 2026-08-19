@@ -92,10 +92,8 @@ function cardIdsIn(move: Move, catalogue: ReadonlySet<CardId>): CardId[] {
 function knowableIds(view: PlayerView): Set<CardId> {
   const ok = new Set<CardId>(view.you.hand);
   for (const b of view.you.tableau) ok.add(b.card);
-  for (const id of view.you.covered) ok.add(id);
   for (const rival of view.rivals) {
     for (const b of rival.tableau) ok.add(b.card);
-    for (const id of rival.covered) ok.add(id);
   }
   for (const pile of Object.values(view.discards)) for (const id of pile) ok.add(id);
   // Your own in-flight draw: you have seen these, and `keep` answers name them.

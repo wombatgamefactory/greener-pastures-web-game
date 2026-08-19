@@ -220,9 +220,6 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
       if (event.seat !== me) return 0;
       return weight(w, 'build') - weight(w, 'handSpend') * handSpendCost(s, event.payment.length);
 
-    case 'covered':
-      return event.seat === me ? weight(w, 'build') : 0;
-
     case 'starterUpgraded':
       return event.seat === me ? weight(w, 'upgrade') : 0;
 

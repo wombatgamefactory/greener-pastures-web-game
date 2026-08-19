@@ -489,10 +489,27 @@ describe('the coin runway', () => {
    * is a test rather than a sentence, and so the paired sim run is measuring the
    * rule rather than a re-tuned bot.
    */
+  /**
+   * ⚠️ THE ARMS SWAPPED SIDES ON 19/08/2026, and the test had to swap with
+   * them. `rules.turn.buyCost` is now null in the shipped rules, so the
+   * buy-less half is the base game and it is the BUY that has to be reached for
+   * through an overlay. Both halves keep their overlays anyway and neither
+   * reads `data` bare: an assertion about what a coin is worth WITH the buy
+   * must not silently become an assertion about the shipped game the next time
+   * the knob moves, which is exactly how this test went red today. Same
+   * re-pointing the engine's own suite took.
+   */
   const noBuy = loadGameData({
     name: 'no-card-buy',
     schemaVersion: 1,
     set: { 'rules.turn.buyCost': null },
+  });
+  const withBuy = loadGameData({
+    name: 'card-buy',
+    schemaVersion: 1,
+    // 1 is the price the rule shipped at from 2026-08-03 until it was switched
+    // off; `overlays/turn-structure-v14.overlay.json` restores the same number.
+    set: { 'rules.turn.buyCost': 1 },
   });
 
   it('values a coin at nothing once the seat has bought everything it can', () => {
@@ -510,9 +527,9 @@ describe('the coin runway', () => {
   });
 
   it('values a coin at its face value while the card buy is live', () => {
-    const state = newGame(data, { seats: 2, suits: ['wheat', 'orchard'], seed: 'runway' });
+    const state = newGame(withBuy, { seats: 2, suits: ['wheat', 'orchard'], seed: 'runway' });
     const seat = state.turnPlayer;
-    const scratch = makeScratch(data, viewFor(data, state, seat));
+    const scratch = makeScratch(withBuy, viewFor(withBuy, state, seat));
     expect(scratch.coinNeverDead).toBe(true);
 
     const rich = { ...scratch, coins: scratch.coinRunway + 10 };

@@ -81,7 +81,7 @@ describe('noticeBoardOf', () => {
     }
   });
 
-  it('returns null, not a throw, for a seat whose board was covered or demolished', () => {
+  it('returns null, not a throw, for a seat whose board was demolished', () => {
     // Reachable today: D11 covers and D14 demolishes an empty building, and no
     // rule stops either targeting a starter. Ticket 30 is the ruling; this is
     // the interface refusing to be the thing that breaks meanwhile.

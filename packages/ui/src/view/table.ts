@@ -17,7 +17,6 @@ export interface Farm {
   readonly suit: Suit;
   readonly coins: number;
   readonly tableau: readonly BuildingView[];
-  readonly covered: readonly string[];
   readonly receipts: readonly number[];
   readonly handCount: number;
   readonly barnCount: number;
@@ -32,7 +31,6 @@ export function farmOf(view: PlayerView, seat: Seat): Farm {
       suit: view.you.suit,
       coins: view.you.coins,
       tableau: view.you.tableau,
-      covered: view.you.covered,
       receipts: view.you.receipts,
       handCount: view.you.hand.length,
       barnCount,
@@ -45,7 +43,6 @@ export function farmOf(view: PlayerView, seat: Seat): Farm {
     suit: rival.suit,
     coins: rival.coins,
     tableau: rival.tableau,
-    covered: rival.covered,
     receipts: rival.receipts,
     handCount: rival.handCount,
     barnCount: rival.barnCount,
@@ -75,9 +72,11 @@ export interface BoardState {
  * A seat's Notice Board - under v14 the only visit target in the game.
  *
  * Returns null rather than throwing when the seat has none. That is not
- * defensive padding: D11 and D14 can cover or demolish a starter, so a seat
- * with no Notice Board is a reachable position (ticket 30, where it hard-crashes
- * the engine). The interface must render that seat, not white-screen on it.
+ * defensive padding: D14 can demolish a building, so a seat with no Notice
+ * Board is a reachable position (ticket 30, where it hard-crashes the engine).
+ * The interface must render that seat, not white-screen on it. D11 was the
+ * second way in until 19/08/2026, when its build-on-top and the whole `covered`
+ * zone were deleted.
  */
 export function noticeBoardOf(data: GameData, farm: Farm): BoardState | null {
   const building = farm.tableau.find(

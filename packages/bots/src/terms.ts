@@ -134,17 +134,24 @@ function cardMoveSpend(payload: Record<string, unknown>): CardId | null {
  * Draw Worker (Draw 3, keep 2) and their Sow Worker both scored a flat +2
  * before this.
  *
- * `cardMove` is now two unrelated things and the probe is what makes one term
- * serve both. It was the Helping Hand's repeat, worth what the repeated work is
- * worth; since the Wheat rebuild it is ALSO a Tier 3 ACTION card, which is a
- * main action competing with Draw, Build, Harvest and Deliver. Nothing here
- * distinguishes them, deliberately: a rollout prices The Bakery by the stacks it
- * harvests and a repeat by the work it repeats, both in this table's own
- * currency, which is exactly what a label-based weight could not do.
+ * `cardMove` IS ONE THING AGAIN as of 19/08/2026: the Helping Hand's repeat,
+ * worth what the repeated work is worth. It briefly meant two unrelated things
+ * - the Wheat rebuild made a Tier 3 ACTION card a `cardMove` too, a main action
+ * competing with Draw, Build, Harvest and Deliver - and all fifteen Tier 3
+ * cards became ordinary GROW buildings in the v30 pass, taking the ACTION
+ * concept with them. `handlerFor().moves`/`applyMove` now has exactly one
+ * implementation in the catalogue, and it is the Helping Hand.
+ *
+ * Nothing here changes with that, which is the point of pricing by rollout: the
+ * term never distinguished the two, because a rollout prices The Bakery by the
+ * stacks it harvests and a repeat by the work it repeats, both in this table's
+ * own currency. The Tier 3 cards simply arrive through `grow` now and are
+ * priced by `outcome` on the way past.
  *
  * The known understatement is W14 The Pizzeria, whose payoff arrives only after
- * rivals accept - and a probe stops at a rival's task, by design. It is valued
- * at its flat `cardMove` weight and no more.
+ * rivals accept - and a probe stops at a rival's task, by design. It is a GROW
+ * now rather than a `cardMove`, so it is valued at its flat `grow` weight plus
+ * whatever the rollout can see, and no more.
  *
  * ⚠️ **D15 The Grand Creamery is the second, and it is understated on purpose**
  * (the Dairy rebuild, 2026-08-10). Its value is an EXPECTATION OVER A RANDOM
@@ -611,11 +618,47 @@ export const TERMS: readonly Term[] = [
 
   // --- the hand -------------------------------------------------------------
   {
-    // Scaled by room in hand: drawing into an end-of-turn discard is a wasted
-    // action, and the base Draw only nets +1 card a turn.
+    /**
+     * Scaled by room in hand: drawing into an end-of-turn discard is a wasted
+     * action, and the base Draw only nets +1 card a turn.
+     *
+     * ⚠️ A FULL HAND SCORES -1, NOT 0 (19/08/2026), AND THE FLOOR IS THE WHOLE
+     * FIX. This term always meant "a draw with no room is a wasted action", and
+     * for as long as it bottomed out at zero it could not say so: zero is not a
+     * penalty when every productive move on the menu is NEGATIVE, it is the
+     * argmax. Two 2-seat games in six deadlocked on exactly that and ran to the
+     * 6000-move ceiling - measured across 30 seeds, 3 of them at 2 seats and
+     * none at 3 or 4, because a wide table always has somebody who can still
+     * afford something.
+     *
+     * The position, from `--explain` on seed `end-2-5` at turn 241: a Wheat
+     * seat holding five Tier 3 cards it cannot afford, at a hand limit of five,
+     * with no non-full building to GROW and £0. Its whole menu priced out as
+     * `draw` 0.00, five `grow`s at -0.60, five `visit`s at -1.60 - every one of
+     * them negative because `handSpend` charges -2.50 for a card, and every one
+     * of them a way OUT of the position. So the bot drew, kept one, discarded
+     * one at -2.20, and did it again for a thousand turns. It paid 2.20 to
+     * throw away the card it would not pay 2.50 to spend.
+     *
+     * Charging the draw is the honest statement of what the turn costs, and it
+     * is the same accounting the discard already does one decision later: the
+     * evaluator is myopic per decision, so the forced discard at the far end of
+     * a full-hand draw is never seen from the draw itself. -1 is "one card of
+     * room, backwards" in the units this term already uses, so it needs no new
+     * constant and no new weight - the same `drawAction` weight prices both
+     * directions.
+     *
+     * MEASURED: 2p balanced went 26/30 games finishing to 29/30, 3p 28/30 to
+     * 29/30, 4p unchanged at 28/30, and every remaining failure is the V14
+     * `deckHead` engine crash rather than a deadlock. It does move the move mix
+     * - a bot at a full hand now prefers a grow or a visit to churning - and
+     * that is a real change to every arm, so it is stated here rather than
+     * buried: the previous behaviour was not a neutral baseline, it was a bot
+     * spending 240 turns doing nothing, which no arm could be read through.
+     */
     name: 'drawAction',
     claims: ['draw'],
-    feature: (act, s) => (act.a === 'draw' ? s.handRoom : 0),
+    feature: (act, s) => (act.a === 'draw' ? (s.handRoom > 0 ? s.handRoom : -1) : 0),
   },
   {
     /**

@@ -40,8 +40,6 @@ export interface RivalView {
   handCount: number;
   barnCount: number;
   tableau: BuildingView[];
-  /** Cards buried under a D11 cover-build. Public: everyone watched them get built. */
-  covered: CardId[];
   receipts: number[];
 }
 
@@ -58,7 +56,6 @@ export interface PlayerView {
     hand: CardId[];
     barn: Partial<Record<Suit, number>>;
     tableau: BuildingView[];
-    covered: CardId[];
     receipts: number[];
   };
   rivals: RivalView[];
@@ -132,7 +129,6 @@ export function viewFor(data: GameData, state: GameState, seat: Seat): PlayerVie
       hand: [...you.hand],
       barn,
       tableau: you.tableau.map((b) => buildingView(data, b)),
-      covered: [...you.covered],
       receipts: [...you.receipts],
     },
     rivals: state.players.flatMap((p, s) =>
@@ -146,7 +142,6 @@ export function viewFor(data: GameData, state: GameState, seat: Seat): PlayerVie
               handCount: p.hand.length,
               barnCount: p.barn.length,
               tableau: p.tableau.map((b) => buildingView(data, b)),
-              covered: [...p.covered],
               receipts: [...p.receipts],
             },
           ],

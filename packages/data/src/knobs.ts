@@ -92,6 +92,26 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     description:
       'Coins for BUY AT MARKET, the adopted bonus-slot coin sink (docs/Market Bonus Action 2026-08-03.md): top card of any one deck in play, own suit included, into the barn, revealed. Consumes the bonus slot, so it competes with the visit - which is the point, and the risk. Null deletes the rule. The doc names GBP 2 as broken and GBP 4 as the fallback dial.',
   },
+  {
+    template: 'rules.turn.bonusAtStartOnly',
+    type: 'boolean',
+    description:
+      'True: the bonus slot may be taken only at the START of your turn, before the main action ' +
+      '(Dean, 19/08/2026). False restores v14 "once per turn, any point". Set false together ' +
+      'with upgradeIsBonus, buyCost and marketCost to reach the pre-19/08 turn, which is the ' +
+      'paired control for the turn-structure arm. On its own it answers the one question no ' +
+      'report has ever measured: does forcing the choice to the top of the turn cost visits?',
+  },
+  {
+    template: 'rules.turn.upgradeIsBonus',
+    type: 'boolean',
+    description:
+      'True: flipping a starter for coins is a BONUS-slot option (Dean, 19/08/2026). False: it ' +
+      'costs the whole main action, as it did until then - the shape the 2026-07-14 table ' +
+      'measured as "nobody upgraded a starter". Read the upgrade take rate AND its timing: an ' +
+      'upgrade spike in the opening rounds followed by a visit-heavy midgame is a PASS, because ' +
+      'the option is capped at three flips a seat and cannot crowd the visit out all game.',
+  },
 
   // --- Economy -------------------------------------------------------------
   {

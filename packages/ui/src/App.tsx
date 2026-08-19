@@ -246,7 +246,7 @@ const EMPTY_VIEW = {
   turnPlayer: 0,
   phase: 'playing',
   endTrigger: null,
-  you: { suit: 'wheat', coins: 0, hand: [], barn: {}, tableau: [], covered: [], receipts: [] },
+  you: { suit: 'wheat', coins: 0, hand: [], barn: {}, tableau: [], receipts: [] },
   rivals: [],
   decks: {},
   discards: {},

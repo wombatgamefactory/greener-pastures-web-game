@@ -194,18 +194,10 @@ function Detail({
         vp={seat.breakdown.printed}
         icon={frame('vp')}
         empty="Nothing built yet prints VP."
-        isEmpty={seat.built.length === 0 && seat.covered.length === 0}
+        isEmpty={seat.built.length === 0}
       >
         {seat.built.map((c) => (
           <CardChip key={c.id} card={c} zoom={zoom} />
-        ))}
-        {seat.covered.map((c) => (
-          <CardChip
-            key={`covered-${c.id}`}
-            card={c}
-            zoom={zoom}
-            note="built over - no longer a building, still scores its VP"
-          />
         ))}
       </Source>
 

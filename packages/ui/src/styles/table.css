@@ -517,11 +517,6 @@
   border-radius: 50%;
 }
 
-.farm-covered {
-  font-size: 11px;
-  color: var(--ink-soft);
-}
-
 .farm-turn {
   margin-left: auto;
   background: var(--seat-pip);
@@ -951,12 +946,6 @@
   overflow: visible;
 }
 
-.inspector-covered {
-  margin: 0;
-  font-size: 11px;
-  color: var(--ink-soft);
-}
-
 .end-banner {
   position: fixed;
   top: 0;
@@ -970,4 +959,26 @@
   padding: 3px 16px;
   border-radius: 0 0 8px 8px;
   z-index: 70;
+}
+
+/**
+ * THE BONUS PHASE (19/08/2026). The slot is start-of-turn only now, so the bar
+ * opens on the four bonus options and a skip, then shows the main actions. It is
+ * an honesty affordance and not a rule: offered in one flat row, the bonus
+ * silently expires the moment somebody clicks Build, and a forfeited visit is
+ * the hook not happening.
+ */
+.bonus-phase {
+  margin: 0 0 0.4rem;
+  padding: 0.35rem 0.55rem;
+  border-left: 3px solid var(--accent, #b98b4a);
+  background: rgb(0 0 0 / 4%);
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
+.bonus-exits {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.3rem;
 }

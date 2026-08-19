@@ -64,6 +64,17 @@ export const GREEDY_PRIORITY: readonly MoveType[] = [
   'moveBalloon',
   'harvest',
   'build',
+  // ⚠️ `upgrade` BECAME A BONUS-SLOT MOVE ON 19/08/2026 and this line did not
+  // move with it, deliberately. By the reasoning three lines below, an option
+  // that spends the bonus slot has no business outranking the visit - and here
+  // it does, so a greedy seat with £2 and an unflipped starter will flip rather
+  // than visit, every time, until all three are flipped. That is left alone on
+  // purpose: `greedy` is the roster's REGRESSION BASELINE, its whole job is to
+  // be a fixed point the other bots are read against, and reordering it would
+  // silently move every baseline comparison in the same commit as a rules
+  // change. It is not in `BALANCE_PROFILES`, so no arm is measured through it.
+  // If a future ticket does want a greedy that respects the slot, move this
+  // below 'visit' on its own and re-baseline in that commit alone.
   'upgrade',
   'grow',
   'draw',

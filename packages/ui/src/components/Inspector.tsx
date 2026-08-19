@@ -101,13 +101,6 @@ export function Inspector({
         )}
 
         <Tableau data={data} buildings={farm.tableau} cardWidth={cardWidth} zoom={zoom} />
-
-        {farm.covered.length > 0 && (
-          <p className="inspector-covered">
-            {farm.covered.length} card{farm.covered.length === 1 ? '' : 's'} built over. They no
-            longer exist as buildings, but their printed VP still scores.
-          </p>
-        )}
       </div>
     </div>
   );

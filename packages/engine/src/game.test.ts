@@ -207,7 +207,13 @@ describe('main actions through apply', () => {
     expect(events.filter((e) => e.e === 'starterUpgraded')).toHaveLength(0);
   });
 
-  it('upgrade is a Build-action branch priced from data', () => {
+  /**
+   * Dean, 19/08/2026: the starter flip *"is no longer considered a Build action
+   * - instead it is one of the 4 bonus actions you may perform on your turn"*.
+   * So the assertion that used to read "a Build-action branch" now has to read
+   * the opposite in both directions: the slot is spent and the ACTION IS NOT.
+   */
+  it('upgrade spends the bonus slot, not the main action, and is priced from data', () => {
     const s2 = base();
     s2.players[WHEAT]!.coins = 2;
     const barnCard = s2.players[WHEAT]!.tableau.find(
@@ -218,6 +224,38 @@ describe('main actions through apply', () => {
       true,
     );
     expect(up.state.players[WHEAT]!.coins).toBe(0);
+    expect(up.state.turn.bonusSpent).toBe(true);
+    expect(up.state.turn.actionSpent).toBe(false);
+    // And the slot is genuinely gone: no second bonus, of any kind.
+    expect(legalMoves(data, up.state).some((m) => m.type === 'upgrade')).toBe(false);
+    expect(legalMoves(data, up.state).some((m) => m.type === 'visit')).toBe(false);
+  });
+
+  /**
+   * THE BONUS WINDOW (Dean, 19/08/2026): *"the bonus action can only be
+   * performed at the start of your turn."* One predicate, `bonusOpen`, and the
+   * whole of it is that the main action has not been taken.
+   */
+  it('the bonus slot shuts the moment the main action is taken', () => {
+    const open = base();
+    dealTo(data, open, WHEAT, 'W4'); // a visit needs a fee card in hand
+    open.players[WHEAT]!.coins = 2;
+    expect(legalMoves(data, open).some((m) => m.type === 'upgrade')).toBe(true);
+    expect(legalMoves(data, open).some((m) => m.type === 'visit')).toBe(true);
+
+    // `!actionSpent` IS "at the start of your turn" - there is no other thing a
+    // turn can have done, which is why the rule needed no new state. Set here
+    // rather than reached through a real action because every main action
+    // pushes a task, and a pending task is the one thing that suppresses the
+    // whole move list.
+    const shut = base();
+    dealTo(data, shut, WHEAT, 'W4');
+    shut.players[WHEAT]!.coins = 2;
+    shut.turn.actionSpent = true;
+    expect(shut.turn.bonusSpent).toBe(false); // unspent, and still unreachable
+    expect(legalMoves(data, shut).some((m) => m.type === 'upgrade')).toBe(false);
+    expect(legalMoves(data, shut).some((m) => m.type === 'visit')).toBe(false);
+    expect(legalMoves(data, shut).some((m) => m.type === 'workOwnWorker')).toBe(false);
   });
 
   it('deliver pays crates from the barn, mints coins, and takes the next receipt on the tile', () => {
@@ -733,9 +771,20 @@ describe('the bonus slot through apply', () => {
 });
 
 describe('the turn boundary', () => {
-  it('ends the turn automatically when nothing optional remains', () => {
+  /**
+   * ⚠️ INVERTED 19/08/2026, and the inversion is the point of the rule.
+   *
+   * This used to assert that the kept card funded a visit and so the turn WAITED
+   * for the bonus slot to be spent or declined. With the slot start-of-turn only
+   * (`bonusOpen` = unspent AND the action untaken), an unspent slot can no
+   * longer hold anything open: past the action there is nothing to wait for, so
+   * the turn settles on its own and `endTurn` is not needed.
+   *
+   * That is also why `settleTurn`'s `hasBonusOption` check was deleted rather
+   * than tidied - it had become unreachable, not merely redundant.
+   */
+  it('ends the turn by itself once the action is done, because the slot is already shut', () => {
     const state = base();
-    // Hand is empty: after the action there is no visit fee and no worker, so the turn ends itself.
     const applied = apply(data, state, { type: 'draw', seat: WHEAT });
     // Resolve the draw: pick a deck twice, then keep one.
     let s = applied.state;
@@ -743,11 +792,9 @@ describe('the turn boundary', () => {
       const moves = legalMoves(data, s);
       s = apply(data, s, moves[0] as Move).state;
     }
-    // The kept card funds a visit, so the turn waits for the bonus slot.
-    expect(s.turnPlayer).toBe(WHEAT);
-    const end = apply(data, s, { type: 'endTurn', seat: WHEAT });
-    expect(end.state.turnPlayer).toBe(APIARY);
-    expect(end.state.turn.actionSpent).toBe(false);
+    // The kept card WOULD have funded a visit. It cannot now: the action is
+    // spent, so the window is shut and the turn has already passed on.
+    expect(s.turnPlayer).toBe(APIARY);
   });
 
   it('queues the end-of-turn discard down to the printed Barn size', () => {
@@ -765,11 +812,23 @@ describe('the turn boundary', () => {
 });
 
 describe('the card buy', () => {
-  /** The rule switched off, which is the paired control the sim runs. */
-  const noBuy = loadGameData({
-    name: 'no-card-buy',
+  /**
+   * ⚠️ POLARITY FLIPPED 19/08/2026. The card buy is DELETED from the shipped
+   * game - `rules.turn.buyCost` is null - so the whole of this suite now has to
+   * switch the rule ON to describe it, and the "switched off" case at the
+   * bottom is simply the base data.
+   *
+   * The suite is kept rather than deleted because the deletion is a knob and
+   * not a revert: the engine treats null as "rule absent", every code path is
+   * still standing, and `overlays/turn-structure-v14.overlay.json` turns the
+   * rule back on as the paired control. If that arm sends the buy back, these
+   * are the tests that say it still works. If it does not, this suite is
+   * deleted with the code in the cleanup commit.
+   */
+  const buyOn = loadGameData({
+    name: 'card-buy-on',
     schemaVersion: 1,
-    set: { 'rules.turn.buyCost': null },
+    set: { 'rules.turn.buyCost': 1 },
   });
 
   function withCoins(n: number): GameState {
@@ -779,7 +838,7 @@ describe('the card buy', () => {
   }
 
   function buys(state: GameState): Move[] {
-    return legalMoves(data, state).filter((m) => m.type === 'buy');
+    return legalMoves(buyOn, state).filter((m) => m.type === 'buy');
   }
 
   it('offers every deck but your own, and only while you can pay', () => {
@@ -797,7 +856,7 @@ describe('the card buy', () => {
   it('pays the bank, takes the top card blind, and is once a turn', () => {
     const state = withCoins(3);
     const top = state.decks.apiary[0] as string;
-    const applied = apply(data, state, { type: 'buy', seat: WHEAT, suit: 'apiary' });
+    const applied = apply(buyOn, state, { type: 'buy', seat: WHEAT, suit: 'apiary' });
     const after = applied.state;
     expect(after.players[WHEAT]!.coins).toBe(2);
     expect(after.players[WHEAT]!.hand).toContain(top);
@@ -807,17 +866,17 @@ describe('the card buy', () => {
     expect(after.turn.actionSpent).toBe(false);
     expect(after.turn.bonusSpent).toBe(false);
     expect(buys(after)).toHaveLength(0);
-    expect(() => apply(data, after, { type: 'buy', seat: WHEAT, suit: 'apiary' })).toThrow();
+    expect(() => apply(buyOn, after, { type: 'buy', seat: WHEAT, suit: 'apiary' })).toThrow();
   });
 
   it('is not a Draw: no reveal task, and the Orchard modifier never touches it', () => {
-    const orchard = makeState(data, ['orchard', 'wheat']);
+    const orchard = makeState(buyOn, ['orchard', 'wheat']);
     orchard.players[0]!.coins = 1;
     const farmstead = orchard.players[0]!.tableau.find(
-      (b) => cardById(data, b.card).slot === 'farmstead',
+      (b) => cardById(buyOn, b.card).slot === 'farmstead',
     );
     farmstead!.upgraded = true; // see +1 and keep +1 on every DRAW
-    const applied = apply(data, orchard, { type: 'buy', seat: 0, suit: 'wheat' });
+    const applied = apply(buyOn, orchard, { type: 'buy', seat: 0, suit: 'wheat' });
     expect(applied.state.tasks).toHaveLength(0);
     expect(applied.state.players[0]!.hand).toHaveLength(1);
   });
@@ -828,25 +887,36 @@ describe('the card buy', () => {
     // itself once the kept card is spent. With it on, the free action is an
     // unspent option exactly like the bonus slot.
     state.turn.actionSpent = true;
-    expect(legalMoves(data, state).some((m) => m.type === 'endTurn')).toBe(true);
+    expect(legalMoves(buyOn, state).some((m) => m.type === 'endTurn')).toBe(true);
     expect(buys(state).length).toBeGreaterThan(0);
-    const ended = apply(data, state, { type: 'endTurn', seat: WHEAT });
+    const ended = apply(buyOn, state, { type: 'endTurn', seat: WHEAT });
     expect(ended.state.turnPlayer).toBe(APIARY);
   });
 
-  it('disappears entirely when the rule is switched off', () => {
+  it('is absent from the SHIPPED game, which is where the rule now stands', () => {
     const state = withCoins(5);
-    expect(legalMoves(noBuy, state).filter((m) => m.type === 'buy')).toHaveLength(0);
-    expect(() => apply(noBuy, state, { type: 'buy', seat: WHEAT, suit: 'apiary' })).toThrow();
+    expect(legalMoves(data, state).filter((m) => m.type === 'buy')).toHaveLength(0);
+    expect(() => apply(data, state, { type: 'buy', seat: WHEAT, suit: 'apiary' })).toThrow();
   });
 });
 
 describe('buy at market (ticket 56)', () => {
-  /** The rule switched off - ticket 56's buy-as-shipped arm. */
-  const noMarket = loadGameData({
-    name: 'no-market',
+  /**
+   * ⚠️ POLARITY FLIPPED 19/08/2026. Buy-at-market is DELETED from the shipped
+   * game - `rules.turn.marketCost` is null - so this suite switches the rule ON
+   * to describe it, and the "switched off" case at the bottom is the base data.
+   *
+   * Kept for the same reason the card buy's suite is kept: the removal is a
+   * knob, not a revert, and `overlays/turn-structure-v14.overlay.json` is the
+   * control that turns it back on. Note what replaced the rule rather than
+   * deleting the exchange - A17 The Smoke Pot now prints "whenever you VISIT a
+   * neighbour, you may pay £1 to add a deck card into your barn", which is this
+   * market at a third of the price and gated behind a visit.
+   */
+  const marketOn = loadGameData({
+    name: 'market-on',
     schemaVersion: 1,
-    set: { 'rules.turn.marketCost': null },
+    set: { 'rules.turn.marketCost': 3 },
   });
 
   function withCoins(n: number): GameState {
@@ -856,7 +926,7 @@ describe('buy at market (ticket 56)', () => {
   }
 
   function markets(state: GameState): Move[] {
-    return legalMoves(data, state).filter((m) => m.type === 'market');
+    return legalMoves(marketOn, state).filter((m) => m.type === 'market');
   }
 
   it('offers every deck in play, OWN SUIT INCLUDED, and only at the printed price', () => {
@@ -872,7 +942,7 @@ describe('buy at market (ticket 56)', () => {
   it('pays the bank, puts the top card in the BARN revealed, and consumes the bonus slot', () => {
     const state = withCoins(3);
     const top = state.decks.apiary[0] as string;
-    const applied = apply(data, state, { type: 'market', seat: WHEAT, suit: 'apiary' });
+    const applied = apply(marketOn, state, { type: 'market', seat: WHEAT, suit: 'apiary' });
     const after = applied.state;
     expect(after.players[WHEAT]!.coins).toBe(0);
     expect(after.players[WHEAT]!.barn).toContain(top);
@@ -888,13 +958,13 @@ describe('buy at market (ticket 56)', () => {
     // action is untouched.
     expect(after.turn.bonusSpent).toBe(true);
     expect(after.turn.actionSpent).toBe(false);
-    expect(legalMoves(data, after).some((m) => m.type === 'visit')).toBe(false);
+    expect(legalMoves(marketOn, after).some((m) => m.type === 'visit')).toBe(false);
     expect(markets(after)).toHaveLength(0);
   });
 
   it('is not a visit: no wage, no visited event, and it never arms a Helping Hand', () => {
     const state = withCoins(3);
-    const applied = apply(data, state, { type: 'market', seat: WHEAT, suit: 'wheat' });
+    const applied = apply(marketOn, state, { type: 'market', seat: WHEAT, suit: 'wheat' });
     expect(applied.events.some((e) => e.e === 'visited')).toBe(false);
     expect(applied.state.turn.visit).toBeNull();
     // The only coins that moved were the fee to the bank.
@@ -903,13 +973,13 @@ describe('buy at market (ticket 56)', () => {
   });
 
   it('is not a Draw: no task, and the Orchard modifier never touches it', () => {
-    const orchard = makeState(data, ['orchard', 'wheat']);
+    const orchard = makeState(marketOn, ['orchard', 'wheat']);
     orchard.players[0]!.coins = 3;
     const farmstead = orchard.players[0]!.tableau.find(
-      (b) => cardById(data, b.card).slot === 'farmstead',
+      (b) => cardById(marketOn, b.card).slot === 'farmstead',
     );
     farmstead!.upgraded = true; // see +1 and keep +1 on every DRAW
-    const applied = apply(data, orchard, { type: 'market', seat: 0, suit: 'wheat' });
+    const applied = apply(marketOn, orchard, { type: 'market', seat: 0, suit: 'wheat' });
     expect(applied.state.tasks).toHaveLength(0);
     expect(applied.state.players[0]!.hand).toHaveLength(0);
     expect(applied.state.players[0]!.barn).toHaveLength(1); // the bought card, nothing kept
@@ -920,7 +990,7 @@ describe('buy at market (ticket 56)', () => {
     // Deck empty, discard holds one card: the buy reshuffles and delivers.
     const card = state.decks.apiary[0] as string;
     state.discards.apiary.push(...state.decks.apiary.splice(0));
-    const applied = apply(data, state, { type: 'market', seat: WHEAT, suit: 'apiary' });
+    const applied = apply(marketOn, state, { type: 'market', seat: WHEAT, suit: 'apiary' });
     expect(applied.events.some((e) => e.e === 'reshuffled')).toBe(true);
     expect(applied.state.players[WHEAT]!.barn).toHaveLength(1);
     expect(card).toBeDefined();
@@ -930,15 +1000,21 @@ describe('buy at market (ticket 56)', () => {
     expect(markets(dry).some((m) => m.type === 'market' && m.suit === 'apiary')).toBe(false);
   });
 
-  it('holds the turn open at £3 and never holds a £2 seat hostage', () => {
-    // £3, empty hand, action spent: the market is a live bonus option, so the
-    // turn waits for an explicit decline.
+  /**
+   * ⚠️ INVERTED 19/08/2026 by the start-of-turn rule. This used to assert that
+   * a £3 seat with the action spent was still offered the market, so the turn
+   * waited for an explicit decline. `bonusOpen` now requires the action
+   * UNTAKEN, so the market is unreachable there and nothing waits. The second
+   * half - a £2 seat is never held hostage by a price it cannot pay - is
+   * unchanged and still worth pinning.
+   */
+  it('is unreachable once the action is spent, and never holds a £2 seat hostage', () => {
     const rich = withCoins(3);
     rich.turn.actionSpent = true;
-    expect(markets(rich).length).toBeGreaterThan(0);
-    const ended = apply(data, rich, { type: 'endTurn', seat: WHEAT });
+    expect(markets(rich)).toHaveLength(0);
+    const ended = apply(marketOn, rich, { type: 'endTurn', seat: WHEAT });
     expect(ended.state.turnPlayer).toBe(APIARY);
-    // £2 under the market-only data (the buy off): no market option exists, so
+    // £2 under the market-only marketOn (the buy off): no market option exists, so
     // nothing offers and nothing waits.
     const marketOnly = loadGameData({
       name: 'market-not-buy',
@@ -951,10 +1027,10 @@ describe('buy at market (ticket 56)', () => {
     expect(moves.filter((m) => m.type === 'market' || m.type === 'buy')).toHaveLength(0);
   });
 
-  it('disappears entirely when the rule is switched off', () => {
+  it('is absent from the SHIPPED game, which is where the rule now stands', () => {
     const state = withCoins(9);
-    expect(legalMoves(noMarket, state).filter((m) => m.type === 'market')).toHaveLength(0);
-    expect(() => apply(noMarket, state, { type: 'market', seat: WHEAT, suit: 'apiary' })).toThrow();
+    expect(legalMoves(data, state).filter((m) => m.type === 'market')).toHaveLength(0);
+    expect(() => apply(data, state, { type: 'market', seat: WHEAT, suit: 'apiary' })).toThrow();
   });
 });
 
@@ -1072,14 +1148,15 @@ function pickMove(rng: [number, number, number, number], moves: Move[]): Move {
  * the revealed deck tops until one is built and the rest go back. A card task's
  * riders are untyped, so both are read by their rider names.
  *
- * `covered` is a zone rather than limbo (D11 buries a card there permanently)
- * and was simply missing.
+ * `covered` used to be listed here - a zone rather than limbo, because D11
+ * buried a card in it permanently. D11 stopped building on top of a building on
+ * 19/08/2026 and the zone went with it, so there is nothing left to count.
  */
 function inPlayCardIds(state: GameState): string[] {
   const ids: string[] = [];
   for (const suit of data.cards.suits) ids.push(...state.decks[suit], ...state.discards[suit]);
   for (const p of state.players) {
-    ids.push(...p.hand, ...p.barn, ...p.covered);
+    ids.push(...p.hand, ...p.barn);
     for (const b of p.tableau) ids.push(b.card, ...b.stack);
   }
   for (const task of state.tasks) {

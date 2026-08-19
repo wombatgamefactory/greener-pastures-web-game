@@ -34,12 +34,6 @@ export interface PlayerState {
   barn: CardId[];
   tableau: BuildingState[];
   /**
-   * Cards buried under a D11 cover-build. Not buildings: invisible to every
-   * count, formula and placement. Only their printed VP still scores, as a
-   * bare sum (the reference's cover semantics).
-   */
-  covered: CardId[];
-  /**
    * VP taken from the island, in delivery order - one entry per delivery, so
    * `receipts.length` is the receipt count the tie-break reads. Since the flat
    * island every entry is read straight off `island.vpByDeliveryOrder` (6 for
@@ -452,8 +446,28 @@ export type TaskAnswer =
       /** D7: cards lifted off the seat's OWN buildings to help pay, by id. */
       stacks?: CardId[];
     }
-  | { kind: 'deliver'; tile: string; spend: Partial<Record<Suit, number>>; head?: CardId[] }
-  | { kind: 'balloon'; balloon: string; spend: Partial<Record<Suit, number>> }
+  /**
+   * `head` / `deckHead` are V2 The Vegetable Farmstead's, and they MUST be
+   * carried on the answer rather than re-derived when it resolves. The head is
+   * loaded BEFORE the payment and is often the only reason the payment is
+   * affordable, so an answer that drops it is an answer the barn cannot pay -
+   * which is exactly what happened when `deliverAnswers` first enumerated the
+   * head-augmented options and then threw the head away.
+   */
+  | {
+      kind: 'deliver';
+      tile: string;
+      spend: Partial<Record<Suit, number>>;
+      head?: CardId[];
+      deckHead?: Suit;
+    }
+  | {
+      kind: 'balloon';
+      balloon: string;
+      spend: Partial<Record<Suit, number>>;
+      head?: CardId[];
+      deckHead?: Suit;
+    }
   | { kind: 'discard'; cards: CardId[] }
   | { kind: 'skip' }
   | { kind: 'card'; payload: Record<string, unknown> };
@@ -535,7 +549,9 @@ export type Move =
    * Deliver from barn to an island tile. `spend` is a per-suit map - barn identity
    * is inert. `head` is V2 The Vegetable Farmstead's "you may FIRST put N cards
    * from your hand into your barn", moved before the payment is made and absent
-   * for every other suit.
+   * for every other suit. `deckHead` is the same card on the UPGRADED face,
+   * where the source moves from the hand to the top of a deck of your choice;
+   * the two are alternatives, never a pair.
    */
   | {
       type: 'deliver';
@@ -543,13 +559,23 @@ export type Move =
       tile: string;
       spend: Partial<Record<Suit, number>>;
       head?: CardId[];
+      /** V2's UPGRADED head (19/08/2026): the top card of this deck, not a hand card. */
+      deckHead?: Suit;
     }
   /**
    * The Deliver action's freight branch (reference DL-12): pay 2 differing
    * barn cards, take a balloon that is not on your own Aerodrome, collect its
    * reward. In play only when Vegetable is on the table.
    */
-  | { type: 'moveBalloon'; seat: Seat; balloon: string; spend: Partial<Record<Suit, number>> }
+  | {
+      type: 'moveBalloon';
+      seat: Seat;
+      balloon: string;
+      spend: Partial<Record<Suit, number>>;
+      /** V2's head on a flight - a balloon move IS the Deliver action (DL-12). */
+      head?: CardId[];
+      deckHead?: Suit;
+    }
   /**
    * The visit half of the bonus slot: cards from hand onto a neighbour's
    * building, then the payoff printed on it. The MODE PICKS THE BUILDING, which
@@ -626,9 +652,12 @@ export type GameEvent =
   | { e: 'workerWorked'; seat: Seat; workerId: WorkerAction; owner: Seat | null; free: boolean }
   | { e: 'reshuffled'; suit: Suit; count: number }
   | { e: 'built'; seat: Seat; card: CardId; payment: CardId[]; coins: number }
-  /** A card buried under a D11 cover-build: no longer a building, printed VP still scores. */
-  | { e: 'covered'; seat: Seat; card: CardId }
-  /** An empty building demolished into its owner's barn (D14). */
+  /**
+   * An empty building demolished by D14 The Cream Refinery. It goes to its own
+   * suit's DISCARD, not to the barn - Dean's ruling of 19/08/2026 - so it is
+   * neither a building nor freight afterwards. The `covered` event that used to
+   * sit beside this one is gone with D11's build-on-top (19/08/2026).
+   */
   | { e: 'demolished'; seat: Seat; card: CardId }
   /**
    * A starter flipped to its upgraded face. Always a purchase since 2026-08-12,

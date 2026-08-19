@@ -264,7 +264,19 @@ describe('every legal move is reachable through the interface', () => {
     }
     // `pass` is the one type a healthy game may never reach: it exists only for
     // a turn with no legal main action at all.
-    const missing = MOVE_TYPES.filter((t) => !seen.has(t) && t !== 'pass');
+    //
+    // `buy` and `market` joined it on 19/08/2026, for a different reason worth
+    // spelling out: both rules are SWITCHED OFF rather than deleted
+    // (`rules.turn.buyCost` and `rules.turn.marketCost` are null), so the move
+    // types still exist, `MOVE_ROUTES` still routes them, and the interface
+    // still knows how to render them - there is simply no position in the corpus
+    // that can offer one. They come straight back if the turn-structure arm
+    // sends the rules back, which is why they are exempted here rather than
+    // taken out of `MOVE_TYPES`. ⚠️ If either knob is ever given a number again,
+    // DELETE ITS EXEMPTION: the exemption is what would otherwise hide a
+    // genuinely unreachable rule.
+    const OFF: readonly MoveType[] = ['buy', 'market'];
+    const missing = MOVE_TYPES.filter((t) => !seen.has(t) && t !== 'pass' && !OFF.includes(t));
     expect(missing).toEqual([]);
   });
 });

@@ -451,37 +451,40 @@ export class Fx {
   // --- tableau surgery (Dairy) -------------------------------------------
 
   /**
-   * D11 The Heritage House: the covered card leaves the tableau for the
-   * player's `covered` pile. It is no longer a building - invisible to every
-   * endgame formula, every count, every placement - but its printed VP still
-   * scores, as a bare sum (the reference's cover semantics).
+   * Clear a building's whole stack into the suits' discards - D14 The Cream
+   * Refinery, and nothing else.
    *
-   * The empty-stack guard STAYS an assertion after the 2026-08-10 retext. D11
-   * now targets a loaded building, but it ships that building's cards to the
-   * barn before covering it, so nothing is ever buried; the throw is what keeps
-   * that ordering from silently reversing.
+   * Deliberately not `harvest` (that is the barn, and it fires afterHarvest)
+   * and deliberately not a loop of `stackCardToBarn` (that is freight, which is
+   * what the Refinery stopped producing on 19/08/2026). A demolition destroys
+   * the cards on the building as well as the building, so they go where spent
+   * cards go. Silent apart from the discard event: nothing on-harvest fires,
+   * because nothing was harvested.
    */
-  coverBuilding(seat: Seat, building: CardId): void {
-    this.touch(seat);
-    const p = player(this.state, seat);
-    const i = p.tableau.findIndex((b) => b.card === building);
-    if (i < 0) throw new Error(`Seat ${seat} has not built ${building}`);
-    const b = p.tableau[i] as { card: CardId; stack: CardId[]; upgraded: boolean };
-    if (b.stack.length > 0) throw new Error(`${building} is not empty`);
-    p.tableau.splice(i, 1);
-    p.covered.push(building);
-    this.emit({ e: 'covered', seat, card: building });
+  discardStack(seat: Seat, building: CardId): void {
+    const b = this.buildingDraft({ seat, card: building });
+    const cards = b.stack.splice(0);
+    if (cards.length > 0) this.discard(cards);
   }
 
   /**
-   * D14 The Cream Refinery: a building of yours leaves the tableau for your
-   * barn, where it becomes ordinary delivery freight. Unlike a cover it scores
-   * no printed VP - it is not a building any more, it is stock, so it stops
-   * counting for D13, D20 and D21 too.
+   * D14 The Cream Refinery: a building of yours leaves the tableau for its own
+   * suit's DISCARD. It scores no printed VP, its ability is gone, and it stops
+   * counting for D20 and D21 - it is not a building any more, and since Dean's
+   * ruling of 19/08/2026 it is not stock either.
    *
-   * Same empty-stack assertion as `coverBuilding`, and same reason: D14 puts
-   * the building's own cards into the barn first, and the throw is what stops
-   * that order reversing unnoticed.
+   * ⚠️ THE DESTINATION CHANGED ON 19/08/2026 AND IT IS THE WHOLE NERF. The
+   * demolished building used to land in its owner's barn as ordinary delivery
+   * freight, which made the Refinery a converter: tableau VP in, freight out.
+   * It now converts to nothing at all, and the payout beside it is a flat 3 deck
+   * cards rather than a sum scaling on build cost. See D14's notes in dairy.ts
+   * and balance flag 8.5 of the v30 plan - the card may now be strictly worse
+   * than not building it, which is the thing the arm has to answer.
+   *
+   * The empty-stack assertion STAYS. D14 clears the building's own stack into
+   * the discard first, and the throw is what stops that order reversing
+   * unnoticed. `coverBuilding`, which shared this assertion for D11's
+   * build-on-top, is gone with the `covered` zone (19/08/2026).
    */
   demolish(seat: Seat, building: CardId): void {
     this.touch(seat);
@@ -491,7 +494,7 @@ export class Fx {
     const b = p.tableau[i] as { card: CardId; stack: CardId[]; upgraded: boolean };
     if (b.stack.length > 0) throw new Error(`${building} is not empty`);
     p.tableau.splice(i, 1);
-    p.barn.push(building);
+    this.discard([building]);
     this.emit({ e: 'demolished', seat, card: building });
   }
 

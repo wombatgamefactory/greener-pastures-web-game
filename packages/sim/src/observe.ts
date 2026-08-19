@@ -14,9 +14,14 @@
  *     count of `cardMove`s it offered, because those are the only two ways a
  *     card's own text fires by its owner's choice: `handlerFor().activate()`
  *     fires only from `doGrow`, and `applyMove` only from the card-move branch.
- *     The Wheat Tier 3 ACTION cards are the reason the second half exists - they
- *     have no threshold and are never grown, so a grow-only count would report
- *     them as never doing anything.
+ *     The Wheat Tier 3 ACTION cards were the reason the second half existed -
+ *     they had no threshold and were never grown, so a grow-only count reported
+ *     them as never doing anything. ⚠️ ALL FIFTEEN TIER 3 CARDS BECAME ORDINARY
+ *     GROW BUILDINGS ON 19/08/2026 and the ACTION concept went with them, so
+ *     `cardMove` now has exactly one implementation in the catalogue - the
+ *     Helping Hand's repeat. The second half of the count STAYS, because the
+ *     repeat is a genuine firing of the Helping Hand and nothing else counts it,
+ *     but it is no longer load-bearing for a whole tier.
  *
  * The honest gap, recorded rather than papered over: a passive that fires but
  * emits no card-tagged event - the Orchard Farmstead's draw modifier is the
@@ -69,7 +74,6 @@ export const EVENT_KINDS = {
   workerWorked: true,
   reshuffled: true,
   built: true,
-  covered: true,
   demolished: true,
   starterUpgraded: true,
   delivered: true,
@@ -192,12 +196,61 @@ export interface GameMetrics {
   /** Of those, the ones by a Vegetable seat - the doc's sharpest case. */
   marketFundedVeg: number;
   visitsBySeat: number[];
+  /**
+   * THE FIVE-WAY BONUS-SLOT TALLY (the v30 plan, section 5.5, 19/08/2026).
+   *
+   * Watch-list item 0 used to be a three-way count - visit / market / own
+   * Worker - and the market half of it stopped existing on 19/08/2026 when
+   * `rules.turn.marketCost` went null. What replaced it is a slot with four
+   * options and one way to waste it, so the tally has five columns:
+   *
+   *   visit-coin   `visitCoinBySeat`   - a card on a rival's Notice Board, £1
+   *   visit-power  `visitPowerBySeat`  - a card on the board, their Service run
+   *   own-power    `workOwnBySeat`     - £1 to run your own, no wage
+   *   upgrade      `upgradesBySeat`    - £2 to flip one of your own starters
+   *   SLOT UNSPENT `turnsBySeat - bonusTurnsBySeat`, derived, never stored
+   *
+   * The split of the visit is by PAYOFF MODE off the `visited` event, and the
+   * engine's third mode rides with the coin half: `special` is the upgraded
+   * County Show's two-card visit, which pays `visitPayout.twoCard` and runs
+   * nobody's Service, so it is a coin visit that costs two cards rather than a
+   * fourth kind of thing. Only `worker` is a power visit.
+   *
+   * ⚠️ SLOT UNSPENT IS THE NEW BUCKET AND THE LOAD-BEARING ONE. It is the only
+   * number that can say whether the start-of-turn restriction is COSTING
+   * visits, because a forfeited slot is invisible to every other column: the
+   * visit is not being outcompeted there, it is being missed. Nothing counts
+   * it - it is turns minus bonus turns, derived where it is read (assertion
+   * 14), so it can never drift out of step with the turn count it is a
+   * remainder of.
+   *
+   * ⚠️ THE INSTRUMENT CAVEAT, and it must travel with the number. The bots
+   * choose ONE move at a time from the whole legal-move list and have no
+   * concept of resolving the bonus before the main action. A seat holding a
+   * live delivery - scored 12 to 48 by the weights, against a visit's 1.5 to
+   * 5 - will always take the delivery and forfeit the slot, where a human
+   * would spend the slot first and then deliver. So the unspent share is
+   * biased PESSIMISTIC against real play, and the number to read is the DELTA
+   * between paired arms (`overlays/bonus-any-time.overlay.json` is the
+   * control), never the absolute.
+   */
+  visitCoinBySeat: number[];
+  visitPowerBySeat: number[];
   visitsToLeaderBySeat: number[];
   deliveriesBySeat: number[];
   ownCropBuildsBySeat: number[];
   foreignCropBuildsBySeat: number[];
   wageCoinsBySeat: number[];
   upgradesBySeat: number[];
+  /**
+   * 1-based round of each starter flip, the twin of `marketRounds` and added
+   * for the same reason on 19/08/2026: the upgrade took the market's place in
+   * the bonus slot, so it needs the market's timing split. A capped option
+   * SHOULD spike in the opening rounds and then stop - that shape is a PASS -
+   * and only a LATE upgrade share is the solitaire-crowds-out-the-visit
+   * finding. A bare count cannot tell those two apart.
+   */
+  upgradeRounds: number[];
   /**
    * The round in which the seat's Farmstead reached its upgraded face, or null
    * if it never did. Added 2026-08-12 for the Wheat rebalance, whose headline
@@ -287,11 +340,19 @@ export interface GameMetrics {
    */
   deckTopsTaken: number;
   /**
-   * THE LENGTH OF EVERY GRAND CREAMERY RUN (D15), one entry per firing.
+   * CARDS BUILT PER GRAND CREAMERY ACTIVATION (D15), one entry per firing.
    *
-   * The card's whole balance question in one list: a median of 1 is a
-   * disappointment machine, a median of 3 is too strong, and the dial is whether
-   * a coin-priced card counts as cost 0 or busts the run.
+   * ⚠️ THE MEANING CHANGED ON 19/08/2026 AND THE NAME DID NOT. It used to be
+   * the length of the escalating run, and it was the card's whole balance
+   * question: a median of 1 was a disappointment machine, a median of 3 too
+   * strong, and the dial was whether a coin-priced card counted as cost 0 or
+   * busted the run. The card now reads "Reveal 2 deck cards. Build 1 for free.
+   * Discard the other", so there is no run and no dial - the expected value is
+   * a flat 1. The list is KEPT because what it can still catch is the failure
+   * mode of the rewrite: an entry of 0 means the activation reached the pick
+   * with nothing revealed, i.e. the decks were dry, and a rising share of those
+   * is the reshuffle pressure the old card was flagged for showing up on the
+   * new one. Anything other than 0 or 1 is a bug.
    */
   creameryRuns: number[];
 
@@ -527,12 +588,15 @@ export class Fold {
       marketFundedDeliveries: 0,
       marketFundedVeg: 0,
       visitsBySeat: zeros(),
+      visitCoinBySeat: zeros(),
+      visitPowerBySeat: zeros(),
       visitsToLeaderBySeat: zeros(),
       deliveriesBySeat: zeros(),
       ownCropBuildsBySeat: zeros(),
       foreignCropBuildsBySeat: zeros(),
       wageCoinsBySeat: zeros(),
       upgradesBySeat: zeros(),
+      upgradeRounds: [],
       farmsteadFlipRoundBySeat: Array<number | null>(seats).fill(null),
       firstOwnServiceTurnBySeat: Array<number | null>(seats).fill(null),
       clogTurnsBySeat: zeros(),
@@ -698,26 +762,33 @@ export class Fold {
   }
 
   /**
-   * D15 The Grand Creamery's run length, counted off the flip task rather than
-   * off an event, because "the run ended" is not something the engine emits: a
-   * flip that busts discards a card and a flip that is declined does nothing at
-   * all, and both look the same from outside. So the run opens when the ACTION
-   * move is taken and closes on the first flip that builds nothing.
+   * D15 The Grand Creamery, counted off its own tasks rather than off an event,
+   * because "the activation finished" is not something the engine emits.
+   *
+   * ⚠️ REPOINTED ON 19/08/2026 WITH THE CARD. It used to open on the standing
+   * ACTION move and close on the first flip that built nothing, which was the
+   * escalating run's length. D15 is an ordinary GROW building now and reveals
+   * exactly two deck cards, so the window opens on the GROW and closes on the
+   * `creameryPick` task that spends them. What is counted is how many cards the
+   * activation actually put on the table - 1 in the ordinary case, 0 only when
+   * the decks were too dry to reveal anything at all.
    */
   private creamery(d: Decision): void {
-    if (d.move.type === 'cardMove' && d.move.card === 'D15') {
+    if (d.move.type === 'grow' && d.move.building === 'D15') {
+      // A previous window left open (the decks ran dry mid-reveal and the drain
+      // loop dropped the task) is closed here rather than lost.
+      if (this.creameryRun !== null) this.m.creameryRuns.push(this.creameryRun);
       this.creameryRun = 0;
       return;
     }
-    const head = d.pre.tasks[0];
     if (this.creameryRun === null) return;
-    if (!head || head.t !== 'card' || head.src !== 'D15' || head.kind !== 'creameryFlip') return;
-    if (d.events.some((e) => e.e === 'built')) {
-      this.creameryRun += 1;
-      return;
+    const head = d.pre.tasks[0];
+    if (!head || head.t !== 'card' || head.src !== 'D15') return;
+    if (d.events.some((e) => e.e === 'built')) this.creameryRun += 1;
+    if (head.kind === 'creameryPick') {
+      this.m.creameryRuns.push(this.creameryRun);
+      this.creameryRun = null;
     }
-    this.m.creameryRuns.push(this.creameryRun);
-    this.creameryRun = null;
   }
 
   /**
@@ -725,6 +796,17 @@ export class Fold {
    * the seat holds cards and yet no visit is legal anywhere, because every
    * rival's Notice Board is full. Only askable at a fresh turn - once the bonus
    * slot is spent `visitOptions` is empty for a reason that is not denial.
+   *
+   * ✅ RE-READ ON 19/08/2026 against the start-of-turn rule and it is still
+   * correct - and it is now correct BY CONSTRUCTION rather than by luck. The
+   * guard below is `no pending task && !actionSpent && !bonusSpent`, and the
+   * last two are exactly the engine's new `bonusOpen(data, state)` predicate.
+   * So the sample is taken in the one window where a visit could legally
+   * happen, which is what the probe always meant: before, an unspent slot after
+   * a spent action was still a window this guard skipped, and the skip was
+   * defensible but arbitrary. It is neither now. Nothing to change; the
+   * denominator (`clogSampledBySeat`) counts the same turns it always did,
+   * because every turn passes through this window before anything else.
    */
   private turnStart(d: Decision): void {
     const s = d.pre;
@@ -773,9 +855,11 @@ export class Fold {
         this.taskAnswer(d, pre.tasks[0]);
         return;
       case 'cardMove': {
-        // The other half of the activation count. A Wheat Tier 3 card is never
-        // grown, so `grow` alone would report it as never firing; a Helping Hand
-        // repeat is a firing of the Helping Hand by the same standard.
+        // The other half of the activation count, and since 19/08/2026 the
+        // Helping Hand's repeat is the whole of it: the Wheat Tier 3 ACTION
+        // cards it was written for are GROW buildings now and arrive through
+        // the `grow` branch above. A repeat is a firing of the Helping Hand by
+        // the same standard, so the branch earns its keep on its own.
         this.facts(move.card).activations += 1;
         return;
       }
@@ -894,6 +978,7 @@ export class Fold {
         // Every flip is bought now, so every one of them counts as an upgrade;
         // the Farmstead is told apart by its slot for the timing metric.
         m.upgradesBySeat[e.seat] = (m.upgradesBySeat[e.seat] ?? 0) + 1;
+        m.upgradeRounds.push(this.round());
         if (
           cardById(this.data, e.card).slot === 'farmstead' &&
           m.farmsteadFlipRoundBySeat[e.seat] == null
@@ -957,6 +1042,16 @@ export class Fold {
         return;
       case 'visited': {
         m.visitsBySeat[e.seat] = (m.visitsBySeat[e.seat] ?? 0) + 1;
+        // The five-way tally's two visit columns (19/08/2026). Split on the
+        // payoff mode the engine already carries, so the two can never
+        // disagree with `visitsBySeat`, which stays the sum of them. `special`
+        // is the County Show's two-card visit: it pays coins and runs nobody's
+        // Service, so it belongs on the coin side.
+        if (e.mode === 'worker') {
+          m.visitPowerBySeat[e.seat] = (m.visitPowerBySeat[e.seat] ?? 0) + 1;
+        } else {
+          m.visitCoinBySeat[e.seat] = (m.visitCoinBySeat[e.seat] ?? 0) + 1;
+        }
         // The plain £1 visit - a coin payoff on a BASE board - is the floor
         // move the market doc says the market eats first; its round index
         // feeds the midgame split (ticket 56).
@@ -981,7 +1076,30 @@ export class Fold {
         // from. A bonus taken by this very move is in `pre` only if the move
         // was not itself the visit, so the post-state's flag is checked too
         // when the boundary and the visit landed in one apply.
-        if (d.pre.turn.bonusSpent || d.move.type === 'visit' || d.move.type === 'workOwnWorker') {
+        //
+        // ⚠️ `upgrade` JOINED THIS LIST ON 19/08/2026, and it is gated on the
+        // knob that moved it. Flipping a starter is a bonus-slot spend now, so
+        // a turn that flipped one has spent its slot and is NOT an unspent
+        // slot; under `overlays/upgrade-main-action.overlay.json` the flip is a
+        // main action again and must not be counted here, or the control arm
+        // would report its own upgrades as bonus spends and the five-way tally
+        // would not be comparable between the arms - which is the only way it
+        // is ever read.
+        //
+        // `market` is on the list for the same one-apply reason and NOT because
+        // the market is live - it is null as of 19/08/2026. It matters only
+        // under `overlays/turn-structure-v14.overlay.json`, which restores both
+        // the market and the any-time slot together, and that is precisely the
+        // arm the five-way tally is read against: a market taken after the
+        // action would end the turn in the same apply and be scored as an
+        // UNSPENT slot, inflating the control's unspent share and flattering
+        // the shipped rule by exactly the amount being measured.
+        const bonusMove =
+          d.move.type === 'visit' ||
+          d.move.type === 'workOwnWorker' ||
+          d.move.type === 'market' ||
+          (this.data.rules.turn.upgradeIsBonus && d.move.type === 'upgrade');
+        if (d.pre.turn.bonusSpent || bonusMove) {
           m.bonusTurnsBySeat[seat] = (m.bonusTurnsBySeat[seat] ?? 0) + 1;
         }
         // The Service clog, sampled once per turn boundary for EVERY seat: a
@@ -1025,7 +1143,6 @@ export class Fold {
       // no assertion and no funnel layer reads.
       case 'cardPlaced':
       case 'cardsDiscarded':
-      case 'covered':
       case 'demolished':
       case 'gameEnded':
         return;
@@ -1115,7 +1232,7 @@ export class Fold {
     m.error = error;
     m.chooseMs = chooseMs;
 
-    // A run left open by the decks running dry: its flip task enumerates
+    // A window left open by the decks running dry: the flip task enumerates
     // nothing and the drain loop drops it silently, so no decision closes it.
     if (this.creameryRun !== null) {
       m.creameryRuns.push(this.creameryRun);
@@ -1133,17 +1250,15 @@ export class Fold {
     m.winner = first === undefined ? null : first;
 
     // VP attribution, per card per seat: the printed face plus whatever the
-    // card's own endgame formula returned. Covered cards (D11) still score
-    // their printed VP, so they are counted where they lie.
+    // card's own endgame formula returned. The tableau is the whole of it -
+    // there used to be a second loop here over D11's covered pile, which scored
+    // printed VP from outside the tableau, and both the card and the zone were
+    // deleted on 19/08/2026.
     state.players.forEach((p, seat) => {
       for (const b of p.tableau) {
         const f = this.facts(b.card);
         const endgame = handlerFor(b.card)?.gameEnd?.(this.data, state, seat) ?? 0;
         f.vp[seat] = (f.vp[seat] ?? 0) + faceOf(this.data, b).printedVp + endgame;
-      }
-      for (const id of p.covered) {
-        const f = this.facts(id);
-        f.vp[seat] = (f.vp[seat] ?? 0) + (cardById(this.data, id).printedVp ?? 0);
       }
     });
     return m;

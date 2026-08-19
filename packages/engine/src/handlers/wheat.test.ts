@@ -3,11 +3,21 @@
  * spanning-test style.
  *
  * The load-bearing pieces are new. The FIELDs' two-line shape - GROW draws, the
- * HARVEST pays and reseeds - is what the rebuild is for, so every Tier 1 test
- * asserts BOTH lines and the reseed. The Tier 3 ACTION seam is tested where it
- * bites (spending the main action, holding nothing open, suppressing `pass`) in
- * spanning.test.ts §2, and here for what each card actually does. The Farmstead
- * seams are unchanged and still tested first.
+ * HARVEST pays - is what the rebuild is for, so every Tier 1 test asserts BOTH
+ * lines. The Farmstead seams are unchanged and still tested first.
+ *
+ * V30, 19/08/2026. Two things this file used to pin are gone, and their tests
+ * now pin their absence instead:
+ *
+ *   1. **The Tier 3 ACTION seam.** W13/W14/W15 are ordinary GROW buildings on
+ *      Dean's ruling, so every test that drove them through a `cardMove` now
+ *      drives them through `growBuilding`, and the "no threshold, no activation
+ *      type, trigger 'action'" assertions invert into their opposites.
+ *   2. **The seed line on four of the five FIELDs.** Only W5 prints it now (and
+ *      W4's handler still calls it against a printed text that no longer says
+ *      so - see the ⚠️ in wheat.ts). So the group D tests assert that the
+ *      harvest pushes ONE task list and no `sowFromDeck` beside it, which is
+ *      the assertion shape that catches a reseed creeping back.
  */
 
 import { BASE_GAME_DATA as data } from '@gp/data';
@@ -19,7 +29,6 @@ import {
   gameEndScores,
   growBuilding,
   pendingAnswers,
-  standingMoves,
   workOwnWorker,
 } from '../runtime.js';
 import { buildingOf, cardById, player, thresholdOf } from '../query.js';
@@ -51,9 +60,17 @@ function harvestMoves(state: GameState): Move[] {
   return legalMoves(data, state).filter((m) => m.type === 'harvest');
 }
 
-/** The one standing move a Tier 3 ACTION card offers, if it is offering one. */
-function actionMoveFor(state: GameState, card: string): Move | undefined {
-  return standingMoves(data, state, WHEAT).find((m) => m.card === card);
+/**
+ * GROW a Tier 3 card for the wheat seat, dealing it the fee first.
+ *
+ * All three print `activationType: "wild"`, so the fee can be any card at all -
+ * W20 is used because it is an endgame card no Tier 3 test ever wants in play,
+ * and because a wild activation that quietly started demanding wheat would fail
+ * here rather than pass by luck.
+ */
+function growTier3(s: GameState, card: string) {
+  dealTo(data, s, WHEAT, 'W20');
+  return growBuilding(data, s, WHEAT, card, 'W20');
 }
 
 /**
@@ -138,13 +155,22 @@ describe('the Wheat Farmstead (W2) - one relaxed harvest gate, two depths', () =
   it('upgraded: the second Harvest action is gone, not merely optional', () => {
     const s = base();
     buildingOf(s, WHEAT, 'W2').upgraded = true;
-    buildFor(data, s, WHEAT, 'W4', 'W7');
+    buildFor(data, s, WHEAT, 'W4', 'W5');
     fill(s, 'W4');
-    fill(s, 'W7');
+    fill(s, 'W5');
 
-    const first = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W7' });
+    // ⚠️ THE FIXTURE MOVED FROM W7 TO W5 (v30, 19/08/2026), and the reason is
+    // worth writing down because it will catch somebody else. W7's harvest used
+    // to leave a task pending whatever the hand held (the seed), so the turn
+    // could not settle inside `apply`. With the seed gone, an empty hand makes
+    // its Build undoable, the queue empties, and `settleTurn` ENDS THE TURN
+    // inside the same call - which resets `actionSpent` and passes the seat on,
+    // so the assertions below were reading the next player's turn and one of
+    // them was passing for the wrong reason. W5's Draw 2 always survives the
+    // drain, so the turn stays open and the test measures what it claims to.
+    const first = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W5' });
     expect(first.state.turn.again).toBeNull();
-    // W7's harvest queued a build and a reseed; drain them, and the full W4 is
+    // W5's harvest queued a Draw 2 and its seed; drain them, and the full W4 is
     // still sitting there with no action left to take it.
     const cleared = answerAll(first.state);
     expect(cleared.turn.again).toBeNull();
@@ -164,7 +190,7 @@ describe('the Wheat Farmstead (W2) - one relaxed harvest gate, two depths', () =
     buildingOf(s, WHEAT, 'W2').upgraded = true;
     buildFor(data, s, WHEAT, 'W13', 'W4');
     loadStack(data, s, WHEAT, 'W4', 1, 'apiary');
-    const applied = apply(data, s, actionMoveFor(s, 'W13') as Move);
+    const applied = growTier3(s, 'W13');
     expect(applied.state.turn.again).toBeNull();
   });
 });
@@ -282,62 +308,106 @@ describe('Tier 1 - the five FIELDs, both printed lines each', () => {
     dealTo(data, s, WHEAT, 'W7', 'W8');
     fill(s, 'W6');
     const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W6' });
-    // One sow task per FIELD owned - W6 itself included, since it just emptied.
+    // One sow task per FIELD owned - W6 itself included, since it just emptied -
+    // and NOTHING ELSE: the trailing deck sow went in the v30 simplification, so
+    // the whole task list is the assertion rather than a filtered subset of it.
+    expect(applied.state.tasks.map((t) => t.t)).toEqual(['sow', 'sow']);
     const sows = applied.state.tasks.filter((t) => t.t === 'sow');
-    expect(sows).toHaveLength(2);
     expect(sows.map((t) => (t.t === 'sow' ? t.targets : null))).toEqual([own('W6'), own('W4')]);
     // Mandatory as printed: no skip answer while a hand card and a target exist.
     expect(pendingAnswers(data, applied.state).some((a) => a.kind === 'skip')).toBe(false);
   });
 
-  it('W7 Golden Field: GROW adds a deck card too, so one activation fills it from the seed', () => {
+  /**
+   * ⛔ SIMPLIFIED 19/08/2026 (v30, group D). The GROW used to add TWO cards -
+   * your payment plus the top of a deck - which is what made threshold 3 fill in
+   * one activation from a seed. Both the deck sow and the seed are gone, so the
+   * GROW is now the plainest line in the suit and the FIELD takes three of them
+   * from empty. That is the interval question this whole file was rebuilt around,
+   * back on the table for one card; wheat.ts's note names the threshold as the
+   * dial if it measures badly.
+   */
+  it('W7 Golden Field: GROW draws and nothing else - the deck sow is gone', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W7'); // threshold 3
     dealTo(data, s, WHEAT, 'W6');
-    loadStack(data, s, WHEAT, 'W7', 1, 'apiary'); // the seed from a previous harvest
+    loadStack(data, s, WHEAT, 'W7', 1, 'apiary');
     const grown = growBuilding(data, s, WHEAT, 'W7', 'W6');
-    expect(grown.state.tasks.map((t) => t.t)).toEqual(['draw', 'sowFromDeck']);
-    const sow = grown.state.tasks[1];
-    expect(sow).toMatchObject({ targets: own('W7') });
+    expect(grown.state.tasks.map((t) => t.t)).toEqual(['draw']);
     const done = answerAll(grown.state);
-    // seed + payment + deck card = 3: full.
-    expect(buildingOf(done, WHEAT, 'W7').stack).toHaveLength(3);
+    // One card down plus the payment = 2 of 3. It no longer fills itself.
+    expect(buildingOf(done, WHEAT, 'W7').stack).toHaveLength(2);
   });
 
-  it('W7 Golden Field: HARVEST is a real Build at a discount of 1', () => {
+  /**
+   * ⛔ THE ONE DELIBERATE POWER INCREASE IN THE WHEAT BLOCK (v30, 19/08/2026):
+   * the discount goes 1 to 2, which is what the card is paid for losing its two
+   * free cards a cycle. At a discount of 2 a 2-cost Tier 1 is FREE, and the
+   * discount already waived the own-suit half, so the payment is the empty array
+   * - the assertion below is the difference between the two numbers, not just a
+   * mods field being echoed back.
+   */
+  it('W7 Golden Field: HARVEST is a real Build at a discount of 2', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W7');
-    dealTo(data, s, WHEAT, 'W8'); // costs 2 wheat, so 1 at a discount of 1 - but the
-    dealTo(data, s, WHEAT, 'W6'); // discount waives the own-suit half, so W6 can pay.
+    dealTo(data, s, WHEAT, 'W8'); // costs 2 wheat: free at a discount of 2
     fill(s, 'W7');
     const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W7' });
-    const build = applied.state.tasks.find((t) => t.t === 'build');
-    expect(build).toMatchObject({ src: 'W7', mods: { discount: 1 } });
+    // The build and nothing after it: no reseed rides along any more.
+    expect(applied.state.tasks.map((t) => t.t)).toEqual(['build']);
+    expect(applied.state.tasks[0]).toMatchObject({ src: 'W7', mods: { discount: 2 } });
     const answers = pendingAnswers(data, applied.state);
     expect(
-      answers.some((a) => a.kind === 'build' && a.card === 'W8' && a.payment.length === 1),
+      answers.some((a) => a.kind === 'build' && a.card === 'W8' && a.payment.length === 0),
     ).toBe(true);
   });
 
-  it('W8 Heritage Field: GROW banks a hand card; HARVEST harvests another building', () => {
+  it('W8 Heritage Field: GROW just draws; HARVEST harvests another building', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W8', 'W5');
     dealTo(data, s, WHEAT, 'W6', 'W7');
     loadStack(data, s, WHEAT, 'W8', 1, 'apiary');
     const grown = growBuilding(data, s, WHEAT, 'W8', 'W6');
-    expect(grown.state.tasks.map((t) => t.t)).toEqual(['draw', 'handToBarn']);
+    // The GROW-time barn deposit is gone with v30: one line, one task.
+    expect(grown.state.tasks.map((t) => t.t)).toEqual(['draw']);
+    expect(player(grown.state, WHEAT).barn).toEqual([]);
 
     const t = base();
     buildFor(data, t, WHEAT, 'W8', 'W5');
     fill(t, 'W8');
     fill(t, 'W5');
     const applied = apply(data, t, { type: 'harvest', seat: WHEAT, building: 'W8' });
-    const chooser = applied.state.tasks.find((x) => x.t === 'chooseBuilding');
-    // The STRICT full gate, and never itself.
-    expect(chooser).toMatchObject({ filter: 'full', exclude: 'W8', then: 'harvest' });
+    // The chooser and nothing after it: the seed line is gone here too.
+    expect(applied.state.tasks.map((x) => x.t)).toEqual(['chooseBuilding']);
+    expect(applied.state.tasks[0]).toMatchObject({
+      filter: 'loaded',
+      exclude: 'W8',
+      then: 'harvest',
+    });
     expect(pendingAnswers(data, applied.state)).toEqual([{ kind: 'building', card: 'W5' }]);
     // No surcharge left on this card: the £1 is gone from the design.
     expect(cardById(data, 'W8').abilityTrigger).not.toContain('harvestSurcharge');
+  });
+
+  /**
+   * ⛔ THE READING INVERTED (v30, 19/08/2026). "Another of your buildings" used
+   * to be the STRICT full gate, on the reasoning that W11/W12/W13 spelled their
+   * exception out in words and this card did not. It now prints "even if not
+   * full", so a half-loaded building is a legal target - which is the whole of
+   * the change and cannot be seen from the `filter` field alone, since the
+   * strict gate would offer W5 too once W5 were full.
+   */
+  it('W8 Heritage Field: the chained harvest now reaches a building that is NOT full', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W8', 'W7'); // W7 threshold 3
+    fill(s, 'W8');
+    loadStack(data, s, WHEAT, 'W7', 1, 'apiary'); // 1 of 3: nowhere near full
+    const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W8' });
+    expect(pendingAnswers(data, applied.state)).toContainEqual({ kind: 'building', card: 'W7' });
+    const done = answerAll(applied.state);
+    expect(buildingOf(done, WHEAT, 'W7').stack).toEqual([]);
+    // W8's own 2 cards plus W7's 1: everything harvested lands in the barn.
+    expect(player(done, WHEAT).barn).toHaveLength(3);
   });
 });
 
@@ -401,90 +471,121 @@ describe('Tier 2', () => {
   });
 });
 
-describe('Tier 3 - the ACTION cards', () => {
-  it('all three print no threshold and no activation type, so none can be grown', () => {
+/**
+ * ⛔ THE ACTION CARD IS GONE (19/08/2026). Dean's ruling - "The concept of an
+ * ACTION was never requested. They are all GROW." - turns all three of these
+ * into ordinary owner-activated buildings, so the first test in this block is
+ * the old one with every assertion inverted, and the rest drive the cards
+ * through a GROW instead of a `cardMove`. What each card DOES is unchanged
+ * except on W14, which was separately rewritten to its printed text.
+ */
+describe('Tier 3 - three ordinary GROW buildings', () => {
+  it('all three print a threshold and a wild activation, so all three are grown', () => {
     for (const id of ['W13', 'W14', 'W15']) {
-      expect(cardById(data, id).threshold, id).toBeNull();
-      expect(cardById(data, id).activationType, id).toBeNull();
-      expect(cardById(data, id).abilityTrigger, id).toEqual(['action']);
-      expect(handlerFor(id)?.actionMoves, id).toBe(true);
+      expect(cardById(data, id).threshold, id).toEqual(expect.any(Number));
+      expect(cardById(data, id).activationType, id).toBe('wild');
+      expect(cardById(data, id).abilityTrigger, id).toEqual(['onActivate']);
+      expect(typeof handlerFor(id)?.activate, id).toBe('function');
+      expect(handlerFor(id)?.moves, id).toBeUndefined();
     }
   });
 
-  it('W14 The Pizzeria: every rival is OFFERED a draw, and each may decline', () => {
+  it('W13 The Bakery: one GROW empties every loaded building, itself included', () => {
     const s = base();
-    buildFor(data, s, WHEAT, 'W14');
-    const applied = apply(data, s, actionMoveFor(s, 'W14') as Move);
-    expect(applied.state.turn.actionSpent).toBe(true);
-    const offer = applied.state.tasks[0];
-    expect(offer).toMatchObject({ t: 'card', kind: 'offerDraw', pid: APIARY, src: 'W14' });
-    // A real decision: take the card, or refuse and keep the baker poor.
-    expect(pendingAnswers(data, applied.state)).toEqual([
+    buildFor(data, s, WHEAT, 'W13', 'W4', 'W5'); // W13 threshold 1
+    loadStack(data, s, WHEAT, 'W4', 1, 'apiary'); // 1 of 2: not full, harvested anyway
+    fill(s, 'W5');
+    const grown = growTier3(s, 'W13');
+    expect(buildingOf(grown.state, WHEAT, 'W4').stack).toEqual([]);
+    expect(buildingOf(grown.state, WHEAT, 'W5').stack).toEqual([]);
+    // Its own fee is on its own stack when the ability fires, so the cascade
+    // takes it straight back off again and into the barn. Correct, not a bug.
+    expect(buildingOf(grown.state, WHEAT, 'W13').stack).toEqual([]);
+    expect(player(grown.state, WHEAT).barn).toContain('W20');
+    expect(player(grown.state, WHEAT).barn).toHaveLength(4); // 1 + 2 + its own fee
+  });
+
+  /**
+   * ⛔ REWRITTEN TO THE PRINTED TEXT (19/08/2026). The sheet reads "Every player,
+   * INCLUDING YOU, may Draw 1. For each card drawn, gain £1" and had done since
+   * before the v30 pass; the handler was still running "every OTHER player", with
+   * a hand-to-barn rider the sheet no longer prints. Both halves are pinned here:
+   * the owner gets an offer of their own, and an acceptance moves nothing out of
+   * the owner's hand.
+   */
+  it('W14 The Pizzeria: everyone including the owner is OFFERED a draw, and each may decline', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W14'); // threshold 2, so the fee does not fill it
+    const grown = growTier3(s, 'W14');
+    const offers = grown.state.tasks.filter((t) => t.t === 'card' && t.kind === 'offerDraw');
+    expect(offers.map((t) => t.pid)).toEqual([WHEAT, APIARY]);
+    expect(offers.every((t) => t.t === 'card' && t.riders.owner === WHEAT)).toBe(true);
+    // A real decision, for the rival and for the owner alike.
+    expect(pendingAnswers(data, grown.state)).toEqual([
       { kind: 'card', payload: { take: true } },
       { kind: 'skip' },
     ]);
 
-    const declined = answerTask(data, applied.state, { kind: 'skip' } as TaskAnswer);
-    expect(player(declined.state, WHEAT).coins).toBe(0);
-    expect(player(declined.state, APIARY).hand).toEqual([]);
+    // Everybody declines: the card does nothing at all, which is what makes
+    // consent the binding constraint rather than the price.
+    const declined = answerAll(grown.state, () => ({ kind: 'skip' }) as TaskAnswer);
+    expect(player(declined, WHEAT).coins).toBe(0);
+    expect(player(declined, WHEAT).hand).toEqual([]);
+    expect(player(declined, APIARY).hand).toEqual([]);
 
-    const accepted = answerAll(applied.state, (answers) => answers[0] as TaskAnswer);
-    expect(player(accepted, WHEAT).coins).toBe(1);
+    // Everybody accepts: two cards drawn, so the baker mints £2 - and one of
+    // those cards is the baker's own, which is the whole of the rewrite.
+    const accepted = answerAll(grown.state, (answers) => answers[0] as TaskAnswer);
+    expect(player(accepted, WHEAT).coins).toBe(2);
+    expect(player(accepted, WHEAT).hand).toHaveLength(1);
     expect(player(accepted, APIARY).hand).toHaveLength(1);
   });
 
-  /**
-   * RAISED 2026-08-12, the one card in the rebalance pointing UP: an acceptance
-   * now also moves a card out of the OWNER's hand into their barn. ⚠️ It is
-   * CONVERSION, NOT CREATION - it costs the owner a card - which is the only
-   * reason a raise is allowed in a pass whose thesis is that Wheat gets too many
-   * free cards. The decline is untouched and still does nothing at all, which is
-   * what makes the rival's consent the binding constraint rather than the price.
-   */
-  it('W14 The Pizzeria: an acceptance banks a card of the OWNER’s; a decline does nothing', () => {
+  it('W14 The Pizzeria: an acceptance no longer banks a card of the OWNER’s', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W14');
     dealTo(data, s, WHEAT, 'W5', 'W6');
-    const applied = apply(data, s, actionMoveFor(s, 'W14') as Move);
+    const grown = growTier3(s, 'W14');
 
-    const declined = answerTask(data, applied.state, { kind: 'skip' } as TaskAnswer);
-    expect(declined.state.tasks).toEqual([]);
-    expect(player(declined.state, WHEAT).coins).toBe(0);
-    expect(player(declined.state, WHEAT).barn).toEqual([]);
-    expect(player(declined.state, WHEAT).hand).toEqual(['W5', 'W6']);
-
-    const accepted = answerTask(data, applied.state, {
+    const accepted = answerTask(data, grown.state, {
       kind: 'card',
       payload: { take: true },
     } as TaskAnswer);
-    // Pushed for the OWNER while a RIVAL's answer resolves, which is only safe
-    // because W14 is an ACTION on the owner's turn: every offer resolves inside
-    // it, so the owner's handToBarn does too.
-    expect(accepted.state.tasks.some((t) => t.t === 'handToBarn' && t.pid === WHEAT)).toBe(true);
-    const done = answerAll(accepted.state);
-    expect(player(done, WHEAT).coins).toBe(1);
-    expect(player(done, WHEAT).barn).toHaveLength(1);
-    expect(player(done, WHEAT).hand).toHaveLength(1);
-    expect(player(done, APIARY).hand).toHaveLength(1);
+    expect(accepted.state.tasks.some((t) => t.t === 'handToBarn')).toBe(false);
+    const done = answerAll(accepted.state, (answers) => answers[0] as TaskAnswer);
+    expect(player(done, WHEAT).barn).toEqual([]);
+    // W5 and W6 still in hand, plus the two cards the two acceptances drew.
+    expect(player(done, WHEAT).hand).toContain('W5');
+    expect(player(done, WHEAT).hand).toContain('W6');
+    expect(player(done, WHEAT).coins).toBe(2);
   });
 
   it('W15 The Patisserie: the top card of every live deck, straight to the barn', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W15');
     const tops = data.cards.suits.map((suit) => s.decks[suit][0]);
-    const applied = apply(data, s, actionMoveFor(s, 'W15') as Move);
-    expect(applied.audit.tasksPushed).toBe(0);
-    expect(player(applied.state, WHEAT).barn).toEqual(tops);
+    const grown = growTier3(s, 'W15');
+    expect(grown.audit.tasksPushed).toBe(0);
+    // The fee is on the stack, never in the barn: only the deck tops arrive.
+    expect(player(grown.state, WHEAT).barn).toEqual(tops);
   });
 
-  it('W15 offers nothing once every deck is dry', () => {
+  /**
+   * The live-deck gate went with the standing move it used to gate. A dry table
+   * no longer withholds the card, it just makes the activation a no-op - the
+   * same answer one step later, and the assertion moves with it.
+   */
+  it('W15 does nothing at all once every deck is dry', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W15');
+    dealTo(data, s, WHEAT, 'W20');
     for (const suit of data.cards.suits) {
       s.decks[suit] = [];
       s.discards[suit] = [];
     }
-    expect(actionMoveFor(s, 'W15')).toBeUndefined();
+    const grown = growBuilding(data, s, WHEAT, 'W15', 'W20');
+    expect(player(grown.state, WHEAT).barn).toEqual([]);
+    expect(grown.state.tasks).toEqual([]);
   });
 });
 
@@ -614,8 +715,18 @@ describe('difficulty metadata stays honest across the suit', () => {
       expect(h, id).toBeDefined();
       expect(h?.difficulty.verified.endgame, id).toBe(typeof h?.gameEnd === 'function');
       expect(h?.difficulty.verified.addsMoves, id).toBe(typeof h?.moves === 'function');
-      // Only an ACTION card declares actionMoves, and only a card with moves may.
-      if (h?.actionMoves) expect(typeof h.moves, id).toBe('function');
+      // ⛔ W18 The Helping Hand is now the ONLY Wheat card contributing standing
+      // moves. The other three were the Tier 3 ACTION cards, and the concept
+      // left the game on 19/08/2026 - this is what stops it creeping back in.
+      // W18 is a different shape and always was: it enumerates one move per fee
+      // card because the fee IS the decision, and it never spent the action.
+      expect(typeof h?.moves === 'function', id).toBe(id === 'W18');
+    }
+  });
+
+  it('no Wheat card prints an ACTION trigger any more', () => {
+    for (const id of WHEAT_IDS) {
+      expect(cardById(data, id).abilityTrigger, id).not.toContain('action');
     }
   });
 

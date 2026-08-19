@@ -253,6 +253,8 @@ export interface ActionGroup {
   readonly hint: string;
   /** True when clicking it needs a target next rather than playing immediately. */
   readonly needsTarget: boolean;
+  /** This family spends the BONUS SLOT rather than the main action. */
+  readonly bonus?: true;
   readonly moves: Move[];
 }
 
@@ -267,6 +269,13 @@ const FAMILIES: readonly {
   label: string;
   hint: string;
   needsTarget: boolean;
+  /**
+   * ⚠️ Marks the families that spend the BONUS SLOT. It exists so the bar can
+   * teach the turn's shape as it now actually is - "start of turn: one bonus.
+   * Then your action." - rather than presenting eleven buttons in one
+   * undifferentiated row and letting a player forfeit the slot by accident.
+   */
+  bonus?: true;
 }[] = [
   { type: 'draw', label: 'Draw', hint: 'Top of any two decks, keep one', needsTarget: false },
   {
@@ -276,7 +285,6 @@ const FAMILIES: readonly {
     needsTarget: true,
   },
   { type: 'build', label: 'Build', hint: 'Pay cards from hand', needsTarget: true },
-  { type: 'upgrade', label: 'Upgrade', hint: 'Flip a starter for coins', needsTarget: true },
   { type: 'grow', label: 'Grow', hint: 'Activate one of your buildings', needsTarget: true },
   {
     type: 'harvest',
@@ -286,14 +294,36 @@ const FAMILIES: readonly {
   },
   { type: 'deliver', label: 'Deliver', hint: 'Barn to the island', needsTarget: true },
   { type: 'moveBalloon', label: 'Freight', hint: 'Bring in a balloon', needsTarget: true },
-  { type: 'visit', label: 'Visit', hint: "A card on a neighbour's board", needsTarget: true },
+  {
+    type: 'visit',
+    label: 'Visit',
+    hint: "Bonus: a card on a neighbour's board, for £1 or their power",
+    needsTarget: true,
+    bonus: true,
+  },
   {
     type: 'market',
     label: 'Market',
-    hint: 'Bonus slot: £3 for the top card of any crop, into your barn',
+    hint: 'Bonus: £3 for the top card of any crop, into your barn',
     needsTarget: true,
+    bonus: true,
   },
-  { type: 'workOwnWorker', label: 'Work yours', hint: 'Free, and no wage', needsTarget: true },
+  {
+    type: 'workOwnWorker',
+    label: 'Work yours',
+    hint: 'Bonus: £1 to use your own power. No card, no wage.',
+    needsTarget: true,
+    bonus: true,
+  },
+  // Moved down here on 19/08/2026 with the rule: the starter flip stopped being
+  // a Build-action branch and became the fourth bonus option.
+  {
+    type: 'upgrade',
+    label: 'Upgrade',
+    hint: 'Bonus: £2 to flip a starter. Three of them, once each, all game.',
+    needsTarget: true,
+    bonus: true,
+  },
   { type: 'cardMove', label: 'Card power', hint: 'A standing move on a card', needsTarget: false },
   { type: 'pass', label: 'Pass', hint: 'Nothing else is legal', needsTarget: false },
   { type: 'endTurn', label: 'End turn', hint: 'Decline what is left', needsTarget: false },

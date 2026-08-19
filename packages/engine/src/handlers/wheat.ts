@@ -4,28 +4,35 @@
  * wording).
  *
  * Suit identity: Harvest, and the rebuild's whole thesis is that the identity was
- * never in doubt - the INTERVAL was. Every Tier 1 FIELD now reads on two lines:
+ * never in doubt - the INTERVAL was. Every Tier 1 FIELD reads on two lines:
  *
  *     GROW:    Draw 1.
- *     HARVEST: [the payoff]. Sow 1 FIELD from the deck.
+ *     HARVEST: [the payoff].
  *
- * The second line is the seed corn. At threshold 2 with a seed already down one
- * GROW refills the FIELD, so the steady loop is GROW, harvest, GROW, harvest - a
- * payoff every other action instead of every third and falling. Five cards share
- * that line and `reseed` is it, written once.
+ * SIMPLIFIED 2026-08-19 (v30, plan group D). The seed-corn line - "Sow 1 deck
+ * card onto this FIELD" - used to sit on the back of five FIELDs and is now
+ * printed on ONE, W5 Rye Field. W6, W7 and W8 lost it in the same pass that took
+ * W7's GROW-time deck sow and W8's GROW-time barn deposit. The shape it bought
+ * (with a seed already down, one GROW refills a threshold-2 FIELD, so the loop is
+ * GROW, harvest, GROW, harvest) survives on W5 alone, and everywhere else the
+ * FIELD starts each cycle empty. That is a real slowdown, taken deliberately for
+ * teach cost: five cards printing a second sentence about deck tops was the
+ * densest paragraph in the suit. `reseed` stays written once, for W5 and W4.
  *
- * Two structural things are new to the engine here:
+ * The other structural thing to know here:
  *
- *   1. **Tier 3 prints an ACTION.** W13/W14/W15 have no threshold, no stack and
- *      no GROW cost, so they can be neither grown nor sown (`threshold: null`
- *      already makes `canPlace` and `isFull` both false). They offer a standing
- *      MOVE instead, and it consumes the main action: `applyMove` sets
- *      `turn.actionSpent` before it does anything, and `moves` gates on it being
- *      unspent, which is what makes `settleTurn`'s two conditions resolve. The
- *      handler declares `actionMoves` so `pass` knows it is not the only option.
- *      A GROW-gated Tier 3 fired 0.63 times per card built; an action-gated one
- *      fires as often as its owner chooses.
- *   2. **FIELDs reseed on harvest**, via the shared `reseed` below.
+ *   1. **Tier 3 is GROW, like everything else.** RULED by Dean 19/08/2026: *"The
+ *      concept of an ACTION was never requested. They are all GROW."* W13/W14/W15
+ *      used to print no threshold and offer a standing MOVE that consumed the main
+ *      action (`actionMoves` / `moves` / `applyMove`, with `applyMove` spending
+ *      `turn.actionSpent` itself). All of that is gone. The sheet gives them a
+ *      threshold (W13 1, W14 2, W15 1) and `activationType: "wild"`, so they are
+ *      ordinary owner-activated buildings: pay any one card into the stack, the
+ *      ability fires, and the GROW action - not the card - spends the turn. The
+ *      old note here argued the ACTION gate on measurement (a GROW-gated Tier 3
+ *      fired 0.63 times per card built, an action-gated one as often as its owner
+ *      chose). That measurement is not disputed; it was simply not what was asked
+ *      for, and the rate it bought cost a whole second way to spend a turn.
  *
  * REBALANCED 2026-08-12 (docs/wheat-rebalance-v1.md). The rebuild below worked
  * too well: Wheat came in FIRST at 50.0% against an even share of 36.4%, on the
@@ -67,7 +74,6 @@ import type { Fx } from '../fx.js';
 import { cardById, cropOf, drawableSuits, player } from '../query.js';
 import { markFired } from '../runtime.js';
 import type { BuildingState, CardId, GameState, Seat } from '../state.js';
-import { actionMove, actionOpen } from './actionCard.js';
 import type { CardHandler } from './types.js';
 
 const FIELD_NAME = /\bField\b/;
@@ -87,9 +93,13 @@ function drawN(fx: Fx, pid: Seat, src: CardId, n: number): void {
 }
 
 /**
- * The shared FIELD line: **"Sow 1 FIELD from the deck"** - sow the top card of
- * any deck onto THE FIELD THAT JUST HARVESTED. One line on five cards, so it is
- * written once.
+ * The shared FIELD line: **"Sow 1 deck card onto this FIELD"** - sow the top card
+ * of any deck onto THE FIELD THAT JUST HARVESTED.
+ *
+ * ⚠️ NO LONGER SHARED BY FIVE CARDS (v30, 19/08/2026). The sheet prints it on W5
+ * alone: W6, W7 and W8 dropped it in the group D simplification pass. It stays a
+ * function rather than being inlined into W5 because W4 still calls it - see the
+ * ⚠️ on W4, where the handler and the printed text disagree and a ruling is owed.
  *
  * ⚠️ NARROWED BY THE WHEAT REBALANCE (2026-08-12). It used to target every FIELD
  * the seat owned, which let a wide Wheat farm aim each seed at whichever FIELD
@@ -105,8 +115,9 @@ function drawN(fx: Fx, pid: Seat, src: CardId, n: number): void {
  *
  * Two things fall out of the narrowing, both good. The old caveat about a FIELD
  * BUILT after the push (W7's "Build ... Sow 1 FIELD") is moot, because the
- * target is fixed at push time and is never a new building. And the task drops
- * from a two-part choice to a one-part one: TEACH COST GOES DOWN.
+ * target is fixed at push time and is never a new building - and moot twice
+ * over now that W7 prints no seed line at all. And the task drops from a
+ * two-part choice to a one-part one: TEACH COST GOES DOWN.
  */
 function reseed(fx: Fx, seat: Seat, src: CardId): void {
   fx.pushTask({
@@ -221,8 +232,7 @@ export const wheatNoticeBoard: CardHandler = {
 };
 
 /**
- * W4 Wheat Field - "Draw 1. / HARVEST: Put 1 card from your hand into your barn.
- * Sow 1 FIELD from the deck."
+ * W4 Wheat Field - "Draw 1. / HARVEST: Put 1 card from your hand into your barn."
  */
 export const wheatField: CardHandler = {
   difficulty: {
@@ -234,7 +244,16 @@ export const wheatField: CardHandler = {
       'the island reads. READING: the hand-to-barn is printed "Put", not "you may", so the ' +
       'task is MANDATORY - it auto-skips on an empty hand, which is the only way it can be ' +
       'declined. Owner-scoped and self-scoped: a cross-player harvest (nothing in Wheat ' +
-      "does one now) would still pay this building's owner.",
+      "does one now) would still pay this building's owner. " +
+      '⚠️ RULING OWED (19/08/2026): the printed text no longer carries the seed line - the ' +
+      'sheet reads "Draw 1. / HARVEST: Put 1 card from your hand into your barn." and stops ' +
+      'there - but this handler still calls `reseed`. The line came off W4 in the same ' +
+      "sheet generation that took it off W6/W7/W8, and W5 keeps it, so the sheet's " +
+      'intention looks deliberate. It was left in place because W4 was not on the v30 ' +
+      'change list and is the standard fixture in spanning.test.ts, where a silent change ' +
+      "to its harvest would move tests this file does not own. The fix, if Dean's ruling " +
+      'goes that way, is one line: drop the `reseed` call below and the reseed assertion in ' +
+      'the W4 test.',
   },
   activate(fx, self) {
     drawN(fx, self.seat, self.card, 1);
@@ -248,7 +267,10 @@ export const wheatField: CardHandler = {
   },
 };
 
-/** W5 Rye Field - "Draw 1. / HARVEST: Draw 2. Sow 1 FIELD from the deck." */
+/**
+ * W5 Rye Field - "Draw 1. / HARVEST: Draw 2. Sow 1 deck card onto this FIELD."
+ * The last FIELD in the suit that prints the seed line (v30, 19/08/2026).
+ */
 export const ryeField: CardHandler = {
   difficulty: {
     score: 1,
@@ -271,12 +293,11 @@ export const ryeField: CardHandler = {
 };
 
 /**
- * W6 Barley Field - "Draw 1. / HARVEST: Sow 1 card from your hand onto each of
- * your FIELDs. Sow 1 FIELD from the deck."
+ * W6 Barley Field - "Draw 1. / HARVEST: Sow 1 card onto each of your FIELDs."
  */
 export const barleyField: CardHandler = {
   difficulty: {
-    score: 3,
+    score: 2,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
@@ -285,7 +306,14 @@ export const barleyField: CardHandler = {
       'deck. That is the printed decision between volume and colour, and it matters ' +
       "because the barn's colours are what the island's crates read. One task per FIELD " +
       'you own at the moment of harvest - W6 itself included, since it has just emptied - ' +
-      'each mandatory as printed and each auto-skipping on an empty hand or a full FIELD.',
+      'each mandatory as printed and each auto-skipping on an empty hand or a full FIELD. ' +
+      'SIMPLIFIED 2026-08-19 (v30, group D): the trailing "Sow 1 deck card onto this FIELD" ' +
+      'is deleted, so the harvest is now one clause and one kind of placement. Note the ' +
+      'wording lost "from your hand" as well - that is a SOW-is-suit-free tidy in the ' +
+      'sheet, not a change of source: SOW has never required a match, and the source is ' +
+      'still the hand, which is the whole reason this card is the colour-control one. ' +
+      'Difficulty 3 to 2: it is now exactly W9 Mill House with a hand source instead of a ' +
+      'deck source, and W9 has always scored 2.',
   },
   activate(fx, self) {
     drawN(fx, self.seat, self.card, 1);
@@ -302,66 +330,73 @@ export const barleyField: CardHandler = {
           targets: [{ seat: self.seat, card: field.card }],
         });
       }
-      reseed(fx, self.seat, self.card);
     },
   },
 };
 
 /**
- * W7 Golden Field - "Draw 1, then sow the top card of any deck onto this FIELD.
- * / HARVEST: Build, at a discount of 1. Sow 1 FIELD from the deck."
+ * W7 Golden Field - "Draw 1. / HARVEST: Build, at a discount of 2."
  */
 export const goldenField: CardHandler = {
   difficulty: {
-    score: 3,
+    score: 2,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: true },
     notes:
-      "The suit's tableau payoff. Threshold 3 is load-bearing: the GROW adds two cards " +
-      '(yours plus a deck card), so with the seed already down a single activation fills ' +
-      'it outright - at threshold 2 the deck card would have nowhere to go. The harvest ' +
-      "build is a real Build under the shared task's discount mod (the Dairy path), not a " +
-      'free one, and it auto-skips when nothing is buildable.',
+      "The suit's tableau payoff. The harvest build is a real Build under the shared " +
+      "task's discount mod (the Dairy path), not a free one, and it auto-skips when " +
+      'nothing is buildable. SIMPLIFIED AND STRENGTHENED 2026-08-19 (v30, group D): the ' +
+      "GROW-time deck sow is deleted, the harvest's seed line with it, and the build " +
+      'discount goes 1 to 2. That discount is THE ONE DELIBERATE POWER INCREASE IN THE ' +
+      'WHEAT BLOCK, and it is the compensation - the card lost two free cards a cycle ' +
+      '(the GROW deck card and the seed) and got a cheaper Build instead, which is the ' +
+      'trade of raw cards for tableau the suit is meant to be making. ⚠️ WATCH THE ' +
+      'THRESHOLD. It is still 3 on the sheet, and the old note called that load-bearing ' +
+      'for a reason that has now evaporated: the GROW used to add TWO cards (your payment ' +
+      'plus a deck card), so with a seed down one activation filled it. It now adds one, ' +
+      'and no seed arrives, so the FIELD wants three GROWs from empty where every other ' +
+      'Tier 1 FIELD wants two. That is the slowest payoff interval in the suit sitting on ' +
+      'the card whose payoff is the most conditional. If Wheat measures slow after v30, ' +
+      'W7 threshold 3 to 2 is the first dial to reach for, and it is a sheet edit.',
   },
   activate(fx, self) {
     drawN(fx, self.seat, self.card, 1);
-    fx.pushTask({
-      t: 'sowFromDeck',
-      pid: self.seat,
-      src: self.card,
-      remaining: 1,
-      targets: [{ seat: self.seat, card: self.card }],
-    });
   },
   on: {
     afterHarvest(fx, event, self) {
       if (!harvestedSelf(event, self)) return;
-      fx.pushTask({ t: 'build', pid: self.seat, src: self.card, mods: { discount: 1 } });
-      reseed(fx, self.seat, self.card);
+      fx.pushTask({ t: 'build', pid: self.seat, src: self.card, mods: { discount: 2 } });
     },
   },
 };
 
 /**
- * W8 Heritage Field - "Draw 1, then put 1 card from your hand into your barn. /
- * HARVEST: Harvest another of your buildings. Sow 1 FIELD from the deck."
+ * W8 Heritage Field - "Draw 1 / HARVEST: Harvest another of your buildings, even
+ * if not full."
  */
 export const heritageField: CardHandler = {
   difficulty: {
-    score: 3,
+    score: 2,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: true },
     notes:
       "The suit's double-skip: one harvest buys a second. Its £1 surcharge is GONE from " +
       'the design, so the `harvestSurcharge` trigger no longer appears on any Wheat card ' +
-      'and this handler no longer owns a surcharge task. READING: "another of your ' +
-      'buildings" is the STRICT full gate, not the loaded gate - W11, W12 and W13 all spell ' +
-      'the exception out in words ("however many cards are on it", "1 or more"), and this ' +
-      'card does not.',
+      'and this handler no longer owns a surcharge task. SIMPLIFIED 2026-08-19 (v30, group ' +
+      'D): the GROW-time barn deposit and the harvest seed line are both deleted, so the ' +
+      'card is now one line on each face. ⛔ THE READING INVERTS WITH THEM. It used to say ' +
+      'plain "another of your buildings", which was the STRICT full gate precisely because ' +
+      'W11, W12 and W13 spelled their exception out in words and this card did not. It now ' +
+      'prints "even if not full", so it joins them: the gate is `chooseBuilding` filter ' +
+      "'loaded', 1 or more cards, which is the same filter W11 uses for \"however many " +
+      'cards are on it". ⚠️ It is NOT the Wheat Farmstead\'s relaxed gate. W2 relaxes the ' +
+      'HARVEST ACTION to 2+ (1+ upgraded) through `wheatRelaxedMin`, and the decided ' +
+      'suit-power ruling (2026-08-09) is that a suit power modifies the action and never ' +
+      'card text - so this card carries its own threshold of 1, on both faces of W2 and ' +
+      'for a seat that has flipped neither.',
   },
   activate(fx, self) {
     drawN(fx, self.seat, self.card, 1);
-    fx.pushTask({ t: 'handToBarn', pid: self.seat, src: self.card, remaining: 1 });
   },
   on: {
     afterHarvest(fx, event, self) {
@@ -370,11 +405,10 @@ export const heritageField: CardHandler = {
         t: 'chooseBuilding',
         pid: self.seat,
         src: self.card,
-        filter: 'full',
+        filter: 'loaded',
         exclude: self.card,
         then: 'harvest',
       });
-      reseed(fx, self.seat, self.card);
     },
   },
 };
@@ -467,8 +501,11 @@ export const cropRotation: CardHandler = {
     notes:
       'The payoff card the FIELDs are the supply for: every FIELD fires its harvest line ' +
       'at once, so the more FIELDs you own the cheaper each payoff gets. "1 or more" is ' +
-      'printed rather than implied - the reseed makes it always true, and printing it ' +
-      'teaches the partial harvest. It prompts through the FIELDs it harvests (their ' +
+      'printed rather than implied, and it EARNS ITS WORDS AGAIN AS OF v30 (19/08/2026): ' +
+      'the old note said the reseed made it always true, so it was only a teach for the ' +
+      'partial harvest. With the seed line now printed on W5 alone, four of the five ' +
+      'FIELDs sit empty after a harvest and the clause decides which of them this card ' +
+      'reaches. It prompts through the FIELDs it harvests (their ' +
       'harvest lines push the tasks), not on its own account. W12 is not a FIELD, so it ' +
       'never harvests itself. Watch-list: this may be above the Tier 2 budget, and the ' +
       'dial is a cap on the number of FIELDs it reaches.',
@@ -482,32 +519,34 @@ export const cropRotation: CardHandler = {
 };
 
 /**
- * W13 The Bakery (ACTION) - "Harvest every one of your buildings, however many
- * cards are on them."
+ * W13 The Bakery - "Harvest every one of your buildings, however many cards are
+ * on them." Threshold 1, activation wild.
  */
 export const bakery: CardHandler = {
   difficulty: {
-    score: 4,
-    verified: { prompts: true, crossPlayer: false, addsMoves: true, endgame: false },
-    asserted: { newPrimitive: true, conditional: true, counts: true, interrupts: true },
+    score: 3,
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: true, counts: true, interrupts: true },
     notes:
-      'The first ACTION card. Taken INSTEAD of Draw / Build / Grow / Harvest / Deliver, so ' +
-      '`applyMove` spends the action before it does anything and `moves` returns nothing ' +
-      'once it is spent - which is what lets settleTurn end the turn. Offered only with ' +
-      'something to harvest, so it never holds a turn open pointlessly. "Every one of your ' +
-      'buildings" means every one: the Notice Board and the Service unclog too, which is ' +
-      'the largest part of what the card is for. It prompts through what it harvests. ' +
-      'Order cannot matter - per-harvest listeners see each harvest separately.',
+      '⛔ NO LONGER AN ACTION CARD (19/08/2026). The ACTION concept was RETIRED from the ' +
+      'game on Dean\'s ruling - "The concept of an ACTION was never requested. They are all ' +
+      'GROW." - and W13 was the first card ever written in that shape, so it is the one ' +
+      'whose note has to record the seam that is gone: `actionMoves` / `moves` / ' +
+      '`applyMove`, with `applyMove` setting `turn.actionSpent` itself and `moves` gating ' +
+      'on it being unspent. All of it is deleted. The card is now an ordinary GROW ' +
+      'building at threshold 1 with a wild activation, so it costs a card and the main ' +
+      'action like everything else, and one card fills it - so the loop is grow, cascade, ' +
+      'and the cascade takes the payment straight back off it. ' +
+      '"Every one of your buildings" means every one: the Notice Board and the Service ' +
+      'unclog too, which is the largest part of what the card is for, and W13 ITSELF is in ' +
+      'the set (the grow payment is on its stack before the ability fires, so the card ' +
+      'harvests its own fee into the barn - correct, and worth knowing before it reads as ' +
+      'a bug). It prompts through what it harvests. Order cannot matter - per-harvest ' +
+      'listeners see each harvest separately. It no longer needs a "have I anything to ' +
+      'harvest" gate: an empty farm makes the cascade a no-op, and a GROW that does ' +
+      'nothing is a choice the owner made rather than a move the engine offered.',
   },
-  actionMoves: true,
-  moves(_data, state, self) {
-    return actionMove(
-      self,
-      actionOpen(state, self) && loadedBuildings(state, self.seat).length > 0,
-    );
-  },
-  applyMove(fx, self) {
-    fx.state.turn.actionSpent = true;
+  activate(fx, self) {
     harvestCascade(
       fx,
       self.seat,
@@ -517,18 +556,18 @@ export const bakery: CardHandler = {
 };
 
 /**
- * W14 The Pizzeria (ACTION) - "Every other player may Draw 1. For each card
- * drawn, gain £1 and put 1 card from your hand into your barn."
+ * W14 The Pizzeria - "Every player, including you, may Draw 1. For each card
+ * drawn, gain £1." Threshold 2, activation wild.
  */
 export const pizzeria: CardHandler = {
   difficulty: {
-    score: 5,
-    verified: { prompts: true, crossPlayer: true, addsMoves: true, endgame: false },
-    asserted: { newPrimitive: true, conditional: true, counts: true, interrupts: true },
+    score: 4,
+    verified: { prompts: true, crossPlayer: true, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: true, conditional: true, counts: true, interrupts: false },
     notes:
       'The only card in the suit that PROMPTS A RIVAL, and one of two that print a £ - both ' +
       "of them need somebody else at the table, which is the rebuild's coin rule in " +
-      'miniature. One offer task per rival, each theirs to answer, each with a real decline: ' +
+      'miniature. One offer task per seat, each theirs to answer, each with a real decline: ' +
       'a free card against handing the baker £1. Priced at £1 rather than £2 because the ' +
       "binding constraint is the RIVAL's willingness - a card that needs consent does " +
       'nothing if consent is withheld. The £1 mints on acceptance rather than on the card ' +
@@ -537,33 +576,33 @@ export const pizzeria: CardHandler = {
       '⚠️ THE BOTS ALWAYS ACCEPT, by construction and not by accident - the probe pricer ' +
       "models what a seat GAINS and never rival harm (see outcome.ts's one rule), so a " +
       "sim's acceptance rate is an upper bound and the decline is a table question. " +
-      'RAISED 2026-08-12, the one card in the Wheat rebalance pointing UP: acceptance now ' +
-      "also puts 1 card from the OWNER's hand into their barn. Why raise anything in a " +
-      "nerf pass - the Dairy ticket left D13 alone betting that the suit's cross-table " +
-      'faucet would improve RELATIVELY as its neighbours were cut, and it did not: 13% to ' +
-      '12% to 11%, falling with each arm. This mandated faucet mints £0.1 a game at 11% ' +
-      'play. Relying on relative improvement has been tested once and failed once. ⚠️ The ' +
-      'rider is CONVERSION, NOT CREATION - it costs the owner a hand card - which is the ' +
-      'only reason it is allowed in a pass whose thesis is that Wheat gets too many free ' +
-      "cards. ⚠️ It pushes a task for the OWNER while resolving a RIVAL's answer, which is " +
-      "safe because W14 is an ACTION on the owner's turn and every offerDraw resolves " +
-      "inside that turn, so the owner's handToBarn resolves inside it too. Measured as a " +
-      'SEPARATE ARM from the cuts, and if it moves the win rate it was mispriced: revert ' +
-      'it rather than tuning it.',
+      '⛔ REWRITTEN TO THE PRINTED TEXT 19/08/2026, and this is a drift fix rather than a ' +
+      'planned edit - the sheet has read "Every player, INCLUDING YOU, may Draw 1. For each ' +
+      'card drawn, gain £1" since before the v30 pass, and the handler was still running the ' +
+      'text before it. Two differences, both real. The owner is now offered the draw too, so ' +
+      'the card pays its owner £1 for a card they take themselves, and it is no longer dead ' +
+      'in a position where every rival declines - there is a floor of one card and £1 before ' +
+      'anybody else answers. And the 2026-08-12 rider (an acceptance also put 1 card from the ' +
+      "OWNER's hand into their barn) is GONE with the printed clause that carried it. That " +
+      'rider was the one card in the Wheat rebalance pointing UP, added because the ' +
+      'cross-table faucet kept falling across the arms (13% to 12% to 11% play) and minted ' +
+      '£0.1 a game; the owner-draw does the same job in wording the sheet actually prints. ' +
+      '⚠️ IT IS NOW CREATION, NOT CONVERSION. The old rider COST the owner a hand card; this ' +
+      'one hands the owner a free card and a coin, in a suit whose whole rebalance thesis was ' +
+      "that Wheat gets too many free cards. If Wheat's win rate moves after v30 this line is " +
+      "a first suspect, and the dial is the coin on the owner's own draw (£1 to £0), never " +
+      'the card - the card is what the sheet prints. Task order is the owner first, then the ' +
+      'rivals in seat order, which matters only for who sees a deck run dry.',
   },
-  actionMoves: true,
-  moves(data, state, self) {
-    const rivals = state.players.length - 1;
-    const live = rivals > 0 && drawableSuits(data, state).length > 0;
-    return actionMove(self, actionOpen(state, self) && live);
-  },
-  applyMove(fx, self) {
-    fx.state.turn.actionSpent = true;
-    for (let seat = 0; seat < fx.state.players.length; seat++) {
-      if (seat === self.seat) continue;
+  activate(fx, self) {
+    // The owner's own offer is pushed FIRST and the rivals follow in seat order.
+    // The rotation is deliberate rather than decorative: the offers resolve in
+    // queue order, and the only thing order can decide is who gets the last card
+    // of a deck that runs dry mid-effect, which should be the card's owner.
+    for (let i = 0; i < fx.state.players.length; i++) {
       fx.pushTask({
         t: 'card',
-        pid: seat,
+        pid: ((self.seat + i) % fx.state.players.length) as Seat,
         src: self.card,
         kind: 'offerDraw',
         riders: { owner: self.seat },
@@ -581,33 +620,39 @@ export const pizzeria: CardHandler = {
         drawN(fx, task.pid, task.src, 1);
         const owner = task.riders.owner as Seat;
         fx.gainCoins(owner, 1, 'W14');
-        fx.pushTask({ t: 'handToBarn', pid: owner, src: task.src, remaining: 1 });
         return true;
       },
     },
   },
 };
 
-/** W15 The Patisserie (ACTION) - "Put the top card of each deck into your barn." */
+/**
+ * W15 The Patisserie - "Put the top card of each deck into your barn."
+ * Threshold 1, activation wild.
+ */
 export const patisserie: CardHandler = {
   difficulty: {
-    score: 2,
-    verified: { prompts: false, crossPlayer: false, addsMoves: true, endgame: false },
+    score: 1,
+    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: true, counts: true, interrupts: false },
     notes:
-      'No choice at all - every deck in play, one card each, straight to the barn - which ' +
-      'is why an ACTION is the right gate for it: the whole card is the quantifier. "Each ' +
+      'No choice at all - every deck in play, one card each, straight to the barn. "Each ' +
       'deck" is each deck ON THE TABLE with cards left (the discard reshuffles as ' +
       'everywhere), so it scales with the seat count and delivers a rainbow barn in one ' +
-      'action. Watch-list: this and the reseed both pull off deck tops, and reshuffles per ' +
+      'activation. NO LONGER AN ACTION CARD (19/08/2026 - the ruling is in the module ' +
+      'docblock). It is a threshold-1 wild GROW, so the card that pays for it also fills ' +
+      'it and the harvest that empties it is a second action; the deck cards it takes go ' +
+      'straight to the barn and never onto the stack, so the two do not interfere. The old ' +
+      'note argued the ACTION gate was RIGHT here because the whole card is a quantifier ' +
+      'with nothing to decide. That is still true of the text and is simply no longer how ' +
+      'the game offers it. Difficulty 2 to 1: with the move plumbing gone this is a loop ' +
+      "over the live decks and nothing else, which is W10 The Furrow's shape and W10's " +
+      'score. The live-deck gate went with the move it gated - `liveDecks` returning ' +
+      'nothing now just makes the activation a no-op, which is the same answer one step ' +
+      'later. Watch-list: this and the reseed both pull off deck tops, and reshuffles per ' +
       'played deck is the number most likely to move badly.',
   },
-  actionMoves: true,
-  moves(data, state, self) {
-    return actionMove(self, actionOpen(state, self) && liveDecks(data, state).length > 0);
-  },
-  applyMove(fx, self) {
-    fx.state.turn.actionSpent = true;
+  activate(fx, self) {
     for (const suit of liveDecks(fx.data, fx.state)) fx.deckTopToBarn(self.seat, suit);
   },
 };

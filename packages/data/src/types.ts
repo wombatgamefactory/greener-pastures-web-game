@@ -283,6 +283,26 @@ export interface RulesFile {
      * so ticket 56's paired arms stay clean: they are two different rules.
      */
     readonly marketCost: number | null;
+    /**
+     * THE BONUS WINDOW (Dean, 19/08/2026): true means the bonus slot may be
+     * taken only at the START of your turn, before the main action. False is
+     * the v14 rule it replaced, "once per turn, any point".
+     *
+     * A knob rather than a constant because the change ships alongside three
+     * others that all move the same number - the visit rate - and the plan is
+     * explicit that they arm together but must be separable when the arm is
+     * DIAGNOSED. This is the one of the four with no precedent in the reports,
+     * and it points down: a bonus you must commit to before you act is a bonus
+     * that gets forgotten.
+     */
+    readonly bonusAtStartOnly: boolean;
+    /**
+     * THE STARTER UPGRADE'S SLOT (Dean, 19/08/2026): true means flipping a
+     * starter for £2 is one of the four BONUS actions. False is the old rule,
+     * where it cost the whole main action - which is why the 2026-07-14 table
+     * left every £2 sink untouched.
+     */
+    readonly upgradeIsBonus: boolean;
   };
   readonly economy: {
     /**

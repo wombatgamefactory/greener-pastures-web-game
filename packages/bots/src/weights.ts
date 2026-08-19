@@ -152,7 +152,40 @@ export const BALANCED: WeightTable = {
    * term left and the bot preferred to spend more.
    */
   buildSpend: 0.3,
-  upgrade: 4,
+  /**
+   * RE-PRICED 4 -> 5 on 19/08/2026, because the rule under it moved.
+   *
+   * The flip used to cost a whole MAIN ACTION, so 4 was priced against what a
+   * main action is otherwise worth here - `build` 3, `harvest` 1.5, `grow` 1,
+   * `drawAction` 1.2 a card of hand room - and it sat near break-even. What
+   * that bought is on the record: the flip fell from 73-99% by round 6 to
+   * 6-41% around round 17 when the Farmstead went on sale, and the table said
+   * the same thing louder on 2026-07-14 - "nobody upgraded a starter and nobody
+   * bought an end-game card", every GBP 2 sink untouched.
+   *
+   * It is now a BONUS-SLOT option, so its real price is the slot, and the slot
+   * is worth roughly `workOwn` 5 or a `visitWorker` 2 plus its `coinGain`. A
+   * term left at 4 would price the old cost against the new competition and
+   * UNDER-take the move, which biases the very arm this change exists to be
+   * read by. 5 says a starter flip is worth about what running your own Service
+   * once is worth, which is legible and is the number the arm can argue with.
+   *
+   * ⚠️ THIS IS THE ARM'S MOST SENSITIVE NUMBER. The thing being measured is the
+   * visit's share of bonus slots, and this weight competes directly for that
+   * slot: too high and the instrument manufactures the displacement it is
+   * looking for, too low and it hides it. Two things keep it honest. The option
+   * is CAPPED at three flips a seat, so a high weight buys an opening-round
+   * spike and then nothing, which the plan names as a PASS rather than a fail.
+   * And `overlays/upgrade-main-action.overlay.json` puts the rule back under
+   * the main action, so the arm can be read against a control where this weight
+   * means what it used to.
+   *
+   * ⚠️ STILL FLAT, and the note below still stands: a bot is indifferent
+   * between the three GBP 2 flips and takes them in tableau order, which is a
+   * systematic artefact rather than noise, and the Farmstead is the flip that
+   * doubles a suit power.
+   */
+  upgrade: 5,
 
   drawAction: 1.2,
   /**

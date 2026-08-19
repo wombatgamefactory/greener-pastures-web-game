@@ -1,0 +1,8 @@
+{
+  "name": "d16-ledger-uncapped",
+  "description": "D16 The Ledger switched OFF, against the shipped game where it reads 'Whenever you Build, Draw 1' with no cap. The 'Once per turn' clause came off on 19/08/2026, which puts an unbounded per-build draw on the BUILD suit - beside D15 The Grand Creamery, which builds for free, and D11 The Heritage House, which builds and then sows everything it spent. Those three compose, and the composition is the risk rather than any one of them. READ: cards drawn per seat-game by suit, builds per seat-game by suit, and the Dairy win rate. A rule-alignment note worth carrying: the cap was removed deliberately and is NOT a candidate to restore by reflex - rule change 12(c) (no card's text may fire twice in a turn) is enforced by the shared turn.firedThisTurn guard, and D16's old 'once per turn' predated it and was a second, different mechanism doing a similar job. If this arm says the draw is too much, the dial to reach for is the card, not a return of the private guard.",
+  "schemaVersion": 1,
+  "set": {
+    "cards.catalogue.D16.enabled": false
+  }
+}

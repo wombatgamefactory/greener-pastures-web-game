@@ -134,9 +134,24 @@ describe('the playable table renders', () => {
     expect(snap.moves.length).toBeGreaterThan(3);
   });
 
-  it('shows the turn bar with the five actions', () => {
+  /**
+   * ⚠️ REWRITTEN 19/08/2026 with the bonus phase. The bar used to open on all
+   * eleven families at once; the slot is start-of-turn only now, so a seat that
+   * HAS a legal bonus is shown its four bonus options and a skip FIRST, and the
+   * five main actions come after. That is shape (c) of the plan's section 5.2:
+   * modal, but auto-skipped whenever there is nothing to skip, so it costs a
+   * click only on the turns where a slot is genuinely about to be forfeited.
+   *
+   * The test asserts the phase and not just the buttons, because the whole point
+   * of the affordance is the ORDER: offered in one flat row the bonus silently
+   * expires the moment somebody clicks Build, and a forfeited visit is the hook
+   * not happening.
+   */
+  it('opens on the bonus phase, then shows the five actions behind it', () => {
     const html = render(snap, { k: 'idle' });
-    for (const label of ['Draw', 'Build', 'Grow', 'Harvest', 'Deliver', 'Visit', 'End turn']) {
+    expect(html).toContain('Your bonus, first.');
+    expect(html).toContain('>skip bonus action</button>');
+    for (const label of ['Visit', 'Work yours', 'Upgrade']) {
       expect(html).toContain(`>${label}</button>`);
     }
     expect(missingImages(html)).toEqual([]);

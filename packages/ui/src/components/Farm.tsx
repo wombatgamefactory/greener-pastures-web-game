@@ -221,14 +221,6 @@ export function Farm({
           <img src={frame('vp')} alt="" />
           {receiptTotal(view.you.receipts)} VP
         </span>
-        {view.you.covered.length > 0 && (
-          <span
-            className="farm-covered"
-            title="cards built over: they still score their printed VP"
-          >
-            {view.you.covered.length} covered
-          </span>
-        )}
         {yourTurn ? (
           <span className="farm-turn">your turn</span>
         ) : (

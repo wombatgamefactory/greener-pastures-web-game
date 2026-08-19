@@ -1,0 +1,8 @@
+{
+  "name": "bonus-any-time",
+  "description": "One quarter of turn-structure-v14, on its own: the bonus slot goes back to v14's 'once per turn, any point' instead of start-of-turn only. Everything else stays as shipped. This is the DIAGNOSTIC arm, run after the combined one, and it answers the single question no report in this project has ever measured - does forcing the bonus decision to the top of the turn cost visits? Read SLOT UNSPENT first and visits per player per turn second. A design note that matters when reading it: this rule removes a real decision on purpose. You can no longer harvest, see what you got, and then decide whether to visit. What is bought with that is a legible turn and a shorter teach ('start of turn: one bonus, then your action') and the end of a class of table confusion about when a passive fired. If the visit cost here is small, the trade is a good gateway call; if it is large, the teach is not worth it. A CAVEAT ON THE INSTRUMENT: the bots choose one move at a time from the whole legal-move list and have no concept of resolving the bonus first, so a bot holding a live delivery will always take it and forfeit the slot. That biases this arm PESSIMISTIC - it overstates the damage a human would take - and it is why the number to watch is the DELTA between the arms rather than the absolute unspent share.",
+  "schemaVersion": 1,
+  "set": {
+    "rules.turn.bonusAtStartOnly": false
+  }
+}

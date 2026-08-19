@@ -11,10 +11,14 @@
  *   - that the seam scopes itself - a Draw with a discard gifts, a Draw 2 with
  *     no discard does not, and the end-of-turn overflow reaches O17 but never
  *     the Farmstead;
- *   - the four things the handoff calls easy to get wrong: O15 is not a Draw,
- *     O11 harvests the card that just paid for it, the Farmstead gift fires on
- *     the Draw action and not on a keep-everything draw, and O17 and the
- *     Farmstead never both take the same card.
+ *   - the four things the handoff calls easy to get wrong: O15 is not a Draw
+ *     (even now that the sheet prints the word "Draw" on it), O11 no longer
+ *     harvests itself, the Farmstead gift fires on the Draw action and not on a
+ *     keep-everything draw, and O17 and the Farmstead never both take the same
+ *     card;
+ *   - and, since 19/08/2026, that Tier 3 is three ordinary GROW buildings. The
+ *     ACTION card is retired, so every assertion that used to read "no
+ *     threshold, no activation type, a standing move" is inverted here.
  */
 
 import { BASE_GAME_DATA as data } from '@gp/data';
@@ -76,21 +80,25 @@ function headDraw(state: GameState): Extract<Task, { t: 'draw' }> {
   return head;
 }
 
-function actionMoves(state: GameState, card: string): Move[] {
-  return legalMoves(data, state).filter(
-    (m) => m.type === 'cardMove' && m.card === card && m.kind === 'action',
-  );
+/**
+ * The GROW moves on offer for one building. Replaces the old `actionMoves`
+ * helper: since 19/08/2026 the Tier 3 cards are grown like every other
+ * building, so there is no card-specific move shape left to filter for.
+ */
+function growMoves(state: GameState, card: string): Move[] {
+  return legalMoves(data, state).filter((m) => m.type === 'grow' && m.building === card);
 }
 
 describe('ORCHARD sub-type membership (the D1 ruling: Tier 1 only)', () => {
   /**
    * ⛔ THIS IS THE TEST THE RULING GETS WRITTEN DOWN IN. Every other suit reads
-   * its sub-type off a whole-word title keyword (DL-42). Orchard cannot: The
-   * Grand Orchard, The Orchard Keeper and The Orchard Archive all carry the word
-   * and none of them is an ORCHARD, which under the keyword rule would have O13
-   * growing itself and O20 paying up to 16 VP against a winning score of 38.
-   * Option B (this) is cheap and reversible so the arm can run; option A - rename
-   * those three cards and their art - is the one that ships.
+   * its sub-type off a whole-word title keyword (DL-42). Orchard could not: The
+   * Grand Orchard, The Orchard Keeper and The Orchard Archive all carried the
+   * word and none of them was an ORCHARD, which under the keyword rule would
+   * have had O13 growing itself and O20 paying up to 16 VP against a winning
+   * score of 38. Option B (this) was cheap and reversible; option A - renaming
+   * those three cards - shipped on 19/08/2026, which is what the second test
+   * pins.
    */
   it('is exactly O4-O8: not O13, not O16, not O20, whatever their names say', () => {
     const orchards = data.cards.catalogue
@@ -98,8 +106,22 @@ describe('ORCHARD sub-type membership (the D1 ruling: Tier 1 only)', () => {
       .map((c) => c.id);
     expect(orchards).toEqual(['O4', 'O5', 'O6', 'O7', 'O8']);
     for (const id of ['O13', 'O16', 'O20']) {
-      expect(isOrchardCard(data, id), `${id} is named Orchard but is not one`).toBe(false);
+      expect(isOrchardCard(data, id), `${id} was once named Orchard but is not one`).toBe(false);
     }
+  });
+
+  /**
+   * ✅ OPTION A SHIPPED (19/08/2026). O13 became The Seed Bank, O16 The Fruit
+   * Store and O20 Crop Diversity, so the word "Orchard" now appears in exactly
+   * the five card names that ARE ORCHARDs. The two readings agree, and this is
+   * the assertion that fails loudly if a future rename breaks the tie again -
+   * at which point D1 has to be re-argued rather than quietly re-broken.
+   */
+  it('the Tier 1 reading and the DL-42 title-keyword reading now pick the same five', () => {
+    const byKeyword = data.cards.catalogue
+      .filter((c) => c.suit === 'orchard' && /\bOrchard\b/.test(c.name))
+      .map((c) => c.id);
+    expect(byKeyword).toEqual(['O4', 'O5', 'O6', 'O7', 'O8']);
   });
 
   it('every enabled Orchard card has a handler', () => {
@@ -384,6 +406,8 @@ describe('the Tier 2 cards - one noun each', () => {
     buildFor(data, s, ORCHARD, 'O9');
     dealTo(data, s, ORCHARD, 'O4', 'O5', 'O6');
     const grown = growBuilding(data, s, ORCHARD, 'O9', 'O4');
+    // v30: MANDATORY, so a live give offers gives and nothing else.
+    expect(pendingAnswers(data, grown.state).every((a) => a.kind === 'card')).toBe(true);
     let gifts = 0;
     const state = answerAll(grown.state, (a) => {
       const gift = a.find((x) => x.kind === 'card');
@@ -391,7 +415,7 @@ describe('the Tier 2 cards - one noun each', () => {
         gifts += 1;
         return gift;
       }
-      return a.find((x) => x.kind === 'skip') ?? (a[0] as TaskAnswer);
+      return a[0] as TaskAnswer;
     });
     // Two rivals, one each, and no more however many cards are in hand.
     expect(gifts).toBe(2);
@@ -399,6 +423,23 @@ describe('the Tier 2 cards - one noun each', () => {
     expect(player(state, 2).hand).toHaveLength(1);
     // Gave 2, drew 2 for each: started with 2 after the grow payment, ends at 4.
     expect(player(state, ORCHARD).hand).toHaveLength(4);
+  });
+
+  /**
+   * The v30 §8.3 no-op, applied here: a mandatory effect with no legal target
+   * SKIPS SILENTLY. It never refuses the activation and it never asks. Note
+   * that "fewer cards than neighbours" heals itself - the Draw 2 arrives before
+   * the next give is chosen - so the only real no-op is an empty hand or a
+   * table of rivals at their hand limits.
+   */
+  it('O9 never refuses: with nothing left to give it asks nothing at all', () => {
+    const s = makeState(data, ['orchard', 'wheat', 'vegetable']);
+    buildFor(data, s, ORCHARD, 'O9');
+    dealTo(data, s, ORCHARD, 'O4'); // the GROW payment and nothing else
+    const grown = growBuilding(data, s, ORCHARD, 'O9', 'O4');
+    expect(grown.state.tasks).toHaveLength(0);
+    expect(player(grown.state, WHEAT).hand).toHaveLength(0);
+    expect(player(grown.state, 2).hand).toHaveLength(0);
   });
 
   it('O10 The Cider House sows one card onto EACH of your ORCHARDs, from hand', () => {
@@ -414,16 +455,41 @@ describe('the Tier 2 cards - one noun each', () => {
     expect(buildingOf(state, ORCHARD, 'O5').stack).toHaveLength(1);
   });
 
-  it('O11 The Harvest Market harvests ITSELF - including the card that just paid for it', () => {
+  /**
+   * ⛔ THE BEHAVIOUR CHANGE OF THE v30 ORCHARD PASS. "Harvest this ORCHARD"
+   * became "Harvest EVERY ORCHARD", and the reading that follows is that O11
+   * NO LONGER HARVESTS ITSELF: an ORCHARD is O4-O8 under D1 and O11 is a Tier
+   * 2, exactly as W12 Crop Rotation is not a FIELD and never harvests itself.
+   * So the card that used to empty its own stack (the GROW payment included)
+   * now leaves that payment on itself and clears the grove instead.
+   */
+  it('O11 The Harvest Market harvests EVERY ORCHARD - and never itself', () => {
     const s = base();
-    buildFor(data, s, ORCHARD, 'O11');
-    dealTo(data, s, ORCHARD, 'O4'); // deal before loading: loadStack eats deck tops
+    buildFor(data, s, ORCHARD, 'O11', 'O4', 'O5', 'O9');
+    dealTo(data, s, ORCHARD, 'O6'); // deal before loading: loadStack eats deck tops
+    loadStack(data, s, ORCHARD, 'O4', 2);
+    loadStack(data, s, ORCHARD, 'O5', 1);
+    loadStack(data, s, ORCHARD, 'O9', 2);
     loadStack(data, s, ORCHARD, 'O11', 1);
-    const grown = growBuilding(data, s, ORCHARD, 'O11', 'O4');
-    // One card already on it plus the GROW payment: 2 harvested, so Draw 2.
-    expect(player(grown.state, ORCHARD).barn).toHaveLength(2);
-    expect(buildingOf(grown.state, ORCHARD, 'O11').stack).toHaveLength(0);
-    expect(headDraw(grown.state)).toMatchObject({ see: 2, keep: 2 });
+    const grown = growBuilding(data, s, ORCHARD, 'O11', 'O6');
+    // O4 (2) and O5 (1) are ORCHARDs and empty; 3 cards harvested, so Draw 3.
+    expect(player(grown.state, ORCHARD).barn).toHaveLength(3);
+    expect(buildingOf(grown.state, ORCHARD, 'O4').stack).toHaveLength(0);
+    expect(buildingOf(grown.state, ORCHARD, 'O5').stack).toHaveLength(0);
+    expect(headDraw(grown.state)).toMatchObject({ see: 3, keep: 3 });
+    // O11 keeps its own stack - the loaded card AND the card that just paid.
+    expect(buildingOf(grown.state, ORCHARD, 'O11').stack).toHaveLength(2);
+    // O9 is a Tier 2 too, so it is untouched.
+    expect(buildingOf(grown.state, ORCHARD, 'O9').stack).toHaveLength(2);
+  });
+
+  it('O11 draws nothing, and harvests nothing, with an empty grove', () => {
+    const s = base();
+    buildFor(data, s, ORCHARD, 'O11', 'O4');
+    dealTo(data, s, ORCHARD, 'O6');
+    const grown = growBuilding(data, s, ORCHARD, 'O11', 'O6');
+    expect(player(grown.state, ORCHARD).barn).toHaveLength(0);
+    expect(grown.state.tasks.some((t) => t.t === 'draw')).toBe(false);
   });
 
   it('O12 The Fruit Press puts any number of hand cards into the barn', () => {
@@ -442,27 +508,50 @@ describe('the Tier 2 cards - one noun each', () => {
   });
 });
 
-describe('the Tier 3 ACTIONs - O13, O14, O15', () => {
-  it('all three are standing moves that spend the main action, not GROW targets', () => {
+describe('the Tier 3 GROW buildings - O13, O14, O15', () => {
+  /**
+   * ⛔ THE INVERSION OF 19/08/2026. These three assertions used to read
+   * "threshold null, activation type null, actionMoves true" - the ACTION card,
+   * whose standing move WAS the main action. Dean retired the concept ("they
+   * are all GROW"), so the sheet's threshold and wild activation type are the
+   * whole of what makes them playable, and a handler that quietly grew a
+   * `moves` function again would fail here rather than in a sim report.
+   */
+  it('all three are ordinary GROW buildings, not standing ACTION moves', () => {
     for (const id of ['O13', 'O14', 'O15']) {
       const card = data.cards.catalogue.find((c) => c.id === id);
-      expect(card?.threshold, id).toBeNull();
-      expect(card?.activationType, id).toBeNull();
-      expect(handlerFor(id)?.actionMoves, id).toBe(true);
+      expect(card?.threshold, id).not.toBeNull();
+      expect(card?.activationType, id).toBe('wild');
+      expect(card?.abilityTrigger, id).toEqual(['onActivate']);
+      const handler = handlerFor(id);
+      // ⛔ `actionMoves` no longer EXISTS on CardHandler (19/08/2026), so this
+      // reads the object rather than the type: a property that is gone cannot
+      // be asserted undefined, and `in` is what still fails loudly if someone
+      // puts the concept back.
+      expect('actionMoves' in (handler as object), id).toBe(false);
+      expect(handler?.moves, id).toBeUndefined();
+      expect(typeof handler?.activate, id).toBe('function');
     }
   });
 
-  it('O13 The Grand Orchard grows each ORCHARD in turn, once each, paying as it goes', () => {
+  it('a Tier 3 card is offered as a GROW, and that GROW spends the main action', () => {
     const s = base();
-    buildFor(data, s, ORCHARD, 'O13', 'O4', 'O7');
-    dealTo(data, s, ORCHARD, 'O5', 'O6', 'O8');
-    const offers = actionMoves(s, 'O13');
+    buildFor(data, s, ORCHARD, 'O14');
+    dealTo(data, s, ORCHARD, 'W4'); // a wild activation takes any suit
+    const offers = growMoves(s, 'O14');
     expect(offers).toHaveLength(1);
     const played = apply(data, s, offers[0] as Move);
     expect(played.state.turn.actionSpent).toBe(true);
+  });
+
+  it('O13 The Seed Bank grows each ORCHARD in turn, once each, paying as it goes', () => {
+    const s = base();
+    buildFor(data, s, ORCHARD, 'O13', 'O4', 'O7');
+    dealTo(data, s, ORCHARD, 'O5', 'O6', 'O8');
+    const grown = growBuilding(data, s, ORCHARD, 'O13', 'O5');
 
     let grew = 0;
-    const state = answerAll(played.state, (a) => {
+    const state = answerAll(grown.state, (a) => {
       const grow = a.find((x) => x.kind === 'card' && x.payload.building !== undefined);
       if (grow) {
         grew += 1;
@@ -472,29 +561,44 @@ describe('the Tier 3 ACTIONs - O13, O14, O15', () => {
         a.find((x) => x.kind === 'keep') ?? a.find((x) => x.kind === 'skip') ?? (a[0] as TaskAnswer)
       );
     });
-    // O4 and O7 are ORCHARDs; O13 itself is not, and has no stack anyway.
+    // O4 and O7 are ORCHARDs; O13 itself is not, and doGrow marked it fired.
     expect(grew).toBe(2);
     expect(buildingOf(state, ORCHARD, 'O4').stack).toHaveLength(1);
     expect(buildingOf(state, ORCHARD, 'O7').stack).toHaveLength(1);
+    // The card that fired it is on O13, which is full at its threshold of 1.
+    expect(buildingOf(state, ORCHARD, 'O13').stack).toHaveLength(1);
   });
 
-  it('O13 is not offered with no ORCHARD it could pay for', () => {
+  /**
+   * The gate moved with the conversion. As an ACTION, O13 was simply not
+   * offered when it could grow nothing; as a GROW building it takes a wild
+   * activation, so it is always growable and the loop is what comes up empty.
+   * Wasting an action on it is now the player's mistake to make, which is how
+   * every other building in the game already works.
+   */
+  it('O13 grows nothing, and asks nothing, when the hand cannot pay any ORCHARD', () => {
     const s = base();
     buildFor(data, s, ORCHARD, 'O13', 'O4');
     // A hand of wheat cards cannot pay an `orchard` activation cost.
     dealTo(data, s, ORCHARD, 'W4', 'W5');
-    expect(actionMoves(s, 'O13')).toEqual([]);
+    const grown = growBuilding(data, s, ORCHARD, 'O13', 'W4');
+    expect(grown.state.tasks).toHaveLength(0);
+    expect(buildingOf(grown.state, ORCHARD, 'O4').stack).toHaveLength(0);
   });
 
   it('O14 The Conservatory sows the whole hand, then refills it to the limit', () => {
     const s = base();
     buildFor(data, s, ORCHARD, 'O14', 'O4', 'O5');
-    dealTo(data, s, ORCHARD, 'O6', 'O7');
-    const played = apply(data, s, actionMoves(s, 'O14')[0] as Move);
-    const state = answerAll(played.state);
+    dealTo(data, s, ORCHARD, 'O6', 'O7', 'O8');
+    const grown = growBuilding(data, s, ORCHARD, 'O14', 'O6');
+    const state = answerAll(grown.state);
     expect(player(state, ORCHARD).hand).toHaveLength(4); // the Orchard Barn's printed 4
+    // The GROW payment on O14 plus the two cards left in hand, sown onto O4/O5.
     const onBuildings = player(state, ORCHARD).tableau.reduce((n, b) => n + b.stack.length, 0);
-    expect(onBuildings).toBe(2);
+    expect(onBuildings).toBe(3);
+    // O14 fills itself to its threshold of 1 with the payment, so it is never
+    // a target of its own sow.
+    expect(buildingOf(state, ORCHARD, 'O14').stack).toHaveLength(1);
     // The refill is an autoDraw: it never reaches the divert seam.
     expect(player(state, WHEAT).hand).toHaveLength(0);
   });
@@ -502,9 +606,10 @@ describe('the Tier 3 ACTIONs - O13, O14, O15', () => {
   it('O15 The Garden Library takes a deck top each, gives one per rival at £1, keeps the rest', () => {
     const s = makeState(data, ['orchard', 'wheat', 'vegetable']);
     buildFor(data, s, ORCHARD, 'O15');
-    const played = apply(data, s, actionMoves(s, 'O15')[0] as Move);
+    dealTo(data, s, ORCHARD, 'O4');
+    const grown = growBuilding(data, s, ORCHARD, 'O15', 'O4');
     const state = answerAll(
-      played.state,
+      grown.state,
       (a) => a.find((x) => x.kind === 'card') ?? (a[0] as TaskAnswer),
     );
     // Five decks are on the table in the testkit: 5 taken, 2 given, 3 kept, £2.
@@ -515,20 +620,47 @@ describe('the Tier 3 ACTIONs - O13, O14, O15', () => {
   });
 
   /**
-   * ⛔ O15 IS NOT A DRAW. The wording ("take the top card of each deck") is what
-   * prevents it: no draw modifier, no afterDrawKeep, and so no divert seam - a
-   * Farmstead that gifted here would gift the cards the card just took.
+   * v30 made the give OPTIONAL ("You may give a card to every other player"),
+   * so the skip is offered at every step and not only once the rivals have run
+   * out. Declining keeps the lot and mints nothing - which is a real choice for
+   * a suit whose whole thesis is cards through your hands.
+   */
+  it('O15 may decline the give entirely: keep every card, mint nothing', () => {
+    const s = makeState(data, ['orchard', 'wheat', 'vegetable']);
+    buildFor(data, s, ORCHARD, 'O15');
+    dealTo(data, s, ORCHARD, 'O4');
+    const grown = growBuilding(data, s, ORCHARD, 'O15', 'O4');
+    expect(pendingAnswers(data, grown.state).some((a) => a.kind === 'skip')).toBe(true);
+    const state = answerAll(
+      grown.state,
+      (a) => a.find((x) => x.kind === 'skip') ?? (a[0] as TaskAnswer),
+    );
+    expect(player(state, WHEAT).hand).toHaveLength(0);
+    expect(player(state, 2).hand).toHaveLength(0);
+    expect(player(state, ORCHARD).coins).toBe(0);
+    // All five kept - over the printed hand size, which is legal mid-turn.
+    expect(player(state, ORCHARD).hand).toHaveLength(5);
+  });
+
+  /**
+   * ⛔ O15 IS NOT A DRAW, and this now holds DESPITE the printed word. The v30
+   * sheet reads "Draw the top card of each deck" where it used to read "Take",
+   * and the implementation deliberately did not follow the verb: no draw
+   * modifier, no afterDrawKeep, and so no divert seam - a Farmstead that gifted
+   * here would gift the cards the card just took. A ruling is owed on the
+   * wording; until it lands, this test is the wording.
    */
   it('O15 is not a Draw: no draw task, no keep, and no divert', () => {
     const s = base();
     buildFor(data, s, ORCHARD, 'O15');
-    const played = apply(data, s, actionMoves(s, 'O15')[0] as Move);
-    expect(played.state.tasks.some((t) => t.t === 'draw')).toBe(false);
-    expect(played.state.tasks.some((t) => t.t === 'divert')).toBe(false);
+    dealTo(data, s, ORCHARD, 'O4');
+    const grown = growBuilding(data, s, ORCHARD, 'O15', 'O4');
+    expect(grown.state.tasks.some((t) => t.t === 'draw')).toBe(false);
+    expect(grown.state.tasks.some((t) => t.t === 'divert')).toBe(false);
   });
 });
 
-describe('O16 The Orchard Keeper - turned around to pay for GOING OUT', () => {
+describe('O16 The Fruit Store - turned around to pay for GOING OUT', () => {
   it('draws for the VISITOR, and never for the host', () => {
     const s = base();
     buildFor(data, s, ORCHARD, 'O16');
@@ -576,7 +708,7 @@ describe('the endgame cards - O19, O20, O21', () => {
     expect(gameEndScores(data, t)[ORCHARD]?.endgame).toBe(7);
   });
 
-  it('O20 The Orchard Archive scores 2 per ORCHARD, and never counts itself', () => {
+  it('O20 Crop Diversity scores 2 per ORCHARD, and never counts itself', () => {
     const s = base();
     buildFor(data, s, ORCHARD, 'O20', 'O4', 'O5', 'O13', 'O16', 'O9');
     // O4 and O5 only. Under the title-keyword rule this would have been 10.

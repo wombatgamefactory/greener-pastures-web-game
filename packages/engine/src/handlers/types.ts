@@ -90,16 +90,22 @@ export interface CardHandler {
   applyMove?: (fx: Fx, self: CardInPlay, move: CardMove) => void;
 
   /**
-   * This card's standing moves ARE the main action (the Wheat Tier 3 ACTIONs).
+   * ⛔ `actionMoves` STOOD HERE AND IS DELETED (19/08/2026). It marked a card
+   * whose standing moves WERE the main action - the Tier 3 ACTION cards - and
+   * two things in game.ts read it: `pass` must not be offered beside a live
+   * ACTION card, and `apply` must not accept one.
    *
-   * Declared on the handler rather than inferred per move, because a card either
-   * always spends the action or never does. Two things read it, both in game.ts:
-   * `pass` must not be offered beside a live ACTION card, and `apply` must not
-   * accept one. The spend itself is the handler's own job - `applyMove` sets
-   * `turn.actionSpent` before it does anything - so this flag is about the
-   * OTHER moves' legality, never about bookkeeping.
+   * Dean retired the concept outright: *"The concept of an ACTION was never
+   * requested. They are all GROW."* All fifteen Tier 3 cards are now ordinary
+   * GROW-fired buildings with a threshold, so nothing declares it. The field is
+   * removed rather than left unused ON PURPOSE - a dead capability on an
+   * interface is how a retired concept comes back, one handler at a time, with
+   * nobody deciding to bring it.
+   *
+   * `handlers/actionCard.ts` (the shared `actionMove` / `actionOpen` helpers)
+   * went with it, as did `actionCardMoves` in game.ts and the two rules that
+   * existed only to police it.
    */
-  actionMoves?: true;
 
   /** Card-specific tasks, keyed by `task.kind`. Prefer the generic vocabulary. */
   tasks?: Record<string, CustomTask>;

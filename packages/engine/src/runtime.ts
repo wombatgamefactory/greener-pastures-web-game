@@ -275,11 +275,12 @@ export interface ScoreBreakdown {
 
 export function gameEndScores(data: GameData, state: GameState): ScoreBreakdown[] {
   return state.players.map((p, seat) => {
-    // Covered cards (D11) add their printed VP as a bare sum: they are not
-    // buildings, so no endgame formula and no count can see them.
-    const printed =
-      p.tableau.reduce((sum, b) => sum + faceOf(data, b).printedVp, 0) +
-      p.covered.reduce((sum, id) => sum + (cardById(data, id).printedVp ?? 0), 0);
+    // The tableau alone. There used to be a second term here for D11's covered
+    // pile - cards buried under a build-on-top, which were not buildings but
+    // still scored their printed VP as a bare sum. D11 was retexted on
+    // 19/08/2026 ("Build. Sow all the cards spent.") and the `covered` zone went
+    // with it, so printed VP is once again exactly what is on the table.
+    const printed = p.tableau.reduce((sum, b) => sum + faceOf(data, b).printedVp, 0);
     const receipts = p.receipts.reduce((sum, vp) => sum + vp, 0);
     const endgameCards = p.tableau.flatMap((b) => {
       const formula = handlerFor(b.card)?.gameEnd;

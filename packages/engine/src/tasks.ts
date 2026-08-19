@@ -392,11 +392,20 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
     case 'deliver': {
       if (answer.kind === 'skip' && task.optional === true) return true;
       if (answer.kind === 'deliver') {
-        doDeliver(fx, task.pid, answer.tile, answer.spend, undefined, 1, answer.head);
+        doDeliver(
+          fx,
+          task.pid,
+          answer.tile,
+          answer.spend,
+          undefined,
+          1,
+          answer.head,
+          answer.deckHead,
+        );
         return true;
       }
       if (answer.kind === 'balloon') {
-        doMoveBalloon(fx, task.pid, answer.balloon, answer.spend);
+        doMoveBalloon(fx, task.pid, answer.balloon, answer.spend, answer.head, answer.deckHead);
         return true;
       }
       throw new Error('deliver expects a deliver or balloon answer');

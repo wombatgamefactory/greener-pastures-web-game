@@ -117,8 +117,6 @@ export function narrate(
       );
     case 'built':
       return line(`${who(event.seat)} builds ${cardWord(data, event.card)}`, event.seat);
-    case 'covered':
-      return line(`${who(event.seat)} builds over ${cardWord(data, event.card)}`, event.seat);
     case 'demolished':
       return line(`${who(event.seat)} demolishes ${cardWord(data, event.card)}`, event.seat);
     case 'starterUpgraded':

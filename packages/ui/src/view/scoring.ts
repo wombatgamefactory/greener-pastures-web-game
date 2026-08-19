@@ -79,9 +79,8 @@ export interface SeatScore {
   /** Island receipts grouped by arrival order, first-in first. */
   readonly arrivals: readonly ArrivalTally[];
   readonly receiptCount: number;
-  /** Built cards printing VP, plus the ones buried under a D11 cover-build. */
+  /** Built cards printing VP. */
   readonly built: readonly ScoredCard[];
-  readonly covered: readonly ScoredCard[];
   readonly endgame: readonly EndgameCard[];
   /** Null when the pity rule is switched off in `rules.json`. */
   readonly pity: CoinPity | null;
@@ -162,13 +161,6 @@ function seatScore(
       return { id: b.card, name: face.name, vp: face.printedVp, upgraded: b.upgraded };
     })
     .filter((c) => c.vp > 0);
-  // A covered card is face down under the build that buried it, so it scores
-  // its BASE face - and ticket 30 ruled that no starter is ever a cover target,
-  // so a covered card has only the one face anyway.
-  const covered = farm.covered.map((id) => {
-    const face = printedFace(data, id);
-    return { id, name: face.name, vp: face.printedVp, upgraded: false };
-  });
   const endgame = breakdown.endgameCards.map((e) => {
     const face = printedFace(data, e.card);
     return { id: e.card, name: face.name, text: face.abilityText, vp: e.vp, upgraded: false };
@@ -187,7 +179,7 @@ function seatScore(
         };
 
   const islandTotal = arrivals.reduce((sum, a) => sum + a.vp, 0);
-  const printedTotal = [...built, ...covered].reduce((sum, c) => sum + c.vp, 0);
+  const printedTotal = built.reduce((sum, c) => sum + c.vp, 0);
   const agrees =
     islandTotal === breakdown.receipts &&
     printedTotal === breakdown.printed &&
@@ -204,7 +196,6 @@ function seatScore(
     arrivals,
     receiptCount: farm.receipts.length,
     built,
-    covered,
     endgame,
     pity,
     coins: farm.coins,

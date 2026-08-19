@@ -21,23 +21,39 @@
  *      once, by the bag, before anybody has played a card. V5 and V6 ARE the
  *      suit; if they were ever cut for implementation cost the suit would go
  *      back to being four other suits wearing a green hat. Engine seams:
- *      `namedDemand` (one disjunction), `demandSwapOptions` /
- *      `demandFaceDownOptions`, and the two Fx verbs.
+ *      `namedDemand` (one disjunction), `demandSwapOptions`, and the two Fx
+ *      verbs. V6's own target list moved INTO this file on 19/08/2026
+ *      (`faceDownTargets`), because the card dropped its eligibility filter and
+ *      `demandFaceDownOptions` in actions.ts still enforces it.
  *   2. **A balloon may be paid for out of the HAND** (V4, V8), via
  *      `doMoveBalloonFromHand`. A sibling of `doMoveBalloon`, never a branch
  *      inside it: the base rule - 2 barn cards of differing crops, spent as the
  *      Deliver action - is unchanged for everybody, Vegetable included.
- *   3. **One delivery may take BOTH of a tile's receipts** (V14), which is
+ *   3. **One delivery may take EVERY receipt a tile has left** (V14), which is
  *      `doDeliver`'s `receipts` argument and falls out of `deliveredBy` being an
- *      ordered list: pay once, push the seat twice, and 6 + 3 = 9 with no
- *      scoring rule of its own.
+ *      ordered list: pay once, push the seat as many times as the tile has room
+ *      for, and 6 + 3 = 9 with no scoring rule of its own.
  *
  * DEPOT is a sub-type derived from the whole-word title keyword, following the
  * reference (DL-42) and matching Wheat's FIELD and Orchard's ORCHARD: V4-V8, the
  * only cards in the catalogue named Depot. V12 and V20 both read it.
  *
- * The Tier 3 ACTION seam (V13/V14/V15) is Wheat's, unchanged - `actionMoves`,
- * `actionMove`/`actionOpen`, and `applyMove` spending the action first.
+ * THE ACTION CARD IS GONE (19/08/2026, Dean: "The concept of an ACTION was never
+ * requested. They are all GROW."). V13, V14 and V15 used to be the suit's three
+ * standing-move ACTION cards - no threshold, no activation type, one `cardMove`
+ * whose `applyMove` set `turn.actionSpent` before it did anything else. They are
+ * now ordinary owner-activated buildings: the sheet gives all three threshold 1
+ * and a wild activation type, so a GROW pays one card of ANY crop into the stack
+ * and the printed ability fires from `activate`. Nothing in this file spends the
+ * action any more - GROW *is* the action and the grow runtime books it - and
+ * `actionMoves`, `actionMove` and `actionOpen` have left the file with it.
+ *
+ * Two consequences are easy to miss and worth writing down. A Tier 3 card is now
+ * CLOGGABLE like every other building: one card on it and it is full until its
+ * owner spends an action harvesting, so the suit's three biggest effects are
+ * once-per-harvest-cycle rather than once-per-turn. And each of them now costs a
+ * card as well as the action, which is a price the ACTION shape never paid - so
+ * the conversion is a nerf on tempo even where the printed text got stronger.
  */
 
 import type { GameData, Suit } from '@gp/data';
@@ -45,20 +61,19 @@ import { deliveriesPerTile } from '@gp/data';
 
 import {
   barnTally,
-  demandFaceDownOptions,
   demandSwapOptions,
   deliverOptions,
   doDeliver,
+  doMoveBalloon,
   doMoveBalloonFromHand,
-  grantBalloonReward,
   handBalloonMoveOptions,
   islandDeliveriesBy,
+  tileHasRoom,
 } from '../actions.js';
-import type { DeliverOption, DemandRef } from '../actions.js';
+import type { DemandRef } from '../actions.js';
 import type { Fx } from '../fx.js';
 import { cardById, drawableSuits, player } from '../query.js';
 import type { BuildingState, CardId, GameState, Seat, TaskAnswer } from '../state.js';
-import { actionMove, actionOpen } from './actionCard.js';
 import type { CardHandler } from './types.js';
 
 const DEPOT_NAME = /\bDepot\b/;
@@ -84,15 +99,23 @@ function liveDecks(data: GameData, state: GameState): Suit[] {
 }
 
 /**
- * THE FLIGHT, shared by V4 and V8: pick 2 hand cards and a balloon that is not
- * already yours, discard the cards, take the balloon.
+ * THE HAND-PAID FLIGHT, V4's and V4's alone since 19/08/2026: pick the printed
+ * number of hand cards and a balloon that is not already yours, discard the
+ * cards, take the balloon and its reward.
  *
- * READING: the text is imperative ("Discard 2 cards to move a Balloon"), so it
- * is MANDATORY when it can be paid and auto-skips when it cannot - the drain
- * loop drops a task with no legal answer, which is the only way an empty hand or
- * an empty sky can decline it. That is the same reading the suit's imperative
- * cards have always taken, and it is honest to the card: a Grow spent on a Depot
- * is spent to fly.
+ * It used to be shared with V8, which paid the same fee for the reward of ANY
+ * balloon. V8's retext deleted both halves of that - no fee, and the reward is
+ * the moved balloon's own - so it now goes through `doMoveBalloon` with a null
+ * spend (a card effect's FREE move) and this helper has one caller left. Kept as
+ * a helper rather than inlined because the fee count is data (`handMoveCost`)
+ * and a second hand-paid flight is a plausible card.
+ *
+ * READING: the text is imperative ("Discard 1 card to move a Balloon"), so it is
+ * MANDATORY when it can be paid and auto-skips when it cannot - the drain loop
+ * drops a task with no legal answer, which is the only way an empty hand or an
+ * empty sky can decline it. That is the same reading the suit's imperative cards
+ * have always taken, and it is honest to the card: a Grow spent on a Depot is
+ * spent to fly.
  */
 function flightAnswers(data: GameData, state: GameState, pid: Seat): TaskAnswer[] {
   return handBalloonMoveOptions(data, state, pid).map(
@@ -100,11 +123,39 @@ function flightAnswers(data: GameData, state: GameState, pid: Seat): TaskAnswer[
   );
 }
 
-function takeFlight(fx: Fx, pid: Seat, answer: TaskAnswer, grantReward: boolean): string {
+function takeFlight(fx: Fx, pid: Seat, answer: TaskAnswer): string {
   if (answer.kind !== 'card') throw new Error('a flight expects a card answer');
   const { balloon, cards } = answer.payload as { balloon: string; cards: CardId[] };
-  doMoveBalloonFromHand(fx, pid, balloon, cards, { grantReward });
+  doMoveBalloonFromHand(fx, pid, balloon, cards);
   return balloon;
+}
+
+/**
+ * V6's targets since 19/08/2026: one face-up, non-cornucopia token per tile that
+ * still has a receipt space.
+ *
+ * A LOCAL COPY OF `demandFaceDownOptions` MINUS ONE LINE, and the line is the
+ * whole retext. actions.ts still filters to tiles where a receipt has already
+ * been taken, which was V6's timing dial until the sheet dropped the clause;
+ * this file owns the card, so the card's own eligibility lives here rather than
+ * being asserted twice. Everything else is deliberately identical - the room
+ * check, the cornucopia and already-blank exclusions, and the per-tile dedupe by
+ * token VALUE (two vegetable crates on one tile are one choice, not two).
+ */
+function faceDownTargets(data: GameData, state: GameState): DemandRef[] {
+  const out: DemandRef[] = [];
+  for (const tile of state.island.tiles) {
+    if (!tileHasRoom(data, tile)) continue;
+    const seen = new Set<string>();
+    for (let i = 0; i < tile.crates.length; i++) {
+      const value = tile.faceDown?.[i] === true ? 'down' : (tile.crates[i] as string);
+      if (value === 'wild' || value === 'down') continue;
+      if (seen.has(value)) continue;
+      seen.add(value);
+      out.push({ tile: tile.tile, crate: i });
+    }
+  }
+  return out;
 }
 
 /**
@@ -138,73 +189,64 @@ export const vegetableBarn: CardHandler = {
 };
 
 /**
- * V2 Farmstead (starter) - "When you Deliver to the island, put 1 card from your
- * hand into your barn." / upgraded adds ", and you may swap 1 card in your barn
- * for the top card of any deck."
+ * V2 Farmstead (starter) - "When you Deliver, you may first put 1 hand card into
+ * your barn." / upgraded "When you Deliver, you may first put 1 deck card into
+ * your barn."
+ *
+ * (The sheet prints a double space in the base text. Left alone: the extract is
+ * the source of truth and a whitespace fix is a sheet edit, not an engine one.)
  */
 export const vegetableFarmstead: CardHandler = {
   difficulty: {
     score: 3,
-    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
+    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
     notes:
-      'THE OLD "When you Deliver, gain £1 / £2" IS GONE, and its deletion is a rules fix rather ' +
+      'THE OLD "When you Deliver, gain £1 / £2" IS GONE, and its deletion was a rules fix rather ' +
       'than a balance one: it minted coins on a solitaire action, which the coin rule adopted ' +
       'with the Wheat rebuild forbids outright (a card may only mint at the moment another ' +
       'player acts). What replaces it moves a card instead of a coin. ' +
-      'THE WORD "FIRST" (2026-08-09, Dean) IS THE WHOLE CARD, AND IT DOES NOT LIVE IN THIS FILE. ' +
-      'Until it was added, this handler pushed a handToBarn on afterDeliver - which fires AFTER ' +
-      'the payment - so the card it moved could not help pay for the delivery that triggered ' +
-      'it. You had to already be able to deliver in order to earn the fuel for the next ' +
-      'delivery, which is a circle, and it is why the card was worth 1.5 VP a game in a suit ' +
-      "that needed four. Wheat's Farmstead relaxes the harvest and Orchard's modifies the " +
-      "draw; both sit UPSTREAM of their suit's bottleneck and this one now does too. " +
-      "The head is enumerated in actions.ts (deliverHeadSize / headCandidates / doDeliver's " +
+      'THE WORD "FIRST" (2026-08-09, Dean) IS THE WHOLE CARD, AND MOST OF IT DOES NOT LIVE IN ' +
+      'THIS FILE. Until it was added, this handler pushed a handToBarn on afterDeliver - which ' +
+      'fires AFTER the payment - so the card it moved could not help pay for the delivery that ' +
+      'triggered it. You had to already be able to deliver in order to earn the fuel for the ' +
+      'next delivery, which is a circle, and it is why the card was worth 1.5 VP a game in a ' +
+      "suit that needed four. Wheat's Farmstead relaxes the harvest and Orchard's modifies the " +
+      "draw; both sit UPSTREAM of their suit's bottleneck and this one has to as well. " +
+      "The hand head is enumerated in actions.ts (deliverHeadSize / headCandidates / doDeliver's " +
       '`head`), NOT here, because it has to be visible to option enumeration and to LEGALITY: ' +
       'a Deliver that only becomes payable once a hand card is loaded has to be offered in the ' +
-      'first place. It therefore composes with every route to an island delivery - the main ' +
-      'action, the Deliver Service, V5, V6, V7, V14, V15 - which is what "when you Deliver to ' +
-      'the island" says. It also composes with the wild substitution rather than duplicating ' +
-      'it: one hand card plus one spare barn card is a card of the crate. ' +
-      "ONLY WHAT IT LEAVES BEHIND IS HERE: the upgrade's barn swap, which still fires after the " +
-      'delivery because recolouring the barn is a thing you do with the residue. ' +
-      'GUARDED ON island === true: a balloon move is a Deliver (DL-12) but not a Deliver to the ' +
-      'island, so V17 owns the flight trigger and this owns the island one. That split is why ' +
-      'the rulebook line "a balloon move IS the Deliver action" has to stay visible. ' +
-      'The swap names a suit OUT and a suit IN, because barn identity is inert - a barn is a ' +
-      'per-crop tally, so a crop is the only thing there is to choose.',
-  },
-  on: {
-    afterDeliver(fx, event, self) {
-      if (!event.island || event.seat !== self.seat) return;
-      const farmstead = player(fx.state, self.seat).tableau.find((b) => b.card === self.card);
-      if (!farmstead?.upgraded) return;
-      fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'barnSwap', riders: {} });
-    },
-  },
-  tasks: {
-    barnSwap: {
-      answers(data, state, task) {
-        const tally = barnTally(data, state, task.pid);
-        const out: TaskAnswer[] = [];
-        for (const [gone, n] of Object.entries(tally) as [Suit, number][]) {
-          if (n < 1) continue;
-          for (const into of liveDecks(data, state)) {
-            out.push({ kind: 'card', payload: { gone, into } });
-          }
-        }
-        if (out.length > 0) out.push({ kind: 'skip' });
-        return out;
-      },
-      resolve(fx, task, answer) {
-        if (answer.kind === 'skip') return true;
-        if (answer.kind !== 'card') throw new Error('barnSwap expects a card answer');
-        const { gone, into } = answer.payload as { gone: Suit; into: Suit };
-        fx.spendFromBarn(task.pid, { [gone]: 1 } as Partial<Record<Suit, number>>);
-        fx.deckTopToBarn(task.pid, into);
-        return true;
-      },
-    },
+      'first place. It composes with the wild substitution rather than duplicating it: one hand ' +
+      'card plus one spare barn card is a card of the crate. ' +
+      'TWO CHANGES ON 19/08/2026, one of them structural. ' +
+      '(1) THE TRIGGER WIDENED from "When you Deliver to the island" to "When you Deliver", so ' +
+      'the `event.island` guard that used to open this listener is GONE. A balloon move IS the ' +
+      'Deliver action (DL-12), so the card now fires on a flight as well as on an island claim - ' +
+      'every route, including V4 and V8 and the Deliver Service. That closes the old split where ' +
+      'V17 owned the flight trigger and this owned the island one; both hooks are now the same ' +
+      "hook, and `afterDeliver`'s `island` boolean is what the two ever differed on. " +
+      '(2) THE UPGRADED FACE IS RE-POINTED. The barn swap is DELETED outright - "swap 1 barn ' +
+      'card for the top card of any deck" was a recolouring power the wild substitution took ' +
+      'over on 8 August - and the deposit source moves from a HAND card to a DECK card. The two ' +
+      'faces are ALTERNATIVES and not cumulative, read literally off the printed text: base puts ' +
+      'a hand card in, upgraded puts a deck card in. That is what makes the flip worth £2 - a ' +
+      'deck card is free where a hand card is the scarcest resource the suit has - and it is why ' +
+      'the upgrade does not simply stack a second head on the first. ' +
+      'SO THIS HANDLER HAS NO BEHAVIOUR AT ALL, AND THAT IS CORRECT. Both faces are enumerated ' +
+      'in actions.ts and nowhere else: `deliverHeadSize` (1 on the base face, ⚠️ **0** on the ' +
+      'upgraded one - it does not load a hand card any more), `deliverDeckHead` / ' +
+      '`deckHeadCandidates` for the upgraded deck card, and the `head` / `deckHead` arguments ' +
+      'threaded through `deliverOptions`, `anyDeliverOption`, `doDeliver`, `balloonMoveOptions` ' +
+      'and `doMoveBalloon`. It has to live there because it must be visible to option ' +
+      'enumeration AND to LEGALITY: a Deliver that only becomes payable once a card is loaded ' +
+      'has to be offered in the first place. The deck head is enumerable with no information ' +
+      'leak, because A DECK IS A SUIT - the arriving crop is fully known and only the card is ' +
+      'not, and barn identity is inert anyway. ' +
+      '⚠️ A stopgap `deckToBarn` task briefly lived here, firing off `afterDeliver`. It was ' +
+      'deleted the same day: `afterDeliver` fires AFTER the payment, so the card it moved could ' +
+      'not help pay for the delivery that triggered it - the exact circle the word "first" ' +
+      'exists to break, and the same bug the 2026-08-09 change was made to fix. If a future ' +
+      'pass is tempted to put a head back on a hook, that is why it cannot be.',
   },
 };
 
@@ -223,7 +265,7 @@ export const vegetableNoticeBoard: CardHandler = {
 };
 
 /**
- * V4 The Market Stall Depot - "Discard 2 cards to move a Balloon to your
+ * V4 The Market Stall Depot - "Discard 1 card to move a Balloon to your
  * Aerodrome and take its reward."
  */
 export const marketStallDepot: CardHandler = {
@@ -240,10 +282,11 @@ export const marketStallDepot: CardHandler = {
       'and this route is deliberately unfussy so the fee is the worst two cards in hand. ' +
       'DECIDED (handoff §5): a hand-paid flight still fires afterDeliver with island: false, ' +
       'because moving a balloon IS the Deliver action (DL-12) and one funnel is worth more than ' +
-      'the purity. Nothing reads a non-island deliver any more - the rebuilt Farmstead guards on ' +
-      'island - so the choice is currently unobservable, and it is written down here because the ' +
-      'next card that reads afterDeliver has to know which way it went. ' +
-      'Mandatory when it can be paid; auto-skips on a hand of under 2 or an empty sky.',
+      'the purity. THAT DECISION BECAME OBSERVABLE ON 19/08/2026: the Farmstead dropped its ' +
+      '`island` guard when its text widened to "When you Deliver", so an upgraded Vegetable seat ' +
+      'now gets a deck card into the barn every time this Depot flies. Two cards for one hand ' +
+      'card, which is the ladder working, not a bug. ' +
+      'Mandatory when it can be paid; auto-skips on an empty hand or an empty sky.',
   },
   activate(fx, self) {
     fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'flight', riders: {} });
@@ -254,7 +297,7 @@ export const marketStallDepot: CardHandler = {
         return flightAnswers(data, state, task.pid);
       },
       resolve(fx, task, answer) {
-        takeFlight(fx, task.pid, answer, true);
+        takeFlight(fx, task.pid, answer);
         return true;
       },
     },
@@ -322,48 +365,55 @@ export const coastalTradingDepot: CardHandler = {
   },
 };
 
-/**
- * V6 The Trade Depot - "Turn face down a demand token on a tile where a receipt
- * has already been taken."
- */
+/** V6 The Trade Depot - "Turn an island demand token face down, then Deliver." */
 export const tradeDepot: CardHandler = {
   difficulty: {
-    score: 3,
+    score: 2,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: true, conditional: true, counts: false, interrupts: false },
+    asserted: { newPrimitive: true, conditional: false, counts: false, interrupts: false },
     notes:
       'The other half of the mutable demand tokens, and the one that points OUTWARD: a ' +
       'face-down token opens a crate for the whole table and the Vegetable seat is simply first ' +
       'in the queue. Theme: the second buyer is not fussy. ' +
-      'THE "WHERE A RECEIPT HAS ALREADY BEEN TAKEN" CLAUSE IS THE TIMING DIAL, not flavour. It ' +
-      'is what Dean\'s "this feels like a Tier 2 power" was answered with instead of a roster ' +
-      'move: the card cannot fire on turn one because no tile has a receipt yet, and it comes ' +
-      'alive exactly when the race starts. It is enumerated in demandFaceDownOptions rather than ' +
-      'merely asserted in the verb, so an illegal target is never offered. It also protects what ' +
-      'the island is FOR: gating the wild to half-run tiles keeps the colour puzzle hard while it ' +
-      'matters and soft only where the race is already over. ' +
-      'A cornucopia and an already-blank token are both skipped - turning either buys nothing. ' +
-      'Mandatory as printed, and it simply has no legal target early, in which case the drain ' +
-      'loop drops the task. Happy accident worth keeping: V14 wants a VIRGIN tile and this wants ' +
-      'a half-filled one, so they point at opposite ends of the island and never compete. ' +
+      'THE ELIGIBILITY FILTER IS GONE (19/08/2026). The card used to read "a demand token on a ' +
+      'tile where a receipt has already been taken", and that clause was the TIMING DIAL, not ' +
+      'flavour - it is what Dean\'s "this feels like a Tier 2 power" was answered with instead of ' +
+      'a roster move. The card could not fire on turn one because no tile had a receipt yet, and ' +
+      'it came alive exactly when the race started; it also protected what the island is FOR, by ' +
+      'keeping the colour puzzle hard while it mattered and soft only where the race was already ' +
+      'over. The sheet dropped it, so ANY token on any open tile is now a legal target and the ' +
+      'card is live from turn one. Two knock-on effects to watch in the arm: the parity trap it ' +
+      'relieves is now relievable before anybody has committed a barn to a colour, and V14 no ' +
+      'longer sits at the opposite end of the island from it (V14 wanted a VIRGIN tile and this ' +
+      'wanted a half-filled one, so the two used to be incapable of competing; both are now ' +
+      'unrestricted). The difficulty score drops 3 -> 2 with the condition: the card is a plain ' +
+      'pick-a-token now. ' +
+      'ENUMERATED LOCALLY (faceDownTargets, this file) rather than through demandFaceDownOptions, ' +
+      'which still carries the receipt filter and belongs to a shared file this pass does not ' +
+      'own. An illegal target is still never offered: a cornucopia and an already-blank token ' +
+      'are both skipped, because turning either buys nothing, and a tile with no receipt space ' +
+      'left is never re-priced retrospectively. ' +
+      'Mandatory as printed. It can now only be targetless on an island of cornucopias and blanks, ' +
+      'in which case the drain loop drops the task and the Deliver behind it still runs. ' +
       '"THEN DELIVER" ADDED 2026-08-09 (Dean), same reasoning as V5: the card was bottom of its ' +
       'band at 22% built and fired 0.0 times a game, because a GROW that produces nothing loses ' +
-      'to any GROW that draws. Opening the crate and filling it is now one action. ' +
-      '⚠️ THE THRESHOLD WAS NOT DROPPED. The review recommended 3 -> 2 as the fix; the Deliver ' +
-      'was approved instead, and stacking both would have been two buffs on one card. If the ' +
-      'card is still inert after the arm, the threshold is the next dial.',
+      'to any GROW that draws. Opening the crate and filling it is one action. ' +
+      '⚠️ THE THRESHOLD IS STILL 3. It survived the 2026-08-09 review (3 -> 2 was recommended and ' +
+      'the Deliver was approved instead) and it is now the only brake left on a card that has ' +
+      'lost its timing gate. If V6 turns out to be the card that dissolves the colour puzzle, ' +
+      'the threshold is the dial, not the text.',
   },
   activate(fx, self) {
     fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'faceDown', riders: {} });
     // Queued after the face-down, so the delivery sees the opened crate. The
-    // face-down is mandatory but can have no legal target early, in which case
-    // the drain loop drops it and the delivery still runs (the W15/A5 precedent).
+    // face-down is mandatory but can have no legal target, in which case the
+    // drain loop drops it and the delivery still runs (the W15/A5 precedent).
     fx.pushTask({ t: 'deliver', pid: self.seat, src: self.card });
   },
   tasks: {
     faceDown: {
       answers(data, state) {
-        return demandFaceDownOptions(data, state).map(
+        return faceDownTargets(data, state).map(
           (ref) => ({ kind: 'card', payload: { ...ref } }) as TaskAnswer,
         );
       },
@@ -413,59 +463,60 @@ export const exportDepot: CardHandler = {
 };
 
 /**
- * V8 The Regional Depot - "Discard 2 cards to move a Balloon to your Aerodrome
- * and take the reward of any Balloon."
+ * V8 The Regional Depot - "Move a Balloon to your Aerodrome and take its
+ * reward."
  */
 export const regionalDepot: CardHandler = {
   difficulty: {
-    score: 4,
+    score: 2,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: true },
+    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'V4 plus the choice of cargo, at one card more and one threshold higher - a proper ladder. ' +
-      'It is the interesting one: balloon rewards are welded to colours (Draw 4 / Build at a ' +
-      'discount of 4 / Sow 4 from hand / Gain £4), so which reward you can have is normally an ' +
-      'accident of where the balloons are parked, and this severs reachability from cargo. ' +
-      "The moved balloon's OWN reward is suppressed at source (the shared landBalloon helper's " +
-      'grantReward flag) rather than granted and then compensated for, so it can never fire ' +
-      'twice; the chosen reward is then granted from ANY balloon in the game, the one just moved ' +
-      'included. ' +
-      '⚠️ RULING H, OWED BY DEAN: the magenta balloon\'s "Gain £4" is a solitaire coin faucet, ' +
-      'which the coin rule forbids, and this card can now target it DELIBERATELY for 2 hand ' +
-      "cards. The fault is the reward, not the card. Report the £4 balloon's take rate in the " +
-      'arm - if V8 always picks magenta, that is the finding.',
+      'TWO SUBTRACTIONS ON 19/08/2026, and they pull in opposite directions - read them ' +
+      'separately or the card looks like a straight buff, which it is not. ' +
+      'CHEAPER: the discard is gone. The old card read "Discard 1 card to move a Balloon to your ' +
+      'Aerodrome and take the reward of any Balloon"; the fee has been deleted outright, so the ' +
+      'flight is now free of everything except the GROW that fired it (the matching card into ' +
+      'the stack, plus the action). This is the one Depot that flies without spending hand. ' +
+      'WEAKER, AND THIS IS THE HALF TO NOTICE: "the reward of any Balloon" narrowed to "its ' +
+      'reward" - the reward of the balloon you actually moved. That was the whole card. Balloon ' +
+      'rewards are welded to colours (Draw 4 / Build at a discount of 4 / Sow 4 from hand / Gain ' +
+      '£4), so which reward you can have is an accident of where the balloons are parked, and V8 ' +
+      'was the only thing in the game that severed reachability from cargo. It is now V4 without ' +
+      'the fee, at one more build cost and one more threshold, and the ladder between them is a ' +
+      'price ladder rather than a power ladder. Whether that leaves it worth Tier 1 slot 5 is an ' +
+      'arm question. ' +
+      "The suppression seam went with it: landBalloon's `grantReward` flag existed for this card " +
+      'alone and now has no caller. It stays in actions.ts - a shared file - and its docstring ' +
+      'still names V8; that note is stale and is on the handoff list. ' +
+      'ROUTED THROUGH doMoveBalloon WITH A NULL SPEND, which is the engine\'s "a card effect ' +
+      'moved this for free" path: no cards leave any zone, but the raid hook and the deliver ' +
+      'hook both still fire, so V16 still pays a raided neighbour and V17 still draws. Not ' +
+      'doMoveBalloonFromHand with an empty fee, which would throw on the cost check. ' +
+      '⚠️ RULING H, OWED BY DEAN, IS PARTLY ANSWERED BY THE RETEXT: the magenta balloon\'s "Gain ' +
+      '£4" is a solitaire coin faucet, which the coin rule forbids, and V8 could previously ' +
+      'target it DELIBERATELY. It can now only reach it by moving magenta itself, which any ' +
+      'balloon move can do. The fault was always the reward and not the card, and it is now the ' +
+      "reward's alone. Still worth reporting the £4 balloon's take rate in the arm.",
   },
   activate(fx, self) {
-    fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'flightAny', riders: {} });
+    fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'freeFlight', riders: {} });
   },
   tasks: {
-    flightAny: {
-      answers(data, state, task) {
-        return flightAnswers(data, state, task.pid);
-      },
-      resolve(fx, task, answer) {
-        takeFlight(fx, task.pid, answer, false);
-        fx.prependTask({
-          t: 'card',
-          pid: task.pid,
-          src: task.src,
-          kind: 'anyReward',
-          riders: {},
-        });
-        return true;
-      },
-    },
-    anyReward: {
-      answers(_data, state) {
+    freeFlight: {
+      answers(_data, state, task) {
         const aero = state.aerodrome;
         if (!aero) return [];
-        return aero.balloons.map(
-          (b) => ({ kind: 'card', payload: { balloon: b.id } }) as TaskAnswer,
-        );
+        // The shared source rule: the centre or a rival's Aerodrome, never your
+        // own. Enumerated here as well as asserted in movableBalloon, so an
+        // empty sky drops the task instead of wedging it.
+        return aero.balloons
+          .filter((b) => b.at !== task.pid)
+          .map((b) => ({ kind: 'card', payload: { balloon: b.id } }) as TaskAnswer);
       },
       resolve(fx, task, answer) {
-        if (answer.kind !== 'card') throw new Error('anyReward expects a card answer');
-        grantBalloonReward(fx, task.pid, answer.payload.balloon as string);
+        if (answer.kind !== 'card') throw new Error('freeFlight expects a card answer');
+        doMoveBalloon(fx, task.pid, answer.payload.balloon as string, null);
         return true;
       },
     },
@@ -517,10 +568,7 @@ export const supplyHouse: CardHandler = {
   },
 };
 
-/**
- * V11 The Market Master - "SOW up to 1 card from your hand onto your buildings
- * for each card in your barn."
- */
+/** V11 The Market Master - "SOW 1 for every card in your Barn." */
 export const marketMaster: CardHandler = {
   difficulty: {
     score: 2,
@@ -529,23 +577,35 @@ export const marketMaster: CardHandler = {
     notes:
       "The whole hand onto the tableau, once the barn is deep - the suit's wow card at Tier 2. " +
       'ONE re-entrant sow task with the printed count as its budget rather than N separate ' +
-      'tasks: the generic sow task already decrements and already ends on a skip, which is ' +
-      'exactly "up to N", and it auto-drops when the hand empties or nothing has room. Sow is ' +
-      'suit-free (ruled 2026-07-20) and the generic task restricts targets to your own ' +
-      'buildings. ' +
-      '⚠️ It SPENDS the hand, as V12 and every flight do. Three cards competing for a hand of 5 ' +
-      "is the suit's named risk, and an empty hand cannot visit.",
+      'tasks: the generic sow task already decrements, and it auto-drops when the hand empties ' +
+      'or nothing has room. Sow is suit-free (ruled 2026-07-20) and the generic task restricts ' +
+      "targets to your own buildings. WHICH card goes where is still the player's choice, and " +
+      'that is the whole of the decision the card offers now. ' +
+      '"UP TO" WAS DROPPED ON 19/08/2026 AND THE SOW IS MANDATORY. Dean has ruled this a ' +
+      'DELIBERATE POWER-UP, not a wording slip, so it is coded as forced: `optional` comes off ' +
+      'the task and no skip answer is ever offered. Read it as the card getting louder rather ' +
+      'than the card getting a downside - the sow that used to be declinable is now the point. ' +
+      'THE NO-OP CONVENTION (plan §8.3) IS SKIP SILENTLY: with no legal target - an empty hand, ' +
+      'or every building of yours full - the enumerator returns nothing and the drain loop drops ' +
+      'the task. The activation is never refused and never wedges, and a partly-payable budget ' +
+      'does as much as it can and then drops. That is the same answer V12 takes, and it is the ' +
+      'one answer applied to every mandatory effect in this pass. ' +
+      '⚠️ IT SPENDS THE HAND AND YOU CAN NO LONGER STOP IT. That is a real cost in a suit whose ' +
+      'hand is its bottleneck: three cards competing for a hand of 5 is the named risk, an empty ' +
+      'hand cannot visit, and a deep barn now forces the whole hand onto buildings whether or ' +
+      'not you wanted the thresholds. Watch for a seat that builds V11 and then cannot afford ' +
+      'the bonus slot for two turns.',
   },
   activate(fx, self) {
     const budget = player(fx.state, self.seat).barn.length;
     if (budget <= 0) return;
-    fx.pushTask({ t: 'sow', pid: self.seat, src: self.card, remaining: budget, optional: true });
+    fx.pushTask({ t: 'sow', pid: self.seat, src: self.card, remaining: budget });
   },
 };
 
 /**
- * V12 The Auction House - "Put up to 1 card from your hand into your barn for
- * each DEPOT you have built."
+ * V12 The Auction House - "Put 1 card from your hand into your barn for each
+ * DEPOT you have built."
  */
 export const auctionHouse: CardHandler = {
   difficulty: {
@@ -554,11 +614,24 @@ export const auctionHouse: CardHandler = {
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
       'The consignment: hand into barn, one per DEPOT, so the Tier 1 layer is literally its ' +
-      'supply. Caps at 5. Ruling D is CLOSED by this retext - the old "treat any 1 card as a ' +
-      'Vegetable" overlapped the universal wild substitution and is gone, taking doDeliver\'s ' +
+      'supply. Caps at 5. Ruling D is CLOSED by an earlier retext - the old "treat any 1 card as ' +
+      'a Vegetable" overlapped the universal wild substitution and is gone, taking doDeliver\'s ' +
       "countAs parameter out of Vegetable's hands (the parameter itself stays, unused, because " +
       'removing it is a separate edit to a shared funnel). One re-entrant handToBarn task with ' +
-      'the count as its budget, skippable at every step ("up to").',
+      'the count as its budget. ' +
+      '"UP TO" WAS DROPPED ON 19/08/2026 AND THE DEPOSIT IS MANDATORY, ruled by Dean as a ' +
+      'DELIBERATE POWER-UP exactly as V11 was, so `optional` comes off the task and there is no ' +
+      'skip answer. This is the sharper of the two: barn cards are worth roughly 1.5 VP each ' +
+      'through the delivery rate, so being made to move five of them is mostly upside - but the ' +
+      'barn is a DEAD END (barn to island only), so a hand emptied into it cannot be built with, ' +
+      'flown with or visited with. A late-game V12 with five Depots on a hand you were saving is ' +
+      'the case to watch. ' +
+      'THE NO-OP CONVENTION (plan §8.3) IS SKIP SILENTLY, the same answer V11 takes: an empty ' +
+      'hand enumerates no answers and the drain loop drops the task, and a hand shorter than the ' +
+      'budget moves what it has and then drops. No DEPOT built is caught one step earlier by the ' +
+      'zero-budget guard, which never pushes the task at all - same observable outcome, and the ' +
+      'guard is kept because pushing a task with a budget of nothing is a lie about what ' +
+      'happened.',
   },
   activate(fx, self) {
     const budget = builtDepots(fx.data, fx.state, self.seat).length;
@@ -568,19 +641,18 @@ export const auctionHouse: CardHandler = {
       pid: self.seat,
       src: self.card,
       remaining: budget,
-      optional: true,
     });
   },
 };
 
 /**
- * V13 The Grand Marketplace (ACTION) - "For each different crop in your barn,
- * put the top card of that crop's deck into your barn."
+ * V13 The Grand Marketplace - "For each different crop in your barn, put the top
+ * card of that crop's deck into your barn."
  */
 export const grandMarketplace: CardHandler = {
   difficulty: {
     score: 2,
-    verified: { prompts: false, crossPlayer: false, addsMoves: true, endgame: false },
+    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
       'REPOINTED 2026-08-09 (Dean, off the post-implementation review). It used to be the ' +
@@ -602,14 +674,20 @@ export const grandMarketplace: CardHandler = {
       'not extend the loop that put it there. ' +
       '⚠️ IT PADS THE BARN, which the old card deliberately did not (it was count-neutral). That ' +
       'is the thing to watch: assertion 6 (the barn glut) is already FAILing, and this is the ' +
-      'first card in the suit that adds to a barn without a delivery in the same breath.',
+      'first card in the suit that adds to a barn without a delivery in the same breath. ' +
+      'CONVERTED FROM ACTION TO GROW ON 19/08/2026 (Dean: "The concept of an ACTION was never ' +
+      'requested. They are all GROW."). The printed effect is UNCHANGED - this is the pure ' +
+      'conversion of the three, with no retext behind it - so everything above still holds. What ' +
+      'changed is the shell: the standing `cardMove` and its `applyMove` are gone, the effect ' +
+      'moved into `activate`, and the `turn.actionSpent = true` line came out because GROW is ' +
+      'the action now and the grow runtime books it. The old move gated itself on ' +
+      '"cropsToRefill > 0" so it was simply not offered against an empty barn; a GROW has no ' +
+      'such gate, so activating this on an empty barn is legal and does nothing. That is the ' +
+      'normal shape for a building (you may always pay a card into a stack) and it is not worth ' +
+      'a guard - but it does mean the card can be grown purely to advance its own threshold, ' +
+      'which the ACTION shape could not.',
   },
-  actionMoves: true,
-  moves(data, state, self) {
-    return actionMove(self, actionOpen(state, self) && cropsToRefill(data, state, self.seat) > 0);
-  },
-  applyMove(fx, self) {
-    fx.state.turn.actionSpent = true;
+  activate(fx, self) {
     // Fixed before the first card lands: "each different crop in your barn" is
     // read at activation, so a Wheat card arriving cannot make Wheat a crop the
     // loop has not already counted.
@@ -625,46 +703,53 @@ function refillCrops(data: GameData, state: GameState, seat: Seat): Suit[] {
   return live.filter((suit) => (tally[suit] ?? 0) > 0);
 }
 
-function cropsToRefill(data: GameData, state: GameState, seat: Seat): number {
-  return refillCrops(data, state, seat).length;
-}
-
-/**
- * V14 The Distribution Center (ACTION) - "Deliver to a tile where nobody has
- * delivered, and take both of its receipts."
- */
+/** V14 The Distribution Center - "Deliver and take every receipt on the island." */
 export const distributionCenter: CardHandler = {
   difficulty: {
     score: 3,
-    verified: { prompts: true, crossPlayer: false, addsMoves: true, endgame: false },
-    asserted: { newPrimitive: true, conditional: true, counts: false, interrupts: false },
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: true, conditional: true, counts: true, interrupts: false },
     notes:
       'CHEAPER THAN IT READS, because deliveredBy is a Seat[] IN ORDER and the seat at index i ' +
-      'took vpByDeliveryOrder[i]. So "both receipts" is: assert the tile is virgin, pay its cost ' +
-      'ONCE, and push the seat TWICE - 6 + 3 = 9 with no scoring rule of its own. That is ' +
+      'took vpByDeliveryOrder[i]. So a sweep is: pay the tile ONCE and push the seat as many ' +
+      'times as the tile has room for - 6 + 3 = 9 with no scoring rule of its own. That is ' +
       "doDeliver's `receipts` argument, which defaults to 1 for every other delivery in the " +
       'game. It emits one `delivered` event per receipt so nothing counting deliveries has to ' +
-      'learn about the double, and fires afterDeliver ONCE, because it is one Deliver and the ' +
+      'learn about the sweep, and fires afterDeliver ONCE, because it is one Deliver and the ' +
       'Farmstead pays per delivery rather than per receipt. ' +
       'ISLAND ONLY: no balloon branch, because a balloon has no receipts. ' +
+      '⚠️ RETEXTED AND RE-RULED ON 19/08/2026, AND THE RULING OVERRIDES THE PRINTED TEXT. The ' +
+      'card now reads "Deliver and take EVERY RECEIPT ON THE ISLAND", which taken literally ' +
+      'would empty the board. Dean has ruled it: it takes whatever receipts REMAIN ON THE TILE ' +
+      'IT DELIVERED TO - two if nobody has delivered there, one if somebody has. Not "every ' +
+      'receipt on the island", and not always "both". So the count is read off the live tile at ' +
+      'resolve (deliveriesPerTile minus deliveredBy.length) rather than hard-coded, which is ' +
+      'also what keeps it honest under an overlay that changes the per-tile capacity. ' +
+      'THE VIRGIN-TILE RESTRICTION IS GENUINELY GONE. The old card read "Deliver to a tile where ' +
+      'nobody has delivered, and take both of its receipts", and the enumerator (virginDeliveries) ' +
+      'filtered the shared option set down to untouched tiles. It now enumerates every payable ' +
+      'delivery, so the card may deliberately be aimed at a half-claimed tile for a single ' +
+      'receipt. That makes it strictly more flexible and slightly less explosive: the 9-point ' +
+      'double is now a choice you can miss rather than the only thing the card does, and a seat ' +
+      'holding V14 for a virgin Level 3 tile is choosing to wait rather than being forced to. ' +
+      'It also ends the happy accident that V6 and V14 pointed at opposite ends of the island; ' +
+      'both are unrestricted now. ' +
+      'The wild substitution and the face-down tokens still compose for free, because the ' +
+      'answers are filtered off deliverOptions rather than re-derived. ' +
       '⚠️ RULING G, OWED BY DEAN: two receipts count as TWO deliveries toward the six-delivery ' +
       'end trigger, which is what islandDeliveriesBy does for free and is the recommendation. ' +
       'The trigger check runs after BOTH pushes. If Dean rules the other way it is a real change ' +
-      'and needs a dial; there is deliberately no dial for it yet.',
+      'and needs a dial; there is deliberately no dial for it yet. ' +
+      'CONVERTED FROM ACTION TO GROW in the same pass: no standing move, no applyMove, no ' +
+      '`turn.actionSpent` line. It costs a card into its own stack now, and it clogs at 1.',
   },
-  actionMoves: true,
-  moves(data, state, self) {
-    const live = actionOpen(state, self) && virginDeliveries(data, state, self.seat).length > 0;
-    return actionMove(self, live);
-  },
-  applyMove(fx, self) {
-    fx.state.turn.actionSpent = true;
-    fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'doubleDeliver', riders: {} });
+  activate(fx, self) {
+    fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'sweepDeliver', riders: {} });
   },
   tasks: {
-    doubleDeliver: {
+    sweepDeliver: {
       answers(data, state, task) {
-        return virginDeliveries(data, state, task.pid).map(
+        return deliverOptions(data, state, task.pid).map(
           (o) =>
             ({
               kind: 'card',
@@ -677,101 +762,68 @@ export const distributionCenter: CardHandler = {
         );
       },
       resolve(fx, task, answer) {
-        if (answer.kind !== 'card') throw new Error('doubleDeliver expects a card answer');
+        if (answer.kind !== 'card') throw new Error('sweepDeliver expects a card answer');
         const { tile, spend, head } = answer.payload as {
           tile: string;
           spend: Partial<Record<Suit, number>>;
           head?: CardId[];
         };
-        doDeliver(fx, task.pid, tile, spend, undefined, 2, head);
+        // "Every receipt" = every receipt THIS TILE has left (Dean, 19/08/2026).
+        // Read off the live island rather than assumed, so the card takes 2 from
+        // a virgin tile, 1 from a half-claimed one, and stays correct under an
+        // overlay that changes deliveriesPerTile.
+        const target = fx.state.island.tiles.find((t) => t.tile === tile);
+        if (!target) throw new Error(`Tile ${tile} is not in play`);
+        const receipts = deliveriesPerTile(fx.data) - target.deliveredBy.length;
+        doDeliver(fx, task.pid, tile, spend, undefined, receipts, head);
         return true;
       },
     },
   },
 };
 
-/**
- * Payable deliveries to tiles NOBODY has delivered to, and which have room for
- * BOTH receipts. Filtered off the shared enumerator rather than re-derived, so
- * the wild substitution and the face-down tokens both compose with V14 for free.
- *
- * The capacity test is against the VP schedule's length rather than
- * `tileHasRoom`, because this delivery needs two spaces and not one: an overlay
- * that shortened the schedule to a single receipt would make the card dead
- * rather than make it throw.
- */
-function virginDeliveries(data: GameData, state: GameState, seat: Seat): DeliverOption[] {
-  if (deliveriesPerTile(data) < 2) return [];
-  const virgin = new Set(
-    state.island.tiles.filter((t) => t.deliveredBy.length === 0).map((t) => t.tile),
-  );
-  return deliverOptions(data, state, seat).filter((o) => virgin.has(o.tile));
-}
-
-/**
- * V15 The International Port (ACTION) - "Put the top card of any deck into each
- * other player's barn, take £1 for each, then Deliver."
- */
+/** V15 The International Port - "Deliver Twice" */
 export const internationalPort: CardHandler = {
   difficulty: {
-    score: 4,
-    verified: { prompts: true, crossPlayer: true, addsMoves: true, endgame: false },
-    asserted: { newPrimitive: false, conditional: true, counts: true, interrupts: true },
+    score: 2,
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'The suit\'s "each other player" card. ' +
-      'THE £1 BECAME A DRAW 1 on 2026-08-09 (Dean, off the post-implementation review). The ' +
-      'arithmetic was upside down: at four seats you handed the table three barn cards, worth ' +
-      'about 1.5 VP each through the delivery rate, to receive £3 in a game that ends on a ' +
-      'median of £1-£2 with the market running at 0.1 buys a game. You were paying to improve ' +
-      "everybody else's position, which is the predecessor's number one BGG dislike pointed the " +
-      'wrong way. The generosity and the cross-table moment are unchanged; the compensation is ' +
-      'now the resource the suit is actually short of. It also takes the last solitaire coin ' +
-      "faucet out of the suit, which the coin rule wanted anyway - V16's raid payment is the " +
-      'only £ Vegetable prints now, and it needs a rival to act. ' +
-      'NO RIVAL IS EVER ASKED ANYTHING: YOU choose which deck each of them gets, so every task ' +
-      'here belongs to the acting seat and the rivals simply receive. That keeps the card off ' +
-      'the "prompts a rival" list and makes it a gift with a price rather than a negotiation. ' +
-      'The draw fires on the act (the W15/A5 "then" precedent), and only drawable decks are ever ' +
-      'offered, so a deck emptying between enumeration and resolution is not reachable. ' +
-      'It scales with the seat count - one rival card and one draw at 2p, three of each at 4p - ' +
-      'which is deliberate for the only card in the suit that reads the table. ' +
-      'The Deliver is the full action (island AND balloon) and auto-skips when nothing is ' +
-      'payable; it runs after the gifts because tasks answer in queue order.',
+      'THE SUIT\'S "EACH OTHER PLAYER" CARD IS GONE (19/08/2026). It used to read "Put the top ' +
+      'card of any deck into each other player\'s barn, Draw 1 for each, then Deliver", and both ' +
+      'the gift and its compensation have been deleted. What is left is two Deliver actions in ' +
+      'one activation, and nothing else. crossPlayer goes false with it: Vegetable now touches ' +
+      'another seat in exactly one place, V16 being raided. ' +
+      'That is a real loss to the hook and it should be recorded as one rather than passed off ' +
+      'as a simplification. The card was the only place in the suit where a Vegetable turn put ' +
+      'something on somebody else\'s side of the table, and the "your junk is their treasure" ' +
+      'supply line has one fewer source. The counter-argument, and the reason the cut is ' +
+      'defensible: the gift was never the reason anybody built it, the arithmetic had already ' +
+      'been reversed once (2026-08-09, the coin became a draw) for handing rivals barn cards ' +
+      'worth ~1.5 VP each, and Tier 3 is the wrong slot for a card whose text is mostly about ' +
+      'other people. ' +
+      'TWO SEPARATE DELIVERS, not one delivery scoring twice, which is the whole difference ' +
+      'between this and V14. Each is a plain deliver task off the shared enumerator, so each is ' +
+      'PAID for separately, TARGETED separately, takes ONE receipt, and may be an island claim ' +
+      'or a balloon move independently of the other (DL-12). Two tasks rather than one task with ' +
+      'a budget of 2, because the deliver task has no budget field and does not need one - the ' +
+      'queue is the counter. ' +
+      'MANDATORY AS PRINTED, and it auto-skips per delivery: the drain loop drops a deliver task ' +
+      'with no payable answer, so a seat that can afford one delivery and not a second simply ' +
+      'takes the one. The second task also enumerates AFTER the first has resolved, so a barn ' +
+      'emptied by delivery one correctly offers nothing for delivery two - and a Farmstead deck ' +
+      'card that arrived on delivery one is available to pay for delivery two. ' +
+      'IT GRANTS DELIVERIES, TWO AT A TIME, and six by one seat ends the game. This is the ' +
+      'fastest end-trigger route in the suit, ahead of V7 and V14, and worth watching for an ' +
+      'abrupt ending at 2p. ' +
+      'CONVERTED FROM ACTION TO GROW in the same pass: the standing move and its applyMove are ' +
+      'gone, the turn.actionSpent line came out, and it now costs a card into its own stack. ' +
+      'SHEET TIDY OWED: the printed text is "Deliver Twice" - capitalised as a title and with ' +
+      'no full stop. Cosmetic, and not fixable from the engine (cards.json is generated).',
   },
-  actionMoves: true,
-  moves(data, state, self) {
-    const live = state.players.length > 1 && liveDecks(data, state).length > 0;
-    return actionMove(self, actionOpen(state, self) && live);
-  },
-  applyMove(fx, self) {
-    fx.state.turn.actionSpent = true;
-    for (let host = 0; host < fx.state.players.length; host++) {
-      if (host === self.seat) continue;
-      fx.pushTask({
-        t: 'card',
-        pid: self.seat,
-        src: self.card,
-        kind: 'consign',
-        riders: { to: host },
-      });
-    }
+  activate(fx, self) {
     fx.pushTask({ t: 'deliver', pid: self.seat, src: self.card });
-  },
-  tasks: {
-    consign: {
-      answers(data, state) {
-        return liveDecks(data, state).map((suit) => ({ kind: 'deck', suit }) as TaskAnswer);
-      },
-      resolve(fx, task, answer) {
-        if (answer.kind !== 'deck') throw new Error('consign expects a deck answer');
-        fx.deckTopToBarn(task.riders.to as Seat, answer.suit);
-        // PREPENDED, not pushed: the Deliver is already queued behind every
-        // consign, and a pushed draw would land behind it and read "then
-        // Deliver, then draw". The card says the draws come first.
-        fx.prependTask({ t: 'draw', pid: task.pid, src: task.src, see: 1, keep: 1, revealed: [] });
-        return true;
-      },
-    },
+    fx.pushTask({ t: 'deliver', pid: self.seat, src: self.card });
   },
 };
 
