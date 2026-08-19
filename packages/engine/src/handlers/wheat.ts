@@ -46,8 +46,10 @@
  * been rebuilt five times for being too slow. The suit has since crossed the
  * middle; that is the whole of the disagreement.
  *
- * The Farmstead seams still live in the engine, not here - actions.ts
- * harvestOptions / wheatRelaxedMin - and W2's entry documents where.
+ * The Farmstead's seam is IN THIS FILE now. `wheatRelaxedMin` and its two
+ * constants are deleted from actions.ts: the sheet swapped W2 and W3 on
+ * 19/08/2026, so the relaxed harvest is W3's visitor door (workers.json,
+ * `relaxedMin: 2`) and W2 is a harvest rider with a real handler body.
  * `harvestAgainPower` is stubbed to `false`, which makes game.ts's entire
  * `turn.again` machinery unreachable; see its docblock for why that is not
  * deleted in the same change as the measurement. W4's auto-harvest and W8's
@@ -56,12 +58,13 @@
  * prints either any more.
  *
  * RULING (2026-08-09, decided): a suit power modifies the ACTION, never card text
- * that happens to use the same word. So the Wheat Farmstead's relaxation - 2+ on
- * the base face, 1+ on the upgraded - does not loosen any card-effect harvest.
- * W8, W11, W12 and W13 spell their own gates out in words. It is structurally
- * true rather than encoded: only the `harvestable` task filter reads the relaxed
- * gate. ⚠️ Deepening the gate to 1+ does not change that, but it does make the
- * test matter more, and spanning.test.ts pins it.
+ * that happens to use the same word. W8, W11, W12 and W13 spell their own gates
+ * out in words. ⚠️ SINCE THE W2/W3 SWAP THE RULING IS STRUCTURALLY TRIVIAL HERE,
+ * and that is worth saying rather than leaving the paragraph to look load-bearing:
+ * Wheat has no suit-power relaxation left to leak, because the relaxation is an
+ * action's property now and only the `harvestable` task filter's `relaxedMin`
+ * rider carries it. The ruling itself is not refuted, it simply has no Wheat
+ * instance any more; the Orchard draw modifier is where it still bites.
  *
  * FIELD is a sub-type derived from the whole-word title keyword, following the
  * reference (DL-42): W4-W8, the only cards in the catalogue named Field.
@@ -186,35 +189,87 @@ export const wheatBarn: CardHandler = {
     afterBuild(fx, event, self) {
       if (event.seat !== self.seat) return;
       if (!isFieldCard(fx.data, event.card)) return;
-      drawN(fx, self.seat, self.card, 1);
+      // FACE-AWARE SINCE 19/08/2026: 1 on the base face, 2 on the upgraded one.
+      // The 2026-08-12 rebalance had taken BOTH faces to 1 and called Draw 2
+      // "the rebuild's likeliest over-tune"; the sheet still prints Draw 2 on
+      // the upgraded face, and Dean ruled the sheet correct. So the flip buys
+      // the old rate back, and only on the face that was paid for.
+      const barn = player(fx.state, self.seat).tableau.find((b) => b.card === self.card);
+      drawN(fx, self.seat, self.card, barn?.upgraded ? 2 : 1);
     },
   },
 };
 
 /**
- * W2 Farmstead (starter) - "Harvest: any card with 2+ cards on it, even if
- * not full." / upgraded "Harvest: any card with 1+ cards on it, even if not
- * full."
+ * W2 Farmstead (starter) - "Harvest: Add a card to the barn from your hand." /
+ * upgraded "Harvest: Add a card to the barn from the top of any deck."
  */
 export const wheatFarmstead: CardHandler = {
   difficulty: {
     score: 3,
-    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: true, conditional: true, counts: false, interrupts: false },
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
     notes:
-      'REBALANCED 2026-08-12, and it is the headline of the pass. The upgraded face used ' +
-      'to read "Harvest is 2 buildings" - a free extra main action on the suit\'s own core ' +
-      'verb, taken 88.4% of the time (measured, not assumed) from a median round 6. It is ' +
-      'gone. The flip now DEEPENS the same relaxed gate instead, 2+ to 1+, so both faces ' +
-      'do one thing and the milestone buys flexibility rather than tempo. Lost a ' +
-      'difficulty point with it: no `interrupts`, because there is no longer a mid-turn ' +
-      'repeat prompt. Behaviour still lives in the engine seams, not here: harvestOptions ' +
-      'reads wheatRelaxedMin, which is now FACE-AWARE (it never was before - the 2+ ' +
-      'relaxation applied to any Wheat seat, flipped or not), and it composes with the ' +
-      'Harvest Service via the harvestable task filter. harvestAgainPower is stubbed to ' +
-      'false and its docblock explains why the dead turn.again machinery stays for now. ' +
-      'Card-effect harvests (W8/W11/W12/W13) inherit NEITHER face, per the decided ' +
-      'suit-power ruling - and the deeper gate makes that test matter more, not less.',
+      'SWAPPED WITH W3 THE NOTICE BOARD, 19/08/2026, confirmed by Dean as deliberate. This ' +
+      'card USED to be the relaxed harvest gate - "harvest a building with 2+ cards even if ' +
+      'it is not full", deepening to 1+ when flipped - and that lived in the engine seams ' +
+      '(`wheatRelaxedMin` in actions.ts) rather than here, so this handler had no body at ' +
+      'all. The relaxation has gone to W3, where it is the VISITOR DOOR action and ' +
+      'belongs to whoever works it; the barn deposit that used to hang off the Harvest ' +
+      'Service has come here and is the suit power. The two halves changed places. ' +
+      'THE POWER IS A HARVEST RIDER, and "Harvest:" here means the ACTION and not this ' +
+      'building - W2 has no threshold and can never be harvested itself, so the seat ' +
+      'harvest is the only reading available. ' +
+      'THE FLIP CHANGES THE SOURCE, NOT THE SIZE: a hand card becomes a DECK card, the same ' +
+      'idiom the sheet uses on V2 the Vegetable Farmstead. A real trade rather than a ' +
+      'straight upgrade - the hand card is chosen and the deck card is not, but the deck ' +
+      'card costs nothing off the master clock. ' +
+      'MANDATORY, because the printed text carries no "may" - but it SKIPS SILENTLY on an ' +
+      'empty hand or a dry table, per the no-legal-target convention this pass settled on. ' +
+      'ONCE PER TURN, via the shared `turn.firedThisTurn` guard (rule change 12(c): no ' +
+      "card's text may fire twice in a turn). Without it W13 The Bakery, which harvests " +
+      'every building you own, would hand this seat eight barn cards in one action - the ' +
+      'exact hole W16 The Granary was moved onto the same guard to close.',
+  },
+  on: {
+    afterHarvest(fx, event, self) {
+      if (event.seat !== self.seat) return;
+      if (fx.state.turn.firedThisTurn.includes(self.card)) return;
+      const farmstead = player(fx.state, self.seat).tableau.find((b) => b.card === self.card);
+      if (!farmstead) return;
+      if (farmstead.upgraded) {
+        // "from the top of any deck": the answer names a DECK, because barn
+        // identity is inert - a barn is a per-crop tally - so which deck you
+        // draw from is the whole of the choice.
+        if (drawableSuits(fx.data, fx.state).length === 0) return;
+        markFired(fx, self.card);
+        fx.pushTask({
+          t: 'card',
+          pid: self.seat,
+          src: self.card,
+          kind: 'barnFromDeck',
+          riders: {},
+        });
+        return;
+      }
+      if (player(fx.state, self.seat).hand.length === 0) return;
+      markFired(fx, self.card);
+      fx.pushTask({ t: 'handToBarn', pid: self.seat, src: self.card, remaining: 1 });
+    },
+  },
+  tasks: {
+    barnFromDeck: {
+      answers(data, state) {
+        return drawableSuits(data, state)
+          .filter((suit) => state.suitsInPlay.includes(suit))
+          .map((suit) => ({ kind: 'deck', suit }));
+      },
+      resolve(fx, task, answer) {
+        if (answer.kind !== 'deck') throw new Error('barnFromDeck expects a deck answer');
+        fx.deckTopToBarn(task.pid, answer.suit);
+        return true;
+      },
+    },
   },
 };
 
@@ -245,15 +300,14 @@ export const wheatField: CardHandler = {
       'task is MANDATORY - it auto-skips on an empty hand, which is the only way it can be ' +
       'declined. Owner-scoped and self-scoped: a cross-player harvest (nothing in Wheat ' +
       "does one now) would still pay this building's owner. " +
-      '⚠️ RULING OWED (19/08/2026): the printed text no longer carries the seed line - the ' +
-      'sheet reads "Draw 1. / HARVEST: Put 1 card from your hand into your barn." and stops ' +
-      'there - but this handler still calls `reseed`. The line came off W4 in the same ' +
-      "sheet generation that took it off W6/W7/W8, and W5 keeps it, so the sheet's " +
-      'intention looks deliberate. It was left in place because W4 was not on the v30 ' +
-      'change list and is the standard fixture in spanning.test.ts, where a silent change ' +
-      "to its harvest would move tests this file does not own. The fix, if Dean's ruling " +
-      'goes that way, is one line: drop the `reseed` call below and the reseed assertion in ' +
-      'the W4 test.',
+      '⚠️ THE RESEED IS GONE (Dean ruled the sheet correct, 19/08/2026). The printed text ' +
+      'stops at "Draw 1. / HARVEST: Put 1 card from your hand into your barn." The line came ' +
+      'off W4 in the same sheet generation that took it off W6/W7/W8, and W5 keeps it, so ' +
+      'the intention was deliberate. It is NOT housekeeping: the reseed is what kept every ' +
+      'FIELD sitting at 1 or more card, which is what made the old relaxed harvest gate ' +
+      'legal essentially always. That gate has left the suit in the same pass (see W2), so ' +
+      "the two changes compound and Wheat's harvest is now genuinely gated on filling a " +
+      'building. Watch harvest tempo in the next arm before touching anything else here.',
   },
   activate(fx, self) {
     drawN(fx, self.seat, self.card, 1);
@@ -262,7 +316,12 @@ export const wheatField: CardHandler = {
     afterHarvest(fx, event, self) {
       if (!harvestedSelf(event, self)) return;
       fx.pushTask({ t: 'handToBarn', pid: self.seat, src: self.card, remaining: 1 });
-      reseed(fx, self.seat, self.card);
+      // ⛔ THE RESEED IS GONE (19/08/2026). W4 printed "Sow 1 deck card onto
+      // this FIELD" until the sheet dropped the line, and Dean ruled the sheet
+      // correct. It is not housekeeping: the reseed is what kept every FIELD at
+      // 1 or more card, which is what made the old relaxed harvest gate legal
+      // essentially always. With the gate gone from the suit as well (see W2),
+      // Wheat's harvest is now genuinely gated on filling a building.
     },
   },
 };
@@ -389,8 +448,9 @@ export const heritageField: CardHandler = {
       'W11, W12 and W13 spelled their exception out in words and this card did not. It now ' +
       'prints "even if not full", so it joins them: the gate is `chooseBuilding` filter ' +
       "'loaded', 1 or more cards, which is the same filter W11 uses for \"however many " +
-      'cards are on it". ⚠️ It is NOT the Wheat Farmstead\'s relaxed gate. W2 relaxes the ' +
-      'HARVEST ACTION to 2+ (1+ upgraded) through `wheatRelaxedMin`, and the decided ' +
+      'cards are on it". ⚠️ It is NOT the Wheat Farmstead\'s relaxed gate, and since 19/08/2026 W2 has no such gate: ' +
+      'the 2+ relaxation moved to W3 the Notice Board, where it belongs to the visitor door ' +
+      'rather than to the seat, so there is nothing left here to confuse it with. The decided ' +
       'suit-power ruling (2026-08-09) is that a suit power modifies the action and never ' +
       'card text - so this card carries its own threshold of 1, on both faces of W2 and ' +
       'for a seat that has flipped neither.',
@@ -488,7 +548,11 @@ export const bakehouse: CardHandler = {
       filter: 'loaded',
       then: 'harvest',
     });
-    fx.pushTask({ t: 'deliver', pid: self.seat, src: self.card });
+    // ⛔ THE DELIVER IS GONE (ruling F, closed by Dean 2026-08-12, applied
+    // 19/08/2026). "Harvest one of your buildings, then Deliver" gave Wheat the
+    // Vegetable suit's core verb for free; Dean ruled the Deliver belongs to
+    // Vegetable, the sheet dropped it the same day, and the engine kept pushing
+    // the task for a week. V7 The Export Depot keeps the pairing.
   },
 };
 

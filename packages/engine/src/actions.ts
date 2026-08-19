@@ -848,52 +848,60 @@ export function harvestSurchargeOf(data: GameData, card: CardId): number {
 }
 
 /** Printed on the base Wheat Farmstead: "Harvest: any card with 2+ cards on it." */
-const WHEAT_RELAXED_MIN = 2;
-/** The upgraded face, since the rebalance (2026-08-12): the same gate, deeper. */
-const WHEAT_RELAXED_MIN_UPGRADED = 1;
-
-/** Is this seat's Farmstead on its upgraded face? False for a seat with none. */
-function farmsteadFlipped(data: GameData, state: GameState, seat: Seat): boolean {
-  const farmstead = player(state, seat).tableau.find(
-    (b) => cardById(data, b.card).slot === 'farmstead',
-  );
-  return farmstead?.upgraded ?? false;
-}
+/**
+ * ⛔ THE WHEAT RELAXED-HARVEST GATE HAS LEFT THIS FILE (19/08/2026), and where
+ * it went is the point.
+ *
+ * `WHEAT_RELAXED_MIN` / `WHEAT_RELAXED_MIN_UPGRADED`, `farmsteadFlipped` and
+ * `wheatRelaxedMin` stood here and made "harvest a building with 2+ cards even
+ * if it is not full" a property of the WHEAT SEAT, face-aware at 2+ / 1+.
+ *
+ * Dean confirmed on 19/08/2026 that the sheet has deliberately SWAPPED W2 and
+ * W3's powers, and that the engine had them the old way round:
+ *
+ *   W2 the Farmstead    printed the barn deposit   / ran the relaxed harvest
+ *   W3 the Notice Board printed the relaxed harvest / ran the barn deposit
+ *
+ * So the relaxation is no longer a suit power at all. It is the WHEAT VISITOR
+ * DOOR's action now - the Harvest Service, `relaxedMin: 2` in workers.json -
+ * which means it belongs to whoever WORKS that door rather than to whoever owns
+ * it, and it is a flat 2+ on both faces (W3 prints "2 or more" on each). The
+ * barn deposit went the other way onto W2 and is the suit power now.
+ *
+ * ⚠️ TWO CONSEQUENCES, both intended, both worth knowing before reading an arm.
+ * A Wheat seat's own plain Harvest ACTION no longer relaxes at all: it reaches
+ * the relaxed gate only by working its own Service for the owner fee, or
+ * through a card that prints its own gate (W8, W11, W12). And a RIVAL visiting
+ * a Wheat farm now gets the relaxed harvest on their OWN buildings, which is
+ * the first time the suit's signature verb has been rentable.
+ */
 
 /**
- * How few cards a building may hold and still be a legal Harvest ACTION target
- * for this seat, ignoring the strict full gate it is unioned with. `Infinity`
- * for every non-Wheat seat, which is what keeps the union a no-op for them.
+ * The Harvest ACTION's targets. Strict gate: full buildings, and that is the
+ * whole of the printed rule for every seat since the W2/W3 swap.
  *
- * The two faces of the W2 Farmstead, and since the Wheat rebalance
- * (2026-08-12) this is the WHOLE of W2: the flip deepens the gate from 2+ to
- * 1+ rather than buying a second action. See `harvestAgainPower` below for why
- * that trade was made.
- */
-function wheatRelaxedMin(data: GameData, state: GameState, seat: Seat): number {
-  if (player(state, seat).suit !== 'wheat') return Infinity;
-  return farmsteadFlipped(data, state, seat) ? WHEAT_RELAXED_MIN_UPGRADED : WHEAT_RELAXED_MIN;
-}
-
-/**
- * The Harvest ACTION's targets. Strict gate: full buildings. The Wheat
- * Farmstead's power (live from turn 1) adds any building at or above
- * `wheatRelaxedMin` even if not full - a true union, and the gates genuinely
- * cross: a threshold-1 building is strict-harvestable at 1 card but, on the
- * base face, never relaxed-harvestable. Surcharged buildings (W8) drop out
- * when the seat cannot pay. Card-effect harvests do NOT inherit the
- * relaxation; the Harvest Service does (suit powers apply to Service actions -
- * the 'harvestable' task filter routes through here, and must keep doing so).
+ * `relaxedMin` unions in any building at or above that many cards even when it
+ * is not full. The two gates genuinely cross: a threshold-1 building is
+ * strict-harvestable at 1 card but never relaxed-harvestable at a floor of 2.
+ * Surcharged buildings (W8) drop out when the seat cannot pay.
  *
- * ⚠️ At the upgraded 1+ gate a Wheat harvest is legal essentially always,
- * because the reseed keeps every FIELD at 1 or more. That is the intended
- * shape - the flip buys FLEXIBILITY, not tempo - but it means this function
- * rarely returns empty for a flipped Wheat seat. Nothing downstream may assume
- * it can.
+ * Only the Wheat SERVICE passes a floor, through the `chooseBuilding` task's
+ * `relaxedMin` rider - the 'harvestable' filter routes through here and must
+ * keep doing so. Card-effect harvests pass nothing and so relax nothing, which
+ * is the answer the old suit-power ruling gave for a different reason.
  */
-export function harvestOptions(data: GameData, state: GameState, seat: Seat): CardId[] {
+export function harvestOptions(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+  /**
+   * Buildings holding at least this many cards are harvestable even when NOT
+   * full. `Infinity` (the default) is the plain printed rule: full only.
+   */
+  relaxedMin: number = Infinity,
+): CardId[] {
   const p = player(state, seat);
-  const min = wheatRelaxedMin(data, state, seat);
+  const min = relaxedMin;
   return p.tableau
     .filter((b) => isFull(data, b) || b.stack.length >= min)
     .filter((b) => harvestSurchargeOf(data, b.card) <= p.coins)
@@ -1938,9 +1946,18 @@ export function workerActionLegal(
     case 'draw':
       return drawableSuits(data, state).length > 0;
     case 'harvest':
-      // harvestOptions, not fullBuildings: suit powers apply to Service actions.
-      // The handToBarn tail is optional, so it never gates legality.
-      return harvestOptions(data, state, seat).length > 0;
+      // ⚠️ THE GATE MUST PASS THE SAME `relaxedMin` THE ACTION WILL USE, or it
+      // refuses a visit for a harvest that is perfectly legal. It did exactly
+      // that for a few hours on 19/08/2026: the Wheat Service gained the 2+
+      // relaxation from W3 (see the note on `harvestOptions`) while this line
+      // still asked the strict full gate, so a visitor whose only target was a
+      // 2-of-3 building was told "Service harvest has nothing legal to do".
+      //
+      // It is one function and it gates FIVE call sites - `visitOptions`,
+      // `doVisit`, `workOwnOptions`, `chooseWorker` in tasks.ts and the Helping
+      // Hand - so a mismatch here is never local. The rule: a legality gate and
+      // the action it gates must be handed the same modifiers.
+      return harvestOptions(data, state, seat, worker.relaxedMin).length > 0;
     case 'sow':
       // The deck-sowing Service needs a live deck, not a hand card - which is
       // exactly what makes it worth a visitor's card instead of costing them two.

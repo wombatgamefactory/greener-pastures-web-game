@@ -11,9 +11,9 @@
  *   - that the seam scopes itself - a Draw with a discard gifts, a Draw 2 with
  *     no discard does not, and the end-of-turn overflow reaches O17 but never
  *     the Farmstead;
- *   - the four things the handoff calls easy to get wrong: O15 is not a Draw
- *     (even now that the sheet prints the word "Draw" on it), O11 no longer
- *     harvests itself, the Farmstead gift fires on the Draw action and not on a
+ *   - the four things the handoff calls easy to get wrong: O15 IS a Draw since
+ *     Dean ruled the printed word literal on 19/08/2026, O11 no longer harvests
+ *     itself, the Farmstead gift fires on the Draw action and not on a
  *     keep-everything draw, and O17 and the Farmstead never both take the same
  *     card;
  *   - and, since 19/08/2026, that Tier 3 is three ordinary GROW buildings. The
@@ -630,11 +630,17 @@ describe('the Tier 3 GROW buildings - O13, O14, O15', () => {
     buildFor(data, s, ORCHARD, 'O15');
     dealTo(data, s, ORCHARD, 'O4');
     const grown = growBuilding(data, s, ORCHARD, 'O15', 'O4');
-    expect(pendingAnswers(data, grown.state).some((a) => a.kind === 'skip')).toBe(true);
-    const state = answerAll(
+    // ⚠️ THE DRAW RESOLVES FIRST since 19/08/2026 - the head task is the Draw,
+    // with exactly one legal answer (keep everything) - and only then does the
+    // give offer its skip. The old shape had the give as the head task, so the
+    // skip was on offer immediately.
+    const drawn = answerTask(
+      data,
       grown.state,
-      (a) => a.find((x) => x.kind === 'skip') ?? (a[0] as TaskAnswer),
-    );
+      pendingAnswers(data, grown.state)[0] as TaskAnswer,
+    ).state;
+    expect(pendingAnswers(data, drawn).some((a) => a.kind === 'skip')).toBe(true);
+    const state = answerAll(drawn, (a) => a.find((x) => x.kind === 'skip') ?? (a[0] as TaskAnswer));
     expect(player(state, WHEAT).hand).toHaveLength(0);
     expect(player(state, 2).hand).toHaveLength(0);
     expect(player(state, ORCHARD).coins).toBe(0);
@@ -643,19 +649,39 @@ describe('the Tier 3 GROW buildings - O13, O14, O15', () => {
   });
 
   /**
-   * ⛔ O15 IS NOT A DRAW, and this now holds DESPITE the printed word. The v30
-   * sheet reads "Draw the top card of each deck" where it used to read "Take",
-   * and the implementation deliberately did not follow the verb: no draw
-   * modifier, no afterDrawKeep, and so no divert seam - a Farmstead that gifted
-   * here would gift the cards the card just took. A ruling is owed on the
-   * wording; until it lands, this test is the wording.
+   * ⚠️ INVERTED 19/08/2026. THE RULING LANDED THE OTHER WAY: Dean, on the v30
+   * wording, *"it is a standard draw - so normal rules apply"*. The sheet reads
+   * "Draw the top card of each deck" where it used to read "Take", and the verb
+   * is literal.
+   *
+   * So the cards arrive through the DRAW TASK. `revealed` is pre-filled because
+   * the card names the decks rather than the player, and see === keep because
+   * the card keeps everything it draws, so the task has exactly one legal answer
+   * and falls straight through to the funnel.
+   *
+   * ⚠️ WHAT THAT DOES AND DOES NOT BUY, because the distinction is the whole
+   * reason the old ruling looked safe. It buys the SEAM: `afterDrawKeep` fires
+   * and the unkept remainder goes through `discardOrDivert`. It buys no
+   * BEHAVIOUR today - nothing in the catalogue listens to `afterDrawKeep` yet,
+   * and O17 The Fruit Basket still cannot fire here, because a draw that keeps
+   * everything discards nothing and the divert seam is a DISCARD seam. The fear
+   * the old comment recorded (a Farmstead gifting away the cards this card just
+   * took) could not have happened for the same reason.
    */
-  it('O15 is not a Draw: no draw task, no keep, and no divert', () => {
+  it('O15 IS a Draw: it goes through the draw task, and still discards nothing', () => {
     const s = base();
     buildFor(data, s, ORCHARD, 'O15');
     dealTo(data, s, ORCHARD, 'O4');
     const grown = growBuilding(data, s, ORCHARD, 'O15', 'O4');
-    expect(grown.state.tasks.some((t) => t.t === 'draw')).toBe(false);
+    const draw = grown.state.tasks.find((t) => t.t === 'draw');
+    expect(draw).toBeDefined();
+    // Pre-revealed, and keeping everything: the card chose the decks, so there
+    // is no deck pick to make and no card to throw away.
+    if (draw?.t === 'draw') {
+      expect(draw.revealed.length).toBe(draw.see);
+      expect(draw.keep).toBe(draw.see);
+    }
+    // No divert, and it is the empty discard that guarantees it, not a carve-out.
     expect(grown.state.tasks.some((t) => t.t === 'divert')).toBe(false);
   });
 });

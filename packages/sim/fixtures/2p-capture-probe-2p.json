@@ -77,31 +77,25 @@
       }
     },
     {
-      "type": "draw",
-      "seat": 0
+      "type": "grow",
+      "seat": 0,
+      "building": "W11",
+      "payment": "W20"
     },
     {
       "type": "task",
       "seat": 0,
       "answer": {
-        "kind": "deck",
-        "suit": "wheat"
+        "kind": "building",
+        "card": "W11"
       }
     },
     {
       "type": "task",
       "seat": 0,
       "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "keep",
-        "cards": ["W6"]
+        "kind": "handToBarn",
+        "card": "W16"
       }
     },
     {
@@ -133,10 +127,16 @@
       }
     },
     {
-      "type": "build",
+      "type": "draw",
+      "seat": 0
+    },
+    {
+      "type": "task",
       "seat": 0,
-      "card": "W6",
-      "payment": ["W20"]
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
     },
     {
       "type": "task",
@@ -151,7 +151,7 @@
       "seat": 0,
       "answer": {
         "kind": "keep",
-        "cards": ["W9"]
+        "cards": ["W6"]
       }
     },
     {
@@ -242,7 +242,7 @@
       "type": "grow",
       "seat": 0,
       "building": "W11",
-      "payment": "W9"
+      "payment": "W6"
     },
     {
       "type": "task",
@@ -250,6 +250,14 @@
       "answer": {
         "kind": "building",
         "card": "W11"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "W18"
       }
     },
     {
@@ -283,31 +291,11 @@
       }
     },
     {
-      "type": "draw",
-      "seat": 0
-    },
-    {
-      "type": "task",
+      "type": "deliver",
       "seat": 0,
-      "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "keep",
-        "cards": ["W17"]
+      "tile": "D1",
+      "spend": {
+        "wheat": 4
       }
     },
     {
@@ -336,17 +324,31 @@
       }
     },
     {
-      "type": "grow",
-      "seat": 0,
-      "building": "W11",
-      "payment": "W16"
+      "type": "draw",
+      "seat": 0
     },
     {
       "type": "task",
       "seat": 0,
       "answer": {
-        "kind": "building",
-        "card": "W11"
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W13"]
       }
     },
     {
@@ -406,28 +408,31 @@
       }
     },
     {
-      "type": "grow",
-      "seat": 0,
-      "building": "W11",
-      "payment": "W17"
+      "type": "draw",
+      "seat": 0
     },
     {
       "type": "task",
       "seat": 0,
       "answer": {
-        "kind": "building",
-        "card": "W11"
+        "kind": "deck",
+        "suit": "wheat"
       }
     },
     {
       "type": "task",
       "seat": 0,
       "answer": {
-        "kind": "deliver",
-        "tile": "D1",
-        "spend": {
-          "wheat": 4
-        }
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W17"]
       }
     },
     {
@@ -483,31 +488,25 @@
       }
     },
     {
-      "type": "draw",
-      "seat": 0
+      "type": "grow",
+      "seat": 0,
+      "building": "W11",
+      "payment": "W13"
     },
     {
       "type": "task",
       "seat": 0,
       "answer": {
-        "kind": "deck",
-        "suit": "wheat"
+        "kind": "building",
+        "card": "W11"
       }
     },
     {
       "type": "task",
       "seat": 0,
       "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "keep",
-        "cards": ["W12"]
+        "kind": "handToBarn",
+        "card": "W17"
       }
     },
     {
@@ -563,7 +562,7 @@
       "seat": 0,
       "answer": {
         "kind": "keep",
-        "cards": ["W20"]
+        "cards": ["W12"]
       }
     },
     {
@@ -595,25 +594,6 @@
       }
     },
     {
-      "type": "grow",
-      "seat": 0,
-      "building": "W11",
-      "payment": "W12"
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "building",
-        "card": "W11"
-      }
-    },
-    {
-      "type": "harvest",
-      "seat": 1,
-      "building": "V8"
-    },
-    {
       "type": "draw",
       "seat": 0
     },
@@ -642,6 +622,33 @@
       }
     },
     {
+      "type": "harvest",
+      "seat": 1,
+      "building": "V8"
+    },
+    {
+      "type": "grow",
+      "seat": 0,
+      "building": "W11",
+      "payment": "W12"
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "building",
+        "card": "W11"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "W15"
+      }
+    },
+    {
       "type": "deliver",
       "seat": 1,
       "tile": "A1",
@@ -650,17 +657,11 @@
       }
     },
     {
-      "type": "grow",
+      "type": "deliver",
       "seat": 0,
-      "building": "W11",
-      "payment": "W15"
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "building",
-        "card": "W11"
+      "tile": "D1",
+      "spend": {
+        "wheat": 4
       }
     },
     {
@@ -678,6 +679,11 @@
           "balloon": "balloonCoins"
         }
       }
+    },
+    {
+      "type": "upgrade",
+      "seat": 0,
+      "card": "W3"
     },
     {
       "type": "draw",
@@ -704,7 +710,7 @@
       "seat": 0,
       "answer": {
         "kind": "keep",
-        "cards": ["W8"]
+        "cards": ["W10"]
       }
     },
     {
@@ -712,140 +718,6 @@
       "seat": 1,
       "card": "V16",
       "payment": []
-    },
-    {
-      "type": "grow",
-      "seat": 0,
-      "building": "W11",
-      "payment": "W8"
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "building",
-        "card": "W11"
-      }
-    },
-    {
-      "type": "draw",
-      "seat": 1
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "keep",
-        "cards": ["V13"]
-      }
-    },
-    {
-      "type": "grow",
-      "seat": 0,
-      "building": "W11",
-      "payment": "W20"
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "building",
-        "card": "W11"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deliver",
-        "tile": "D1",
-        "spend": {
-          "wheat": 4
-        }
-      }
-    },
-    {
-      "type": "upgrade",
-      "seat": 1,
-      "card": "V1"
-    },
-    {
-      "type": "draw",
-      "seat": 1
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "keep",
-        "cards": ["V14"]
-      }
-    },
-    {
-      "type": "build",
-      "seat": 0,
-      "card": "W18",
-      "payment": []
-    },
-    {
-      "type": "draw",
-      "seat": 1
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "keep",
-        "cards": ["V15"]
-      }
     },
     {
       "type": "draw",
@@ -900,7 +772,62 @@
       "seat": 1,
       "answer": {
         "kind": "keep",
-        "cards": ["V17"]
+        "cards": ["V13"]
+      }
+    },
+    {
+      "type": "grow",
+      "seat": 0,
+      "building": "W11",
+      "payment": "W10"
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "building",
+        "card": "W11"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "W21"
+      }
+    },
+    {
+      "type": "upgrade",
+      "seat": 1,
+      "card": "V1"
+    },
+    {
+      "type": "draw",
+      "seat": 1
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "keep",
+        "cards": ["V14"]
       }
     },
     {
@@ -928,21 +855,35 @@
       "seat": 0,
       "answer": {
         "kind": "keep",
-        "cards": ["W14"]
+        "cards": ["W19"]
       }
     },
     {
-      "type": "grow",
-      "seat": 1,
-      "building": "V12",
-      "payment": "V13"
+      "type": "draw",
+      "seat": 1
     },
     {
       "type": "task",
       "seat": 1,
       "answer": {
-        "kind": "handToBarn",
-        "card": "V15"
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "keep",
+        "cards": ["V15"]
       }
     },
     {
@@ -998,14 +939,14 @@
       "seat": 1,
       "answer": {
         "kind": "keep",
-        "cards": ["V11"]
+        "cards": ["V17"]
       }
     },
     {
       "type": "grow",
       "seat": 0,
       "building": "W11",
-      "payment": "W14"
+      "payment": "W19"
     },
     {
       "type": "task",
@@ -1013,6 +954,112 @@
       "answer": {
         "kind": "building",
         "card": "W11"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "W16"
+      }
+    },
+    {
+      "type": "grow",
+      "seat": 1,
+      "building": "V12",
+      "payment": "V13"
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "V15"
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 0
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W8"]
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 1
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "keep",
+        "cards": ["V11"]
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 0
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W5"]
       }
     },
     {
@@ -1044,31 +1091,25 @@
       }
     },
     {
-      "type": "draw",
-      "seat": 0
+      "type": "grow",
+      "seat": 0,
+      "building": "W11",
+      "payment": "W5"
     },
     {
       "type": "task",
       "seat": 0,
       "answer": {
-        "kind": "deck",
-        "suit": "wheat"
+        "kind": "building",
+        "card": "W11"
       }
     },
     {
       "type": "task",
       "seat": 0,
       "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "keep",
-        "cards": ["W17"]
+        "kind": "handToBarn",
+        "card": "W8"
       }
     },
     {
@@ -1096,21 +1137,73 @@
       "seat": 1,
       "answer": {
         "kind": "keep",
-        "cards": ["V6"]
+        "cards": ["V5"]
       }
     },
     {
-      "type": "grow",
+      "type": "deliver",
       "seat": 0,
-      "building": "W11",
-      "payment": "W21"
+      "tile": "B1",
+      "spend": {
+        "wheat": 6
+      }
+    },
+    {
+      "type": "build",
+      "seat": 1,
+      "card": "V5",
+      "payment": ["V10"]
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "keep",
+        "cards": ["V6", "V10"]
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 0
     },
     {
       "type": "task",
       "seat": 0,
       "answer": {
-        "kind": "building",
-        "card": "W11"
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W20"]
       }
     },
     {
@@ -1156,7 +1249,7 @@
       "seat": 1,
       "answer": {
         "kind": "handToBarn",
-        "card": "V10"
+        "card": "V6"
       }
     },
     {
@@ -1213,6 +1306,14 @@
       }
     },
     {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "W20"
+      }
+    },
+    {
       "type": "harvest",
       "seat": 1,
       "building": "V9"
@@ -1242,14 +1343,14 @@
       "seat": 0,
       "answer": {
         "kind": "keep",
-        "cards": ["W8"]
+        "cards": ["W14"]
       }
     },
     {
       "type": "grow",
       "seat": 1,
       "building": "V9",
-      "payment": "V6"
+      "payment": "V10"
     },
     {
       "type": "task",
@@ -1272,7 +1373,7 @@
       "seat": 1,
       "answer": {
         "kind": "keep",
-        "cards": ["V4", "V5"]
+        "cards": ["V13", "V15"]
       }
     },
     {
@@ -1280,21 +1381,35 @@
       "seat": 1,
       "answer": {
         "kind": "handToBarn",
-        "card": "V4"
+        "card": "V13"
       }
     },
     {
-      "type": "grow",
-      "seat": 0,
-      "building": "W11",
-      "payment": "W8"
+      "type": "draw",
+      "seat": 0
     },
     {
       "type": "task",
       "seat": 0,
       "answer": {
-        "kind": "building",
-        "card": "W11"
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W18"]
       }
     },
     {
@@ -1325,7 +1440,7 @@
       "type": "grow",
       "seat": 1,
       "building": "V9",
-      "payment": "V5"
+      "payment": "V11"
     },
     {
       "type": "task",
@@ -1348,7 +1463,7 @@
       "seat": 1,
       "answer": {
         "kind": "keep",
-        "cards": ["V10", "V13"]
+        "cards": ["V6", "V4"]
       }
     },
     {
@@ -1356,7 +1471,59 @@
       "seat": 1,
       "answer": {
         "kind": "handToBarn",
-        "card": "V11"
+        "card": "V19"
+      }
+    },
+    {
+      "type": "grow",
+      "seat": 0,
+      "building": "W11",
+      "payment": "W14"
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "building",
+        "card": "W11"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "W18"
+      }
+    },
+    {
+      "type": "build",
+      "seat": 1,
+      "card": "V4",
+      "payment": ["V6"]
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "keep",
+        "cards": ["V13", "V18"]
       }
     },
     {
@@ -1384,85 +1551,14 @@
       "seat": 0,
       "answer": {
         "kind": "keep",
-        "cards": ["W19"]
-      }
-    },
-    {
-      "type": "draw",
-      "seat": 1
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "keep",
-        "cards": ["V18"]
+        "cards": ["W7"]
       }
     },
     {
       "type": "grow",
-      "seat": 0,
-      "building": "W11",
-      "payment": "W19"
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "building",
-        "card": "W11"
-      }
-    },
-    {
-      "type": "harvest",
       "seat": 1,
-      "building": "V9"
-    },
-    {
-      "type": "grow",
-      "seat": 0,
-      "building": "W11",
-      "payment": "W16"
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "building",
-        "card": "W11"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deliver",
-        "tile": "B4",
-        "spend": {
-          "wheat": 6
-        }
-      }
-    },
-    {
-      "type": "workOwnWorker",
-      "seat": 1,
-      "workerId": "deliver"
+      "building": "V12",
+      "payment": "V13"
     },
     {
       "type": "task",
@@ -1471,6 +1567,55 @@
         "kind": "handToBarn",
         "card": "V17"
       }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "V15"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "V18"
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 0
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W17"]
+      }
+    },
+    {
+      "type": "workOwnWorker",
+      "seat": 1,
+      "workerId": "deliver"
     },
     {
       "type": "task",
@@ -1512,6 +1657,97 @@
       }
     },
     {
+      "type": "grow",
+      "seat": 0,
+      "building": "W11",
+      "payment": "W7"
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "building",
+        "card": "W11"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "W17"
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 1
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "keep",
+        "cards": ["V17"]
+      }
+    },
+    {
+      "type": "deliver",
+      "seat": 0,
+      "tile": "B4",
+      "spend": {
+        "wheat": 6
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 1
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "keep",
+        "cards": ["V19"]
+      }
+    },
+    {
+      "type": "upgrade",
+      "seat": 0,
+      "card": "W2"
+    },
+    {
       "type": "draw",
       "seat": 0
     },
@@ -1536,37 +1772,21 @@
       "seat": 0,
       "answer": {
         "kind": "keep",
-        "cards": ["W20"]
+        "cards": ["W19"]
       }
     },
     {
       "type": "grow",
       "seat": 1,
-      "building": "V9",
-      "payment": "V10"
+      "building": "V12",
+      "payment": "V14"
     },
     {
       "type": "task",
       "seat": 1,
       "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "keep",
-        "cards": ["V4", "V17"]
+        "kind": "handToBarn",
+        "card": "V17"
       }
     },
     {
@@ -1578,76 +1798,10 @@
       }
     },
     {
-      "type": "draw",
-      "seat": 0
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "keep",
-        "cards": ["W15"]
-      }
-    },
-    {
-      "type": "grow",
-      "seat": 1,
-      "building": "V9",
-      "payment": "V4"
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "keep",
-        "cards": ["V6", "V15"]
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "handToBarn",
-        "card": "V13"
-      }
-    },
-    {
       "type": "grow",
       "seat": 0,
       "building": "W11",
-      "payment": "W15"
+      "payment": "W19"
     },
     {
       "type": "task",
@@ -1658,43 +1812,16 @@
       }
     },
     {
-      "type": "harvest",
-      "seat": 1,
-      "building": "V9"
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
     },
     {
       "type": "draw",
-      "seat": 0
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "keep",
-        "cards": ["W10"]
-      }
-    },
-    {
-      "type": "grow",
-      "seat": 1,
-      "building": "V9",
-      "payment": "V6"
+      "seat": 1
     },
     {
       "type": "task",
@@ -1717,67 +1844,7 @@
       "seat": 1,
       "answer": {
         "kind": "keep",
-        "cards": ["V5", "V11"]
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "handToBarn",
-        "card": "V17"
-      }
-    },
-    {
-      "type": "grow",
-      "seat": 0,
-      "building": "W11",
-      "payment": "W10"
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "building",
-        "card": "W11"
-      }
-    },
-    {
-      "type": "grow",
-      "seat": 1,
-      "building": "V9",
-      "payment": "V5"
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "keep",
-        "cards": ["V7", "W14"]
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "handToBarn",
-        "card": "V15"
+        "cards": ["V18"]
       }
     },
     {
@@ -1805,33 +1872,7 @@
       "seat": 0,
       "answer": {
         "kind": "keep",
-        "cards": ["W16"]
-      }
-    },
-    {
-      "type": "workOwnWorker",
-      "seat": 1,
-      "workerId": "deliver"
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "handToBarn",
-        "card": "V11"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deliver",
-        "tile": "B1",
-        "spend": {
-          "wheat": 1,
-          "vegetable": 6
-        },
-        "head": ["W14"]
+        "cards": ["W12"]
       }
     },
     {
@@ -1866,244 +1907,7 @@
       "type": "grow",
       "seat": 0,
       "building": "W11",
-      "payment": "W20"
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "building",
-        "card": "W11"
-      }
-    },
-    {
-      "type": "draw",
-      "seat": 1
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "keep",
-        "cards": ["V17"]
-      }
-    },
-    {
-      "type": "draw",
-      "seat": 0
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "keep",
-        "cards": ["W19"]
-      }
-    },
-    {
-      "type": "harvest",
-      "seat": 1,
-      "building": "V9"
-    },
-    {
-      "type": "grow",
-      "seat": 0,
-      "building": "W11",
-      "payment": "W19"
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "building",
-        "card": "W11"
-      }
-    },
-    {
-      "type": "grow",
-      "seat": 1,
-      "building": "V9",
-      "payment": "V7"
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "keep",
-        "cards": ["V19", "V13"]
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "handToBarn",
-        "card": "V15"
-      }
-    },
-    {
-      "type": "draw",
-      "seat": 0
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "deck",
-        "suit": "wheat"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "keep",
-        "cards": ["W21"]
-      }
-    },
-    {
-      "type": "grow",
-      "seat": 1,
-      "building": "V9",
-      "payment": "V13"
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "keep",
-        "cards": ["V10", "V4"]
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "handToBarn",
-        "card": "V14"
-      }
-    },
-    {
-      "type": "grow",
-      "seat": 0,
-      "building": "W11",
-      "payment": "W21"
-    },
-    {
-      "type": "task",
-      "seat": 0,
-      "answer": {
-        "kind": "building",
-        "card": "W11"
-      }
-    },
-    {
-      "type": "build",
-      "seat": 1,
-      "card": "V4",
-      "payment": ["V10"]
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "vegetable"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deck",
-        "suit": "orchard"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "keep",
-        "cards": ["V10", "O9"]
-      }
-    },
-    {
-      "type": "grow",
-      "seat": 0,
-      "building": "W11",
-      "payment": "W16"
+      "payment": "W12"
     },
     {
       "type": "task",
@@ -2117,48 +1921,8 @@
       "type": "task",
       "seat": 0,
       "answer": {
-        "kind": "deliver",
-        "tile": "B1",
-        "spend": {
-          "wheat": 6
-        }
-      }
-    },
-    {
-      "type": "harvest",
-      "seat": 1,
-      "building": "V9"
-    },
-    {
-      "type": "build",
-      "seat": 0,
-      "card": "W17",
-      "payment": []
-    },
-    {
-      "type": "workOwnWorker",
-      "seat": 1,
-      "workerId": "deliver"
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "handToBarn",
-        "card": "V17"
-      }
-    },
-    {
-      "type": "task",
-      "seat": 1,
-      "answer": {
-        "kind": "deliver",
-        "tile": "A5",
-        "spend": {
-          "orchard": 1,
-          "vegetable": 6
-        },
-        "head": ["O9"]
+        "kind": "deck",
+        "suit": "wheat"
       }
     },
     {
@@ -2214,7 +1978,473 @@
       "seat": 0,
       "answer": {
         "kind": "keep",
+        "cards": ["W16"]
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 1
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "orchard"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "keep",
+        "cards": ["V6"]
+      }
+    },
+    {
+      "type": "grow",
+      "seat": 0,
+      "building": "W11",
+      "payment": "W16"
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "building",
+        "card": "W11"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 1
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "orchard"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W15"]
+      }
+    },
+    {
+      "type": "deliver",
+      "seat": 0,
+      "tile": "B4",
+      "spend": {
+        "wheat": 6
+      }
+    },
+    {
+      "type": "harvest",
+      "seat": 1,
+      "building": "V12"
+    },
+    {
+      "type": "draw",
+      "seat": 0
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W8"]
+      }
+    },
+    {
+      "type": "grow",
+      "seat": 1,
+      "building": "V12",
+      "payment": "V6"
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "V15"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "V18"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "V7"
+      }
+    },
+    {
+      "type": "grow",
+      "seat": 0,
+      "building": "W11",
+      "payment": "W8"
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "building",
+        "card": "W11"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "workOwnWorker",
+      "seat": 1,
+      "workerId": "deliver"
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "W15"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deliver",
+        "tile": "A5",
+        "spend": {
+          "vegetable": 7,
+          "wheat": 1
+        }
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 1
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "keep",
+        "cards": ["V13"]
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 0
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
+        "cards": ["W20"]
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 1
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "keep",
+        "cards": ["V15"]
+      }
+    },
+    {
+      "type": "grow",
+      "seat": 0,
+      "building": "W11",
+      "payment": "W20"
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "building",
+        "card": "W11"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 1
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "keep",
+        "cards": ["V18"]
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 0
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "keep",
         "cards": ["W9"]
+      }
+    },
+    {
+      "type": "grow",
+      "seat": 1,
+      "building": "V12",
+      "payment": "V13"
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "V15"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "handToBarn",
+        "card": "V18"
+      }
+    },
+    {
+      "type": "grow",
+      "seat": 0,
+      "building": "W11",
+      "payment": "W9"
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "building",
+        "card": "W11"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 0,
+      "answer": {
+        "kind": "deck",
+        "suit": "wheat"
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 1
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "keep",
+        "cards": ["V19"]
+      }
+    },
+    {
+      "type": "deliver",
+      "seat": 0,
+      "tile": "B1",
+      "spend": {
+        "wheat": 6
+      }
+    },
+    {
+      "type": "draw",
+      "seat": 1
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "deck",
+        "suit": "vegetable"
+      }
+    },
+    {
+      "type": "task",
+      "seat": 1,
+      "answer": {
+        "kind": "keep",
+        "cards": ["V17"]
       }
     }
   ],

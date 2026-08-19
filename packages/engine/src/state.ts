@@ -260,6 +260,14 @@ export type Task =
        * words ("however many cards are on it").
        */
       filter: 'full' | 'notFull' | 'harvestable' | 'loaded';
+      /**
+       * `harvestable` only: buildings holding at least this many cards count
+       * even when not full. The Wheat SERVICE passes 2 and nothing else passes
+       * anything - since the W2/W3 swap of 19/08/2026 the relaxed harvest is
+       * that door's action rather than the Wheat seat's suit power, so it has
+       * to travel on the task rather than be looked up from the actor.
+       */
+      relaxedMin?: number;
       /** Never a legal target (W5's "Harvest another card"). */
       exclude?: CardId;
       /** Restrict targets to these buildings (O7's "one of your ORCHARDs"), as `sow` does. */

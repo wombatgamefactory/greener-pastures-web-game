@@ -221,7 +221,7 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
       const p = player(state, task.pid);
       let pool =
         task.filter === 'harvestable'
-          ? harvestOptions(data, state, task.pid).map(
+          ? harvestOptions(data, state, task.pid, task.relaxedMin).map(
               (id) => p.tableau.find((b) => b.card === id) as BuildingState,
             )
           : task.filter === 'full'

@@ -206,6 +206,14 @@ export interface SuitService {
    * after the harvest and before the delivery respectively.
    */
   readonly handToBarn?: number;
+  /**
+   * Harvest Service only: buildings holding at least this many cards may be
+   * harvested even when NOT full. The Wheat visitor door prints it - "Harvest a
+   * building with 2 or more cards, even if not full" - and since the W2/W3 swap
+   * of 19/08/2026 it lives here rather than being a Wheat suit power, so it
+   * belongs to whoever WORKS the door and not to whoever owns it.
+   */
+  readonly relaxedMin?: number;
 }
 
 export interface WorkersFile {

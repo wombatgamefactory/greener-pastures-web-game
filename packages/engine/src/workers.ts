@@ -64,19 +64,23 @@ export function workWorker(fx: Fx, actor: Seat, workerId: string, opts: WorkOpti
       break;
     }
     case 'harvest':
-      // 'harvestable', not 'full': the Service performs the ACTOR's Harvest
-      // action, so the Wheat Farmstead's relaxed gate composes (locked ruling).
+      // 'harvestable' plus the door's own `relaxedMin`: "Harvest a building with
+      // 2 or more cards, even if not full" is printed on W3 the Notice Board, so
+      // it is THIS ACTION's relaxation and it travels with the action to
+      // whoever works the door. It used to be the Wheat Farmstead's suit power
+      // and composed here by a locked ruling; the sheet swapped W2 and W3 on
+      // 19/08/2026 and the two halves changed places.
+      //
+      // The hand-to-barn tail that used to be queued after the harvest has gone
+      // the other way: it is W2's printed power now.
       fx.pushTask({
         t: 'chooseBuilding',
         pid: actor,
         src: null,
         filter: 'harvestable',
+        ...(worker.relaxedMin === undefined ? {} : { relaxedMin: worker.relaxedMin }),
         then: 'harvest',
       });
-      // The tail, queued AFTER the harvest: a junk hand card into your barn.
-      // Only worth taking because the wild substitution (2026-08-08) made an odd
-      // card in a barn worth half a crate instead of exactly nothing.
-      pushHandToBarn(fx, actor, worker.handToBarn);
       break;
     case 'sow':
       if (worker.sow?.from === 'deck') {

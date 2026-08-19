@@ -118,12 +118,25 @@ describe('1. The Meadow Hive (A5) - an activation with no placement', () => {
  * like a bug the first time it is seen, which is why it is pinned here.
  */
 describe('2. The Bakery (W13) - a Tier 3 GROW whose ability is a whole-farm cascade', () => {
-  /** W13 and W4 built, W4 loaded to `w4` cards, and one spare card in hand to grow with. */
+  /**
+   * W13 and W4 built, W4 loaded to `w4` cards, and two cards in hand: W6 pays
+   * the GROW and W7 is a spare.
+   *
+   * ⚠️ THE SPARE IS LOAD-BEARING AND IT IS NEW (19/08/2026). W2 the Farmstead
+   * now banks a hand card on every harvest its owner takes, and its listener
+   * returns without pushing anything if the hand is empty. With W6 spent on the
+   * GROW and nothing behind it, the whole queue drained inside `apply`,
+   * `settleTurn` ENDED THE TURN in the same call - resetting `actionSpent` and
+   * passing the seat on - and the assertions below were reading the next
+   * player's turn. Exactly the trap wheat.test.ts records against W7 in its own
+   * fixture note. One spare card leaves the Farmstead's deposit pending, the
+   * turn stays open, and these tests measure what they claim to.
+   */
   function bakeryState(w4: number): GameState {
     const s = base();
     buildFor(data, s, WHEAT, 'W13', 'W4');
     if (w4 > 0) loadStack(data, s, WHEAT, 'W4', w4, 'apiary');
-    dealTo(data, s, WHEAT, 'W6'); // the GROW payment: activationType is wild, so any card
+    dealTo(data, s, WHEAT, 'W6', 'W7'); // W6 pays the wild GROW; W7 holds the turn open
     return s;
   }
 
@@ -152,6 +165,11 @@ describe('2. The Bakery (W13) - a Tier 3 GROW whose ability is a whole-farm casc
     expect(buildingOf(applied.state, WHEAT, 'W13').stack).toEqual([]);
     expect(player(applied.state, WHEAT).barn).toContain('W6');
     expect(player(applied.state, WHEAT).barn).toHaveLength(2);
+    // The Farmstead's deposit is waiting rather than resolved, which is what
+    // holds the turn open - see the fixture note. Once, not once per building.
+    expect(applied.state.tasks.filter((t) => t.t === 'handToBarn' && t.src === 'W2')).toHaveLength(
+      1,
+    );
   });
 
   it('fires with nothing else loaded, and banks its own fee for it', () => {
@@ -965,20 +983,29 @@ describe('the Apiary rebuild: rulings that live between two cards', () => {
 });
 
 /**
- * THE WHEAT REBALANCE'S CROSS-HANDLER CASES (2026-08-12).
+ * THE WHEAT REBALANCE'S CROSS-HANDLER CASES (2026-08-12), RE-POINTED BY THE
+ * W2/W3 SWAP (19/08/2026).
  *
- * Two seams came down in that pass and neither is visible from inside one card.
+ * Two seams came down in the rebalance and neither is visible from inside one
+ * card. One of them has since been taken out of the game entirely.
  *
  * W16 The Granary moved off an event-stream guard ("fire only if this is the
  * first `harvested` of this apply") onto the shared `turn.firedThisTurn` guard,
  * which is a change only a harvest CHAINED THROUGH A TASK ANSWER can see - a
  * chained harvest is a separate apply, so it used to draw again. Rule change
  * 12(c) says no card's text may fire twice in a turn; this is that alignment.
+ * That seam is untouched and its two tests still hold.
  *
- * And the W2 Farmstead's relaxed gate got DEEPER (2+ on the base face, 1+ on the
- * upgraded one, where the flip used to buy a whole second Harvest action). That
- * changes the suit-power ruling by not one word, and multiplies what the ruling
- * is worth, which is why the last test in this block is the loudest one.
+ * ⛔ THE OTHER SEAM IS GONE. The rebalance had DEEPENED the W2 Farmstead's
+ * relaxed harvest gate (2+ base, 1+ upgraded, where the flip used to buy a
+ * whole second Harvest action), and the last two tests here were the loudest in
+ * the file because that gate multiplied what the 2026-08-09 suit-power ruling
+ * was worth. The sheet then transposed W2 and W3: the relaxation is the VISITOR
+ * DOOR's printed action now, `relaxedMin: 2` on the Harvest Service, and W2
+ * prints a barn deposit instead. So `wheatRelaxedMin` is deleted, the ruling
+ * has no Wheat instance left to be proved on, and the two tests are re-pointed
+ * at what DID change - the Service carrying a flat gate on both faces, and a
+ * RIVAL renting it. Both say in their own comments what they used to assert.
  */
 describe('the Wheat rebalance: rulings that live between two cards', () => {
   function wheatState(): GameState {
@@ -1036,10 +1063,20 @@ describe('the Wheat rebalance: rulings that live between two cards', () => {
     const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W8' });
     const drained = drainCountingGranary(applied.state);
 
-    // Both buildings really were harvested - four cards into the barn - so the
-    // 1 below is the guard biting and not a chain that never happened.
-    expect(player(drained.state, WHEAT).barn).toHaveLength(4);
+    // Both buildings really were harvested - two cards each - so the 1 below is
+    // the guard biting and not a chain that never happened.
+    //
+    // ⚠️ THE FIFTH CARD IS W2 THE FARMSTEAD'S, and it is worth reading rather
+    // than adjusting past (19/08/2026). This fixture deals nothing, so the hand
+    // is EMPTY when the first harvest fires and the Farmstead skips silently
+    // without marking itself fired. The Granary's draw then puts a card in
+    // hand, and the CHAINED harvest - the whole subject of this test - finds
+    // one there and banks it. So the deposit and the draw are on opposite sides
+    // of the same guard question and give opposite answers: one card each,
+    // because the Farmstead's first attempt was a no-op rather than a firing.
+    expect(player(drained.state, WHEAT).barn).toHaveLength(5);
     expect(drained.state.turn.firedThisTurn).toContain('W16');
+    expect(drained.state.turn.firedThisTurn).toContain('W2');
     expect(drained.draws).toBe(1);
   });
 
@@ -1059,11 +1096,20 @@ describe('the Wheat rebalance: rulings that live between two cards', () => {
     loadStack(data, rotation, WHEAT, 'W5', 2, 'apiary');
     loadStack(data, rotation, WHEAT, 'W12', 1, 'apiary'); // threshold 2: the payment fills it
     const grown = drainCountingGranary(growBuilding(data, rotation, WHEAT, 'W12', 'W7').state);
-    // Both FIELDs emptied and reseeded, so the cascade really did run: two cards
-    // each into the barn, plus the one W4's own harvest line banks out of hand
-    // (the Granary's draw resolves ahead of it, so there is a card there to bank).
-    expect(buildingOf(grown.state, WHEAT, 'W4').stack).toHaveLength(1);
+    // Both FIELDs emptied, so the cascade really did run: two cards each into
+    // the barn, plus the one W4's own harvest line banks out of hand (the
+    // Granary's draw resolves ahead of it, so there is a card there to bank).
+    //
+    // ⚠️ ONLY W5 RESEEDS NOW (19/08/2026). W4 lost the seed line from its
+    // handler when the sheet's print lost it, so an emptied W4 stays empty and
+    // the two FIELDs no longer answer alike - which is precisely the clause
+    // W12 prints ("every FIELD with 1 or more cards on it") earning its words
+    // back. W2 the Farmstead adds nothing here: the fee was the seat's only
+    // card, so its listener saw an empty hand at both harvests and skipped
+    // silently both times, before the Granary's draw had been answered.
+    expect(buildingOf(grown.state, WHEAT, 'W4').stack).toEqual([]);
     expect(buildingOf(grown.state, WHEAT, 'W5').stack).toHaveLength(1);
+    expect(grown.state.turn.firedThisTurn).not.toContain('W2');
     expect(player(grown.state, WHEAT).barn).toHaveLength(5);
     expect(grown.draws).toBe(1);
 
@@ -1146,24 +1192,102 @@ describe('the Wheat rebalance: rulings that live between two cards', () => {
   });
 
   /**
-   * The other half of the locked ruling, from the permissive side: suit powers
-   * DO apply to actions performed by a Service - it is your action, done on
-   * someone else's premises - so the relaxed gate composes at whichever depth
-   * the Farmstead is currently on. The `harvestable` task filter is the seam,
-   * and it must keep routing through `harvestOptions` for this to hold.
+   * ⛔ RE-POINTED 19/08/2026, AND THERE IS NOTHING LEFT TO INHERIT. This test
+   * was called "W2 + the Harvest Service: the Service inherits the gate at BOTH
+   * depths", and it proved the permissive half of the locked ruling - suit
+   * powers DO apply to actions performed by a Service, it is your action done
+   * on someone else's premises - by watching the Service's gate MOVE with the
+   * Farmstead's flip, 2+ unflipped and 1+ upgraded.
+   *
+   * The sheet swapped W2 and W3. The relaxation is now printed on the visitor
+   * door itself ("Harvest a building with 2 or more cards, even if not full",
+   * on BOTH faces of W3), carried as `relaxedMin: 2` in workers.json and passed
+   * down on the `chooseBuilding` task's own rider. So the Service CARRIES the
+   * gate rather than inheriting one, at a flat 2+ that no face of anything
+   * moves, and the seat that owns the door has no gate of its own left.
+   *
+   * ⚠️ THE RULING IS NOT REFUTED, IT IS UNEMPLOYED. Wheat was its only instance;
+   * the Orchard draw modifier still composes onto the Draw Service in
+   * `workWorker` and is where the ruling is now proved. What replaces it here is
+   * the thing the swap actually bought, and it is the more interesting property:
+   * THE RELAXATION IS RENTABLE. A rival who spends a card on a Wheat farm's
+   * Service harvests one of THEIR OWN buildings at 2+, which is the first time
+   * the suit's signature verb has crossed the table.
    */
-  it('W2 + the Harvest Service: the Service inherits the gate at BOTH depths', () => {
+  it('W2 + the Harvest Service: the Service CARRIES a flat 2+ gate on both faces', () => {
     for (const upgraded of [false, true]) {
       const s = withHarvestService(wheatState());
       buildingOf(s, WHEAT, 'W2').upgraded = upgraded;
-      buildFor(data, s, WHEAT, 'W7'); // threshold 3, holding 1: only the 1+ face reaches it
-      loadStack(data, s, WHEAT, 'W7', 1, 'apiary');
+      buildFor(data, s, WHEAT, 'W7', 'W9'); // W7 threshold 3, W9 threshold 2
+      loadStack(data, s, WHEAT, 'W7', 2, 'apiary'); // 2 of 3: relaxed only
+      loadStack(data, s, WHEAT, 'W9', 1, 'apiary'); // 1 of 2: under the flat floor
       const out = workOwnWorker(data, s, WHEAT, 'harvest');
-      const offered = pendingAnswers(data, out.state).some(
-        (a) => a.kind === 'building' && a.card === 'W7',
-      );
-      expect(offered, `upgraded=${upgraded}`).toBe(upgraded);
+      const offered = pendingAnswers(data, out.state)
+        .flatMap((a) => (a.kind === 'building' ? [a.card] : []))
+        .sort();
+      // Identical on both faces, and the 1-loaded W9 is out on both: a flat
+      // floor, not a face-aware one. The old assertion was `.toBe(upgraded)`.
+      expect(offered, `upgraded=${upgraded}`).toEqual(['W7']);
     }
+  });
+
+  /**
+   * ⛔ THE NEW BEHAVIOUR THE SWAP BOUGHT, and the reason it was worth doing:
+   * A RIVAL RENTS THE RELAXED HARVEST.
+   *
+   * A non-Wheat seat places one card on the Wheat farm's Service, takes its
+   * action, and the "2 or more cards, even if not full" applies to THEIR OWN
+   * tableau. Nothing about the host is consulted - the gate travels with the
+   * action, because it is printed on the action.
+   *
+   * ⚠️ THE FIXTURE GIVES THE VISITOR A FULL BUILDING AS WELL AS A PARTIAL ONE,
+   * AND IT HAS TO, WHICH IS A FINDING RATHER THAN A CONVENIENCE. The visit's
+   * legality gate is `workerActionLegal`, whose harvest branch calls
+   * `harvestOptions(data, state, seat)` with NO `relaxedMin` - so a visitor
+   * whose only 2-loaded building is not full is told the Service has nothing
+   * legal to do and the visit is refused, even though the action it would grant
+   * has a target. The gate and the action disagree. Flagged to Dean on
+   * 19/08/2026 and deliberately NOT worked around here beyond keeping the
+   * fixture legal: if the gate is fixed, this test goes on passing, and a
+   * dedicated case for "the partial is the ONLY target" belongs with the fix.
+   */
+  it('W2 + the Harvest Service: a RIVAL visiting a Wheat farm rents the 2+ gate', () => {
+    const s = wheatState();
+    hireFor(s, WHEAT, 'harvest'); // the host owns the door
+    dealTo(data, s, APIARY, 'A4'); // the visitor's fee card
+    buildFor(data, s, APIARY, 'A7', 'A9');
+    const partial = thresholdOf(data, buildingOf(s, APIARY, 'A7')) as number;
+    expect(partial).toBeGreaterThan(2); // A7 prints 3: 2 cards leave it NOT full
+    loadStack(data, s, APIARY, 'A7', 2, 'wheat');
+    // A9 filled to its own printed threshold, whatever the Apiary rebuild left
+    // it at: it is the STRICT target, and the only reason the visit is legal at
+    // all - see the ⚠️ above.
+    const strict = thresholdOf(data, buildingOf(s, APIARY, 'A9')) as number;
+    loadStack(data, s, APIARY, 'A9', strict, 'wheat');
+
+    // The visitor's OWN Harvest action reaches the full building and nothing
+    // else, which is the baseline the rented gate is measured against.
+    const alone = { ...s, turnPlayer: APIARY } as GameState;
+    const ownAction = legalMoves(data, alone)
+      .flatMap((m) => (m.type === 'harvest' ? [m.building] : []))
+      .sort();
+    expect(ownAction).toEqual(['A9']);
+
+    const visited = visitWork(data, s, APIARY, WHEAT, 'harvest', 'A4');
+    // The fee landed on the HOST's Service, and the choice offered is over the
+    // VISITOR's buildings - A7 among them, at 2 of 3.
+    expect(serviceOf(data, visited.state, WHEAT).stack).toEqual(['A4']);
+    const offered = pendingAnswers(data, visited.state)
+      .flatMap((a) => (a.kind === 'building' ? [a.card] : []))
+      .sort();
+    expect(offered).toEqual(['A7', 'A9']);
+
+    // And it really harvests: the not-full building empties into the visitor's
+    // barn, not the host's.
+    const done = answerTask(data, visited.state, { kind: 'building', card: 'A7' }).state;
+    expect(buildingOf(done, APIARY, 'A7').stack).toEqual([]);
+    expect(player(done, APIARY).barn).toHaveLength(2);
+    expect(player(done, WHEAT).barn).toEqual([]);
   });
 
   /**
@@ -1181,20 +1305,31 @@ describe('the Wheat rebalance: rulings that live between two cards', () => {
    * harvest line GAINED "even if not full". So W8 has joined the other three: it
    * takes any building holding 1 or more, because ITS OWN TEXT SAYS SO.
    *
-   * ⚠️ THAT IS NOT THE FARMSTEAD LEAKING INTO IT, and the difference is testable
-   * rather than rhetorical, which is what this test now does. W2 relaxes the
-   * HARVEST ACTION to 2+ on its base face and 1+ upgraded (`wheatRelaxedMin`,
-   * read only by `harvestOptions` and the `harvestable` task filter). If W8 were
-   * inheriting the suit power its gate would MOVE with the flip - 2+ unflipped,
-   * 1+ flipped. It does not: it sits at 1+ on both faces, including for a seat
-   * that has flipped nothing, which is a gate the base Farmstead cannot produce.
-   * Both faces are run below and the offered set must be identical.
+   * ⚠️ AND THE RULING IS NOW STRUCTURALLY TRIVIAL, WHICH THIS TEST HAS TO SAY
+   * OUT LOUD RATHER THAN GO ON PRETENDING (19/08/2026, the W2/W3 swap). It used
+   * to be a real comparison: W2 relaxed the HARVEST ACTION to 2+ base and 1+
+   * upgraded, so if W8 were inheriting the suit power its gate would MOVE with
+   * the flip, and running both faces and demanding an identical offered set was
+   * the proof that it did not. W2 HAS NO GATE ANY MORE. There is nothing for
+   * W8 to inherit, from either face or from any face, so the loop below can no
+   * longer fail for the reason it was written for and must not be read as
+   * evidence for the ruling. `wheatRelaxedMin` is deleted; the only relaxation
+   * left in the game is the Harvest Service's, and a Service never touches a
+   * card effect.
+   *
+   * WHAT IT STILL PROVES, and what is worth keeping it for: W8's own printed
+   * "even if not full" reaches a 1-loaded and a 2-of-3 building identically on
+   * both faces of W2, while THE PLAIN HARVEST ACTION REACHES NEITHER on either
+   * face. That second assertion is the new one, and it is the load-bearing
+   * half: it pins the absence of the suit power from the side an accidental
+   * reinstatement would show up on first.
    */
-  it('W8 harvests at its own printed 1+ gate on BOTH faces of W2, inheriting neither', () => {
+  it('W8 harvests at its own printed 1+ gate, and W2 has no gate left to leak', () => {
     const RULING =
-      'RULING (2026-08-09, unchanged): a suit power modifies the ACTION, never card text ' +
-      'that happens to use the same word. W8 now PRINTS "even if not full", so its gate is ' +
-      "1+ on both faces of W2 - fixed by its own text, never moved by the Farmstead's.";
+      'RULING (2026-08-09, unchanged but now unemployed in Wheat): a suit power modifies ' +
+      'the ACTION, never card text that happens to use the same word. W8 PRINTS "even if ' +
+      'not full", so its gate is 1+ on both faces of W2 - fixed by its own text, and since ' +
+      '19/08/2026 there is no Farmstead gate to be moved by in the first place.';
 
     for (const upgraded of [false, true]) {
       const s = wheatState();
@@ -1204,14 +1339,15 @@ describe('the Wheat rebalance: rulings that live between two cards', () => {
       loadStack(data, s, WHEAT, 'W5', 1, 'apiary'); // 1 of 2
       loadStack(data, s, WHEAT, 'W7', 2, 'apiary'); // 2 of 3
 
-      // The ACTION gate genuinely differs between the two faces, which is what
-      // makes the comparison worth making: on the base face W5 (holding 1) is
-      // not an action target, on the upgraded face it is.
+      // ⛔ INVERTED. The ACTION gate used to differ between the two faces - W5
+      // at 1 card was a target upgraded and not base, W7 at 2 was a target on
+      // both - and that difference was the whole comparison. It is now the
+      // strict full gate on both faces, so the only target is the full W8 and
+      // NEITHER partial appears. A Wheat seat harvests like every other suit.
       const actionTargets = legalMoves(data, s)
         .filter((m) => m.type === 'harvest')
         .map((m) => (m.type === 'harvest' ? m.building : ''));
-      expect(actionTargets.includes('W5'), `action gate, upgraded=${upgraded}`).toBe(upgraded);
-      expect(actionTargets, `action gate, upgraded=${upgraded}`).toContain('W7');
+      expect(actionTargets, `action gate, upgraded=${upgraded}`).toEqual(['W8']);
 
       // W8's own chooser, by contrast, does not move: both partials, both times.
       const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W8' });
@@ -1219,7 +1355,20 @@ describe('the Wheat rebalance: rulings that live between two cards', () => {
         applied.state.tasks.filter((t) => t.t === 'chooseBuilding'),
         RULING,
       ).toMatchObject([{ filter: 'loaded', exclude: 'W8', then: 'harvest' }]);
-      const offered = pendingAnswers(data, applied.state)
+
+      // ⚠️ WALK THE QUEUE TO THE CHOOSER, and the reason is the OTHER half of
+      // the swap (19/08/2026). On the upgraded face W2's barn deposit is a
+      // `barnFromDeck` prompt pushed AHEAD of W8's chooser, because the
+      // starters sit earlier in the tableau than anything built - so reading
+      // `pendingAnswers` straight off the harvest reads the Farmstead's deck
+      // choice and finds no buildings at all. On the base face the hand is
+      // empty, the deposit skips itself silently, and this loop does nothing.
+      // Hence a loop rather than a fixed number of answers.
+      let queued = applied.state;
+      for (let guard = 0; guard < 4 && queued.tasks[0]?.t !== 'chooseBuilding'; guard++) {
+        queued = answerTask(data, queued, pendingAnswers(data, queued)[0] as TaskAnswer).state;
+      }
+      const offered = pendingAnswers(data, queued)
         .flatMap((a) => (a.kind === 'building' ? [a.card] : []))
         .sort();
       expect(offered, `${RULING} (upgraded=${upgraded})`).toEqual(['W5', 'W7']);

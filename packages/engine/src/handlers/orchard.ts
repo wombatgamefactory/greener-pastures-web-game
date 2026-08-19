@@ -674,6 +674,31 @@ export const gardenLibrary: CardHandler = {
       if (card !== null) taken.push(card);
     }
     if (taken.length === 0) return;
+    // A STANDARD DRAW (Dean, 19/08/2026): the sheet says "Draw the top card of
+    // each deck", and Dean ruled the word literal - normal draw rules apply.
+    //
+    // So it goes through the DRAW TASK rather than arriving by `cardsToHand`.
+    // `revealed` is pre-filled because the CARD names the decks, not the
+    // player, and see === keep because the card keeps everything it draws; the
+    // task then has exactly one legal answer and resolves straight through to
+    // the funnel. What that buys is the seam, not a number: `afterDrawKeep`
+    // fires and the unkept remainder (here always empty) goes through
+    // `discardOrDivert`, exactly as a base Draw or a Draw Service does.
+    //
+    // ⚠️ It changes nothing observable TODAY, and that is worth writing down so
+    // nobody "simplifies" it back. Nothing in the catalogue listens to
+    // `afterDrawKeep` yet, and O17 The Fruit Basket cannot fire because a draw
+    // that keeps everything discards nothing. The next card that keys off
+    // drawing will see this one; the old `takeDeckTop`-into-limbo shape would
+    // have been invisible to it.
+    fx.pushTask({
+      t: 'draw',
+      pid: self.seat,
+      src: self.card,
+      see: taken.length,
+      keep: taken.length,
+      revealed: taken,
+    });
     fx.pushTask({
       t: 'card',
       pid: self.seat,
@@ -700,14 +725,18 @@ export const gardenLibrary: CardHandler = {
       resolve(fx, task, answer) {
         const cards = (task.riders.cards as CardId[]) ?? [];
         if (answer.kind === 'skip') {
-          fx.cardsToHand(task.pid, cards);
+          // Nothing to move: the draw above already put every card in hand.
           task.riders.cards = [];
           return true;
         }
         if (answer.kind !== 'card') throw new Error('library expects a card or skip answer');
         const card = answer.payload.card as CardId;
         const to = answer.payload.to as Seat;
-        fx.passCard(task.pid, to, card);
+        // `giveCard` and not `passCard` since the draw landed them in hand:
+        // the card leaves a real hand, so `fromHand` tells a bot the giver is
+        // genuinely a card down. `passCard` is the divert seam's move, for a
+        // card that never reached a hand at all.
+        fx.giveCard(task.pid, to, card);
         fx.gainCoins(task.pid, 1, 'O15');
         task.riders.cards = cards.filter((c) => c !== card);
         task.riders.given = [...((task.riders.given as Seat[]) ?? []), to];

@@ -147,13 +147,46 @@ describe('the playable table renders', () => {
    * expires the moment somebody clicks Build, and a forfeited visit is the hook
    * not happening.
    */
-  it('opens on the bonus phase, then shows the five actions behind it', () => {
+  it('shows the bonus phase when a bonus is live, and the main actions when it is not', () => {
     const html = render(snap, { k: 'idle' });
+    // Which shape this position gets is a property of the position, not of the
+    // bar, so the test reads it off the legal moves rather than assuming one.
+    // That matters: `play-a` used to open on the phase and now does not, because
+    // the W2/W3 swap moved the warmed game, and a hard-coded expectation would
+    // have read as a UI regression rather than as the phase auto-skipping.
+    const BONUS = ['visit', 'workOwnWorker', 'upgrade', 'market'];
+    const live = snap.moves.some((m) => BONUS.includes(m.type));
+    if (live) {
+      expect(html).toContain('Your bonus, first.');
+      expect(html).toContain('>skip bonus action</button>');
+    } else {
+      expect(html).not.toContain('Your bonus, first.');
+      for (const label of ['Draw', 'Build', 'Grow', 'Harvest', 'Deliver', 'End turn']) {
+        expect(html).toContain(`>${label}</button>`);
+      }
+    }
+    expect(missingImages(html)).toEqual([]);
+  });
+
+  /**
+   * The phase itself, on a position searched for rather than hoped for. This is
+   * the affordance the start-of-turn rule needs: offered in one flat row the
+   * bonus silently expires the moment somebody clicks Build, and a forfeited
+   * visit is the hook not happening.
+   */
+  it('offers all four bonus options and a skip when the slot is open', () => {
+    const withBonus = positionWith('a bonus-slot move', (m) =>
+      ['visit', 'workOwnWorker', 'upgrade'].includes(m.type),
+    );
+    const html = render(withBonus, { k: 'idle' });
     expect(html).toContain('Your bonus, first.');
     expect(html).toContain('>skip bonus action</button>');
     for (const label of ['Visit', 'Work yours', 'Upgrade']) {
       expect(html).toContain(`>${label}</button>`);
     }
+    // Shape (c), not (b): the main families are held back until the slot is
+    // resolved, so nobody forfeits it by reaching past it.
+    expect(html).not.toContain('>Draw</button>');
     expect(missingImages(html)).toEqual([]);
   });
 
