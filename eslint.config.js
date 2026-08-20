@@ -32,13 +32,24 @@ export default tseslint.config(
     // @types/node the way the TypeScript packages do.
     files: ['tools/**/*.mjs', '*.config.js'],
     languageOptions: {
-      globals: { process: 'readonly', console: 'readonly', URL: 'readonly' },
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        URL: 'readonly',
+        // Node 18+ global; `fetch-sheet.mjs` pulls the shared card sheet with it.
+        fetch: 'readonly',
+      },
     },
   },
   {
     // The browser verifiers ship callbacks to `page.evaluate`, so their source
     // legitimately contains browser code alongside its Node code.
-    files: ['tools/verify-layout.mjs', 'tools/verify-drag.mjs', 'tools/verify-webkit.mjs'],
+    files: [
+      'tools/verify-layout.mjs',
+      'tools/verify-drag.mjs',
+      'tools/verify-webkit.mjs',
+      'tools/render-sheets.mjs',
+    ],
     languageOptions: {
       globals: {
         process: 'readonly',

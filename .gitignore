@@ -66,3 +66,8 @@ design/
 # it - into a file inside this repo. Caught by check:disclosure on 2026-08-13.
 __pycache__/
 *.pyc
+
+# Working copies pulled from the shared card sheet (see tools/sheet-cards.mjs).
+.sheet-cache/
+packages/ui/public/sheet-cards.json
+reports/cards/

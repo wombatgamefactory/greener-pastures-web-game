@@ -30,7 +30,9 @@
     "verify:webkit": "node tools/verify-webkit.mjs",
     "verify:capture": "tsx tools/verify-capture.mjs",
     "check:disclosure": "node tools/check-disclosure.mjs",
-    "check:disclosure:history": "node tools/check-disclosure.mjs --history"
+    "check:disclosure:history": "node tools/check-disclosure.mjs --history",
+    "cards": "node tools/render-sheets.mjs",
+    "cards:sheet": "node tools/sheet-cards.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

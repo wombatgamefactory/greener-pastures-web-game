@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { resolve } from 'node:path';
 
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
@@ -58,32 +59,37 @@ function analytics(): Plugin {
     // order things actually matter.
     transformIndexHtml: {
       order: 'pre' as const,
-      handler: () => [
-        {
-          tag: 'script',
-          attrs: { id: 'cookieyes', type: 'text/javascript', src: COOKIEYES_SRC },
-          injectTo: 'head' as const,
-        },
-        {
-          tag: 'script',
-          attrs: {
-            async: true,
-            src: `https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`,
-          },
-          injectTo: 'head' as const,
-        },
-        {
-          tag: 'script',
-          children: [
-            'window.dataLayer = window.dataLayer || [];',
-            'function gtag(){dataLayer.push(arguments);}',
-            "gtag('js', new Date());",
-            'if (!/^(localhost|127\\.0\\.0\\.1|\\[::1\\])$/.test(location.hostname))',
-            ` gtag('config', '${GA_MEASUREMENT_ID}');`,
-          ].join('\n'),
-          injectTo: 'head' as const,
-        },
-      ],
+      // The sheet renderer is a screenshot target, not a page anyone visits.
+      // A consent banner on it would sit in the middle of a card sheet.
+      handler: (_html: string, ctx: { path: string }) =>
+        ctx.path.includes('sheet.html')
+          ? []
+          : [
+              {
+                tag: 'script',
+                attrs: { id: 'cookieyes', type: 'text/javascript', src: COOKIEYES_SRC },
+                injectTo: 'head' as const,
+              },
+              {
+                tag: 'script',
+                attrs: {
+                  async: true,
+                  src: `https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`,
+                },
+                injectTo: 'head' as const,
+              },
+              {
+                tag: 'script',
+                children: [
+                  'window.dataLayer = window.dataLayer || [];',
+                  'function gtag(){dataLayer.push(arguments);}',
+                  "gtag('js', new Date());",
+                  'if (!/^(localhost|127\\.0\\.0\\.1|\\[::1\\])$/.test(location.hostname))',
+                  ` gtag('config', '${GA_MEASUREMENT_ID}');`,
+                ].join('\n'),
+                injectTo: 'head' as const,
+              },
+            ],
     },
   };
 }
@@ -95,5 +101,15 @@ export default defineConfig(({ command }) => ({
   build: {
     outDir: 'dist',
     sourcemap: true,
+    // Two entries: the game, and the card sheet renderer that replaces the
+    // InDesign data merge (tools/render-sheets.mjs drives the second one).
+    // Naming `index.html` explicitly is required - the moment `input` is set,
+    // Vite stops adding it for you.
+    rollupOptions: {
+      input: {
+        index: resolve(import.meta.dirname, 'index.html'),
+        sheet: resolve(import.meta.dirname, 'sheet.html'),
+      },
+    },
   },
 }));

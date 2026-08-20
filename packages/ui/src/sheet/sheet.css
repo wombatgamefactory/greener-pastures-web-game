@@ -1,0 +1,63 @@
+/*
+ * Sheet-only overrides. The card itself is untouched - that is the whole point
+ * of this page - but a card ON A SHEET is not a card on a table:
+ *
+ *  - no rounded corners and no drop shadow. The .indd sheets butt cards edge to
+ *    edge and let the cutter (or TTS's own deck template) round them. A shadow
+ *    baked into a sheet prints as a grey smear along every cut line.
+ *  - the page is exactly the sheet, with no margin and no scrollbars, so a
+ *    full-page screenshot IS the sheet.
+ */
+
+body {
+  margin: 0;
+  padding: 0;
+  background: #fff;
+  overflow: hidden;
+}
+
+.sheet {
+  display: grid;
+  gap: 0;
+  transform: scale(var(--sheet-scale, 1));
+  transform-origin: top left;
+  background: #fff;
+}
+
+.sheet-single {
+  display: block;
+}
+
+.sheet-cell {
+  position: relative;
+  overflow: hidden;
+}
+
+/* The card fills its cell exactly. `Card` sets width; height follows aspect. */
+.sheet .card {
+  border-radius: 0;
+  box-shadow: none;
+  width: 100% !important;
+  height: 100%;
+}
+
+/* The printed keyline stays - it is on the physical card - but the rounded
+   corner it inherits must not, or it leaves four white notches per cut. */
+.sheet .card::after {
+  border-radius: 0;
+}
+
+/* ---- print-position overrides ------------------------------------------
+ * Two places the GAME card and the PRINTED card legitimately differ. Fixed
+ * here rather than in card.css, because the game's positions are its own
+ * decisions and this page must not reach into them.
+ */
+
+/* The printed card sets its ref bottom-RIGHT, clear of the threshold numeral;
+ * the game puts it bottom-left where the tableau overlaps cards leftward. */
+.sheet .card-ref {
+  left: auto;
+  right: 1.9%;
+  top: auto;
+  bottom: 2.2%;
+}

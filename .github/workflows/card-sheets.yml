@@ -1,0 +1,68 @@
+# Render the card sheets from the shared card sheet.
+#
+# This is the co-designer's button. The other route to a card sheet needs
+# Windows, a licensed InDesign and a local template, so exactly one person can
+# use it; this needs a browser and a GitHub account.
+#
+# Run it from the Actions tab: "Render card sheets" -> Run workflow. The PNGs
+# come back as a build artifact on the run page.
+name: Render card sheets
+
+on:
+  workflow_dispatch:
+    inputs:
+      suit:
+        description: 'Which suit (blank = all five)'
+        required: false
+        type: choice
+        default: ''
+        options: ['', wheat, vegetable, orchard, apiary, dairy]
+
+permissions:
+  contents: read
+
+# One render at a time; a second press supersedes the first rather than
+# queueing behind it, because only the newest sheet is ever wanted.
+concurrency:
+  group: card-sheets
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - run: npm ci
+      - run: pip install openpyxl
+
+      # playwright-core ships no browsers. The runner image has Chrome, but
+      # installing Playwright's own build keeps the render identical to a
+      # workstation run rather than tracking whatever the image happens to have.
+      - run: npx playwright-core install --with-deps chromium
+
+      - name: Render
+        env:
+          # A repository VARIABLE, never a value in the tree: this repo is
+          # public and the sheet is private design material. Set it at
+          # Settings > Secrets and variables > Actions > Variables.
+          CARD_SHEET_CSV: ${{ vars.CARD_SHEET_CSV }}
+        run: npm run cards:sheet -- ${{ inputs.suit && format('--suit {0}', inputs.suit) || '' }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: card-sheets
+          path: reports/cards/*.png
+          # Long enough to be useful, short enough that stale sheets are not
+          # left lying around looking current.
+          retention-days: 30
+          if-no-files-found: error

@@ -131,7 +131,8 @@ def resolve_columns(ws):
 
 def sheet_path():
     """The sheet lives outside this repo. Path from argv[1] or $GP_SHEET."""
-    raw = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("GP_SHEET")
+    positional = [x for x in sys.argv[1:] if not x.startswith("-")]
+    raw = positional[0] if positional else os.environ.get("GP_SHEET")
     if not raw:
         sys.exit("usage: python tools/extract_cards.py <path-to-sheet.xlsm>\n"
                  "   or: set GP_SHEET to the sheet's path")
@@ -139,6 +140,22 @@ def sheet_path():
     if not p.is_file():
         sys.exit(f"no such sheet: {p}")
     return p
+
+
+def out_path():
+    """Where the JSON lands. Defaults to the game's own cards.json.
+
+    `--out` exists for the card sheet renderer, which extracts a WORKING COPY
+    from the shared Google Sheet on every render. That copy must not overwrite
+    `cards.json`: the game's baseline and the sheet deliberately disagree (the
+    Notice Board threshold is the shipped 5 here and an experiment there), and
+    the `noticeboard-threshold-*` overlays measure exactly that gap. Extracting
+    the sheet over the baseline would turn those arms into no-ops comparing a
+    value against itself, and report a clean delta of zero while doing it.
+    """
+    if "--out" in sys.argv:
+        return Path(sys.argv[sys.argv.index("--out") + 1]).expanduser()
+    return OUT
 
 
 # The printed TRIGGER PREFIX, stripped. From v17 the sheet prefixes a card's
@@ -457,12 +474,13 @@ def main():
         "suits": sorted(by_suit),
         "catalogue": ordered,
     }
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    out = out_path()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     review = [c["id"] for c in ordered if c["needsDesignReview"]]
     shuffled = sum(c["inDeck"] for c in ordered)
-    print(f"wrote {OUT.relative_to(ROOT)}: {len(ordered)} cards "
+    print(f"wrote {out}: {len(ordered)} cards "
           f"({shuffled} shuffled, {len(ordered) - shuffled} starters)")
     print(f"source sha256: {digest}")
     print(f"per suit: {dict(by_suit)}")
@@ -471,7 +489,19 @@ def main():
         print(f"\n{len(warnings)} warning(s):")
         for w in warnings:
             print(f"  - {w}")
-    return 1 if any(m in w for w in warnings for m in FATAL_MARKERS) else 0
+    fatal = [w for w in warnings if any(m in w for m in FATAL_MARKERS)]
+    if fatal and out != OUT:
+        # FATAL_MARKERS guard the GAME's invariants, and they must keep doing
+        # that for `cards.json`. A `--out` copy is a proof render of whatever
+        # the sheet currently says, and the sheet is allowed to be mid-thought:
+        # a Notice Board at 2 is an experiment being drawn, not corrupt data.
+        # Refusing to draw it would make the renderer useless exactly when a
+        # designer most wants to see the change.
+        print("")
+        print(f"{len(fatal)} of those break a rule the GAME enforces. Writing"
+              f" anyway: {out.name} is a proof copy, not the baseline.")
+        return 0
+    return 1 if fatal else 0
 
 
 if __name__ == "__main__":
