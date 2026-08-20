@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 
 import { anyDeliverOption, deliverOptions, islandDeliveriesBy, tileLevel } from './actions.js';
 import { apply, isOver, legalMoves, newGame } from './game.js';
-import { cardById } from './query.js';
+import { cardById, thresholdOf } from './query.js';
 import { seedRng, rngInt } from './rng.js';
 import { score } from './runtime.js';
 import { freshTurn, islandTilesInPlay } from './setup.js';
@@ -734,7 +734,12 @@ describe('the bonus slot through apply', () => {
     const state = twoCardState();
     upgradeNoticeBoard(state, APIARY);
     const board = noticeBoard(state, APIARY);
-    board.stack = state.decks.apiary.splice(0, 4); // 4 of 5
+    // Room for exactly ONE, derived rather than hard-coded: this used to read
+    // `splice(0, 4)  // 4 of 5` and broke the moment the door's threshold was
+    // ruled to 2 on 20/08/2026, because a stack of 4 is then over-full and even
+    // the coin visit is refused. The test is about "room for one", not about 5.
+    const room1 = (thresholdOf(twoCardData, board) ?? 1) - 1;
+    board.stack = state.decks.apiary.splice(0, room1);
     dealTo(twoCardData, state, WHEAT, 'W4', 'W5');
     const moves = legalMoves(twoCardData, state).filter((m) => m.type === 'visit');
     expect(moves.some((m) => m.payoff.mode === 'special')).toBe(false);
@@ -748,7 +753,7 @@ describe('the bonus slot through apply', () => {
         payoff: { mode: 'special' },
       }),
     ).toThrow(/no room/);
-    expect(noticeBoard(state, APIARY).stack).toHaveLength(4); // nothing moved
+    expect(noticeBoard(state, APIARY).stack).toHaveLength(room1); // nothing moved
   });
 
   it('holds every payoff to its printed card count', () => {

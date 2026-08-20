@@ -60,7 +60,20 @@ export function faceOf(data: GameData, building: BuildingState): CardFace {
 }
 
 export function thresholdOf(data: GameData, building: BuildingState): number | null {
-  return faceOf(data, building).threshold;
+  const printed = faceOf(data, building).threshold;
+  // ⭐ THE DOOR'S THRESHOLD IS AN OVERRIDE (ruled 2, 20/08/2026). Applied at
+  // this one seam deliberately: `isFull`, `canTakeCard` and `roomOn` all read
+  // through here, so the visit, the Helping Hand, the sow targets and the clog
+  // metric cannot disagree about when a farm is shut.
+  //
+  // ⚠️ Only the NOTICE BOARD, and only when the knob is non-null. Every other
+  // building keeps its printed threshold, and when the sheet catches up (ten
+  // cells, five boards, both faces) this knob goes back to null and the printed
+  // value takes over with no other change.
+  if (printed === null) return null;
+  const override = data.rules.economy.noticeBoardThreshold;
+  if (override === null) return printed;
+  return cardById(data, building.card).slot === 'noticeboard' ? override : printed;
 }
 
 /** Full = clogged: at threshold, nothing may be placed until the owner harvests. */

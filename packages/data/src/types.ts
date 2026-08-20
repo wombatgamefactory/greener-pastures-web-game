@@ -319,6 +319,38 @@ export interface RulesFile {
      * it is bought like its siblings. A per-card `upgradeCostCoins` still
      * overrides this.
      */
+    /**
+     * ⭐ THE DOOR'S THRESHOLD, RULED 2 BY DEAN ON 20/08/2026, and an OVERRIDE
+     * of what the Notice Board prints rather than a second opinion about it.
+     *
+     * ⚠️ THE SHEET STILL PRINTS 5, AND THAT IS A DRIFT THIS FILE IS CREATING
+     * ON PURPOSE. The threshold lives on a card face, and card faces come out
+     * of the designer spreadsheet through `extract_cards.py` - so it cannot be
+     * changed in `cards.json`, which is generated and would be silently
+     * reverted at the next extract. Dean ruled the number provisionally
+     * ("let's make it 2 for now"), so it is authored HERE, where a ruling can
+     * live without pretending to be a printed value. **The sheet owes ten cells
+     * - five Notice Boards, both faces - and when it gets them this override
+     * should go back to null and the printed value take over.**
+     *
+     * null = no override, use whatever the card prints.
+     *
+     * WHY IT IS 2. Change 6 merged the Service door into the Notice Board, so
+     * one threshold now throttles the traffic that used to split across two
+     * buildings. Measured at n=500: t=5 clogs 2.3% of turn boundaries (no brake
+     * at all), t=3 5%, t=2 11%; and the suit spread is most even at 2 (54.6
+     * points from even, against 67.2 at t=3 and 70.2 at t=5). Dean's reading of
+     * why: at 5 "you get to use other player's cards a lot, but that number
+     * also decreases how often you can harvest and make use of the cards people
+     * give you - making it more valuable to the visitor, rather than the person
+     * who is visited."
+     *
+     * ⭐ 4 IS A LIVE CANDIDATE AND IS NOT REFUTED. Dean: "2 is also half a
+     * delivery, which makes me think 4 might also work" - a tile costs 4 cards,
+     * so a door at 4 holds exactly one delivery's worth of freight. It was
+     * never armed; `overlays/noticeboard-threshold-4.overlay.json` exists.
+     */
+    readonly noticeBoardThreshold: number | null;
     readonly upgradeCostCoins: number;
     /** VP at game end is `floor(coins / divisor)`. Null disables the rule. */
     readonly coinPityDivisor: number | null;

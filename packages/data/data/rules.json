@@ -42,6 +42,7 @@
     "upgradeIsBonus": true
   },
   "economy": {
+    "noticeBoardThreshold": 2,
     "upgradeCostCoins": 2,
     "coinPityDivisor": null,
     "visitPayout": {

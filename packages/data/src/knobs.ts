@@ -115,6 +115,17 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
 
   // --- Economy -------------------------------------------------------------
   {
+    template: 'rules.economy.noticeBoardThreshold',
+    type: 'intOrNull',
+    description:
+      "The door's threshold: how many rival cards a Notice Board holds before it clogs and the " +
+      'farm shuts to visitors. An OVERRIDE of the printed face (the sheet prints 5), authored ' +
+      'because the value is a ruling and the face is generated from the spreadsheet. Ruled 2 on ' +
+      '20/08/2026; null hands the number back to the card. The only lever ever measured to move ' +
+      'the suit balance: t=5 clogs 2.3% of turn boundaries, t=3 5%, t=2 11%, evenness best at 2. ' +
+      '4 - one full delivery of freight - is unarmed and not refuted.',
+  },
+  {
     template: 'rules.economy.upgradeCostCoins',
     type: 'int',
     description:

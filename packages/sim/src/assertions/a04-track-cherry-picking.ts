@@ -36,19 +36,49 @@ import { pct } from '../stats.js';
  * is a table question and this instrument cannot answer it.
  */
 
-/** Below this the brake is not biting. Set from the t=4 arm, which measured 8.6% and was broken. */
-const BRAKE_FLOOR = 0.15;
+/**
+ * ⭐ RE-BASED AGAIN, 20/08/2026, FOR CHANGE 6, and the re-base is not optional:
+ * the metric underneath it changed meaning, so the old number measured nothing.
+ *
+ * It used to sample the SERVICE - one of two rival-touchable buildings - and
+ * meant *"half this farm is shut"*. Since the merge it samples the NOTICE
+ * BOARD, the only door, and means *"this farm is shut"*. One threshold now
+ * throttles the traffic that used to split across two buildings, so the rates
+ * are not comparable and 15% is unreachable: **no threshold in the sensible
+ * range gets near it.**
+ *
+ *   merged door, t=5 -> 2.3% clogged, suits 70.2 points from even
+ *   merged door, t=3 -> 5.0% clogged, suits 67.2 points from even
+ *   merged door, t=2 -> 11.0% clogged, suits 54.6 points from even   <- ruled
+ *
+ * THE FLOOR IS DERIVED BY THE SAME RULE AS THE OLD ONE: sit above the clog rate
+ * of the arms that are measurably broken and below the arm that is chosen. The
+ * 2026-08-09 band put 15% above a broken 8.6% and below a shipped 39.6%; this
+ * one puts 8% above a broken 2.3% and 5.0% and below the ruled 11.0%.
+ *
+ * ⚠️ AND IT IS STILL A NUMBER TAKEN FROM OUR OWN OUTPUT, which is the weakest
+ * kind of threshold this project allows and the bar ticket 11 section 2 warns
+ * about. It is kept because the design's sentence - *"too low and it never
+ * bites"* - names a direction and no number, so something has to stand in for
+ * "bites". Treat it as a tripwire for the brake vanishing, never as a target to
+ * tune the threshold towards: the threshold is ruled on SUIT BALANCE, and this
+ * band exists to notice when the brake has quietly stopped existing, which is
+ * exactly what it did at t=5.
+ */
+const BRAKE_FLOOR = 0.08;
 /** Above this, report loudly. Not a FAIL: only a table can judge how a shut shop feels. */
 const FEEL_WATCH = 0.5;
 
 export const serviceClog: Assertion = {
   id: 4,
-  title: 'The Service clog',
+  title: 'The door clog',
   quote:
     'The Service threshold is the only brake on a popular farm, and the only lever ever ' +
     'measured to move the suit balance. Too low and it never bites.',
-  source: 'the suit Services, 2026-08-10; band re-based against the threshold arms 2026-08-09',
-  shape: "Share of turn boundaries at which a seat's own Service stands clogged.",
+  source:
+    'the suit Services, 2026-08-10; band re-based against the threshold arms 2026-08-09, and ' +
+    'again 20/08/2026 when change 6 merged the door into the Notice Board',
+  shape: "Share of turn boundaries at which a seat's own Notice Board stands clogged.",
   threshold: `FAIL below ${pct(BRAKE_FLOOR)}; above ${pct(FEEL_WATCH)} reports as a table question`,
   taste: false,
   remedy:
@@ -78,7 +108,7 @@ export const serviceClog: Assertion = {
     }
     return {
       value,
-      headline: `${pct(value)} of ${sampled} turn boundaries find a seat's Service clogged`,
+      headline: `${pct(value)} of ${sampled} turn boundaries find a seat's Notice Board clogged`,
       detail,
       verdict: !Number.isFinite(value) ? 'OBSERVE' : value < BRAKE_FLOOR ? 'FAIL' : 'PASS',
     };
