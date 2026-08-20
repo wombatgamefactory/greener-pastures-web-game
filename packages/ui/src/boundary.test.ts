@@ -21,6 +21,20 @@ const SRC = import.meta.dirname;
 /** The one module allowed to hold state and drive the engine. */
 const STATE_HOLDER = join('session', 'table.ts');
 
+/**
+ * Modules allowed to SOURCE card data, as opposed to being handed it.
+ *
+ * `table.ts` because it holds the game's state. `sheet/main.tsx` because it is
+ * the card sheet renderer's entry point: a separate page, not part of the game,
+ * whose whole job is to draw a chosen dataset and pass it down as a prop - the
+ * same shape as `table.ts`, for a different consumer. The rule below exists so
+ * an overlay-applied run is honoured; the sheet page renders what the shared
+ * card sheet currently says, which is not an overlay-applied run and is not
+ * meant to be. It still hands `GameData` to its components as a prop, so the
+ * constraint that actually matters is intact.
+ */
+const DATA_SOURCES = [STATE_HOLDER, join('sheet', 'main.tsx')];
+
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
     const path = join(dir, entry);
@@ -55,7 +69,7 @@ describe('the UI cannot reach past the view', () => {
     // Every component takes `GameData` as a prop. A component importing
     // BASE_GAME_DATA directly would silently ignore an overlay-applied run.
     const offenders = files.filter(
-      (f) => f.rel !== STATE_HOLDER && /BASE_GAME_DATA|loadGameData/.test(f.text),
+      (f) => !DATA_SOURCES.includes(f.rel) && /BASE_GAME_DATA|loadGameData/.test(f.text),
     );
     expect(offenders.map((f) => f.rel)).toEqual([]);
   });
