@@ -49,11 +49,11 @@
       "id": "draw",
       "name": "The Nursery",
       "action": "draw",
-      "actionText": "Draw 2.",
+      "actionText": "Draw 3.",
       "linkedSuit": "orchard",
       "draw": {
-        "see": 2,
-        "keep": 2
+        "see": 3,
+        "keep": 3
       }
     },
     {

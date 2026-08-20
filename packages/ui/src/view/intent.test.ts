@@ -21,7 +21,7 @@ import { describe, expect, it } from 'vitest';
 import { BASE_GAME_DATA as data } from '@gp/data';
 import type { Suit } from '@gp/data';
 import { MOVE_TYPES, apply, isOver, legalMoves, makeProber, newGame, viewFor } from '@gp/engine';
-import type { Move, MoveType, PlayerView } from '@gp/engine';
+import type { CardId, Move, MoveType, PlayerView } from '@gp/engine';
 import { makePolicy, policyRng } from '@gp/bots';
 
 import {
@@ -179,6 +179,48 @@ function buildPanelOpens(position: Position, card: string): boolean {
   return liveTargets(position.view, position.moves, armed).hand.has(card);
 }
 
+/**
+ * `subsetAnswer` scans every move to resolve ONE answer, and this file calls it
+ * once per move, so the pair is quadratic in the size of a keep/discard task.
+ * That was free while hands stayed at the printed limit and went off a cliff on
+ * 19/08/2026, when D7's wildcard ruling let a Dairy seat build without spending
+ * hand cards: hands reached 17 against a limit of 7, one discard task offered
+ * C(17,10) = 19,448 answers, and this test spent 192 SECONDS on a single
+ * position against its 5s budget.
+ *
+ * ⚠️ THE INDEX IS A TEST-SPEED FIX AND NOTHING ELSE. It asserts exactly what the
+ * scan asserted - the same answer object, found by the same card set - so the
+ * coverage is unchanged, and `subsetAnswer` is still what the UI calls and is
+ * still exercised through it below. The 19,448-answer task is NOT fixed by this
+ * and is not meant to be: it is a real consequence of the ruling, it is written
+ * up in `docs/turn-structure-arms-2026-08-19-v1.md`, and hiding it behind a
+ * raised timeout is how it would have been missed.
+ */
+const SUBSET_INDEX = new WeakMap<readonly Move[], Map<string, Map<string, Move>>>();
+
+function subsetKey(cards: readonly CardId[]): string {
+  return [...cards].sort().join('|');
+}
+
+function subsetIndex(moves: readonly Move[], kind: 'keep' | 'discard'): Map<string, Move> {
+  let byKind = SUBSET_INDEX.get(moves);
+  if (!byKind) {
+    byKind = new Map();
+    SUBSET_INDEX.set(moves, byKind);
+  }
+  const cached = byKind.get(kind);
+  if (cached) return cached;
+  const index = new Map<string, Move>();
+  for (const move of moves) {
+    if (move.type !== 'task') continue;
+    const answer = move.answer;
+    if (answer.kind !== kind) continue;
+    index.set(subsetKey(answer.cards), move);
+  }
+  byKind.set(kind, index);
+  return index;
+}
+
 function taskReachable(position: Position, move: Move): boolean {
   if (move.type !== 'task') return false;
   const { moves } = position;
@@ -203,9 +245,9 @@ function taskReachable(position: Position, move: Move): boolean {
         assembleBuild(moves, answer.card, answer.payment, answer.stacks ?? [])?.move === move
       );
     case 'keep':
-      return subsetAnswer(moves, 'keep', answer.cards) === move;
+      return subsetIndex(moves, 'keep').get(subsetKey(answer.cards)) === move;
     case 'discard':
-      return subsetAnswer(moves, 'discard', answer.cards) === move;
+      return subsetIndex(moves, 'discard').get(subsetKey(answer.cards)) === move;
     case 'deckSow':
     case 'handToBarn':
     case 'skip':
@@ -245,6 +287,32 @@ describe('every legal move is reachable through the interface', () => {
       expect([...new Set(unreachable)].slice(0, 5)).toEqual([]);
     });
   }
+
+  /**
+   * The index above replaced `subsetAnswer` in the hot loop for speed, so the
+   * real UI function needs its own check or it would be uncovered here while
+   * still being what the interface calls. Asserts the two AGREE, on every
+   * keep/discard task the corpus actually contains, which is the property the
+   * substitution relies on.
+   */
+  it('the subset index agrees with subsetAnswer, which is what the UI calls', () => {
+    let checked = 0;
+    for (const { positions } of tables) {
+      for (const position of positions) {
+        for (const kind of ['keep', 'discard'] as const) {
+          for (const [, move] of subsetIndex(position.moves, kind)) {
+            if (move.type !== 'task') continue;
+            const answer = move.answer;
+            if (answer.kind !== kind) continue;
+            expect(subsetAnswer(position.moves, kind, answer.cards)).toBe(move);
+            checked += 1;
+            if (checked > 400) return;
+          }
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
 
   it('actually meets a build task, so its two doors are really being checked', () => {
     const tasks = tables.flatMap(({ positions }) =>

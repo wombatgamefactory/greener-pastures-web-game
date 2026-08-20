@@ -8,7 +8,7 @@
 
 import type { GameData } from '@gp/data';
 
-import { handLimitOf, harvestOptions, hasBuyOption } from './actions.js';
+import { bonusOpen, handLimitOf, harvestOptions, hasBonusOption, hasBuyOption } from './actions.js';
 import type { Fx } from './fx.js';
 import { player } from './query.js';
 import { standingMoves } from './runtime.js';
@@ -30,12 +30,24 @@ export function settleTurn(data: GameData, draft: GameState, fx: Fx): void {
     if (turn.again === 'harvest' && harvestOptions(data, draft, draft.turnPlayer).length > 0) {
       return;
     }
-    // An unspent BONUS SLOT no longer holds the turn open, and cannot: since
-    // 19/08/2026 the slot is start-of-turn only, so by the time we are past the
-    // `!turn.actionSpent` guard above, `bonusOpen` is already false and
-    // `hasBonusOption` is false with it. The check that used to live here was
-    // therefore not removed as tidying - it had become unreachable, and the
-    // turn now settles the moment the action and its tails are done.
+    // An unspent BONUS SLOT holds the turn open, and under the SHIPPED rules
+    // this line is dead weight: the slot is start-of-turn only since
+    // 19/08/2026, so past the `!turn.actionSpent` guard above `bonusOpen` is
+    // already false and `hasBonusOption` is false with it.
+    //
+    // ⚠️ IT IS DEAD ONLY WHILE THE KNOB SAYS SO, WHICH IS WHY IT IS BACK.
+    // It was deleted on 19/08/2026 as "unreachable, not merely redundant", and
+    // that reasoning is correct for `bonusAtStartOnly: true` and false for the
+    // control arm of that same knob. Under
+    // `overlays/bonus-any-time.overlay.json` the slot reopens after the action,
+    // `bonusOpen` returns true - and with no check here the turn settled anyway,
+    // so the bonus was never offered and the overlay changed NOTHING. The arm
+    // run on 19/08/2026 came back with an exactly zero delta on all eleven
+    // metrics and all fourteen assertions, which is the signature of an inert
+    // knob rather than of a rule that does not matter. A deletion justified by
+    // the shipped value of a knob silently deletes that knob's control arm; if
+    // the start-of-turn rule is ever made a constant, delete this line THEN.
+    if (bonusOpen(data, draft) && hasBonusOption(data, draft, draft.turnPlayer)) return;
     //
     // The free card buy DID hold the turn open the same way, which is why a
     // seat holding coins used to end its turn by DECLINING rather than by

@@ -448,16 +448,46 @@ export const waxWorkshop: CardHandler = {
   },
   tasks: {
     skimHive: {
-      answers(_data, state, task) {
+      /**
+       * ⭐ ANSWERS BY CROP, NOT BY CARD (ruled 20/08/2026 by Dean).
+       *
+       * This used to offer one answer per card ON the stack, naming it. Two
+       * things were wrong with that and change 6 surfaced both. It LEAKED: the
+       * view collapses every stack to a list of suits - your own included,
+       * `buildingView` - because *"identity dies on placement"*, so a move
+       * naming a stack card told the seat something it is not entitled to know,
+       * and the view-safety walk caught it the moment an Apiary seat fired this.
+       * And it was a FALSE CHOICE: Dean's ruling is that a card on a building
+       * *"is never used for its power, just its suit ... they don't need to be
+       * able to see which card it is"*, so two wheat cards on the same hive are
+       * the same decision offered twice.
+       *
+       * So the seat picks a CROP and the engine takes the first card of it. The
+       * card itself is undamaged by the choice - it keeps its identity, goes to
+       * the barn, and is *"out of circulation"* rather than dead.
+       */
+      answers(data, state, task) {
         const target = player(state, task.pid).tableau.find(
           (b) => b.card === (task.riders.target as CardId),
         );
         if (!target) return [];
-        return target.stack.map((card) => ({ kind: 'card', payload: { card } }) as TaskAnswer);
+        const crops = [...new Set(target.stack.map((id) => cardById(data, id).suit))];
+        return crops.map((suit) => ({ kind: 'card', payload: { suit } }) as TaskAnswer);
       },
       resolve(fx, task, answer) {
         if (answer.kind !== 'card') throw new Error('skimHive expects a card answer');
-        fx.stackCardToBarn(task.pid, task.riders.target as CardId, answer.payload.card as CardId);
+        const building = task.riders.target as CardId;
+        const target = player(fx.state, task.pid).tableau.find((b) => b.card === building);
+        if (!target) throw new Error(`${building} is not built`);
+        // First of that crop. Which physical card leaves is immaterial to the
+        // decision by the ruling above; it is NOT immaterial to the deck, so a
+        // real card still moves and keeps its identity in the barn.
+        const card = target.stack.find(
+          (id) => cardById(fx.data, id).suit === (answer.payload.suit as Suit),
+        );
+        if (card === undefined)
+          throw new Error(`No ${answer.payload.suit as string} on ${building}`);
+        fx.stackCardToBarn(task.pid, building, card);
         return true;
       },
     },

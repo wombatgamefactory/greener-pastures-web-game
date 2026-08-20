@@ -156,12 +156,14 @@ describe('the Orchard Farmstead (O2) - the draw modifier', () => {
     });
   });
 
-  it('composes with the Draw Service: (2,2) -> (3,3), so there is no discard', () => {
+  // ⭐ CHANGE 6 (20/08/2026): the Orchard door follows the sheet's O3 and is
+  // Draw 3, not Draw 2, so the composition is (3,3) -> (4,4).
+  it('composes with the Orchard door: (3,3) -> (4,4), so there is no discard', () => {
     const s = base();
     hireFor(s, ORCHARD, 'draw');
     player(s, ORCHARD).coins += data.workers.ownerActivationCost;
     const worked = apply(data, s, { type: 'workOwnWorker', seat: ORCHARD, workerId: 'draw' });
-    expect(headDraw(worked.state)).toMatchObject({ see: 3, keep: 3 });
+    expect(headDraw(worked.state)).toMatchObject({ see: 4, keep: 4 });
   });
 
   it('never applies to a card-ability draw (DL-47)', () => {
@@ -200,9 +202,9 @@ describe('the discard divert seam - the Farmstead gift and O17 The Fruit Basket'
   });
 
   /**
-   * THE WORDING SCOPES ITSELF. A Draw 2 keep 2 - what the Draw Service becomes
-   * with the modifier - throws nothing away, so there is nothing to give and no
-   * task appears. This is the assertion that stands in for the whole exception
+   * THE WORDING SCOPES ITSELF. A keep-everything draw - what the Orchard door
+   * becomes with the modifier, Draw 4 keep 4 since change 6 - throws nothing
+   * away, so there is nothing to give and no task appears. This is the assertion that stands in for the whole exception
    * list the design doc originally wrote.
    */
   it('a keep-everything draw discards nothing, so no divert is ever offered', () => {
@@ -213,7 +215,8 @@ describe('the discard divert seam - the Farmstead gift and O17 The Fruit Basket'
     const state = answerAll(worked.state);
     expect(state.tasks).toHaveLength(0);
     expect(player(state, WHEAT).hand).toHaveLength(0);
-    expect(player(state, ORCHARD).hand).toHaveLength(3);
+    // 4, not 3: the door is Draw 3 since change 6 and the modifier adds one.
+    expect(player(state, ORCHARD).hand).toHaveLength(4);
   });
 
   it('the gift is declinable, and skipping bins the card as normal', () => {

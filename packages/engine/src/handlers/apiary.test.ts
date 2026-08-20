@@ -431,7 +431,8 @@ describe('A7 The Foraging Hive - the mandatory sow', () => {
     expect(sow.optional).toBeUndefined(); // imperative = mandatory
     expect(sow.targets?.map((r) => r.card)).not.toContain('A7');
     // Your own Notice Board and Service are ordinary sow targets.
-    expect(sow.targets?.map((r) => r.card)).toEqual(expect.arrayContaining(['A0', 'A3', 'A10']));
+    // A0 the Service is gone (change 6); the Notice Board A3 is still a target.
+    expect(sow.targets?.map((r) => r.card)).toEqual(expect.arrayContaining(['A3', 'A10']));
 
     const wheatSow = pendingAnswers(data, grown.state).find(
       (a) => a.kind === 'sow' && a.card === 'W4' && a.onto === 'A10',
@@ -691,7 +692,9 @@ describe('A14 The Honeycomb Tower - the coin faucet with its brake removed', () 
     const s = base();
     buildFor(data, s, APIARY, 'A14', 'A4');
     dealTo(data, s, APIARY, 'A6');
-    loadStack(data, s, WHEAT, 'W0', 2, 'wheat');
+    // Change 6: the Wheat seat has ONE rival-touchable building, so clogging
+    // the whole table is now clogging the Notice Board alone. W0 the Service is
+    // gone, and with it the second door this test used to have to fill.
     loadStack(data, s, WHEAT, 'W3', 5, 'wheat');
     expect(growMoveFor(s, 'A14')).toBeDefined();
     const grown = growBuilding(data, s, APIARY, 'A14', 'A6');
@@ -741,10 +744,10 @@ describe('A15 The Royal Apiary - the draw that counts your loaded buildings', ()
     dealTo(data, s, APIARY, 'A4');
     loadStack(data, s, APIARY, 'A5', 1);
     loadStack(data, s, APIARY, 'A3', 1, 'wheat'); // the Notice Board, visited once
-    loadStack(data, s, APIARY, 'A0', 1, 'wheat'); // the Service, visited once
-    // A5, A3, A0 and A15 itself; A10 is empty and does not count.
+    // A5, A3 and A15 itself; A10 is empty and does not count. Change 6 removed
+    // A0 the Service, so this is 3 where it used to be 4.
     const grown = growBuilding(data, s, APIARY, 'A15', 'A4');
-    expect(headDraw(grown.state)).toMatchObject({ see: 4, keep: 4, src: 'A15' });
+    expect(headDraw(grown.state)).toMatchObject({ see: 3, keep: 3, src: 'A15' });
   });
 
   /** Fired without a placement there is no payment, so it does not count itself. */
@@ -966,8 +969,8 @@ describe('the endgame cards - A19, A20, A21', () => {
     expect(gameEndScores(data, s)[APIARY]?.endgame).toBe(0);
     loadStack(data, s, APIARY, 'A5', 1);
     loadStack(data, s, APIARY, 'A3', 1, 'wheat'); // the Notice Board, visited once
-    loadStack(data, s, APIARY, 'A0', 1, 'wheat'); // the Service, visited once
-    expect(gameEndScores(data, s)[APIARY]?.endgame).toBe(3);
+    // 2, not 3: change 6 removed A0 the Service as a loadable building.
+    expect(gameEndScores(data, s)[APIARY]?.endgame).toBe(2);
   });
 });
 
@@ -1016,10 +1019,11 @@ describe('difficulty metadata stays honest for the Apiary suit', () => {
       .filter((c) => c.suit === 'apiary' && c.enabled)
       .filter((c) => handlerFor(c.id)?.difficulty.verified.crossPlayer === true)
       .map((c) => c.id);
-    // A0 is the suit's Service and A18 the Helping Hand; both cross the table by
-    // construction and neither is a deck card. Of the 18 CARDS in the Apiary
-    // deck, exactly one reaches another seat's zones, and it is A8.
-    expect(cross.sort()).toEqual(['A0', 'A18', 'A8']);
+    // A18 the Helping Hand crosses the table by construction and is not a deck
+    // card. A0 the Service used to be listed beside it and change 6 deleted the
+    // card. Of the 18 CARDS in the Apiary deck, exactly one reaches another
+    // seat's zones, and it is A8.
+    expect(cross.sort()).toEqual(['A18', 'A8']);
 
     const s = base();
     buildFor(data, s, APIARY, 'A8');

@@ -83,7 +83,9 @@ describe('newGame', () => {
       expect(p.hand).toHaveLength(5);
       expect(p.barn).toHaveLength(1);
       expect(p.coins).toBe(0);
-      expect(p.tableau).toHaveLength(4);
+      // THREE starters since change 6 (20/08/2026): Barn, Farmstead, Notice
+      // Board. The fourth was the Service and its door merged into the Board.
+      expect(p.tableau).toHaveLength(3);
       // Own deck holds 12 after dealing hand + barn card.
       expect(state.decks[p.suit]).toHaveLength(12);
       for (const id of [...p.hand, ...p.barn]) expect(cardById(data, id).suit).toBe(p.suit);
@@ -608,7 +610,8 @@ describe('the bonus slot through apply', () => {
       payoff: { mode: 'worker', workerId: 'draw' },
     });
     expect(applied.state.turn.visit).toMatchObject({ host: APIARY, workerId: 'draw' });
-    expect(applied.state.tasks[0]).toMatchObject({ t: 'draw', see: 2, keep: 2, pid: WHEAT });
+    // Draw 3 since change 6: the Orchard door follows the sheet's O3.
+    expect(applied.state.tasks[0]).toMatchObject({ t: 'draw', see: 3, keep: 3, pid: WHEAT });
     // A BASE board pays the action branch nothing. That is what the upgrade buys.
     expect(applied.state.players[WHEAT]!.coins).toBe(0);
   });

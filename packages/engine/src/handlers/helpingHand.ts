@@ -26,7 +26,7 @@
  */
 
 import { payActionBranch, payServiceWage, workerActionLegal } from '../actions.js';
-import { builtCopies, canTakeCard, player, serviceOf, workerState } from '../query.js';
+import { builtCopies, canTakeCard, noticeBoardOf, player, workerState } from '../query.js';
 import { workWorker } from '../workers.js';
 import type { CardHandler, CardMove } from './types.js';
 
@@ -49,7 +49,8 @@ export const helpingHand: CardHandler = {
     const worker = workerState(state, visit.workerId);
     if (worker.owner === null) return []; // walked home during this visit
     if (!workerActionLegal(data, state, self.seat, visit.workerId)) return [];
-    if (!canTakeCard(data, serviceOf(data, state, visit.host))) return [];
+    // Change 6: the second card goes on the same NOTICE BOARD as the first.
+    if (!canTakeCard(data, noticeBoardOf(data, state, visit.host))) return [];
     return player(state, self.seat).hand.map((fee): CardMove => ({
       type: 'cardMove',
       seat: self.seat,
@@ -62,7 +63,7 @@ export const helpingHand: CardHandler = {
   applyMove(fx, self, move) {
     const visit = fx.state.turn.visit;
     if (!visit) throw new Error('Helping Hand repeat with no visit in flight');
-    const service = serviceOf(fx.data, fx.state, visit.host);
+    const service = noticeBoardOf(fx.data, fx.state, visit.host);
     fx.placeOnBuilding(
       self.seat,
       { seat: visit.host, card: service.card },

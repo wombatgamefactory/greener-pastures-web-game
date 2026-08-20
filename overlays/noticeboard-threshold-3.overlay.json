@@ -1,0 +1,17 @@
+{
+  "name": "noticeboard-threshold-3",
+  "description": "THE DOOR'S THRESHOLD AFTER CHANGE 6 (20/08/2026), at 3, against the shipped 5 that the sheet prints on the Notice Board. Change 6 says in as many words that this number must not be guessed. The Service the Board absorbed was locked at 2, and the threshold is the ONLY lever ever measured to move suit balance - t=4 gave Orchard 80.8%, t=3 62.8%, t=2 42.0% against an even share of 36.4%. Those arms ran on a TWO-building surface and do NOT carry across the merge: traffic that used to split between a Notice Board and a Service now lands on one card, so the same number throttles roughly twice the freight. Read it two ways. AT 5 the cap is looser than the t=4 arm that produced the worst balance number in this project's history. AT 2 one card is a seat's entire cross-table surface, so a clogged board is TOTAL denial rather than a race - assertion 5 measured denial at 0.4-0.6% only because there was always another building to go to, and that reasoning is gone. WATCH: the suit spread first (Dairy is at 65.6% and Apiary 11.1% before this runs), then assertion 5 (denial), then assertion 4 (the door clog), then visits per turn. All ten knobs move together on purpose - the door is one card in five copies, and a per-suit threshold would be a different design.",
+  "schemaVersion": 1,
+  "set": {
+    "cards.catalogue.W3.faces.starter.threshold": 3,
+    "cards.catalogue.W3.faces.upgraded.threshold": 3,
+    "cards.catalogue.V3.faces.starter.threshold": 3,
+    "cards.catalogue.V3.faces.upgraded.threshold": 3,
+    "cards.catalogue.O3.faces.starter.threshold": 3,
+    "cards.catalogue.O3.faces.upgraded.threshold": 3,
+    "cards.catalogue.A3.faces.starter.threshold": 3,
+    "cards.catalogue.A3.faces.upgraded.threshold": 3,
+    "cards.catalogue.D3.faces.starter.threshold": 3,
+    "cards.catalogue.D3.faces.upgraded.threshold": 3
+  }
+}

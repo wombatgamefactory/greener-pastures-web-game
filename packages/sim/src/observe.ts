@@ -50,7 +50,7 @@ import {
   isOrchardCard,
   player,
   score,
-  serviceOf,
+  noticeBoardOf,
   visitOptions,
 } from '@gp/engine';
 import type { PolicyId } from '@gp/bots';
@@ -1102,12 +1102,16 @@ export class Fold {
         if (d.pre.turn.bonusSpent || bonusMove) {
           m.bonusTurnsBySeat[seat] = (m.bonusTurnsBySeat[seat] ?? 0) + 1;
         }
-        // The Service clog, sampled once per turn boundary for EVERY seat: a
-        // clogged Service is a state of the table, not an event, and it is the
-        // brake that replaced the Working Week.
+        // ⭐ THE DOOR CLOG, sampled once per turn boundary for EVERY seat.
+        // CHANGE 6 (20/08/2026) re-based this: it used to sample the Service,
+        // one of TWO rival-touchable buildings, and now samples the NOTICE
+        // BOARD, which is the only one. The number is not comparable across the
+        // merge - the old one measured "half the farm is shut", this one
+        // measures "the farm is shut" - and assertion 4's threshold moved with
+        // it rather than being carried over.
         for (let s2 = 0; s2 < m.seats; s2++) {
           m.serviceClogSampledBySeat[s2] = (m.serviceClogSampledBySeat[s2] ?? 0) + 1;
-          if (isFull(this.data, serviceOf(this.data, d.post, s2))) {
+          if (isFull(this.data, noticeBoardOf(this.data, d.post, s2))) {
             m.serviceClogTurnsBySeat[s2] = (m.serviceClogTurnsBySeat[s2] ?? 0) + 1;
           }
         }

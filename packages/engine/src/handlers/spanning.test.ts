@@ -20,7 +20,7 @@ import {
   workOwnWorker,
 } from '../runtime.js';
 import { growOptions } from '../actions.js';
-import { buildingOf, cardById, player, serviceOf, thresholdOf } from '../query.js';
+import { buildingOf, cardById, player, noticeBoardOf, thresholdOf } from '../query.js';
 import type { GameState, Move, TaskAnswer } from '../state.js';
 import { buildFor, dealTo, hireFor, loadStack, makeState } from '../testkit.js';
 import { handlerFor } from './registry.js';
@@ -333,8 +333,8 @@ describe('5. A Helping Hand (W18) - the standing repeat gate', () => {
     expect(player(state, APIARY).coins).toBe(0);
     // Both cards land on the SERVICE, not the Notice Board: the repeat is a
     // second use of the building the visit targeted.
-    expect(serviceOf(data, state, APIARY).stack).toContain(fee);
-    expect(serviceOf(data, state, APIARY).stack).toHaveLength(2);
+    expect(noticeBoardOf(data, state, APIARY).stack).toContain(fee);
+    expect(noticeBoardOf(data, state, APIARY).stack).toHaveLength(2);
     expect(state.turn.visit?.repeats).toBe(1);
     // One copy built = one repeat: the gate closes.
     expect(standingMoves(data, state, WHEAT)).toEqual([]);
@@ -1276,7 +1276,7 @@ describe('the Wheat rebalance: rulings that live between two cards', () => {
     const visited = visitWork(data, s, APIARY, WHEAT, 'harvest', 'A4');
     // The fee landed on the HOST's Service, and the choice offered is over the
     // VISITOR's buildings - A7 among them, at 2 of 3.
-    expect(serviceOf(data, visited.state, WHEAT).stack).toEqual(['A4']);
+    expect(noticeBoardOf(data, visited.state, WHEAT).stack).toEqual(['A4']);
     const offered = pendingAnswers(data, visited.state)
       .flatMap((a) => (a.kind === 'building' ? [a.card] : []))
       .sort();

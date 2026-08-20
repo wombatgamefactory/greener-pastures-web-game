@@ -131,7 +131,9 @@ export function activateOnly(fx: Fx, seat: Seat, building: CardId): void {
     throw new Error(`${building} has no printed activated ability`);
   }
   const slot = cardById(fx.data, building).slot;
-  if (slot === 'noticeboard' || slot === 'service') {
+  // Change 6: 'service' is gone as a slot; the Notice Board is the door and
+  // is still never a Grow target.
+  if (slot === 'noticeboard') {
     throw new Error(`${building} is never an activation target`);
   }
   if (fx.state.turn.firedThisTurn.includes(building)) {

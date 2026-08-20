@@ -28,7 +28,6 @@ import {
   player,
   roomOn,
   serviceIdOf,
-  serviceOf,
   visitTargetOf,
   withDrawModifier,
   workerData,
@@ -284,21 +283,30 @@ function stackFills(groups: readonly CardId[][], k: number): CardId[][] {
  * because the rule is about what the payment is made of and not where it came
  * from.
  *
- * ⚠️ OPEN RULING, and it is open because ONE READING IS MEASURABLY DEAD.
- * "As 2 WILD resources" could be read as setting the KIND as well as the rate,
- * so that a stack card fills only the wild half of a cost and never the own-crop
- * half. That reading was built first and then thrown away, because of what the
- * card sheet says about it: NO CARD IN THE GAME HAS A WILD HALF ABOVE 1 (55
- * cards print 0 wild, 35 print exactly 1, none print 2). At a rate of 2 per
- * stack card, a wild-only stack card could therefore never be spent on
- * anything, ever - D7 would be a card that reads as a discount and grants
- * nothing. So the rate is the change and the kind is unchanged, which is also
- * exactly what the change list asked for: "Cards still leave the building, as
- * today; each now pays 2 instead of 1."
+ * ⭐ RULED 19/08/2026 BY DEAN, and the ruling is WIDER than what was first
+ * built: *"the card counts as ANY card - including wild."* A card spent off a
+ * building is a true WILDCARD. Its `STACK_WILD_VALUE` resources fill the
+ * OWN-CROP half of a cost exactly as readily as the wild half, and the card's
+ * printed suit does not matter. Hand cards are unchanged - they still have to
+ * actually BE the crop.
  *
- * A stack card contributes `STACK_WILD_VALUE` to the TOTAL and, as before,
- * counts ONCE toward the own-crop minimum if it is of that crop. If Dean wants
- * the stricter reading, the cost structure has to change with it.
+ * The reading this REPLACES (built 19/08, live for a few hours) counted a stack
+ * card toward the own-crop minimum only if it happened to be that crop. The
+ * reading it had already killed was the strict one - "wild" setting the KIND so
+ * that a stack card fills ONLY the wild half - which is dead on the sheet's own
+ * numbers: NO CARD IN THE GAME HAS A WILD HALF ABOVE 1 (55 print 0, 35 print
+ * exactly 1, none print 2), so at 2 per stack card a wild-only stack card could
+ * never be spent on anything and D7 would grant nothing.
+ *
+ * ⚠️ WHAT THE WIDER RULING CHANGES, and it is not small. Under the narrow
+ * reading NO card in the game could be built entirely off stacks - a 2+0 cost
+ * demands two of your crop and one stack card only counted once, a 3+1 cost
+ * demands three and two stack cards only counted twice. Under the ruling both
+ * are payable off the stack alone: 2+0 takes one stack card, 3+1 takes two. D7
+ * becomes a way to build out of your buildings with NO hand card at all, on a
+ * suit that already builds three times as much as any other. It is the single
+ * biggest power increase in the v30 pass and it lands on the suit that the
+ * 19/08 watchlist measured at a 66.4% win rate.
  */
 const STACK_WILD_VALUE = 2;
 
@@ -320,7 +328,14 @@ function paymentsFor(
   for (let n = 0; n <= maxStacks; n++) {
     for (const stacks of stackFills(groups, n)) {
       for (const payment of subsets(hand, price.cardsNeeded - STACK_WILD_VALUE * n)) {
-        const own = [...payment, ...stacks].filter((c) => cardById(data, c).suit === suit).length;
+        // RULED 19/08/2026 (Dean): "the card counts as ANY card - including
+        // wild". So a stack card is a true wildcard - its STACK_WILD_VALUE
+        // resources fill OWN-CROP slots exactly as readily as wild ones, and
+        // its printed suit is irrelevant. Hand cards still have to actually BE
+        // the crop; only the stack is wild.
+        const own =
+          payment.filter((c) => cardById(data, c).suit === suit).length +
+          STACK_WILD_VALUE * stacks.length;
         if (own < price.ownSuitMin) continue;
         out.push(stacks.length > 0 ? { card, payment, stacks } : { card, payment });
       }
@@ -467,9 +482,12 @@ export function doBuild(
   if (paid !== price.cardsNeeded) {
     throw new Error(`${card} costs ${price.cardsNeeded} cards, got ${paid}`);
   }
-  // ...and the own-crop minimum still counts across both sources: see the
-  // open ruling on STACK_WILD_VALUE for why the stricter reading is dead.
-  const own = spent.filter((id) => cardById(fx.data, id).suit === c.suit).length;
+  // ...and the own-crop minimum counts a stack card as WILD, at the same rate
+  // it pays the total (ruled 19/08/2026 - see STACK_WILD_VALUE). Mirrors
+  // `paymentsFor` exactly; apply must accept what the enumerator offers.
+  const own =
+    payment.filter((id) => cardById(fx.data, id).suit === c.suit).length +
+    STACK_WILD_VALUE * stacks.length;
   if (own < price.ownSuitMin) {
     throw new Error(`${card} needs ${price.ownSuitMin} ${c.suit} cards in payment`);
   }
@@ -2041,17 +2059,19 @@ export function visitOptions(data: GameData, state: GameState, seat: Seat): Visi
   const hand = player(state, seat).hand;
   for (let host = 0; host < state.players.length; host++) {
     if (host === seat) continue;
+    // ⭐ CHANGE 6 (20/08/2026): ONE DOOR. `board` was `board` and `service`,
+    // two rival-touchable buildings that clogged independently; the Notice
+    // Board is now both, so a single `boardOpen` gates both payoffs and a
+    // clogged board shuts the whole farm to visitors rather than half of it.
     const board = noticeBoardOf(data, state, host);
-    const service = serviceOf(data, state, host);
     const serviceId = serviceIdOf(data, state, host);
     const boardOpen = !isFull(data, board);
-    const serviceOpen = !isFull(data, service);
     for (const fee of hand) {
       if (boardOpen) {
         out.push({ type: 'visit', seat, host, fee: [fee], payoff: { mode: 'coin' } });
       }
       if (
-        serviceOpen &&
+        boardOpen &&
         workerActionLegal(data, state, seat, serviceId, { excludingHandCard: fee })
       ) {
         out.push({

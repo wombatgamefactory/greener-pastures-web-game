@@ -463,25 +463,39 @@ export interface NoiseFloor {
 export const NOISE_FLOOR: NoiseFloor | null = {
   reference: 'reference-v9',
   games: 500,
-  measured: '2026-08-08',
+  // RE-MEASURED 2026-08-19, after the v30 pass changed 31 cards, converted Tier 3
+  // and re-cut the turn. The floor is a function of the instrument, so it does
+  // not survive a change of that size; the 2026-08-08 values are gone rather
+  // than kept alongside, because two floors in one file is how the wrong one
+  // gets quoted. Most of it barely moved, which is itself worth knowing.
+  measured: '2026-08-19',
   movement: {
     'end coins per player': 0,
     'barn at game end': 0,
-    'game length, rounds': 0,
+    'game length, rounds': 1,
     'visits per turn': 0.003,
-    'unfinished games': 0.002,
-    'winning score': 0,
-    'last as % of winner': 0.027,
-    'tied top score': 0,
-    'seat deviation': 6.186,
-    // NOT MEASURED: 'deck reshuffles per game' and 'reshuffles, played crop',
-    // added 2026-08-09. `noiseNote` filters an absent key rather than inventing
-    // one, so the report simply will not quote a floor for them - which is the
-    // honest state and is left visible rather than filled in with a guess.
-    // Re-run `--noise` and paste both in.
+    'unfinished games': 0.005,
+    'winning score': 1,
+    'last as % of winner': 0.003,
+    'tied top score': 0.004,
+    // Both added 2026-08-09 and unmeasured until now; the 2026-08-08 floor could
+    // not carry them because it predates them.
+    'deck reshuffles per game': 1,
+    'reshuffles, played crop': 0,
+    'seat deviation': 6.255,
   },
+  // ⚠️ STILL NOT MEASURED, AND `--noise` CANNOT MEASURE IT: the five-way
+  // bonus-slot tally (visit-coin / visit-power / own-power / upgrade / SLOT
+  // UNSPENT) and every other assertion DETAIL line. `--noise` diffs the eleven
+  // metrics above and nothing else, so re-running it - as was done on
+  // 2026-08-19 - does NOT give the new columns a floor, and it is worth saying
+  // so here because the v30 handoff asked for exactly that and would have been
+  // satisfied by a run that never touched them. For the 19/08 reading the point
+  // was moot: the tally moved 38.1 points over ~150,000 paired turns, which is
+  // orders of magnitude clear of any plausible sampling variation. A tighter
+  // question would need two --watchlist runs on different seeds, diffed on the
+  // assertion values.
 };
-
 /**
  * One stratified cell: the suits at the table.
  *

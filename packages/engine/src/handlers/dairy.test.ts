@@ -293,12 +293,30 @@ describe('the build-modifier vocabulary', () => {
     // enumerator never invites one.
     const offers = buildsOf(grown.state, 'W9').filter((a) => a.kind === 'build');
     expect(offers.every((a) => (a.stacks?.length ?? 0) <= 1)).toBe(true);
+    // ⭐ RULED 19/08/2026 (Dean): "the card counts as ANY card - including
+    // wild", so a stack card is a TRUE wildcard - it fills W9's own-crop half
+    // whatever its own suit is. That is why this test now has to name the
+    // building it wants: D5 is sitting on D7's own stack (it was the GROW
+    // payment above), and spending that single DAIRY card off D7 is a legal way
+    // to pay a WHEAT card's wheat requirement. Both options are correct; this
+    // one pins the D4 route so the "spent, not harvested" assertions below have
+    // a known stack to check.
     const offStacks = offers.find(
-      (a) => a.kind === 'build' && (a.stacks?.length ?? 0) === 1 && a.payment.length === 1,
+      (a) =>
+        a.kind === 'build' &&
+        (a.stacks?.length ?? 0) === 1 &&
+        a.payment.length === 1 &&
+        stacked.includes(a.stacks?.[0] as string),
     );
     expect(offStacks).toBeDefined();
     const used = (offStacks as { stacks?: string[] }).stacks?.[0] as string;
     expect(stacked).toContain(used);
+
+    // ...and the wildcard route really is offered alongside it: a Dairy card off
+    // D7 paying for a Wheat build is the ruling in one assertion.
+    expect(
+      offers.some((a) => a.kind === 'build' && (a.stacks ?? []).some((id) => id === 'D5')),
+    ).toBe(true);
 
     const done = answerTask(data, grown.state, offStacks as TaskAnswer).state;
     // One card left the stack, and only one: the other two are still on D4.
@@ -632,9 +650,9 @@ describe('D11 The Heritage House - sow the payment back', () => {
     buildFor(data, s, DAIRY, 'D11');
     dealTo(data, s, DAIRY, 'D5', 'W13', 'W4', 'W5', 'W6', 'W7');
     // D11 is threshold 2 and the grow payment is its second card, so it fills
-    // itself; the Service is threshold 2 and the Notice Board 5.
+    // itself; the Notice Board is 5. Change 6 deleted D0 the Service, so the
+    // seat has one fewer building to fill.
     loadStack(data, s, DAIRY, 'D11', 1, 'wheat');
-    loadStack(data, s, DAIRY, 'D0', 2, 'wheat');
     loadStack(data, s, DAIRY, 'D3', 5, 'wheat');
     const grown = growBuilding(data, s, DAIRY, 'D11', 'D5');
     const w13 = buildsOf(grown.state, 'W13').find((a) => a.kind === 'build');
@@ -750,7 +768,7 @@ describe('D14 The Cream Refinery - the demolition', () => {
     buildingOf(s, DAIRY, 'D3').upgraded = true;
     const grown = growBuilding(data, s, DAIRY, 'D14', 'W4');
     const targets = offeredCards(grown.state);
-    expect(targets).not.toContain('D0');
+    // D0 the Service is gone (change 6); D1/D2/D3 are the three starters.
     expect(targets).not.toContain('D1');
     expect(targets).not.toContain('D2');
     expect(targets).not.toContain('D3');

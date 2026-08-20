@@ -150,40 +150,45 @@ export function workerData(data: GameData, id: string): HiredWorker {
 }
 
 /**
- * A seat's SERVICE building - its fourth starter, the one a rival may place a
- * card on to buy its action.
- *
- * Throws for the same reason noticeBoardOf does: every seat has one for the
- * whole game (nothing in the game removes a starter since ticket 30), so a miss
- * is a broken invariant and must not be averaged over by a balance run.
+ * ⛔ `serviceOf` is GONE (change 6, 20/08/2026). There is no Service building:
+ * the door merged into the Notice Board, so `noticeBoardOf` is the only answer
+ * to "which building does a rival touch?" Call it directly.
  */
-export function serviceOf(data: GameData, state: GameState, seat: Seat): BuildingState {
-  const b = player(state, seat).tableau.find((x) => cardById(data, x.card).slot === 'service');
-  if (!b) throw new Error(`Seat ${seat} has no Service`);
-  return b;
-}
 
-/** The Service action a seat owns, from its suit. Every seat owns exactly one. */
+/**
+ * The door ACTION a seat owns, from its suit. Every seat owns exactly one, and
+ * this survived change 6 unchanged - it reads `workers.roster`, which describes
+ * behaviour and never described a card.
+ */
 export function serviceIdOf(data: GameData, state: GameState, seat: Seat): string {
   const suit = player(state, seat).suit;
   const svc = data.workers.roster.find((w) => w.linkedSuit === suit);
-  if (!svc) throw new Error(`No Service for suit ${suit}`);
+  if (!svc) throw new Error(`No door action for suit ${suit}`);
   return svc.id;
 }
 
 /**
- * The building a visit's fee lands on. The payoff mode picks it: a Service visit
- * puts the card on the Service (so popularity clogs the thing being bought), a
- * coin visit puts it on the Notice Board. They clog independently, which is the
- * whole reason there are two.
+ * The building a visit's fee lands on: the host's NOTICE BOARD, whichever payoff
+ * the visitor takes.
+ *
+ * ⭐ CHANGE 6 (20/08/2026) is this function collapsing. It used to send a
+ * `worker` visit to the Service and a `coin` visit to the Notice Board - two
+ * rival-touchable buildings that clogged INDEPENDENTLY, which is where the
+ * denial numbers came from ("there was always another building to go to").
+ * There is one door now, so popularity clogs the whole cross-table surface of a
+ * farm at once.
+ *
+ * Kept as a named function rather than inlined: "the building a visit lands on"
+ * is a real concept with a real invariant, and if a card ever adds a second
+ * door this is the one place that has to learn about it.
  */
 export function visitTargetOf(
   data: GameData,
   state: GameState,
   host: Seat,
-  mode: 'coin' | 'worker' | 'special',
+  _mode: 'coin' | 'worker' | 'special',
 ): BuildingState {
-  return mode === 'worker' ? serviceOf(data, state, host) : noticeBoardOf(data, state, host);
+  return noticeBoardOf(data, state, host);
 }
 
 /**

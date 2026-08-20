@@ -35,15 +35,19 @@ const overlay = (set: Overlay['set'], name = 'test'): Overlay => ({
 });
 
 describe('the extract', () => {
-  it('holds 110 cards: 20 starters and 90 shuffled', () => {
+  // ⭐ CHANGE 6 (20/08/2026): 105, not 110. The five SERVICE starters were
+  // synthesised into the catalogue by `withServices`; the door merged into the
+  // Notice Board, so the catalogue is now exactly the sheet - 15 starters
+  // (Barn, Farmstead, Notice Board) and 90 deck cards.
+  it('holds 105 cards: 15 starters and 90 shuffled', () => {
     const cards = BASE_GAME_DATA.cards.catalogue;
-    expect(cards).toHaveLength(110);
+    expect(cards).toHaveLength(105);
     expect(cards.filter((c) => c.inDeck)).toHaveLength(90);
-    expect(cards.filter((c) => !c.inDeck)).toHaveLength(20);
+    expect(cards.filter((c) => !c.inDeck)).toHaveLength(15);
   });
 
   it('gives every suit the same shape', () => {
-    const expected = { starter: 4, tier1: 5, tier2: 4, tier3: 3, power: 3, endgame: 3 };
+    const expected = { starter: 3, tier1: 5, tier2: 4, tier3: 3, power: 3, endgame: 3 };
     for (const suit of BASE_GAME_DATA.cards.suits) {
       const ofSuit = BASE_GAME_DATA.cards.catalogue.filter((c) => c.suit === suit);
       for (const [type, count] of Object.entries(expected)) {
@@ -61,7 +65,7 @@ describe('the extract', () => {
         .filter((c) => c.suit === suit && c.type === 'starter')
         .map((c) => c.slot)
         .sort();
-      expect(slots, suit).toEqual(['barn', 'farmstead', 'noticeboard', 'service']);
+      expect(slots, suit).toEqual(['barn', 'farmstead', 'noticeboard']);
     }
   });
 
@@ -71,7 +75,7 @@ describe('the extract', () => {
   });
 
   it('ships every card enabled', () => {
-    expect(activeCards()).toHaveLength(110);
+    expect(activeCards()).toHaveLength(105);
   });
 
   it('is frozen, so a caller cannot mutate shared data', () => {
@@ -164,17 +168,26 @@ describe('the suit Services', () => {
     expect(suits).toEqual([...BASE_GAME_DATA.cards.suits].sort());
   });
 
-  it('prints a Service starter per suit, at the shared threshold', () => {
-    const services = BASE_GAME_DATA.cards.catalogue.filter((c) => c.slot === 'service');
-    expect(services).toHaveLength(5);
-    for (const c of services) {
-      expect(c.type, c.id).toBe('starter');
-      expect(c.inDeck, c.id).toBe(false);
-      expect(c.threshold, c.id).toBe(BASE_GAME_DATA.workers.serviceThreshold);
-      // Never a Grow target: the owner pays coins from the bonus slot instead.
-      expect(c.activationType, c.id).toBeNull();
-      // A fourth starter must not quietly hand every seat more points.
-      expect(c.printedVp, c.id).toBe(0);
+  // ⭐ REPLACES 'prints a Service starter per suit' (change 6, 20/08/2026).
+  // There is no Service CARD to assert about any more. What has to stay true is
+  // the inverse: nothing synthesises one back, and the door lives on a Notice
+  // Board that is a real extracted row with a real printed threshold.
+  it('has no Service card, and every door is a Notice Board', () => {
+    expect(BASE_GAME_DATA.cards.catalogue.filter((c) => c.slot === 'service')).toHaveLength(0);
+    for (const svc of BASE_GAME_DATA.workers.roster) {
+      const board = BASE_GAME_DATA.cards.catalogue.find(
+        (c) => c.suit === svc.linkedSuit && c.slot === 'noticeboard',
+      );
+      expect(board, svc.id).toBeDefined();
+      // The door's threshold is the Notice Board's PRINTED one now, not
+      // workers.serviceThreshold, and it is the balance lever - see
+      // overlays/noticeboard-threshold.sweep.json.
+      expect(board?.faces?.starter.threshold, svc.id).toBeGreaterThan(0);
+      // Still never a Grow target - but by its SLOT, not by a null activation
+      // type: the Notice Board prints `wild` (it takes any crop as a visit fee)
+      // and `growOptions` / `activateOnly` both refuse `slot === 'noticeboard'`
+      // outright. That is the guard the merge relies on, so assert the slot.
+      expect(board?.slot, svc.id).toBe('noticeboard');
     }
   });
 
@@ -233,16 +246,21 @@ describe('applying an overlay', () => {
     expect(BASE_GAME_DATA.workers.ownerActivationCost).toBe(1);
   });
 
-  it('reaches the synthesised Service faces, which are built after the overlay', () => {
-    const tight = loadGameData(overlay({ 'workers.serviceThreshold': 3 }));
-    for (const c of tight.cards.catalogue.filter((x) => x.slot === 'service')) {
-      expect(c.threshold, c.id).toBe(3);
-    }
+  // ⭐ REPLACES 'reaches the synthesised Service faces' (change 6). Nothing is
+  // synthesised any more, so the thing to prove is that the door's threshold is
+  // reachable as an ORDINARY CARD KNOB on the Notice Board's printed face.
+  it("reaches the door's threshold on the Notice Board's printed face", () => {
+    const tight = loadGameData(overlay({ 'cards.catalogue.W3.faces.starter.threshold': 3 }));
+    const board = tight.cards.catalogue.find((c) => c.id === 'W3');
+    expect(board?.faces?.starter.threshold).toBe(3);
+    expect(
+      BASE_GAME_DATA.cards.catalogue.find((c) => c.id === 'W3')?.faces?.starter.threshold,
+    ).not.toBe(3);
   });
 
   it('switches a card out', () => {
     const withoutBreadHall = loadGameData(overlay({ 'cards.catalogue.W21.enabled': false }));
-    expect(activeCards(withoutBreadHall)).toHaveLength(109);
+    expect(activeCards(withoutBreadHall)).toHaveLength(104);
     expect(activeCards(withoutBreadHall).some((c) => c.id === 'W21')).toBe(false);
   });
 

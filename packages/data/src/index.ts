@@ -30,7 +30,6 @@ import { applyOverlay } from './overlay.js';
 import type { Overlay } from './overlay.js';
 import type {
   AerodromeFile,
-  Card,
   CardsFile,
   GameData,
   IslandFile,
@@ -53,65 +52,42 @@ export {
 } from './overlay.js';
 export type { Overlay, SweepAxis, SweepCell, SweepFile } from './overlay.js';
 
-/** The id of a suit's Service card: the suit's letter prefix with a 0. */
-export function serviceCardId(catalogue: readonly Card[], suit: string): string {
-  const sibling = catalogue.find((c) => c.suit === suit && c.type === 'starter');
-  if (!sibling) throw new Error(`No starter to take a prefix from for ${suit}`);
-  return `${sibling.id.replace(/\d+$/, '')}0`;
-}
-
 /**
- * The five SERVICE starters, synthesised from workers.json (2026-08-10).
+ * ⛔ `serviceCardId` and `withServices` are GONE (change 6, 20/08/2026).
  *
- * They are real starter cards - setup pre-builds them, they clog, they are
- * harvested - but the designer sheet has no Service row yet, so they cannot come
- * out of the extract without hand-editing a generated file. Synthesising them
- * here keeps cards.json a faithful extract and keeps the Service's threshold a
- * single knob (`workers.serviceThreshold`) rather than five printed copies.
+ * They synthesised five SERVICE starter cards out of `workers.json` - a fourth
+ * starter per seat, threshold 2, that a rival could place a card on to buy the
+ * suit's action. Change 6 merges that door into the NOTICE BOARD, which is a
+ * real card in the extract and always was, so there is nothing left to
+ * synthesise: `data.cards.catalogue` is now exactly the 105 rows of the sheet.
  *
- * Run AFTER the overlay, and replacing rather than appending, so an overlay on
- * `workers.serviceThreshold` reaches the printed face instead of being shadowed
- * by a card built from the base numbers.
+ * What was lost with them, and where it went:
  *
- * Deliberately: no `faces` (a Service does not flip), `activationType: null` so
- * it is never a Grow target, and `printedVp: 0` so adding a fourth starter does
- * not quietly hand every seat 2 more points.
+ * - the door's THRESHOLD was `workers.serviceThreshold` (2) and is now the
+ *   Notice Board's own printed threshold (5 on the sheet), reachable as the
+ *   ordinary card knob `cards.catalogue.{}.faces.{}.threshold`. ⚠️ That is a
+ *   change from 2 to 5 on the one lever ever measured to move suit balance, and
+ *   it is NOT a decision this change is entitled to make quietly - see
+ *   `overlays/noticeboard-threshold.sweep.json`, written with it.
+ * - `workers.roster` SURVIVES, and it is still where each suit's door action and
+ *   its enhancement live. It stopped describing a card; it never stopped
+ *   describing behaviour.
+ * - `state.fair` survives untouched: it maps worker id -> owning seat off
+ *   `linkedSuit`, which never depended on the card existing.
  */
-function withServices(data: GameData): GameData {
-  const base = data.cards.catalogue.filter((c) => c.slot !== 'service');
-  const services: Card[] = data.workers.roster.map((svc) => ({
-    id: serviceCardId(base, svc.linkedSuit),
-    suit: svc.linkedSuit,
-    type: 'starter',
-    slot: 'service',
-    name: svc.name,
-    inDeck: false,
-    enabled: true,
-    buildCost: null,
-    abilityTrigger: [],
-    needsDesignReview: false,
-    threshold: data.workers.serviceThreshold,
-    activationType: null,
-    printedVp: 0,
-    abilityText: `VISITOR: place 1 card here, then ${svc.actionText} Owner: pay £${data.workers.ownerActivationCost} instead of placing a card.`,
-  }));
-  return { ...data, cards: { ...data.cards, catalogue: [...base, ...services] } };
-}
 
 /**
  * The committed numbers, with no overlay applied. Frozen: a caller that mutates
  * shared data would turn a balance run into a mystery, so the freeze converts
  * that into an exception at the point of the write.
  */
-export const BASE_GAME_DATA: GameData = deepFreeze(
-  withServices({
-    cards: cardsJson as unknown as CardsFile,
-    island: islandJson as unknown as IslandFile,
-    workers: workersJson as unknown as WorkersFile,
-    aerodrome: aerodromeJson as unknown as AerodromeFile,
-    rules: rulesJson as unknown as RulesFile,
-  }),
-);
+export const BASE_GAME_DATA: GameData = deepFreeze({
+  cards: cardsJson as unknown as CardsFile,
+  island: islandJson as unknown as IslandFile,
+  workers: workersJson as unknown as WorkersFile,
+  aerodrome: aerodromeJson as unknown as AerodromeFile,
+  rules: rulesJson as unknown as RulesFile,
+});
 
 /**
  * The data a game or a simulation run reads.
@@ -123,7 +99,7 @@ export const BASE_GAME_DATA: GameData = deepFreeze(
  */
 export function loadGameData(overlay?: Overlay): GameData {
   if (!overlay) return BASE_GAME_DATA;
-  return deepFreeze(withServices(applyOverlay(BASE_GAME_DATA, overlay)));
+  return deepFreeze(applyOverlay(BASE_GAME_DATA, overlay));
 }
 
 /** The Service a suit owns, or undefined if that suit has none. */

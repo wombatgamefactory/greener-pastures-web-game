@@ -73,9 +73,9 @@ function costIcons(data: GameData, card: Card, upgraded: boolean): CostIcon[] {
     // (three own-crop icons, ticket 46) went with the free flip it printed.
     // The per-card override falls back to the rule so a card and a knob cannot
     // disagree, and a non-starter with no cost prints nothing.
-    // The Service is a slot on the Notice Board, not a starter with a face to
-    // buy, so it prints no bar.
-    if (!card.slot || card.slot === 'service') return [];
+    // Change 6 (20/08/2026): there is no Service card, so the only reason to
+    // print nothing is a card with no slot at all.
+    if (!card.slot) return [];
     const upgradeCost = card.upgradeCostCoins ?? data.rules.economy.upgradeCostCoins;
     return Array.from({ length: upgradeCost }, () => ({ kind: 'coin' }) as CostIcon);
   }
