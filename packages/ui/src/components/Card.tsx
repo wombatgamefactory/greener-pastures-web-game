@@ -96,7 +96,6 @@ export interface CardProps {
 export function Card({ face, width, zoomTier = false, children, className = '' }: CardProps) {
   const meta = SUIT_META[face.suit];
   const src = zoomTier ? cardArtZoom(face.id, face.upgraded) : cardArt(face.id, face.upgraded);
-  const bandLayer = face.bandPosition === 'top' ? 'ability_bg' : 'bottom_bg';
 
   return (
     <article
@@ -108,8 +107,8 @@ export function Card({ face, width, zoomTier = false, children, className = '' }
     >
       <img className="card-art" src={src} alt="" loading="lazy" draggable={false} />
 
-      <div className={`card-band card-band-${face.bandPosition}`}>
-        <img className="card-band-bg" src={frame(`${bandLayer}_${face.suit}`)} alt="" />
+      <div className="card-band">
+        <img className="card-band-bg" src={frame(`ability_bg_${face.suit}`)} alt="" />
         {face.activation && (
           <img
             className="card-band-icon"

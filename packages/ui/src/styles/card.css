@@ -47,21 +47,17 @@
 
 /* ---- the ability band --------------------------------------------------- */
 
+/* One band, across the top, on every card. The printed template stopped
+   putting Power and Endgame text along the bottom on 2026-08-20; 18.93% is the
+   full height of the `ability_bg_<suit>` strip (1039 x 142), which the top band
+   used to squash to 130px. */
 .card-band {
   position: absolute;
+  top: 0;
   left: 0;
   right: 0;
-  height: 17.33%;
-  display: block;
-}
-
-.card-band-top {
-  top: 0;
-}
-
-.card-band-bottom {
-  bottom: 0;
   height: 18.93%;
+  display: block;
 }
 
 .card-band-bg {
@@ -89,9 +85,32 @@
    in Card.tsx. Both are load-bearing and neither is optional: see the
    `[data-text]::after` block in base.css for why an outline that relies on
    paint-order alone is unreadable on Safari before 17.4. */
+/*
+ * Centred in the band, the way the InDesign frame centres it - which only shows
+ * on a one-line ability, and every Power and Endgame card has one.
+ *
+ * Centred by shrink-wrapping the box and offsetting it, NOT by `align-items` or
+ * `align-content` on a full-height box, because two other things are laid out
+ * against this box and both would break. The `[data-text]::after` fill layer
+ * (base.css) is absolutely positioned over the element and inherits alignment
+ * but not centring, so it would keep drawing its copy at the top and the fill
+ * would slide off its own outline. And `render-sheets.mjs` reads the overset
+ * verdict off `scrollHeight > clientHeight`, which only counts overflow past
+ * the BOTTOM edge - centred overflow spills equally out of both, and half of it
+ * would stop being measurable. With `max-height`, text that fits sets the box's
+ * height (so the fill layer lands on the outline) and text that does not is
+ * top-aligned inside the clamped box and clipped downwards, exactly as before.
+ *
+ * 84% of the band is the same 119.6px of text the 4%-inset 130px band gave, so
+ * no card's fit verdict changes on the way through.
+ */
 .card-ability {
   position: absolute;
-  inset: 4% 2.5% 4% 21%;
+  left: 21%;
+  right: 2.5%;
+  top: 50%;
+  transform: translateY(-50%);
+  max-height: 84%;
   margin: 0;
   font-size: 3.5cqw;
   line-height: 1.2;
@@ -103,17 +122,18 @@
   overflow: hidden;
 }
 
-/* A band with no icons (Power and Endgame print neither) reclaims the gutter. */
+/* A band with no icons (Power and Endgame print neither) reclaims the gutter,
+   and stays ranged left against the card edge like every other ability. */
 .card-band:not(:has(.card-band-icon)) .card-ability {
-  inset: 6% 2.5% 6% 2.5%;
-  text-align: center;
+  left: 2.5%;
 }
 
 /* ---- name --------------------------------------------------------------- */
 
+/* Directly under the band - which is why this tracks `.card-band`'s height. */
 .card-name {
   position: absolute;
-  top: 17.5%;
+  top: 18.9%;
   left: 13%;
   right: 11%;
   margin: 0;
@@ -124,10 +144,6 @@
   color: #fff;
   -webkit-text-stroke: 0.75cqw #2f2318;
   paint-order: stroke fill;
-}
-
-.card-band-bottom ~ .card-name {
-  top: 3%;
 }
 
 /* ---- left column: VP, crop chip, reference, threshold -------------------- */
@@ -203,12 +219,6 @@
   color: #fff;
   -webkit-text-stroke: 1.1cqw #2f2318;
   paint-order: stroke fill;
-}
-
-/* A bottom band would collide with the threshold number, but no card prints
-   both: Power and Endgame cards never stack. Belt and braces all the same. */
-.card:has(.card-band-bottom) .card-threshold {
-  display: none;
 }
 
 /* ---- the cost bar ------------------------------------------------------- */

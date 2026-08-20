@@ -14,7 +14,17 @@
  *                (the Farmstead's bar prints its MILESTONE instead: one own-crop
  *                icon per building that flips it free - ticket 46)
  *   @cost_bar    cost_bg_<n> where n is that icon count
- *   @top_bar     ability_bg_<suit>, or bottom_bg_<suit> for Power and Endgame
+ *   @top_bar     ability_bg_<suit>, on every card and always at the top
+ *                (the printed template retired the bottom band; see below)
+ *
+ * The band moved on 2026-08-20. The sheet still carries a `@bottom_bar`
+ * column, and it is still filled in for the Barn, the Farmstead, Power and
+ * Endgame - but the printed template now lays BOTH columns' frame across the
+ * top of the card, which is why the InDesign sheets show every ability in one
+ * top band. There is therefore nothing left for a band POSITION to select, so
+ * the field is gone rather than pinned to 'top': one band, one layer
+ * (`ability_bg_<suit>`, byte-identical to `bottom_bg_<suit>` on disk), and no
+ * second geometry for the CSS to keep in step.
  *
  * Verified against the sheet for W1/W2/W3/W4/W7/W10/W13/W18/W19/V1/O2, and
  * asserted for all 105 cards by printed.test.ts - which is what stops the web
@@ -31,8 +41,6 @@ export interface PrintedFace {
   readonly upgraded: boolean;
   readonly name: string;
   readonly abilityText: string;
-  /** Starters print their ability in the TOP band; Power and Endgame in the bottom one. */
-  readonly bandPosition: 'top' | 'bottom';
   readonly printedVp: number;
   /** Stack slots. Null on a card that is not a stacking building (Barn, Farmstead, Power, Endgame). */
   readonly threshold: number | null;
@@ -106,7 +114,6 @@ export function printedFace(data: GameData, id: string, upgraded = false): Print
     upgraded,
     name: face.name,
     abilityText: face.abilityText ?? '',
-    bandPosition: card.type === 'power' || card.type === 'endgame' ? 'bottom' : 'top',
     printedVp: face.printedVp,
     threshold: face.threshold,
     activation,

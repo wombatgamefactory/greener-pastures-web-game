@@ -22,7 +22,6 @@ describe('printedFace, against the sheet', () => {
     expect(face.threshold).toBeNull();
     expect(face.convert).toBeNull();
     expect(face.handSize).toBe(5);
-    expect(face.bandPosition).toBe('top');
   });
 
   it('W1 upgraded Barn: crop icon, no cost bar, prints VP', () => {
@@ -79,10 +78,9 @@ describe('printedFace, against the sheet', () => {
     expect(face.threshold).toBe(2);
   });
 
-  it('W18 Helping Hand: a Power card, so the caboose head and the BOTTOM band', () => {
+  it('W18 Helping Hand: a Power card, so the caboose head and no stack', () => {
     const face = printedFace(data, 'W18');
     expect(face.costIcon).toBe('caboose');
-    expect(face.bandPosition).toBe('bottom');
     expect(face.threshold).toBeNull();
     expect(face.activation).toBeNull();
   });
@@ -138,10 +136,20 @@ describe('printedFace, across the whole catalogue', () => {
     }
   });
 
-  it('puts Power and Endgame text in the bottom band and everything else on top', () => {
+  /**
+   * The bottom band is gone (2026-08-20): the printed template lays one band
+   * across the top of every card. Nothing here selects a position any more, so
+   * what is worth pinning is that every face still has a band to put text in -
+   * i.e. that no card type quietly lost its ability line with the geometry.
+   */
+  it('gives every face an ability band to print into', () => {
+    for (const face of every) {
+      expect(typeof face.abilityText).toBe('string');
+    }
+    // And the ones that exist to carry text actually carry some.
     for (const card of data.cards.catalogue) {
-      const expected = card.type === 'power' || card.type === 'endgame' ? 'bottom' : 'top';
-      expect(printedFace(data, card.id).bandPosition).toBe(expected);
+      if (card.type !== 'power' && card.type !== 'endgame') continue;
+      expect(printedFace(data, card.id).abilityText.length).toBeGreaterThan(0);
     }
   });
 
