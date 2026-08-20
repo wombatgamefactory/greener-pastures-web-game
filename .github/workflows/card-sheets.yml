@@ -58,7 +58,11 @@ jobs:
           CARD_SHEET_CSV: ${{ vars.CARD_SHEET_CSV }}
         run: npm run cards:sheet -- ${{ inputs.suit && format('--suit {0}', inputs.suit) || '' }}
 
-      - uses: actions/upload-artifact@v4
+      # `always()` because the render exits non-zero when a card's text does not
+      # fit, and that is exactly when the sheets are most worth looking at.
+      # Without this the run fails and hands back nothing to look at.
+      - if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: card-sheets
           path: reports/cards/*.png

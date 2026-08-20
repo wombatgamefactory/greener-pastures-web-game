@@ -124,11 +124,16 @@ async function checkOverset(page) {
       const el = card.querySelector('.card-ability');
       if (!el || !el.textContent.trim()) continue;
       if (!clipped(el)) continue;
-      const before = el.style.fontSize;
-      const size = parseFloat(getComputedStyle(el).fontSize);
-      el.style.fontSize = `${size * fit}px`;
+      // Berlin Sans is NARROWER than Fredoka, not SMALLER: same line height,
+      // more characters per line. So the correction widens the box by 8.2% and
+      // re-counts lines at the original size. Shrinking the font instead - the
+      // first version of this - shrank the line height too, which let three
+      // lines fit that do not fit in print, and reported a genuinely clipped
+      // card as a false alarm.
+      const before = el.style.width;
+      el.style.width = `${el.clientWidth / fit}px`;
       const stillClipped = clipped(el);
-      el.style.fontSize = before;
+      el.style.width = before;
       out.push({
         id: card.querySelector('.card-ref')?.textContent ?? '?',
         name: card.querySelector('.card-name')?.textContent ?? '?',
