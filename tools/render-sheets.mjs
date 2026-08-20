@@ -206,15 +206,36 @@ console.log(`${n} image(s) written to ${OUT}`);
 
 const broken = overset.filter((o) => o.inPrint);
 const suspect = overset.filter((o) => !o.inPrint);
+
+/**
+ * On CI, also raise each card as a workflow annotation.
+ *
+ * Without this the only place a clipped card appears is inside the step log,
+ * which someone has to think to open - and the person running this is a
+ * designer checking their wording, not someone who reads CI logs. An annotation
+ * puts the card id on the run summary page, where they are already looking.
+ */
+const annotate = (kind, text) => {
+  if (process.env.GITHUB_ACTIONS) console.log(`::${kind}::${text}`);
+};
+
 if (broken.length) {
   console.log('');
   console.log(`TEXT DOES NOT FIT (${broken.length}) - clipped in print too:`);
-  for (const o of broken) console.log(`  ${o.id.padEnd(5)} ${o.name}`);
+  for (const o of broken) {
+    console.log(`  ${o.id.padEnd(5)} ${o.name}`);
+    annotate('error', `${o.id} ${o.name}: text is too long and is clipped on the printed card`);
+  }
 }
 if (suspect.length) {
   console.log('');
   console.log(`clipped here but fits in Berlin Sans (${suspect.length}) - no action needed:`);
   for (const o of suspect) console.log(`  ${o.id.padEnd(5)} ${o.name}`);
+  annotate(
+    'notice',
+    `${suspect.length} card(s) look long in the proof font but fit in print - no action needed: ` +
+      suspect.map((o) => o.id).join(', '),
+  );
 }
 if (!overset.length) console.log('no overset text.');
 process.exitCode = broken.length ? 1 : 0;
