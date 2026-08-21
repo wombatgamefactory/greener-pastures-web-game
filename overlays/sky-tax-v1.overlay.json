@@ -1,0 +1,8 @@
+{
+  "name": "sky-tax-v1",
+  "description": "DIAGNOSTIC, 2026-08-20. Is the Aerodrome eating the Vegetable suit's score? Under the flat island a delivery is 6 VP first / 3 VP second plus GBP 1, the game ends on somebody's 6th island delivery, and NO balloon reward is a victory point or a step on that clock. The reference run measures a Vegetable seat taking 51% of the table's 10.16 flights (an even share is 34%) while making 3.97 island deliveries against Orchard's 5.11 - so the Deliver suit spends more Deliver actions on the sky than on the island, and roughly 10 of its 27 barn cards a game go with them. This cell raises the barn route from 2 cards to 3 WITHOUT touching any card text, which is the cheapest knob that makes a flight lose to a delivery on price. READ FOUR LINES: Vegetable's win rate (23.0% base, 36.4% even share), its island deliveries (3.97), balloon moves per game (10.16) and the Vegetable seat's share of them (0.51). If the win rate climbs while flights fall, the module is a drag on the suit that owns it and the fix belongs in the balloon rewards rather than in the price. If nothing moves, the sky is not the fault and the Tier 1 skeleton is the remaining candidate. NOTE THE CONFOUND: V16, V17 and V19 all read the Aerodrome, so this arm quietly weakens three Vegetable cards as it runs.",
+  "schemaVersion": 1,
+  "set": {
+    "aerodrome.moveCost.barnCards": 3
+  }
+}
