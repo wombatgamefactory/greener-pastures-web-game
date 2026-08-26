@@ -29,6 +29,7 @@ import { CapturePanel } from './components/CapturePanel';
 import { Result } from './components/Result';
 import { Start } from './components/Start';
 import { Table } from './components/Table';
+import { UiScaleControl, useUiScale } from './components/UiScale';
 import { takeCapture } from './session/capture';
 import { usePlay } from './session/play';
 import { Session, YOU, data } from './session/table';
@@ -46,6 +47,8 @@ export interface Boot {
   readonly options: SessionOptions;
   readonly depth: number;
   readonly minHand: number;
+  /** Play the game OUT rather than stop at a playable turn-top. See `warmUp`. */
+  readonly finish: boolean;
 }
 
 export function readOptions(search: string): Boot | null {
@@ -63,6 +66,12 @@ export function readOptions(search: string): Boot | null {
   // no game reaches, it plays every seat out to the end trigger and the app
   // opens on the scoring screen. That is how ticket 27's surface is measured in
   // a real browser (`verify:layout --result`), and it needs no seed to be lucky.
+  //
+  // ⚠️ The depth alone was never enough, and said so for a long time without
+  // anyone noticing: the walk's own guard against handing over a finished board
+  // rewound every one of these games back to a mid-game turn-top, so the
+  // scoring screen never appeared and both verifiers hung. The `toEnd` argument
+  // below is the missing half. Fixed 26/08/2026.
   const finish = q.get('finish') !== null;
   const depth = finish ? 100_000 : Number(q.get('depth') ?? 320);
   const minHand = finish ? 0 : Number(q.get('minHand') ?? 4);
@@ -74,6 +83,7 @@ export function readOptions(search: string): Boot | null {
     options: { seats, suits, seed: q.get('seed') ?? 'greener-pastures', opponents },
     depth: Number.isFinite(depth) && depth >= 0 ? depth : 320,
     minHand: Number.isFinite(minHand) && minHand >= 0 ? minHand : 4,
+    finish,
   };
 }
 
@@ -85,11 +95,14 @@ export function App() {
   const [session, setSession] = useState<Session | null>(() => {
     if (boot === null) return null;
     const s = new Session(data, boot.options);
-    s.warmUp(boot.depth, boot.minHand);
+    s.warmUp(boot.depth, boot.minHand, boot.finish);
     return s;
   });
   const [revision, setRevision] = useState(0);
   const [pace, setPace] = useState<Pace>('normal');
+  /* Above the early return for the start screen, so the saved preference is in
+     force from the first frame rather than snapping in when a game begins. */
+  const ui = useUiScale();
   const [stalled, setStalled] = useState(false);
   const bump = useCallback(() => setRevision((r) => r + 1), []);
 
@@ -190,35 +203,57 @@ export function App() {
           bump();
         }}
         waitingOn={waitingOn}
+        /* The supply lock is a table-wide notice like the end trigger, so it
+           goes through the same strip rather than getting a floating banner of
+           its own. Both used to be `position: fixed` at the top centre, where
+           they printed straight across the DECKS and THE ISLAND captions - the
+           captions lost their panels in phase 2, so what had been an overlap was
+           now text on text. */
+        notice={
+          stalled && !snapshot.over
+            ? 'Nobody can move: the card supply is locked. That is a known open question, not a crash.'
+            : null
+        }
+        /* THE QUIET CORNER (phase 4). Both of these were `position: fixed` in
+           the bottom-left of the viewport, which is where the event feed's last
+           line is drawn, so both printed across it in every screenshot since
+           phase 0. They go into the table's rail column instead, where they get
+           a row of their own and cannot overlap anything.
+
+           Ticket 31's capture button is still live at every moment - mid-task,
+           on a rival's turn, and over the scoring screen. What kept it reachable
+           over the result overlay was never being a separate FIXED element, it
+           was its z-index; that is unchanged and `verify:capture` proves it by
+           clicking the button on a finished game. */
+        corner={
+          <>
+            <CapturePanel
+              take={(request) => takeCapture(session, play, request, new Date().toISOString())}
+            />
+            {/* ⚠️ THE SLIDER SITS BEFORE THE PACE STRIP, and the reason is
+                packing rather than taste. `.rail-foot` wraps, and it wraps in
+                source order: at the 1024 floor the row has about 180px, the
+                capture button takes 55 and the three pace buttons take 130 as
+                one indivisible group, so `report` and `pace` can never share a
+                line. Putting the 82px slider between them fills the first line
+                (55 + 82) and leaves the pace strip the second - two lines
+                instead of three, and the line saved comes off the 1fr row above,
+                which is where the three neighbour panels live. */}
+            <UiScaleControl ui={ui} />
+            <div className="pace" aria-label="how fast your neighbours play">
+              {(Object.keys(PACE) as Pace[]).map((p) => (
+                <button
+                  key={p}
+                  className={`ghost${pace === p ? ' ghost-on' : ''}`}
+                  onClick={() => setPace(p)}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </>
+        }
       />
-
-      <div className="pace" aria-label="how fast your neighbours play">
-        {(Object.keys(PACE) as Pace[]).map((p) => (
-          <button
-            key={p}
-            className={`ghost${pace === p ? ' ghost-on' : ''}`}
-            onClick={() => setPace(p)}
-          >
-            {p}
-          </button>
-        ))}
-      </div>
-
-      {/* Ticket 31. Live at every moment - mid-task, on a rival's turn, and
-          over the scoring screen, which is why it is NOT inside the pace strip:
-          that strip sits at z-index 60 and the result overlay's scrim is at 90,
-          so a button parked in there would be unreachable on exactly the screen
-          whose numbers you would most want to query. Taking a capture applies
-          no move, so being live everywhere costs nothing. */}
-      <CapturePanel
-        take={(request) => takeCapture(session, play, request, new Date().toISOString())}
-      />
-
-      {stalled && !snapshot.over && (
-        <p className="end-banner" role="status">
-          Nobody can move: the card supply is locked. That is a known open question, not a crash.
-        </p>
-      )}
 
       {snapshot.over && snapshot.score && (
         <Result

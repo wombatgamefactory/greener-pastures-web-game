@@ -8,10 +8,14 @@ import { describe, expect, it } from 'vitest';
 import { BASE_GAME_DATA as data } from '@gp/data';
 import type { PlayerView } from '@gp/engine';
 
+import { thresholdOf } from '@gp/engine';
+
 import { dealTable } from '../session/table';
+import { printedFace } from './printed';
 import {
   displayOrder,
   farmOf,
+  liveThreshold,
   noticeBoardOf,
   receiptTotal,
   seatSuits,
@@ -147,5 +151,61 @@ describe('seatSuits and receiptTotal', () => {
   it('sums receipts', () => {
     expect(receiptTotal([4, 8, 16])).toBe(28);
     expect(receiptTotal([])).toBe(0);
+  });
+});
+
+/**
+ * The threshold seam. This pins the property that was broken until 26/08/2026:
+ * the interface may lag the SHEET, but it may never contradict the ENGINE about
+ * whether a move is legal.
+ *
+ * Deliberately asserted against the engine's own `thresholdOf` rather than
+ * against the literal 2. The knob goes back to null when the sheet catches up,
+ * and a test hard-coding 2 would then fail for the wrong reason - or worse,
+ * pass while the two seams had drifted apart.
+ */
+describe('liveThreshold', () => {
+  it('agrees with the engine on every building on the table', () => {
+    const view = table();
+    for (const seat of [view.seat, ...view.rivals.map((r) => r.seat)]) {
+      for (const b of farmOf(view, seat).tableau) {
+        const printed = printedFace(data, b.card, b.upgraded).threshold;
+        expect(liveThreshold(data, b.card, printed)).toBe(
+          thresholdOf(data, { card: b.card, stack: b.stack, upgraded: b.upgraded }),
+        );
+      }
+    }
+  });
+
+  it('leaves a card with no threshold alone', () => {
+    expect(liveThreshold(data, 'W1', null)).toBeNull();
+  });
+
+  it('overrides the Notice Board and nothing else', () => {
+    const override = data.rules.economy.noticeBoardThreshold;
+    const boards = data.cards.catalogue.filter((c) => c.slot === 'noticeboard');
+    expect(boards.length).toBeGreaterThan(0);
+    for (const card of boards) {
+      expect(liveThreshold(data, card.id, 99)).toBe(override ?? 99);
+    }
+    for (const card of data.cards.catalogue.filter((c) => c.slot !== 'noticeboard')) {
+      expect(liveThreshold(data, card.id, 99)).toBe(99);
+    }
+  });
+
+  it('is what the rail reports, so the fill bar cannot promise a blocked visit', () => {
+    const view = table();
+    for (const rival of view.rivals) {
+      const board = noticeBoardOf(data, farmOf(view, rival.seat));
+      if (board === null) continue;
+      expect(board.threshold).toBe(
+        thresholdOf(data, {
+          card: board.building.card,
+          stack: board.building.stack,
+          upgraded: board.building.upgraded,
+        }),
+      );
+      expect(board.full).toBe(board.filled >= board.threshold);
+    }
   });
 });

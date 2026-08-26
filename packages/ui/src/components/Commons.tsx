@@ -80,6 +80,7 @@ export function Commons({
   islandTile,
   zoom,
   play,
+  onExpandIsland,
 }: {
   data: GameData;
   view: PlayerView;
@@ -87,6 +88,8 @@ export function Commons({
   islandTile: number;
   zoom: Zoomer;
   play?: Play | undefined;
+  /** Opens the full-size island. Owned by `Table.tsx`, like the inspector. */
+  onExpandIsland?: (() => void) | undefined;
 }) {
   const suits = seatSuits(view);
   const yours = workersOwnedBy(view, view.seat);
@@ -112,8 +115,32 @@ export function Commons({
       </div>
 
       <div className="panel panel-island">
-        <h2 className="panel-title">The island</h2>
-        <IslandPanel data={data} view={view} tileWidth={islandTile} play={play} />
+        {/*
+         * ⚠️ THE BUTTON IS THE TITLE, and that is a layout decision as much as
+         * an accessibility one. The map click is the gesture a mouse reaches
+         * for, but it is invisible and unreachable from a keyboard, so the
+         * feature needs a real control - and every other place to put one (a
+         * chip beside the legend, a corner affordance) adds a row to a panel
+         * whose height the farm's slack is measured against. Wrapping the
+         * caption that is already there costs nothing at all.
+         */}
+        <h2 className="panel-title">
+          <button
+            type="button"
+            className="island-expand"
+            onClick={onExpandIsland}
+            title="See the island at full size"
+          >
+            The island <span aria-hidden="true">&#8599;</span>
+          </button>
+        </h2>
+        <IslandPanel
+          data={data}
+          view={view}
+          tileWidth={islandTile}
+          play={play}
+          onExpand={onExpandIsland}
+        />
       </div>
 
       <div className="commons-right">

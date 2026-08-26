@@ -22,6 +22,7 @@ import {
   buildComplete,
   clickBalloon,
   clickBuilding,
+  clickCardPower,
   clickDeck,
   clickRival,
   clickTile,
@@ -62,6 +63,8 @@ export interface Play {
   setVisitFee(host: Seat, fee: readonly CardId[]): void;
 
   building(card: CardId): void;
+  /** The badge on a built card: the standing move that card is offering. */
+  cardPower(card: CardId): void;
   rival(seat: Seat): void;
   tile(id: string): void;
   balloon(id: string): void;
@@ -233,6 +236,14 @@ export function usePlay(host: PlayHost): Play {
       building: (card) => {
         if (inert) return;
         resolve(clickBuilding(moves, effective, card), 'What here?');
+      },
+      cardPower: (card) => {
+        if (inert) return;
+        // The Helping Hand offers one move per hand card (which card pays the
+        // second visit fee), so this is nearly always the menu rather than a
+        // single move - which is the right surface for it: the choice IS which
+        // card you are willing to spend.
+        resolve(clickCardPower(moves, card), 'Which card do you spend?');
       },
       rival: (seat) => {
         if (inert) return;

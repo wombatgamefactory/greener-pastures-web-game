@@ -30,6 +30,7 @@ import {
   buildComplete,
   clickBalloon,
   clickBuilding,
+  clickCardPower,
   clickDeck,
   clickRival,
   clickTile,
@@ -89,9 +90,21 @@ function reachable(position: Position, move: Move): boolean {
     case 'draw':
     case 'pass':
     case 'endTurn':
-    case 'cardMove':
-      // The action bar hands its whole family straight to `choose`.
+      // The turn bar hands its whole family straight to `choose`.
       return moves.filter((m) => m.type === move.type).includes(move);
+
+    /*
+     * ON THE CARD SINCE 26/08/2026, so the check is no longer "is it in the
+     * list" - it is "is the card that offers it on the board in front of this
+     * seat". Without that second half the badge could be drawn nowhere at all
+     * and this would still pass, which is exactly the silent failure the file
+     * exists to catch: the resolver would answer, and nothing would ask it.
+     */
+    case 'cardMove':
+      return (
+        position.view.you.tableau.some((b) => b.card === move.card) &&
+        has(clickCardPower(moves, move.card))
+      );
 
     case 'harvest':
     case 'upgrade':
@@ -174,7 +187,7 @@ function assembleBuild(
  */
 function buildPanelOpens(position: Position, card: string): boolean {
   const armed: Intent = { k: 'arm', type: 'build' };
-  const bar = actionGroups(position.moves).find((g) => g.type === 'build');
+  const bar = actionGroups(data, position.moves).find((g) => g.type === 'build');
   if (!bar || bar.moves.length === 0) return false;
   return liveTargets(position.view, position.moves, armed).hand.has(card);
 }

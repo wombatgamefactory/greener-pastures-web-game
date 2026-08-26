@@ -98,7 +98,22 @@ try {
 
   const context = await browser.newContext({ viewport: VIEWPORT, acceptDownloads: true });
   const page = await context.newPage();
-  page.on('pageerror', (e) => check('no page error', false, e.message));
+  /*
+   * The consent banner is injected on PRODUCTION builds only, and it throws
+   * when the page is served from anywhere but its registered domain - which is
+   * exactly what this harness does, from 127.0.0.1 on an ephemeral port. It is
+   * an artefact of the test setup, not a fault in the page.
+   *
+   * Filtered by its own message rather than by silencing `pageerror`, so every
+   * other page error still fails the run. This check only started firing on
+   * 26/08/2026, when the `toEnd` fix let the scoring screen be reached at all -
+   * before that the run hung before it got here.
+   */
+  const CONSENT_BANNER_NOISE = /website URL has changed/i;
+  page.on('pageerror', (e) => {
+    if (CONSENT_BANNER_NOISE.test(e.message)) return;
+    check('no page error', false, e.message);
+  });
   await page.goto(`http://127.0.0.1:${server.address().port}${BASE}${QUERY}`, {
     waitUntil: 'load',
   });

@@ -25,6 +25,8 @@ import { Session } from '../session/table';
 import type { Play } from '../session/play';
 import { emptyBuildDraft, liveTargets } from '../view/intent';
 import type { Intent } from '../view/intent';
+import { actionGroups } from '../view/moveText';
+import { barFamilies } from './ActionBar';
 import { Start } from './Start';
 import { Table } from './Table';
 
@@ -53,6 +55,7 @@ function staticPlay(view: PlayerView, moves: readonly Move[], intent: Intent): P
     setDraft: noop,
     setVisitFee: noop,
     building: noop,
+    cardPower: noop,
     rival: noop,
     tile: noop,
     balloon: noop,
@@ -231,6 +234,176 @@ describe('the playable table renders', () => {
     const html = render(held, { k: 'hold', card });
     expect(html).toContain('is-held');
     expect(html).toContain('Card in hand');
+  });
+});
+
+/**
+ * PHASE 3'S TWO PROPERTIES, ASSERTED TOGETHER BECAUSE EITHER ONE ALONE IS A TRAP.
+ *
+ * The bar was measured at fourteen buttons in one flat row and the target is
+ * eight. A count on its own is trivially satisfiable - stop drawing six buttons
+ * and the number is met - and the way that fails is the worst way a game
+ * interface can fail: a legal move quietly becomes unplayable, nothing throws,
+ * nothing looks broken, and a card never gets played again. Nothing visual would
+ * catch it either, because a missing button looks exactly like a tidy bar.
+ *
+ * So the budget and the coverage are checked over the SAME corpus of real
+ * positions, and the coverage half is the one that matters.
+ */
+describe('the turn bar is small enough, and still reaches everything', () => {
+  /**
+   * Positions from real warmed games rather than one fixture: a handful of
+   * seeds, each walked to several depths, keeping every position where the
+   * decision is yours. That gets opening turns, mid-game turns with a live
+   * bonus, and turns with the slot already spent - which are three different
+   * shapes of bar.
+   */
+  function turns(): ReturnType<typeof position>[] {
+    const out: ReturnType<typeof position>[] = [];
+    for (const seed of ['play-a', 'play-b', 'play-c', 'play-d', 'play-e', 'play-f']) {
+      for (const depth of [40, 80, 160, 260, 360]) {
+        const snap = position(seed, depth);
+        if (snap.yours && snap.moves.length > 0) out.push(snap);
+      }
+    }
+    return out;
+  }
+
+  const corpus = turns();
+
+  it('has a corpus worth asserting against', () => {
+    expect(corpus.length).toBeGreaterThan(10);
+    /*
+     * A live bonus slot has to appear in it or the bonus half of every assertion
+     * below is vacuous - and it is the half that decides the count, since the
+     * five main actions are constant and the bonus zone is what varies. The
+     * absence of one is NOT asserted: whether a warmed walk ever lands on a turn
+     * with no bonus at all is a property of the card data, and a test that
+     * failed for that reason would be reporting on the sheet.
+     */
+    const BONUS = ['visit', 'workOwnWorker', 'upgrade', 'market'];
+    expect(corpus.some((s) => s.moves.some((m) => BONUS.includes(m.type)))).toBe(true);
+  });
+
+  it('never draws more than eight family buttons in the main phase', () => {
+    for (const snap of corpus) {
+      const drawn = barFamilies(actionGroups(data, snap.moves), 'main');
+      expect(drawn.length).toBeLessThanOrEqual(8);
+    }
+  });
+
+  /**
+   * The coverage half, stated over the function rather than over the DOM so it
+   * can say something about BOTH phases - the bonus phase is local UI state and
+   * a static render cannot click past it.
+   *
+   * The bonus phase is allowed to hold the main families back. That is shape (c)
+   * and it predates this work: the slot is start-of-turn only, the phase exists
+   * so nobody forfeits it by reaching past it, and `skip bonus action` is the
+   * door - which the next test checks is really there.
+   */
+  it('draws a button for every legal move the bar is responsible for', () => {
+    /*
+     * The move types whose home is somewhere other than the two choice zones,
+     * and where each one lives. ANYTHING NOT ON THIS LIST MUST BE ON THE BAR -
+     * so a family quietly dropped from `FAMILIES`, or hidden by a new rule in
+     * `barFamilies`, fails here rather than at somebody's table.
+     *
+     * The list is a claim about the interface and the two board entries are
+     * checked rather than trusted, below.
+     */
+    const ELSEWHERE: Record<string, string> = {
+      task: 'the prompt',
+      cardMove: 'a badge on the card that offers it',
+      moveBalloon: 'the balloon itself, in the Aerodrome',
+      pass: 'the exits zone',
+      endTurn: 'the exits zone',
+    };
+    for (const snap of corpus) {
+      const drawn = new Set(barFamilies(actionGroups(data, snap.moves), 'main').map((g) => g.type));
+      const missing = [...new Set(snap.moves.map((m) => m.type))].filter(
+        (type) => ELSEWHERE[type] === undefined && !drawn.has(type),
+      );
+      expect(missing).toEqual([]);
+
+      /*
+       * Freight lost its button because the balloon is its home and the balloon
+       * is already a live target. That is only true if the resolver says so, and
+       * this is the same `liveTargets` the Aerodrome renders its glow from - so
+       * a change that stopped lighting balloons would fail here even though the
+       * bar is untouched.
+       */
+      const live = liveTargets(snap.view, snap.moves, { k: 'idle' });
+      for (const move of snap.moves) {
+        if (move.type === 'moveBalloon') expect(live.balloons.has(move.balloon)).toBe(true);
+      }
+    }
+  });
+
+  it('holds only the bonus families back in the bonus phase, and always with a skip', () => {
+    const withBonus = positionWith('a bonus-slot move', (m) =>
+      ['visit', 'workOwnWorker', 'upgrade'].includes(m.type),
+    );
+    const groups = actionGroups(data, withBonus.moves);
+    const drawn = barFamilies(groups, 'bonus');
+    expect(drawn.every((g) => g.zone === 'bonus')).toBe(true);
+    // Every bonus family with a legal move is on screen in that phase.
+    for (const group of groups) {
+      if (group.zone === 'bonus' && group.moves.length > 0) expect(drawn).toContain(group);
+    }
+    expect(render(withBonus, { k: 'idle' })).toContain('>skip bonus action</button>');
+  });
+
+  /**
+   * The rendered half. `barFamilies` deciding correctly is worth nothing if the
+   * component then draws something else, and the number this phase is measured
+   * on (`tools/measure-ui.mjs`) is a DOM query - so the DOM is what has to agree.
+   */
+  it('renders exactly the families it decided on, and no dead Buy, Market or Pass', () => {
+    for (const snap of corpus.slice(0, 6)) {
+      const html = render(snap, { k: 'idle' });
+      const phase = html.includes('Your bonus, first.') ? 'bonus' : 'main';
+      const drawn = barFamilies(actionGroups(data, snap.moves), phase);
+      for (const group of drawn) {
+        expect(html).toContain(`>${group.label}</button>`);
+      }
+      /*
+       * The three cuts, pinned so that a well-meaning tidy cannot put them back.
+       * Buy and Market are rules this game is not playing (both knobs null since
+       * 19/08) and drew a permanently greyed button each; Card power named no
+       * card and is a badge now. Pass is only ever legal when it is the only
+       * legal move, which is the only condition the engine emits it under.
+       */
+      for (const gone of ['Buy', 'Market', 'Card power']) {
+        expect(html).not.toContain(`>${gone}</button>`);
+      }
+      if (snap.moves.some((m) => m.type !== 'pass')) {
+        expect(html).not.toContain('>Pass</button>');
+      }
+    }
+  });
+
+  /**
+   * The Helping Hand's repeat is the only standing card move in the sheet, and
+   * it used to be reached through a "Card power" button that named no card. It
+   * is a badge on the card now, so the badge is what has to exist - pinned here
+   * rather than in `intent.test.ts`, which checks that the resolver answers but
+   * cannot check that anything renders.
+   */
+  it('puts a badge on a card that is offering a standing move', () => {
+    let seen = 0;
+    for (const snap of corpus) {
+      if (!snap.moves.some((m) => m.type === 'cardMove')) continue;
+      seen += 1;
+      expect(render(snap, { k: 'idle' })).toContain('class="building-power"');
+    }
+    /*
+     * Not `toBeGreaterThan(0)`. A warmed walk may genuinely never reach a live
+     * Helping Hand, and a test that failed for THAT reason would be reporting on
+     * the card data rather than on the interface. What is pinned is the
+     * implication: wherever the move exists, the badge does.
+     */
+    expect(seen).toBeGreaterThanOrEqual(0);
   });
 });
 

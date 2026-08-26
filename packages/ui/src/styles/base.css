@@ -24,31 +24,177 @@
   --paper: #f7f1e3;
   --paper-deep: #ece2cb;
   --paper-panel: #fdfaf1;
+  /*
+   * THE HERO PAPER (phase 2). One tone, used by one region: your farm.
+   *
+   * `--paper-panel` was the fill EVERY box wore, which is exactly why the screen
+   * read as one flat mass - nine panels of identical weight and no entry point.
+   * Phase 2 takes that fill off the commons and off the rail, so the token that
+   * remains has to do a job the shared one never could: say "this is yours" at a
+   * glance, from across the room, before a single word is read.
+   *
+   * It is WARMER than the panel tone rather than brighter, and that is the whole
+   * choice. Brighter would have meant heading toward white, and white is not in
+   * this game's palette - the art direction is printed cream and sepia ink, and
+   * a white card would read as a browser dialog dropped on a board game. Warmer
+   * (a hue step toward the wheat gold, a touch more saturation) separates the
+   * farm from the body gradient behind it while staying unmistakably card stock.
+   */
+  --paper-hero: #fdf7e8;
+  /*
+   * ⭐ THE INK LADDER, AND THE CONTRAST NUMBERS IT HAS TO CLEAR (phase 5).
+   *
+   * Measured, not estimated: `.scratch/audit-contrast.mjs` walks every rendered
+   * text node in a real build, resolves the ground each one actually sits on,
+   * and reports the WCAG ratio. What follows are its readings, so the next
+   * person changing a colour knows the numbers rather than re-deriving them.
+   *
+   * ⚠️ THE GROUND IS NOT `--paper-panel`. Phase 2 took the fill off the commons
+   * and off the rail, so most quiet text now sits on the BODY GRADIENT, whose
+   * darkest stop is #efe6d1 - about half a point of contrast worse than the
+   * panel tone every one of these colours used to be measured against. A colour
+   * checked against #fdfaf1 alone will read as passing and fail on screen.
+   *
+   *   colour              #fdfaf1  #fdf7e8  #f7f1e3  #efe6d1  #ece2cb
+   *   ---------------------------------------------------------------
+   *   --ink    #5a4632       8.54     8.34     7.91     7.17     6.92
+   *   --ink-soft, WAS       4.27     4.17     3.95     3.59     3.46   ✗ AA
+   *     #8a7457
+   *   --ink-soft, NOW       5.59     5.45     5.18     4.69     4.53   ✓ AA
+   *     #75624a
+   *
+   * AA for body text is 4.5:1, and the old value cleared it on NO ground in the
+   * palette - not even the panel it was designed against. The new one clears it
+   * on all five, including two (`--paper-deep`, and the panel) it does not sit
+   * on today, so a caption that moves cannot silently re-fail.
+   *
+   * THE TRADE, STATED RATHER THAN HIDDEN. The two inks are closer together than
+   * they were: the contrast BETWEEN them falls from 2.00:1 to 1.53:1. That is a
+   * real cost and it is the reason a darker value was not taken - #78644b was
+   * the bare minimum that cleared the gradient and buys only 0.07 of separation
+   * back, which is not visible, while giving up the margin on `--paper-deep`.
+   * The hierarchy does not rest on luminance alone in any case: soft text is
+   * 9-11px, often uppercase and letterspaced, against body ink at 10-13px.
+   *
+   * `--ink-line` is NOT on this ladder and is deliberately left alone. It draws
+   * the dashed live-target outline and hairline rules, and the sweep found it
+   * setting no text anywhere; a border is judged by whether it can be seen, not
+   * by AA. The same goes for the suit `pip` values. If either is ever used for
+   * type, it needs 4.5:1 there and neither has it (2.26 and 2.15 on the panel).
+   *
+   * Still white-on-art and correct: the card's printed text and the island's
+   * crate quantity. Those carry a 2px sepia keyline (`paint-order: stroke fill`,
+   * see below) and it is the STROKE that separates them from the picture, so the
+   * sweep's ~1.3:1 against the tile beneath them is not the number in play.
+   */
   --ink: #5a4632;
-  --ink-soft: #8a7457;
+  --ink-soft: #75624a;
   --ink-line: #b9a68a;
   --rule: #d9cbae;
   --shadow: 0 1px 3px rgb(58 42 24 / 14%);
   --shadow-lift: 0 6px 18px rgb(58 42 24 / 26%);
+
+  /*
+   * ⭐ TWO SPEEDS, AND THE LINE BETWEEN THEM IS THE WHOLE POLICY (phase 5).
+   *
+   * The digital-board-game UI research puts regular animations at 0.5-0.8s,
+   * asks for repetitive updates to be batched, and warns against animating
+   * trivia one item at a time. Before this the game had exactly two moving
+   * parts and neither was on that band by design: a 1.6s target pulse and a
+   * 120ms opacity fade, both numbers typed once and never revisited.
+   *
+   * `--motion-state` IS that band, and it is for the one thing it is meant for:
+   * a GAME STATE change a player has to take in. A stack filling toward its
+   * threshold, a count moving. Slow enough to be seen happening, which is the
+   * only reason to animate it at all.
+   *
+   * `--motion-ui` is DELIBERATELY OUTSIDE THE BAND and that is not an oversight.
+   * It is interface feedback - a hover reveal, a card lifting out of the fan
+   * under your own finger, a scrim arriving - and the research's band is about
+   * comprehending the board, not about the pointer. Half a second of lag
+   * between clicking a card and seeing it lift is not "considered pacing", it
+   * is an unresponsive interface, and a player takes three or four of those
+   * actions per turn. The band applies to what the game does; this applies to
+   * what the player does.
+   *
+   * ⚠️ EVERYTHING SCALES OFF THESE TWO, INCLUDING THE REDUCED-MOTION GUARD.
+   * Setting both to 0s under `prefers-reduced-motion` (bottom of this file) is
+   * what makes the guard total rather than a list somebody has to remember to
+   * add to: a transition written against a token cannot be forgotten. Keyframed
+   * animations do not scale that way and are switched off by name in the same
+   * block - there are three, and they are all named there.
+   */
+  --motion-state: 600ms;
+  --motion-ui: 160ms;
 
   --font-display: 'Fredoka', 'Berlin Sans FB', 'Trebuchet MS', system-ui, sans-serif;
   --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
 
   /* Comfortable desktop. Overridden downward at the breakpoints below. */
   --rail-w: 244px;
-  --card-building: 128px;
-  --card-hand: 190px;
+  --card-building: 100px;
+  --card-hand: 106px;
   --card-deck: 96px;
   --card-inspector: 158px;
-  --island-tile-w: 58px;
+  /*
+   * THE ISLAND, AND WHERE PHASE 1'S SLACK WENT.
+   *
+   * Phase 1 collapsed `.farm` onto its content, which closed a void inside the
+   * panel and opened a smaller one under it: about 130px of bare table between
+   * the farm's bottom edge and the turn bar at 1600x900, 80px at the floor. The
+   * farm cannot take it back - buildings big enough to fill it drop the tableau
+   * to four cards a row and put capacity under a dozen, which is the trade
+   * Phase 1 already refused - so the height goes UP the column instead, to the
+   * commons, and the commons spends it on the island.
+   *
+   * The island earns it on two counts. It is the game's clock (delivering to
+   * the top level is the end trigger) and it is the largest single VP source,
+   * deliberately over half a winning score - and it was being drawn as a
+   * thumbnail with 9px numerals in the receipt slots, which is the one gradient
+   * left in the game and the whole race. A clock nobody can read is not a clock.
+   *
+   * ⚠️ THE FLOOR IS WIDTH-BOUND, NOT HEIGHT-BOUND, which is why its step barely
+   * moves. At 1024 the commons' three columns leave the island about 223px and
+   * the widest row is five tiles, so the tile size there is set by the column
+   * and not by the slack - measured, after the chromeless panels handed back
+   * their padding. Growing it further would squeeze the decks, and five decks
+   * that cannot be told apart costs more than a slightly larger island buys.
+   */
+  --island-tile-w: 64px;
   --gap: 12px;
 
-  /* A hovered hand card scales to roughly the 400px the zoom panel uses, which
-     is the width the card's own type was set for. It is a multiplier rather than
-     a width because the fan must not reflow, so the growth is a transform - and
-     it is written out per step alongside `--card-hand` because the two are one
-     number: change the hand size and this comes with it. */
-  --hand-hover-scale: 2.1; /* 190 -> 399px */
+  /*
+   * The hero's own title, and the only font size in the layout that has to be
+   * dialled per step.
+   *
+   * Phase 2 raises it from the 15px every other heading used, because the farm
+   * is now the one region carrying weight and its name is the top of that
+   * hierarchy. It steps DOWN at the floor rather than staying put: 19px against
+   * a 700px-tall screen is a bigger share of the page than 19px against 900px,
+   * and the head bar shares its row with five chips that must not wrap.
+   */
+  --farm-title: 19px;
+
+  /*
+   * THE READING REGION (phase 1a). The width of the permanent right-hand column
+   * of `.farm` that shows one card at full reading size, and the width the card
+   * inside it is drawn at - one number, read back by `Table.tsx`, so the column
+   * and its card can never disagree.
+   *
+   * Everything else on this screen was made smaller to pay for it. The hand and
+   * the tableau no longer have to be readable at rest, because there is now one
+   * place that always is; that is the whole bargain, and it is also what stopped
+   * the tableau slicing its bottom row in half.
+   *
+   * ZERO IS A REAL VALUE AND IT MEANS "NO ROOM". At the floor step the column
+   * would come out around 260px, and below that the printed card text is under
+   * reading size - a region too small to read is worse than no region, because
+   * it charges the tableau for width and gives nothing back. So the floor sets
+   * 0, the grid column collapses to nothing, and `Table.tsx` falls back to the
+   * old floating `.zoom` overlay, which costs no layout width at all because it
+   * is `position: fixed`. Exactly one of the two is ever on screen.
+   */
+  --card-read: 300px;
 
   color-scheme: light;
   font-family: var(--font-ui);
@@ -61,13 +207,16 @@
 @media (max-width: 1320px) {
   :root {
     --rail-w: 214px;
-    --card-building: 108px;
-    --card-hand: 158px;
+    --card-building: 92px;
+    --card-hand: 92px;
     --card-deck: 80px;
     --card-inspector: 136px;
-    --island-tile-w: 50px;
+    --island-tile-w: 58px;
     --gap: 10px;
-    --hand-hover-scale: 2.4; /* 158 -> 379px */
+    /* The narrowest column the region is allowed to be. 260px is the point at
+       which the printed ability text stops being reading size; one step down
+       from here the region is dropped rather than squeezed further. */
+    --card-read: 260px;
   }
 }
 
@@ -77,28 +226,74 @@
 @media (min-width: 1500px) and (min-height: 850px) {
   :root {
     --rail-w: 268px;
-    --card-building: 168px;
-    --card-hand: 236px;
+    --card-building: 120px;
+    --card-hand: 130px;
     --card-deck: 116px;
     --card-inspector: 186px;
-    --island-tile-w: 68px;
+    --island-tile-w: 82px;
     --gap: 14px;
-    --hand-hover-scale: 1.8; /* 236 -> 425px */
+    /* The card's own type was set for roughly this width, so this is the step
+       where the region does the job it was designed for with nothing left over. */
+    --card-read: 360px;
   }
 }
 
 @media (max-width: 1100px), (max-height: 760px) {
   :root {
     --rail-w: 196px;
-    --card-building: 92px;
-    --card-hand: 132px;
-    --card-deck: 68px;
+    /*
+     * ⭐ PHASE 4 SPENT THE FLOOR'S SLACK HERE, AND ONLY THE FLOOR'S.
+     *
+     * Phase 3 left 40px of bare table between the farm's bottom edge and the
+     * turn bar at 1024x700 (56px at 1366, 63px at 1600). Extra height is extra
+     * ROWS, so in principle the building cards can grow into it at the same
+     * capacity. In practice only one of the three steps had any room, and the
+     * reason is worth writing down because it will come up again.
+     *
+     * Capacity is columns x rows, and it is the COLUMN that binds. The tableau's
+     * width is fixed by the rail and the reading region, so the biggest card
+     * that still fits seven across is a hard number per step - about 103px at
+     * 1366 and 124px at 1600, against the 100px and 120px already shipping.
+     * Three pixels on a hundred-pixel card is not a visible change and it would
+     * sit one pixel from a cliff that takes capacity from 14 to 12, so laptop
+     * and desktop keep their slack unspent and their sizes untouched.
+     *
+     * The floor is different because it was not width-bound: at 92px it fitted
+     * EIGHT across for a capacity of 16, two more than the 14 the 1200-farm
+     * census settled on. Trading that spare column back buys 13% on every
+     * building card at the viewport where they are smallest and hardest to read.
+     * 104px is seven across (the cliff is 106.6px) by two rows, so capacity is
+     * exactly 14 and slicing stays at 0 with about 19px of slack still in hand.
+     *
+     * ⚠️ `--card-hand` is deliberately NOT grown to spend the rest. Measured:
+     * the fan shrinks its slots to fit the row, so a wider card at a full
+     * six-card hand overlaps further, and at 190px on the desktop step the
+     * titles start being covered again - the exact defect phase 1 removed. The
+     * `measure-ui` fixture holds two cards and would not have caught it.
+     */
+    --card-building: 104px;
+    --card-hand: 88px;
+    --card-deck: 62px;
     --card-inspector: 118px;
-    --island-tile-w: 44px;
+    --island-tile-w: 54px;
     --gap: 8px;
-    /* The floor. 700px of height is what caps this: a taller card would grow up
-       through the commons and off the top of the table, which clips. */
-    --hand-hover-scale: 2.5; /* 132 -> 330px */
+    --farm-title: 17px;
+    /*
+     * The floor gives the reading region up. There is about 780px of farm to
+     * spend here, and a column wide enough to read would have to come out of
+     * the tableau, which is the region already closest to slicing. A 260px
+     * column that nobody can read off would be the worst of both.
+     *
+     * So the column collapses and `Table.tsx` renders the floating `.zoom`
+     * overlay instead. It costs no layout width because it is `position:
+     * fixed`, which is the one thing this step cannot spare.
+     *
+     * That collapsed column is also why `--card-building` GOES UP at this step
+     * rather than down with the rest: with no reading region taking width, the
+     * tableau here is the widest it is anywhere relative to its cards, which is
+     * what leaves a spare column to trade for size. See the note on it above.
+     */
+    --card-read: 0px;
   }
 }
 
@@ -177,6 +372,32 @@ img {
   /* Inherited, so it has to be turned off rather than merely not set. */
   -webkit-text-stroke-width: 0;
   pointer-events: none;
+}
+
+/*
+ * ⭐ THE REDUCED-MOTION GUARD, IN ONE PLACE (phase 5).
+ *
+ * Every transition in this interface is written against `--motion-state` or
+ * `--motion-ui`, so taking both to zero here stops all of them at once. That is
+ * the point of routing durations through tokens rather than typing them: a
+ * guard made of a list of selectors is only ever as complete as the last person
+ * who remembered to add to it, and this one cannot fall behind.
+ *
+ * `0s`, not `0.01ms`. The usual trick of a near-zero duration exists so that
+ * `transitionend`/`animationend` still fire for code that waits on them; a
+ * zero-duration CSS animation fires both events anyway, and `useChanged` in
+ * Farm.tsx depends on exactly that, so the honest value is the honest one.
+ *
+ * The keyframed animations are also switched off BY NAME beside their own
+ * definitions - `target-pulse` in play.css, `scroll-cue`, `overlay-in` and
+ * `count-moved` in table.css - because a hard-coded duration typed by a future
+ * edit would slip past a token-only guard.
+ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-state: 0s;
+    --motion-ui: 0s;
+  }
 }
 
 .visually-hidden {

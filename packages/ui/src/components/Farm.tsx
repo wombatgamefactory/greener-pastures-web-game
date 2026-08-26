@@ -6,19 +6,28 @@
  * one object on the table, and separating them was the thing variant C got
  * wrong. Hand and barn sit under it because they are the two halves of the
  * clock - hand is what you can spend this turn, barn is what the island wants.
+ *
+ * Since 26/08 the farm is two columns: everything above on the left, and the
+ * reading region on the right. The region is passed in rather than built here,
+ * because which shape it takes is a question about the viewport (`Table.tsx`
+ * owns that) and not about your farm.
  */
 
+import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { GameData, Suit } from '@gp/data';
-import type { BuildingView, PlayerView } from '@gp/engine';
+import type { BuildingView, Move, PlayerView } from '@gp/engine';
 
 import type { Drag } from '../session/drag';
 import { mark } from '../session/play';
 import type { Play } from '../session/play';
 import { cropIcon, frame, token } from '../view/art';
 import { dropZone } from '../view/drop';
+import { clickCardPower } from '../view/intent';
+import { cardName, describeMove } from '../view/moveText';
 import { printedFace } from '../view/printed';
 import { SUIT_META } from '../view/suits';
-import { displayOrder, receiptTotal } from '../view/table';
+import { displayOrder, liveThreshold, receiptTotal } from '../view/table';
 import { Card, CardBack } from './Card';
 import { StackGauge } from './StackGauge';
 import type { Zoomer } from './Zoom';
@@ -27,6 +36,12 @@ import type { Zoomer } from './Zoom';
  * A row of buildings. Shared by your farm and the rival inspector, which is why
  * `play` is optional: a neighbour's tableau is read-only, and passing no play
  * object is how that is enforced rather than remembered.
+ *
+ * PHASE 3 GAVE IT ONE NEW JOB: the standing move a built card offers is now
+ * made ON THE CARD, through a badge, rather than through a "Card power" button
+ * fourteenth in a flat turn bar that named no card at all. The research is
+ * explicit - do not replace a board component's action with a bar button;
+ * players should act on the board the way they would at the table.
  */
 export function Tableau({
   data,
@@ -45,8 +60,20 @@ export function Tableau({
     <div className="tableau" onMouseLeave={() => zoom.clear()}>
       {displayOrder(data, buildings).map((b) => {
         const face = printedFace(data, b.card, b.upgraded);
-        const full = face.threshold !== null && b.stack.length >= face.threshold;
+        // The enforced threshold, not the printed one - the gauge and the "full"
+        // flag say when this building has clogged, and the engine is the
+        // authority on that. See `liveThreshold` in view/table.ts.
+        const threshold = liveThreshold(data, b.card, face.threshold);
+        const full = threshold !== null && b.stack.length >= threshold;
         const live = play?.live.buildings.has(b.card) ?? false;
+        // Read off the engine's own list, like every other affordance here. A
+        // card with nothing standing draws no badge, so the badge appearing IS
+        // the news, and there is never a dead one to learn to ignore.
+        const powers = play?.active ? clickCardPower(play.moves, b.card) : [];
+        const powerTitle =
+          play && powers.length === 1
+            ? describeMove(data, play.view, powers[0] as Move)
+            : `${cardName(data, b.card)}: ${powers.length} ways to use it`;
         return (
           <div
             key={b.card}
@@ -66,9 +93,26 @@ export function Tableau({
           >
             <Card face={face} width={cardWidth} />
             <div className="building-gauge">
-              <StackGauge stack={b.stack} threshold={face.threshold} />
+              <StackGauge stack={b.stack} threshold={threshold} />
             </div>
             {full && <span className="building-clog">full</span>}
+            {powers.length > 0 && (
+              /* `stopPropagation` because the card underneath is very often a
+                 target of something else at the same moment - a harvest, a sow,
+                 a GROW - and a badge that also fired the card's own click would
+                 be the one control on this screen that does two things. */
+              <button
+                type="button"
+                className="building-power"
+                title={powerTitle}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  play?.cardPower(b.card);
+                }}
+              >
+                power
+              </button>
+            )}
           </div>
         );
       })}
@@ -106,17 +150,23 @@ function Barn({ barn, cardWidth }: { barn: Partial<Record<Suit, number>>; cardWi
  * card marked for a discard or chosen as payment, which is a commitment rather
  * than a question.
  *
- * The hand is the one region that does NOT feed the zoom panel: its cards print
- * their own text and grow to reading size under the pointer (`card-readable` in
- * card.css, `.hand-card:hover` in table.css). Sending them to the panel as well
- * put the same card on screen twice, side by side and overlapping, and at the
- * 700px floor the panel won and covered the card you were reading.
+ * The hand used to be the one region that did NOT feed the reading surface: its
+ * cards printed their own text and grew under the pointer. That was reversed on
+ * 26/08. Sending them to a floating panel had genuinely been worse - the same
+ * card ended up on screen twice, overlapping, and at the 700px floor the panel
+ * covered the card you were reading - but a region with a fixed home cannot
+ * collide with the fan, so the objection is gone and the hand can be small.
+ *
+ * `onMouseLeave` clears on the CONTAINER rather than per card, matching
+ * `Tableau`: leaving one card for the next one along should hand the region
+ * over, not blank it in between.
  */
 function Hand({
   data,
   hand,
   cardWidth,
   handSize,
+  zoom,
   play,
   drag,
 }: {
@@ -124,6 +174,7 @@ function Hand({
   hand: readonly string[];
   cardWidth: number;
   handSize: number | null;
+  zoom: Zoomer;
   play?: Play | undefined;
   drag?: Drag | undefined;
 }) {
@@ -140,7 +191,7 @@ function Hand({
           {over ? ' - discard at end of turn' : ''}
         </em>
       </h3>
-      <div className="hand">
+      <div className="hand" onMouseLeave={() => zoom.clear()}>
         {hand.length === 0 && <p className="empty-note">No cards. Every visit costs one.</p>}
         {hand.map((id, i) => {
           const live = play?.live.hand.has(id) ?? false;
@@ -150,6 +201,8 @@ function Hand({
               key={`${id}-${i}`}
               className={`hand-card${state}${mark(play, live)}`}
               style={{ zIndex: i }}
+              onMouseEnter={() => zoom.show(id)}
+              onFocus={() => zoom.show(id)}
               onPointerDown={drag ? (e) => drag.start(id, e) : undefined}
               // A drag ends in a click too. `consumeClick` is what keeps the
               // release from picking the card straight back up (ticket 26).
@@ -164,10 +217,11 @@ function Hand({
                   : undefined
               }
             >
-              {/* `card-readable` keeps the ability band alive at play size:
-                  the hand is the one place the text IS the decision, so it is
-                  not allowed to fall back to the zoom panel (card.css). */}
-              <Card face={printedFace(data, id)} width={cardWidth} className="card-readable" />
+              {/* No `card-readable` any more. At this width the printed text
+                  would be mush, and the reading region is where it is read -
+                  so the card drops its band and the hand becomes what it should
+                  always have been: art, crop chip, cost. */}
+              <Card face={printedFace(data, id)} width={cardWidth} />
             </div>
           );
         })}
@@ -185,6 +239,34 @@ export function handSizeOf(data: GameData, buildings: readonly BuildingView[]): 
   return printedFace(data, barn.card, barn.upgraded).handSize;
 }
 
+/**
+ * ⭐ A COUNT THAT MOVED, MARKED FOR ONE BEAT (phase 5).
+ *
+ * The research names "a count changing" as one of the two things worth
+ * animating, and in this game the counts worth marking are your money and your
+ * score - because the whole hook is that BOTH OF THEM MOVE ON SOMEBODY ELSE'S
+ * TURN. A neighbour visiting your Notice Board mints you a coin from the bank
+ * while you are not the one acting, which is precisely the moment a number can
+ * change with nobody watching it.
+ *
+ * ⚠️ THE BEAT IS THE CSS ANIMATION'S OWN, NOT A TIMER. The flag is cleared by
+ * `onAnimationEnd` rather than by a `setTimeout` matched to `--motion-state` by
+ * hand, so the duration lives in exactly one place and the two cannot drift.
+ * It also means the reduced-motion guard needs no second thought here: with the
+ * animation switched off nothing is drawn, so a flag that never clears has
+ * nothing to show.
+ */
+function useChanged(value: number): [boolean, () => void] {
+  const [changed, setChanged] = useState(false);
+  const previous = useRef(value);
+  useEffect(() => {
+    if (previous.current === value) return;
+    previous.current = value;
+    setChanged(true);
+  }, [value]);
+  return [changed, () => setChanged(false)];
+}
+
 export function Farm({
   data,
   view,
@@ -193,6 +275,7 @@ export function Farm({
   zoom,
   play,
   drag,
+  reading,
 }: {
   data: GameData;
   view: PlayerView;
@@ -201,9 +284,16 @@ export function Farm({
   zoom: Zoomer;
   play?: Play | undefined;
   drag?: Drag | undefined;
+  /** The reading region, when the viewport has room for one. `Table.tsx`
+      renders the floating overlay instead when it has not, in which case this
+      is absent and the farm's second grid column collapses to nothing. */
+  reading?: ReactNode;
 }) {
   const meta = SUIT_META[view.you.suit];
   const yourTurn = view.turnPlayer === view.seat;
+  const vp = receiptTotal(view.you.receipts);
+  const [coinsMoved, coinsDone] = useChanged(view.you.coins);
+  const [vpMoved, vpDone] = useChanged(vp);
 
   return (
     <section
@@ -214,12 +304,20 @@ export function Farm({
       <header className="farm-head">
         <img className="farm-crop" src={cropIcon(view.you.suit)} alt="" />
         <h2>Your {meta.label} farm</h2>
-        <span className="farm-coins" title="coins are spend-only: they are not victory points">
+        <span
+          className={`farm-coins${coinsMoved ? ' count-moved' : ''}`}
+          title="coins are spend-only: they are not victory points"
+          onAnimationEnd={coinsDone}
+        >
           <img src={token('coin')} alt="" />£{view.you.coins}
         </span>
-        <span className="farm-vp" title="VP on the island receipts you hold">
+        <span
+          className={`farm-vp${vpMoved ? ' count-moved' : ''}`}
+          title="VP on the island receipts you hold"
+          onAnimationEnd={vpDone}
+        >
           <img src={frame('vp')} alt="" />
-          {receiptTotal(view.you.receipts)} VP
+          {vp} VP
         </span>
         {yourTurn ? (
           <span className="farm-turn">your turn</span>
@@ -242,11 +340,14 @@ export function Farm({
           hand={view.you.hand}
           cardWidth={handWidth}
           handSize={handSizeOf(data, view.you.tableau)}
+          zoom={zoom}
           play={play}
           drag={drag}
         />
         <Barn barn={view.you.barn} cardWidth={Math.round(handWidth * 0.66)} />
       </div>
+
+      {reading}
     </section>
   );
 }

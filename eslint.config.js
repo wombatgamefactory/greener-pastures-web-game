@@ -49,6 +49,7 @@ export default tseslint.config(
       'tools/verify-drag.mjs',
       'tools/verify-webkit.mjs',
       'tools/render-sheets.mjs',
+      'tools/measure-ui.mjs',
     ],
     languageOptions: {
       globals: {

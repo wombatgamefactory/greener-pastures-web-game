@@ -25,9 +25,44 @@
    account for clipping by a scrolling ancestor. */
 .rail-column {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) clamp(104px, 18%, 320px);
+  grid-template-rows: minmax(0, 1fr) clamp(104px, 18%, 320px) auto;
   gap: var(--gap);
   min-height: 0;
+}
+
+/*
+ * ⭐ THE QUIET CORNER, IN THE FLOW (phase 4).
+ *
+ * The pace buttons and the capture trigger were both `position: fixed` in the
+ * bottom-left of the viewport, and the bottom-left of the viewport is the
+ * bottom of the event feed. So they printed across the feed's last line at every
+ * viewport in every screenshot since phase 0, and the pace strip hung half off
+ * the panel edge into the window's own padding. Phase 2 made it more obvious
+ * rather than worse: the feed lost its frame, so what had been a control on a
+ * box became text on text.
+ *
+ * This is the same fix phase 3 applied to the end-game banner, for the same
+ * reason. **A row at the bottom of the column cannot overlap anything by
+ * construction.** Reserving the band with a `padding-bottom` on the feed would
+ * have looked identical and would have been a hard-coded number that has to be
+ * kept in step, by hand, with the height of two elements laid out somewhere
+ * else. An `auto` row is the browser's arithmetic, not ours.
+ *
+ * It WRAPS at the 1024 floor, where the rail is 196px and the two controls come
+ * to about 220px. That costs the feed one line and is the honest price: the row
+ * is the height the controls actually need, which is exactly what they were
+ * taking from the feed before without asking.
+ */
+.rail-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  min-width: 0;
+  /* Matches `.feed`'s own inset so the controls line up with the commentary
+     above them rather than hanging off its left edge, which is what the fixed
+     version did (10px from the window, against the feed's text at 25px). */
+  padding: 0 8px;
 }
 
 .rail {
@@ -39,20 +74,53 @@
   padding-right: 2px;
 }
 
+/*
+ * TIER 3, THE RAIL. Chromeless (phase 2).
+ *
+ * A neighbour used to wear the same fill, the same 1px rule, the same radius
+ * and the same shadow as your own farm, the island and the decks - nine boxes
+ * of equal weight, which is a hierarchy with nothing at the top of it. The
+ * measurement that started this phase counted them; the fix is that only one
+ * region on this screen keeps that costume, and it is not this one.
+ *
+ * ONE THING SURVIVES: the 4px seat edge, and it is now doing two jobs. It says
+ * whose farm this is (the same colour their cards, their pip and their receipts
+ * wear), and with the fills gone it is the ONLY separator between one
+ * neighbour and the next - the rail is a stack of three, and without a rule
+ * round each one there has to be something down the left telling the eye where
+ * one stops. An edge is not chrome: it costs one colour on one side, carries
+ * information, and cannot be mistaken for a container.
+ */
 .rival {
-  background: var(--paper-panel);
-  border: 1px solid var(--rule);
   border-left: 4px solid var(--seat-pip);
-  border-radius: 8px;
-  padding: 7px 8px;
-  box-shadow: var(--shadow);
+  padding: 4px 8px 6px;
   display: grid;
   gap: 5px;
 }
 
+/*
+ * The seat whose turn it is. A WASH, not an outline (phase 2).
+ *
+ * The old 2px `--seat-pip` outline was fine when it was one loud thing among
+ * nine loud things. In a chromeless rail it would be the highest-contrast shape
+ * anywhere on the screen, including the farm the whole phase exists to promote,
+ * and the loudest thing on a screen should never be a fact you cannot act on.
+ *
+ * A fill instead: the same tone the farm wears, tinted with the seat's own
+ * colour, so the highlight reads as "lit up" rather than as "selected". It
+ * pairs with the "to play" chip that was always there and does the actual
+ * telling. The plain declaration first is the fallback - a browser without
+ * `color-mix` drops the second line and still gets a wash, which is the part
+ * that matters; the tint is the refinement.
+ *
+ * ⚠️ It is a real background, so `measure-ui` counts an active neighbour as a
+ * chromed panel. That is honest and it is left alone: the metric asks whether a
+ * region has a fill, and this one does. It just is not there most of the time.
+ */
 .rival-active {
-  outline: 2px solid var(--seat-pip);
-  outline-offset: 1px;
+  background: var(--paper-panel);
+  background: color-mix(in srgb, var(--seat-pip) 12%, var(--paper-panel));
+  border-radius: 0 6px 6px 0;
 }
 
 .rival-head {
@@ -87,78 +155,110 @@
   object-fit: contain;
 }
 
+/* `--seat-ink`, for the reason set out on `.farm-turn` below: white on a Dairy
+   or Wheat PIP is 1.19:1 and 2.25:1, which is a white word on a cream lozenge.
+   Two chips, one defect, one fix. */
 .rival-turn {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  background: var(--seat-pip);
+  background: var(--seat-ink);
   color: #fff;
   border-radius: 999px;
   padding: 1px 6px;
 }
 
-.rival-stats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 2px;
+/*
+ * ⭐ ONE RUN AT READING SIZE, WHERE FOUR COLUMNS AT 9px USED TO BE (phase 4).
+ *
+ * The old shape was a `<dl>` of four equal columns, each with a 9px uppercase
+ * caption over a 13px value. It cost two lines, it forced every value into a
+ * quarter of a 196px rail, and the captions were below reading size - so the
+ * panel whose entire job is "who should I visit" was answering in type nobody
+ * reads from a seat.
+ *
+ * Every number stays; only the furniture goes. The unit rides along with the
+ * value ("7 in hand"), which is what makes the caption redundant and pays for
+ * the size - 13px, the same size as the neighbour's own name above it.
+ *
+ * IT IS ALLOWED TO WRAP, and that is deliberate rather than tolerated. At the
+ * 1024 floor the rail is 196px and the run is about 210px, so it takes two
+ * lines there and one at every larger step. Two lines of readable type beats one
+ * line of unreadable type, and the row this replaced took two lines anyway.
+ *
+ * The separator is drawn by CSS and TRAILS its value rather than leading the
+ * next one, which is the difference between a wrapped second line reading
+ * "1 in barn" and reading "· 1 in barn" - a stray bullet, which is what the
+ * first cut of this rendered at the floor.
+ */
+.rival-run {
   margin: 0;
-  font-size: 11px;
-}
-
-.rival-stats div {
-  text-align: center;
-}
-
-.rival-stats dt {
-  color: var(--ink-soft);
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.rival-stats dd {
-  margin: 0;
-  font-family: var(--font-display);
-  font-weight: 600;
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 5px;
   font-size: 13px;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
 }
 
+.rival-run span:not(:last-child)::after {
+  content: '·';
+  margin-left: 5px;
+  color: var(--ink-line);
+}
+
+/*
+ * THE MOST DECISION-RELEVANT OBJECT IN THE RAIL, drawn like it.
+ *
+ * The fill bar is the only thing on a neighbour's panel that says whether a
+ * visit will be ACCEPTED, so of everything phase 4 compressed this is the one
+ * item that grew. Its label and its payout share the line above it - the label
+ * left, the price right - and the bar itself gets the full width underneath.
+ */
 .rival-board {
   display: grid;
-  gap: 2px;
+  gap: 3px;
 }
 
-.rival-payout {
+.rival-board-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.rival-board-name {
   font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+/* The price is not a caption, so it is not caption-coloured. It is one of the
+   two numbers the visit is decided on and it reads in full ink. */
+.rival-payout {
+  font-size: 11px;
+  color: var(--ink);
+  text-align: right;
 }
 
 .rival-board-none {
   margin: 0;
-  font-size: 10px;
+  font-size: 11px;
   color: #a2493a;
   font-style: italic;
 }
 
-.rival-dots {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
+/* Scoped to the rail: the same bar in the inspector and the visit panel already
+   has room to be read and does not need the extra weight. */
+.rival-board .fillbar-track {
+  height: 12px;
 }
 
-.dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  border: 1px solid rgb(58 42 24 / 45%);
-}
-
-.dot-full {
-  box-shadow: 0 0 0 2px #a2493a;
-}
-
-.dot-upgraded {
-  border-radius: 2px;
+.rival-board .fillbar-text {
+  font-size: 11px;
+  color: var(--ink);
 }
 
 .rival-open {
@@ -167,28 +267,38 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   opacity: 0;
-  transition: opacity 120ms ease;
+  /* Hover feedback, so `--motion-ui` rather than the research's band: this
+     follows the pointer and a half-second fade would arrive after the pointer
+     had gone. Was a bare 120ms; the token is the only change. */
+  transition: opacity var(--motion-ui) ease;
 }
 
 /* The rail is compressed hard so three neighbours fit above the 700px fold.
-   Everything a visit decision does not need is hidden at this size and lives in
-   the inspector instead. */
-.worker-rail .worker-action,
-.worker-rail .worker-next {
-  display: none;
+   Everything a visit decision does not need lives in the inspector instead -
+   and as of phase 4 the chip does not RENDER those parts at rail size rather
+   than drawing them and hiding them, which is what let the two facts that
+   remain (the action, and the price) come up to a size worth printing. */
+.worker-rail .worker-name {
+  font-size: 12px;
+  align-items: baseline;
+}
+
+.worker-rail .worker-name em {
+  font-size: 10px;
+  color: var(--ink);
 }
 
 /* ---- the feed ----------------------------------------------------------- */
 
+/* TIER 3. Chromeless with the rest of the rail (phase 2): the feed is a running
+   commentary, and a commentary does not need a frame round it. Its own left
+   ticks (`.feed-line`, coloured by whose turn is being narrated) already give
+   the block an edge, so nothing was carrying structure that is now missing. */
 .feed {
-  background: var(--paper-panel);
-  border: 1px solid var(--rule);
-  border-radius: 8px;
-  padding: 6px 8px;
+  padding: 4px 8px 6px;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
-  box-shadow: var(--shadow);
 }
 
 .feed-lines {
@@ -208,6 +318,25 @@
   padding-left: 5px;
 }
 
+/*
+ * The actor's name, in the seat's own ink (phase 4).
+ *
+ * `--line-ink` is `SUIT_META[suit].ink`, which `suits.ts` documents as the tone
+ * for "borders and text on a pale ground" - the same choice phase 3 had to make
+ * for the turn bar's go light, and for the same reason: `--seat-pip` is tuned to
+ * separate five crops as a 10px dot and two of the five (Wheat, Dairy) are far
+ * too pale to set type in on cream.
+ *
+ * Weight does the work `--line-ink` cannot do on its own. A colour alone is not
+ * a distinction a colour-blind reader can use, and the point is scanning, so the
+ * lead is bolder than the sentence after it whatever ink it lands in.
+ */
+.feed-who {
+  color: var(--line-ink, inherit);
+  font-weight: 600;
+  font-style: normal;
+}
+
 .feed-boundary {
   color: var(--ink-soft);
   font-style: italic;
@@ -223,9 +352,28 @@
 
 /* ---- the main column ---------------------------------------------------- */
 
-/* Commons, farm, then the two interaction strips. The farm is the only row that
-   flexes, so the prompt and the action bar can never push the hand below the
-   fold - they take their own height and the tableau gives it up (it scrolls). */
+/*
+ * Commons, farm, then the two interaction strips. The farm is the only row that
+ * flexes, so the prompt and the action bar can never push the hand below the
+ * fold - they take their own height and the tableau gives it up (it scrolls).
+ *
+ * PHASE 2 DID NOT CHANGE THESE TRACKS, and that is worth saying because it is
+ * the obvious way to have done it and it is wrong. The commons is the `auto`
+ * row; the farm is `minmax(0, 1fr)` but hugs its content, so the slack Phase 1
+ * freed sits in the farm's row as bare table. Making the commons the flexing
+ * row instead would hand it that height - and would also let it take height the
+ * farm still needed, because an `auto` farm row in a fixed-height column can
+ * overflow rather than squeeze, and the way this layout fails when the farm is
+ * squeezed is the tableau slicing a row of buildings in half.
+ *
+ * So the commons takes the slack by GROWING ITS CONTENT - a bigger island, sized
+ * in `base.css` - and the 1fr farm row absorbs the difference. The safety
+ * property is unchanged and it is the browser's rather than ours: whatever the
+ * commons asks for, the farm's row is what is left, `.farm` is capped at it, and
+ * the tableau scrolls. The tuning limit is therefore measured, not asserted -
+ * `tableauCapacity` must stay at 14 and `slicedBuildings` at 0 in
+ * `tools/measure-ui.mjs`, which is what decided how far the island could go.
+ */
 .main-column {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto auto;
@@ -234,21 +382,66 @@
   min-width: 0;
 }
 
+/*
+ * The notice row, added rather than reserved. An always-present `auto` track
+ * would be 0px tall with a `--gap` above it, so an empty row would still cost a
+ * band of dead table at the top of every game - the class is what keeps the
+ * cost to the states that actually carry a notice.
+ */
+.main-noticed {
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  row-gap: 6px;
+}
+
+/*
+ * TIER 2, THE COMMONS. Chromeless (phase 2).
+ *
+ * `.panel` used to be the whole costume - fill, rule, radius, shadow - and four
+ * regions wore it: the decks, the island, your Service and the Aerodrome. None
+ * of them is yours, none of them is where a decision is made, and every one of
+ * them was drawn with exactly as much authority as your own farm.
+ *
+ * They sit straight on the body's radial gradient now. The decks are five card
+ * backs and five discards, the island is a painted map, the Aerodrome is a list
+ * of balloons: all of them are already shapes with edges of their own, so the
+ * box round them was never separating anything. What it was doing was spending
+ * contrast, and contrast is the budget this whole phase is about.
+ *
+ * The class stays (it is what the layout hangs `min-width: 0` on, and phase 2
+ * changes paint, not structure), and `measure-ui` counts by computed style
+ * rather than by class name for exactly that reason - so a panel that keeps its
+ * name but gives up its chrome cannot be counted as chrome.
+ *
+ * The padding goes with it. It was the frame's inset, and with no frame it was
+ * 12px of vertical nothing per panel - which, on the row that is being handed
+ * Phase 1's leftover height, is height the island can have instead.
+ */
 .panel {
-  background: var(--paper-panel);
-  border: 1px solid var(--rule);
-  border-radius: 8px;
-  padding: 6px 8px;
-  box-shadow: var(--shadow);
   min-width: 0;
 }
 
+/*
+ * A CAPTION, NOT A HEADER (phase 2).
+ *
+ * These labels were `h2`s, so `base.css` was setting them in Fredoka 600 - the
+ * display face, at the heaviest weight the game uses - at the same 11px the
+ * strip titles use. Five of them across the top of the screen in the display
+ * face is five things competing with your farm's name for the eye.
+ *
+ * The demotion is WEIGHT, not colour. Dropping to the UI face at 400 and 10px
+ * takes the emphasis out; going lighter than `--ink-soft` would have taken the
+ * legibility out with it, and `--ink-soft` is already the contrast item on the
+ * Phase 5 list (~4.0:1, short of AA). A phase about hierarchy has no business
+ * making the text harder to read on its way past.
+ */
 .panel-title {
-  font-size: 11px;
+  font-family: var(--font-ui);
+  font-weight: 400;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--ink-soft);
-  margin-bottom: 4px;
+  margin-bottom: 3px;
   display: flex;
   justify-content: space-between;
   gap: 6px;
@@ -315,14 +508,47 @@
 
 .island {
   display: grid;
+  /*
+   * ⚠️ THE COLUMN HAS TO BE NAMED, or the rows are free to overflow the panel.
+   *
+   * With no `grid-template-columns` the implicit column is `auto`, which sizes
+   * to MAX-CONTENT - so at any size where the pyramid is wider than the commons
+   * column allows, the grid area is wider than `.island` itself and a row's
+   * `max-width: 100%` resolves against the area rather than against the box a
+   * reader can see. The rows then paint straight over the Hiring Fair and the
+   * Aerodrome in the column to their right. `minmax(0, 1fr)` pins the area to
+   * the container, which is what makes the cap on `.island-row` bind.
+   *
+   * No effect at any shipped step: `justify-items: center` centres each row in
+   * its area either way, and at scale 1 the island fits its column with room
+   * over, so the two areas are the same place. Found by the scale slider at
+   * 120% (phase 5) and fixed once, for both.
+   */
+  grid-template-columns: minmax(0, 1fr);
   gap: 3px;
   justify-items: center;
 }
 
+/*
+ * `max-width` is the one line that stops a too-wide island painting over the
+ * Hiring Fair, and it was put here by the UI scale slider (phase 5).
+ *
+ * `.island` is `justify-items: center`, so a row is sized to its CONTENT and is
+ * free to overflow the grid column it sits in - and the commons' third column
+ * (your Service, the Aerodrome) is what it overflows onto. Capping the row at
+ * its container's width hands the shortfall to the flex items, which are tiles
+ * with an `aspect-ratio` and therefore shrink cleanly in both directions.
+ *
+ * ⚠️ IT CHANGES NOTHING AT SCALE 1, and cannot: a `max-width` only binds when
+ * the content is wider than the box, and at every shipped step the island fits
+ * its column with room to spare. `measure-ui` confirms it - the phase 5 numbers
+ * are identical to phase 4's at all three viewports.
+ */
 .island-row {
   display: flex;
   align-items: center;
   gap: 6px;
+  max-width: 100%;
 }
 
 /* Every tile is identical under the flat island, so the rule is stated once
@@ -332,6 +558,42 @@
   font-size: 9px;
   color: var(--ink-soft);
   text-align: center;
+}
+
+/*
+ * ⭐ THE MAP IS A CLICK TARGET (phase 5). The whole pyramid opens the full-size
+ * island, and `Island.tsx` explains why a live tile's own click wins over it.
+ *
+ * The cue is a cursor and a hover lift and nothing else: this is the second
+ * loudest region on the screen already (phase 2's note 2), and a border or a
+ * ring round it in the resting state would settle that contest the wrong way -
+ * the farm is meant to own the page. `filter: brightness` rather than a
+ * `transform: scale`, because the tiles butt edge to edge and a scaled map
+ * would open hairline seams between them at every row.
+ */
+.island-openable {
+  cursor: zoom-in;
+}
+
+.island-openable:hover {
+  filter: brightness(1.03);
+}
+
+/* The panel caption, doubling as the enlarge control. Plain by design - it has
+   to read as the caption it replaced, not as a button parked in the commons. */
+.island-expand {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+}
+
+.island-expand:hover,
+.island-expand:focus-visible {
+  color: var(--ink);
 }
 
 .island-tiles {
@@ -374,12 +636,22 @@
 
 /* Carries `data-text` in Island.tsx - the outline needs both halves, see the
    `[data-text]::after` block in base.css. */
+/*
+ * The crate quantity, and the two numerals below it, now SCALE WITH THE TILE.
+ *
+ * Phase 2 gives the island Phase 1's leftover height, and a bigger map with the
+ * same 9px and 10px numerals stamped on it would have been a worse picture, not
+ * a better one - more paint, the same unreadable text, and the text is the part
+ * that carries the rule. The `max()` is the floor's protection: at 1024 the
+ * island is width-bound and its tile barely moves, so the fraction would have
+ * made these smaller than they already are. They may grow; they may not shrink.
+ */
 .island-crate b {
   position: absolute;
   bottom: -3px;
   right: -2px;
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: max(10px, calc(var(--island-tile) * 0.145));
   color: #fff;
   -webkit-text-stroke: 2px #2f2318;
   paint-order: stroke fill;
@@ -407,8 +679,8 @@
 }
 
 .receipt {
-  width: 14px;
-  height: 14px;
+  width: max(14px, calc(var(--island-tile) * 0.21));
+  height: max(14px, calc(var(--island-tile) * 0.21));
   border-radius: 50%;
   border: 1px solid #2f2318;
   display: grid;
@@ -433,7 +705,7 @@
 .receipt-empty i {
   font-family: var(--font-display);
   font-style: normal;
-  font-size: 9px;
+  font-size: max(9px, calc(var(--island-tile) * 0.14));
   line-height: 1;
   color: var(--ink);
 }
@@ -465,32 +737,372 @@
 
 /* ---- your farm ---------------------------------------------------------- */
 
+/*
+ * The farm is two columns now: everything you own on the left, and one card at
+ * reading size on the right.
+ *
+ * The reading column SPANS the tableau and hand rows rather than sitting in a
+ * row of its own, because a card printed at 360px is taller than either strip
+ * and the only place that height exists is both of them at once.
+ *
+ * `column-gap` is written as a min() against the column width, not as a flat
+ * 6px, so that the whole column really does vanish at the floor step where
+ * `--card-read` is 0. A gap between an occupied track and an empty one is still
+ * drawn, and 6px of dead margin against the farm's right edge is exactly the
+ * kind of thing that reads as a mistake rather than as a choice.
+ */
+/*
+ * TIER 1, THE HERO. The farm takes the elevation the other eight gave up.
+ *
+ * Phase 2's whole bet is that a screen needs ONE place the eye lands first, and
+ * that the cheapest way to build one is not to enlarge the winner but to demote
+ * everybody else. The commons and the rail are chromeless now, so the four
+ * things below are no longer "the same treatment as everything, slightly more":
+ * they are the only fill, the only shadow, the only radius and the only heavy
+ * edge on the screen.
+ *
+ *   --paper-hero   warmer than the tone the other panels used to share, so the
+ *                  farm is not merely brighter than the table behind it but a
+ *                  different piece of stock.
+ *   --shadow-lift  PERMANENT, where it used to arrive only on your turn. A
+ *                  region that is the hero for two seconds in four is not a
+ *                  hero; hierarchy has to hold while you are waiting, which is
+ *                  most of a four-player game and all of the time a screenshot
+ *                  is taken.
+ *   6px seat edge  up from 4px. It is the one place the seat's colour appears
+ *                  at size, and against a chromeless rail whose neighbours each
+ *                  carry a 4px edge of their own, 4px no longer distinguished
+ *                  your farm from a rival's panel.
+ *   radius + rule  kept, and now unique. This is the only box on the table.
+ */
 .farm {
-  background: var(--paper-panel);
+  background: var(--paper-hero);
   border: 1px solid var(--rule);
-  border-top: 4px solid var(--seat-pip);
+  border-top: 6px solid var(--seat-pip);
   border-radius: 8px;
   padding: 6px 8px;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-lift);
   display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--card-read);
   grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 6px;
+  row-gap: 6px;
+  column-gap: min(6px, var(--card-read));
   min-height: 0;
+  /*
+   * THE PANEL HUGS ITS CONTENT, AND IS CAPPED AT THE ROW IT IS GIVEN.
+   *
+   * `.main-column` hands the farm every pixel the commons and the turn bar do
+   * not want, and until 26/08 the farm spent all of it: the tableau was the
+   * flexing row, so whatever the buildings did not fill became a void across
+   * the full width of the panel, between the bottom row of cards and the hand.
+   * Shrinking the cards to pay for the reading region made that void 17% of the
+   * farm - smaller cards AND more emptiness, which is the worst of both.
+   *
+   * It cannot be filled. Buildings big enough to close a 90px gap at 1600x900
+   * come out around 180px, which drops the tableau to four cards a row and puts
+   * the capacity below a dozen - so the cards that make the screenshot look
+   * full are the same cards that slice a real 12-14 building farm. The space
+   * has to be collapsed instead, and the honest place to collapse it is the
+   * panel: the farm is as tall as your farm is, and the slack goes back to the
+   * table as background between the panel and the turn bar.
+   *
+   * `max-height` is what keeps the fold safe, and it is not optional. Without
+   * it a big enough tableau would grow the panel straight off the bottom of the
+   * screen. With it the panel stops at the row's height, the tableau row is
+   * squeezed instead, and `.tableau` scrolls - exactly the behaviour the layout
+   * had before, kept for the case that actually needs it.
+   */
+  align-self: start;
+  max-height: 100%;
 }
 
-.farm-active {
+.farm > .tableau {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.farm > .farm-strips {
+  grid-column: 1;
+  grid-row: 3;
+}
+
+/*
+ * THE READING REGION. One card, at the width its type was set for, in a place
+ * that never moves.
+ *
+ * IT MEASURES ZERO ON PURPOSE. The region spans all three of the farm's rows,
+ * and a spanning grid item contributes its content height to the tracks it
+ * spans - which would mean the tallest thing the region ever holds silently
+ * setting the height of the tableau. Hovering an upgradable starter, whose
+ * second face adds a paragraph under the card, would then push the hand down as
+ * the pointer went past. So the contents are taken out of flow (`.reading-body`
+ * below) and the region itself has no in-flow children at all: the rows are
+ * sized by the head, the tableau and the hand, and the region takes whatever
+ * that comes to.
+ *
+ * ⚠️ SO ITS HEIGHT IS NOT A DIAL, and the one attempt to make it one is worth
+ * recording because the number was decisive. Step B's gloss was getting 33px at
+ * 1366 and 36px at 1600 against 116px of content, so the region was given a
+ * `min-height` of the card plus 120px to claim the slack the farm was leaving
+ * under itself. It fits - `verify:layout` stayed green at all three viewports,
+ * because `.farm`'s `max-height: 100%` caps the growth at the row - and it is
+ * still the wrong trade: `measure-ui` put farm dead space back at 10% (laptop)
+ * and 17% (desktop), the exact figure step A collapsed the panel to remove, and
+ * `tableau capacity` did not move off 14 for any of it. Sixty pixels of hole
+ * under the buildings, no extra buildings. Reverted.
+ *
+ * What paid for the gloss instead was `grid-row: 1`: the head bar stopped
+ * spanning both columns, which hands the region the head's height plus a row
+ * gap - about 40px - and costs nothing at all.
+ *
+ * `overflow: hidden` finishes the job - a card taller than the space is cropped
+ * rather than allowed to run out over the turn bar.
+ */
+.reading {
+  grid-column: 2;
+  grid-row: 1 / 4;
+  position: relative;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/*
+ * Pinned to the top of the span, which is what makes the region read as
+ * furniture: the card's top edge is in the same place whatever is being read,
+ * and the second-face note grows downward into space nothing else is using.
+ *
+ * TWO EXPLICIT ROWS, and the second one is why. The gloss is the only thing
+ * here that can outgrow its space, and left to place itself it did not overflow
+ * the bottom - it was pushed back up over the card, printing across the bottom
+ * of the art at 1366. Naming the rows makes the card's row the size of the card
+ * and gives the gloss whatever is left, so the worst case is a gloss that runs
+ * out of room rather than one that lands on the thing you were reading.
+ */
+.reading-body {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 4px;
+  align-content: start;
+}
+
+/*
+ * THE GLOSS BLOCK. Keywords, cost, and what you could do with it right now.
+ *
+ * It SCROLLS rather than clipping, and that is the one decision here worth
+ * arguing. Clipping would keep the block silent about its own overflow, and the
+ * lines most likely to be pushed off the bottom are the second face and the
+ * "right now" line - the two that carry the most information. `min-height: 0`
+ * is what lets the row shrink at all; without it a grid item's automatic
+ * minimum is its content and the block would simply push the card up.
+ *
+ * Type is small and quiet on purpose. The card above is the loud thing in this
+ * column; the gloss is what you read second, having already decided the card is
+ * worth reading.
+ */
+.reading-gloss {
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  font-size: 11px;
+  /* 1.3, not the 1.35 the feed uses. The box is 63px at 1366 and 66px at 1600,
+     so a line costs 1.5% of everything there is: at 1.35 a four-line gloss did
+     not fit and at 1.3 it does, which is the whole justification. */
+  line-height: 1.3;
+  padding-right: 2px;
+}
+
+/* The term in the seat's own ink, so the eye can find "what does GROW mean"
+   without reading the sentence beside it. Two columns rather than a stacked
+   list: at 260px a term on its own line costs a line per keyword, and a card
+   with three keywords would push everything else out of the column. */
+.gloss-terms {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 6px;
+}
+
+.gloss-terms dt {
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--seat-ink);
+}
+
+.gloss-terms dd {
+  margin: 0;
+}
+
+.gloss-cost,
+.gloss-now {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+/* The card's own numbers, said in words. Soft ink: it is reference, not news. */
+.gloss-cost {
+  color: var(--ink-soft);
+}
+
+/* The only part of the block that changes with the position, and the only part
+   a player acts on without checking - so it is the one thing here allowed a
+   piece of the seat's colour. */
+.gloss-now {
+  border-left: 3px solid var(--seat-pip);
+  padding-left: 6px;
+}
+
+.gloss-face,
+.gloss-masked {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.gloss-face b {
+  color: var(--ink);
+}
+
+/*
+ * The idle state, and the reason the region does not flicker.
+ *
+ * Rendering nothing when nothing is hovered would collapse the column between
+ * every pair of cards the pointer crosses, and a layout that jumps as the mouse
+ * moves is worse than having no region at all. So the empty state is a card of
+ * exactly the same size: the box on screen is identical whether or not anything
+ * is being read, and only its contents change.
+ *
+ * It is drawn as a place rather than as an absence. The first pass used a
+ * dashed outline round nothing, and at 360 x 260 that is the largest hole on
+ * the screen - it reads as a rendering fault, not as a slot waiting for a card.
+ * A filled shape in the deeper paper tone reads as part of the furniture, and
+ * carrying the hint inside it means there is no second stray line of text
+ * floating underneath.
+ *
+ * Everything here is deliberately quiet: one weight of type, `--ink-soft`, no
+ * outline of its own. When a card arrives it must be the only thing in this
+ * column with any contrast in it.
+ */
+/*
+ * THE IDLE DEFAULT: YOUR FARMSTEAD, AND WHY IT IS QUIETER THAN A HOVER.
+ *
+ * The region has two things it can be showing and they mean opposite things:
+ * "the card you are pointing at" and "the power you always have". If they were
+ * drawn identically a player would learn to distrust the region - it would
+ * sometimes be answering a question they had just asked and sometimes not, with
+ * nothing on screen to say which.
+ *
+ * So the standing card is captioned and held back a step: no shadow, softened a
+ * touch, and a label in the seat's soft ink above it. Anything hovered or held
+ * arrives at full strength and with no caption, which is the difference read
+ * without reading. The caption is the important half - "Your farm's power" is
+ * four words and it answers the whole question.
+ *
+ * ⚠️ THE THIRD ROW IS WHY THIS OVERRIDES `.reading-body`. The body is two rows
+ * (card, then gloss) and this shape has a caption between them. It is still
+ * `position: absolute; inset: 0` and still contributes nothing to the farm's
+ * track sizing, which is the property phase 1 fixed and this must not undo -
+ * measured at 0px of movement across every card at all three viewports, not
+ * assumed.
+ */
+.reading-standing .reading-body {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+/*
+ * THE DIFFERENCE IS MADE TWICE, and the second way is the one that carries it.
+ *
+ * Dimming alone was not enough: the standing card is the largest image on the
+ * screen either way, and taking it much further than this starts to cost the
+ * legibility of the power itself, which is the entire point of showing it.
+ *
+ * So the CARD BEING READ is what changes instead - it lifts off the page with
+ * the same shadow the farm wears, while the standing one lies flat. A shadow is
+ * read pre-attentively, costs no contrast, and says the right thing: one of them
+ * is a card you have picked up, the other is a card that is simply there.
+ */
+.reading-standing .card {
+  opacity: 0.86;
+  filter: saturate(0.92);
+}
+
+.reading:not(.reading-standing) .card {
   box-shadow: var(--shadow-lift);
 }
 
+.reading-caption {
+  margin: 2px 0 0;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--seat-ink, var(--ink-soft));
+}
+
+.reading-empty {
+  width: var(--card-read);
+  aspect-ratio: 1039 / 750;
+  border-radius: 3.2%;
+  background: var(--paper-deep);
+  box-shadow: inset 0 0 0 1px var(--rule);
+  display: grid;
+  place-items: center;
+  padding: 0 14%;
+}
+
+.reading-empty p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.4;
+  text-align: center;
+}
+
+/*
+ * The lift is permanent now, so "it is your turn" cannot be told by turning it
+ * on. It is told by the head bar's chip, which says it in words, and echoed
+ * here as a slightly deeper seat - enough to notice out of the corner of the
+ * eye across a table of four, not enough to be a second signal to decode.
+ */
+.farm-active {
+  box-shadow:
+    var(--shadow-lift),
+    0 0 0 1px rgb(58 42 24 / 10%);
+}
+
+/*
+ * The seat's title bar. It sits over the LEFT column only, which is not tidiness
+ * - it is where the gloss block's height comes from.
+ *
+ * The reading column spans all three rows, so every pixel the head does not take
+ * from it is a line of gloss. Running the bar across both columns cost the gloss
+ * 40px of a box that only ever has 250 to 300 in it, and bought nothing: the bar
+ * is five chips in a flex row and has ~900px to sit in either way. The reading
+ * column reaching the top of the panel also reads better - it is a column, and
+ * it now looks like one rather than like something wedged in beside the tableau.
+ */
 .farm-head {
+  grid-column: 1;
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
 }
 
+/* The top of the type hierarchy, and the only heading on the table set in the
+   display face at size. Everything it used to share 15px with - the commons
+   captions - has gone down to 10px in the UI face, so this is doing the work of
+   the gap rather than shouting into a crowd. See `--farm-title` in base.css. */
 .farm-head h2 {
-  font-size: 15px;
+  font-size: var(--farm-title);
   color: var(--seat-ink);
 }
 
@@ -517,9 +1129,45 @@
   border-radius: 50%;
 }
 
+/*
+ * A COUNT THAT JUST MOVED, on the research's 0.5-0.8s band. Set by `useChanged`
+ * in Farm.tsx and cleared by this animation's own `animationend`, so the beat
+ * and the token are the same number by construction.
+ *
+ * A LIFT AND A WARM WASH, NOT A SIZE CHANGE. `.farm-head` is a flex row of five
+ * chips and the tableau's whole height budget is measured from its bottom edge
+ * (phase 1's height invariance, re-proved in phase 3), so anything that changes
+ * this row's height by a pixel moves every building on the screen. `transform`
+ * and `background-color` are both out of flow.
+ */
+@keyframes count-moved {
+  40% {
+    transform: translateY(-3px);
+    background: color-mix(in srgb, var(--seat-pip) 55%, transparent);
+  }
+}
+
+.count-moved {
+  border-radius: 999px;
+  animation: count-moved var(--motion-state) ease;
+}
+
+/*
+ * ⚠️ FILLED WITH `--seat-ink`, NOT `--seat-pip` (phase 5) - the same correction
+ * phase 3 had to make to the turn bar's go light, in the last place that still
+ * had it wrong.
+ *
+ * `pip` is tuned to separate five crops at 10px on a stack gauge, so two of the
+ * five are pale: Wheat is #d9a520 and Dairy is #f6e6b4. White type on a Dairy
+ * pip measures 1.19:1 - not "low contrast" but literally unreadable, a white
+ * word on a cream lozenge - and on Wheat 2.25:1. `--seat-ink` is documented in
+ * suits.ts as the value for type, and white on it runs 5.80 to 6.88 across all
+ * five seats. The chip still wears the seat's own colour; it wears the half of
+ * it that can carry a word.
+ */
 .farm-turn {
   margin-left: auto;
-  background: var(--seat-pip);
+  background: var(--seat-ink);
   color: #fff;
   border-radius: 999px;
   padding: 2px 10px;
@@ -532,6 +1180,123 @@
   margin-left: auto;
   color: var(--ink-soft);
   font-size: 11px;
+}
+
+/*
+ * THE SCROLL CUE, and why it is a mask rather than a gradient sitting on top.
+ *
+ * Two boxes wear it: the TABLEAU, which slices its bottom row of buildings when
+ * a farm outgrows it, and the READING GLOSS, which gets 63px at 1366 and 66px
+ * at 1600 and cannot hold every card's block in that. Both are scrollers whose
+ * overflow is rare-but-real, and both would rather say so than look truncated.
+ * They differ only in how deep the fade is, which is `--cue-depth`.
+ *
+ * Capacity is 14 buildings and that is decided: a census of 1200 farms across
+ * 300 games measured median 10, p90 13, p99 16, so 14 overflows one farm in 36.
+ * Shrinking every card for every player to rescue 2.75% of farms was rejected,
+ * which leaves the rare case needing to LOOK rare rather than looking broken.
+ * Today it does not: `.tableau` scrolls, so a farm that outgrows its box gets
+ * its bottom row sliced through the middle of the card art, and a card cut in
+ * half reads as a rendering fault, not as "there is more below".
+ *
+ * THREE PROPERTIES, and each one picked the technique.
+ *
+ * 1. IT MUST NOT INTERCEPT POINTER EVENTS. Cards under it stay clickable and
+ *    draggable. The usual answer is an absolutely-positioned gradient with
+ *    `pointer-events: none`, which works but is a promise a future edit can
+ *    break. A mask is not an element at all, so there is nothing there to
+ *    intercept and nothing to remember. (CSS masking is not applied to hit
+ *    testing - `clip-path` is, which is exactly why this is not a clip-path.)
+ *
+ * 2. IT MUST APPEAR ONLY WHEN THE TABLEAU ACTUALLY OVERFLOWS. A permanent fade
+ *    over a farm that fits is a lie, and the 97% of games that never overflow
+ *    would see it every turn. A scroll-progress timeline enforces that in the
+ *    browser rather than in our code: a scroll timeline whose scroller has no
+ *    scrollable overflow is INACTIVE, an animation on an inactive timeline
+ *    applies no effect at all, and `--scroll-cue` falls back to its registered
+ *    initial value of 0 - a mask that is opaque everywhere, which is the same
+ *    as no mask. There is no measurement to get wrong and no observer to leak,
+ *    and it cannot drift out of step with the real overflow because it IS the
+ *    real overflow. (`.inspector .tableau` sets `overflow: visible`, so a
+ *    rival's tableau is not a scroller and never carries the cue.)
+ *
+ * 3. IT MUST BE QUIET. A fade at the bottom edge, no line, no chevron, no
+ *    colour of its own. It is the standard "more below" affordance and the only
+ *    one that costs no ink. 20px in the tableau, 12px in the gloss - the depth
+ *    is a share of the box, and 20px of a 66px box would be a curtain.
+ *
+ * WHERE IT DEGRADES: a browser without scroll-driven animations (Safari before
+ * 26, Firefox before 144) drops `animation-timeline`, and `animation-duration:
+ * auto` with it, so the animation runs for 0s, fills to its 100% keyframe and
+ * lands on 0. That is NO CUE, never a false one - the failure mode is a
+ * missing affordance on a rare screen, not a fade printed over a farm that
+ * fits. It is not in verify-webkit's FRAGILE list for the same reason: nothing
+ * here is load-bearing, so switching it off changes nothing worth diffing.
+ */
+/* A SHARE rather than a length, so one keyframe set serves two boxes of very
+   different sizes: each scroller sets its own `--cue-depth` and this scales it
+   from full to nothing. */
+@property --scroll-cue {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+
+@keyframes scroll-cue {
+  /* Held flat almost the whole way down, then taken off over the last stretch,
+     so arriving at the bottom is the cue going out rather than a fade that has
+     been shrinking distractingly the whole scroll. */
+  0%,
+  85% {
+    --scroll-cue: 1;
+  }
+
+  100% {
+    --scroll-cue: 0;
+  }
+}
+
+/* Nothing here MOVES - the fade is driven by the reader's own scrolling, not by
+   a clock - but it does change under them, so reduced motion gets the same cue
+   held constant: present while there is more below, gone when there is not. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes scroll-cue {
+    from,
+    to {
+      --scroll-cue: 1;
+    }
+  }
+}
+
+.tableau,
+.reading-gloss {
+  /* Declared as well as registered, so a browser with no `@property` support
+     still resolves the calc below to a fully opaque mask instead of dropping
+     the declaration and leaving an unregistered `var()` behind. */
+  --scroll-cue: 0;
+  --cue-depth: 20px;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - var(--cue-depth) * var(--scroll-cue, 0)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - var(--cue-depth) * var(--scroll-cue, 0)),
+    transparent 100%
+  );
+  animation-name: scroll-cue;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+  /* `auto` is what maps an animation onto a progress timeline. It is also the
+     fallback lever: a browser that has never heard of it drops the declaration,
+     the duration stays 0s, and the animation lands on its 100% keyframe. */
+  animation-duration: auto;
+  animation-timeline: scroll(self block);
+}
+
+.reading-gloss {
+  --cue-depth: 12px;
 }
 
 .tableau {
@@ -560,6 +1325,54 @@
   transform: translateX(-50%);
 }
 
+/*
+ * THE STANDING-MOVE BADGE (phase 3). A move a built card is offering, made on
+ * the card that offers it.
+ *
+ * It replaces a "Card power" button that sat fourteenth in a flat turn bar and
+ * named no card at all - so the one thing a player had to know, WHICH card, was
+ * the one thing the control could not say. The guidance is blunt about the
+ * shape: do not replace a board component's action with a bar button; act on
+ * the board the way you would at the table.
+ *
+ * Top-right, over the art and clear of the stack gauge, which is bottom centre
+ * and at a five-card threshold is wide enough to fill that whole edge. It is
+ * drawn only when the move is legal, so it is always news and there is never a
+ * dead one to learn to ignore - which is what lets it be this loud on a card
+ * that is only 92 to 120px wide. It does cover the right half of the card's
+ * printed name while it is up; the name is in the reading region beside it, and
+ * a move you can make right now outranks a title you can already see twice.
+ *
+ * ⚠️ THE CLOG FLAG IS IN THE SAME CORNER, and both can be true at once - a full
+ * Helping Hand still offers its repeat. So the badge steps down below it rather
+ * than landing on top of it, which is one line here and no branch in the tree.
+ */
+.building-power {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  z-index: 2;
+  /* `--seat-ink`, not `--seat-pip`: it carries white text, and the pip value is
+     the loud-at-10px one, which for Dairy is near-cream. */
+  background: var(--seat-ink, #3f7a3a);
+  color: #fff;
+  border: 1px solid rgb(0 0 0 / 22%);
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-family: var(--font-display);
+  font-size: 9px;
+  line-height: 1.3;
+  box-shadow: 0 1px 3px rgb(58 42 24 / 34%);
+}
+
+.building-full .building-power {
+  top: 19px;
+}
+
+.building-power:hover {
+  filter: brightness(1.08);
+}
+
 .building-clog {
   position: absolute;
   top: 3px;
@@ -584,12 +1397,27 @@
   padding: 2px 5px;
 }
 
+/*
+ * A pip taking a card's colour is animated on the research's band (phase 5),
+ * and it is the cheapest honest example of what that band is for: a stack
+ * filling toward its threshold is the fact the whole clog rule turns on, and
+ * a pip that simply IS the new colour on the next render says a card arrived
+ * without ever showing it arriving.
+ *
+ * All the pips on a gauge transition together because they share the rule, so
+ * this is batched by construction rather than by a scheduler - the "avoid
+ * animating trivia one item at a time" note is satisfied by there being no
+ * per-item code at all.
+ */
 .pip {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: rgb(255 255 255 / 25%);
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / 45%);
+  transition:
+    background-color var(--motion-state) ease,
+    box-shadow var(--motion-state) ease;
 }
 
 .pip-filled {
@@ -625,10 +1453,19 @@
   overflow: hidden;
 }
 
+/* The rail's Notice Board bar and the visit panel's, on the same band and for
+   the same reason as the pips: it is the one object in the rail that says
+   whether a visit will be ACCEPTED, so a neighbour's farm closing is worth
+   half a second of a player's attention. Width transitions on a `%` are laid
+   out by the browser, so this costs nothing and cannot fall out of step with
+   the number printed beside it. */
 .fillbar-fill {
   display: block;
   height: 100%;
   background: var(--seat-pip, #7d9a5c);
+  transition:
+    width var(--motion-state) ease,
+    background-color var(--motion-state) ease;
 }
 
 .fillbar-full .fillbar-fill {
@@ -707,47 +1544,33 @@
 }
 
 /*
- * Hover lifts the card out of the fan and scales it to reading size, so the hand
- * is read in place rather than off the zoom panel in the corner. The transform
- * grows it UP from its own bottom edge: the fan's baseline stays put, the fan
- * does not reflow (a width change would), and the growth goes over the tableau,
- * which is the one region above the hand that can be covered harmlessly.
+ * Hover no longer grows the card (26/08/2026). It used to scale the hovered
+ * card up to reading size in place, which worked but cost the hand a size it
+ * did not otherwise need: the fan had to be printed big enough to read from,
+ * and that width is precisely what the reading region now spends better.
  *
- * It is set on the CARD, not on the slot. The slot is the thing that shrinks, so
- * its centre sits left of the card's and scaling about it would throw every
- * squeezed card rightwards. Scaling about the card's own box also leaves the
- * slot free to carry `is-held` and `is-picked`, which are transforms too.
+ * With the region in place the hand's job is to say WHICH cards you hold, not
+ * what they do, so hovering a card sends it to the region and the fan itself
+ * stays perfectly still. Nothing under the pointer moves, which also removes
+ * the old failure where a scaled card covered the neighbour you were reaching
+ * for next.
+ *
+ * The card raises itself in the stack under the pointer so its own edges are
+ * whole while it is the one being read.
  */
-.hand-card .card {
-  transition: transform 130ms ease;
-}
-
 .hand .hand-card:hover,
 .hand .hand-card:focus-visible {
   z-index: 50 !important;
   outline: none;
 }
 
-.hand .hand-card:hover .card,
-.hand .hand-card:focus-visible .card {
-  transform: translateY(-6px) scale(var(--hand-hover-scale));
-  transform-origin: bottom center;
-  box-shadow: var(--shadow-lift);
-}
-
-/* Tabbing through the hand is how it is read without a mouse, so the keyboard
-   gets the same expansion. The ring moves from the slot to the card with it: the
-   slot is the shrunken box, so a ring left there would trace a rectangle down
-   the card's left edge and would not scale with the card it belongs to. */
+/* Tabbing through the hand is how it is read without a mouse: focus feeds the
+   same region a hover does. The ring sits on the CARD rather than on the slot,
+   because the slot is the shrunken box and a ring there would trace a rectangle
+   down the card's left edge instead of round the card. */
 .hand .hand-card:focus-visible .card {
   outline: 2px solid var(--seat-pip, #3f7a3a);
   outline-offset: 2px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .hand-card .card {
-    transition: none;
-  }
 }
 
 .barn-piles {
@@ -788,6 +1611,17 @@
   display: flex;
   gap: 4px;
   justify-content: space-between;
+  /* Without this the chip cannot be narrower than its longest word, and the
+     commons' own Service panel is a fixed grid column - a long label there does
+     not wrap, it shoulders the panel out over the island beside it. */
+  min-width: 0;
+}
+
+.worker-verb {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .worker-name em {
@@ -848,10 +1682,6 @@
   color: var(--ink-soft);
 }
 
-.worker-rail .worker-name {
-  font-size: 10px;
-}
-
 /* ---- zoom, inspector, banner -------------------------------------------- */
 
 /* Clear of the turn bar: the bar is a click target now, and a hover zoom that
@@ -881,9 +1711,18 @@
   line-height: 1.3;
 }
 
+/* The scrim arrives rather than appearing. `--motion-ui`, not the band: it is
+   the answer to a click, and both overlays it serves are opened by one. */
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+}
+
 .overlay {
   position: fixed;
   inset: 0;
+  animation: overlay-in var(--motion-ui) ease;
   background: rgb(44 32 20 / 52%);
   display: grid;
   place-items: center;
@@ -901,6 +1740,53 @@
   box-shadow: var(--shadow-lift);
   display: grid;
   gap: 8px;
+}
+
+/*
+ * THE ENLARGED ISLAND. Deliberately the same costume as `.inspector` - same
+ * scrim, same paper, same radius, same close button - because they are the same
+ * kind of thing (a compressed region, opened out) and the game should not have
+ * two modal idioms for one gesture.
+ *
+ * No `max-height` scroller: `IslandOverlay` sizes the tile so the whole pyramid
+ * fits the window, which is the point of it. A scrolling island would be the
+ * inline map's problem again with more paint.
+ */
+.island-large {
+  background: var(--paper-panel);
+  border-radius: 10px;
+  padding: 12px 16px 14px;
+  box-shadow: var(--shadow-lift);
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+}
+
+.island-large-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+}
+
+.island-large-head h2 {
+  font-size: 17px;
+}
+
+.island-large-head p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.island-large-head .inspector-close {
+  margin-left: auto;
+}
+
+/* At full size the one-line rule can be read like a caption rather than a
+   footnote, so it stops being 9px. */
+.island-large .island-legend {
+  font-size: 13px;
 }
 
 .inspector-head {
@@ -946,19 +1832,39 @@
   overflow: visible;
 }
 
-.end-banner {
-  position: fixed;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
+/*
+ * TABLE-WIDE NOTICES: the end trigger, and the supply lock.
+ *
+ * ⚠️ THEY USED TO BE `position: fixed` AT THE TOP CENTRE, which is precisely
+ * where the commons draws its DECKS and THE ISLAND captions - so the end-game
+ * banner printed straight across them, in every screenshot this project has
+ * ever taken. Phase 2 made it worse rather than better: those captions lost the
+ * panels behind them, so what had been a banner over a box became text on text.
+ *
+ * A fixed element cannot be argued out of overlapping; it can only be moved
+ * somewhere else that is empty today. There is no such place on this screen -
+ * that was phase 0's finding and it has not changed - so the notice goes into
+ * the flow instead, as a row at the top of the main column. It cannot overlap
+ * anything by construction, and the row exists only in the states that have
+ * something to say (`.main-noticed` in Table.tsx), so it costs nothing the rest
+ * of the time.
+ */
+.table-notice {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+}
+
+.table-notice p {
   margin: 0;
   background: #a2493a;
   color: #fff;
   font-family: var(--font-display);
   font-size: 13px;
-  padding: 3px 16px;
-  border-radius: 0 0 8px 8px;
-  z-index: 70;
+  line-height: 1.3;
+  padding: 2px 16px;
+  border-radius: 6px;
+  text-align: center;
 }
 
 /**
@@ -968,17 +1874,46 @@
  * silently expires the moment somebody clicks Build, and a forfeited visit is
  * the hook not happening.
  */
+/* One line, and `max-width` is off for that reason: the bar is 800px or more
+   wide and this sentence is 92 characters, so at 11px it fits on one line at
+   every step. A second line here is 14px out of the tableau's row budget. */
 .bonus-phase {
-  margin: 0 0 0.4rem;
-  padding: 0.35rem 0.55rem;
-  border-left: 3px solid var(--accent, #b98b4a);
-  background: rgb(0 0 0 / 4%);
-  font-size: 0.85rem;
-  line-height: 1.35;
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.25;
+  color: var(--ink-soft);
 }
 
-.bonus-exits {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 0.3rem;
+.bonus-phase strong {
+  color: var(--seat-ink, var(--ink));
+}
+
+/*
+ * ⚠️ LAST IN THE FILE ON PURPOSE, AND IT HAS TO BE.
+ *
+ * These two keyframed animations are declared further up (`overlay-in` on
+ * `.overlay` in the zoom-and-inspector block, `count-moved` on the farm head's
+ * coin and VP chips). A media query carries no extra specificity, so a guard
+ * written ABOVE the rule it is guarding simply loses the cascade to it - which
+ * is exactly what the first cut of this did, and what a browser check caught.
+ * At the bottom of the file it cannot lose.
+ *
+ * Belt and braces, deliberately. The base.css guard takes `--motion-state` and
+ * `--motion-ui` to 0s, which already stops both of these and every transition
+ * written against them - that is the guard that cannot be forgotten. This is
+ * the one that cannot be defeated: a later edit hard-coding a duration rather
+ * than using a token would slip past the token guard silently, and
+ * `animation: none` does not care what the duration says.
+ *
+ * ⚠️ `.count-moved`'s flag is cleared by `animationend` (see `useChanged` in
+ * Farm.tsx) and `animation: none` fires none, so the class stays on the
+ * element. Harmless - nothing is drawn - and the right trade: the alternative
+ * is a JS timer kept equal to a CSS token by hand.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .overlay,
+  .count-moved {
+    animation: none;
+  }
 }

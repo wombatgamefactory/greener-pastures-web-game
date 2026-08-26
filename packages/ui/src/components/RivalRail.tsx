@@ -4,9 +4,45 @@
  * Dean chose this layout in ticket 09 for one reason, and it is the reason the
  * rail must not drift into a general-purpose summary: it is a permanent "who
  * should I visit" scoreboard. Everything on a rail card answers that question -
- * can I get on their Notice Board (fill bar), what would I get (payout, their
- * Workers and where the meeples stand), and are they winning (coins, receipts).
+ * can I get on their Notice Board (the fill bar), what would I get (the payout
+ * and the Service on offer), and are they winning (coins and receipts).
  * Anything else belongs in the inspector behind a click.
+ *
+ * ⭐ PHASE 4: TWO LINES AND A BAR, AND WHY THAT IS A DESIGN REQUIREMENT RATHER
+ * THAN A POLISH ONE.
+ *
+ * Until 26/08/2026 this panel answered its own question in roughly 8px type: a
+ * four-column `<dl>` with a micro-label over each number, plus a row of 9px dots
+ * for the buildings, plus a worker chip with its wage line switched off. Every
+ * fact was on screen and none of it was legible from a normal seating distance,
+ * which for THIS panel is not a small fault. Watching your neighbours is the
+ * game's hook; a scoreboard nobody reads is the hook switched off.
+ *
+ * So the shape is now fixed at:
+ *
+ *     (crop)  Orchard farm                          to play
+ *             £24 · 4 VP · 7 in hand · 6 in barn
+ *             NOTICE BOARD              visit pays £2
+ *             [========------]                   1/2
+ *             Draw 3, keep 2                 pays £2
+ *
+ * Three moves paid for the size. The four columns became ONE INLINE RUN at
+ * reading size - all four numbers are visit-relevant and all four stay, but a
+ * number does not need its own column and its own caption to be read when the
+ * unit is written into the value ("7 in hand" needs no label saying "hand").
+ * The dot track is DELETED: at 9px it was decoration, and what it carried - what
+ * they have built - is one click away in the inspector, which the panel header
+ * already opens. And the worker chip dropped to the two facts a visit turns on,
+ * the action offered and what the bank pays its owner.
+ *
+ * The fill bar is the one thing that got BIGGER. It is the most decision-
+ * relevant object in the rail because it is the only one that says whether a
+ * visit will be accepted at all.
+ *
+ * ⚠️ THIS IS PRESENTATION ONLY. The threshold still arrives through
+ * `noticeBoardOf`, which reads the engine's seam (`liveThreshold` in
+ * view/table.ts). The interface may lag the sheet; it may never contradict the
+ * engine about whether a move is legal.
  *
  * A seat with NO Notice Board renders as "closed to visitors" rather than
  * throwing. That is a reachable position - D11 and D14 can cover or demolish a
@@ -83,24 +119,20 @@ export function RivalRail({
               </span>
             </button>
 
-            <dl className="rival-stats">
-              <div>
-                <dt>coins</dt>
-                <dd>£{farm.coins}</dd>
-              </div>
-              <div>
-                <dt>VP banked</dt>
-                <dd>{receiptTotal(farm.receipts)}</dd>
-              </div>
-              <div>
-                <dt>hand</dt>
-                <dd>{farm.handCount}</dd>
-              </div>
-              <div>
-                <dt>barn</dt>
-                <dd>{farm.barnCount}</dd>
-              </div>
-            </dl>
+            {/*
+             * One run, not four columns. The unit travels with the value so no
+             * caption is needed, which is the whole trick that bought the type
+             * size: "7 in hand" is self-describing where a bare 7 under a 9px
+             * "HAND" is not. The middots are drawn by CSS between the spans, so
+             * the run re-flows to two lines at the 1024 floor without leaving a
+             * dangling separator on the end of the first.
+             */}
+            <p className="rival-run">
+              <span>£{farm.coins}</span>
+              <span>{receiptTotal(farm.receipts)} VP</span>
+              <span>{farm.handCount} in hand</span>
+              <span>{farm.barnCount} in barn</span>
+            </p>
 
             {board ? (
               /* The Notice Board is the only visit target in the game (v14), so
@@ -111,11 +143,14 @@ export function RivalRail({
                 disabled={!live}
                 onClick={() => play?.rival(rival.seat)}
               >
-                <FillBar filled={board.filled} threshold={board.threshold} />
-                <span className="rival-payout">
-                  {board.full ? 'no room - visit blocked' : `visit pays £${board.payout}`}
-                  {board.twoCard !== null && !board.full && ` · 2 cards £${board.twoCard}`}
+                <span className="rival-board-head">
+                  <span className="rival-board-name">Notice Board</span>
+                  <span className="rival-payout">
+                    {board.full ? 'no room - visit blocked' : `visit pays £${board.payout}`}
+                    {board.twoCard !== null && !board.full && ` · 2 cards £${board.twoCard}`}
+                  </span>
                 </span>
+                <FillBar filled={board.filled} threshold={board.threshold} />
               </button>
             ) : (
               <p className="rival-board rival-board-none">
@@ -136,24 +171,6 @@ export function RivalRail({
                 ))}
               </div>
             )}
-
-            <div className="rival-dots" aria-label="their buildings">
-              {farm.tableau.map((b) => {
-                const card = data.cards.catalogue.find((c) => c.id === b.card);
-                const suit = card?.suit ?? farm.suit;
-                const full =
-                  b.stack.length > 0 &&
-                  b.stack.length >= (card?.threshold ?? card?.faces?.starter.threshold ?? Infinity);
-                return (
-                  <span
-                    key={b.card}
-                    className={`dot${full ? ' dot-full' : ''}${b.upgraded ? ' dot-upgraded' : ''}`}
-                    style={{ background: SUIT_META[suit].pip }}
-                    title={`${card?.name ?? b.card}${full ? ' (full)' : ''}`}
-                  />
-                );
-              })}
-            </div>
           </article>
         );
       })}

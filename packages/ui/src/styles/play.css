@@ -43,9 +43,33 @@
 }
 
 .is-live.worker,
-.is-live.rival,
 .is-live.deck {
   box-shadow: 0 0 0 1px var(--ink-line);
+}
+
+/*
+ * A NEIGHBOUR YOU COULD VISIT (retuned in phase 2, and it had to be).
+ *
+ * This used to be the same 1px ring the workers and decks wear, and in a rail
+ * of bordered panels it read as one more edge. The rail is chromeless now, so
+ * that ring was the ONLY box left round a neighbour - it redrew, in play state,
+ * exactly the container the phase had just taken away. And because almost every
+ * neighbour is visitable on almost every turn, it was not a transient cue: it
+ * was the rail's resting appearance, and the three of them together were louder
+ * than your own farm.
+ *
+ * So the cue moves onto the seat bar that is already there and simply extends
+ * it outward. `box-shadow` rather than a wider border, because the border is in
+ * flow and widening it would slide every neighbour's contents sideways as the
+ * turn passed - motion that says nothing, on the one region a player is meant
+ * to be able to read at a glance without looking directly at it.
+ *
+ * `.is-target` (an armed visit looking for a host) keeps its full ring, and
+ * should: that is a question with one answer, asked for a moment, and the
+ * loudest thing on screen is the right size for it.
+ */
+.is-live.rival {
+  box-shadow: -3px 0 0 0 var(--seat-pip);
 }
 
 @keyframes target-pulse {
@@ -61,7 +85,21 @@
 }
 
 /* A card lifted out of the fan, and a card committed to a payment or a discard.
-   Two different states: held is a question, picked is a commitment. */
+   Two different states: held is a question, picked is a commitment.
+
+   The lift is animated at `--motion-ui` (phase 5). It was instant, which read
+   as the card teleporting 18px, and it is deliberately NOT on the research's
+   0.5-0.8s band: the card moves because the player just clicked it, and a half
+   second between the click and the lift is lag rather than pacing. See the note
+   on the two tokens in base.css.
+
+   ⚠️ `transform` ONLY. Transitioning `all` here would also catch the outline
+   the two states put on the card underneath, and a fading outline on a card you
+   have just committed to a payment is the one cue that has to be instant. */
+.hand-card {
+  transition: transform var(--motion-ui) ease;
+}
+
 .hand-card.is-held {
   transform: translateY(-18px);
   z-index: 60 !important;
@@ -148,13 +186,27 @@ body.is-dragging .zoom {
 
 /* ---- the prompt strip ---------------------------------------------------- */
 
+/*
+ * TIER 1 AND A HALF: THE BOTTOM ZONE. Chromeless (phase 3).
+ *
+ * The prompt kept its full phase-1 costume - fill, rule, radius, shadow -
+ * because no tier in phase 2 covered it. That left a second filled box sitting
+ * directly under the hero every time the game asked a question, which is the
+ * exact failure phase 2 spent itself removing everywhere else, reappearing at
+ * the one moment a player is already being asked to concentrate.
+ *
+ * It belongs with the turn bar, and now wears what the turn bar wears: nothing.
+ * The two sit on the table felt and read as one bottom zone - "what the game
+ * wants, and what you can do about it" - rather than as two competing panels.
+ *
+ * THE LEFT EDGE SURVIVES, and by phase 2's own rule it may: an accent edge is
+ * not chrome. It is the one thing on this strip that carries information, and
+ * two states of it - a live question in the seat's green, a passing note in
+ * plain ink - is the whole reason it was ever coloured.
+ */
 .prompt {
-  background: var(--paper-panel);
-  border: 1px solid var(--rule);
-  border-left: 4px solid #3f7a3a;
-  border-radius: 8px;
-  padding: 6px 10px;
-  box-shadow: var(--shadow);
+  border-left: 4px solid var(--seat-ink, #3f7a3a);
+  padding: 4px 10px;
   display: grid;
   gap: 6px;
   min-width: 0;
@@ -238,7 +290,7 @@ body.is-dragging .zoom {
 }
 
 .assembly-more {
-  color: #9c6f11;
+  color: #855e0e;
 }
 
 .assembly-actions {
@@ -318,89 +370,233 @@ body.is-dragging .zoom {
   color: var(--ink-soft);
 }
 
-/* ---- the action bar ------------------------------------------------------ */
+/* ---- the turn bar -------------------------------------------------------- */
 
+/*
+ * TIER 1 AND A HALF: THE BOTTOM ZONE. Chromeless (phase 3), and structured by
+ * the turn rather than by the alphabet.
+ *
+ * The bar used to be a filled, ruled, rounded, shadowed panel holding fourteen
+ * identical buttons in one flat row. Both halves of that are fixed here. The
+ * costume goes, for the same reason the commons and the rail lost theirs in
+ * phase 2 - it was a box of equal weight to the hero, at the bottom of a screen
+ * that is meant to have one entry point - and the row becomes three labelled
+ * zones, because the turn is one action plus one bonus slot plus the door out,
+ * and that is a shape a player can hold in their head.
+ *
+ * The buttons keep their own fill. That is what makes the zone legible without
+ * a container: the eye reads a row of chips on felt, not a panel of text.
+ */
 .actionbar {
   display: grid;
-  grid-template-columns: minmax(120px, auto) minmax(0, 1fr) auto;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px var(--gap);
   align-items: center;
-  background: var(--paper-panel);
-  border: 1px solid var(--rule);
-  border-radius: 8px;
-  padding: 5px 8px;
-  box-shadow: var(--shadow);
+  padding: 0 4px;
 }
 
-.turn-state {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+/*
+ * ⚠️ THE NAME IS LOAD-BEARING FOR THE MEASUREMENT, not for the layout.
+ * `tools/measure-ui.mjs` counts `.action-buttons .action`, and phase 3's
+ * acceptance number is that count in the main phase. So this stays wrapped
+ * around BOTH choice zones rather than being renamed onto the action zone
+ * alone: a metric that counts one zone while the bar draws two would report a
+ * number nobody could see, and the whole point of the tool is that the number
+ * and the screen cannot drift apart. The exits are genuinely outside it - they
+ * spend neither the action nor the slot.
+ */
+.action-buttons {
   display: flex;
-  gap: 6px;
   flex-wrap: wrap;
-  font-size: 10px;
+  align-items: center;
+  gap: 4px var(--gap);
+  min-width: 0;
+}
+
+/*
+ * THE CAPTION SITS BESIDE THE ROW, NOT ABOVE IT, AND THE REASON IS MEASURED.
+ *
+ * The plan's sketch drew the label over its buttons and that is the nicer shape,
+ * but the bar has no height to spend on a second line. `.main-column` gives the
+ * farm whatever the commons and the bar do not want, `.farm` is capped at it,
+ * and at 1366 the tableau holds exactly two rows of buildings with about six
+ * pixels to spare - so a 13px caption row is three quarters of the entire
+ * budget, and adding one to BOTH shapes of the bar took the laptop step from
+ * fourteen buildings of capacity to seven. `tools/measure-ui.mjs` caught it,
+ * which is the whole reason constraint 7 exists.
+ *
+ * Beside the row it costs nothing at all: the caption is 9px and the buttons are
+ * 40px, so it fits in the space the row already had.
+ *
+ * The separator between zones is a rule, not a box: one hairline in the gap,
+ * drawn by the zone that follows rather than by a wrapper nobody needed.
+ */
+.zone {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.zone-bonus,
+.zone-exit {
+  border-left: 1px solid var(--rule);
+  padding-left: var(--gap);
+}
+
+.zone-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+}
+
+/*
+ * The zone's caption, which is also the turn state - see `ZoneHead` in
+ * ActionBar.tsx for why the two are one thing now.
+ */
+.zone-head {
+  margin: 0;
+  flex: none;
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1.2;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.turn-state .unspent {
-  color: #3f7a3a;
-  font-weight: 700;
-}
-
-.turn-state .spent {
+  letter-spacing: 0.07em;
   color: var(--ink-soft);
+}
+
+/*
+ * GO. The seat's own colour, so the light that says "it is on you" is the same
+ * colour as everything else on the screen that is yours.
+ *
+ * ⚠️ IT IS `--seat-ink` AND NOT `--seat-pip`, AND THE PALETTE FORCES THAT.
+ * Both are the seat's colour; the difference is what they were tuned against.
+ * `--seat-pip` is deliberately the LOUDER, lighter value because it has to
+ * separate five crops at 10px on a stack gauge - Wheat is #d9a520 and Dairy is
+ * #f6e6b4, which is very nearly the cream the paper is. On a pale ground that
+ * makes it invisible: a 9px Dairy caption in #f6e6b4 is not a caption, and a 3px
+ * Dairy underline is not an underline. `--seat-ink` is the same hue darkened for
+ * exactly this job - suits.ts calls it "borders and text on a pale ground" - and
+ * it is what every other piece of seat-coloured text and edge on this screen
+ * already uses. No blue was needed and none was added.
+ */
+.zone-go {
+  color: var(--seat-ink, #3f7a3a);
+}
+
+.zone-spent {
   text-decoration: line-through;
 }
 
-.turn-state .again {
-  color: #9c6f11;
-  text-transform: none;
-  letter-spacing: 0;
+.zone-note,
+.turn-note,
+.waiting-on {
+  margin: 0;
   font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.turn-note {
+  grid-column: 1 / -1;
+  color: #855e0e;
 }
 
 .waiting-on {
-  margin: 0;
-  font-size: 12px;
-  color: var(--ink-soft);
+  grid-column: 1 / -1;
   font-style: italic;
 }
 
-.action-buttons {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.action {
+/*
+ * THE HIT TARGET, and the one number in this file that is not a taste.
+ *
+ * The buttons were 22px tall. Every published guideline on touch and pointer
+ * targets puts the floor at 40 to 44px, and this game is played on laptops with
+ * trackpads by people who are looking at their cards rather than at the bar. The
+ * height is bought back from the strip the turn state used to need: its two
+ * chips are the zone captions now, so the bar gained a row and lost a row.
+ */
+.action,
+.exit {
+  min-height: 40px;
+  padding: 3px 12px;
   background: var(--paper);
   border: 1px solid var(--rule);
   border-radius: 6px;
-  padding: 3px 10px;
   font-family: var(--font-display);
   font-size: 12px;
 }
 
-.action:disabled {
+/*
+ * THE TRAFFIC LIGHT. Three states and no fourth, because a palette this narrow
+ * cannot carry a fourth without inventing a colour it does not have.
+ *
+ *   go     a family with a legal move: the seat's colour on the underline, so a
+ *          row of six reads as "these four are open" at a glance rather than as
+ *          "these two are shut", which is what an opacity-only treatment says.
+ *   armed  the one you have picked, filled solid. The loudest thing in the bar,
+ *          and it should be: it is a question with one answer, asked once.
+ *   stop   undo and cancel, in the #a2493a the clog flag and the over-limit hand
+ *          already wear. They are the only two controls here that take something
+ *          away, and they are the two a player reaches for in a hurry.
+ *
+ * ⚠️ NO BLUE. The palette is printed cream and sepia; a blue "primary" button is
+ * the fastest way to make a board game look like a web form. `--seat-pip` and
+ * `#a2493a` are the only two accents this screen has, and both are already
+ * everywhere else on it.
+ */
+.action:not(:disabled) {
+  box-shadow: inset 0 -3px 0 var(--seat-ink, #3f7a3a);
+  border-color: var(--ink-line);
+}
+
+.action:disabled,
+.exit:disabled {
   opacity: 0.36;
   cursor: default;
 }
 
-.action:not(:disabled):hover {
+.action:not(:disabled):hover,
+.exit:not(:disabled):hover {
   background: var(--paper-deep);
 }
 
-.action-armed {
-  background: #3f7a3a;
-  border-color: #2f5c2b;
+/* Filled, so it takes `--seat-ink` for the same reason the caption does: white
+   on Dairy's #f6e6b4 is not a label, it is a blank button. */
+.action-armed,
+.action-armed:not(:disabled) {
+  background: var(--seat-ink, #3f7a3a);
+  border-color: rgb(0 0 0 / 22%);
+  box-shadow: none;
   color: #fff;
 }
 
-.turn-exits {
-  display: flex;
-  gap: 5px;
+.exit {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--ink-soft);
+  background: none;
+}
+
+/* The skip is a control in the turn bar like any other, so it takes the bar's
+   hit target rather than the 22px the shared `.ghost` gives a pace button. It
+   is the only way past the bonus phase and it is clicked on most turns. */
+.bonus-exits {
+  display: inline-flex;
+  margin-left: 6px;
+}
+
+.bonus-exits .ghost {
+  min-height: 40px;
+  padding: 3px 12px;
+}
+
+.exit-stop:not(:disabled) {
+  color: #a2493a;
+  border-color: #a2493a;
 }
 
 .primary {
@@ -437,13 +633,51 @@ body.is-dragging .zoom {
   color: var(--ink);
 }
 
+/* In the flow, in `.rail-foot` at the bottom of the rail column (phase 4). It
+   used to be `position: fixed` in the bottom-left corner, which is where the
+   event feed's last line is drawn - see the note on `.rail-foot` in table.css
+   for why a reserved band was the wrong way to fix that. */
 .pace {
-  position: fixed;
-  left: 10px;
-  bottom: 8px;
   display: flex;
   gap: 3px;
-  z-index: 60;
+}
+
+/*
+ * ⭐ THE UI SCALE SLIDER (phase 5), beside the pace strip in `.rail-foot`.
+ *
+ * Sized to be unobtrusive in the literal sense: the rail is 196px at the 1024
+ * floor and `.rail-foot` already wraps to two lines there, so a control that
+ * added a THIRD line would take a row of height off the neighbour panels above
+ * it and could push the last one below the fold. 60px of track plus a 30px
+ * readout is the widest it can be and still share the pace strip's line.
+ *
+ * `accent-color` because the native range control defaults to the system blue
+ * on most platforms, and there is no blue in this game's palette.
+ */
+.uiscale {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  color: var(--ink-soft);
+}
+
+/* 52px of track, measured rather than chosen. At the 1024 floor `.rail-foot`
+   has about 180px of usable width and the pace strip takes 130 of it on a line
+   of its own, so the slider has to share a line with `report` (55px) or take a
+   THIRD line - and a third line comes out of the neighbour panels above it. */
+.uiscale input {
+  width: 52px;
+  height: 12px;
+  margin: 0;
+  accent-color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.uiscale b {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  min-width: 26px;
 }
 
 /* ---- the rail's board button -------------------------------------------- */
@@ -833,25 +1067,37 @@ body.is-dragging .zoom {
 
 /* ---- the capture button (ticket 31) -------------------------------------- */
 
-/* Sits just above the pace strip, sharing the same quiet corner, but as its
-   own fixed element rather than a child of it. That is deliberate: the pace
-   strip is at z-index 60 and the result overlay's scrim is at 90, so a button
-   inside the strip would be unreachable on the scoring screen - the one screen
-   whose numbers a player is most likely to want to query. */
+/*
+ * Shares the quiet corner with the pace strip, and as of phase 4 shares its ROW
+ * as well: both are in the flow, in `.rail-foot`.
+ *
+ * ⚠️ THE Z-INDEX IS THE WHOLE OF TICKET 31'S REACHABILITY ARGUMENT AND IT DOES
+ * NOT MOVE. The result overlay's scrim is at 90, and the scoring screen is the
+ * one screen whose numbers a player is most likely to want to query, so the
+ * button has to paint and take clicks above it. `position: relative` is enough
+ * to keep that: z-index applies to any positioned element, nothing between here
+ * and the root establishes a stacking context, and `verify:capture` drives the
+ * button over a finished game specifically to prove it.
+ */
 .capture {
-  position: fixed;
-  left: 10px;
-  bottom: 34px;
+  position: relative;
   z-index: 95;
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
 }
 
+/* A capture filename is long and this strip is 196px wide at the floor, so the
+   name truncates rather than shouldering the pace buttons off the row. The full
+   string is in the browser's own downloads list either way. */
 .capture-saved {
   font-size: 10px;
   color: var(--ink-soft);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .capture-panel {

@@ -123,6 +123,25 @@ export function clickBuilding(moves: readonly Move[], intent: Intent, building: 
 }
 
 /**
+ * A STANDING MOVE OFFERED BY A BUILT CARD, made on the card that offers it.
+ *
+ * Until 26/08 these were reached through a generic "Card power" button in the
+ * turn bar, which named no card and sat fourteenth in a flat row. The research
+ * is blunt about that shape: a move a board component grants should be made on
+ * the component, the way it would be at the table. So the tableau draws a badge
+ * on the card and this is what the badge asks.
+ *
+ * NO INTENT FILTER, deliberately, and it matches exactly what the bar did. The
+ * one card in the sheet that offers one - the Helping Hand's repeat - becomes
+ * legal in the middle of a visit that has already resolved, so there is no
+ * armed family to gate it behind and gating it would be inventing a rule. The
+ * engine's list is the whole of the legality.
+ */
+export function clickCardPower(moves: readonly Move[], card: CardId): Move[] {
+  return moves.filter((m) => m.type === 'cardMove' && m.card === card);
+}
+
+/**
  * A neighbour. Always an intent rather than a move: a visit is assembled, never
  * picked off a list of up to ~90 (ticket 23). Returns null when that seat is
  * not visitable right now.
@@ -530,7 +549,7 @@ export function subsetAdditions(
  */
 export const MOVE_ROUTES = {
   task: 'prompt',
-  cardMove: 'action-bar',
+  cardMove: 'building-badge',
   draw: 'action-bar',
   buy: 'deck',
   market: 'deck',

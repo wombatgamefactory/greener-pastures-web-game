@@ -336,16 +336,33 @@ export class Session {
    * The walked moves go into the log like any other, so the session stays a
    * pure function of (seed, log) and undo still works across the seam.
    */
-  warmUp(depth: number, minHand: number): void {
+  /**
+   * ⚠️ `toEnd` is what `?finish=1` needs and could not previously get.
+   *
+   * The walk ends by replaying back to the last playable turn-top rather than
+   * hand a caller a FINISHED board (see the fallback at the bottom of `walk`).
+   * That is right for the interface, which wants a dense mid-game position it
+   * can be judged against - and it silently defeated the one caller that wanted
+   * the opposite. `?finish=1` asks for a depth no game reaches PRECISELY in
+   * order to play the game out, so the guard undid exactly what it was asked
+   * for: measured across three seeds, the finish path ended `over=false` every
+   * time, and `verify:layout --result` and the last step of `verify:capture`
+   * hung forever waiting for a scoring screen that could never appear.
+   *
+   * So the exception is now asked for rather than inferred from the depth. A
+   * caller that wants the finished board says so, and every other caller keeps
+   * the old protection unchanged.
+   */
+  warmUp(depth: number, minHand: number, toEnd = false): void {
     if (depth <= 0) return;
     try {
-      this.walk(depth, minHand);
+      this.walk(depth, minHand, toEnd);
     } finally {
       this.floor = this.log.length;
     }
   }
 
-  private walk(depth: number, minHand: number): void {
+  private walk(depth: number, minHand: number, toEnd: boolean): void {
     // Your neighbours are walked by the real scored bot, so the board you are
     // handed is one a game could actually produce. Your own seat is walked by
     // the hand-keeping order instead: `balanced` spends a hand to zero every
@@ -405,6 +422,11 @@ export class Session {
       }
       if (!step()) break;
     }
+    // `toEnd` skips BOTH rewinds, not just the second. A caller playing the game
+    // out wants the state the game actually finished in, and `best` is a
+    // mid-game turn-top like any other - rewinding to it would strand the
+    // scoring screen just as surely as the `lastTop` fallback did.
+    if (toEnd) return;
     if (best !== null) this.replay(this.log.slice(0, best.at));
     else if (lastTop !== null && isOver(this.state)) this.replay(this.log.slice(0, lastTop));
   }
