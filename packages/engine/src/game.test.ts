@@ -1208,13 +1208,13 @@ function playFullGame(seed: string, seats: number, suits: Suit[]) {
 }
 
 describe('full games', () => {
-  it('plays a seeded 2-player game to the Level 3 end trigger', () => {
+  it('plays a seeded 2-player game to the six-delivery end trigger', () => {
     const { state, maxMoves } = playFullGame('game-a', 2, ['wheat', 'orchard']);
     expect(state.phase).toBe('ended');
     expect(state.endTrigger).not.toBeNull();
-    // Read the level off the island, not off the receipt values: a receipt now
-    // carries its fill-order bonus, so 16 is only one of the numbers a Level 3
-    // delivery can be worth.
+    // Read the level off the island, not off the receipt values: a receipt is
+    // now flat (6 first, 3 second) at every tile, so VP alone cannot tell a
+    // Level 3 tile apart from any other.
     expect(
       state.island.tiles.some((t) => tileLevel(data, t.tile) === 3 && t.deliveredBy.length > 0),
     ).toBe(true);

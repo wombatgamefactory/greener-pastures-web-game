@@ -731,7 +731,7 @@ export const distributionCenter: CardHandler = {
       'delivery, so the card may deliberately be aimed at a half-claimed tile for a single ' +
       'receipt. That makes it strictly more flexible and slightly less explosive: the 9-point ' +
       'double is now a choice you can miss rather than the only thing the card does, and a seat ' +
-      'holding V14 for a virgin Level 3 tile is choosing to wait rather than being forced to. ' +
+      'holding V14 for a virgin tile is choosing to wait rather than being forced to. ' +
       'It also ends the happy accident that V6 and V14 pointed at opposite ends of the island; ' +
       'both are unrestricted now. ' +
       'The wild substitution and the face-down tokens still compose for free, because the ' +

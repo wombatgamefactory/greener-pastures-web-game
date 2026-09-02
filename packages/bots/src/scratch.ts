@@ -161,8 +161,8 @@ export interface Scratch {
    * open tile and 93% of near-misses short by 1-2 cards. A market card is worth
    * the deliveries it unlocks, so the feature counts exactly that, mirroring
    * the engine's own `anyDeliverOption` arithmetic from the view (wild crates
-   * as capacity, the level gate applied - a tile you may not deliver to is not
-   * a delivery unlocked).
+   * as capacity; there is no level gate any more, so this is simply whichever
+   * open tiles the barn cannot yet pay).
    */
   readonly marketPayability: ReadonlyMap<Suit, number> | null;
 }

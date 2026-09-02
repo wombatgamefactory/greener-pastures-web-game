@@ -10,9 +10,9 @@
  *
  * That also means this module needs no rules knowledge at all. It does not know
  * that a Notice Board takes one card or two, that a harvest needs a full
- * building, or that the level gate exists - it knows that some move in the list
- * mentions this building, this seat, this tile. A rules change that moves any
- * of those lands in the engine and arrives here for free.
+ * building, or that a tile takes two deliveries, not one - it knows that some
+ * move in the list mentions this building, this seat, this tile. A rules
+ * change that moves any of those lands in the engine and arrives here for free.
  *
  * Ticket 23's instruction - "build a visit, do not render the enumeration" -
  * generalises: `visitOffers` and `buildOffers` are progressive filters over

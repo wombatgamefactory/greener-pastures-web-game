@@ -165,7 +165,7 @@ export function narrate(
       return line(`${who(event.seat)} visits ${who(event.host)} ${payoff}`, event.seat);
     }
     case 'endTriggered':
-      return line(`${who(event.seat)} reached Level 3 - last turn each!`, event.seat, 'alarm');
+      return line(`${who(event.seat)} made their 6th delivery - last turn each!`, event.seat, 'alarm');
     case 'turnEnded':
       return line(`${who(event.next)} to play`, event.next, 'boundary');
     case 'gameEnded':

@@ -20,10 +20,11 @@ export type WeightTable = Readonly<Record<string, number>>;
 /**
  * `balanced` - the reference table, and the `normal` rung of the ladder.
  *
- * Rough intended ordering at a typical decision: deliver a Level 2/3 tile >
+ * Rough intended ordering at a typical decision: deliver a tile >
  * unclog your own Notice Board > visit > build > harvest > grow > draw >
- * end the turn. Deliver's feature is the tile's printed VP (4 / 8 / 16), so its
- * weight of 3 puts a Level 1 delivery at 12 and a Level 3 at 48.
+ * end the turn. Deliver's feature is the tile's printed VP, flat since the
+ * flat island (6 to the first delivery on a tile, 3 to the second), so its
+ * weight of 3 puts a first delivery at 18 and a second at 9.
  */
 export const BALANCED: WeightTable = {
   // Ticket 40's two additions. `outcome` is 1 because the probe already priced

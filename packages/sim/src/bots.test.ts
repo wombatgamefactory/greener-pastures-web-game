@@ -176,8 +176,9 @@ describe('termination', () => {
           policies: mirror('balanced', seats),
         });
         if (result.outcome === 'ended') ended += 1;
-        // Off the island, not off the receipt values: a receipt now carries its
-        // fill-order bonus, so a Level 3 delivery is not always worth 16.
+        // Off the island, not off the receipt values: a receipt is now flat
+        // (6 first, 3 second) at every tile, so VP alone cannot identify a
+        // Level 3 delivery.
         if (
           result.state.island.tiles.some(
             (t) => tileLevel(data, t.tile) === 3 && t.deliveredBy.length > 0,
@@ -224,7 +225,7 @@ describe('termination', () => {
     // can draw, build, grow or visit and only `pass` is legal. Measured at
     // 40-60% of mirrored pulse games. The regression this test guards is the
     // one that IS in the bot's gift - `pulse` must never wander to the move
-    // ceiling; it either reaches the Level 3 trigger or locks the table.
+    // ceiling; it either reaches the six-delivery end trigger or locks the table.
     for (const seats of [2, 3, 4]) {
       const result = runGame(data, {
         seed: `pulse-${seats}`,

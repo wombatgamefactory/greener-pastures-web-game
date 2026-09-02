@@ -96,7 +96,7 @@ export interface GameResult {
   readonly state: GameState;
   readonly moves: readonly Move[];
   readonly outcome: Outcome;
-  /** True when the game reached the Level 3 end trigger and played out. */
+  /** True when the game reached the 6th-delivery end trigger and played out. */
   readonly ended: boolean;
   readonly decisions: number;
   /**
