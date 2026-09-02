@@ -106,3 +106,32 @@ export function cropIcon(suit: Suit | 'wild'): string {
 export function starterIcon(): string {
   return frame('card_starter');
 }
+
+/**
+ * THE SIX ACTION ICONS, cut out of the printed player aid.
+ *
+ * `tools/extract_action_icons.py` crops them from
+ * `frame/player_aid_actions.webp` and writes them here, so the button in the
+ * turn bar carries the SAME painting as the card a player has in front of them
+ * on the table. That is the whole argument for using the aid rather than
+ * commissioning a fresh icon set: a second drawing of "Harvest" would be one
+ * more thing to learn, and the aid's vignettes are already the game's own visual
+ * vocabulary for its five verbs.
+ *
+ * ⚠️ THEY ARE UPSCALED FROM 56px TILES and are soft above about 32px. Fine at
+ * the sizes `--action-icon` draws them at, and the reason that token is capped
+ * rather than tracking the rest of the ladder up to 4K. If painted icons are
+ * ever commissioned, they land in the same six filenames and nothing here or in
+ * the bar changes.
+ *
+ * Returns `null` rather than a fallback path for a family with no icon. Three
+ * families deliberately have none - End turn, undo and cancel - because they are
+ * EXITS rather than actions, and phase 3 separated them on purpose. Inventing a
+ * glyph for them would put them back in the same visual class as Build. A
+ * missing icon must therefore be a legal, quiet outcome, not a broken image.
+ */
+const ACTION_ICONS = new Set(['draw', 'build', 'grow', 'harvest', 'deliver', 'visit']);
+
+export function actionIcon(type: string): string | null {
+  return ACTION_ICONS.has(type) ? art(`actions/${type}.webp`) : null;
+}

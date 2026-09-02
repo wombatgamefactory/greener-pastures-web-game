@@ -134,12 +134,14 @@ body.is-dragging {
   user-select: none;
 }
 
-/* The fan's hover expansion fights a card in flight: the pointer passes back
-   over the hand on the way to the rail and cards blow up under the ghost. The
-   selector reaches the CARD because that is where table.css puts the transform. */
-body.is-dragging .hand-card:hover .card {
-  transform: none;
-}
+/* The fan's expansion fights a card in flight - the pointer passes back over
+   the hand on the way to the rail, and cards blowing up under the ghost is
+   noise on the one gesture that needs a steady hand. It used to be answered
+   here, by killing the hovered card's transform. It is answered in
+   `session/dock.ts` instead as of 27/08/2026, because a rule keyed on `:hover`
+   only ever reached one card of the several the dock moves, and because a CSS
+   snap and a JS settle disagreeing about the same card looked like a bug. The
+   hook takes the whole fan to rest for the length of the drag. */
 
 /* The card is in the air, so its place in the fan is a gap rather than a card. */
 body.is-dragging .hand-card.is-held {
@@ -528,6 +530,61 @@ body.is-dragging .zoom {
   border-radius: 6px;
   font-family: var(--font-display);
   font-size: 12px;
+}
+
+/*
+ * ICON AND NAME, INSIDE THE BUTTON (27/08/2026, Dean).
+ *
+ * The flexbox is what makes the two read as one object: the picture and the word
+ * share a baseline row and the button's own fill is the thing that groups them,
+ * so there is no second box and no second border. `flex: none` on the icon is
+ * the load-bearing declaration - without it a flex item shrinks under pressure,
+ * and the pressure here is real (six buttons plus two zones plus the exits, in
+ * a column that is 782px wide at the 1024 floor). A shrinking icon would go
+ * lopsided button by button as the row filled up.
+ *
+ * ⚠️ THE NAME STAYS AND IS NOT NEGOTIABLE. This is a gateway game whose whole
+ * teach is that the turn is one of five named verbs; an icon-only bar would ask
+ * a first-time player to learn six paintings before they can take a turn. The
+ * icon is a landmark for the player who already knows the word, which is why it
+ * leads rather than follows - the eye finds the picture first and reads the word
+ * only when it needs to.
+ */
+.action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/*
+ * The vignette, cut from the printed player aid by `tools/extract_action_icons.py`.
+ *
+ * `--action-icon` is on the size ladder in base.css rather than being a number
+ * here, so the button grows at 2560 and 3840 with everything else. It is the one
+ * token on that ladder with a CEILING that is about the asset rather than about
+ * the layout: the source tiles are 56px, so past roughly 30px the enlargement is
+ * visible as softness and a bigger icon buys blur, not legibility.
+ *
+ * The radius matches the aid's own rounded tiles, which is also what tidies the
+ * one crop that is not on a cream ground - Visit is cut from the aid's dark ALSO
+ * strip and carries a sliver of that strip's edge.
+ *
+ * A disabled button dims through `opacity` on the button itself, so the icon
+ * fades with its label and needs no rule of its own.
+ */
+.action-icon {
+  flex: none;
+  width: var(--action-icon);
+  height: var(--action-icon);
+  border-radius: 4px;
+  /* The crops are square; this is insurance against a re-cut that is not. */
+  object-fit: cover;
+}
+
+/* Named so the label can be styled without reaching through the icon, and so
+   the button's text node is a real element for the flex row to align. */
+.action-name {
+  min-width: 0;
 }
 
 /*

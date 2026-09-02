@@ -50,6 +50,7 @@ export default tseslint.config(
       'tools/verify-webkit.mjs',
       'tools/render-sheets.mjs',
       'tools/measure-ui.mjs',
+      'tools/probe-dock.mjs',
     ],
     languageOptions: {
       globals: {

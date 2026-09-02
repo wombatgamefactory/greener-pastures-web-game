@@ -121,6 +121,21 @@ function render(snap: ReturnType<typeof position>, intent: Intent): string {
   );
 }
 
+/**
+ * How a turn-bar button prints its name.
+ *
+ * The bar's buttons carry an icon beside the word since 27/08/2026, so the
+ * label is no longer the button's only child and `>Draw</button>` matches
+ * nothing. This is the one place that knows the markup - and it matters that it
+ * is precise rather than a bare substring search, because half the assertions
+ * built on it are NEGATIVE. A loose `html.includes('Buy')` would pass on any
+ * page that happened to contain the word and would quietly stop pinning the
+ * phase-3 cuts it exists to pin.
+ */
+function barButton(label: string): string {
+  return `class="action-name">${label}</span>`;
+}
+
 function missingImages(html: string): string[] {
   return [...html.matchAll(/src="([^"]+)"/g)]
     .map((m) => m[1] as string)
@@ -185,11 +200,11 @@ describe('the playable table renders', () => {
     expect(html).toContain('Your bonus, first.');
     expect(html).toContain('>skip bonus action</button>');
     for (const label of ['Visit', 'Work yours', 'Upgrade']) {
-      expect(html).toContain(`>${label}</button>`);
+      expect(html).toContain(barButton(label));
     }
     // Shape (c), not (b): the main families are held back until the slot is
     // resolved, so nobody forfeits it by reaching past it.
-    expect(html).not.toContain('>Draw</button>');
+    expect(html).not.toContain(barButton('Draw'));
     expect(missingImages(html)).toEqual([]);
   });
 
@@ -365,7 +380,7 @@ describe('the turn bar is small enough, and still reaches everything', () => {
       const phase = html.includes('Your bonus, first.') ? 'bonus' : 'main';
       const drawn = barFamilies(actionGroups(data, snap.moves), phase);
       for (const group of drawn) {
-        expect(html).toContain(`>${group.label}</button>`);
+        expect(html).toContain(barButton(group.label));
       }
       /*
        * The three cuts, pinned so that a well-meaning tidy cannot put them back.
@@ -375,10 +390,10 @@ describe('the turn bar is small enough, and still reaches everything', () => {
        * legal move, which is the only condition the engine emits it under.
        */
       for (const gone of ['Buy', 'Market', 'Card power']) {
-        expect(html).not.toContain(`>${gone}</button>`);
+        expect(html).not.toContain(barButton(gone));
       }
       if (snap.moves.some((m) => m.type !== 'pass')) {
-        expect(html).not.toContain('>Pass</button>');
+        expect(html).not.toContain(barButton('Pass'));
       }
     }
   });

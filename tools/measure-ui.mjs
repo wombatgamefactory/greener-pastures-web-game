@@ -39,10 +39,34 @@ import process from 'node:process';
 
 import { chromium } from 'playwright-core';
 
+/*
+ * The steps of the size ladder, one viewport each.
+ *
+ * ⚠️ THE FOUR LARGE ONES ARE NOT DECORATION (27/08/2026). A 4K panel reports a
+ * completely different CSS width depending on the OS scaling it is driven at,
+ * and the ladder has to be right at all of them:
+ *
+ *   1920x1080  4K at 200%, or a plain 1080p screen        ladder step E
+ *   2560x1440  4K at 150% - the ordinary way a 4K desktop
+ *              is run, and the step the large-display work
+ *              was aimed at                                ladder step F
+ *   3440x1440  a 21:9 ultrawide. Wider than the layout cap,
+ *              so it must render IDENTICALLY to 2560x1440   ladder step F
+ *   3840x2160  4K at 100%. Same width as 2560 once capped,
+ *              720 more pixels of height to spend           ladder step G
+ *
+ * The first three rows are the original ladder and are pinned: any change to
+ * them is a regression, and `reports/ui-phase5-verify/measurements.json` is the
+ * reference to diff against.
+ */
 const VIEWPORTS = [
   { name: 'floor', width: 1024, height: 700 },
   { name: 'laptop', width: 1366, height: 768 },
   { name: 'desktop', width: 1600, height: 900 },
+  { name: 'wide', width: 1920, height: 1080 },
+  { name: 'qhd', width: 2560, height: 1440 },
+  { name: 'ultrawide', width: 3440, height: 1440 },
+  { name: 'uhd', width: 3840, height: 2160 },
 ];
 
 /**
@@ -182,6 +206,28 @@ function probe() {
     const cardWidth = rect(handCards[i].querySelector('.card') ?? handCards[i]).width;
     if (cardWidth > 0 && (next.left - here.left) / cardWidth < 0.62) clipped++;
   }
+
+  /*
+   * ⭐ CAN THE OWNER READ HIS HAND? (27/08/2026)
+   *
+   * The large steps exist to answer yes, and this is the answer as a measured
+   * property rather than a claim. It is deliberately read off the RENDERED
+   * card - `display` on the hand card's own `.card-ability` - and not derived
+   * from `--card-hand` against a threshold copied out of `card.css`, because a
+   * number copied between two files is a number that can drift.
+   *
+   * The mechanism it is watching is the container query in `card.css`: a hand
+   * card narrower than 260px drops its ability band, a wider one keeps it. So
+   * this flips on its own the moment a step gives the hand real width, and it
+   * would flip back if somebody trimmed one.
+   *
+   * ⚠️ IT IS NOT THE WHOLE STORY, AND `clipped` IS THE OTHER HALF. Text that is
+   * printed but hidden under the next card in the fan is not text a player can
+   * read, so the two are only meaningful together.
+   */
+  const handAbility = handCards[0]?.querySelector('.card .card-ability') ?? null;
+  const handTextShown =
+    handAbility === null ? false : getComputedStyle(handAbility).display !== 'none';
 
   /*
    * PANELS. Regions carrying the border-and-fill chrome. Counted by computed
@@ -346,6 +392,10 @@ function probe() {
     gutter,
     clipped,
     handCards: handCards.length,
+    handTextShown,
+    handCardWidth: handCards[0]
+      ? Math.round(rect(handCards[0].querySelector('.card') ?? handCards[0]).width)
+      : null,
     chromedPanels: chromed,
     chromedList,
     buildings: buildings.length,
@@ -457,6 +507,30 @@ try {
     }
     report.steps[viewport.name] = m;
 
+    /*
+     * ⚠️ WAIT FOR THE BAR'S OWN IMAGES BEFORE SHOOTING (27/08/2026).
+     *
+     * The skip click above is the FIRST moment the five main-action buttons
+     * exist, and since they gained icons those buttons bring six images with
+     * them. `networkidle` was satisfied long before the click, so the screenshot
+     * was racing the decode: the first viewport came out with icons and the
+     * later ones came out without, which is a report that lies about the screen
+     * in the direction hardest to disbelieve - a picture.
+     *
+     * It is a wait on a CONDITION rather than a sleep, so it costs nothing when
+     * the images are already there, and it deliberately does not touch anything
+     * `probe()` measured: that ran before the click, and `actionButtonsMain` is
+     * a count of elements rather than of pixels. The numbers are unaffected;
+     * only the screenshots change.
+     */
+    await page
+      .waitForFunction(
+        () => [...document.querySelectorAll('.action-icon')].every((i) => i.complete),
+        null,
+        { timeout: 5000 },
+      )
+      .catch(() => console.log('  note: action icons did not finish loading in 5s'));
+
     const shot = join(OUT, `${viewport.name}.png`);
     await page.screenshot({ path: shot });
 
@@ -473,6 +547,9 @@ try {
       `  right gutter        ${m.gutter ? `${m.gutter.width} x ${m.gutter.height}px unused` : 'n/a'}`,
     );
     console.log(`  clipped hand cards  ${m.clipped} of ${m.handCards}`);
+    console.log(
+      `  hand card text      ${m.handTextShown ? 'PRINTED' : 'not printed'} at ${m.handCardWidth}px`,
+    );
     console.log(
       `  chromed panels      ${m.chromedPanels}` +
         (m.chromedList.length ? `  (${m.chromedList.join(', ')})` : ''),

@@ -137,6 +137,104 @@
   --card-deck: 96px;
   --card-inspector: 158px;
   /*
+   * THE BARN PILE, AND WHY IT IS A TOKEN AT ALL (27/08/2026).
+   *
+   * It used to be arithmetic in `Farm.tsx`: `round(handWidth * 0.66)`. Every
+   * value on this ladder up to and including the desktop step is EXACTLY that
+   * product, so nothing moved when it became a number - 106 x 0.66 = 70 here,
+   * 92 -> 61, 88 -> 58, 130 -> 86.
+   *
+   * ⚠️ IT HAD TO STOP TRACKING THE HAND BEFORE THE HAND COULD GET BIG. The barn
+   * and the hand share one row (`.farm-strips`, hand `1fr` and barn `auto`), so
+   * a barn pile that is two thirds of a hand card charges the fan two thirds of
+   * a card PER SUIT IN THE BARN - five suits can reach the barn even at four
+   * seats, because Draw takes the top of any deck. Measured at 2560 with the
+   * old coupling: the widest hand card that still fits six unclipped beside a
+   * four-pile barn is 242px, which is under the 260px at which the card prints
+   * its ability text. The whole point of the large steps was unreachable while
+   * one number was doing both jobs.
+   *
+   * A pile is a card BACK with a count stamped on it. It carries one number, and
+   * 86px prints that number at reading size, so the token is frozen at the
+   * desktop step's value for every step above it. See the note in step E.
+   */
+  --card-barn: 70px;
+  /*
+   * How the fan sits when the row is not short of space, as a fraction of a
+   * hand card: negative overlaps, positive separates. Dimensionless on purpose -
+   * it multiplies `--card-hand`, which is already dialled per step and already
+   * scaled by the UI slider, so a length here would be scaled twice.
+   *
+   * -0.1 is the shipped fan and it is right for a card that is a picture. The
+   * large steps flip it, and the reasoning is on `.hand-card + .hand-card` in
+   * `table.css`.
+   */
+  --hand-fan: -0.1;
+  /*
+   * ⭐ DOCK MAGNIFICATION: HOW BIG THE CARD UNDER THE POINTER GETS (27/08/2026).
+   *
+   * Dean's first ask was "perhaps the central one is 50% bigger than it is
+   * now", so this shipped at 1.5 - and measured, in a browser, that drew
+   *
+   *      1.12   1.36   1.48   1.36   1.12
+   *
+   * because the falloff was bought before the peak and the row's spare width
+   * went on the tails. Every card ends up somewhere between a tenth and a half
+   * bigger than it rests, the hovered one is 8% bigger than its neighbour, and
+   * you cannot tell by looking which card you are pointing at. His verdict was
+   * that it does not make the selected card "much bigger and more prominent"
+   * like the reference photograph, whose centre item is about two and a half
+   * times its end items.
+   *
+   * 2.3, with the concession order in `view/dock.ts` turned round to buy this
+   * FIRST and narrow the falloff to pay for it. Same budget, and the same row
+   * now draws
+   *
+   *      1.00   1.24   2.30   1.24   1.00
+   *
+   * ⚠️ IT IS A CEILING, NOT A PROMISE, and that is the honest way round. Two
+   * things ration it and neither is a taste question: the row's spare WIDTH
+   * (a card at 2.3 is more than a whole extra card of travel, and a six-card
+   * hand of 300px cards at 2560 has none to give), and the HEADROOM above the
+   * fan, since the growth goes upward and may not leave the farm panel. The fan
+   * narrows its falloff first and only then comes down off this number.
+   *
+   * It is ALSO the off switch. Setting it to 1 leaves every card at rest and
+   * costs nothing at run time, because the fan's growth is then zero and the
+   * transform stays the identity it is at rest.
+   *
+   * One value for every step, deliberately. A card is a card at any size, and a
+   * magnifier that magnified by different amounts on different monitors would
+   * be a thing to explain rather than a thing to feel.
+   */
+  --dock-peak: 2.3;
+  /*
+   * ⭐ AND HOW SMALL A CARD AWAY FROM THE POINTER GETS. THIS IS THE ONE THAT
+   * PAYS FOR THE ONE ABOVE (27/08/2026).
+   *
+   * Dean, correcting three cuts of this feature at once: "I want the central
+   * card to get a lot bigger and the cards adjacent to shrink down." The row is
+   * a fixed width, so a card cannot get a lot bigger unless something gives it
+   * the room - and the only thing with room to give is the other cards. Every
+   * earlier cut went looking for the width somewhere else on the screen (the
+   * fan's overlap, the barn's column, the reading region) and every one of them
+   * either came up short or cost a panel of information.
+   *
+   * 0.65 measured as the value that lets the token peak above actually land.
+   * At 2560, five cards, staying inside the hand's own row and covering nothing
+   * at all:
+   *
+   *      0.65   1.36   1.99   1.36   0.65
+   *
+   * ⚠️ IT IS THE FLOOR OF THE WAVE, NOT A STATE THE HAND EVER RESTS IN. A hand
+   * nobody is pointing at is at 1.0 throughout: the trough is scaled by how tall
+   * the wave is (`scales` in `view/dock.ts`), so it fades in with the wave and
+   * is gone the moment the pointer has no card near it. Set it to 1 to turn the
+   * squeeze off, and the peak will fall back to whatever spare width the row
+   * happens to have - which at the large steps is almost none.
+   */
+  --dock-min: 0.65;
+  /*
    * THE ISLAND, AND WHERE PHASE 1'S SLACK WENT.
    *
    * Phase 1 collapsed `.farm` onto its content, which closed a void inside the
@@ -161,7 +259,53 @@
    * that cannot be told apart costs more than a slightly larger island buys.
    */
   --island-tile-w: 64px;
+  /*
+   * THE ACTION ICON, in the turn bar's buttons (27/08/2026).
+   *
+   * On the ladder because the bar had to grow at 2560 and 3840 with everything
+   * else - a 20px picture beside a 12px word is a landmark, and the same 20px
+   * picture on a 4K panel beside type that has grown around it is a speck.
+   *
+   * ⚠️ IT IS THE ONE TOKEN HERE WITH A CEILING THAT IS ABOUT THE ASSET RATHER
+   * THAN THE LAYOUT. The icons are cut out of the printed player aid by
+   * `tools/extract_action_icons.py` and the source tiles are 56 real pixels, so
+   * past roughly 30px the upscale is visible as softness. The top three steps
+   * therefore hold at 30px while the cards around them keep growing, and that
+   * is a deliberate stop rather than a step somebody forgot to fill in. If
+   * icons drawn at size are ever commissioned, this is the number to reopen.
+   */
+  --action-icon: 24px;
   --gap: 12px;
+
+  /*
+   * ⭐ THE CAP, AND WHY THE LAYOUT STOPS GROWING BEFORE THE SCREEN DOES.
+   *
+   * `.table` is capped at this and centred (`table.css`), so past 2560 CSS
+   * pixels a wider window buys MARGINS, not a wider table. The alternative was
+   * stretch-to-fill, and it is the wrong answer for a three-column layout: at
+   * 3840 the rail and the reading region end up the better part of a metre
+   * apart on a physical panel, and the eye has to travel that distance every
+   * time it checks a neighbour against its own hand. Side margins are not waste
+   * here; they are the felt round a playmat on a large desk.
+   *
+   * 2560 IS MEASURED, NOT CHOSEN FOR ROUNDNESS. It is the CSS width a 4K panel
+   * reports at 150% scaling, which is how a 4K desktop is ordinarily run - so
+   * the cap never binds on the likeliest machine, and every configuration above
+   * it (4K at 100%, a 3440 ultrawide) is handed the SAME layout width that
+   * setup already gets. One width to reason about and one width to verify,
+   * rather than one per panel.
+   *
+   * ⚠️ IT IS NOT DIALLED PER STEP AND IT IS NOT SCALED BY THE UI SLIDER. Both
+   * would be wrong in the same way: the cap is a statement about the VIEWPORT,
+   * and the viewport does not change when a player moves the slider. Scaling it
+   * to 120% would let a 4K screen stretch back out to 3072 exactly when the
+   * cards had grown to fill it. See `SCALED` in `UiScale.tsx`.
+   *
+   * Below 2560 it can have no effect at all - a `max-width` only binds when the
+   * box would otherwise be wider - which is what keeps every shipped step byte
+   * for byte where it was.
+   */
+  --table-max: 2560px;
 
   /*
    * The hero's own title, and the only font size in the layout that has to be
@@ -211,7 +355,9 @@
     --card-hand: 92px;
     --card-deck: 80px;
     --card-inspector: 136px;
+    --card-barn: 61px;
     --island-tile-w: 58px;
+    --action-icon: 22px;
     --gap: 10px;
     /* The narrowest column the region is allowed to be. 260px is the point at
        which the printed ability text stops being reading size; one step down
@@ -230,11 +376,183 @@
     --card-hand: 130px;
     --card-deck: 116px;
     --card-inspector: 186px;
+    --card-barn: 86px;
     --island-tile-w: 82px;
+    --action-icon: 26px;
     --gap: 14px;
     /* The card's own type was set for roughly this width, so this is the step
        where the region does the job it was designed for with nothing left over. */
     --card-read: 360px;
+  }
+}
+
+/*
+ * ⭐ THE LARGE-DISPLAY STEPS (27/08/2026), AND THE ONE THING THEY ARE FOR.
+ *
+ * The ladder used to stop at 1500x850. Measured on the dense fixture, every
+ * size token was frozen from 1600px all the way to 3840px while `.farm` grew to
+ * 3530px - a row of 130px cards floating in an ocean of felt, and a screen that
+ * got emptier the more of it you bought.
+ *
+ * Dean's ask was specific: **every card in his hand, with the full text, at a
+ * reasonable size.** It needs no new rendering code, because `card.css` already
+ * decides that for itself - a card wider than 260px keeps its ability band
+ * (`@container card (max-width: 260px)`), and phase 1 dropped `card-readable`
+ * from the hand precisely so the container query would be the only judge. Give
+ * the hand card 300px of real width and the text comes back on its own, at
+ * every viewport where the width genuinely exists and at none where it does not.
+ *
+ * ⚠️ THE HAND IS A WIDTH BUDGET, NOT A HEIGHT ONE, and that is what shapes all
+ * three steps. `.farm-strips` is one row - the fan and the barn - and the fan
+ * has to hold SIX cards (the Dairy and Orchard barns both print a hand of 6)
+ * without a card's title disappearing under the next. The fan tightens its own
+ * slots to fit the row, and `measure-ui` calls a card clipped once the next one
+ * starts inside 62% of its width, so the arithmetic is exact:
+ *
+ *     6 unclipped cards need  4.1 x --card-hand  of row
+ *     (five slots at 0.72 of a card, plus a full last card that never shrinks)
+ *
+ * `--hand-fan` drops out of that sum rather than appearing in it, which is not
+ * obvious and is worth one line: the resting spacing is added to the advance
+ * between two cards AND to the row's total in equal measure, so it changes how
+ * a hand that FITS looks and never changes how wide a hand that does not fit
+ * has to be. 4.1 holds whichever way the fan is set.
+ *
+ * Everything else in the farm's width - the rail, the reading region, the barn -
+ * is competing for that number. Which is why the barn stopped tracking the hand
+ * (see `--card-barn` above) and why `--card-read` grows more slowly than the
+ * hand does from here up: past 260px the hand is printing its own text, so a
+ * bigger copy of ONE card is worth less than six cards you can read.
+ */
+
+/*
+ * STEP E - the 1080p desktop, and a 4K panel at 200% scaling.
+ *
+ * Everything grows and the hand DOES NOT reach reading size. That is a
+ * measurement, not a preference, and it is worth writing down because it is the
+ * step somebody will try to "finish" later.
+ *
+ * At 1920 the farm is 1554px inside its own padding, and the fan has to share
+ * that with the rail, the reading region and the barn. A six-card hand at the
+ * container query's 260px threshold needs 4.1 x 260 = 1066px of row. Against a
+ * five-pile barn there is 656px, and closing that gap would take the reading
+ * region to about 20px - it is not a question of trimming it. Even against the
+ * ordinary two-pile barn the region would have to drop from 360px to under
+ * 290px, which is SMALLER at 1920 than the step below it ships at 1600, and
+ * under the 260px floor at which printed ability text stops being reading size.
+ *
+ * One card you can read beats six you cannot, so the region keeps the width and
+ * the hand stays a fan of pictures. What the step does buy is the rest of the
+ * table: buildings 120 -> 150 with capacity up from 14 to 21, the island 82 ->
+ * 96, and a reading card at 430px, up 19% on the step below.
+ */
+@media (min-width: 1800px) and (min-height: 1000px) {
+  :root {
+    --rail-w: 300px;
+    --card-building: 150px;
+    --card-hand: 150px;
+    --card-deck: 138px;
+    --card-inspector: 220px;
+    /* Frozen at the desktop step's value from here up, and restated at each
+       step so a reader of any one block can see what the barn is doing. */
+    --card-barn: 86px;
+    --island-tile-w: 96px;
+    --action-icon: 28px;
+    --gap: 16px;
+    --card-read: 430px;
+  }
+}
+
+/*
+ * ⭐ STEP F - THE STEP THE WHOLE CHANGE EXISTS FOR: 2560x1440.
+ *
+ * That is a 4K panel at 150% scaling, which is the ordinary way a 4K desktop is
+ * run, and it is also where a 3440 ultrawide lands (the cap below makes the two
+ * the same layout, so there is one width to reason about rather than two).
+ *
+ * `--card-hand` goes to 300px, and 300 is not a round number picked for looks.
+ * It clears the container query's 260px by 40px - enough that the ability band
+ * is comfortably set rather than technically present - and it is the largest
+ * value that still holds six cards unclipped against the worst barn the game
+ * can deal: 4.1 x 300 = 1230px of fan, against 1260px of row left once a
+ * FIVE-pile barn and the reading region have taken theirs. Thirty pixels in
+ * hand, at the worst case, on the step that matters most.
+ *
+ * The buildings stay picture-sized here on purpose. Making them readable too
+ * needs 260px+ cards, and at 1440 the tableau has room for two rows of those -
+ * six across by two is a capacity of 12, under the 14 the 1200-farm census
+ * settled on. It is a HEIGHT shortage, not a width one, which is exactly what
+ * step G has and this one does not.
+ */
+@media (min-width: 2400px) and (min-height: 1300px) {
+  :root {
+    --rail-w: 320px;
+    --card-building: 200px;
+    --card-hand: 300px;
+    --card-deck: 160px;
+    --card-inspector: 240px;
+    --card-barn: 86px;
+    --island-tile-w: 126px;
+    /* The asset ceiling, not the layout's - see the note in `:root`. */
+    --action-icon: 30px;
+    --gap: 20px;
+    --farm-title: 21px;
+    /* Positive: the cards separate rather than overlapping. At 300px they print
+       their own text and their own cost, so the tenth of a card the fan used to
+       cover is a tenth of a document. */
+    --hand-fan: 0.02;
+    /*
+     * ⚠️ THE REGION REACHED ITS FINAL SIZE AT STEP E AND STOPS THERE. It does
+     * not grow with the rest of the step, and the flat 430 is the decision, not
+     * an oversight: every pixel here is a pixel the fan cannot have, and from
+     * this step the fan prints the same text this region does. So the region's
+     * job narrows to what it alone can give - one card at full size with the
+     * gloss block under it, keywords, cost and the live "right now" line - and
+     * a bigger copy of ONE card is worth less than six cards you can read.
+     *
+     * It is not free, and the 10px it costs came out of the RAIL rather than
+     * out of the fan: the rail is 320 here where the arithmetic first had 330,
+     * which keeps the six-card fan's worst-case slack at 30px instead of 18.
+     * A neighbour's panel is three lines and a bar and does not notice 10px;
+     * the fan is the thing standing one pixel from a threshold.
+     */
+    --card-read: 430px;
+  }
+}
+
+/*
+ * STEP G - 4K at 100% scaling, and the only step keyed on HEIGHT.
+ *
+ * Its width condition is the same 2400px as step F because above the cap there
+ * is no more width to have: `--table-max` stops the layout at 2560 and hands
+ * the rest to the margins, so every width-derived token here is F's, unchanged
+ * and deliberately so. A 3840x2160 panel differs from a 2560x1440 one in one
+ * respect that the layout can spend, and it is the 720 extra pixels of height.
+ *
+ * It spends them on the TABLEAU. `--card-building` goes to 280px, over the
+ * container query's 260px threshold, so a built farm prints its ability text
+ * the same way the hand does - six across, and at 2160 there is room for four
+ * rows of them, a capacity of 24 against the 14 that has to hold. That is the
+ * one thing a 4K screen can show that a 1440p screen cannot: the whole table
+ * readable at rest, with nothing to hover.
+ */
+@media (min-width: 2400px) and (min-height: 1800px) {
+  :root {
+    --rail-w: 320px;
+    --card-building: 280px;
+    --card-hand: 300px;
+    --card-deck: 170px;
+    --card-inspector: 260px;
+    --card-barn: 86px;
+    --island-tile-w: 200px;
+    /* Held at step F's value: the source art has nothing more to give. */
+    --action-icon: 30px;
+    --gap: 20px;
+    --farm-title: 22px;
+    /* Separated rather than overlapped, for the reason given in step F. */
+    --hand-fan: 0.02;
+    /* Flat from step E up, for the reason given in step F. */
+    --card-read: 430px;
   }
 }
 
@@ -275,7 +593,17 @@
     --card-hand: 88px;
     --card-deck: 62px;
     --card-inspector: 118px;
+    --card-barn: 58px;
     --island-tile-w: 54px;
+    /*
+     * The tightest case in the whole ladder. At 1024 the main column is about
+     * 780px wide and the bar has to hold six action buttons, the bonus zone and
+     * the exits without wrapping to a row the farm would have to pay for, so
+     * the icon is the smallest it gets anywhere - still a legible vignette at
+     * 18px, because the aid's tiles are one character against one background
+     * rather than a scene.
+     */
+    --action-icon: 18px;
     --gap: 8px;
     --farm-title: 17px;
     /*

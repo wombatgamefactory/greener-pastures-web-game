@@ -58,6 +58,7 @@ import type { Move, PlayerView } from '@gp/engine';
 import { useEffect, useState } from 'react';
 
 import type { Play } from '../session/play';
+import { actionIcon } from '../view/art';
 import { actionGroups, describeMove } from '../view/moveText';
 import type { ActionGroup, TurnZone } from '../view/moveText';
 
@@ -229,6 +230,26 @@ export function ActionBar({
       group.moves.length === 1
         ? describeMove(data, play.view, group.moves[0] as Move)
         : `${group.hint}${group.moves.length > 0 ? ` (${group.moves.length} ways)` : ''}`;
+    /*
+     * THE ICON, AND WHY ONLY SOME BUTTONS GET ONE (27/08/2026, Dean).
+     *
+     * `actionIcon` returns null for a family with no painting, which today is
+     * exactly the exits - End turn and Pass - and that is a rule rather than an
+     * omission. Phase 3 separated the exits from the actions BECAUSE they are a
+     * different kind of thing: they leave the turn instead of spending it. Give
+     * them a glyph and they are back in the same visual class as Build, which
+     * is the confusion the zones were built to remove. undo and cancel are
+     * written by hand further down and get none for the same reason.
+     *
+     * ⚠️ `alt=""` PLUS `aria-hidden` IS DELIBERATE AND IS NOT BELT-AND-BRACES.
+     * The picture is decorative here: the action's NAME is right beside it in
+     * the same button, so any alt text at all makes a screen reader say "Build,
+     * Build". An empty alt is what an image with nothing of its own to add is
+     * supposed to carry, and the hidden flag is what keeps it out of the
+     * button's accessible name in the browsers that compose one from content
+     * rather than from alt alone.
+     */
+    const icon = actionIcon(group.type);
     return (
       <button
         key={group.type}
@@ -238,7 +259,8 @@ export function ActionBar({
         title={title}
         onClick={() => onGroup(group.type, group.moves, group.needsTarget)}
       >
-        {group.label}
+        {icon !== null && <img className="action-icon" src={icon} alt="" aria-hidden="true" />}
+        <span className="action-name">{group.label}</span>
       </button>
     );
   };

@@ -138,6 +138,7 @@ export function Table({
   const building = useCssSize('--card-building', 128);
   const hand = useCssSize('--card-hand', 190);
   const deck = useCssSize('--card-deck', 96);
+  const barn = useCssSize('--card-barn', 70);
   const islandTile = useCssSize('--island-tile-w', 62);
   const inspector = useCssSize('--card-inspector', 150);
 
@@ -239,11 +240,57 @@ export function Table({
           play={play}
           onExpandIsland={() => setIslandOpen(true)}
         />
+        {/*
+         * THE TURN ZONE, ABOVE THE FARM (27/08/2026, Dean).
+         *
+         * It used to be the last two rows of this column, under the farm. That
+         * was defensible at 1024 and is indefensible at 2560: the buttons that
+         * act on your cards ended up the better part of a screen height away
+         * from the cards, so every decision was a round trip - read the hand at
+         * the bottom, travel to the bar below it, come back to click a target
+         * in the tableau above. Between the commons and the farm, the bar sits
+         * against the top edge of the thing it acts on at every step of the
+         * ladder, and the eye's longest journey shrinks with the screen rather
+         * than growing with it.
+         *
+         * ⚠️ IT IS A WRAPPER, AND THAT IS NOT COSMETIC. `.main-column` places
+         * by auto-flow, so the number of children decides which track each
+         * region lands on - and `Prompt` renders NOTHING on most turns. Left as
+         * two siblings, a null prompt leaves an empty `auto` track behind, and
+         * the row gap either side of it becomes a visible band of bare table
+         * between the bar and the farm on the majority of turns. One wrapper
+         * makes the child count constant, so the column has exactly three rows
+         * whatever the prompt is doing. `.farm` still pins itself to the last
+         * track explicitly (table.css) for the render-test path, where `play`
+         * is absent and there is no turn zone at all.
+         *
+         * THE BAR IS ABOVE THE PROMPT, which is the reverse of the old bottom
+         * zone and is deliberate. The prompt is the surface a hand card is
+         * DROPPED on - the build and visit assemblies are drop targets - so it
+         * belongs on the side of the zone nearest the hand, which is now below
+         * rather than above. It also reads as a chain going down the screen:
+         * the button you pressed, then what the game wants next, then your
+         * farm. Phase 5's "they are one zone" is unchanged; they are simply one
+         * zone somewhere else.
+         */}
+        {play && (
+          <div className="turn-zone">
+            <ActionBar
+              data={data}
+              play={play}
+              onUndo={onUndo ?? (() => {})}
+              canUndo={canUndo}
+              waitingOn={waitingOn}
+            />
+            <Prompt data={data} play={play} zoom={zoom} />
+          </div>
+        )}
         <Farm
           data={data}
           view={view}
           buildingWidth={building}
           handWidth={hand}
+          barnWidth={barn}
           zoom={zoom}
           play={play}
           drag={drag}
@@ -253,18 +300,6 @@ export function Table({
             ) : null
           }
         />
-        {play && (
-          <>
-            <Prompt data={data} play={play} zoom={zoom} />
-            <ActionBar
-              data={data}
-              play={play}
-              onUndo={onUndo ?? (() => {})}
-              canUndo={canUndo}
-              waitingOn={waitingOn}
-            />
-          </>
-        )}
       </main>
 
       {!readAsRegion && <ZoomPanel data={data} zoom={zoom} />}

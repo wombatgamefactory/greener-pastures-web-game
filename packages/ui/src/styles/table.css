@@ -15,6 +15,18 @@
   height: 100dvh;
   padding: var(--gap);
   overflow: hidden;
+  /*
+   * CAPPED AND CENTRED (27/08/2026). Past `--table-max` a wider window gives
+   * the layout margins rather than a wider table, and the size ladder spends
+   * the difference on the cards instead. The reasoning, and why 2560, is on the
+   * token in `base.css`.
+   *
+   * It cannot bind below the cap, and `margin-inline: auto` resolves to zero
+   * while the box is filling its parent, so every step at or under 2560 renders
+   * exactly as it did - checked against `reports/ui-phase5-verify`, not assumed.
+   */
+  max-width: var(--table-max);
+  margin-inline: auto;
 }
 
 /* ---- the rail ----------------------------------------------------------- */
@@ -353,9 +365,25 @@
 /* ---- the main column ---------------------------------------------------- */
 
 /*
- * Commons, farm, then the two interaction strips. The farm is the only row that
- * flexes, so the prompt and the action bar can never push the hand below the
- * fold - they take their own height and the tableau gives it up (it scrolls).
+ * Commons, the turn zone, then the farm. The farm is the only row that flexes,
+ * so the prompt and the action bar can never push the hand below the fold -
+ * they take their own height and the tableau gives it up (it scrolls).
+ *
+ * ⚠️ THE TURN ZONE MOVED ABOVE THE FARM ON 27/08/2026 (Dean) AND THE TRACKS ARE
+ * HOW. The alternative was to put the bar inside `.farm`, and it was refused:
+ * the farm's internal grid was tuned across five phases against the tableau
+ * capacity constraint (14 buildings, 0 sliced, at every viewport), and a new
+ * row inside it is exactly the change that took capacity from 14 to 7 when
+ * phase 3 tried putting zone captions on their own line. Re-ordering this
+ * column costs the farm nothing: it still gets whatever the commons and the
+ * turn zone do not want, which is the same arithmetic in a different order.
+ *
+ * `.farm` PINS ITSELF TO THE LAST TRACK rather than trusting auto-flow, because
+ * the turn zone is conditional - the render tests drive this tree with no
+ * `play` at all (Table.tsx documents why). Without the pin, a table with no
+ * turn zone auto-flows the farm onto an `auto` track, and an `auto` farm in a
+ * fixed-height column overflows instead of squeezing, which is the failure that
+ * slices a row of buildings in half.
  *
  * PHASE 2 DID NOT CHANGE THESE TRACKS, and that is worth saying because it is
  * the obvious way to have done it and it is wrong. The commons is the `auto`
@@ -376,9 +404,40 @@
  */
 .main-column {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: var(--gap);
   min-height: 0;
+  min-width: 0;
+}
+
+/*
+ * See the block above: the farm takes the LAST explicit track, whichever it is.
+ * `-2 / -1` is the last track counted from the end, so it is right for both the
+ * three-track column and the four-track one `.main-noticed` makes, and it stays
+ * right if a row is ever added at the top. Naming a number here would have to
+ * be kept in step by hand with two rules and a conditional element.
+ */
+.main-column > .farm {
+  grid-row: -2 / -1;
+}
+
+/*
+ * THE TURN ZONE: the bar and the prompt, in one row of the column.
+ *
+ * Chromeless, like both of its children - phase 3 stripped the bar and phase 5
+ * stripped the prompt, and wrapping them now must not quietly put a box back
+ * round the pair. The wrapper exists for placement and for the gap, nothing
+ * else.
+ *
+ * The gap is deliberately TIGHTER than the column's. `--gap` between the two was
+ * right when they were separate rows in a bottom strip; as one zone the prompt
+ * should read as the bar's continuation rather than as the next region down,
+ * and the pixels saved go to the farm, which is the row that pays for the
+ * bigger buttons.
+ */
+.turn-zone {
+  display: grid;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -389,7 +448,7 @@
  * cost to the states that actually carry a notice.
  */
 .main-noticed {
-  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   row-gap: 6px;
 }
 
@@ -1506,9 +1565,28 @@
   font-weight: 700;
 }
 
+/*
+ * ⚠️ `position` AND `z-index` ARE FOR THE DOCK, AND THEY CHANGE NOTHING AT REST.
+ *
+ * The docked strip lifts over the tableau (see `--dock-y` below), and the
+ * tableau is full of positioned boxes - `.building` is `relative` and its
+ * standing-move badge sits at `z-index: 2`. Without a stacking context of its
+ * own the hand's cards are sorted against those one by one, so the first two
+ * slots (`zIndex` 0 and 1, written per card in `Farm.tsx`) would float UNDER a
+ * badge while the rest floated over it. One context here makes the hand's
+ * internal order internal, which is all it ever meant, and puts the whole strip
+ * above the tableau in one move. It stays below the reading surfaces, which are
+ * at 80 and up in the root context, so a card can still never cover the text of
+ * the card it is.
+ *
+ * At rest the fan does not reach the tableau at all, so nothing about this is
+ * visible until the pointer arrives.
+ */
 .hand {
   display: flex;
   min-height: calc(var(--card-hand) * 0.722);
+  position: relative;
+  z-index: 1;
 }
 
 /*
@@ -1537,31 +1615,143 @@
   flex: none;
 }
 
-/* A resting overlap even when the row has room to spare, so the hand reads as a
-   fan rather than a line of tiles. Shrink takes it further from here. */
+/*
+ * The resting spacing, when the row has room to spare. Shrink takes it further
+ * from here, and once the row IS tight this declaration stops mattering at all -
+ * the slots absorb the whole shortfall either way, so the total is the same.
+ *
+ * ⚠️ IT IS A TOKEN BECAUSE ITS SIGN FLIPS ON THE LARGE STEPS (27/08/2026).
+ * Below 260px a hand card is a picture with a name on it, and a tenth of a card
+ * of overlap is what makes the row read as a fan you are holding rather than as
+ * a line of tiles. At 300px the card prints its full ability text and its build
+ * cost, and the overlap is then covering the right-hand tenth of a document -
+ * the cost column, and the tail of any line of text that runs long. So the large
+ * steps set a small POSITIVE value instead: the cards separate, and every card
+ * in a hand that fits its row is whole. See `--hand-fan` in `base.css`.
+ */
 .hand-card + .hand-card {
-  margin-left: calc(var(--card-hand) * -0.1);
+  margin-left: calc(var(--card-hand) * var(--hand-fan));
 }
 
 /*
- * Hover no longer grows the card (26/08/2026). It used to scale the hovered
- * card up to reading size in place, which worked but cost the hand a size it
- * did not otherwise need: the fan had to be printed big enough to read from,
- * and that width is precisely what the reading region now spends better.
+ * Hover no longer grows ONE card in place (26/08/2026). It used to scale the
+ * hovered card up to reading size, which worked but cost the hand a size it did
+ * not otherwise need: the fan had to be printed big enough to read from, and
+ * that width is precisely what the reading region now spends better. It also
+ * failed in a way worth remembering - the scaled card covered the neighbour you
+ * were reaching for next.
  *
- * With the region in place the hand's job is to say WHICH cards you hold, not
- * what they do, so hovering a card sends it to the region and the fan itself
- * stays perfectly still. Nothing under the pointer moves, which also removes
- * the old failure where a scaled card covered the neighbour you were reaching
- * for next.
- *
- * The card raises itself in the stack under the pointer so its own edges are
- * whole while it is the one being read.
+ * The card still raises itself in the stack under the pointer so its own edges
+ * are whole while it is the one being read.
  */
 .hand .hand-card:hover,
 .hand .hand-card:focus-visible {
   z-index: 50 !important;
   outline: none;
+}
+
+/*
+ * ⭐ DOCK MAGNIFICATION (27/08/2026, re-cut the same day). On hover the fan
+ * LIFTS out of this row into a floating strip, SEPARATES until nothing overlaps
+ * anything, and grows under the pointer.
+ *
+ * ⚠️ THIS IS NOT THE HOVER SCALE ABOVE COMING BACK, AND THE DIFFERENCE IS ONE
+ * PROPERTY: every gap in the docked strip is exactly `spacing - card width`, at
+ * every pointer position and every magnification, and the row buys that as a
+ * positive number before it buys any magnification at all.
+ *
+ * The FIRST build guaranteed something weaker and, it turned out, wrong: "no
+ * card is more covered than at rest". At rest the fan overlaps by design
+ * (`--hand-fan`, a tenth of a card below 2560), so that preserved cards half
+ * hidden behind each other at full magnification. Dean, against a photograph of
+ * the macOS Dock: "close, but not correct" - seven items side by side, nothing
+ * overlapping. `view/dock.ts` carries the new arithmetic and the reordered
+ * concession ladder, `dock.test.ts` pins the separation over a grid of fan
+ * shapes. If a change here ever lets a card lap over its neighbour while the
+ * strip is docked and the row could have paid not to, the deleted feature has
+ * been rebuilt.
+ *
+ * FOUR MECHANICAL POINTS, all of them consequences of the fan's own rules:
+ *
+ * 1. TRANSFORM, NEVER WIDTH. The slots shrink to fit the row (see `.hand-card`
+ *    above), and animating a width would re-run that negotiation on every
+ *    pointer move and fight the mechanism that keeps the last card unclipped.
+ *    A transform does not touch layout, so the resting fan `measure-ui` counts
+ *    is byte for byte the fan it counted before this existed.
+ * 2. IT IS ON THE CARD, NOT ON THE SLOT. The slot is the shrunken box and it
+ *    already carries a transform of its own - `.is-held` lifts it 18px and
+ *    `.is-picked` 8px, in play.css - so putting the dock there would have meant
+ *    one property doing two jobs and a held card losing its lift. On `.card`
+ *    the two compose: the slot lifts, the card inside it floats and grows.
+ * 3. `50% 100%` IS THE ORIGIN, so the strip's baseline does not move under the
+ *    scale and all the growth goes UPWARD, over the tableau. The tableau is the
+ *    one region in this layout that is coverable, and it is what `--dock-y`
+ *    spends too: the lift carries the strip clear of the top of the barn, which
+ *    is what makes the barn's column spendable width without covering the barn.
+ *    The ceiling is the tableau's own top edge, so the strip stays inside the
+ *    farm panel and cannot reach the turn bar above it.
+ * 4. THE SLOT DOES NOT MOVE, so neither do the hit targets. A click lands on
+ *    the floating card or on the space it left; both are the same slot.
+ *
+ * `--dock-x` and `--dock-s` are written by `session/dock.ts` on the SLOT and
+ * `--dock-y` on `.hand`, all inherited down, so the JS never has to find the
+ * inner element twice. All three default to the identity, which is what "at
+ * rest" means here - and at rest is byte for byte the layout that shipped.
+ */
+.hand-card > .card {
+  transform: translate(var(--dock-x, 0px), var(--dock-y, 0px)) scale(var(--dock-s, 1));
+  transform-origin: 50% 100%;
+  /*
+   * ⭐ THE ELEVATION FOLLOWS THE WAVE, AND IT IS THE ONLY DIAL HERE THAT COSTS
+   * NO WIDTH (27/08/2026). `--dock-b` is the falloff itself - 0 at rest, 1
+   * under the pointer - written per card by `session/dock.ts`.
+   *
+   * Size alone is not prominence. A card that is merely bigger reads as a card
+   * that is nearer the front only if it also throws a longer shadow, and in a
+   * feature where every other dial is rationed by the row's spare width, a
+   * shadow is free. It also does the job the fan's z-order cannot: out in the
+   * tail the cards still lap (see `dockPlacements`), and the shadow is what
+   * says which of two overlapping cards is the one in front.
+   *
+   * The card's own resting shadow is the first term, so at `--dock-b: 0` this
+   * is byte for byte what `.card` declares in `card.css`.
+   */
+  box-shadow:
+    0 2px 5px rgb(58 42 24 / 22%),
+    0 calc(var(--dock-b, 0) * 10px) calc(var(--dock-b, 0) * 26px) rgb(58 42 24 / 30%);
+  /*
+   * The settle, used when the pointer arrives and when it leaves. `--motion-ui`
+   * is the interface speed rather than the state-change band, which is right:
+   * this is feedback about the pointer, not a change to the game.
+   */
+  transition:
+    transform var(--motion-ui) ease-out,
+    box-shadow var(--motion-ui) ease-out;
+}
+
+/*
+ * WHILE THE POINTER IS ACTUALLY ON THE FAN, THE FOLLOW IS FASTER THAN THE
+ * SETTLE, and the two need to be different numbers for a reason that is easy to
+ * miss. The transform is rewritten every animation frame, so each frame
+ * restarts the transition and the duration stops being a duration: it becomes a
+ * smoothing constant. At the full 160ms the cards trail the pointer by about
+ * 85ms, which reads as the fan chasing the mouse rather than sitting under it.
+ * At 40% of it the lag is a frame or two - enough to take the stairstep off a
+ * coarse mouse, not enough to feel like lag. The settle keeps the longer value
+ * because there is nothing to keep up with on the way home.
+ *
+ * Both are written against `--motion-ui`, so `prefers-reduced-motion` takes
+ * them to zero with everything else - and the hook declines to write any
+ * magnification at all under that query, so there is nothing left to shorten.
+ */
+.hand.dock-live .hand-card > .card {
+  transition-duration: calc(var(--motion-ui) * 0.4);
+}
+
+/* Measuring: the hook clears the custom properties and reads the resting rects
+   in the same breath, and a transition would hand it a value in mid-flight. */
+.hand.dock-still .hand-card > .card {
+  transition: none;
 }
 
 /* Tabbing through the hand is how it is read without a mouse: focus feeds the

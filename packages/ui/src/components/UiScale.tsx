@@ -37,10 +37,25 @@ import { useCallback, useEffect, useState } from 'react';
  *
  * ⚠️ IT IS DELIBERATELY NOT "EVERY CUSTOM PROPERTY". Font sizes inside
  * components, padding, the 40px hit targets and the card's own container-query
- * type all stay put, because the four card widths here are what every one of
+ * type all stay put, because the five card widths here are what every one of
  * those is derived from: a `.card` sets its text in `cqw`, so scaling the card
  * scales its type, and the tableau's capacity follows the building width. A
  * blanket scale over everything would double-count all of it.
+ *
+ * THREE TOKENS `base.css` OWNS ARE DELIBERATELY ABSENT, and in every case
+ * multiplying them would double-count or contradict:
+ *
+ *   --table-max   a statement about the VIEWPORT, which the slider does not
+ *                 change. Scaling it would let a 4K screen stretch the layout
+ *                 back out at exactly the moment the cards grew to fill it.
+ *   --hand-fan    dimensionless. It multiplies `--card-hand`, which is scaled
+ *                 here already, so scaling it too would square the effect.
+ *   --action-icon it sits in a button BESIDE A WORD, and the word is a font
+ *                 size, which is exactly the class of thing this list does not
+ *                 touch. Scaling the picture while its label stayed at 12px
+ *                 would tip every button in the turn bar lopsided at both ends
+ *                 of the range. It belongs with the 40px hit targets: part of
+ *                 the control's chrome rather than part of the card ladder.
  */
 const SCALED = [
   '--rail-w',
@@ -48,6 +63,7 @@ const SCALED = [
   '--card-hand',
   '--card-deck',
   '--card-inspector',
+  '--card-barn',
   '--island-tile-w',
   '--gap',
   '--farm-title',

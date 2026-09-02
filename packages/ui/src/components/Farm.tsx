@@ -18,6 +18,7 @@ import type { ReactNode } from 'react';
 import type { GameData, Suit } from '@gp/data';
 import type { BuildingView, Move, PlayerView } from '@gp/engine';
 
+import { useHandDock } from '../session/dock';
 import type { Drag } from '../session/drag';
 import { mark } from '../session/play';
 import type { Play } from '../session/play';
@@ -160,6 +161,20 @@ function Barn({ barn, cardWidth }: { barn: Partial<Record<Suit, number>>; cardWi
  * `onMouseLeave` clears on the CONTAINER rather than per card, matching
  * `Tableau`: leaving one card for the next one along should hand the region
  * over, not blank it in between.
+ *
+ * ⭐ AND SINCE 27/08 THE FAN MAGNIFIES UNDER THE POINTER (`session/dock.ts`),
+ * WHICH IS NOT THE THING DELETED ABOVE AND THE DIFFERENCE IS THE WHOLE POINT.
+ * The old hover-zoom grew ONE card, in place, over the top of the neighbours
+ * you were reaching for next. A dock grows the neighbours too and shifts them
+ * apart by exactly the growth, so no card is ever more covered than it is at
+ * rest - a property the geometry is tested for in `view/dock.test.ts` and
+ * measured for in a real browser by `tools/verify-dock.mjs`.
+ *
+ * It also does not re-open the question the reading region settled. The fan is
+ * still art, chip and cost: magnifying is a transform, so the container query
+ * in `card.css` still sees the RESTING width and no ability band ever pops in
+ * or out under the pointer. The hand says which cards you hold; the region says
+ * what they do; the dock only makes the first of those easier to look at.
  */
 function Hand({
   data,
@@ -181,6 +196,10 @@ function Hand({
   const over = handSize !== null && hand.length > handSize;
   const held = play?.intent.k === 'hold' ? play.intent.card : null;
   const committed = new Set<string>(play?.commitments ?? []);
+  // The contents rather than the count: drawing a card and discarding another
+  // leaves the same number of slots in a different order, and every resting
+  // anchor the dock holds is keyed to a position in that order.
+  const dock = useHandDock(hand.join('|'), drag?.card == null);
   return (
     <div className="hand-strip">
       <h3 className="strip-title">
@@ -191,7 +210,7 @@ function Hand({
           {over ? ' - discard at end of turn' : ''}
         </em>
       </h3>
-      <div className="hand" onMouseLeave={() => zoom.clear()}>
+      <div className="hand" ref={dock} onMouseLeave={() => zoom.clear()}>
         {hand.length === 0 && <p className="empty-note">No cards. Every visit costs one.</p>}
         {hand.map((id, i) => {
           const live = play?.live.hand.has(id) ?? false;
@@ -272,6 +291,7 @@ export function Farm({
   view,
   buildingWidth,
   handWidth,
+  barnWidth,
   zoom,
   play,
   drag,
@@ -281,6 +301,15 @@ export function Farm({
   view: PlayerView;
   buildingWidth: number;
   handWidth: number;
+  /**
+   * The barn pile, which USED TO BE `round(handWidth * 0.66)` and is now its own
+   * token (`--card-barn`). Every shipped step's value is still exactly that
+   * product, so nothing moved; what changed is that it stops growing above the
+   * desktop step, because the hand and the barn share a row and a barn pile
+   * scaled to a 300px hand would take the width the fan needs to stay unclipped.
+   * The reasoning is written out in full beside the token in `base.css`.
+   */
+  barnWidth: number;
   zoom: Zoomer;
   play?: Play | undefined;
   drag?: Drag | undefined;
@@ -344,7 +373,7 @@ export function Farm({
           play={play}
           drag={drag}
         />
-        <Barn barn={view.you.barn} cardWidth={Math.round(handWidth * 0.66)} />
+        <Barn barn={view.you.barn} cardWidth={barnWidth} />
       </div>
 
       {reading}
