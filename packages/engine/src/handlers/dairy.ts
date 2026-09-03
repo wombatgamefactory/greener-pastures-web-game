@@ -87,7 +87,9 @@ import { doBuild, freeHandSpace, paymentOptions, placeBuilt } from '../actions.j
 import type { BuildMods } from '../actions.js';
 import type { Fx } from '../fx.js';
 import { canTakeCard, cardById, drawableSuits, foreignCropBuildings, player } from '../query.js';
+import { REVEAL_RIDER, pickFromReveal, revealedIn } from '../state.js';
 import type { CardId, GameState, Seat, TaskAnswer } from '../state.js';
+import { farmsteadHandler } from './farmstead.js';
 import type { CardHandler } from './types.js';
 
 /**
@@ -143,7 +145,15 @@ function drawN(fx: Fx, pid: Seat, src: CardId, n: number): void {
   fx.pushTask({ t: 'draw', pid, src, see: n, keep: n, revealed: [] });
 }
 
-/** Rivals who could physically accept a card right now (DL-63). D6 and D13. */
+/**
+ * Rivals who could physically accept a card right now (DL-63). D6 and D13.
+ *
+ * ⭐ DL-63 IS LIVE AGAIN (02/09/2026). A gift never forces an out-of-turn
+ * discard, so a rival already at their hand limit drops out here. v31 deleted
+ * the hand limit and this filter went moot; the cap that came back is
+ * `rules.turn.handLimit`, one global number, and `freeHandSpace` reads it for
+ * every seat. This is the landing place the v31 note said to keep, used.
+ */
 function giftableSeats(data: GameData, state: GameState, pid: Seat): Seat[] {
   const out: Seat[] = [];
   for (let seat = 0; seat < state.players.length; seat++) {
@@ -168,123 +178,64 @@ function stillDiscarded(data: GameData, state: GameState, spent: readonly CardId
   return spent.filter((id) => state.discards[cardById(data, id).suit]?.includes(id));
 }
 
-/** D1 Barn (starter) - "Hand size 5. When you build a SHED, Draw 1." / upgraded "Hand size 7. ..." */
+/**
+ * D1 Barn (starter) - prints NOTHING (v31).
+ *
+ * ⛔ Both lines went: the hand size with the hand limit itself, and the build
+ * rider ("When you build a SHED, Draw 1") with the other four Barn riders. THIS
+ * IS THE ONE THAT MEASURED WORST, and the reading is the reason the whole family
+ * was deleted rather than trimmed. The rider is printed identically on all five
+ * Barns but pays out per BUILD, and Dairy builds 12.02 buildings a seat against
+ * a field of about 5, so a line the sheet treats as shared paid this suit 2.4x
+ * what it paid anybody else: a shared line on an unshared metric is a hidden
+ * per-suit faucet. The Dairy rebalance had already halved it (Draw 2 to Draw 1)
+ * on exactly that finding. *
+ * ⭐ THE HAND LIMIT CAME BACK ON 02/09/2026 AND THIS CARD DID NOT. The
+ * reinstated limit is a flat 12 for everybody, in `rules.turn.handLimit` and
+ * on the player aid; the Barn stays blank. A rule that applies to every seat
+ * is not a card value, which is the whole difference between the old shape and
+ * the new one - so nothing here should be un-deleted.
+ */
 export const dairyBarn: CardHandler = {
   difficulty: {
-    score: 2,
-    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
+    score: 1,
+    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'W1/O1/V1 with one word changed, and the same three readings. The printed hand size is ' +
-      'still engine-read (handLimitOf off the current face); what is new is the rider, and it ' +
-      'is on BOTH faces deliberately, or paying £2 to upgrade would DELETE the power. It fires ' +
-      "on any build path - the action, the Builder's Yard, a card-granted build, D10's " +
-      'revealed deck top - because afterBuild is the one funnel every landing goes through, ' +
-      "but NOT on D15's free builds, because a Grand Creamery card is not a SHED. A " +
-      'card-ability draw, so no Orchard modifier (DL-47). ⚠️ TWO NUMBERS CAME DOWN IN THE ' +
-      'DAIRY REBALANCE (v21, 2026-08-12): the rider was Draw 2 and is Draw 1, and the barn was ' +
-      "6 -> 8 and is 5 -> 7, the field's number. Neither is a correction of the reasoning " +
-      'above - it held while the suit was LAST at 10.6% - it is that the suit crossed the ' +
-      'middle and is now first at 56.5% on 12.02 buildings a seat against a field of about 5. ' +
-      'The rider is printed identically on all five Barns, so at 12.02 builds it paid Dairy ' +
-      "2.4x what it pays anyone else: a line the sheet treats as shared was the suit's " +
-      'largest hidden faucet. The biggest barn in the game sat on the suit needing the fewest ' +
-      'cards, which is also what made D13 The Cheese Vault harder than it looks - the bigger ' +
-      'the hand, the less of the Vault leaks across the table, so the smaller barn should now ' +
-      'push the Vault UP, and its play rate rising is a pass condition of the rebalance.',
-  },
-  on: {
-    afterBuild(fx, event, self) {
-      if (event.seat !== self.seat) return;
-      if (!isShedCard(fx.data, event.card)) return;
-      drawN(fx, self.seat, self.card, 1);
-    },
+      'No behaviour, and no printed text to have behaviour about. Registered so that a Barn ' +
+      'with no entry reads as a deliberate blank rather than as a card nobody implemented.',
   },
 };
 
 /**
- * D2 Farmstead (starter) - "When you Build, put 1 card you spend from your hand
- * into your barn instead of discarding it." / upgraded "... put up to 2 cards ..."
+ * D2 Farmstead (starter) - "Game end: 1 VP for each Dairy card you have built."
+ *
+ * ⛔ THE BUILD DIVERSION IS GONE (v31), and it was called "the suit's whole
+ * compensation": "put 1 card you spend from your hand into your barn instead of
+ * discarding it", the direct answer to barn intake of 10.2 against Orchard's
+ * 25.7. Every other suit spent a card OR shipped it; Dairy did both.
+ *
+ * FOUR RULINGS DIED WITH IT AND THREE ARE WORTH KEEPING, because anything that
+ * reaches into a build payment will meet them again. (1) Cards spent from your
+ * HAND only - a card D7 lifted off a stack is not eligible, or D2 plus D7 is a
+ * free Harvest. (2) Once per Build however many buildings that Build puts down,
+ * with the COUNT per card spent, so D12 and D15 diverted more without the
+ * trigger re-firing. (3) ONE DESTINATION PER SPENT CARD, enforced by ORDERING
+ * rather than by assertions: the diversion came out BEFORE the discard, never
+ * reclaimed from the pile afterwards, so D5 and D6 could never race it. That
+ * ordering rule is written into `divertOrDiscard` (actions.ts) and is the rule
+ * O17 The Fruit Basket now has to obey.
+ *
+ * ⚠️ NOTHING REPLACES IT. The suit that most needed cards turning into freight
+ * has lost the only line that did it, and D2's scorer pays for building your own
+ * crop - which Dairy was already doing more than anybody. Watch barn intake and
+ * the own-crop build share together after v31.
  */
-export const dairyFarmstead: CardHandler = {
-  difficulty: {
-    score: 4,
-    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: true, conditional: true, counts: false, interrupts: false },
-    notes:
-      "THE SUIT'S WHOLE COMPENSATION, and the largest single change in the rebuild: a Dairy " +
-      'card is now paid for once and counted twice. It is the direct answer to barn intake ' +
-      "10.2 against Orchard's 25.7 - every other suit spends a card OR ships it, and Dairy " +
-      'does both. The numbers half lives in actions.ts (buildDivertPower, divertOrDiscard) ' +
-      "because it has to act BEFORE the build's payment is discarded; this entry contributes " +
-      'the task that asks which card. FOUR RULINGS ARE ENCODED. (1) Cards spent from your ' +
-      'HAND only: a card D7 lifted off a stack is not eligible, or the pair is a free ' +
-      'Harvest. (2) Once per Build, however many buildings that Build puts down - the COUNT ' +
-      'is per card spent, so D12 and D15 divert more without the trigger re-firing. (3) A ' +
-      "free build spends no cards and therefore diverts nothing (D10's reveal is a paid " +
-      "build and does divert; D15's run and the Builder's Yard's £1 mode feed nothing). " +
-      '(4) ONE DESTINATION PER SPENT CARD, chosen by the player: skip is offered even though ' +
-      'the card prints "put", because declining is how you leave a card in the discard for D5 ' +
-      'to sow or D6 to give. ⚠️ Both old faces are GONE - turn-1 crop substitution and a ' +
-      'second Build ACTION for £2 - and the suit still came last with them, because neither ' +
-      'made a single card into freight. ⚠️ THE UPGRADED FACE IS NOW "UP TO 2", NOT "EVERY ' +
-      'CARD" (Dairy rebalance v21, 2026-08-12), and it was the largest single lever in that ' +
-      'pass: "every card" meant a Build cost NOTHING in cards and shipped the payment as ' +
-      'freight at the same time, so the hand clock did not apply to this suit at all. The base ' +
-      'face is unchanged at 1 and ALL FOUR RULINGS ABOVE STILL HOLD unaltered - in particular ' +
-      'ruling (2), the count being per card spent so D12 diverts twice, is deliberately ' +
-      'untouched, because D12 lost its discount in the same pass and its diversion is what ' +
-      'stops it becoming worthless. The number lives in actions.ts (buildDivertPower); the ' +
-      'resolver below already counts `remaining` down and discards the balance, so nothing ' +
-      'about the task moved.',
-  },
-  tasks: {
-    /**
-     * The divert choice. Re-entrant on the upgraded face (limit 2, capped by
-     * the payment) and one-shot on the base face; either way the resolver
-     * DISCARDS WHATEVER IS LEFT before it finishes, so the limbo cards in
-     * `riders.cards` can never outlive the task. `skip` is always offered while a card is
-     * still held, for the same reason it is on the Orchard divert seam: the
-     * drain loop drops a task with no legal answer, and a dropped task here
-     * would take its cards out of the game.
-     */
-    divertSpent: {
-      answers(_data, _state, task) {
-        const cards = (task.riders.cards as CardId[]) ?? [];
-        const remaining = (task.riders.remaining as number) ?? 0;
-        if (cards.length === 0 || remaining <= 0) return [];
-        const out: TaskAnswer[] = cards.map((card) => ({ kind: 'card', payload: { card } }));
-        out.push({ kind: 'skip' });
-        return out;
-      },
-      resolve(fx, task, answer) {
-        const cards = (task.riders.cards as CardId[]) ?? [];
-        if (answer.kind === 'skip') {
-          fx.discard([...cards]);
-          task.riders.cards = [];
-          return true;
-        }
-        if (answer.kind !== 'card') throw new Error('divertSpent expects a card or skip answer');
-        const card = answer.payload.card as CardId;
-        fx.stashCard(task.pid, card);
-        const left = cards.filter((c) => c !== card);
-        const remaining = ((task.riders.remaining as number) ?? 0) - 1;
-        task.riders.cards = left;
-        task.riders.remaining = remaining;
-        if (left.length === 0 || remaining <= 0) {
-          fx.discard(left);
-          return true;
-        }
-        return false;
-      },
-    },
-  },
-};
+export const dairyFarmstead: CardHandler = farmsteadHandler('dairy');
 
 /**
- * D3 Notice Board (starter) - "VISITOR: Take £1 from bank / OR Build at a
- * discount of 2. Any crop may pay its crop costs." / upgraded, The County Show
- * - "VISITOR: Take £2 from bank / OR take £1 and: Build at a discount of 2. ..."
+ * D3 Notice Board (starter) - "VISITOR: place 1 card here, then Build."
+ * Threshold 2, wild activation.
  */
 export const dairyNoticeBoard: CardHandler = {
   difficulty: {
@@ -292,18 +243,19 @@ export const dairyNoticeBoard: CardHandler = {
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'No behaviour here: the whole visit - fee placement, all three payoffs and the wage - ' +
-      "is engine-level, and the Builder's Yard half is data (workers.json). ⚠️ THE DISCOUNT " +
-      'REVERSES A DOCUMENTED RULING (outstanding-rule-changes.md §5, which chose the crop ' +
-      'waiver alone on owner-side grounds). Dean approved the reversal on the visitor side: ' +
-      'the discount refunds the card a visitor places, and Build took 5% of all rival Service ' +
-      'uses, last in the game. The owner-side argument was not refuted, it was outweighed - ' +
-      'and it is now weaker anyway, because the Dairy Farmstead no longer substitutes, so ' +
-      'nothing stacks. ⚠️ IT WENT FROM 1 TO 2 ON 19/08/2026 (v30 group A) ON BOTH FACES, and ' +
-      'both is the point: at a discount of 1 a visitor was exactly refunded for the card they ' +
-      'placed and no more, which is the same "worth precisely nothing" arithmetic that made ' +
-      'the old Milking Shed dead text. At 2 the visit is card-POSITIVE for the visitor, which ' +
-      'is what a traffic magnet has to be. The number lives in workers.json, not here.',
+      'No behaviour here: the fee landing, the door action and the clog at threshold 2 are ' +
+      'all engine-level. ' +
+      "⛔ THE DISCOUNT AND THE CROP WAIVER ARE BOTH GONE (v31). The Builder's Yard used to " +
+      "take 2 cards off a visitor's build cost and waive its crop requirements, which was " +
+      'itself a reversal of a documented ruling (outstanding-rule-changes.md section 5) that ' +
+      'Dean approved on the visitor side because Build took 5% of all rival door uses, last ' +
+      'in the game. v31 makes every door plain on one argument that outranks it: the bonus ' +
+      'slot itself became the enhancement, because a door now buys a WHOLE CORE ACTION for ' +
+      'one card. ' +
+      '⚠️ THE SUBSTITUTION MOD OUTLIVED ITS PRODUCER. `BuildMods.substitute` is still in ' +
+      'actions.ts with nothing in the shipped data granting it - kept deliberately, as the ' +
+      'one expression of "crop requirements waived" - so the next card that prints those ' +
+      'words has somewhere to attach.',
   },
 };
 
@@ -401,24 +353,29 @@ export const churningShed: CardHandler = {
   },
 };
 
-/** D6 The Trading Shed - "Build. Give 1 card you spend to a neighbour and take £1 from the bank." */
+/** D6 The Trading Shed - "Build. Give 1 card you spend to a neighbour and Draw 1." */
 export const tradingShed: CardHandler = {
   difficulty: {
     score: 3,
     verified: { prompts: true, crossPlayer: true, addsMoves: false, endgame: false },
     asserted: { newPrimitive: true, conditional: true, counts: false, interrupts: false },
     notes:
-      'Alters THE RESIDUE, across the table. The only £ in the tier and the only card in it ' +
-      'that crosses the table, and it is §7-legal by construction: the money appears at the ' +
-      'moment a neighbour RECEIVES something, never on its own. The card handed over is one ' +
-      'you were discarding anyway, so it costs nothing you wanted and arrives in their farm as ' +
-      'exactly the mixed colour the island demands of them - "your junk is their treasure", ' +
-      'printed. Forced the discardToHand primitive: giveCard takes a card OUT OF A HAND and ' +
-      'this one is already spent. ⚠️ NO ELIGIBLE NEIGHBOUR MEANS NO COIN - the £1 is paid for ' +
-      'the gift, not for the build - and a rival at their hand limit is not eligible (DL-63: ' +
-      'a gift never forces an out-of-turn discard). Mandatory as printed, so it auto-skips ' +
-      'rather than offering a decline; a card the Farmstead has already banked is no longer ' +
-      'in the discard and cannot be given.',
+      'Alters THE RESIDUE, across the table, and it is the only card in the tier that ' +
+      'crosses it. §7-legal by construction: the payout arrives at the moment a neighbour ' +
+      'RECEIVES something, never on its own. The card handed over is one you were discarding ' +
+      'anyway, so it costs nothing you wanted and arrives in their farm as exactly the mixed ' +
+      'colour the island demands of them - "your junk is their treasure", printed. Forced the ' +
+      'discardToHand primitive: giveCard takes a card OUT OF A HAND and this one is already ' +
+      'spent. ⚠️ NO ELIGIBLE NEIGHBOUR MEANS NO PAYOUT - it is paid for the gift, not for the ' +
+      'build. Mandatory as printed, so it auto-skips rather than offering a decline. ' +
+      '⛔ THE £1 IS A DRAW 1 (v31, plan section 3.3), and the swap sharpens the card rather ' +
+      'than flattening it: giving away a card you had already spent and drawing a fresh one ' +
+      'is card-POSITIVE, where the coin was worth about a fifth of a card in practice. ' +
+      '⛔ A CLAUSE IN THIS NOTE HAS LOST ITS SUBJECT: "a card the Farmstead has already ' +
+      'banked is no longer in the discard and cannot be given" described D2 racing this card ' +
+      'for the same payment. D2 is an end-game scorer now, so `stillDiscarded` has exactly ' +
+      'one competitor left - O17 The Fruit Basket, which prepends its choice ahead of this ' +
+      'one, deliberately.',
   },
   on: {
     afterBuild(fx, event, self) {
@@ -447,7 +404,7 @@ export const tradingShed: CardHandler = {
       resolve(fx, task, answer) {
         if (answer.kind !== 'card') throw new Error('give expects a card answer');
         fx.discardToHand(task.pid, answer.payload.to as Seat, answer.payload.card as CardId);
-        fx.gainCoins(task.pid, 1, 'D6');
+        drawN(fx, task.pid, task.src, 1);
         return true;
       },
     },
@@ -550,7 +507,10 @@ export const prosperityWagon: CardHandler = {
       'reads 2 to 3. ⚠️ THE NOUN IS builtBuildings AND THE PRINTED WORDS ARE NOT ENOUGH TO ' +
       'TELL YOU THAT. W19 The Wheat Exchange now prints the same eleven words and counts a ' +
       "DIFFERENT SET - the whole tableau through cropOf, which returns a starter's suit once " +
-      'it is flipped - so an upgraded starter is a crop to W19 and is not a building here. ' +
+      'it is flipped - so an upgraded starter was a crop to W19 and never a building here. ' +
+      '⛔ THAT HALF IS MOOT SINCE v31: there are no flipped faces, so a starter prints the ' +
+      'generic starting-building icon for the whole game and the two readings can no longer ' +
+      'come apart on one. The RULING still stands for anything else the two count. ' +
       "This suit's established noun excludes starters (D11, D13, D14, D20 all read it) and " +
       'the Wagon keeps it. The divergence is deliberate reuse of a template, logged as ruling ' +
       'M in outstanding-rule-changes.md; do NOT reconcile them by changing one. The Wagon ' +
@@ -559,7 +519,7 @@ export const prosperityWagon: CardHandler = {
   },
   activate(fx, self) {
     // Ruling M: builtBuildings, NOT W19's whole-tableau reading of the same
-    // printed words. Starters never count here even when flipped.
+    // printed words. Starters never count here.
     const crops = new Set(
       builtBuildings(fx.data, fx.state, self.seat).map((id) => cardById(fx.data, id).suit),
     );
@@ -594,30 +554,41 @@ export const scoutsPost: CardHandler = {
       if (card !== null) revealed.push(card);
     }
     if (revealed.length === 0) return;
-    fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'scout', riders: { revealed } });
+    fx.pushTask({
+      t: 'card',
+      pid: self.seat,
+      src: self.card,
+      kind: 'scout',
+      riders: { [REVEAL_RIDER]: revealed },
+    });
   },
   tasks: {
     scout: {
       answers(data, state, task) {
-        const revealed = (task.riders.revealed as CardId[]) ?? [];
+        const revealed = revealedIn(task);
         if (revealed.length === 0) return [];
         const out: TaskAnswer[] = [];
-        for (const card of revealed) {
+        // BY SLOT, never by id: these cards are in limbo and no PlayerView
+        // carries them, so an answer naming one would put a deck top into the
+        // unredacted move list. See REVEAL_RIDER in state.ts.
+        revealed.forEach((card, pick) => {
           for (const pay of paymentOptions(data, state, task.pid, card, { discount: 2 })) {
-            out.push({ kind: 'card', payload: { card, payment: pay.payment } });
+            out.push({ kind: 'card', payload: { pick, payment: pay.payment } });
           }
-        }
+        });
         // "You may": declining is always available, and it is also what keeps
         // the task from being dropped with the revealed cards still in limbo.
         out.push({ kind: 'skip' });
         return out;
       },
       resolve(fx, task, answer) {
-        const revealed = [...((task.riders.revealed as CardId[]) ?? [])];
-        task.riders.revealed = [];
-        let chosen: CardId | null = null;
-        if (answer.kind === 'card') {
-          chosen = answer.payload.card as CardId;
+        const revealed = [...revealedIn(task)];
+        const chosen: CardId | null = answer.kind === 'card' ? pickFromReveal(task, answer) : null;
+        // Limbo emptied BEFORE the build, so nothing the build fires can find
+        // the reveal still hanging on the task and act on it twice. The slot
+        // has already been read into `chosen`, which is why the order works.
+        task.riders[REVEAL_RIDER] = [];
+        if (chosen !== null && answer.kind === 'card') {
           fx.cardsToHand(task.pid, [chosen]);
           doBuild(
             fx,
@@ -923,7 +894,7 @@ export const grandCreamery: CardHandler = {
       pid: self.seat,
       src: self.card,
       kind: 'creameryFlip',
-      riders: { revealed: [] },
+      riders: { [REVEAL_RIDER]: [] },
     });
   },
   tasks: {
@@ -939,7 +910,7 @@ export const grandCreamery: CardHandler = {
       },
       resolve(fx, task, answer) {
         if (answer.kind !== 'card') throw new Error('creameryFlip expects a card answer');
-        const revealed = [...((task.riders.revealed as CardId[]) ?? [])];
+        const revealed = [...revealedIn(task)];
         const card = fx.takeDeckTop(answer.payload.suit as Suit);
         if (card !== null) revealed.push(card);
         // A second live deck is not guaranteed: with every deck dry the reveal
@@ -952,7 +923,7 @@ export const grandCreamery: CardHandler = {
             pid: task.pid,
             src: task.src,
             kind: 'creameryFlip',
-            riders: { revealed },
+            riders: { [REVEAL_RIDER]: revealed },
           });
           return true;
         }
@@ -962,7 +933,7 @@ export const grandCreamery: CardHandler = {
           pid: task.pid,
           src: task.src,
           kind: 'creameryPick',
-          riders: { revealed },
+          riders: { [REVEAL_RIDER]: revealed },
         });
         return true;
       },
@@ -975,17 +946,21 @@ export const grandCreamery: CardHandler = {
      */
     creameryPick: {
       answers(_data, _state, task) {
-        const revealed = (task.riders.revealed as CardId[]) ?? [];
-        return revealed.map((card) => ({ kind: 'card', payload: { card } }));
+        // BY SLOT, never by id (state.ts, REVEAL_RIDER): the two reveals are in
+        // limbo, so naming one in the answer would hand the deck top to
+        // everybody who reads the move list.
+        return revealedIn(task).map((_card, pick) => ({ kind: 'card', payload: { pick } }));
       },
       resolve(fx, task, answer) {
         if (answer.kind !== 'card') throw new Error('creameryPick expects a card answer');
-        const revealed = [...((task.riders.revealed as CardId[]) ?? [])];
-        task.riders.revealed = [];
-        const chosen = answer.payload.card as CardId;
-        // Free: no cards, no coin price, landed through placeBuilt so the
-        // Farmstead milestone and every afterBuild reactor still count it.
-        placeBuilt(fx, task.pid, chosen, [], 0, task.src);
+        const revealed = [...revealedIn(task)];
+        const chosen = pickFromReveal(task, answer);
+        task.riders[REVEAL_RIDER] = [];
+        // Free: no cards paid, landed through placeBuilt so every afterBuild
+        // reactor still counts it. (`placeBuilt` lost its coin argument with the
+        // currency; the Farmstead milestone it also used to check went on
+        // 2026-08-12, before v31 deleted the flip itself.)
+        placeBuilt(fx, task.pid, chosen, [], task.src);
         const rest = revealed.filter((c) => c !== chosen);
         if (rest.length > 0) fx.discard(rest);
         return true;
@@ -1038,27 +1013,40 @@ export const ledger: CardHandler = {
   },
 };
 
-/** D17 The Strongbox - "Whenever a neighbour Builds, take £1 from the bank." */
+/** D17 The Strongbox - "When you build a card that is not Dairy, Draw 1." */
 export const strongbox: CardHandler = {
   difficulty: {
     score: 2,
-    verified: { prompts: false, crossPlayer: true, addsMoves: false, endgame: false },
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
     notes:
-      'Rebuilt because its printed text paid on HIRE or WORK and neither verb exists any more ' +
-      '(the sheet edit was already owed in outstanding-rule-changes.md §5). The replacement is ' +
-      'the "materials yard": §7-legal, the purest statement of the suit\'s identity - you are ' +
-      'paid for the village building, not for building yourself - and it fires 3 to 9 times a ' +
-      "game. Rival-scoped, and mid a rival's turn, so crossPlayer. ⚠️ IT FIRES PER BUILDING, " +
-      'NOT PER BUILD ACTION, which is the handoff as written and NOT the same ruling D16 got: ' +
-      'a rival Grand Creamery run pays this card up to four times. That is the number most ' +
-      'likely to be wrong in the whole suit - up to £10 a game for £2, where seats END on £1 - ' +
-      'and the dials, in order, are once per round, or only through your Service.',
+      '⛔ ITS SCOPE FLIPPED FROM RIVAL TO OWNER, AND THE HANDLER HAD NOT FOLLOWED. The card ' +
+      'this file implemented was "whenever a NEIGHBOUR Builds, take £1" - the "materials ' +
+      'yard", the purest statement of the suit paying you for the village building rather ' +
+      'than for building yourself, and the one number flagged as most likely wrong in the ' +
+      'whole suit (up to £10 a game for £2, where seats ended on £1). The sheet has printed ' +
+      '"When you build a card that is not Dairy" since v30 and the engine was still running ' +
+      'the older text; v31 converts the coin to a draw and this pass follows the print on ' +
+      'both halves at once. ' +
+      '⚠️ SO THE SUIT LOST ITS SECOND CROSS-TABLE CARD IN ONE EDIT. crossPlayer goes FALSE. ' +
+      'With D2 now an end-game scorer and this owner-scoped, Dairy touches another seat in ' +
+      'exactly one place: D6 The Trading Shed. That is worth recording as a loss to the hook ' +
+      "rather than as a tidy-up - and it is a straight instance of the Innovation lens's " +
+      'standing warning, an outward-pointing card replaced by an inward-pointing one. ' +
+      '⚠️ WHAT IT PAYS FOR NOW IS ANTI-MONOCULTURE, which is the one thing in its favour: ' +
+      'it fires only on a NON-Dairy build, so it pulls against the Farmstead and against the ' +
+      'own-suit Power price, and it is one of the few lines in v31 pointing that way. It ' +
+      "reads the built card's printed suit, so a starter can never trigger it (starters are " +
+      'never built) and a foreign Tier 3 in a Dairy tableau always does. ' +
+      '⚠️ IT FIRES PER BUILDING, NOT PER BUILD ACTION, which is unchanged and is the same ' +
+      'reading D16 The Ledger has: a Grand Creamery run that lands four foreign cards pays ' +
+      'this four times.',
   },
   on: {
     afterBuild(fx, event, self) {
-      if (event.seat === self.seat) return;
-      fx.gainCoins(self.seat, 1, 'D17');
+      if (event.seat !== self.seat) return;
+      if (cardById(fx.data, event.card).suit === 'dairy') return;
+      drawN(fx, self.seat, self.card, 1);
     },
   },
 };
@@ -1114,48 +1102,31 @@ export const countingHouse: CardHandler = {
   },
 };
 
-/** D21 The Refinery - "Game end: 2 VP for each of your starters showing its upgraded side." */
+/** D21 The Refinery - "Game end: 2 VP for each SHED you have built." */
 export const refinery: CardHandler = {
   difficulty: {
     score: 1,
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: true },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
-      'THE COIN SINK, repointed by the DAIRY REBALANCE (v21, 2026-08-12). It used to read ' +
-      '"2 VP for each SHED you have built", matching W21 The Bread Hall and O20 The Orchard ' +
-      'Archive in shape - 2 VP per Tier 1 card - and it was the "2 VP for each own-suit noun" ' +
-      'template on the suit where that template paid most: Dairy builds 12.02 buildings a seat ' +
-      'against a field of about 5. It now counts UPGRADED STARTER FACES, which is on-identity ' +
-      '(refinement), points at a coin sink in a coin-rich game, and revives the upgrade layer ' +
-      'the 2026-07-14 playtest found nobody touching. ⛔ IT IS THE ONLY DAIRY CARD THAT COUNTS ' +
-      'STARTERS, and builtBuildings - the noun D9, D11, D13, D14 and D20 all share - EXISTS ' +
-      'PRECISELY TO EXCLUDE THEM. Reusing it here out of habit scores 0 forever and no test ' +
-      'that only checks types would catch it, so this filter is written out longhand and ' +
-      'dairy.test.ts pins a two-flipped-starter seat at 4. ⚠️ THE CAP IS 6 TODAY AND MAY ' +
-      'BECOME 4, and the count was CONFIRMED against the live catalogue rather than inferred, ' +
-      "because the handoff's arithmetic was wrong in both halves and right in the total. A " +
-      'seat has THREE starters, not four - the Service stopped being a card when change 6 ' +
-      'absorbed it into the Notice Board - and all three still flip IN THE ENGINE: Barn £2, ' +
-      'Notice Board £2, Farmstead £2. So 3 x 2 = 6. Change 6 retires the ' +
-      'Notice Board flip in the SHEET but is not built (ruling I in ' +
-      'outstanding-rule-changes.md, which is why its upgraded face already prints 0 VP while ' +
-      'the engine still sells it for £2). ⛔ WHEN CHANGE 6 LANDS, THIS CARD SILENTLY LOSES A ' +
-      'THIRD OF ITS CEILING - re-read it then. ⚠️ RULING L IS CLOSED AND IT MOVED THIS ' +
-      "CARD'S PRICE: the Farmstead used to flip FREE at the 3-own-buildings milestone, and the " +
-      'card was written as 2 free VP plus two £2 purchases worth 2 each. Dean put the Farmstead ' +
-      'on sale on 2026-08-12, so the same 6 VP cap now costs the full £6 and the free half of ' +
-      'the card is gone. Re-price it: 6 VP for £6 is 1 VP a coin against an island slot at 4, ' +
-      'and it may want a cap of 4 or a rate above 2.',
+      '⛔ REPLACED (v31, plan section 3.2). It read "2 VP for each of your starters showing ' +
+      'its upgraded side" and lost its referent outright: there are no upgraded faces left ' +
+      'to show. The replacement fills the one gap in an existing set - A20 scores HIVEs, ' +
+      'O20 ORCHARDs, V20 DEPOTs, W21 FIELDs, and Dairy had no SHED scorer - so the five ' +
+      'Endgame trios are symmetrical for the first time. ' +
+      '⚠️ THE CARD IT REPLACES WAS ITSELF A REPLACEMENT FOR THIS ONE, on 2026-08-12, and ' +
+      'the reasoning that moved it away is the reasoning to watch now that it is back: ' +
+      '"2 VP for each own-suit noun" pays most on the suit that builds most, and Dairy built ' +
+      '12.02 buildings a seat against a field of about 5. SHED is D4-D8, five cards, so the ' +
+      'ceiling is 10 VP - the same ceiling A20 and O20 carry, on a suit that reaches it more ' +
+      'often. If the arm reads Dairy hot at game end, this is the card and the dial is the ' +
+      'rate. ' +
+      '⛔ It counts SHEDs and NOT starters, so `isShedCard` is the whole of it - the reverse ' +
+      'of the note this card used to carry, which existed to warn that `builtBuildings` ' +
+      'excludes starters and would have scored the old text 0 forever. A demolished SHED ' +
+      '(D14) has left the tableau and stops counting, which is the cost of demolishing.',
   },
   gameEnd(data, state, seat) {
-    // Every starter showing its upgraded side, the Farmstead included - and
-    // since 2026-08-12 every one of those was bought. NOT builtBuildings, which
-    // exists precisely to exclude starters - see the notes.
-    return (
-      2 *
-      player(state, seat).tableau.filter(
-        (b) => cardById(data, b.card).type === 'starter' && b.upgraded,
-      ).length
-    );
+    return 2 * player(state, seat).tableau.filter((b) => isShedCard(data, b.card)).length;
   },
 };

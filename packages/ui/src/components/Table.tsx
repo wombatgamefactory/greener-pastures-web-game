@@ -124,7 +124,14 @@ export function Table({
    * construction, and it only exists in the states that have something to say.
    */
   const notices = [
-    view.endTrigger ? 'The island’s top level is claimed. One more turn each.' : null,
+    /* ⛔ IT SAID "the island's top level is claimed" until v31, which was a rule
+       that had been dead since the FLAT ISLAND (2026-08-09): every tile is
+       mechanically identical, there is no level gate, and what fires the end is
+       a seat completing their sixth DELIVERY. The trigger is a count of
+       deliveries and the notice now says so. */
+    view.endTrigger
+      ? `${data.rules.endGame.deliveriesToTrigger} deliveries done. One more turn each.`
+      : null,
     notice,
   ].filter((line): line is string => typeof line === 'string' && line.length > 0);
   // Ticket 26. Additive by construction: it makes no moves of its own, it only

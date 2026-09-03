@@ -46,7 +46,6 @@ export interface FunnelRow {
   readonly held: number;
   readonly activations: number;
   readonly vpPerGame: number;
-  readonly coinsPerGame: number;
   /** Win rate of seats that built it, minus seats that did not. Never a cut criterion alone. */
   readonly winUplift: number;
   readonly difficulty: number;
@@ -95,7 +94,6 @@ export function funnel(data: GameData, pooled: Pooled): FunnelRow[] {
       held: t.held,
       activations: t.activations / games,
       vpPerGame: t.vp / games,
-      coinsPerGame: t.coins / games,
       winUplift: built - unbuilt,
       difficulty: handlerFor(card.id)?.difficulty.score ?? NaN,
     });

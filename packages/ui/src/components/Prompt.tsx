@@ -152,9 +152,11 @@ export function Prompt({ data, play, zoom }: { data: GameData; play: Play; zoom:
       <div className="answer-list">
         {confirm && (
           <button className="primary" onClick={() => play.send(confirm)}>
-            {play.subsetKind === 'keep'
-              ? `Keep ${play.picked.length}`
-              : `Discard ${play.picked.length}`}
+            {/* ⭐ The two subset tasks are opposite in sign and the button has to
+                say which one it is (02/09/2026, with the hand limit): a keep
+                names what you are taking, a boundary discard names what you are
+                losing, and "Keep 2" on a discard would be exactly backwards. */}
+            {play.subsetKind === 'discard' ? 'Discard' : 'Keep'} {play.picked.length}
           </button>
         )}
         {skip && (

@@ -6,6 +6,13 @@
  * spreadsheet (the eleven cards checked by hand while the module was written),
  * and then asserts the shape holds across all 105 - so a card added or retyped
  * in the sheet cannot quietly render with the wrong frame.
+ *
+ * ⭐ v31 HALVED THE COUNT AND THE HALF THAT WENT IS THE POINT. There were 120
+ * faces: 105 cards plus a second printed face on each of the fifteen starters.
+ * Starters are single-faced now, so the catalogue and the face list are the same
+ * 105 things, and three properties that only ever described the upgrade layer -
+ * the coin cost icon, the starter's crop-on-the-flipped-face rule, and the
+ * printed hand size - have nothing left to describe.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -14,55 +21,57 @@ import { BASE_GAME_DATA as data } from '@gp/data';
 import { printedFace } from './printed';
 
 describe('printedFace, against the sheet', () => {
-  it('W1 base Barn: starter icon, build head, two coins, no threshold', () => {
+  it('W1 the Barn: starter icon, no cost bar, no threshold, and no text at all', () => {
     const face = printedFace(data, 'W1');
     expect(face.identityIcon).toBe('starter');
-    expect(face.costIcon).toBe('build');
-    expect(face.cost).toEqual([{ kind: 'coin' }, { kind: 'coin' }]);
     expect(face.threshold).toBeNull();
     expect(face.convert).toBeNull();
-    expect(face.handSize).toBe(5);
-  });
-
-  it('W1 upgraded Barn: crop icon, no cost bar, prints VP', () => {
-    const face = printedFace(data, 'W1', true);
-    expect(face.identityIcon).toBe('wheat');
+    // ⭐ THE WHOLE v31 BARN. It printed a hand size, a build rider and a GBP 2
+    // upgrade price; it is now simply where cards ready for delivery are stored,
+    // so every one of those is empty and the card carries no bar.
+    expect(face.abilityText).toBe('');
     expect(face.cost).toEqual([]);
     expect(face.costIcon).toBeNull();
-    expect(face.printedVp).toBe(2);
-    expect(face.handSize).toBe(7);
   });
 
   /**
-   * The Farmstead used to be the one building never for sale: its cost bar
-   * printed the MILESTONE that flipped it free (three own-crop icons, ticket
-   * 46) rather than a price. Dean retired that on 2026-08-12, so all three
-   * starters now print the same £2 - asserted for all five Farmsteads, because
-   * one that quietly kept the crop icons would be telling a publisher a rule
-   * the game no longer has.
+   * The starters used to print the GBP 2 that flipped them - all three of them
+   * since 2026-08-12, when the Farmstead's milestone bar went with the free
+   * flip. v31 deletes the flip, the second faces and the currency together, so a
+   * starter prints NO cost bar at all. Asserted for all fifteen, because one
+   * that quietly kept a price would be telling a publisher a rule the game does
+   * not have.
    */
-  it('every starter prints the same £2 upgrade price, the Farmstead included', () => {
-    const price = data.rules.economy.upgradeCostCoins;
+  it('no starter prints a cost bar, because none of them is ever bought or flipped', () => {
     const starters = data.cards.catalogue.filter(
       (c) => c.slot === 'barn' || c.slot === 'farmstead' || c.slot === 'noticeboard',
     );
     expect(starters).toHaveLength(15);
     for (const card of starters) {
       const face = printedFace(data, card.id);
-      expect(face.cost, card.id).toEqual(Array.from({ length: price }, () => ({ kind: 'coin' })));
-      expect(face.costIcon, card.id).toBe('build');
-    }
-    // And no base face still promises the free flip in words.
-    for (const card of starters) {
-      expect(printedFace(data, card.id).abilityText, card.id).not.toMatch(/Flips free/);
+      expect(face.cost, card.id).toEqual([]);
+      expect(face.costIcon, card.id).toBeNull();
+      expect(face.printedVp, card.id).toBe(0);
+      // And no base face still promises a flip in words.
+      expect(face.abilityText, card.id).not.toMatch(/flip|upgrade/i);
     }
   });
 
-  it('W3 Notice Board: wild activation, the CONVERT arrow rather than a harvest', () => {
+  it('W2 the Farmstead: an end-game scorer, no stack, and its own crop named', () => {
+    const face = printedFace(data, 'W2');
+    expect(face.threshold).toBeNull();
+    expect(face.activation).toBeNull();
+    expect(face.abilityText).toBe('Game end: 1 VP for each Wheat card you have built.');
+  });
+
+  it('W3 Notice Board: wild activation, the CONVERT arrow, and the printed 2', () => {
     const face = printedFace(data, 'W3');
     expect(face.activation).toBe('wild');
     expect(face.convert).toBe('convert');
-    expect(face.threshold).toBe(5);
+    // The 5-versus-2 drift the threshold seam was built for is closed: the v31
+    // sheet prints 2 and `rules.economy.noticeBoardThreshold` is 2.
+    expect(face.threshold).toBe(2);
+    expect(face.threshold).toBe(data.rules.economy.noticeBoardThreshold);
   });
 
   it('W10 The Furrow: two wheat and a cornucopia, in that order', () => {
@@ -88,17 +97,32 @@ describe('printedFace, against the sheet', () => {
   it('W19: an Endgame card takes the game-end head', () => {
     expect(printedFace(data, 'W19').costIcon).toBe('game_end');
   });
+
+  /**
+   * ⭐ THE 30 POWER AND ENDGAME CARDS COST CROPS NOW, not coins, and the icon
+   * bar is where a player finds that out. Two coin icons became two crop icons
+   * of the card's OWN suit, which is also one half of the v31 plan's risk 3 -
+   * the monoculture pull - so it is worth pinning that the bar really does show
+   * the card's own crop rather than a wild.
+   */
+  it('prices every Power and Endgame card in crops of its own suit', () => {
+    const priced = data.cards.catalogue.filter((c) => c.type === 'power' || c.type === 'endgame');
+    expect(priced).toHaveLength(30);
+    for (const card of priced) {
+      const face = printedFace(data, card.id);
+      expect(face.cost.length, card.id).toBeGreaterThan(0);
+      for (const icon of face.cost) {
+        expect(icon, card.id).toEqual({ kind: 'crop', suit: card.suit });
+      }
+    }
+  });
 });
 
 describe('printedFace, across the whole catalogue', () => {
-  const every = data.cards.catalogue.flatMap((card) =>
-    card.faces
-      ? [printedFace(data, card.id), printedFace(data, card.id, true)]
-      : [printedFace(data, card.id)],
-  );
+  const every = data.cards.catalogue.map((card) => printedFace(data, card.id));
 
-  it('covers all 105 cards and both faces of the 15 flipping starters', () => {
-    expect(every).toHaveLength(105 + 15);
+  it('covers all 105 cards, and exactly one face each', () => {
+    expect(every).toHaveLength(105);
   });
 
   it('never asks for a cost bar art the export does not have', () => {
@@ -116,23 +140,14 @@ describe('printedFace, across the whole catalogue', () => {
       const face = printedFace(data, card.id);
       const crops = face.cost.filter((c) => c.kind === 'crop').length;
       const wild = face.cost.filter((c) => c.kind === 'wild').length;
-      const coins = face.cost.filter((c) => c.kind === 'coin').length;
-      expect([crops, wild, coins]).toEqual([
-        card.buildCost.suit,
-        card.buildCost.wild,
-        card.buildCost.coins,
-      ]);
+      expect([crops, wild]).toEqual([card.buildCost.suit, card.buildCost.wild]);
     }
   });
 
-  it("follows ticket 07's crop rule: a base starter belongs to no crop", () => {
+  it("follows ticket 07's crop rule: a starter belongs to no crop", () => {
     for (const card of data.cards.catalogue) {
-      if (card.type !== 'starter') {
-        expect(printedFace(data, card.id).identityIcon).toBe(card.suit);
-        continue;
-      }
-      expect(printedFace(data, card.id).identityIcon).toBe('starter');
-      expect(printedFace(data, card.id, true).identityIcon).toBe(card.suit);
+      const face = printedFace(data, card.id);
+      expect(face.identityIcon, card.id).toBe(card.type === 'starter' ? 'starter' : card.suit);
     }
   });
 
@@ -146,7 +161,8 @@ describe('printedFace, across the whole catalogue', () => {
     for (const face of every) {
       expect(typeof face.abilityText).toBe('string');
     }
-    // And the ones that exist to carry text actually carry some.
+    // And the ones that exist to carry text actually carry some. The five Barns
+    // are the deliberate exception in the other direction, asserted above.
     for (const card of data.cards.catalogue) {
       if (card.type !== 'power' && card.type !== 'endgame') continue;
       expect(printedFace(data, card.id).abilityText.length).toBeGreaterThan(0);

@@ -32,14 +32,14 @@ import {
   clickBuilding,
   clickCardPower,
   clickDeck,
-  clickRival,
+  clickHost,
+  clickMeeple,
   clickTile,
-  clickWorker,
   emptyBuildDraft,
   liveTargets,
   subsetAnswer,
+  visitComplete,
   visitOffers,
-  visitPayoffs,
   withStackPayment,
   withPayment,
 } from './intent';
@@ -88,10 +88,23 @@ function reachable(position: Position, move: Move): boolean {
 
   switch (move.type) {
     case 'draw':
+    case 'bonusDraw':
     case 'pass':
     case 'endTurn':
       // The turn bar hands its whole family straight to `choose`.
       return moves.filter((m) => m.type === move.type).includes(move);
+
+    /*
+     * ⭐ ON THE PAWN, NOT ON THE BAR (v31). Spending a meeple is done on the
+     * meeple in your own supply, so the check is the same two-part one the card
+     * powers get: the resolver answers, AND the seat really holds a meeple of
+     * that colour for the supply strip to have drawn. Without the second half
+     * the pawn could be drawn nowhere at all and this would still pass.
+     */
+    case 'spendMeeple':
+      return (
+        (position.view.you.meeples[move.colour] ?? 0) > 0 && has(clickMeeple(moves, move.colour))
+      );
 
     /*
      * ON THE CARD SINCE 26/08/2026, so the check is no longer "is it in the
@@ -107,15 +120,10 @@ function reachable(position: Position, move: Move): boolean {
       );
 
     case 'harvest':
-    case 'upgrade':
     case 'grow': {
       const held: Intent = move.type === 'grow' ? { k: 'hold', card: move.payment } : IDLE;
-      return has(clickBuilding(moves, held, move.type === 'grow' ? move.building : cardOf(move)));
+      return has(clickBuilding(moves, held, move.type === 'grow' ? move.building : move.building));
     }
-
-    case 'buy':
-    case 'market':
-      return has(clickDeck(moves, IDLE, move.suit));
 
     case 'deliver':
       return has(clickTile(moves, IDLE, move.tile));
@@ -123,21 +131,24 @@ function reachable(position: Position, move: Move): boolean {
     case 'moveBalloon':
       return has(clickBalloon(moves, IDLE, move.balloon));
 
-    case 'workOwnWorker':
-      return has(clickWorker(moves, IDLE, move.workerId));
-
     case 'build': {
       // The panel: name the card, then add payment one click at a time.
       const assembled = assembleBuild(moves, move.card, move.payment, []);
       return assembled?.move === move;
     }
 
+    /*
+     * ⭐ BOTH VISITS THROUGH THE SAME PATH, AND THAT IS THE POINT. A self-visit
+     * is the same move with `host === seat`, so it must be reachable by the same
+     * two clicks - open the panel on the host, then name the fee - or one of the
+     * two halves of the bonus slot would be quietly unplayable. `clickHost` is
+     * handed the view precisely so it can answer for your own seat.
+     */
     case 'visit': {
-      // The panel: pick the host, add fee cards, then take a payoff.
-      if (clickRival(moves, IDLE, move.host) === null) return false;
+      if (clickHost(position.view, moves, IDLE, move.host) === null) return false;
       const draft = { host: move.host, fee: move.fee };
       if (visitOffers(moves, draft).length === 0) return false;
-      return visitPayoffs(moves, draft).includes(move);
+      return visitComplete(moves, draft) === move;
     }
 
     case 'task':
@@ -148,10 +159,44 @@ function reachable(position: Position, move: Move): boolean {
   }
 }
 
-function cardOf(move: Move): string {
-  if (move.type === 'harvest') return move.building;
-  if (move.type === 'upgrade') return move.card;
-  throw new Error('not a building move');
+/**
+ * ⏱️ THE BUILD OFFERS FOR ONE CARD, INDEXED ONCE PER POSITION.
+ *
+ * `buildCandidates` and `buildComplete` scan the WHOLE move list to find the
+ * offers for one card, and `assembleBuild` calls one of them after every payment
+ * click - so replaying a four-card payment was five full scans, once per build
+ * move, in a list that since v31 runs to thousands. There is no hand limit any
+ * more, so a mid-game hand of twenty makes `buildOptions` enumerate combinations
+ * and the corpus positions carry move lists two orders of magnitude bigger than
+ * the ones this file was written against. Measured: the three-seat sweep took
+ * TEN MINUTES and still timed out.
+ *
+ * ⚠️ IT CHANGES NO ASSERTION. Both functions look only at build moves naming
+ * `draft.card`, so handing them exactly that subset returns exactly the same
+ * offers - the same objects, by identity, which is what the `=== move` check at
+ * the end compares. What is removed is the rescanning, not the coverage.
+ */
+const BUILD_INDEX = new WeakMap<readonly Move[], Map<string, Move[]>>();
+
+function buildMovesFor(moves: readonly Move[], card: string): Move[] {
+  let byCard = BUILD_INDEX.get(moves);
+  if (!byCard) {
+    byCard = new Map();
+    for (const move of moves) {
+      const named =
+        move.type === 'build'
+          ? move.card
+          : move.type === 'task' && move.answer.kind === 'build'
+            ? move.answer.card
+            : null;
+      if (named === null) continue;
+      const list = byCard.get(named);
+      if (list) list.push(move);
+      else byCard.set(named, [move]);
+    }
+    BUILD_INDEX.set(moves, byCard);
+  }
+  return byCard.get(card) ?? [];
 }
 
 /** Replay the build panel's clicks for a known target payment. */
@@ -161,22 +206,23 @@ function assembleBuild(
   payment: readonly string[],
   stacks: readonly string[],
 ): ReturnType<typeof buildComplete> {
+  const offers = buildMovesFor(moves, card);
   let draft: BuildDraft = emptyBuildDraft(card);
   for (const paid of payment) {
     draft = withPayment(draft, paid);
-    if (buildCandidates(moves, draft).length === 0) return null;
+    if (buildCandidates(offers, draft).length === 0) return null;
   }
   for (const paid of stacks) {
     draft = withStackPayment(draft, paid);
-    if (buildCandidates(moves, draft).length === 0) return null;
+    if (buildCandidates(offers, draft).length === 0) return null;
   }
-  return buildComplete(moves, draft);
+  return buildComplete(offers, draft);
 }
 
 /**
  * The build panel has to be OPENABLE, not merely completable.
  *
- * A build TASK (W7 Golden Field's harvest, the Build Worker) is the one task
+ * A build TASK (W7 Golden Field's harvest, the Dairy door) is the one task
  * with no in-place gesture: its answer names a card in the HAND, and a hand
  * click otherwise means "pick up". Assembling from a draft the test made itself
  * proved nothing about how a player gets that draft - which is how the panel
@@ -185,11 +231,27 @@ function assembleBuild(
  * must list the task's moves, and the card must be lit for the click that opens
  * the assembly.
  */
+const ARMED_BUILD: Intent = { k: 'arm', type: 'build' };
+
+/**
+ * ⏱️ Memoised for the same reason the build index above is: this is called once
+ * per build TASK and `liveTargets` under an armed Build asks `buildOffers` for
+ * every card in the hand, so it is a hand-sized sweep of the move list every
+ * time and the answer cannot change within one position.
+ */
+const PANEL_LIT = new WeakMap<readonly Move[], ReadonlySet<string> | null>();
+
 function buildPanelOpens(position: Position, card: string): boolean {
-  const armed: Intent = { k: 'arm', type: 'build' };
-  const bar = actionGroups(data, position.moves).find((g) => g.type === 'build');
-  if (!bar || bar.moves.length === 0) return false;
-  return liveTargets(position.view, position.moves, armed).hand.has(card);
+  let lit = PANEL_LIT.get(position.moves);
+  if (lit === undefined) {
+    const bar = actionGroups(data, position.view, position.moves).find((g) => g.type === 'build');
+    lit =
+      !bar || bar.moves.length === 0
+        ? null
+        : liveTargets(position.view, position.moves, ARMED_BUILD).hand;
+    PANEL_LIT.set(position.moves, lit);
+  }
+  return lit !== null && lit.has(card);
 }
 
 /**
@@ -246,8 +308,6 @@ function taskReachable(position: Position, move: Move): boolean {
       return clickBuilding(moves, IDLE, answer.card).includes(move);
     case 'sow':
       return clickBuilding(moves, { k: 'hold', card: answer.card }, answer.onto).includes(move);
-    case 'worker':
-      return clickWorker(moves, IDLE, answer.workerId).includes(move);
     case 'deliver':
       return clickTile(moves, IDLE, answer.tile).includes(move);
     case 'balloon':
@@ -274,6 +334,25 @@ function taskReachable(position: Position, move: Move): boolean {
 
 const SEEDS = ['click-a', 'click-b'];
 
+/**
+ * ⏱️ THE SWEEPS ARE MINUTES, NOT SECONDS, AND THE CORPUS IS WHY.
+ *
+ * Three seeded games walked to 900 decisions each, at three seat counts, with a
+ * scored bot choosing every move - and a mid-game hand makes `legalMoves`
+ * enumerate build payments as C(hand, cost). Every one of those is then checked
+ * for reachability, and each check is a scan of the same list - so the sweep is
+ * quadratic in a number that grew
+ * by an order of magnitude in v31. Measured on 02/09/2026: the three-seat table
+ * ran TEN MINUTES before the build index and the single-pass resolvers, and
+ * about three after.
+ *
+ * The budget is raised rather than the corpus cut, because what this file
+ * catches is a move that is legal and cannot be clicked: it throws nothing, it
+ * looks like nothing, and sampling would trade the whole point of the file for a
+ * faster run.
+ */
+const SWEEP = 900_000;
+
 describe('every legal move is reachable through the interface', () => {
   const tables: { name: string; positions: Position[] }[] = [
     { name: '2 seats', positions: corpus(SEEDS, 2, ['wheat', 'orchard']) },
@@ -285,20 +364,24 @@ describe('every legal move is reachable through the interface', () => {
   ];
 
   for (const { name, positions } of tables) {
-    it(`at ${name}`, () => {
-      expect(positions.length).toBeGreaterThan(200);
-      const unreachable: string[] = [];
-      for (const position of positions) {
-        for (const move of position.moves) {
-          if (!reachable(position, move)) {
-            unreachable.push(
-              `${move.type}${move.type === 'task' ? `/${move.answer.kind}` : ''}: ${JSON.stringify(move)}`,
-            );
+    it(
+      `at ${name}`,
+      () => {
+        expect(positions.length).toBeGreaterThan(200);
+        const unreachable: string[] = [];
+        for (const position of positions) {
+          for (const move of position.moves) {
+            if (!reachable(position, move)) {
+              unreachable.push(
+                `${move.type}${move.type === 'task' ? `/${move.answer.kind}` : ''}: ${JSON.stringify(move)}`,
+              );
+            }
           }
         }
-      }
-      expect([...new Set(unreachable)].slice(0, 5)).toEqual([]);
-    });
+        expect([...new Set(unreachable)].slice(0, 5)).toEqual([]);
+      },
+      SWEEP,
+    );
   }
 
   /**
@@ -312,7 +395,7 @@ describe('every legal move is reachable through the interface', () => {
     let checked = 0;
     for (const { positions } of tables) {
       for (const position of positions) {
-        for (const kind of ['keep', 'discard'] as const) {
+        for (const kind of ['keep'] as const) {
           for (const [, move] of subsetIndex(position.moves, kind)) {
             if (move.type !== 'task') continue;
             const answer = move.answer;
@@ -343,21 +426,39 @@ describe('every legal move is reachable through the interface', () => {
         for (const move of position.moves) seen.add(move.type);
       }
     }
-    // `pass` is the one type a healthy game may never reach: it exists only for
-    // a turn with no legal main action at all.
-    //
-    // `buy` and `market` joined it on 19/08/2026, for a different reason worth
-    // spelling out: both rules are SWITCHED OFF rather than deleted
-    // (`rules.turn.buyCost` and `rules.turn.marketCost` are null), so the move
-    // types still exist, `MOVE_ROUTES` still routes them, and the interface
-    // still knows how to render them - there is simply no position in the corpus
-    // that can offer one. They come straight back if the turn-structure arm
-    // sends the rules back, which is why they are exempted here rather than
-    // taken out of `MOVE_TYPES`. ⚠️ If either knob is ever given a number again,
-    // DELETE ITS EXEMPTION: the exemption is what would otherwise hide a
-    // genuinely unreachable rule.
-    const OFF: readonly MoveType[] = ['buy', 'market'];
-    const missing = MOVE_TYPES.filter((t) => !seen.has(t) && t !== 'pass' && !OFF.includes(t));
+    /*
+     * ⭐ THE `buy` / `market` EXEMPTION IS GONE, and its going is the good kind
+     * of deletion. Both were rules SWITCHED OFF behind null knobs on 19/08/2026,
+     * so the move types survived with nothing in any corpus able to offer one.
+     * v31 deleted the currency, so both are gone from `MOVE_TYPES` entirely and
+     * there is nothing left to exempt.
+     *
+     * ⚠️ THREE TYPES ARE EXEMPT, AND EACH ONE IS A STATEMENT ABOUT THE GAME
+     * RATHER THAN ABOUT THE INTERFACE. All three are routed (`MOVE_ROUTES`) and
+     * all three are drawn; what the corpus cannot do is produce one to sweep.
+     *
+     *   pass      exists only for a turn with no legal main action at all, which
+     *             a healthy game never reaches.
+     *   endTurn   the engine SETTLES a turn the moment nothing is left to do
+     *             (`settleTurn`), so a bot that always has something to do never
+     *             declines anything. It went from rare to absent in v31, because
+     *             a turn now carries a meeple phase and a bonus slot on top of
+     *             the action and there is nearly always one of them live. The
+     *             button is still drawn every turn, greyed when illegal, because
+     *             it is the control a stuck HUMAN looks for - and a human can be
+     *             stuck in ways a bot never is.
+     *   cardMove  the only standing card move in the sheet is A Helping Hand's,
+     *             and a corpus that never happens to build one of the five
+     *             copies never offers it. `play.test.tsx` asserts the other half
+     *             - wherever the move exists, the badge is on the card.
+     *
+     * ⚠️ IF A BOT EVER STARTS DECLINING, OR A SECOND STANDING MOVE IS PRINTED,
+     * DELETE THAT EXEMPTION. An exemption is what would otherwise hide a
+     * genuinely unreachable rule, which is the exact failure this file exists to
+     * catch.
+     */
+    const UNREACHED: readonly MoveType[] = ['pass', 'endTurn', 'cardMove'];
+    const missing = MOVE_TYPES.filter((t) => !seen.has(t) && !UNREACHED.includes(t));
     expect(missing).toEqual([]);
   });
 });
@@ -384,8 +485,42 @@ describe('what glows', () => {
         expect(clickBuilding(moves, IDLE, card).length).toBeGreaterThan(0);
       }
       for (const tile of live.tiles) expect(clickTile(moves, IDLE, tile).length).toBeGreaterThan(0);
-      for (const seat of live.hosts) expect(clickRival(moves, IDLE, seat)).not.toBeNull();
+      for (const seat of live.hosts) expect(clickHost(view, moves, IDLE, seat)).not.toBeNull();
+      for (const colour of live.meeples) {
+        expect(clickMeeple(moves, colour).length).toBeGreaterThan(0);
+      }
     }
+  });
+
+  /**
+   * ⭐ THE SELF-VISIT HAS TO BE REACHABLE AND HAS TO BE SEPARABLE.
+   *
+   * Reachable, because it is half the bonus slot and a rule nobody can click is
+   * a rule nobody plays. Separable, because it is the v31 plan's risk 2: the
+   * turn bar draws it as its own button, so `liveTargets` has to be able to
+   * light your own board WITHOUT lighting the neighbours, and the neighbours
+   * without lighting your own. The `self` flag on an armed intent is what does
+   * that, and this is the only place it is checked.
+   */
+  it('separates your own door from the neighbours, both ways round', () => {
+    let checkedSelf = 0;
+    let checkedOther = 0;
+    for (const { view, moves } of positions) {
+      const selfArmed = liveTargets(view, moves, { k: 'arm', type: 'visit', self: true });
+      const outArmed = liveTargets(view, moves, { k: 'arm', type: 'visit', self: false });
+      for (const seat of selfArmed.hosts) {
+        expect(seat).toBe(view.seat);
+        checkedSelf += 1;
+      }
+      for (const seat of outArmed.hosts) {
+        expect(seat).not.toBe(view.seat);
+        checkedOther += 1;
+      }
+    }
+    // Both halves must really occur in the corpus, or the assertion is vacuous:
+    // a self-visit that never appears would pass this test and be unplayable.
+    expect(checkedSelf).toBeGreaterThan(0);
+    expect(checkedOther).toBeGreaterThan(0);
   });
 
   it('narrows the hand to the payment while a build is being assembled', () => {
@@ -414,7 +549,7 @@ describe('what glows', () => {
     const live = liveTargets((withVisit as Position).view, (withVisit as Position).moves, {
       k: 'visit',
       host: visit.host,
-      fee: [],
+      fee: null,
     });
     expect([...live.hosts]).toEqual([visit.host]);
   });

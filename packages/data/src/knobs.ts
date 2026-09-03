@@ -12,6 +12,24 @@
  *
  * Adding a knob is one line here. Adding a knob that has no home in the data is
  * a design change first, not a tuning change.
+ *
+ * ⭐ v31 (02/09/2026) removed fourteen templates in one edit and added six. Every
+ * one of the fourteen was a coin, a starter upgrade, a hand limit or a printed
+ * face - `startingCoins`, `buyCost`, `marketCost`, `upgradeIsBonus`,
+ * `upgradeCostCoins`, `coinPityDivisor`, the four `visitPayout` branches,
+ * `giftDiscardCoins`, `serviceThreshold`, `ownerActivationCost`, `visitWage`,
+ * `handToBarn`, `buildCost.coins`, `faces.{}.threshold`, `faces.{}.handSize`.
+ * The six new ones are the levers v31 introduced and nobody has ever swept:
+ * `bonusDraw`, `selfVisitAllowed`, and the four `island.meeples` knobs.
+ *
+ * ⭐ ONE OF THE FOURTEEN CAME STRAIGHT BACK, and not at the same path.
+ * `rules.turn.handLimit` reinstates the hand limit on the same day it was
+ * deleted, as ONE GLOBAL NUMBER rather than as `faces.{}.handSize` - five
+ * printed per-suit values. That is the whole difference between the old knob and
+ * this one: the old one was a card value with five expansions and no way to
+ * sweep the rule itself, this one is a single lever and the Barn still prints
+ * nothing. What the deletion measured is on the template below, and it is the
+ * most useful paragraph in this file to read before touching a draw knob.
  */
 
 import { flatten } from './paths.js';
@@ -19,9 +37,10 @@ import type { Leaf } from './paths.js';
 
 /**
  * `int` and `number` are self-explanatory. `intOrNull` covers the knobs whose
- * null disables a rule outright (the coin pity rate, an unthresholded card).
- * `intArray` covers a Working Week track, which is replaced whole. `boolean`
- * covers the enable flags.
+ * null disables a rule outright (the wild substitution, a threshold override, an
+ * unthresholded card). `intArray` covers the island's VP schedule, which is
+ * replaced whole. `boolean` covers the enable flags and the two turn-structure
+ * switches.
  *
  * `cropOrWild` is the one and only string-valued type, added 2026-08-16 for the
  * Tier 3 wild-activation arm. It is NOT a general string knob: its legal values
@@ -52,23 +71,26 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
   {
     template: 'rules.setup.startingHand',
     type: 'int',
-    description: 'Cards drawn to hand at setup.',
+    description:
+      'Cards drawn to hand at setup, from your own suit deck. Lowered 5 -> 4 by v31, in the same ' +
+      'pass that removed the hand limit and made the plain Draw keep both cards - so the opening ' +
+      'hand is smaller but grows faster, and the two changes have never been measured apart. This ' +
+      'is the dial if the first three turns feel like a stall.',
   },
   {
     template: 'rules.setup.startingBarnCards',
     type: 'int',
-    description: 'Cards seeded into each barn at setup.',
-  },
-  {
-    template: 'rules.setup.startingCoins',
-    type: 'int',
-    description: 'Coins each player starts with.',
+    description:
+      'Cards seeded into each barn at setup. 0 since v31: the barn starts empty, so the first ' +
+      'delivery is strictly later than it used to be and the opening is a card-gathering phase ' +
+      'whether the seat wants one or not.',
   },
   { template: 'rules.turn.actionsPerTurn', type: 'int', description: 'Main actions per turn.' },
   {
     template: 'rules.turn.bonusSlotsPerTurn',
     type: 'int',
-    description: 'Free bonus slots per turn (work your own Worker, or Visit).',
+    description:
+      'Bonus options per turn: Draw 1, or place a card on a Notice Board and take that suit action.',
   },
   {
     template: 'rules.turn.baseDraw.see',
@@ -78,39 +100,57 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
   {
     template: 'rules.turn.baseDraw.keep',
     type: 'int',
-    description: 'Cards a plain Draw action keeps.',
+    description:
+      'Cards a plain Draw action keeps. Equal to `see` since v31 - Draw 2, keep both, discard ' +
+      'nothing. Setting it below `see` restores the v13 draw-and-discard.',
   },
   {
-    template: 'rules.turn.buyCost',
-    type: 'intOrNull',
+    template: 'rules.turn.bonusDraw',
+    type: 'int',
     description:
-      'Coins for the once-per-turn free BUY: one card, blind, off the top of a deck that is not your own suit. Null deletes the rule. The exchange rate between the currency the game mints and the currency it is throttled by, so it is the balance number of the whole economy.',
+      '⭐ THE YARDSTICK EVERY DOOR HAS TO BEAT. Cards the free bonus option gives, taken instead ' +
+      'of placing a card on a Notice Board. It exists so the bonus slot is never dead (an empty ' +
+      'hand has no card to place), and it silently prices all five doors: a door costs 1 card, so ' +
+      'it must return more than this plus one to be worth taking. Raising it is the cheapest way ' +
+      'to kill every door in the game at once, and the Orchard door at Draw 3 is the only one with ' +
+      'a margin worth reading. Sweep it with the Orchard door, never alone.',
   },
   {
-    template: 'rules.turn.marketCost',
+    template: 'rules.turn.handLimit',
     type: 'intOrNull',
     description:
-      'Coins for BUY AT MARKET, the adopted bonus-slot coin sink (docs/Market Bonus Action 2026-08-03.md): top card of any one deck in play, own suit included, into the barn, revealed. Consumes the bonus slot, so it competes with the visit - which is the point, and the risk. Null deletes the rule. The doc names GBP 2 as broken and GBP 4 as the fallback dial.',
+      '⭐ THE HAND LIMIT, BACK AT 12 AS ONE GLOBAL RULE (Dean, 02/09/2026, reversing one v31 ' +
+      'change on evidence). Cards you may still hold when your turn ENDS; you may exceed it ' +
+      'mid-turn and the overflow discards at the boundary. null restores v31 no-limit, which is ' +
+      'the control arm and should not be run without reading what it measured: deleting the limit ' +
+      'also deleted the only bound on the legal-move enumerator, and a 2-seat position reached ' +
+      '43,879 legal moves (43,845 of them build payments) at hands of 34, taking a game from ~0.1s ' +
+      'to 1-15 minutes and reducing the whole watch-list suite to n=8. It is a knob rather than a ' +
+      'constant because 12 is a guess: three turns of accumulation above the 4-card opening hand. ' +
+      'SWEEP IT WITH THE THING IT PRICES, never alone - a hand limit is a diminishing return on ' +
+      'drawing, so it is the brake on rules.turn.bonusDraw and on every door that draws. Read the ' +
+      'bonus mix and the median hand together; overlays/hand-limit.sweep.json is the ladder.',
+  },
+  {
+    template: 'rules.turn.selfVisitAllowed',
+    type: 'boolean',
+    description:
+      '⭐ RISK 2 OF v31. True: you may place your bonus card on your OWN Notice Board and take ' +
+      "your own suit action. It is a solitaire door bought with the interaction door's currency, " +
+      'which is the exact shape that has crowded the visit out in every previous version of this ' +
+      'game; its only brake is that your card clogs your own board in two placements and shuts ' +
+      'your own door. FALSE IS THE PAIRED CONTROL. Read the bonus mix four ways - Draw 1 / visit a ' +
+      'neighbour / visit yourself / slot unspent - and never let an assertion pool the two visits.',
   },
   {
     template: 'rules.turn.bonusAtStartOnly',
     type: 'boolean',
     description:
-      'True: the bonus slot may be taken only at the START of your turn, before the main action ' +
-      '(Dean, 19/08/2026). False restores v14 "once per turn, any point". Set false together ' +
-      'with upgradeIsBonus, buyCost and marketCost to reach the pre-19/08 turn, which is the ' +
-      'paired control for the turn-structure arm. On its own it answers the one question no ' +
-      'report has ever measured: does forcing the choice to the top of the turn cost visits?',
-  },
-  {
-    template: 'rules.turn.upgradeIsBonus',
-    type: 'boolean',
-    description:
-      'True: flipping a starter for coins is a BONUS-slot option (Dean, 19/08/2026). False: it ' +
-      'costs the whole main action, as it did until then - the shape the 2026-07-14 table ' +
-      'measured as "nobody upgraded a starter". Read the upgrade take rate AND its timing: an ' +
-      'upgrade spike in the opening rounds followed by a visit-heavy midgame is a PASS, because ' +
-      'the option is capped at three flips a seat and cannot crowd the visit out all game.',
+      'True: the bonus option may be taken only at the START of your turn (Dean, 19/08/2026), ' +
+      'which in v31 puts it immediately after the meeple phase. False restores v14 "once per turn, ' +
+      'any point". Still the one turn-structure rule with no measurement behind it, and it still ' +
+      'points down: a bonus you must commit to before you act is a bonus that gets forgotten. The ' +
+      'number that reads it is SLOT UNSPENT, not the visit rate.',
   },
 
   // --- Economy -------------------------------------------------------------
@@ -118,59 +158,14 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     template: 'rules.economy.noticeBoardThreshold',
     type: 'intOrNull',
     description:
-      "The door's threshold: how many rival cards a Notice Board holds before it clogs and the " +
-      'farm shuts to visitors. An OVERRIDE of the printed face (the sheet prints 5), authored ' +
-      'because the value is a ruling and the face is generated from the spreadsheet. Ruled 2 on ' +
-      '20/08/2026; null hands the number back to the card. The only lever ever measured to move ' +
-      'the suit balance: t=5 clogs 2.3% of turn boundaries, t=3 5%, t=2 11%, evenness best at 2. ' +
-      '4 - one full delivery of freight - is unarmed and not refuted.',
-  },
-  {
-    template: 'rules.economy.upgradeCostCoins',
-    type: 'int',
-    description:
-      'Cost to flip a starter to its upgraded face - all three of them since 2026-08-12, when ' +
-      "the Farmstead's free flip at the own-crop milestone was retired and it went on sale at " +
-      'the same price. Now the widest single dial on the upgrade layer.',
-  },
-  {
-    template: 'rules.economy.coinPityDivisor',
-    type: 'intOrNull',
-    description: 'Coins per 1 VP at game end. Null deletes the rule. Flagged OPEN in the design.',
-  },
-  {
-    template: 'rules.economy.visitPayout.base',
-    type: 'int',
-    description: 'Coins the bank pays a visitor who takes the money instead of a Worker.',
-  },
-  {
-    template: 'rules.economy.visitPayout.upgraded',
-    type: 'int',
-    description: 'The same, at an upgraded Notice Board.',
-  },
-  {
-    template: 'rules.economy.visitPayout.upgradedAction',
-    type: 'int',
-    description:
-      'Coins the bank pays a visitor who takes the ACTION at an upgraded Notice Board. A base ' +
-      'board always pays the action branch nothing. 0 is the paired control for the 2026-08-13 ' +
-      'upgraded face.',
-  },
-  {
-    template: 'rules.economy.visitPayout.twoCard',
-    type: 'intOrNull',
-    description:
-      "Special Orders' 2-card mode: the coins the bank pays a visitor who places two cards " +
-      'instead of one. Upgraded boards only, and never a Worker payoff. Null deletes the rule, ' +
-      'which is what ships since change 6 retired Special Orders.',
-  },
-  {
-    template: 'rules.economy.giftDiscardCoins',
-    type: 'int',
-    description:
-      'The coin the upgraded Orchard Farmstead mints per card it gives away at the discard ' +
-      'divert seam. Flagged in the rebuild as the number most likely to be wrong, at roughly £8-10 ' +
-      'a game where seats currently end with £1. 0 leaves the gift free.',
+      "⭐ THE ONLY ECONOMY NUMBER LEFT, AND THE BALANCE LEVER. The door's threshold: how many " +
+      'cards a Notice Board holds before it clogs and the farm shuts to visitors - and, since v31, ' +
+      'to its owner too. An OVERRIDE of the printed face, kept as one because the value is a ' +
+      'ruling and the face is generated; null hands the number back to the card, which now prints ' +
+      '2 as well. The only lever ever measured to move the suit balance: t=4 gave Orchard 80.8%, ' +
+      't=3 62.8%, t=2 42.0% against an even share of 36.4% on the two-building surface, and on the ' +
+      'single-door surface t=5 clogged 2.3% of turn boundaries, t=3 5%, t=2 11%. In v31 it also ' +
+      'throttles self-visits, so it is doing more work than any arm has measured.',
   },
   {
     template: 'rules.endGame.furtherTurnsEach',
@@ -181,49 +176,38 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     template: 'rules.endGame.deliveriesToTrigger',
     type: 'int',
     description:
-      'Island deliveries by one seat that fire the end of the game. The whole clock of the flat island, and flat across seat counts - at 6 that is half the 2-seat board, a third of the 3-seat and a quarter of the 4-seat, so this is the dial if 2p runs long.',
+      '⭐ THE FIRST KNOB TO SWEEP AFTER v31. Island deliveries by one seat that fire the end of ' +
+      'the game. The whole clock of the flat island, and flat across seat counts - at 6 that is ' +
+      'half the 2-seat board, a third of the 3-seat and a quarter of the 4-seat. v31 makes a turn ' +
+      'materially more powerful (the bonus slot buys a whole core action for one card, and meeples ' +
+      'add uncapped free ones), so the same 6 deliveries arrive sooner: expect a shorter game and ' +
+      'higher scores before anything is dialled. overlays/end-trigger-8.overlay.json is the arm.',
   },
 
-  // --- The suit Services ---------------------------------------------------
-  {
-    template: 'workers.serviceThreshold',
-    type: 'int',
-    description:
-      "Cards a Service holds before it clogs and its owner must Harvest it. The brake that replaced the Working Week track: a popular Service fills faster, so popularity buys its owner a barn of mixed colour and costs them a Harvest action. 4 against the Notice Board's 5, because the card supply did not double when the second visit target arrived.",
-  },
-  {
-    template: 'workers.ownerActivationCost',
-    type: 'int',
-    description:
-      'Coins the OWNER pays the bank to activate their own Service from the bonus slot. The reason a coin is never dead and the reason income is compulsory: a seat that never visits anybody eventually cannot afford to run their own farm. 0 makes the own-use free, which is the hermit-battery shape v14 had to kill once already.',
-  },
-  {
-    template: 'workers.visitWage',
-    type: 'int',
-    description:
-      'Coins the bank mints to the OWNER when a RIVAL activates their Service. SHIPPED AT 0 (Dean, 2026-08-10): the card that lands on the Service is the payment, and being useful is paid in freight rather than coin. Raising it turns the Service back into a faucet, which is what the first build shipped and what overlays/service-wage-one.overlay.json restores.',
-  },
+  // --- The five doors ------------------------------------------------------
   {
     template: 'workers.roster.{}.draw.see',
     type: 'int',
-    description: 'Cards the Draw Service looks at.',
+    description: 'Cards the Orchard door looks at.',
   },
   {
     template: 'workers.roster.{}.draw.keep',
     type: 'int',
     description:
-      'Cards the Draw Service keeps. Must over-deliver against a plain Draw or buying it is net zero.',
+      '⭐ THE ONE PRINTED EXCEPTION IN THE DOOR SET, AT 3. A visitor pays 1 card, and the bonus ' +
+      "slot's other option is a free Draw 1, so a Draw 2 door nets exactly what the free option " +
+      'gives for nothing and would be strictly worse than its own alternative. Draw 3 nets +2, ' +
+      'which is the whole margin the Orchard board has. overlays/orchard-door-draw-two-v1.overlay.json ' +
+      'is the paired control that measures the door dying.',
   },
   {
     template: 'workers.roster.{}.sow.amount',
     type: 'int',
-    description: 'Cards the Sow Service sows off the deck tops.',
-  },
-  {
-    template: 'workers.roster.{}.handToBarn',
-    type: 'int',
     description:
-      "Optional hand cards into your own barn on the Wheat and Vegetable Services. Wheat's lands after the harvest (a junk sink), Vegetable's before the delivery (which IS 'pay 1 card of the cost from hand').",
+      'Cards the Apiary door sows. It sows FROM THE HAND in v31, so a visitor pays 2 cards for 1 ' +
+      'threshold step and this is the weakest door on the table by some distance - ruled that way ' +
+      'knowingly. If the Apiary board takes no traffic, the fix is the source (back to a deck top), ' +
+      'not this number.',
   },
 
   // --- The island ----------------------------------------------------------
@@ -231,18 +215,13 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     template: 'island.vpByDeliveryOrder',
     type: 'intArray',
     description:
-      "The flat island in one array: entry i is the VP the (i+1)th delivery to a tile takes, and the length is how many deliveries a tile accepts. [6, 3] is the game's only remaining time gradient - first to a tile is worth double second - and it replaced both the 4/8/16 level VP and the fill-order bonus strip. Replaced whole, like a Working Week track: shortening it closes a delivery space, lengthening it opens one and forces the new price to be named.",
+      "The flat island in one array: entry i is the VP the (i+1)th delivery to a tile takes, and the length is how many deliveries a tile accepts. [6, 3] is the game's only remaining time gradient - first to a tile is worth double second - and it replaced both the 4/8/16 level VP and the fill-order bonus strip. Replaced whole: shortening it closes a delivery space, lengthening it opens one and forces both the new price AND a third meeple out of a 25-deep bag to be found in the same edit.",
   },
   {
     template: 'island.cardsPerSubstitution',
     type: 'intOrNull',
     description:
       'Cards of any crops that stand in for one card the island asked for. null restores exact matching, which is the control arm. This is the dial on the barn queue: ticket 38 proved the block is MATCHING under an all-or-nothing crate payment, not quantity, so this is the only lever that touches the actual cause. Lower is looser - at 2 the colour puzzle survives because matching is still cheaper, and the rate self-scales because only a big barn can afford to substitute.',
-  },
-  {
-    template: 'island.tileRule.coinsPerDelivery',
-    type: 'int',
-    description: 'Coins the bank pays on every island delivery. Flat £1 since 2026-08-09.',
   },
   {
     template: 'island.tileRule.crates',
@@ -254,6 +233,30 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     type: 'int',
     description:
       'Barn cards of the matching suit that pay one crate. Total tile cost is crates times this, so 4 at every tile. The pair, not the tile, is the unit a player reads.',
+  },
+  {
+    template: 'island.meeples.perColour',
+    type: 'int',
+    description:
+      "Meeples of each colour in the bag. 5 was chosen because 25 is the smallest flat pool that covers a 4-seat board's 24 delivery spaces, which is a component argument rather than a design one - so it is untested in every sense. CONSEQUENCE TO READ FIRST: 24 of 25 are drawn at 4 seats, so the island's colour mix is nearly deterministic there, while at 2 seats only 12 are drawn and it is a genuine sample. Move `poolSize` with this or the two disagree and data.test.ts fails, which is what that assertion is for.",
+  },
+  {
+    template: 'island.meeples.poolSize',
+    type: 'int',
+    description:
+      'Total meeples in the bag. Stored rather than derived precisely so that an overlay cannot half-change the pool: it must equal perColour times the number of colours, and the test says so.',
+  },
+  {
+    template: 'island.meeples.perDeliverySpace',
+    type: 'int',
+    description:
+      'Meeples seeded onto each island delivery space at setup. At 1 the bag is drained to 12 / 18 / 24 by seat count; at 2 a 4-seat board would need 48 and the bag does not hold them, so raising this means raising the pool in the same overlay.',
+  },
+  {
+    template: 'island.meeples.faceUpAtSetup',
+    type: 'boolean',
+    description:
+      "True: every delivery space's meeple is visible from setup, so the whole table can read which actions the island is offering and in what order before anybody delivers. That legibility is the point of the component, and false is the arm that asks how much of the meeple's pull is the information rather than the action.",
   },
   {
     template: 'island.slotsBySeats.{}.{}',
@@ -286,12 +289,13 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     template: 'aerodrome.handMoveCost',
     type: 'int',
     description:
-      "Cards discarded from HAND by the alternative flight payment Vegetable's Depots print (V4, V8). The base barn cost is untouched and this is a second route in, not a discount. THE SUIT'S FIRST DIAL: its central risk is the hand starving, because activation costs, sowing, consignment, the visit and this all come out of a hand of 5, and an empty hand cannot visit. Drop it to 1 if a Vegetable seat's visits per turn fall below the table's 0.52.",
+      "Cards discarded from HAND by the alternative flight payment Vegetable's Depots print (V4, V8). The base barn cost is untouched and this is a second route in, not a discount. Its number was set when the game had a hand limit and a draw-and-discard, and v31 has neither, so the measurement behind it (flights 0.54 -> 1.22 at n=1580) was taken in a game where hand cards were dearer than they are now. Re-read before trusting it.",
   },
   {
     template: 'aerodrome.balloons.{}.reward.amount',
     type: 'int',
-    description: 'Size of a balloon reward.',
+    description:
+      'Size of a balloon reward. Matches three of the four balloons: the magenta one became "harvest any building, even if it is not full" in v31 and carries no amount, because a permission has no size.',
   },
 
   // --- Per-card ------------------------------------------------------------
@@ -304,7 +308,8 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
   {
     template: 'cards.catalogue.{}.threshold',
     type: 'intOrNull',
-    description: 'Cards a building holds before it is full and clogged.',
+    description:
+      'Cards a building holds before it is full and clogged. Flat since v31: starters print one face, so a Notice Board threshold is one path and not two.',
   },
   {
     template: 'cards.catalogue.{}.activationType',
@@ -318,37 +323,20 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
   {
     template: 'cards.catalogue.{}.printedVp',
     type: 'int',
-    description: 'VP printed on a built card.',
+    description: 'VP printed on a built card. 0 on all fifteen starters since v31.',
   },
   {
     template: 'cards.catalogue.{}.buildCost.suit',
     type: 'int',
-    description: 'Own-suit cards in a build cost.',
+    description:
+      'Own-suit cards in a build cost. Since v31 this is also how the 30 Power and Endgame cards ' +
+      'are paid for: their two coin icons became two crop icons of their own suit, which is one ' +
+      'of the two pulls behind risk 3, the monoculture problem.',
   },
   {
     template: 'cards.catalogue.{}.buildCost.wild',
     type: 'int',
     description: 'Any-suit cards in a build cost.',
-  },
-  {
-    template: 'cards.catalogue.{}.buildCost.coins',
-    type: 'int',
-    description: 'Coins in a build cost.',
-  },
-  {
-    template: 'cards.catalogue.{}.upgradeCostCoins',
-    type: 'int',
-    description: 'Per-starter override of the standard upgrade price.',
-  },
-  {
-    template: 'cards.catalogue.{}.faces.{}.threshold',
-    type: 'intOrNull',
-    description: 'Threshold on one printed face of a starter.',
-  },
-  {
-    template: 'cards.catalogue.{}.faces.{}.handSize',
-    type: 'intOrNull',
-    description: 'Absolute hand size printed on a Barn face. The master clock of the whole game.',
   },
 ];
 

@@ -1,8 +1,0 @@
-{
-  "name": "market-not-buy",
-  "description": "Ticket 56's market-as-specced arm: the adopted rule alone (docs/Market Bonus Action 2026-08-03.md). The £3 bonus-slot market is on, the shipped £1 card buy is off - the coin sink the parent design actually adopted, in the slot it specified, with the barn destination it argued for. Compare against no-market (the shipped buy) and no-coin-sinks (neither) to see what each rule actually buys.",
-  "schemaVersion": 1,
-  "set": {
-    "rules.turn.buyCost": null
-  }
-}

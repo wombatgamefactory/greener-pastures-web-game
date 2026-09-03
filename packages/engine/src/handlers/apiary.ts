@@ -31,17 +31,24 @@
  * THE OPTION OUT rather than by throwing - the bots probe by cloning and
  * replaying, so a guard that threw would surface as a crash inside probe.ts.
  *
- * ⛔ THE FARMSTEAD IS NOT HANDLER CODE, and both of the seams it used to own are
- * GONE (2026-08-11). The base power waived the crop match for every Apiary seat
- * from turn 1 - Dean: it "trivialises the suit" - and survives only as A6's
- * `anyCrop`. The upgraded face queued a free second placement on every GROW, and
- * A7's new text is word for word what that did, so it had to move: a starter may
- * not be a rung on its own tier cards' ladder. What replaced it is not a
- * consolation prize but a structural necessity - after A7's change all five
- * Tier 1 HIVEs are card-negative and nothing else in the suit refills the hand -
- * and it lives in `apiaryGrowBonus` (actions.ts), called from the GROW ACTION
- * branch in game.ts and nowhere else. A5, A6 and A12 do not trigger it, or The
- * Honey Hut draws three.
+ * ⛔ THE FARMSTEAD HAS NO SEAM AT ALL ANY MORE (v31, 02/09/2026), and this is
+ * the third rewrite of this paragraph, which is the point of keeping it. The
+ * base power waived the crop match for every Apiary seat from turn 1 - Dean: it
+ * "trivialises the suit" - and survives only as A6's `anyCrop`. The upgraded
+ * face queued a free second placement on every GROW, and A7's text is word for
+ * word what that did, so it had to move: a starter may not be a rung on its own
+ * tier cards' ladder. What replaced it on 2026-08-11 was "When you GROW, Draw
+ * 1", held in `apiaryGrowBonus` (actions.ts) on the GROW ACTION branch and never
+ * inside `doGrow`, so A5, A6 and A12 could not trigger it and The Honey Hut
+ * could not draw three. v31 deletes that too: A2 prints an end-game scorer and
+ * the seam is gone from actions.ts.
+ *
+ * ⚠️ THE HOLE IT LEAVES IS REAL. The GROW rider was "not a consolation prize but
+ * a structural necessity", because after A7's change all five Tier 1 HIVEs are
+ * card-negative and nothing else in the suit refills the hand. That sentence is
+ * still true and the card that answered it has gone. A8 and A14 both gained a
+ * Draw in the coin conversion, which is where the refill now lives - but on
+ * cards a seat has to build, not on a starter live from turn 1.
  *
  * HIVE is a sub-type derived from the whole-word title keyword (reference
  * DL-42) AND A TIER GUARD: **A4 to A8 and nothing else**. ⚠️ A13 The Queen's
@@ -85,12 +92,10 @@ import type { Fx } from '../fx.js';
 import { canTakeCard, cardById, drawableSuits, foreignCropBuildings, player } from '../query.js';
 import { doGrow } from '../runtime.js';
 import type { BuildingState, CardId, GameState, Seat, TaskAnswer } from '../state.js';
+import { farmsteadHandler } from './farmstead.js';
 import type { CardHandler } from './types.js';
 
 const HIVE_NAME = /\bHive\b/;
-
-/** A17 The Smoke Pot's printed price for a deck card into your barn. */
-const SMOKE_POT_COST = 1;
 
 /**
  * HIVE sub-type membership: the whole-word title keyword AND Tier 1, so the set
@@ -132,71 +137,73 @@ function rivals(state: GameState, seat: Seat): Seat[] {
  */
 
 /**
- * A1 Barn (starter) - "Hand size 5. When you build a HIVE, sow the top card of
- * any deck onto it." / upgraded "Hand size 7." plus the same rider.
+ * A1 Barn (starter) - prints NOTHING (v31).
+ *
+ * ⛔ BOTH LINES WENT. The hand size went with the hand limit itself; the build
+ * rider - "When you build a HIVE, sow the top card of any deck onto it" - was
+ * deleted outright with the other four Barn riders. This one was the odd one of
+ * the five: its payload was a PLACEMENT rather than a draw, so a new HIVE
+ * arrived with a card already on it and was worth firing on the turn it landed.
+ * That is a real loss to the suit's tempo and it is recorded as one - it is also
+ * exactly why the whole family had to go together, because a "shared" line whose
+ * payload differs per suit is five cards wearing one sentence. *
+ * ⭐ THE HAND LIMIT CAME BACK ON 02/09/2026 AND THIS CARD DID NOT. The
+ * reinstated limit is a flat 12 for everybody, in `rules.turn.handLimit` and
+ * on the player aid; the Barn stays blank. A rule that applies to every seat
+ * is not a card value, which is the whole difference between the old shape and
+ * the new one - so nothing here should be un-deleted.
  */
 export const apiaryBarn: CardHandler = {
   difficulty: {
-    score: 2,
-    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
+    score: 1,
+    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'The printed hand size is still engine-read (handLimitOf off the current face). The ' +
-      'rider mirrors W1 and O1 - on BOTH faces deliberately, or paying £2 to upgrade would ' +
-      'delete it - but the payload is a PLACEMENT rather than a draw, which is the suit ' +
-      'talking: a new HIVE arrives with a card already on it, so it is worth firing on the ' +
-      'turn it lands. It fires on any build path, because afterBuild is the one funnel ' +
-      'every landing goes through. Auto-skips when every deck is dry.',
-  },
-  on: {
-    afterBuild(fx, event, self) {
-      if (event.seat !== self.seat) return;
-      if (!isHiveCard(fx.data, event.card)) return;
-      fx.pushTask({
-        t: 'sowFromDeck',
-        pid: self.seat,
-        src: self.card,
-        remaining: 1,
-        targets: [{ seat: self.seat, card: event.card }],
-      });
-    },
+      'No behaviour, and no printed text to have behaviour about. Registered anyway, so ' +
+      'that a Barn with no entry reads as a deliberate blank rather than as a card nobody ' +
+      'implemented.',
   },
 };
 
 /**
- * A2 Farmstead (starter) - "When you GROW, Draw 1." / upgraded "When you GROW,
- * Draw 1 and you may put 1 card from your hand into your barn."
+ * A2 Farmstead (starter) - "Game end: 1 VP for each Apiary card you have built."
+ *
+ * ⛔ THE GROW RIDER IS GONE (v31), and with it `apiaryGrowBonus` - the last of
+ * the five suit-power seams. It read "When you GROW, Draw 1" and lived on the
+ * GROW ACTION branch in game.ts rather than inside `doGrow`, because `doGrow` is
+ * also called by A6 and O13 and a seam there would have fired once per building
+ * grown and let The Honey Hut draw three. THE STANDING RULE THAT CAME OUT OF IT
+ * SURVIVES THE CARD: a suit power modifies the ACTION, never card text that
+ * happens to use the same word.
+ *
+ * ⚠️ IT WAS ALSO THE SUIT'S CARD-NEUTRALITY GUARANTEE, and losing it is the one
+ * thing to watch in Apiary after v31: all five Tier 1 HIVEs are card-negative
+ * and this was what refilled the hand. A8 and A14 both gained a Draw in the coin
+ * conversion, which is where the compensation now sits - but it sits on two
+ * Tier 1/Tier 3 cards a seat has to build, not on a starter that is live from
+ * turn 1.
  */
-export const apiaryFarmstead: CardHandler = {
-  difficulty: {
-    score: 3,
-    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
-    notes:
-      'Behaviour lives in an engine seam, not this entry: apiaryGrowBonus (actions.ts), ' +
-      "called from apply()'s GROW ACTION branch in game.ts. ⛔ It must never move into " +
-      'doGrow, which O13 The Grand Orchard and A6 The Garden Hive also call - a seam there ' +
-      'would fire once per building grown and The Honey Hut would draw three. RULED: the ' +
-      'Farmstead modifies the GROW ACTION, not card text that says GROW, so A5, A6 and A12 ' +
-      'do not trigger it. Its draw is a card-ability draw, so no draw modifier applies ' +
-      "(DL-47), and the upgraded face's handToBarn is optional and may whiff on an empty " +
-      "hand, which is legal and silent. It is the suit's card-neutrality guarantee: after " +
-      'the rebuild all five Tier 1 HIVEs are card-negative and nothing else refills the hand. ' +
-      '⛔ BOTH OLD SEAMS ARE DELETED - the base crop waiver in growOptions/doGrow (it now ' +
-      'lives on A6 alone) and the upgraded free sow (A7 prints that sentence now).',
-  },
-};
+export const apiaryFarmstead: CardHandler = farmsteadHandler('apiary');
 
-/** A3 Notice Board (starter) - "VISITOR: Take £1 from bank." / upgraded Special Orders. */
+/**
+ * A3 Notice Board (starter) - "VISITOR: place 1 card here, then Sow 1 card from
+ * your hand onto one of your buildings." Threshold 2, wild activation.
+ */
 export const apiaryNoticeBoard: CardHandler = {
   difficulty: {
     score: 2,
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'No behaviour here: the whole visit - fee placement, all three payoffs (coin, ' +
-      "Service, the upgraded face's 2-cards-take-£3 mode) and the wage minting - is " +
-      'engine-level.',
+      'No behaviour here: the fee landing, the door action and the clog at threshold 2 are ' +
+      'all engine-level. ' +
+      '⚠️ THIS IS THE WEAKEST DOOR ON THE TABLE AND DEAN RULED IT SO KNOWINGLY ' +
+      '(02/09/2026). The sow is FROM THE HAND, so a visitor pays 1 card onto the board and a ' +
+      'SECOND card into the sow, for one threshold step on one of their own buildings: two ' +
+      'cards out for one step in, which is the self-cancellation law biting on the one door ' +
+      'where it was not paid off. The fix, if the Apiary board takes no traffic, is ' +
+      "`from: 'deck'` in workers.json - not a cheaper door - and workers.ts already handles " +
+      'that branch. Measure the door mix first.',
   },
 };
 
@@ -327,7 +334,7 @@ export const foragingHive: CardHandler = {
 };
 
 /**
- * A8 The Wild Hive - "Put a deck card into a neighbour's barn and take £2."
+ * A8 The Wild Hive - "Put a deck card into a neighbour's barn and Draw 1."
  */
 export const wildHive: CardHandler = {
   difficulty: {
@@ -335,17 +342,19 @@ export const wildHive: CardHandler = {
     verified: { prompts: true, crossPlayer: true, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
     notes:
-      'The only £ in the tier, and the gift goes STRAIGHT INTO THEIR BARN: no threshold ' +
-      'advanced, no clog caused, no argument about whether it helped. ⚠️ NO ELIGIBLE ' +
-      'NEIGHBOUR MEANS NO COIN - the coin is paid for the gift, so it lives in the resolver ' +
-      'and the whole task auto-skips when every deck is dry. ⛔ Its £1 activation surcharge ' +
-      'and its needsDesignReview flag are both GONE; activationSurchargeOf stays in the ' +
-      'engine, data-driven, with nothing in the catalogue using it. ⚠️ THE FEE WENT £1 TO ' +
-      '£2 ON 19/08/2026 (plan group A, a number and nothing else). It is now the only card ' +
-      "in the suit that reaches a neighbour's zones at all - A4, A14 and A15 all lost their " +
-      'cross-table halves the same day - so if the arm wants to know what Apiary pays the ' +
-      'table, this card is the whole answer, and doubling its rate is what was meant to ' +
-      'keep the seat willing to pay it.',
+      'The gift goes STRAIGHT INTO THEIR BARN: no threshold advanced, no clog caused, no ' +
+      'argument about whether it helped. ⚠️ NO ELIGIBLE NEIGHBOUR MEANS NO PAYOUT - the ' +
+      'payout is for the gift, so it lives in the resolver and the whole task auto-skips ' +
+      'when every deck is dry. ' +
+      '⛔ THE £2 IS A DRAW (v31, plan section 3.3). The fee had gone £1 to £2 on 19/08/2026 ' +
+      'to keep the seat willing to pay it, and the conversion rate is flat - both £1 and £2 ' +
+      'read Draw 1 - so in nominal terms this card was halved. In real terms it went UP: a ' +
+      'coin was never worth a card here, and seats ended games on about £1. ' +
+      '⚠️ STILL THE ONLY CARD IN THE SUIT THAT REACHES A NEIGHBOUR AT ALL (A4, A14 and A15 ' +
+      'all lost their cross-table halves on 19/08/2026), so if an arm wants to know what ' +
+      'Apiary pays the table, this card is the whole answer. Its £1 activation surcharge and ' +
+      'its needsDesignReview flag went earlier; `activationSurchargeOf` has since gone with ' +
+      'the currency.',
   },
   activate(fx, self) {
     fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'giftDeckTop', riders: {} });
@@ -364,7 +373,7 @@ export const wildHive: CardHandler = {
       resolve(fx, task, answer) {
         if (answer.kind !== 'card') throw new Error('giftDeckTop expects a card answer');
         fx.deckTopToBarn(answer.payload.seat as Seat, answer.payload.suit as Suit);
-        fx.gainCoins(task.pid, 2, 'A8');
+        drawN(fx, task.pid, task.src, 1);
         return true;
       },
     },
@@ -409,8 +418,9 @@ export const crossPollinator: CardHandler = {
     notes:
       "FEED THE HAND, and it is the tier's answer to its own problem: the whole of Tier 1 " +
       'spends cards and this is where they come back. Counts HIVEs BUILT (A4-A8), not full ' +
-      'ones, so five is the ceiling and the hand limit caps it below that anyway - Draw 5 ' +
-      'into a hand of 5 cannot run away. ⛔ RETEXTED: it printed a HIRE discount, then a ' +
+      'ones, so five is the ceiling. ⭐ THE HAND LIMIT IS BACK (02/09/2026) and caps the ' +
+      'payoff again, but at 12 rather than at the 5 the Barn used to print, so a Draw 5 ' +
+      'into a hand of 7 now lands in full where it once overflowed. ⛔ RETEXTED: it printed a HIRE discount, then a ' +
       'Service discount named by id in actions.ts; both are gone and ownServiceDiscount ' +
       'with them.',
   },
@@ -556,35 +566,34 @@ export const queensHive: CardHandler = {
   },
 };
 
-/** A14 The Honeycomb Tower - "Gain £2 for each of your HIVEs." Threshold 2. */
+/** A14 The Honeycomb Tower - "Draw 1 for each of your HIVEs." Threshold 2. */
 export const honeycombTower: CardHandler = {
   difficulty: {
     score: 1,
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
-      '⚠️⚠️ THE LOUDEST BALANCE RISK IN THE WHOLE 19/08/2026 PASS (plan flag 8.1), and it ' +
-      "must not be softened in the reading. This is THE GAME'S ONLY REPEATABLE COIN " +
-      'FAUCET - every other Tier 3 pays in a resource with a natural cap and coins have ' +
-      'none - and the change did two things at once. ⛔ IT LOST ITS THROTTLE. The old text ' +
-      "sowed a deck top onto a neighbour's building, and the handler's own note called " +
-      'that sow THE METER: "every use hands a rival a card of freight and advances one of ' +
-      'their thresholds, so a seat printing £5 a turn is feeding the table 25 cards a game" ' +
-      '- and eventually the legal targets clogged and the card stopped being offered. That ' +
-      'brake is gone. ⛔ AND THE RATE DOUBLED, £1 to £2 per HIVE, so five HIVEs is £10 an ' +
-      'activation against the old £5. ⛔ AND IT IS NOW A PURE OWN-SUIT SCALER: it pays you ' +
-      'for owning more of your own row and gives the table nothing back, where it used to ' +
-      'pay the table in freight for every coin it minted. THE ARM OWED IS `a14-coin-faucet` ' +
-      '- £2-per-HIVE-no-sow against £1-plus-sow - and it is READ AGAINST TOTAL COINS IN ' +
-      "PLAY, never against this card's own play rate, because a faucet nobody turns on is " +
-      'not the failure mode. ⚠️ Threshold 2, `activationType` wild: two cards to fire it, ' +
-      'then it clogs until harvested, and that clog is now the ONLY brake left on the card. ' +
-      '⚠️ It mints unconditionally: no rival, no deck and no legal target can stop it, so ' +
-      'unlike A8 there is no path where the coins fail to arrive.',
+      '⚠️ IT WAS THE LOUDEST BALANCE RISK OF THE 19/08/2026 PASS AND THE CURRENCY IT ' +
+      'PRINTED HAS SINCE BEEN DELETED, so the warning is repointed rather than dropped. ' +
+      'What it said: this was THE ONLY REPEATABLE COIN FAUCET IN THE GAME, it had lost its ' +
+      "throttle (the old text sowed a deck top onto a neighbour's building, which fed the " +
+      'table freight and eventually clogged its own targets), the rate had doubled, and it ' +
+      'had become a PURE OWN-SUIT SCALER that pays you for owning more of your own row and ' +
+      'gives the table nothing back. ' +
+      '⛔ v31 CONVERTS IT TO DRAW 1 PER HIVE (plan section 3.3), which fixes exactly one ' +
+      'of those four things and makes one of them worse. The unbounded currency is gone, so ' +
+      'the faucet now pours into the resource the game actually clocks on. The lost ' +
+      'throttle, the doubled rate against the old £1, and the inward scaling are all ' +
+      'unchanged - and cards are worth more than coins ever were, so `a14-coin-faucet` ' +
+      'becomes `a14-card-faucet` and is read against TOTAL CARDS DRAWN, never against this ' +
+      "card's own play rate: a faucet nobody turns on is not the failure mode. " +
+      '⚠️ Threshold 2, activationType wild: two cards to fire it, then it clogs until ' +
+      'harvested, and that clog is the only brake on the card. It pays unconditionally - no ' +
+      'rival, no deck and no legal target can stop it - so unlike A8 there is no path where ' +
+      'the payout fails to arrive, except a table with every deck dry.',
   },
   activate(fx, self) {
-    const wage = 2 * hives(fx.data, fx.state, self.seat).length;
-    if (wage > 0) fx.gainCoins(self.seat, wage, 'A14');
+    drawN(fx, self.seat, self.card, hives(fx.data, fx.state, self.seat).length);
   },
 };
 
@@ -652,8 +661,8 @@ export const beekeepersVeil: CardHandler = {
 };
 
 /**
- * A17 The Smoke Pot - "Whenever you VISIT a neighbour, you may pay £1 to add a
- * deck card into your barn."
+ * A17 The Smoke Pot - "Whenever you place a card on a neighbour's Notice Board,
+ * add the top card of any deck into your barn."
  */
 export const smokePot: CardHandler = {
   difficulty: {
@@ -661,57 +670,52 @@ export const smokePot: CardHandler = {
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
     notes:
-      '⚠️ THIS CARD IS THE MARKET, MOVED ONTO A CARD (19/08/2026). The same pass deletes ' +
-      'the £3 "buy at market" bonus action from the game, and A17\'s new text is that ' +
-      'exchange - coins into a barn card - re-priced at £1 and GATED BEHIND A VISIT. That ' +
-      'is the whole point of the pair: the market was a solitaire coin sink sitting in the ' +
-      'bonus slot, competing with the visit for the one slot the hook lives in, and this ' +
-      'takes it off the slot and re-prices it as a REWARD for interacting. Nobody can reach ' +
-      "it without first putting a card on a neighbour's Notice Board. If it ever needs a " +
-      'dial, the dial is the price, not the trigger. ⛔ THREE CHANGES FROM THE OLD TEXT, ' +
-      'and all three matter: it gained a COST (£1, paid to the bank on resolve); it became ' +
-      'OPTIONAL, so the task offers a skip and a seat with no coins is simply never asked; ' +
-      'and the destination moved from one of your buildings to your BARN, so IT NO LONGER ' +
-      'ADVANCES A THRESHOLD. That last one is the quiet one - the card used to feed the ' +
-      "suit's clogging engine and now feeds the island instead, and the barn is a dead end " +
-      '(barn to island only), so nothing it buys can accelerate an engine. ⚠️ The player ' +
-      'chooses WHICH deck, from every deck still drawable; the card is not chosen, it is ' +
-      'the top of that deck, exactly as the market was. ⚠️ VISITOR-SIDE, where O16 The ' +
-      'Orchard Keeper is host-side on the same hook - that is the guard, ' +
-      '`event.visitor === self.seat`. A Helping Hand repeat is not a visit and never fires ' +
-      'afterVisit, so it never fires this, which also means the £1 can be paid at most once ' +
-      'per turn under the one-bonus-slot rule. ⛔ ITS EARLIER RETEXT still stands: it paid ' +
-      'on WORK, a verb that no longer exists. The afterWork hook itself stays - D17 and the ' +
-      'Service metrics use it.',
+      '⛔ IT LOST ITS PRICE AND GAINED A GATE (v31, plan section 3.3), and the plan says ' +
+      'why the two had to move together: A17 priced a coin as a COST, and a cost cannot be ' +
+      'halved into a draw. So the £1 is simply gone and the card is free. ' +
+      '⭐ THE GATE IS THE WORD "NEIGHBOUR", AND IT IS THE WHOLE OF THE BALANCE. v31 lets a ' +
+      'seat visit its OWN Notice Board (rules.turn.selfVisitAllowed, risk 2 of the pass), so ' +
+      'without the guard this would be a free barn card on every bonus slot a seat ever ' +
+      'spends, needing nobody else at the table. `afterVisit` carries a `self` boolean for ' +
+      'exactly this, and it is the first card to use it. Read the two guards together: ' +
+      '`event.visitor === self.seat` makes it VISITOR-side (O16 The Fruit Store is host-side ' +
+      'on the same hook), and `!event.self` makes it cross-table. ' +
+      '⚠️ IT IS NOW STRONG, AND THE PLAN SAYS SO: a free barn card on every neighbour ' +
+      'visit, in a game where freight is most of a winning score. The named alternative ' +
+      'price, if it reads too generous, is "discard a card from your hand" - the only ' +
+      'currency left. It is capped at once a turn in practice by the one-bonus-slot rule; ' +
+      'A Helping Hand raises that to twice by granting a second option, but only one of the ' +
+      'two options is a placement, so the cap holds. ' +
+      '⚠️ THE DESTINATION IS THE BARN, NOT A BUILDING, and that is the quiet half of the ' +
+      "card: it advances no threshold and feeds the island rather than the suit's own " +
+      'clogging engine. The barn is a dead end (barn to island only), so nothing it buys can ' +
+      'accelerate an engine. The player chooses WHICH deck; the card is not chosen, it is ' +
+      'the top of that deck.',
   },
   on: {
     afterVisit(fx, event, self) {
       if (event.visitor !== self.seat) return;
+      // "a NEIGHBOUR's Notice Board" - a self-visit is not one. This is the
+      // guard the whole card turns on; see the notes.
+      if (event.self) return;
       // Pushed unconditionally and gated in the enumerator instead of here: the
-      // wallet and the decks can both change between the hook firing and the
-      // task reaching the head of the queue, and an empty answer list is
-      // auto-skipped by the drain loop, so an unaffordable offer is never shown.
+      // decks can run dry between the hook firing and the task reaching the head
+      // of the queue, and an empty answer list is auto-skipped by the drain loop.
       fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'smokeBuy', riders: {} });
     },
   },
   tasks: {
     smokeBuy: {
-      answers(data, state, task) {
-        if (player(state, task.pid).coins < SMOKE_POT_COST) return [];
-        const out = drawableSuits(data, state).map(
+      answers(data, state) {
+        // MANDATORY, and no skip: the printed text says "add", not "you may".
+        // With every deck dry the list is empty and the drain loop drops the
+        // task, which is the same silent no-op a skip would have produced.
+        return drawableSuits(data, state).map(
           (suit) => ({ kind: 'card', payload: { suit } }) as TaskAnswer,
         );
-        // The skip rides with the offers rather than being returned alone: with
-        // nothing to buy there is nothing to decline, and an empty list lets the
-        // drain loop drop the task silently.
-        if (out.length === 0) return [];
-        out.push({ kind: 'skip' });
-        return out;
       },
       resolve(fx, task, answer) {
-        if (answer.kind === 'skip') return true;
-        if (answer.kind !== 'card') throw new Error('smokeBuy expects a card or skip answer');
-        fx.payCoins(task.pid, SMOKE_POT_COST, 'A17');
+        if (answer.kind !== 'card') throw new Error('smokeBuy expects a card answer');
         fx.deckTopToBarn(task.pid, answer.payload.suit as Suit);
         return true;
       },

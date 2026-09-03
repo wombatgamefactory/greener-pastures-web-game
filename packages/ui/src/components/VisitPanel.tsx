@@ -1,28 +1,40 @@
 /**
- * Assembling a VISIT: the hook, and the most important gesture in the game.
+ * Placing a card on a Notice Board: the hook, and the most important gesture in
+ * the game.
  *
- * Ticket 23's instruction, verbatim: "build a visit, do not render the
- * enumeration". `legalMoves` offers one move per unordered PAIR of hand cards
- * per upgraded host - up to ~90 at four seats - so the panel takes the fee one
- * card at a time and lights the payoffs the price has actually bought. Two
- * details it makes explicit because a player cannot see them otherwise: a board
- * at 4-of-5 refuses the two-card visit outright while still taking one card,
- * and the two-card mode is the only visit that cannot arm a Helping Hand.
+ * ⭐ SINCE v31 IT IS TWO GESTURES WEARING ONE MOVE, and this panel is where the
+ * difference has to be unmistakable. `visit` carries a `host`, and the host may
+ * be a neighbour or it may be you:
  *
- * The wage is stated as what it does - the BANK pays your neighbour - because
- * that is the whole v14 pivot. Interaction mints money rather than moving it,
- * and a visitor who thinks they are handing over their own coins will not
- * visit twice.
+ *   a NEIGHBOUR's board   the hook. Your card rides into their barn as exactly
+ *                         the mixed colour the island will demand of them, and
+ *                         you take their suit's action. Two farms are involved.
+ *   your OWN board        solitaire, bought with the same currency. You take
+ *                         your own action, and the card counts toward your own
+ *                         threshold of two - so doing it twice clogs your board
+ *                         and shuts every neighbour out of your suit's action
+ *                         until you spend a Harvest clearing it.
+ *
+ * The v31 plan's risk 2 is that the second quietly crowds out the first, exactly
+ * as every coin-bought solitaire option has in every previous version. The
+ * interface cannot fix that and must not hide it: what it can do is make sure
+ * nobody takes one thinking it was the other. So the panel changes its title,
+ * its colour, its hint and its footer on the flag, and the self version states
+ * the cost - the clog - as prominently as the payoff.
+ *
+ * The assembly itself got much smaller. A visit costs exactly one card, so there
+ * is one choice left (which card) and the panel plays the move the moment it is
+ * made rather than asking for a confirmation nobody would read.
  */
 
 import type { GameData } from '@gp/data';
 import type { Seat } from '@gp/engine';
 
 import type { Play } from '../session/play';
-import { visitFeeAdditions, visitPayoffs } from '../view/intent';
-import { cardName, workerName } from '../view/moveText';
+import { visitFeeOptions } from '../view/intent';
+import { cardName } from '../view/moveText';
 import { SUIT_META, seatName } from '../view/suits';
-import { farmOf, noticeBoardOf, seatSuits, workerTrack, workersOwnedBy } from '../view/table';
+import { farmOf, noticeBoardOf, seatSuits } from '../view/table';
 import { FillBar } from './StackGauge';
 
 export function VisitPanel({
@@ -34,24 +46,24 @@ export function VisitPanel({
   data: GameData;
   play: Play;
   host: Seat;
-  fee: readonly string[];
+  fee: string | null;
 }) {
   const view = play.view;
+  const self = host === view.seat;
   const farm = farmOf(view, host);
   const board = noticeBoardOf(data, farm);
   const name = seatName(seatSuits(view)[host], host, view.seat);
-  const payoffs = visitPayoffs(play.moves, { host, fee });
-  const more = visitFeeAdditions(play.moves, { host, fee });
-  const workers = workersOwnedBy(view, host);
-
-  const coin = payoffs.find((m) => m.payoff.mode === 'coin');
-  const special = payoffs.find((m) => m.payoff.mode === 'special');
+  const options = visitFeeOptions(play.moves, host);
+  const chosen = fee !== null && options.has(fee) ? fee : null;
 
   return (
-    <section className="assembly assembly-visit" aria-label={`visit ${name}`}>
+    <section
+      className={`assembly assembly-visit ${self ? 'assembly-self' : 'assembly-hook'}`}
+      aria-label={self ? 'use your own door' : `visit ${name}`}
+    >
       <div className="assembly-body">
         <h3>
-          Visit {name}
+          {self ? 'Your own door' : `Visit ${name}`}
           {board && (
             <span className="assembly-board">
               <FillBar filled={board.filled} threshold={board.threshold} />
@@ -59,79 +71,48 @@ export function VisitPanel({
           )}
         </h3>
 
-        <p className="assembly-hint">
-          {fee.length === 0
-            ? 'Pick the card you are willing to lose. It rides into their barn - your junk, their treasure.'
-            : more.size > 0
-              ? 'Take the payoff, or add a second card for the Special Orders prize.'
-              : 'Take the payoff.'}
+        {/*
+         * THE ONE LINE THAT MUST DIFFER. Same length, same place, opposite
+         * content: one names the neighbour and what the card does for them, the
+         * other names the clog. A player skimming will read exactly this.
+         */}
+        <p className={`assembly-hint ${self ? 'assembly-warn' : ''}`}>
+          {self ? (
+            <>
+              <strong>No neighbour involved.</strong> The card lands on your own board and counts
+              toward your own {board?.threshold ?? 2}, so filling it shuts your own door: nobody can
+              take {board ? board.actionLabel : 'your action'} here, you included, until you spend a
+              Harvest clearing it.
+            </>
+          ) : (
+            <>
+              <strong>{board ? board.actionLabel : 'Their action'}, for one card.</strong> Pick the
+              card you are willing to lose: it rides into their barn as exactly the mixed colour the
+              island will ask of them. Your junk, their treasure.
+            </>
+          )}
         </p>
 
-        <div className="chips">
-          {fee.map((card) => (
-            <button
-              key={card}
-              className="chip chip-paid"
-              onClick={() =>
-                play.setVisitFee(
-                  host,
-                  fee.filter((c) => c !== card),
-                )
-              }
-              title="take it back"
-            >
-              {cardName(data, card)} <span aria-hidden="true">x</span>
-            </button>
-          ))}
-          {fee.length === 0 && <span className="chip chip-empty">no card chosen yet</span>}
-        </div>
-
-        {payoffs.length > 0 && (
-          <div className="payoffs">
-            {coin && (
-              <button className="payoff" onClick={() => play.send(coin)}>
-                <b>Take £{board?.payout ?? '?'}</b>
-                <span>from the bank, to you</span>
+        {options.size === 0 ? (
+          <p className="assembly-hint">Nothing in your hand buys this door right now.</p>
+        ) : (
+          <div className="chips">
+            {[...options].map((card) => (
+              <button
+                key={card}
+                type="button"
+                className={`chip${chosen === card ? ' chip-paid' : ''}`}
+                onClick={() => play.hold(card)}
+                title={
+                  self
+                    ? `Put ${cardName(data, card)} on your own Notice Board`
+                    : `Put ${cardName(data, card)} on ${name}'s Notice Board`
+                }
+              >
+                {cardName(data, card)}
               </button>
-            )}
-            {special && (
-              <button className="payoff" onClick={() => play.send(special)}>
-                <b>Special Orders: £{data.rules.economy.visitPayout.twoCard}</b>
-                <span>two cards, the bigger prize - and no Helping Hand</span>
-              </button>
-            )}
-            {payoffs
-              .filter((m) => m.payoff.mode === 'worker')
-              .map((m) => {
-                const workerId = m.payoff.mode === 'worker' ? m.payoff.workerId : null;
-                const worker = workers.find((w) => w.id === workerId);
-                const track = worker ? workerTrack(data, worker) : null;
-                return (
-                  <button key={workerId} className="payoff" onClick={() => play.send(m)}>
-                    <b>Work their {workerName(data, workerId ?? 'draw')}</b>
-                    <span>
-                      {track?.actionText}
-                      {' - '}
-                      {(track?.wage ?? 0) > 0
-                        ? `your card lands on it, and the bank pays them £${track?.wage}`
-                        : 'your card lands on it, and rides into their barn'}
-                    </span>
-                  </button>
-                );
-              })}
+            ))}
           </div>
-        )}
-
-        {more.size > 0 && (
-          <p className="assembly-hint assembly-more">
-            A second card is worth £{data.rules.economy.visitPayout.twoCard}: click another card in
-            your hand.
-          </p>
-        )}
-        {board && !board.full && board.twoCard !== null && more.size === 0 && fee.length === 1 && (
-          <p className="assembly-hint">
-            Their board has room for one more card only, so the two-card prize is off.
-          </p>
         )}
 
         <div className="assembly-actions">
@@ -139,7 +120,9 @@ export function VisitPanel({
             cancel
           </button>
           <span className="assembly-note">
-            Their farm is {SUIT_META[farm.suit].label}, and they hold £{farm.coins}.
+            {self
+              ? `Your own ${SUIT_META[farm.suit].label} farm. This spends your bonus slot exactly as a visit would.`
+              : `Their farm is ${SUIT_META[farm.suit].label}. They pay nothing and gain a card on their board; the bank pays nobody.`}
           </span>
         </div>
       </div>

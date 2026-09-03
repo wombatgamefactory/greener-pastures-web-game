@@ -1,9 +1,0 @@
-{
-  "name": "slot-and-door-v1",
-  "schemaVersion": 1,
-  "description": "The two arms of 2026-09-02 run TOGETHER, because separately each one fixes what the other breaks. Run for the co-designer session (wayfinder/co-designer-deck, ticket 06). bonus-any-time on its own moved visits per turn 0.26 to 0.46 and took the Draw Worker from FAIL to PASS, but pushed the coin flood the wrong way, 1.25 to 1.50. service-own-dear on its own did the reverse: the coin flood went 1.25 to 0.25 PASS while the hook did not move at all, 0.26 to 0.27, which also FALSIFIES the 0.62 figure the corpus carries for it - that number came from a 2026-08-08 run on data digest 6f94a172, a different game. So this arm asks the one question neither answers: does lifting the start-of-turn restriction while pricing the owner's own door recover the hook AND hold the coin economy? Read visits per turn and assertion 1 together; either one alone is not the result. NOTE the price here is GBP 3, which is what the existing overlay tests - the worklist records the proposal as GBP 2, and no arm has ever tested GBP 2.",
-  "set": {
-    "rules.turn.bonusAtStartOnly": false,
-    "workers.ownerActivationCost": 3
-  }
-}

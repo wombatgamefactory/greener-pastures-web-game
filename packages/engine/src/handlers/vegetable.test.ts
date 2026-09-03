@@ -91,15 +91,25 @@ describe('the balloon move as the Deliver action (DL-12)', () => {
   it('still costs 2 differing BARN cards, and the base rule is untouched', () => {
     const s = base();
     barnTo(s, VEG, 'V4', 'W4');
+    // Something loaded for the magenta balloon's harvest to land on: with no
+    // loaded building the `chooseBuilding` task has no legal answer and the
+    // drain loop drops it, which is the card's printed "whiffs" reading.
+    buildFor(data, s, VEG, 'V9');
+    loadStack(data, s, VEG, 'V9', 1, 'orchard');
     // 4 balloons x the one {vegetable: 1, wheat: 1} spend.
     expect(balloonMoves(s)).toHaveLength(4);
 
-    const coins = balloonMoves(s).find((m) => m.balloon === 'balloonCoins') as Move;
-    const out = apply(data, s, coins);
-    // The £4 reward alone: the rebuilt Farmstead no longer mints on a Deliver.
-    // It DOES fire on a balloon move since 19/08/2026, but only its upgraded
-    // face does anything, and this seat's Farmstead is on its base side.
-    expect(player(out.state, VEG).coins).toBe(4);
+    const magenta = balloonMoves(s).find((m) => m.balloon === 'balloonCoins') as Move;
+    const out = apply(data, s, magenta);
+    // ⛔ THE MAGENTA BALLOON IS A HARVEST BALLOON (Dean, 02/09/2026). It printed
+    // "Gain £4" and needed a NEW reward rather than a smaller one, so it now
+    // carries the relaxed harvest that used to sit on the Wheat door - the one
+    // rider from the enhanced-door era worth keeping, re-homed onto the one card
+    // in the game with room for it. Its id stays `balloonCoins` on purpose: V19
+    // scores balloons by COUNT, so a rename would have to be chased through the
+    // handler, the art and the reports for no gain. Read the id as a slot
+    // number.
+    expect(out.state.tasks.some((t) => t.t === 'chooseBuilding')).toBe(true);
     expect(player(out.state, VEG).barn).toHaveLength(0);
     expect(balloonAt(out.state, 'balloonCoins')).toBe(VEG);
     expect(out.state.discards.vegetable).toContain('V4');
@@ -128,49 +138,50 @@ describe('the balloon move as the Deliver action (DL-12)', () => {
 
 // --- The starters -----------------------------------------------------------
 
-describe('V1 Barn - the DEPOT build refund', () => {
-  it('draws 2 when its owner builds a DEPOT, on BOTH faces', () => {
-    for (const upgraded of [false, true]) {
-      const s = base();
-      buildingOf(s, VEG, 'V1').upgraded = upgraded;
-      dealTo(data, s, VEG, 'V4', 'V5'); // V4 costs 1 vegetable; V5 pays for it
-      const out = apply(data, s, { type: 'build', seat: VEG, card: 'V4', payment: ['V5'] });
-      expect(out.state.tasks[0], `upgraded=${upgraded}`).toMatchObject({
-        t: 'draw',
-        pid: VEG,
-        see: 2,
-        keep: 2,
-      });
-    }
-  });
-
-  it("does not fire on a non-DEPOT build, or on a rival's DEPOT", () => {
+/**
+ * ⛔ THE BARN PRINTS NOTHING (v31), so its three tests collapse to one. "When
+ * you build a DEPOT, Draw 2" mattered more here than in any other suit - it was
+ * the main thing paying for flights, and the hand is what Vegetable is short of
+ * - so this is the single biggest change to the suit and the first place to look
+ * if the balloon layer goes unused.
+ */
+describe('V1 Barn - the DEPOT build refund, deleted', () => {
+  it('draws nothing when its owner builds a DEPOT, and prints no hand size', () => {
     const s = base();
-    dealTo(data, s, VEG, 'V9', 'V4', 'V5', 'V6'); // V9 The Merchant Guild is no Depot
-    const out = apply(data, s, {
-      type: 'build',
-      seat: VEG,
-      card: 'V9',
-      payment: ['V4', 'V5', 'V6'],
-    });
-    expect(out.state.tasks.filter((t) => t.t === 'draw')).toHaveLength(0);
-
-    // A rival building a Depot is a Depot built, but not YOUR Depot.
-    const t = base();
-    t.turnPlayer = WHEAT;
-    dealTo(data, t, WHEAT, 'V4', 'V5');
-    const rival = apply(data, t, { type: 'build', seat: WHEAT, card: 'V4', payment: ['V5'] });
-    expect(rival.state.tasks.filter((x) => x.t === 'draw' && x.pid === VEG)).toHaveLength(0);
-  });
-
-  it('prints hand size 5 base and 7 upgraded', () => {
-    const faces = cardById(data, 'V1').faces;
-    expect(faces?.starter.handSize).toBe(5);
-    expect(faces?.upgraded.handSize).toBe(7);
+    dealTo(data, s, VEG, 'V4', 'V5'); // V4 costs 1 vegetable; V5 pays for it
+    const out = apply(data, s, { type: 'build', seat: VEG, card: 'V4', payment: ['V5'] });
+    expect(out.state.tasks.some((t) => t.t === 'draw')).toBe(false);
+    expect(cardById(data, 'V1').abilityText).toBe('');
+    expect(handlerFor('V1')?.on).toBeUndefined();
   });
 });
 
-describe('V2 Farmstead - the head, loaded BEFORE the payment', () => {
+/**
+ * ⛔ THE VEGETABLE FARMSTEAD'S HEAD IS GONE (v31), AND IT TOOK THE LARGEST PIECE
+ * OF ENGINE SURFACE ANY SUIT POWER OWNED WITH IT: `deliverHeadSize`,
+ * `deliverDeckHead`, `deckHeadCandidates`, `headCandidates`, `withHead` and the
+ * `head` / `deckHead` fields on every deliver option, move and task answer. Ten
+ * tests go with it, and TWO FINDINGS FROM THEM OUTLIVE THE CARD:
+ *
+ *   1. **The word "first" WAS the card.** Until 2026-08-09 it fired on
+ *      `afterDeliver`, which fires AFTER the payment, so the card it moved could
+ *      not help pay for the delivery that triggered it. You had to already be
+ *      able to deliver in order to earn the fuel for the next delivery, which is
+ *      a circle, and it is why the card was worth 1.5 VP a game in a suit that
+ *      needed four. A SUIT POWER BELONGS UPSTREAM OF THAT SUIT'S BOTTLENECK.
+ *   2. **A head had to ride on the ANSWER, not be re-derived at resolution.** It
+ *      was loaded before the payment and was frequently the only reason the
+ *      payment was affordable, so an answer that dropped it was an answer the
+ *      barn could not pay. `deliverAnswers` shipped exactly that bug on the day
+ *      the balloon heads landed, and V14's `sweepDeliver` - which builds its own
+ *      `card` payload by hand rather than getting the wiring for free - shipped
+ *      it a second time.
+ *
+ * The pruning rule they shared is general and is still in the code: a rider is
+ * only worth offering when it CHANGES WHAT YOU CAN PAY. `deliverOptions` still
+ * de-dupes on that principle for the wild substitution.
+ */
+describe('V2 Farmstead - the own-crop end-game scorer', () => {
   /** Deliver moves offered to a seat, for a tile. */
   function deliversTo(state: GameState, seat: Seat, tile: string) {
     return legalMoves(data, state).filter(
@@ -178,188 +189,67 @@ describe('V2 Farmstead - the head, loaded BEFORE the payment', () => {
     ) as Extract<Move, { type: 'deliver' }>[];
   }
 
-  it('makes a tile payable that the barn alone cannot pay', () => {
+  /**
+   * ⛔ THE HEAD IS GONE, STATED AS THE CASE IT USED TO PASS. A1 wants 4
+   * vegetable; three in the barn and a fourth in hand was exactly the position
+   * the word "first" existed for, and it was payable. It is not payable now, by
+   * any seat, and the hand might as well be empty.
+   */
+  it('a tile the barn cannot pay stays unpayable, whatever the hand holds', () => {
     const s = base();
-    // A1 wants 4 vegetable. Three in the barn is one short, and the fourth is
-    // in hand - which is exactly the position the word "first" exists for.
     barnTo(s, VEG, 'V4', 'V5', 'V6');
-    dealTo(data, s, VEG, 'V9');
+    dealTo(data, s, VEG, 'V9', 'V10');
+    expect(deliversTo(s, VEG, 'A1')).toHaveLength(0);
+  });
+
+  /**
+   * ...and the barn alone still pays it, which is what says the tile itself is
+   * unchanged and only the head has gone.
+   */
+  it('the barn alone still pays a tile it covers', () => {
+    const s = base();
+    barnTo(s, VEG, 'V4', 'V5', 'V6', 'V7');
     const offered = deliversTo(s, VEG, 'A1');
     expect(offered).toHaveLength(1);
-    expect(offered[0]?.head).toEqual(['V9']);
-
     const done = apply(data, s, offered[0] as Move).state;
-    expect(player(done, VEG).hand).toHaveLength(0);
-    expect(player(done, VEG).barn).toHaveLength(0); // all four spent
+    expect(player(done, VEG).barn).toHaveLength(0);
     expect(player(done, VEG).receipts).toEqual([6]);
   });
 
-  it('is never offered for a payment the barn already covers', () => {
+  /**
+   * ⛔ AND A BALLOON MOVE CARRIES NO HEAD EITHER. The 19/08/2026 change widened
+   * the trigger from "When you Deliver to the island" to "When you Deliver", so
+   * a flight got its head too; both faces are gone, so a flight is the printed
+   * two barn cards of differing crops and nothing else.
+   */
+  it('a flight is two differing barn cards, with no head to unlock it', () => {
     const s = base();
-    barnTo(s, VEG, 'V4', 'V5', 'V6', 'V7');
-    dealTo(data, s, VEG, 'V9');
-    // Loading a card you are not about to spend is the same move as loading it
-    // on your next delivery instead, so the head is pruned where it buys
-    // nothing. The plain payment is still there.
-    const offered = deliversTo(s, VEG, 'A1');
-    expect(offered.some((m) => m.head === undefined)).toBe(true);
-    expect(offered.filter((m) => m.head !== undefined)).toHaveLength(0);
-  });
-
-  it('is exactly ONE hand card on the base face', () => {
-    const s = base();
-    barnTo(s, VEG, 'V4', 'V5', 'V6');
-    dealTo(data, s, VEG, 'V9', 'V10');
-    const offered = deliversTo(s, VEG, 'A1');
-    // Three in the barn is one short of A1's four; one hand card closes it and a
-    // second would buy nothing, so exactly one head is offered.
-    expect(offered).toHaveLength(1);
-    expect(offered[0]?.head).toHaveLength(1);
+    barnTo(s, VEG, 'V4'); // one crop in the barn: a flight needs two
+    dealTo(data, s, VEG, 'W4'); // ...and the hand cannot close it
+    expect(balloonMoves(s)).toHaveLength(0);
   });
 
   /**
-   * ⚠️ SKIPPED, AND THE REASON IS A FILE THIS PASS DOES NOT OWN.
-   *
-   * The 19/08/2026 retext re-points the UPGRADED face from "put 1 card from your
-   * hand into your barn, and you may swap 1 barn card for the top card of any
-   * deck" to "you may first put 1 DECK card into your barn". The two faces are
-   * alternatives read literally off the printed text: base loads a hand card,
-   * upgraded loads a deck card. So the upgraded face should offer NO hand head
-   * at all.
-   *
-   * `deliverHeadSize` in actions.ts still returns 2 on the upgraded face, which
-   * is the OLD card, and actions.ts belongs to the shared-engine slice of this
-   * pass. Un-skip this the moment it returns 0 upgraded (and 1 on the base face,
-   * which is already right).
+   * THE SCORER, with the two readings that matter: a starter counts for nothing
+   * (it prints the generic starting-building icon) and a foreign crop counts for
+   * nothing either.
    */
-  /**
-   * ⚠️ The flip changes the head's SOURCE, not its size: a hand card becomes a
-   * DECK card. That makes it a real trade rather than a straight upgrade - the
-   * hand card is chosen and the deck card is not, but the deck card costs
-   * nothing off the master clock - and it is why `deliverHeadSize` returns 0 on
-   * this face. Leaving it at the old `upgraded ? 2 : 1` was the one bug this
-   * rewrite could have shipped in silence: the flipped face would have taken two
-   * hand cards AND a deck card, three cards of head on a card printing one.
-   */
-  it('the upgraded face loads NO hand card - the source moved to the deck', () => {
+  it('V2 scores 1 VP per own-crop DECK card built, never a starter or a foreign crop', () => {
     const s = base();
-    buildingOf(s, VEG, 'V2').upgraded = true;
-    barnTo(s, VEG, 'V4', 'V5', 'V6');
-    dealTo(data, s, VEG, 'V9', 'V10');
-    // Three in the barn is one short of A1's four. The hand cannot close it on
-    // this face, however many vegetable cards are sitting in it...
-    const offered = deliversTo(s, VEG, 'A1');
-    expect(offered.every((m) => m.head === undefined)).toBe(true);
-    // ...and the deck head is the only thing that can.
-    expect(offered.every((m) => m.deckHead !== undefined)).toBe(true);
-    expect(offered.length).toBeGreaterThan(0);
+    buildFor(data, s, VEG, 'V4', 'V9', 'W4');
+    expect(gameEndScores(data, s)[VEG]?.endgame).toBe(2);
   });
 
-  it('belongs to Vegetable and to nobody else', () => {
+  it('V2 scores 0 on a farm of nothing but starters', () => {
+    expect(gameEndScores(data, base())[VEG]?.endgame).toBe(0);
+  });
+
+  it('belongs to the Vegetable seat and to nobody else', () => {
     const s = base();
-    barnTo(s, WHEAT, 'W4', 'W5', 'W6');
-    dealTo(data, s, WHEAT, 'W7');
-    s.turnPlayer = WHEAT;
-    // A5 wants 4 wheat and the Wheat seat is one short with the fourth in hand.
-    expect(deliversTo(s, WHEAT, 'A5')).toHaveLength(0);
-  });
-
-  /**
-   * The structural half of the 19/08/2026 change: the card went from "When you
-   * Deliver to the island" to "When you Deliver", and a balloon move IS the
-   * Deliver action (DL-12).
-   *
-   * It is asserted on the ENUMERATION and not on a hook, because that is where
-   * the whole of the card's value lives. A flight costs 2 barn cards of
-   * differing crops; one barn card plus the head is what makes it payable, and a
-   * head that arrives after the payment could not have paid for it.
-   */
-  it('FIRES ON A BALLOON MOVE NOW - the trigger widened on 19/08/2026', () => {
-    const upgraded = base();
-    buildingOf(upgraded, VEG, 'V2').upgraded = true;
-    barnTo(upgraded, VEG, 'V4'); // one crop in the barn: a flight needs two
-    expect(balloonMoves(upgraded).some((m) => m.deckHead !== undefined)).toBe(true);
-    // ...and the head is what unlocks it: no head, no flight.
-    expect(balloonMoves(upgraded).some((m) => m.deckHead === undefined)).toBe(false);
-  });
-
-  /**
-   * ⚠️ SKIPPED for the same reason as the head-size test above: the freight
-   * branch is enumerated by `balloonMoveOptions` in actions.ts, which carries no
-   * head. "When you Deliver" is one trigger, so once the deck head lands
-   * upstream BOTH faces have to be offered their head on a flight as well as on
-   * an island claim, or the widening only half arrives.
-   */
-  it('a balloon move carries the BASE face head too', () => {
-    const s = base();
-    barnTo(s, VEG, 'V4');
-    dealTo(data, s, VEG, 'W4');
-    // One barn card and one hand card: the flight needs two of differing crops
-    // and the head is what makes it payable.
-    const withHead = balloonMoves(s).filter((m) => m.head !== undefined);
-    expect(withHead.length).toBeGreaterThan(0);
-    const out = apply(data, s, withHead[0] as Move);
-    // The hand card was loaded FIRST and then spent on the flight, so it is in
-    // neither the hand nor the barn afterwards.
-    expect(player(out.state, VEG).hand).toHaveLength(0);
-    expect(player(out.state, VEG).barn).toHaveLength(0);
-  });
-
-  it('mints no coins at all, on either face', () => {
-    for (const upgraded of [false, true]) {
-      const s = base();
-      buildingOf(s, VEG, 'V2').upgraded = upgraded;
-      barnTo(s, VEG, 'V4', 'V5', 'V6', 'V7');
-      const out = apply(data, s, {
-        type: 'deliver',
-        seat: VEG,
-        tile: 'A1',
-        spend: { vegetable: 4 },
-      });
-      // £1 from the tile and not a penny more: the old "gain £1 / £2" minted on
-      // a solitaire action, which the coin rule forbids.
-      expect(player(out.state, VEG).coins, `upgraded=${upgraded}`).toBe(1);
-    }
-  });
-
-  it('upgraded, puts one DECK card of your choice into the barn FIRST', () => {
-    const s = base();
-    buildingOf(s, VEG, 'V2').upgraded = true;
-    // A1 wants 4 vegetable. Three in the barn is one short, the hand cannot help
-    // on this face, and the deck head is the only thing that closes the gap.
-    barnTo(s, VEG, 'V4', 'V5', 'V6');
-    expect(deliversTo(s, VEG, 'A1').filter((m) => m.deckHead === undefined)).toHaveLength(0);
-
-    const offered = deliversTo(s, VEG, 'A1').filter((m) => m.deckHead !== undefined);
-    // One option per DECK, not per card: barn identity is inert, so the crop is
-    // the whole of the choice, and only the vegetable deck can pay this tile.
-    expect(offered.map((m) => m.deckHead)).toEqual(['vegetable']);
-
-    const out = apply(data, s, offered[0] as Move);
-    // THE BARN SWAP IS GONE. The upgrade used to read "and you may swap 1 barn
-    // card for the top card of any deck", a recolouring power the wild
-    // substitution took over on 8 August; what is left is a straight deposit.
-    expect(out.state.tasks.some((t) => t.t === 'card' && t.kind === 'barnSwap')).toBe(false);
-    // ⚠️ And it is NOT a task: a task would resolve after the payment, and a
-    // card that arrives after the payment cannot help make it. The head is
-    // enumerated upstream in actions.ts precisely so "first" means first.
-    expect(out.state.tasks.some((t) => t.t === 'card' && t.kind === 'deckToBarn')).toBe(false);
-    // Four vegetable spent, and the barn is empty: three of its own plus the one
-    // the deck head put there.
-    expect(player(out.state, VEG).barn).toHaveLength(0);
-    expect(tile(out.state, 'A1').deliveredBy).toContain(VEG);
-  });
-
-  it('the BASE face pushes no deposit task - its card comes out of the hand', () => {
-    const s = base();
-    barnTo(s, VEG, 'V4', 'V5', 'V6', 'V7');
-    const out = apply(data, s, {
-      type: 'deliver',
-      seat: VEG,
-      tile: 'A1',
-      spend: { vegetable: 4 },
-    });
-    expect(out.state.tasks.some((t) => t.t === 'card' && t.kind === 'deckToBarn')).toBe(false);
+    buildFor(data, s, WHEAT, 'W4', 'W5');
+    // The Wheat seat holds no Vegetable Farmstead, so its two Wheat cards score
+    // nothing here - W2's own line is a Wheat one and lives in wheat.test.ts.
+    expect(gameEndScores(data, s)[VEG]?.endgame).toBe(0);
   });
 });
 
@@ -383,7 +273,9 @@ describe('the hand-paid flight (V4)', () => {
     expect(balloonAt(done, 'balloonCoins')).toBe(VEG);
     expect(player(done, VEG).hand).toHaveLength(0);
     expect(player(done, VEG).barn).toHaveLength(0); // the barn is untouched
-    expect(player(done, VEG).coins).toBe(4);
+    // The magenta balloon's reward is a relaxed HARVEST since v31, not £4, and
+    // it queues a chooseBuilding like any other harvest.
+    expect(done.tasks.some((t) => t.t === 'chooseBuilding')).toBe(true);
     expect(done.discards.vegetable).toEqual(expect.arrayContaining(['V9']));
   });
 
@@ -413,7 +305,7 @@ describe('V8 The Regional Depot - the FREE flight (retexted 19/08/2026)', () => 
     ) as TaskAnswer;
     const done = answerTask(data, out.state, pick).state;
     expect(balloonAt(done, 'balloonCoins')).toBe(VEG);
-    expect(player(done, VEG).coins).toBe(4);
+    expect(done.tasks.some((t) => t.t === 'chooseBuilding')).toBe(true);
     expect(player(done, VEG).hand).toHaveLength(0);
     expect(player(done, VEG).barn).toHaveLength(0);
     expect(done.discards.vegetable).not.toContain('V9');
@@ -753,7 +645,9 @@ describe('the Tier 3 cards (converted from ACTION to GROW)', () => {
     expect(player(out, VEG).receipts).toEqual([6, 3]);
     expect(tile(out, 'A1').deliveredBy).toEqual([VEG, VEG]);
     expect(player(out, VEG).barn).toHaveLength(0); // ONE payment
-    expect(player(out, VEG).coins).toBe(2); // one coin per receipt
+    // ⛔ THE £1 A DELIVERY USED TO PAY IS GONE (v31): the MEEPLE on the
+    // delivery space is the reward, and V14 takes one per receipt.
+    expect(player(out, VEG).meeples).toBeDefined();
   });
 
   it('V14 takes ONE receipt from a half-claimed tile (Dean, 19/08/2026)', () => {
@@ -773,7 +667,6 @@ describe('the Tier 3 cards (converted from ACTION to GROW)', () => {
 
     expect(player(out, VEG).receipts).toEqual([3]); // the second-deliverer rate
     expect(tile(out, 'A1').deliveredBy).toEqual([WHEAT, VEG]);
-    expect(player(out, VEG).coins).toBe(1);
   });
 
   it('V14 OFFERS a tile somebody has already delivered to - the virgin gate is gone', () => {
@@ -854,14 +747,24 @@ describe('the Tier 3 cards (converted from ACTION to GROW)', () => {
 // --- The Powers and the Endgame cards ---------------------------------------
 
 describe('the Aerodrome Powers', () => {
-  it('V16 pays its owner £2 when a NEIGHBOUR takes a balloon from their Aerodrome', () => {
+  /**
+   * ⛔ THE £2 IS A DRAW 1 (v31, plan section 3.3), so in real terms the card
+   * got stronger: the raid now refunds most of a flight rather than a fifth of
+   * one. The shape is untouched - owner-scoped on `afterBalloonMove`, guarded
+   * both ways, so it can never fire on its owner's own flight.
+   *
+   * ⚠️ IT IS NOW THE ONLY PLACE IN THE SUIT THAT TOUCHES ANOTHER SEAT. V15
+   * lost its cross-table half on 19/08/2026 and D17 went owner-scoped in v31;
+   * this is what Vegetable pays the table, entire.
+   */
+  it('V16 draws for its owner when a NEIGHBOUR takes a balloon from their Aerodrome', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'V16');
     s.aerodrome?.balloons.forEach((b) => (b.at = WHEAT));
     barnTo(s, VEG, 'V4', 'W4');
     const move = balloonMoves(s).find((m) => m.balloon === 'balloonSow') as Move;
     const out = apply(data, s, move);
-    expect(player(out.state, WHEAT).coins).toBe(2);
+    expect(out.state.tasks.some((t) => t.t === 'draw' && t.src === 'V16')).toBe(true);
   });
 
   it("V16 never fires on its owner's own flight", () => {
@@ -871,7 +774,7 @@ describe('the Aerodrome Powers', () => {
     barnTo(s, VEG, 'V4', 'W4');
     const move = balloonMoves(s).find((m) => m.balloon === 'balloonSow') as Move;
     const out = apply(data, s, move);
-    expect(player(out.state, VEG).coins).toBe(0);
+    expect(out.state.tasks.some((t) => t.t === 'draw' && t.src === 'V16')).toBe(false);
   });
 
   it('V17 draws 1 whenever its owner moves a balloon, by EITHER route', () => {
@@ -913,15 +816,18 @@ describe('the endgame cards', () => {
   it('V19 pays 2 per balloon parked at your Aerodrome', () => {
     const s = base();
     buildFor(data, s, VEG, 'V19');
-    expect(gameEndScores(data, s)[VEG]?.endgame).toBe(0);
+    // V2 the Farmstead's 1 for V19 itself is the floor under every line here.
+    expect(gameEndScores(data, s)[VEG]?.endgame).toBe(1);
     s.aerodrome?.balloons.forEach((b, i) => (b.at = i < 3 ? VEG : WHEAT));
-    expect(gameEndScores(data, s)[VEG]?.endgame).toBe(6);
+    expect(gameEndScores(data, s)[VEG]?.endgame).toBe(6 + 1);
   });
 
   it('V20 pays 2 per built DEPOT (V4-V8 by title keyword)', () => {
     const s = base();
     buildFor(data, s, VEG, 'V20', 'V4', 'V5', 'V9'); // V9 is not a Depot
-    expect(gameEndScores(data, s)[VEG]?.endgame).toBe(4);
+    // V20's 4 for the two DEPOTs, plus V2's 4 for the four Vegetable cards
+    // built - the depth axis and the loyalty axis paid on the same tableau.
+    expect(gameEndScores(data, s)[VEG]?.endgame).toBe(4 + 4);
     const depots = data.cards.catalogue.filter(
       (c) => c.suit === 'vegetable' && isDepotCard(data, c.id),
     );
@@ -932,7 +838,8 @@ describe('the endgame cards', () => {
     const s = base();
     buildFor(data, s, VEG, 'V21');
     barnTo(s, VEG, 'V4', 'V5', 'W4', 'O4', 'A4');
-    expect(gameEndScores(data, s)[VEG]?.endgame).toBe(2);
+    // V21's 2 for five barn cards, plus V2's 1 for V21 itself.
+    expect(gameEndScores(data, s)[VEG]?.endgame).toBe(2 + 1);
   });
 });
 

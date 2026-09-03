@@ -14,16 +14,20 @@ import {
   KNOB_TEMPLATES,
   OVERLAY_SCHEMA_VERSION,
   OverlayError,
+  SUITS,
   activeCards,
   applyOverlay,
   deadTemplates,
   deliveriesPerTile,
   deliveryCost,
   deliveryVp,
+  doorForSuit,
   expandSweep,
   flatten,
   listKnobs,
   loadGameData,
+  meepleAction,
+  meeplesDealt,
   validateOverlay,
 } from './index.js';
 import type { Overlay, SweepFile } from './index.js';
@@ -35,10 +39,10 @@ const overlay = (set: Overlay['set'], name = 'test'): Overlay => ({
 });
 
 describe('the extract', () => {
-  // ⭐ CHANGE 6 (20/08/2026): 105, not 110. The five SERVICE starters were
-  // synthesised into the catalogue by `withServices`; the door merged into the
-  // Notice Board, so the catalogue is now exactly the sheet - 15 starters
-  // (Barn, Farmstead, Notice Board) and 90 deck cards.
+  // 105, not 110. The five SERVICE starters used to be synthesised into the
+  // catalogue; the door merged into the Notice Board (change 6, 20/08/2026), so
+  // the catalogue is now exactly the sheet - 15 starters (Barn, Farmstead,
+  // Notice Board) and 90 deck cards.
   it('holds 105 cards: 15 starters and 90 shuffled', () => {
     const cards = BASE_GAME_DATA.cards.catalogue;
     expect(cards).toHaveLength(105);
@@ -69,6 +73,35 @@ describe('the extract', () => {
     }
   });
 
+  // ⭐ v31: starters print ONE face. `faces`, `handSize` and `upgradeCostCoins`
+  // left the schema together with the upgrade layer, and a re-extract that
+  // brought any of them back would silently restore a rule the game does not
+  // have. Assert on the shape, not on a version number.
+  it('prints one face per card, with no upgrade layer left anywhere', () => {
+    for (const card of BASE_GAME_DATA.cards.catalogue) {
+      const shape = card as unknown as Record<string, unknown>;
+      expect(shape['faces'], card.id).toBeUndefined();
+      expect(shape['handSize'], card.id).toBeUndefined();
+      expect(shape['upgradeCostCoins'], card.id).toBeUndefined();
+    }
+  });
+
+  it('prints 0 VP on all fifteen starters', () => {
+    for (const card of BASE_GAME_DATA.cards.catalogue.filter((c) => c.type === 'starter')) {
+      expect(card.printedVp, card.id).toBe(0);
+    }
+  });
+
+  // The Barn is the one card in the game that prints nothing at all. It stopped
+  // printing a hand size in v31 (there is no hand limit) and its build rider was
+  // deleted rather than moved, so an empty string here is the correct state and
+  // any text arriving in it is a card change nobody declared.
+  it('leaves every Barn blank', () => {
+    const barns = BASE_GAME_DATA.cards.catalogue.filter((c) => c.slot === 'barn');
+    expect(barns).toHaveLength(5);
+    for (const barn of barns) expect(barn.abilityText, barn.id).toBe('');
+  });
+
   it('has unique card ids', () => {
     const ids = BASE_GAME_DATA.cards.catalogue.map((c) => c.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -87,11 +120,12 @@ describe('the extract', () => {
 
   it('records provenance on every file', () => {
     for (const [name, file] of Object.entries(BASE_GAME_DATA)) {
-      // A positive integer, not a fixed 1: island.json went to 2 when the flat
-      // island (2026-08-09) changed its shape incompatibly - levelRules out,
-      // tileRule and vpByDeliveryOrder in. Nothing reads the number, so it is a
-      // signal to whoever opens the file, and a file whose shape breaks should
-      // say so rather than keep a stamp that no longer means anything.
+      // A positive integer, not a fixed 1: the authored files bump when their
+      // shape changes incompatibly (island.json went to 2 for the flat island
+      // and to 3 for the meeples; rules, workers and aerodrome went to 2 for
+      // v31). Nothing reads the number - it is a signal to whoever opens the
+      // file, and a file whose shape breaks should say so rather than keep a
+      // stamp that no longer means anything.
       expect(Number.isInteger(file.meta.schemaVersion), name).toBe(true);
       expect(file.meta.schemaVersion, name).toBeGreaterThan(0);
       expect(['generated', 'authored'], name).toContain(file.meta.kind);
@@ -100,6 +134,70 @@ describe('the extract', () => {
     // stale extract can be spotted against the sheet it came from.
     expect(BASE_GAME_DATA.cards.meta.kind).toBe('generated');
     expect(BASE_GAME_DATA.cards.meta.sourceSha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+
+// ⭐ THE v31 DRIFT GUARD, and the most valuable test in this file for the next
+// few months. Coins were removed from the game on 02/09/2026, and the way they
+// come back is not a decision - it is one key surviving a merge, or an old
+// overlay being restored, or a re-extract from a sheet that still prints a coin
+// icon. So assert on the whole tree rather than on a list of known keys.
+describe('there are no coins', () => {
+  const COIN = /coin/i;
+
+  // Two paths are allowed to say "coin" and neither is a currency:
+  //  - island.tileRule.coinsPerDelivery is a TOMBSTONE pinned at 0, kept because
+  //    the v31 plan named the key rather than deleting it;
+  //  - the magenta balloon keeps the id `balloonCoins` on purpose, because V19
+  //    The Sky Market scores by balloon COUNT and a rename would have to be
+  //    chased through the handler, the art and the reports for no gain.
+  // Anything else matching is a currency creeping back in.
+  const BALLOON_ID = 'aerodrome.balloons.balloonCoins.';
+
+  it('names no coin anywhere in the data, bar two declared tombstones', () => {
+    const offenders = [...flatten(BASE_GAME_DATA).keys()]
+      .filter((path) => COIN.test(path))
+      .filter((path) => !path.startsWith(BALLOON_ID))
+      .sort();
+    expect(offenders).toEqual(['island.tileRule.coinsPerDelivery']);
+    expect(BASE_GAME_DATA.island.tileRule.coinsPerDelivery).toBe(0);
+    // And the balloon that keeps the name has stopped paying money.
+    expect(
+      BASE_GAME_DATA.aerodrome.balloons.find((b) => b.id === 'balloonCoins')?.reward.type,
+    ).toBe('harvestAny');
+  });
+
+  it('offers no knob that could mint one', () => {
+    expect(KNOB_TEMPLATES.filter((t) => COIN.test(t.template))).toEqual([]);
+  });
+
+  it('prices no build in coins', () => {
+    for (const card of BASE_GAME_DATA.cards.catalogue) {
+      if (!card.buildCost) continue;
+      expect(Object.keys(card.buildCost).sort(), card.id).toEqual(['suit', 'wild']);
+    }
+  });
+});
+
+describe('the turn', () => {
+  // Draw 2, keep both. The discard was the last piece of hidden bookkeeping in
+  // the core five actions and v31 deleted it; `keep` below `see` would restore
+  // it silently.
+  it('keeps every card a plain Draw reveals', () => {
+    const { see, keep } = BASE_GAME_DATA.rules.turn.baseDraw;
+    expect(see).toBe(2);
+    expect(keep).toBe(see);
+  });
+
+  it('starts a seat with four cards and an empty barn', () => {
+    expect(BASE_GAME_DATA.rules.setup.startingHand).toBe(4);
+    expect(BASE_GAME_DATA.rules.setup.startingBarnCards).toBe(0);
+  });
+
+  it('arms the self-visit, which is risk 2 and must be visible in the data', () => {
+    expect(BASE_GAME_DATA.rules.turn.selfVisitAllowed).toBe(true);
+    const solitaire = loadGameData(overlay({ 'rules.turn.selfVisitAllowed': false }));
+    expect(solitaire.rules.turn.selfVisitAllowed).toBe(false);
   });
 });
 
@@ -157,51 +255,123 @@ describe('the island', () => {
   });
 });
 
-describe('the suit Services', () => {
-  it('has one Service per core action', () => {
+describe('the meeples', () => {
+  // poolSize is stored rather than derived precisely so that an overlay moving
+  // perColour has to move it too. This assertion is the whole reason it is not
+  // a computed getter: half-changing the bag fails here rather than in a run.
+  it('keeps the stated pool size and the composition in agreement', () => {
+    const { perColour, colours, poolSize } = BASE_GAME_DATA.island.meeples;
+    expect(poolSize).toBe(perColour * colours.length);
+    expect([...colours].sort()).toEqual([...SUITS].sort());
+  });
+
+  // The bag is dealt from all five colours whatever the seat count, because a
+  // meeple's action exists whether or not its suit is at the table. That is a
+  // ruling, and it is the reason `colours` is not derived from the decks in play.
+  it('deals from all five colours regardless of the decks in play', () => {
+    expect(BASE_GAME_DATA.island.meeples.colours).toHaveLength(5);
+    for (const colour of BASE_GAME_DATA.island.meeples.colours) {
+      expect(meepleAction(BASE_GAME_DATA, colour), colour).toBeDefined();
+    }
+  });
+
+  // 12 / 18 / 24 against a bag of 25. The 4-seat board draws 24 of 25, which is
+  // why its colour mix is near-deterministic and the 2-seat one is not - see the
+  // note in island.json and overlays/meeple-pool-deep-v1.overlay.json.
+  it('has a bag deep enough for the biggest board', () => {
+    expect(meeplesDealt(BASE_GAME_DATA, 2)).toBe(12);
+    expect(meeplesDealt(BASE_GAME_DATA, 3)).toBe(18);
+    expect(meeplesDealt(BASE_GAME_DATA, 4)).toBe(24);
+    for (const seats of [2, 3, 4]) {
+      expect(meeplesDealt(BASE_GAME_DATA, seats), `${seats} seats`).toBeLessThanOrEqual(
+        BASE_GAME_DATA.island.meeples.poolSize,
+      );
+    }
+  });
+
+  it('seeds one meeple per delivery space, face up', () => {
+    expect(BASE_GAME_DATA.island.meeples.perDeliverySpace).toBe(1);
+    expect(BASE_GAME_DATA.island.meeples.faceUpAtSetup).toBe(true);
+  });
+});
+
+describe('the five doors', () => {
+  it('has one door per core action', () => {
     const actions = BASE_GAME_DATA.workers.roster.map((w) => w.action).sort();
     expect(actions).toEqual(['build', 'deliver', 'draw', 'harvest', 'sow']);
   });
 
-  it('gives every suit exactly one Service, and every Service one suit', () => {
+  it('gives every suit exactly one door, and every door one suit', () => {
     const suits = BASE_GAME_DATA.workers.roster.map((w) => w.linkedSuit).sort();
     expect(suits).toEqual([...BASE_GAME_DATA.cards.suits].sort());
-  });
-
-  // ⭐ REPLACES 'prints a Service starter per suit' (change 6, 20/08/2026).
-  // There is no Service CARD to assert about any more. What has to stay true is
-  // the inverse: nothing synthesises one back, and the door lives on a Notice
-  // Board that is a real extracted row with a real printed threshold.
-  it('has no Service card, and every door is a Notice Board', () => {
-    expect(BASE_GAME_DATA.cards.catalogue.filter((c) => c.slot === 'service')).toHaveLength(0);
-    for (const svc of BASE_GAME_DATA.workers.roster) {
-      const board = BASE_GAME_DATA.cards.catalogue.find(
-        (c) => c.suit === svc.linkedSuit && c.slot === 'noticeboard',
-      );
-      expect(board, svc.id).toBeDefined();
-      // The door's threshold is the Notice Board's PRINTED one now, not
-      // workers.serviceThreshold, and it is the balance lever - see
-      // overlays/noticeboard-threshold.sweep.json.
-      expect(board?.faces?.starter.threshold, svc.id).toBeGreaterThan(0);
-      // Still never a Grow target - but by its SLOT, not by a null activation
-      // type: the Notice Board prints `wild` (it takes any crop as a visit fee)
-      // and `growOptions` / `activateOnly` both refuse `slot === 'noticeboard'`
-      // outright. That is the guard the merge relies on, so assert the slot.
-      expect(board?.slot, svc.id).toBe('noticeboard');
+    for (const suit of BASE_GAME_DATA.cards.suits) {
+      expect(doorForSuit(BASE_GAME_DATA, suit), suit).toBeDefined();
     }
   });
 
-  it('keeps the Draw Service card-POSITIVE, which is the whole self-cancellation law', () => {
-    // A visit is paid with 1 card, so the Service must hand back more than 1 or
-    // buying it is net zero and nobody ever visits it. The law is about VOLUME,
-    // not selection: 'Draw 2' satisfies it exactly as 'Draw 3, keep 2' did, and
-    // the selection was measured doing nothing (2026-08-09). Tidy this to Draw 1
-    // and the Service becomes worthless to visit overnight.
-    const draw = BASE_GAME_DATA.workers.roster.find((w) => w.id === 'draw');
+  // There is no Service CARD and nothing may synthesise one back. The door lives
+  // on a Notice Board, which is a real extracted row with a real printed
+  // threshold, and it is never a Grow target - guarded by its SLOT rather than
+  // by a null activation type, because the Board prints `wild` (it takes any
+  // crop as a visit fee).
+  it('has no Service card, and every door is a Notice Board', () => {
+    expect(
+      BASE_GAME_DATA.cards.catalogue.filter((c) => (c.slot as string | undefined) === 'service'),
+    ).toHaveLength(0);
+    for (const door of BASE_GAME_DATA.workers.roster) {
+      const board = BASE_GAME_DATA.cards.catalogue.find(
+        (c) => c.suit === door.linkedSuit && c.slot === 'noticeboard',
+      );
+      expect(board, door.id).toBeDefined();
+      expect(board?.threshold, door.id).toBeGreaterThan(0);
+      expect(board?.activationType, door.id).toBe('wild');
+      expect(board?.slot, door.id).toBe('noticeboard');
+    }
+  });
+
+  // ⭐ THE ONE EXCEPTION, AND THE REASON IT EXISTS. A visitor pays 1 card, and
+  // the bonus slot's other option is a free Draw of `bonusDraw`. A door that
+  // nets no more than the free option is strictly worse than its own
+  // alternative and takes no traffic. Draw 3 nets +2 against the free +1.
+  it('keeps the Orchard door card-POSITIVE against the free bonus draw', () => {
+    const door = BASE_GAME_DATA.workers.roster.find((w) => w.id === 'draw');
     const fee = 1;
-    expect(draw?.draw?.keep ?? 0).toBeGreaterThan(fee);
+    const net = (door?.draw?.keep ?? 0) - fee;
+    expect(net).toBeGreaterThan(BASE_GAME_DATA.rules.turn.bonusDraw);
     // See can equal keep (a plain draw); it may never be less.
-    expect(draw?.draw?.see ?? 0).toBeGreaterThanOrEqual(draw?.draw?.keep ?? 0);
+    expect(door?.draw?.see ?? 0).toBeGreaterThanOrEqual(door?.draw?.keep ?? 0);
+  });
+
+  // The other four doors are PLAIN. Every enhancement went in v31, because the
+  // bonus slot itself became the enhancement, and a rider quietly reappearing
+  // here is a design change nobody declared.
+  it('carries no enhancement on any door but the Orchard one', () => {
+    for (const door of BASE_GAME_DATA.workers.roster) {
+      const shape = door as unknown as Record<string, unknown>;
+      expect(shape['relaxedMin'], door.id).toBeUndefined();
+      expect(shape['handToBarn'], door.id).toBeUndefined();
+      expect(shape['build'], door.id).toBeUndefined();
+      if (door.id !== 'draw') expect(shape['draw'], door.id).toBeUndefined();
+    }
+  });
+
+  // Ruled knowingly (02/09/2026) and recorded as the weakest door on the table:
+  // the visitor pays a card onto the board and a second into the sow. If this
+  // ever goes back to 'deck', it is the fix being applied and not a typo.
+  it('sows the Apiary door from the hand', () => {
+    const sow = BASE_GAME_DATA.workers.roster.find((w) => w.id === 'sow');
+    expect(sow?.sow).toEqual({ amount: 1, from: 'hand' });
+  });
+});
+
+describe('the aerodrome', () => {
+  it('gives the magenta balloon a harvest instead of coins, keeping its id for V19', () => {
+    const balloon = BASE_GAME_DATA.aerodrome.balloons.find((b) => b.id === 'balloonCoins');
+    expect(balloon?.reward.type).toBe('harvestAny');
+    // A permission has no size. An `amount` appearing here means somebody has
+    // quietly turned it back into a quantity.
+    expect(balloon?.reward.amount).toBeUndefined();
+    expect(BASE_GAME_DATA.aerodrome.balloons).toHaveLength(4);
   });
 });
 
@@ -217,14 +387,31 @@ describe('the knob registry', () => {
     }
   });
 
-  it('gives each card its own knobs', () => {
+  it('gives each card its own knobs, one path shorter than it used to be', () => {
     const knobs = listKnobs(BASE_GAME_DATA).map((k) => k.path);
     expect(knobs).toContain('cards.catalogue.W7.threshold');
     expect(knobs).toContain('cards.catalogue.W7.buildCost.suit');
     expect(knobs).toContain('cards.catalogue.W7.enabled');
-    // Barn faces print a hand size; Farmstead faces do not, so no knob exists.
-    expect(knobs).toContain('cards.catalogue.W1.faces.starter.handSize');
-    expect(knobs).not.toContain('cards.catalogue.W2.faces.starter.handSize');
+    // The Notice Board's threshold is now an ordinary card knob with no face
+    // segment, because starters are single-faced.
+    expect(knobs).toContain('cards.catalogue.W3.threshold');
+    expect(knobs.some((p) => p.includes('.faces.'))).toBe(false);
+  });
+
+  it('exposes the levers v31 introduced', () => {
+    const knobs = listKnobs(BASE_GAME_DATA).map((k) => k.path);
+    for (const path of [
+      'rules.turn.bonusDraw',
+      'rules.turn.selfVisitAllowed',
+      'rules.economy.noticeBoardThreshold',
+      'rules.endGame.deliveriesToTrigger',
+      'rules.setup.startingHand',
+      'island.meeples.perColour',
+      'island.meeples.poolSize',
+      'workers.roster.draw.draw.keep',
+    ]) {
+      expect(knobs, path).toContain(path);
+    }
   });
 
   it('offers no way to change printed wording', () => {
@@ -240,22 +427,16 @@ describe('the knob registry', () => {
 
 describe('applying an overlay', () => {
   it('replaces a leaf and leaves the rest alone', () => {
-    const free = loadGameData(overlay({ 'workers.ownerActivationCost': 0 }));
-    expect(free.workers.ownerActivationCost).toBe(0);
-    expect(free.workers.visitWage).toBe(BASE_GAME_DATA.workers.visitWage);
-    expect(BASE_GAME_DATA.workers.ownerActivationCost).toBe(1);
+    const loose = loadGameData(overlay({ 'rules.economy.noticeBoardThreshold': 4 }));
+    expect(loose.rules.economy.noticeBoardThreshold).toBe(4);
+    expect(loose.rules.turn.bonusDraw).toBe(BASE_GAME_DATA.rules.turn.bonusDraw);
+    expect(BASE_GAME_DATA.rules.economy.noticeBoardThreshold).toBe(2);
   });
 
-  // ⭐ REPLACES 'reaches the synthesised Service faces' (change 6). Nothing is
-  // synthesised any more, so the thing to prove is that the door's threshold is
-  // reachable as an ORDINARY CARD KNOB on the Notice Board's printed face.
   it("reaches the door's threshold on the Notice Board's printed face", () => {
-    const tight = loadGameData(overlay({ 'cards.catalogue.W3.faces.starter.threshold': 3 }));
-    const board = tight.cards.catalogue.find((c) => c.id === 'W3');
-    expect(board?.faces?.starter.threshold).toBe(3);
-    expect(
-      BASE_GAME_DATA.cards.catalogue.find((c) => c.id === 'W3')?.faces?.starter.threshold,
-    ).not.toBe(3);
+    const tight = loadGameData(overlay({ 'cards.catalogue.W3.threshold': 3 }));
+    expect(tight.cards.catalogue.find((c) => c.id === 'W3')?.threshold).toBe(3);
+    expect(BASE_GAME_DATA.cards.catalogue.find((c) => c.id === 'W3')?.threshold).not.toBe(3);
   });
 
   it('switches a card out', () => {
@@ -265,19 +446,43 @@ describe('applying an overlay', () => {
   });
 
   it('accepts null where a knob nulls out a rule', () => {
-    // The base rule is already null (ticket 37), so the null case is asserted
-    // against the shipped data and the overlay proves the knob can put it back.
-    expect(BASE_GAME_DATA.rules.economy.coinPityDivisor).toBeNull();
-    const withPity = loadGameData(overlay({ 'rules.economy.coinPityDivisor': 5 }));
-    expect(withPity.rules.economy.coinPityDivisor).toBe(5);
-    const noPity = loadGameData(overlay({ 'rules.economy.coinPityDivisor': null }));
-    expect(noPity.rules.economy.coinPityDivisor).toBeNull();
+    // The wild substitution is the surviving intOrNull rule switch: null
+    // restores exact matching at the island, which is its control arm.
+    expect(BASE_GAME_DATA.island.cardsPerSubstitution).toBe(2);
+    const exact = loadGameData(overlay({ 'island.cardsPerSubstitution': null }));
+    expect(exact.island.cardsPerSubstitution).toBeNull();
+    const loose = loadGameData(overlay({ 'island.cardsPerSubstitution': 3 }));
+    expect(loose.island.cardsPerSubstitution).toBe(3);
   });
 
   it('rejects an unknown path rather than silently doing nothing', () => {
     expect(() => validateOverlay(overlay({ 'workers.hireCost': 1 }), BASE_GAME_DATA)).toThrow(
       OverlayError,
     );
+  });
+
+  // Every one of these was a real knob before 02/09/2026. An old overlay that
+  // still names one must fail loudly, because applying it silently would measure
+  // a game that no longer exists.
+  it('rejects every knob v31 deleted', () => {
+    for (const path of [
+      'rules.setup.startingCoins',
+      'rules.turn.buyCost',
+      'rules.turn.marketCost',
+      'rules.turn.upgradeIsBonus',
+      'rules.economy.upgradeCostCoins',
+      'rules.economy.coinPityDivisor',
+      'rules.economy.visitPayout.base',
+      'rules.economy.giftDiscardCoins',
+      'workers.serviceThreshold',
+      'workers.ownerActivationCost',
+      'workers.visitWage',
+      'workers.roster.deliver.handToBarn',
+    ]) {
+      expect(() => validateOverlay(overlay({ [path]: 1 }), BASE_GAME_DATA), path).toThrow(
+        OverlayError,
+      );
+    }
   });
 
   it('rejects a card the extract no longer has', () => {
@@ -293,7 +498,7 @@ describe('applying an overlay', () => {
   });
 
   it('rejects a type mismatch', () => {
-    expect(() => validateOverlay(overlay({ 'workers.visitWage': 1.5 }), BASE_GAME_DATA)).toThrow(
+    expect(() => validateOverlay(overlay({ 'rules.turn.bonusDraw': 1.5 }), BASE_GAME_DATA)).toThrow(
       /is int/,
     );
   });
@@ -317,7 +522,7 @@ describe('applying an overlay', () => {
 
   it('does not mutate the data it was given', () => {
     const before = JSON.stringify(BASE_GAME_DATA.workers);
-    applyOverlay(BASE_GAME_DATA, overlay({ 'workers.visitWage': 4 }));
+    applyOverlay(BASE_GAME_DATA, overlay({ 'workers.roster.draw.draw.keep': 4 }));
     expect(JSON.stringify(BASE_GAME_DATA.workers)).toBe(before);
   });
 });
@@ -330,21 +535,23 @@ describe('sweeps', () => {
     ...file,
   });
 
-  it('turns twenty hire prices into twenty overlays from one file', () => {
+  it('turns twenty end triggers into twenty overlays from one file', () => {
     const values = Array.from({ length: 20 }, (_, i) => i + 1);
-    const cells = expandSweep(sweep({ sweep: [{ knob: 'workers.hireFee', values }] }));
+    const cells = expandSweep(
+      sweep({ sweep: [{ knob: 'rules.endGame.deliveriesToTrigger', values }] }),
+    );
     expect(cells).toHaveLength(20);
-    expect(cells[0]?.overlay.set['workers.hireFee']).toBe(1);
-    expect(cells[19]?.overlay.set['workers.hireFee']).toBe(20);
-    expect(cells[19]?.label).toBe('workers.hireFee=20');
+    expect(cells[0]?.overlay.set['rules.endGame.deliveriesToTrigger']).toBe(1);
+    expect(cells[19]?.overlay.set['rules.endGame.deliveriesToTrigger']).toBe(20);
+    expect(cells[19]?.label).toBe('rules.endGame.deliveriesToTrigger=20');
   });
 
   it('takes the cross product of several axes', () => {
     const cells = expandSweep(
       sweep({
         sweep: [
-          { knob: 'workers.hireFee', values: [1, 2, 3] },
-          { knob: 'rules.economy.visitPayout.base', values: [1, 2] },
+          { knob: 'rules.endGame.deliveriesToTrigger', values: [5, 6, 7] },
+          { knob: 'rules.turn.bonusDraw', values: [1, 2] },
         ],
       }),
     );
@@ -355,19 +562,19 @@ describe('sweeps', () => {
   it('applies the base set under every cell', () => {
     const cells = expandSweep(
       sweep({
-        base: { 'rules.setup.startingCoins': 3 },
-        sweep: [{ knob: 'workers.hireFee', values: [1, 2] }],
+        base: { 'rules.setup.startingHand': 3 },
+        sweep: [{ knob: 'rules.turn.bonusDraw', values: [1, 2] }],
       }),
     );
-    expect(cells.every((c) => c.overlay.set['rules.setup.startingCoins'] === 3)).toBe(true);
+    expect(cells.every((c) => c.overlay.set['rules.setup.startingHand'] === 3)).toBe(true);
   });
 
   it('produces overlays that validate and apply', () => {
     for (const cell of expandSweep(
-      sweep({ sweep: [{ knob: 'workers.visitWage', values: [1, 5] }] }),
+      sweep({ sweep: [{ knob: 'island.meeples.perColour', values: [4, 6] }] }),
     )) {
-      expect(loadGameData(cell.overlay).workers.visitWage).toBe(
-        cell.overlay.set['workers.visitWage'],
+      expect(loadGameData(cell.overlay).island.meeples.perColour).toBe(
+        cell.overlay.set['island.meeples.perColour'],
       );
     }
   });
@@ -378,8 +585,8 @@ describe('sweeps', () => {
       expandSweep(
         sweep({
           sweep: [
-            { knob: 'workers.visitWage', values },
-            { knob: 'rules.setup.startingCoins', values },
+            { knob: 'rules.endGame.deliveriesToTrigger', values },
+            { knob: 'rules.setup.startingHand', values },
           ],
         }),
       ),
@@ -387,8 +594,8 @@ describe('sweeps', () => {
   });
 
   it('refuses an empty axis', () => {
-    expect(() => expandSweep(sweep({ sweep: [{ knob: 'workers.hireFee', values: [] }] }))).toThrow(
-      /no values/,
-    );
+    expect(() =>
+      expandSweep(sweep({ sweep: [{ knob: 'rules.turn.bonusDraw', values: [] }] })),
+    ).toThrow(/no values/);
   });
 });

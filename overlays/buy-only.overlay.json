@@ -1,8 +1,0 @@
-{
-  "name": "buy-only",
-  "description": "HALF of the sink deletion, on its own: the GBP 1 card buy back ON, the GBP 3 market still deleted, and both halves of the turn-structure change left as shipped. Written 19/08/2026 because the combined turn-structure-v14 arm put visits at 0.29 against the shipped 0.22 and no arm in the set could say which deleted rule paid for that gap. upgrade-main-action answered its own question with a delta of +0.00, so the upgrade's placement is NOT the cause, which leaves the two sinks. THE MECHANISM TO TEST, and it is the opposite of the one the deletion assumed: the visit is priced in CARDS, not coins, and the card buy was a card FAUCET - GBP 1 for a deck card straight into the hand. Deleting it did not free the bonus slot up for visiting, it removed the hand cards that paid for visiting. If that reading is right this arm recovers most of the 0.07 on its own, and the replacement sink the plan reaches for (A17 The Smoke Pot) CANNOT do the same job, because A17 pays into the BARN and the barn is a dead end. Read visits per turn first, then assertion 8, then cards drawn per seat-game.",
-  "schemaVersion": 1,
-  "set": {
-    "rules.turn.buyCost": 1
-  }
-}

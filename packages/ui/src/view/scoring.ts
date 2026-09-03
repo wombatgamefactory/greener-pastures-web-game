@@ -1,24 +1,31 @@
 /**
  * The final scores, with their working shown.
  *
- * The scoring architecture's claim is that all four VP sources are countable
+ * The scoring architecture's claim is that all three VP sources are countable
  * from public state. This module is that claim made executable: it takes the
  * engine's `GameScore` and, for every number in it, produces the thing on the
- * table the number came from - which receipts, which cards, which coins. If a
- * line here cannot be traced back to something the player can point at, that is
- * a finding about the design, not a gap in the screen.
+ * table the number came from - which receipts, which cards. If a line here
+ * cannot be traced back to something the player can point at, that is a finding
+ * about the design, not a gap in the screen.
  *
- * Three of the four sources are re-derived here from the `PlayerView` alone and
+ * Two of the three sources are re-derived here from the `PlayerView` alone and
  * then CHECKED against the engine's totals (`agrees`), so a drift between what
  * the screen shows and what the engine scored is visible rather than silent.
- * The fourth, the end-game formulas, cannot be re-derived from a view - they run
+ * The third, the end-game formulas, cannot be re-derived from a view - they run
  * against the true state - so the engine reports them per card and this module
  * only names them.
  *
- * Nothing here reads a rule constant: the coin pity divisor, the island's VP by
- * arrival order and the number of further turns all come out of `GameData`,
- * because all three are live knobs (the pity rate is flagged OPEN in the design
- * and may be deleted outright).
+ * ⛔ THE FOURTH SOURCE IS GONE (v31), and it went twice. The coin pity rate was
+ * deleted as a RULE on 2026-08-03 and survived here as a whole `CoinPity`
+ * block behind a null knob; v31 deletes the currency, so the block, the column,
+ * the `coinPityReplacedBy` note and the "leftover coins score nothing" line all
+ * go with it. There is no coin knob left to switch back on.
+ *
+ * ⭐ THE FARMSTEAD NEEDS NOTHING HERE. Its v31 text - "Game end: 1 VP for each
+ * `<CROP>` card you have built" - is five ordinary `gameEnd` handlers, so it
+ * arrives in `breakdown.endgameCards` like any other end-game card and is named
+ * on the same list. Every seat now has at least one line in that section, which
+ * is a change in what the section looks like and not in what it does.
  */
 
 import type { GameData } from '@gp/data';
@@ -32,8 +39,6 @@ export interface ScoredCard {
   readonly id: string;
   readonly name: string;
   readonly vp: number;
-  /** Which printed face the VP came from, so a hover shows the face that scored. */
-  readonly upgraded: boolean;
 }
 
 export interface EndgameCard extends ScoredCard {
@@ -42,9 +47,9 @@ export interface EndgameCard extends ScoredCard {
 }
 
 /**
- * Receipts grouped by the thing that now decides what one is worth: the
- * position the seat arrived in at that tile. Under the flat island the levels
- * are decoration, so grouping by level would tell a player nothing; grouping by
+ * Receipts grouped by the thing that decides what one is worth: the position
+ * the seat arrived in at that tile. Under the flat island the levels are
+ * decoration, so grouping by level would tell a player nothing; grouping by
  * arrival order is the whole story of their island game.
  */
 export interface ArrivalTally {
@@ -54,18 +59,6 @@ export interface ArrivalTally {
   readonly vpEach: number;
   /** `count * vpEach`. */
   readonly vp: number;
-}
-
-export interface CoinPity {
-  readonly coins: number;
-  readonly divisor: number;
-  readonly vp: number;
-  /**
-   * The card whose own rate stood in for the pity (the Bread Hall). When set,
-   * `vp` is 0 here and the coins were scored on that card's line instead - which
-   * the screen has to say, or the coins read as forgotten.
-   */
-  readonly replacedBy: string | null;
 }
 
 export interface SeatScore {
@@ -82,9 +75,13 @@ export interface SeatScore {
   /** Built cards printing VP. */
   readonly built: readonly ScoredCard[];
   readonly endgame: readonly EndgameCard[];
-  /** Null when the pity rule is switched off in `rules.json`. */
-  readonly pity: CoinPity | null;
-  readonly coins: number;
+  /**
+   * Cards in hand plus cards in barn: the v31 tie-break's second link, and the
+   * only stock a player still ends the game holding.
+   */
+  readonly stock: number;
+  /** Meeples still in the supply. NOT a score - see `Verdict`. */
+  readonly meeplesLeft: number;
   /** Island VP as a percentage of this seat's total. 0 when the total is 0. */
   readonly islandShare: number;
   /**
@@ -96,8 +93,14 @@ export interface SeatScore {
   readonly agrees: boolean;
 }
 
-/** Which comparison in DL-16's chain actually separated two seats. */
-export type Separator = 'vp' | 'coins' | 'receipts' | 'seat';
+/**
+ * Which comparison in the tie-break chain actually separated two seats.
+ *
+ * ⭐ `stock` REPLACED `coins` IN v31 (design-changes-v31 §1.3). The engine's
+ * chain is total VP, then cards in hand plus barn, then receipt count, then
+ * seat order, and this walks the same chain to say which link decided it.
+ */
+export type Separator = 'vp' | 'stock' | 'receipts' | 'seat';
 
 export interface Verdict {
   readonly winner: SeatScore;
@@ -114,8 +117,14 @@ export interface ScoreReport {
   /** Best first, in ranking order. */
   readonly seats: readonly SeatScore[];
   readonly verdict: Verdict;
-  /** Null when the pity rule is off, which is what removes the column. */
-  readonly pityDivisor: number | null;
+  /**
+   * Meeples claimed off the island and never spent, across the table. A
+   * DIAGNOSTIC and never a score: a meeple is a stored action, so paying VP for
+   * holding one would reward not spending it, which is exactly the mistake the
+   * coin pity rate was deleted for. The v31 plan asks the simulator to watch
+   * this number, and a finished game is the one place a player can see it too.
+   */
+  readonly meeplesUnspent: number;
 }
 
 /**
@@ -157,33 +166,18 @@ function seatScore(
   const arrivals = arrivalsFor(data, view, seat);
   const built = farm.tableau
     .map((b) => {
-      const face = printedFace(data, b.card, b.upgraded);
-      return { id: b.card, name: face.name, vp: face.printedVp, upgraded: b.upgraded };
+      const face = printedFace(data, b.card);
+      return { id: b.card, name: face.name, vp: face.printedVp };
     })
     .filter((c) => c.vp > 0);
   const endgame = breakdown.endgameCards.map((e) => {
     const face = printedFace(data, e.card);
-    return { id: e.card, name: face.name, text: face.abilityText, vp: e.vp, upgraded: false };
+    return { id: e.card, name: face.name, text: face.abilityText, vp: e.vp };
   });
-
-  const divisor = data.rules.economy.coinPityDivisor;
-  const replacedBy = breakdown.coinPityReplacedBy;
-  const pity =
-    divisor === null
-      ? null
-      : {
-          coins: farm.coins,
-          divisor,
-          vp: replacedBy === null ? Math.floor(farm.coins / divisor) : 0,
-          replacedBy: replacedBy === null ? null : printedFace(data, replacedBy).name,
-        };
 
   const islandTotal = arrivals.reduce((sum, a) => sum + a.vp, 0);
   const printedTotal = built.reduce((sum, c) => sum + c.vp, 0);
-  const agrees =
-    islandTotal === breakdown.receipts &&
-    printedTotal === breakdown.printed &&
-    (pity?.vp ?? 0) === breakdown.coinPity;
+  const agrees = islandTotal === breakdown.receipts && printedTotal === breakdown.printed;
 
   return {
     seat,
@@ -197,25 +191,25 @@ function seatScore(
     receiptCount: farm.receipts.length,
     built,
     endgame,
-    pity,
-    coins: farm.coins,
+    stock: farm.handCount + farm.barnCount,
+    meeplesLeft: Object.values(farm.meeples).reduce((a, b) => a + b, 0),
     islandShare: breakdown.total > 0 ? (breakdown.receipts / breakdown.total) * 100 : 0,
     agrees,
   };
 }
 
-/** The three comparable quantities in DL-16's chain, before it falls back to seat order. */
+/** The three comparable quantities in the chain, before it falls back to seat order. */
 export interface Standing {
   readonly total: number;
-  readonly coins: number;
+  readonly stock: number;
   readonly receipts: number;
 }
 
 /**
- * Why the winner won. The engine's ranking already applies DL-16's whole chain
- * (VP, then coins, then receipts taken, then seat order); this re-walks the same
- * chain over two seats purely to say WHICH link decided it, because a close game
- * that just announces a winner reads as arbitrary.
+ * Why the winner won. The engine's ranking already applies the whole chain (VP,
+ * then cards in hand and barn, then receipts taken, then seat order); this
+ * re-walks the same chain over two seats purely to say WHICH link decided it,
+ * because a close game that just announces a winner reads as arbitrary.
  *
  * It deliberately does NOT re-rank. If this ever disagreed with the engine the
  * engine would still be right; what it produces is a sentence.
@@ -223,7 +217,7 @@ export interface Standing {
 export function separatorOf(a: Standing, b: Standing): Pick<Verdict, 'separator' | 'margin'> {
   const pairs: readonly [Separator, number, number][] = [
     ['vp', a.total, b.total],
-    ['coins', a.coins, b.coins],
+    ['stock', a.stock, b.stock],
     ['receipts', a.receipts, b.receipts],
   ];
   for (const [separator, x, y] of pairs) {
@@ -233,7 +227,7 @@ export function separatorOf(a: Standing, b: Standing): Pick<Verdict, 'separator'
 }
 
 function standingOf(s: SeatScore): Standing {
-  return { total: s.breakdown.total, coins: s.coins, receipts: s.receiptCount };
+  return { total: s.breakdown.total, stock: s.stock, receipts: s.receiptCount };
 }
 
 export function scoreReport(data: GameData, view: PlayerView, score: GameScore): ScoreReport {
@@ -253,11 +247,11 @@ export function scoreReport(data: GameData, view: PlayerView, score: GameScore):
       trigger: seats.find((s) => s.triggeredEnd) ?? null,
       furtherTurns: data.rules.endGame.furtherTurnsEach,
     },
-    pityDivisor: data.rules.economy.coinPityDivisor,
+    meeplesUnspent: seats.reduce((sum, s) => sum + s.meeplesLeft, 0),
   };
 }
 
-/** "wins by 12 VP" / "wins the tie-break on coins, £7 to £3". */
+/** "wins by 12 VP" / "wins the tie-break on cards held, 9 to 3". */
 export function verdictLine(verdict: Verdict): string {
   const { separator, margin } = verdict;
   if (!verdict.runnerUp) return 'takes the island.';
@@ -266,11 +260,11 @@ export function verdictLine(verdict: Verdict): string {
     return by === 0 ? 'wins.' : `wins by ${by} VP, ${margin[0]} to ${margin[1]}.`;
   }
   const level = `level on ${verdict.winner.breakdown.total} VP`;
-  if (separator === 'coins' && margin) {
-    return `wins the tie-break: ${level}, ahead on coins, £${margin[0]} to £${margin[1]}.`;
+  if (separator === 'stock' && margin) {
+    return `wins the tie-break: ${level}, ahead on cards in hand and barn, ${margin[0]} to ${margin[1]}.`;
   }
   if (separator === 'receipts' && margin) {
-    return `wins the tie-break: ${level} and on coins, ahead on receipts taken, ${margin[0]} to ${margin[1]}.`;
+    return `wins the tie-break: ${level} and on cards held, ahead on receipts taken, ${margin[0]} to ${margin[1]}.`;
   }
-  return `wins on seat order: ${level}, on coins and on receipts taken, which is where the tie-break runs out.`;
+  return `wins on seat order: ${level}, on cards held and on receipts taken, which is where the tie-break runs out.`;
 }

@@ -53,27 +53,27 @@ export {
 export type { Overlay, SweepAxis, SweepCell, SweepFile } from './overlay.js';
 
 /**
- * ⛔ `serviceCardId` and `withServices` are GONE (change 6, 20/08/2026).
+ * ⛔ `serviceCardId` and `withServices` are GONE (change 6, 20/08/2026), and so
+ * is the last of the vocabulary around them (v31, 02/09/2026).
  *
  * They synthesised five SERVICE starter cards out of `workers.json` - a fourth
- * starter per seat, threshold 2, that a rival could place a card on to buy the
- * suit's action. Change 6 merges that door into the NOTICE BOARD, which is a
- * real card in the extract and always was, so there is nothing left to
- * synthesise: `data.cards.catalogue` is now exactly the 105 rows of the sheet.
+ * starter per seat that a rival could place a card on to buy the suit's action.
+ * Change 6 merged that door into the NOTICE BOARD, which is a real card in the
+ * extract and always was, so there is nothing left to synthesise:
+ * `data.cards.catalogue` is exactly the 105 rows of the sheet.
  *
- * What was lost with them, and where it went:
+ * Where the pieces went:
  *
- * - the door's THRESHOLD was `workers.serviceThreshold` (2) and is now the
- *   Notice Board's own printed threshold (5 on the sheet), reachable as the
- *   ordinary card knob `cards.catalogue.{}.faces.{}.threshold`. ⚠️ That is a
- *   change from 2 to 5 on the one lever ever measured to move suit balance, and
- *   it is NOT a decision this change is entitled to make quietly - see
- *   `overlays/noticeboard-threshold.sweep.json`, written with it.
- * - `workers.roster` SURVIVES, and it is still where each suit's door action and
- *   its enhancement live. It stopped describing a card; it never stopped
- *   describing behaviour.
- * - `state.fair` survives untouched: it maps worker id -> owning seat off
- *   `linkedSuit`, which never depended on the card existing.
+ * - the door's THRESHOLD is `rules.economy.noticeBoardThreshold`, an override of
+ *   the Notice Board's own printed value. `workers.serviceThreshold` is deleted:
+ *   one number in two files is exactly how the old 5-versus-2 drift happened,
+ *   and the v31 sheet prints 2, so override and print now agree.
+ * - `workers.roster` SURVIVES and is now read by TWO consumers, not one: a suit's
+ *   Notice Board grants its action to a visitor, and a MEEPLE of that colour
+ *   performs the same action free when spent. It stopped describing a card; it
+ *   never stopped describing behaviour.
+ * - `ownerActivationCost` and `visitWage` are deleted with the currency. In v31
+ *   the owner places a card on their own board exactly as a rival does.
  */
 
 /**
@@ -102,9 +102,39 @@ export function loadGameData(overlay?: Overlay): GameData {
   return deepFreeze(applyOverlay(BASE_GAME_DATA, overlay));
 }
 
-/** The Service a suit owns, or undefined if that suit has none. */
-export function serviceForSuit(data: GameData, suit: string) {
+/**
+ * The DOOR a suit owns: the action its Notice Board grants, which is also the
+ * action a meeple of that colour performs. Undefined if that suit has none,
+ * which cannot happen in the shipped data and is asserted in `data.test.ts`.
+ */
+export function doorForSuit(data: GameData, suit: string) {
   return data.workers.roster.find((w) => w.linkedSuit === suit);
+}
+
+/** @deprecated The Services are gone (v31). Use `doorForSuit`. */
+export const serviceForSuit = doorForSuit;
+
+/**
+ * The action a meeple of this colour performs when spent. Identical to the
+ * suit's door by rule, and routed through one function so that stays true: a
+ * meeple of a suit NOT at the table still works, so this must never be gated on
+ * whether anybody owns that Notice Board.
+ */
+export function meepleAction(data: GameData, colour: string) {
+  return doorForSuit(data, colour)?.action;
+}
+
+/**
+ * Meeples dealt onto the island at setup: one per delivery space, so tiles in
+ * play times deliveries per tile times `perDeliverySpace`. Derived rather than
+ * stored, because the bag has to be checked against it - at 4 seats this is 24
+ * against a pool of 25.
+ */
+export function meeplesDealt(data: GameData, seats: number): number {
+  const rows = data.island.slotsBySeats[String(seats)];
+  if (!rows) return 0;
+  const tiles = Object.values(rows).reduce((n, count) => n + count, 0);
+  return tiles * deliveriesPerTile(data) * data.island.meeples.perDeliverySpace;
 }
 
 /** Cards actually in the game: the enable flag applied. */

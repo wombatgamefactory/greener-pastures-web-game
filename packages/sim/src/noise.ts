@@ -46,13 +46,13 @@ export interface NoiseInput {
   readonly onArm?: ((label: string) => void) | undefined;
 }
 
-export function runNoise(input: NoiseInput): string {
+export async function runNoise(input: NoiseInput): Promise<string> {
   const base = input.opts.seed ?? input.opts.reference.seed;
 
   input.onArm?.('arm A');
-  const a = pool(runBalance(input.data, { ...input.opts, seed: `${base}:noise:A` }));
+  const a = pool(await runBalance(input.data, { ...input.opts, seed: `${base}:noise:A` }));
   input.onArm?.('arm B');
-  const b = pool(runBalance(input.data, { ...input.opts, seed: `${base}:noise:B` }));
+  const b = pool(await runBalance(input.data, { ...input.opts, seed: `${base}:noise:B` }));
 
   const games = Math.max(
     ...input.opts.reference.seatCounts.map(

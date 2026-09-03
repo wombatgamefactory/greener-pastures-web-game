@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { Suit, WorkerAction } from '@gp/data';
+import type { Suit } from '@gp/data';
 import type { CardId, Move, MoveType, PlayerView, Seat } from '@gp/engine';
 
 import {
@@ -24,15 +24,16 @@ import {
   clickBuilding,
   clickCardPower,
   clickDeck,
-  clickRival,
+  clickHost,
+  clickMeeple,
   clickTile,
-  clickWorker,
   emptyBuildDraft,
   focused,
   liveTargets,
   pendingTask,
   subsetAdditions,
   subsetAnswer,
+  visitComplete,
   withPayment,
 } from '../view/intent';
 import type { BuildDraft, Intent, Live } from '../view/intent';
@@ -44,7 +45,7 @@ export interface Play {
   readonly moves: readonly Move[];
   readonly intent: Intent;
   readonly live: Live;
-  /** Cards picked for a keep or discard answer. */
+  /** Cards picked for a keep answer. */
   readonly picked: readonly CardId[];
   /** Hand cards already committed to whatever is being assembled. */
   readonly commitments: readonly CardId[];
@@ -55,20 +56,29 @@ export interface Play {
   /** Play the one move, or open the menu when a click meant several. */
   choose(candidates: readonly Move[], title: string): void;
   cancel(): void;
-  arm(type: MoveType): void;
+  /**
+   * Arm a family so its targets light up. `self` splits the visit's two
+   * families: a card on a neighbour's board and a card on your own are the same
+   * move type and opposite acts, so the bar arms one or the other and never
+   * both at once.
+   */
+  arm(type: MoveType, self?: boolean): void;
   /** Pick a card up, put it down, add it to a payment, toggle it in a subset. */
   hold(card: CardId): void;
   startBuild(card: CardId): void;
   setDraft(draft: BuildDraft): void;
-  setVisitFee(host: Seat, fee: readonly CardId[]): void;
+  /** Open or re-point the visit assembly. `fee` null clears the card chosen. */
+  setVisitFee(host: Seat, fee: CardId | null): void;
 
   building(card: CardId): void;
   /** The badge on a built card: the standing move that card is offering. */
   cardPower(card: CardId): void;
-  rival(seat: Seat): void;
+  /** A farm's Notice Board as a visit target. ⚠️ `seat` may be your own. */
+  host(seat: Seat): void;
   tile(id: string): void;
   balloon(id: string): void;
-  worker(id: WorkerAction): void;
+  /** Spend one meeple of this colour from your own supply. */
+  meeple(colour: Suit): void;
   deck(suit: Suit): void;
 }
 
@@ -121,13 +131,25 @@ export function usePlay(host: PlayHost): Play {
     [armBuildTask, intent],
   );
 
+  /**
+   * ⭐ THE DISCARD BRANCH IS BACK (02/09/2026), WITH THE HAND LIMIT.
+   *
+   * The keep half is currently degenerate - Draw is see 2 keep 2, so there is
+   * one subset and the surface plays it on the first click - and the discard
+   * half is where the real toggling happens: a hand two over the limit offers
+   * every pair, and the player picks which two go.
+   *
+   * Both are answered by clicking cards in the fan, which is why they share one
+   * kind rather than being two branches: the difference is entirely in the
+   * prompt's wording, and `taskPrompt` carries it.
+   */
   const subsetKind: 'keep' | 'discard' | null =
     !active || task === null
       ? null
-      : task.t === 'discard'
-        ? 'discard'
-        : task.t === 'draw' && task.revealed.length >= task.see
-          ? 'keep'
+      : task.t === 'draw' && task.revealed.length >= task.see
+        ? 'keep'
+        : task.t === 'discard'
+          ? 'discard'
           : null;
 
   const send = useCallback(
@@ -180,10 +202,23 @@ export function usePlay(host: PlayHost): Play {
         return;
       }
       if (effective.k === 'visit') {
-        const fee = effective.fee.includes(card)
-          ? effective.fee.filter((c) => c !== card)
-          : [...effective.fee, card];
-        setIntent({ ...effective, fee });
+        /*
+         * ⭐ A CHIP CLICK IS THE WHOLE MOVE, and deliberately NOT a toggle.
+         *
+         * A v31 visit is a host and one card, so naming the card fully specifies
+         * it - there is no payoff left to pick, which is what the panel used to
+         * wait for. Making the chip a toggle instead would have two bad
+         * consequences at once: it would ask for a confirm nobody would read,
+         * and it would make the DRAG path worse than the click path, because a
+         * card dropped on a neighbour arrives with its fee already chosen and
+         * clicking that same chip would silently take it back off.
+         *
+         * Backing out is `cancel`, which is on the panel and on Escape. That is
+         * the same exit every other assembly has.
+         */
+        const done = visitComplete(moves, { host: effective.host, fee: card });
+        if (done) send(done);
+        else setIntent({ ...effective, fee: card });
         return;
       }
       if (subsetKind !== null) {
@@ -210,7 +245,9 @@ export function usePlay(host: PlayHost): Play {
         effective.k === 'build'
           ? effective.draft.payment
           : effective.k === 'visit'
-            ? effective.fee
+            ? effective.fee === null
+              ? []
+              : [effective.fee]
             : picked,
       subsetKind,
       live: liveTargets(view, moves, effective),
@@ -221,9 +258,10 @@ export function usePlay(host: PlayHost): Play {
         setIntent(IDLE);
         setPicked([]);
       },
-      arm: (type) => {
+      arm: (type, self) => {
         if (inert) return;
-        setIntent(effective.k === 'arm' && effective.type === type ? IDLE : { k: 'arm', type });
+        const same = effective.k === 'arm' && effective.type === type && effective.self === self;
+        setIntent(same ? IDLE : { k: 'arm', type, ...(self === undefined ? {} : { self }) });
       },
       hold,
       startBuild: (card) => {
@@ -245,9 +283,9 @@ export function usePlay(host: PlayHost): Play {
         // card you are willing to spend.
         resolve(clickCardPower(moves, card), 'Which card do you spend?');
       },
-      rival: (seat) => {
+      host: (seat) => {
         if (inert) return;
-        const next = clickRival(moves, effective, seat);
+        const next = clickHost(view, moves, effective, seat);
         if (next) setIntent(next);
       },
       tile: (id) => {
@@ -258,9 +296,9 @@ export function usePlay(host: PlayHost): Play {
         if (inert) return;
         resolve(clickBalloon(moves, effective, id), 'Pay which two barn cards?');
       },
-      worker: (id) => {
+      meeple: (colour) => {
         if (inert) return;
-        resolve(clickWorker(moves, effective, id), 'What here?');
+        resolve(clickMeeple(moves, colour), 'Spend which meeple?');
       },
       deck: (suit) => {
         if (inert) return;

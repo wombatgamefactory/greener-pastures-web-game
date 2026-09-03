@@ -35,7 +35,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 /**
  * Overlay and sweep paths resolve against the REPO ROOT, not the process cwd.
- * `npm run sim` runs inside packages/sim, so `overlays/wage-shrink.overlay.json`
+ * `npm run sim` runs inside packages/sim, so `overlays/end-trigger-8.overlay.json`
  * - which is what every assertion's remedy field prints, and what a reader will
  * paste - would otherwise resolve to a path that does not exist.
  */
@@ -55,6 +55,8 @@ const HELP = [
   '    --seats=2,3,4     Which seat counts to run.',
   '    --mirrors=<n>     Games per seat count for each of the four mirror diagnostics',
   '                      (default 60; 0 skips them, and the taste assertions lose their spread).',
+  '    --workers=<n>     Worker threads (default: cores minus one). 1 runs inline, on this',
+  '                      thread, and must give identical numbers - that is the determinism check.',
   '    --overlay=<path>  Run the whole suite under a tuning overlay.',
   '    --full-funnel     Append the 105-row funnel table. The cut list is the point.',
   '    --quiet           No progress line.',
@@ -162,11 +164,16 @@ function seatCountsFrom(argv: readonly string[]): number[] | null {
 function baseOptions(argv: readonly string[]) {
   const seatCounts = seatCountsFrom(argv);
   const n = flag(argv, 'n');
+  const workers = flag(argv, 'workers');
   return {
     reference: REFERENCE,
     seed: flag(argv, 'seed') ?? REFERENCE.seed,
     ...(n === null ? {} : { games: Number(n) }),
     ...(seatCounts === null ? {} : { seatCounts }),
+    // Absent takes cores minus one. `--workers=1` is the control arm: it runs
+    // every game inline on this thread and must produce byte-identical numbers,
+    // which is the only thing that makes a threaded balance run readable.
+    ...(workers === null ? {} : { workers: Number(workers) }),
   };
 }
 
@@ -194,7 +201,7 @@ function write(name: string, report: string): string {
   return file;
 }
 
-function watchlistMode(argv: readonly string[]): number {
+async function watchlistMode(argv: readonly string[]): Promise<number> {
   const quiet = argv.includes('--quiet');
   const overlayPath = flag(argv, 'overlay');
   const loaded = overlayPath === null ? null : loadOverlay(overlayPath);
@@ -213,13 +220,13 @@ function watchlistMode(argv: readonly string[]): number {
       `${REFERENCE.id}: ${plan.total} games across ${plan.cells.length} stratified cells\n`,
     );
   }
-  const result = runBalance(data, opts);
+  const result = await runBalance(data, opts);
   if (!quiet) process.stderr.write(crashes.summary());
   const pooled = pool(result);
 
   const mirrorGames = Number(flag(argv, 'mirrors') ?? 60);
   if (!quiet && mirrorGames > 0) process.stderr.write('  mirror diagnostics...\n');
-  const mirrors = runMirrors(data, { ...opts, onGame: undefined }, mirrorGames);
+  const mirrors = await runMirrors(data, { ...opts, onGame: undefined }, mirrorGames);
 
   const rows = runWatchlist(data, pooled, mirrors);
   const report = renderReport({
@@ -241,9 +248,9 @@ function watchlistMode(argv: readonly string[]): number {
   return failures(rows).length > 0 ? 1 : 0;
 }
 
-function noiseMode(argv: readonly string[]): number {
+async function noiseMode(argv: readonly string[]): Promise<number> {
   const quiet = argv.includes('--quiet');
-  const report = runNoise({
+  const report = await runNoise({
     data: BASE_GAME_DATA,
     opts: { ...baseOptions(argv), onGame: progress(quiet) },
     onArm: quiet ? undefined : (label) => process.stderr.write(`${label}...\n`),
@@ -254,13 +261,13 @@ function noiseMode(argv: readonly string[]): number {
   return 0;
 }
 
-function sweepMode(argv: readonly string[], path: string): number {
+async function sweepMode(argv: readonly string[], path: string): Promise<number> {
   const quiet = argv.includes('--quiet');
   const opts = { ...baseOptions(argv), onGame: progress(quiet) };
   if (!quiet) process.stderr.write('baseline for the sweep...\n');
-  const baseline = pool(runBalance(BASE_GAME_DATA, opts));
+  const baseline = pool(await runBalance(BASE_GAME_DATA, opts));
   if (!quiet) process.stderr.write('sweep cells...\n');
-  const report = runSweep({
+  const report = await runSweep({
     path: fromRoot(path),
     baseline,
     baselineData: BASE_GAME_DATA,
@@ -298,7 +305,7 @@ function replayMode(argv: readonly string[], path: string): number {
   return code;
 }
 
-function main(argv: readonly string[]): number {
+async function main(argv: readonly string[]): Promise<number> {
   if (argv.includes('--help') || argv.includes('-h')) {
     process.stdout.write(HELP);
     return 0;
@@ -323,12 +330,12 @@ function main(argv: readonly string[]): number {
   const replay = flag(argv, 'replay');
   if (replay !== null) return replayMode(argv, replay);
 
-  if (argv.includes('--noise')) return noiseMode(argv);
+  if (argv.includes('--noise')) return await noiseMode(argv);
 
   const sweep = flag(argv, 'sweep');
-  if (sweep !== null) return sweepMode(argv, sweep);
+  if (sweep !== null) return await sweepMode(argv, sweep);
 
-  if (argv.includes('--watchlist')) return watchlistMode(argv);
+  if (argv.includes('--watchlist')) return await watchlistMode(argv);
 
   process.stdout.write(
     `gp-sim: engine ${ENGINE_VERSION}, rules ${RULES_EDITION}, ` +
@@ -338,4 +345,17 @@ function main(argv: readonly string[]): number {
   return 0;
 }
 
-process.exitCode = main(process.argv.slice(2));
+// The run is asynchronous since 03/09/2026 (worker threads), so the exit code
+// is set when it lands rather than returned from a synchronous call. A throw is
+// re-raised as exit 2 - a harness failure is not a failed assertion and must
+// never be read as one.
+main(process.argv.slice(2)).then(
+  (code) => {
+    process.exitCode = code;
+  },
+  (error: unknown) => {
+    process.stderr.write(`${error instanceof Error ? (error.stack ?? error.message) : String(error)}
+`);
+    process.exitCode = 2;
+  },
+);

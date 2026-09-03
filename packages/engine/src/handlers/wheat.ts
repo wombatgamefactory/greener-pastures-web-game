@@ -72,11 +72,11 @@
 
 import type { GameData, Suit } from '@gp/data';
 
-import { harvestSurchargeOf } from '../actions.js';
 import type { Fx } from '../fx.js';
 import { cardById, cropOf, drawableSuits, player } from '../query.js';
 import { markFired } from '../runtime.js';
 import type { BuildingState, CardId, GameState, Seat } from '../state.js';
+import { farmsteadHandler } from './farmstead.js';
 import type { CardHandler } from './types.js';
 
 const FIELD_NAME = /\bField\b/;
@@ -146,143 +146,97 @@ function loadedBuildings(state: GameState, seat: Seat): BuildingState[] {
 }
 
 /**
- * The cascade shape shared by W12/W13 (reference: snapshot the qualifying set,
- * harvest each once, surcharge skip/pay per building). No Wheat card prints a
- * harvest surcharge since the rebuild, but the branch stays: the cascade harvests
- * whatever the seat owns, and another suit may print one.
+ * The cascade shape shared by W12/W13: snapshot the qualifying set, harvest each
+ * one once.
+ *
+ * ⛔ ITS SURCHARGE BRANCH IS GONE (v31). It read a printed £1 harvest toll off
+ * a data trigger (`harvestSurchargeOf`, deleted with the currency) and pushed a
+ * `surcharge` task per tolled building. Two things are worth keeping from it.
+ * The toll's PATTERN was right and should be reused if one ever returns priced
+ * in cards: keyed on a data trigger so no funnel names a card, checked in the
+ * enumerator so an unaffordable target is never offered, charged in the funnel
+ * so the two cannot disagree. And the branch was already DEAD before v31 - no
+ * card in the catalogue had carried the trigger since the Wheat rebuild, and no
+ * handler ever registered a `surcharge` task resolver, so a tolled building
+ * would have thrown at the head of the queue rather than charging anybody.
  */
 function harvestCascade(fx: Fx, seat: Seat, buildings: CardId[]): void {
-  for (const card of buildings) {
-    if (harvestSurchargeOf(fx.data, card) > 0) {
-      fx.pushTask({ t: 'card', pid: seat, src: card, kind: 'surcharge', riders: {} });
-    } else {
-      fx.harvest(seat, card);
-    }
-  }
+  for (const card of buildings) fx.harvest(seat, card);
 }
 
 /**
- * W1 Barn (starter) - "Hand size 5. When you build a FIELD, Draw 1." /
- * upgraded "Hand size 7. When you build a FIELD, Draw 1."
+ * W1 Barn (starter) - prints NOTHING (v31).
+ *
+ * ⛔ BOTH OF ITS LINES WENT IN ONE EDIT, and they went for different reasons.
+ * The printed HAND SIZE went because the hand limit was deleted outright, and
+ * that half was reversed on 02/09/2026 - see the note below. The
+ * BUILD RIDER - "When you build a FIELD, Draw 1", printed on all five Barns with
+ * one word changed - was deleted outright rather than moved, and the Dairy
+ * rebalance had already measured why: a line the sheet treats as shared pays out
+ * in proportion to how much a suit BUILDS, so at 12.02 builds a seat it paid
+ * Dairy 2.4x what it paid anybody else. A shared line on an unshared metric is a
+ * hidden per-suit faucet.
+ *
+ * The Barn is now a zone with a card in front of it: somewhere to keep cards
+ * ready for delivery, and no text at all.
+ *
+ * ⭐ THE HAND LIMIT CAME BACK ON 02/09/2026 AND THIS CARD DID NOT.
+ * The reinstated limit is a flat 12 for everybody, held in
+ * `rules.turn.handLimit` and read off the player aid; the Barn stays blank.
+ * That is the whole difference between the old rule and the new one - a rule
+ * that applies to every seat is not a card value - so nothing here should be
+ * un-deleted. See `RulesFile.turn.handLimit` for what the deletion measured.
  */
 export const wheatBarn: CardHandler = {
   difficulty: {
-    score: 2,
-    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
+    score: 1,
+    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'The printed hand size is still engine-read (handLimitOf off the current face). What ' +
-      'is new is the rider, and it is on BOTH faces deliberately: without it, paying £2 to ' +
-      'upgrade would delete the power. It fires on any build path - the action, a Service, ' +
-      "W7's discounted build - because afterBuild is the one funnel every landing goes " +
-      'through. A card-ability draw, so the Orchard modifier does not apply (DL-47). ' +
-      'WAS Draw 2, and the note here called that "the rebuild\'s likeliest over-tune" and ' +
-      'named Draw 1 as its own dial. The rebalance (2026-08-12) took it: at Draw 2 a ' +
-      '1-cost FIELD was card-POSITIVE to build, which is a build that pays for itself, and ' +
-      'the suit finished first at 50.0% with the most cards into the barn in the game. At ' +
-      'Draw 1 the build is card-NEUTRAL - still the turn-1 instruction to build your own ' +
-      'suit, no longer a card faucet attached to it. The earlier reasoning was not wrong; ' +
-      'it was written for a suit that had been rebuilt five times for being too slow, and ' +
-      'the suit has since crossed the middle.',
-  },
-  on: {
-    afterBuild(fx, event, self) {
-      if (event.seat !== self.seat) return;
-      if (!isFieldCard(fx.data, event.card)) return;
-      // FACE-AWARE SINCE 19/08/2026: 1 on the base face, 2 on the upgraded one.
-      // The 2026-08-12 rebalance had taken BOTH faces to 1 and called Draw 2
-      // "the rebuild's likeliest over-tune"; the sheet still prints Draw 2 on
-      // the upgraded face, and Dean ruled the sheet correct. So the flip buys
-      // the old rate back, and only on the face that was paid for.
-      const barn = player(fx.state, self.seat).tableau.find((b) => b.card === self.card);
-      drawN(fx, self.seat, self.card, barn?.upgraded ? 2 : 1);
-    },
+      'No behaviour, and no printed text to have behaviour about (cards.json carries an ' +
+      'empty abilityText on all five Barns). Registered anyway, because "every enabled card ' +
+      'has a handler" is the test that catches a card nobody has implemented, and a Barn ' +
+      'with no entry would read as an oversight rather than as a deliberate blank.',
   },
 };
 
 /**
- * W2 Farmstead (starter) - "Harvest: Add a card to the barn from your hand." /
- * upgraded "Harvest: Add a card to the barn from the top of any deck."
+ * W2 Farmstead (starter) - "Game end: 1 VP for each Wheat card you have built."
+ *
+ * ⛔ THE RELAXED HARVEST AND THE BARN DEPOSIT ARE BOTH GONE (v31). This card
+ * moved twice in three weeks and it is worth the two sentences. It WAS the
+ * relaxed-harvest gate - "harvest a building with 2+ cards even if it is not
+ * full" - held in an engine seam (`wheatRelaxedMin`, actions.ts); on 19/08/2026
+ * the sheet swapped W2 and W3, so the relaxation became the Wheat DOOR's action
+ * and this card became a harvest rider that put a card into the barn. v31
+ * deletes both halves: the doors are plain, and all five Farmsteads print one
+ * end-game scorer.
+ *
+ * The scorer is shared - see farmstead.ts for the two readings and for risk 3.
  */
-export const wheatFarmstead: CardHandler = {
-  difficulty: {
-    score: 3,
-    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
-    notes:
-      'SWAPPED WITH W3 THE NOTICE BOARD, 19/08/2026, confirmed by Dean as deliberate. This ' +
-      'card USED to be the relaxed harvest gate - "harvest a building with 2+ cards even if ' +
-      'it is not full", deepening to 1+ when flipped - and that lived in the engine seams ' +
-      '(`wheatRelaxedMin` in actions.ts) rather than here, so this handler had no body at ' +
-      'all. The relaxation has gone to W3, where it is the VISITOR DOOR action and ' +
-      'belongs to whoever works it; the barn deposit that used to hang off the Harvest ' +
-      'Service has come here and is the suit power. The two halves changed places. ' +
-      'THE POWER IS A HARVEST RIDER, and "Harvest:" here means the ACTION and not this ' +
-      'building - W2 has no threshold and can never be harvested itself, so the seat ' +
-      'harvest is the only reading available. ' +
-      'THE FLIP CHANGES THE SOURCE, NOT THE SIZE: a hand card becomes a DECK card, the same ' +
-      'idiom the sheet uses on V2 the Vegetable Farmstead. A real trade rather than a ' +
-      'straight upgrade - the hand card is chosen and the deck card is not, but the deck ' +
-      'card costs nothing off the master clock. ' +
-      'MANDATORY, because the printed text carries no "may" - but it SKIPS SILENTLY on an ' +
-      'empty hand or a dry table, per the no-legal-target convention this pass settled on. ' +
-      'ONCE PER TURN, via the shared `turn.firedThisTurn` guard (rule change 12(c): no ' +
-      "card's text may fire twice in a turn). Without it W13 The Bakery, which harvests " +
-      'every building you own, would hand this seat eight barn cards in one action - the ' +
-      'exact hole W16 The Granary was moved onto the same guard to close.',
-  },
-  on: {
-    afterHarvest(fx, event, self) {
-      if (event.seat !== self.seat) return;
-      if (fx.state.turn.firedThisTurn.includes(self.card)) return;
-      const farmstead = player(fx.state, self.seat).tableau.find((b) => b.card === self.card);
-      if (!farmstead) return;
-      if (farmstead.upgraded) {
-        // "from the top of any deck": the answer names a DECK, because barn
-        // identity is inert - a barn is a per-crop tally - so which deck you
-        // draw from is the whole of the choice.
-        if (drawableSuits(fx.data, fx.state).length === 0) return;
-        markFired(fx, self.card);
-        fx.pushTask({
-          t: 'card',
-          pid: self.seat,
-          src: self.card,
-          kind: 'barnFromDeck',
-          riders: {},
-        });
-        return;
-      }
-      if (player(fx.state, self.seat).hand.length === 0) return;
-      markFired(fx, self.card);
-      fx.pushTask({ t: 'handToBarn', pid: self.seat, src: self.card, remaining: 1 });
-    },
-  },
-  tasks: {
-    barnFromDeck: {
-      answers(data, state) {
-        return drawableSuits(data, state)
-          .filter((suit) => state.suitsInPlay.includes(suit))
-          .map((suit) => ({ kind: 'deck', suit }));
-      },
-      resolve(fx, task, answer) {
-        if (answer.kind !== 'deck') throw new Error('barnFromDeck expects a deck answer');
-        fx.deckTopToBarn(task.pid, answer.suit);
-        return true;
-      },
-    },
-  },
-};
+export const wheatFarmstead: CardHandler = farmsteadHandler('wheat');
 
-/** W3 Notice Board (starter) - "VISITOR: Take £1 from bank." / upgraded Special Orders. */
+/**
+ * W3 Notice Board (starter) - "VISITOR: place 1 card here, then Harvest one of
+ * your full buildings." Threshold 2, wild activation.
+ */
 export const wheatNoticeBoard: CardHandler = {
   difficulty: {
     score: 2,
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'No behaviour here: the whole visit - fee placement, all three payoffs (coin, ' +
-      "Service, the upgraded face's 2-cards-take-£3 mode) and the wage minting - is " +
-      'engine-level.',
+      'No behaviour here: the whole visit - the fee landing on the board, the door action ' +
+      'that follows and the clog at threshold 2 - is engine-level (doVisit in actions.ts, ' +
+      'performDoorAction in workers.ts, the action itself in workers.json). ' +
+      '⛔ THE COIN PAYOFF AND THE RELAXED HARVEST ARE BOTH GONE (v31). The board used to ' +
+      'offer a visitor a choice of £1 or the door; there is one payoff now, which is why ' +
+      'the printed text lost its OR. And the door is the PLAIN Harvest - full buildings ' +
+      'only - where it carried "2 or more cards, even if not full" from 19/08/2026: the ' +
+      'bonus slot became the enhancement, so stacking a rider on top of a whole free core ' +
+      'action was pricing a sweetener into a deal that no longer needed one. ' +
+      '⚠️ Its threshold of 2 is the only economy number left in the game and the one lever ' +
+      'ever measured to move the suit balance; see rules.json.',
   },
 };
 
@@ -640,23 +594,21 @@ export const pizzeria: CardHandler = {
       '⚠️ THE BOTS ALWAYS ACCEPT, by construction and not by accident - the probe pricer ' +
       "models what a seat GAINS and never rival harm (see outcome.ts's one rule), so a " +
       "sim's acceptance rate is an upper bound and the decline is a table question. " +
-      '⛔ REWRITTEN TO THE PRINTED TEXT 19/08/2026, and this is a drift fix rather than a ' +
-      'planned edit - the sheet has read "Every player, INCLUDING YOU, may Draw 1. For each ' +
-      'card drawn, gain £1" since before the v30 pass, and the handler was still running the ' +
-      'text before it. Two differences, both real. The owner is now offered the draw too, so ' +
-      'the card pays its owner £1 for a card they take themselves, and it is no longer dead ' +
-      'in a position where every rival declines - there is a floor of one card and £1 before ' +
-      'anybody else answers. And the 2026-08-12 rider (an acceptance also put 1 card from the ' +
-      "OWNER's hand into their barn) is GONE with the printed clause that carried it. That " +
-      'rider was the one card in the Wheat rebalance pointing UP, added because the ' +
-      'cross-table faucet kept falling across the arms (13% to 12% to 11% play) and minted ' +
-      '£0.1 a game; the owner-draw does the same job in wording the sheet actually prints. ' +
-      '⚠️ IT IS NOW CREATION, NOT CONVERSION. The old rider COST the owner a hand card; this ' +
-      'one hands the owner a free card and a coin, in a suit whose whole rebalance thesis was ' +
-      "that Wheat gets too many free cards. If Wheat's win rate moves after v30 this line is " +
-      "a first suspect, and the dial is the coin on the owner's own draw (£1 to £0), never " +
-      'the card - the card is what the sheet prints. Task order is the owner first, then the ' +
-      'rivals in seat order, which matters only for who sees a deck run dry.',
+      '⛔ THE COIN IS A CARD (v31, plan section 3.3): "For each card drawn, gain £1" reads ' +
+      '"Then Draw 1 for each card ANOTHER player drew". The conversion is not a straight ' +
+      "swap and the sheet was careful about it. Under the old text the OWNER's own " +
+      'acceptance paid the owner £1, which was a floor of one card and one coin before ' +
+      'anybody else answered; under the new one it pays nothing, because a card that paid ' +
+      'itself would make the card a naked Draw 2 for its owner and the rivals decorative. ' +
+      'So the owner is still OFFERED the draw - that clause is untouched - but the payout ' +
+      'is strictly cross-table. ' +
+      '⚠️ THE RATE WENT UP IN REAL TERMS. A coin was never worth a card in this game (seats ' +
+      'ended on about £1), so paying a card per rival acceptance is a materially bigger ' +
+      'faucet than paying a coin was, on a suit whose rebalance thesis was that Wheat gets ' +
+      'too many free cards. If Wheat runs hot after v31, this is a first suspect and the ' +
+      'dial is the payout rate, never the offer - the offer is what the sheet prints. ' +
+      'Task order is the owner first, then the rivals in seat order, which matters only for ' +
+      'who sees a deck run dry.',
   },
   activate(fx, self) {
     // The owner's own offer is pushed FIRST and the rivals follow in seat order.
@@ -683,7 +635,17 @@ export const pizzeria: CardHandler = {
         if (answer.kind === 'skip') return true;
         drawN(fx, task.pid, task.src, 1);
         const owner = task.riders.owner as Seat;
-        fx.gainCoins(owner, 1, 'W14');
+        // "Then Draw 1 for each card ANOTHER player drew" - so the owner's own
+        // acceptance pays nothing, and each rival's pays one card.
+        //
+        // Paid HERE, one at a time, rather than counted up and paid once at the
+        // end. The two are identical in effect - a see-N/keep-N draw picks a
+        // deck per card, so N draws of 1 offer exactly the choices one draw of N
+        // does - and doing it per acceptance needs no counter riding on a task
+        // and no final task to read it. The owner's cards therefore arrive
+        // interleaved with the rivals' offers, which is invisible: nothing
+        // between the two can reach a hand.
+        if (task.pid !== owner) drawN(fx, owner, task.src, 1);
         return true;
       },
     },
@@ -759,23 +721,27 @@ export const granary: CardHandler = {
   },
 };
 
-/** W17 The Pie Shop - "Whenever a neighbour places a card on one of your buildings, gain £1." */
+/** W17 The Pie Shop - "Whenever a neighbour places a card on one of your buildings, Draw 1." */
 export const pieShop: CardHandler = {
   difficulty: {
     score: 2,
     verified: { prompts: false, crossPlayer: true, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
     notes:
-      'The second of the two cards in Wheat that print a £, and like the first it needs a ' +
-      'neighbour: this pays for BEING VISITED. Every rival placement counts, whatever ' +
-      'building it lands on - a visit fee on the Notice Board, a card bought onto the ' +
-      'Service, a cross-table sow (A12) onto a FIELD - because the funnel is one and the ' +
-      "card names no target. crossPlayer: it mints for its owner mid a rival's turn.",
+      'It pays for BEING VISITED, and since v31 it pays in cards (plan section 3.3). Every ' +
+      'rival placement counts, whatever building it lands on - a visit fee on the Notice ' +
+      'Board, a cross-table sow (A8) onto a FIELD - because the funnel is one and the card ' +
+      "names no target. crossPlayer: it fires for its owner mid a rival's turn. " +
+      '⚠️ THE SELF-VISIT (v31) DOES NOT FIRE IT, and the guard that stops it is the one ' +
+      'that was already there: `event.seat === self.seat`. The card says "a neighbour", and ' +
+      'a seat feeding its own Notice Board is not one. That guard used to be belt-and-braces ' +
+      'beside the target check; it is now load-bearing, because a visitor and a host can be ' +
+      'the same seat for the first time in this game.',
   },
   on: {
     afterPlacement(fx, event, self) {
       if (event.seat === self.seat || event.onto.seat !== self.seat) return;
-      fx.gainCoins(self.seat, 1, 'W17');
+      drawN(fx, self.seat, self.card, 1);
     },
   },
 };

@@ -1,6 +1,6 @@
 {
   "name": "bread-hall-off",
-  "description": "Paired comparison: the Bread Hall switched out. Run against the baseline to settle whether its 1 VP per 2 coins corrupts the coin economy, rather than deciding it on judgement. The question is open in the design.",
+  "description": "Paired comparison: W21 The Bread Hall switched out. RE-POINTED FOR v31 (02/09/2026) - the question this arm used to ask is gone, and the card it asks about is not. It was written to settle whether the card's old text, 'Game end: 1 VP for every GBP 2', corrupted the coin economy; coins were deleted from the game and the card is now 'Game end: 2 VP for each FIELD you have built', a Wheat own-suit scorer. So this is now an arm about RISK 3, the monoculture pull: the Farmstead already pays 1 VP per own-suit card built and the Power and Endgame cards already cost 2 cards of their own suit, and this card is a third payment on the same axis. The Innovation lens's standing constraint is that the metric axis must not be the specialisation axis. Read the own-crop build share (82.6% before v31 and expected to rise), the Wheat seat's win rate, and whether Wheat's card mix flattens without it.",
   "schemaVersion": 1,
   "set": {
     "cards.catalogue.W21.enabled": false

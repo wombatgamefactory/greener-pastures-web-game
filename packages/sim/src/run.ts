@@ -1,11 +1,53 @@
 /**
  * The runner: walk the stratified cells, fold every decision, pool the result.
  *
- * Single-core on purpose. Ticket 11 closed the throughput question by
- * arithmetic rather than engineering - ticket 28 measured a mixed scored table
- * at 27 / 17 / 12 games per second, so a full run at n=500 per seat count is
- * about 90 seconds. No worker threads, no structural sharing. Parallelism
- * returns only if a sweep actually hurts.
+ * ⭐ **NO LONGER SINGLE-CORE (03/09/2026).** The paragraph below is kept because
+ * its reasoning is why the parallelism took so long to arrive and what would
+ * have to be true to take it out again: ticket 11 closed the throughput question
+ * by arithmetic rather than engineering - ticket 28 measured a mixed scored
+ * table at 27 / 17 / 12 games per second, so a full run at n=500 per seat count
+ * was about 90 seconds and worker threads would have been engineering for its
+ * own sake. "Parallelism returns only if a sweep actually hurts" was the
+ * condition, and v31 met it: a whole suite is a baseline plus five mirrors plus
+ * the arms, roughly eleven thousand games, and the acceptance criterion is now
+ * FIVE MINUTES FOR ALL OF IT. See `pool.ts` for how the schedule is kept out of
+ * the result, which is the only thing about this that is hard.
+ *
+ * ## ⛔ THE v31 SLOWDOWN, AND WHAT ACTUALLY FIXED IT (closed 03/09/2026)
+ *
+ * v31 deleted the hand limit, and the hand limit was the bound the legal-move
+ * enumerator had been written against without anybody knowing. Hands reached 34
+ * cards, one 2-seat position offered 43,879 legal moves (43,845 of them build
+ * payments, C(33,4) = 40,920 ways to pay for a single card), and a 2-seat game
+ * cost minutes against reference-v9's 0.1 seconds. The limit came back at 12 the
+ * same day, which restored correctness and left the suite at 0.1 games/s: still
+ * unusable, and the reference n of 1580 still a multi-hour job.
+ *
+ * Four things closed it, and they are worth keeping apart because two are
+ * engineering and two are not:
+ *
+ *   1. **The engine's payment enumerator** (`subsets`, `buildOptions` in
+ *      actions.ts) and `clonePlain`. A CPU profile put 12.5% of a whole game
+ *      inside `subsets` alone and only 1% inside the bots' scoring loop, which
+ *      is the opposite of where everybody had been looking. Same output, same
+ *      order, a third of the allocation.
+ *   2. **The option collapse in @gp/bots** (`narrow.ts`): rules-equivalent build
+ *      payments and overflow discards folded to one representative before the
+ *      term table runs. Worth ~6% at a hand limit of 7 and far more at 12.
+ *   3. **rules.turn.handLimit 12 -> 7** (Dean, 03/09/2026). A DESIGN change that
+ *      happens to be the biggest single lever: C(6,4) = 15 against C(11,4) =
+ *      330. It moves the game and its effect must never be reported as part of
+ *      1 and 2.
+ *   4. **This file, spread over the machine.** See `pool.ts`.
+ *
+ * Measured paired, 120 games on identical seeds: 1 and 2 together gave 4.5x with
+ * **120 of 120 game digests byte-identical**; 3 gave a further 2.7x and did
+ * change the game; 4 gave the rest. A full watch-list suite - 1,580 baseline
+ * games plus 900 mirror games - now runs in about three minutes.
+ *
+ * The design half of the original finding still stands and is why the limit is
+ * 7 rather than 12: a gateway player choosing between hundreds of ways to pay
+ * for one build is not a shippable turn, whatever the simulator can afford.
  *
  * The one thing worth knowing about the pooling: ticket 11 section 7 excludes
  * STALLED games from balance means, because they end with the whole card supply
@@ -18,13 +60,13 @@
 
 import type { GameData, Suit } from '@gp/data';
 import { SUITS } from '@gp/data';
-import { makeCapture } from '@gp/engine';
 import type { Capture } from '@gp/engine';
 import type { PolicyId } from '@gp/bots';
 
-import { assignProfiles, runGame } from './driver.js';
-import { Fold } from './observe.js';
+import { assignProfiles } from './driver.js';
+import type { GameJob } from './job.js';
 import type { CardFacts, GameMetrics } from './observe.js';
+import { defaultWorkers, runJobs } from './pool.js';
 import type { Cell, ReferenceConfig } from './reference.js';
 import { cellsFor, gamesPerCell, seatingFor } from './reference.js';
 
@@ -49,6 +91,16 @@ export interface RunOptions {
   readonly onCrash?: ((capture: Capture) => void) | undefined;
   /** Names the overlay in a crash capture. Metadata only. */
   readonly overlay?: string | null | undefined;
+  /**
+   * How many worker threads to spread the plan over. Absent takes
+   * `defaultWorkers()` (cores minus one); **1 runs every game inline on this
+   * thread**, which is the debugging path and the control arm for the
+   * determinism proof.
+   *
+   * ⚠️ It may not change a single number in the report. `pool.ts` says how that
+   * is bought; `harness.test.ts` proves it on a real plan.
+   */
+  readonly workers?: number | undefined;
 }
 
 export interface RunPlan {
@@ -76,82 +128,63 @@ export interface RunResult {
   readonly games: readonly GameMetrics[];
   readonly plan: RunPlan;
   readonly wallMs: number;
+  /** Threads the plan actually ran on. 1 is inline. Report metadata; never a result. */
+  readonly workers: number;
 }
 
-export function runBalance(data: GameData, opts: RunOptions): RunResult {
-  const seed = opts.seed ?? opts.reference.seed;
-  const plan = planRun(data, opts);
-  const games: GameMetrics[] = [];
-  const started = Date.now();
-
+/**
+ * Every game in the plan, numbered, as jobs. Built up front and in plan order,
+ * which is what lets a worker finish them in any order at all: the index is the
+ * game's place in the result, so the schedule cannot reach the numbers.
+ */
+export function jobsFor(opts: RunOptions, plan: RunPlan, seed: string): GameJob[] {
+  const jobs: GameJob[] = [];
   for (const { cell, games: n } of plan.cells) {
     for (let i = 0; i < n; i++) {
       const gameSeed = `${seed}:${cell.seats}:${cell.label}:${i}`;
-      const profiles = assignProfiles(gameSeed, cell.seats, opts.reference.pool);
-      // reference-v9: who sits where rotates with the game index, so a suit is
-      // not welded to a chair. `cell.suits` is the canonical set and is NOT the
-      // seating - everything downstream must read `seating`, or the metrics go
-      // back to attributing the chair's advantage to the suit.
-      const seating = seatingFor(cell, i);
-      const fold = new Fold(
-        data,
-        {
-          seed: gameSeed,
-          cell: cell.label,
-          suits: seating,
-          neutral: cell.neutral,
-          profiles,
-        },
-        cell.seats,
-      );
-      const result = runGame(data, {
-        seed: gameSeed,
+      jobs.push({
+        index: jobs.length,
         seats: cell.seats,
-        suits: seating,
-        neutralSuits: cell.neutral,
-        policies: profiles,
-        maxMoves: opts.reference.maxMoves,
-        observe: (d) => fold.observe(d),
+        cell: cell.label,
+        // reference-v9: who sits where rotates with the game index, so a suit is
+        // not welded to a chair. `cell.suits` is the canonical set and is NOT the
+        // seating - everything downstream must read `seating`, or the metrics go
+        // back to attributing the chair's advantage to the suit.
+        seating: seatingFor(cell, i),
+        neutral: cell.neutral,
+        profiles: assignProfiles(gameSeed, cell.seats, opts.reference.pool),
+        seed: gameSeed,
+        inCell: i,
+        cellGames: n,
       });
-      games.push(fold.finish(result.state, result.outcome, result.chooseMs, result.error ?? null));
-      if (result.outcome === 'crashed' && opts.onCrash) {
-        opts.onCrash(
-          makeCapture({
-            label: 'bug',
-            // The note is the run's own account of itself. A simulator capture
-            // has no human behind it, so this is what a reader gets instead.
-            note:
-              `Emitted automatically by a balance run.\n` +
-              `Cell ${cell.label} at ${cell.seats} seats, game ${i} of ${n}.`,
-            at: new Date().toISOString(),
-            origin: 'sim',
-            dataFingerprint: result.state.dataFingerprint,
-            setup: {
-              seed: gameSeed,
-              seats: cell.seats,
-              // The SEATING, not the cell's canonical order: a capture that
-              // replays a different seating replays a different game.
-              suits: seating,
-              neutralSuits: cell.neutral,
-            },
-            policies: profiles,
-            // The attempted move is appended so the replay throws in the same
-            // place rather than reaching the crash position and stopping
-            // cleanly. It is absent when the throw came from `legalMoves`, and
-            // then the log alone reaches the position that cannot enumerate.
-            moves: result.attempted ? [...result.moves, result.attempted] : result.moves,
-            seat: result.state.turnPlayer,
-            turn: result.turns,
-            overlay: opts.overlay ?? null,
-            error: result.error ?? null,
-          }),
-        );
-      }
-      opts.onGame?.(games.length, plan.total);
     }
   }
+  return jobs;
+}
 
-  return { reference: opts.reference, seed, data, games, plan, wallMs: Date.now() - started };
+export async function runBalance(data: GameData, opts: RunOptions): Promise<RunResult> {
+  const seed = opts.seed ?? opts.reference.seed;
+  const plan = planRun(data, opts);
+  const started = Date.now();
+  const workers = opts.workers ?? defaultWorkers();
+  const { games } = await runJobs({
+    data,
+    jobs: jobsFor(opts, plan, seed),
+    maxMoves: opts.reference.maxMoves,
+    overlay: opts.overlay ?? null,
+    workers,
+    onGame: opts.onGame,
+    onCrash: opts.onCrash,
+  });
+  return {
+    reference: opts.reference,
+    seed,
+    data,
+    games,
+    plan,
+    wallMs: Date.now() - started,
+    workers,
+  };
 }
 
 // --- Pooling ---------------------------------------------------------------
@@ -208,7 +241,6 @@ export interface CardTotals {
   junked: number;
   activations: number;
   vp: number;
-  coins: number;
   /** Seat-games where the seat built this card, and how many of those it won. */
   builtSeats: number;
   builtWins: number;
@@ -256,7 +288,6 @@ export function pool(result: RunResult): Pooled {
       junked: 0,
       activations: 0,
       vp: 0,
-      coins: 0,
       builtSeats: 0,
       builtWins: 0,
       unbuiltSeats: 0,
@@ -357,7 +388,6 @@ function foldCard(t: CardTotals, f: CardFacts, game: GameMetrics): void {
   if (f.junked) t.junked += 1;
   t.activations += f.activations;
   t.vp += f.vp.reduce((a, b) => a + b, 0);
-  t.coins += f.coins.reduce((a, b) => a + b, 0);
   for (let seat = 0; seat < game.seats; seat++) {
     const won = game.winner === seat ? 1 : 0;
     if (f.builtBy.includes(seat)) {

@@ -1,21 +1,24 @@
 {
   "meta": {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "kind": "authored",
     "generatedBy": null,
     "sourceSheet": null,
     "notes": [
       "The transport / balloon module. The spreadsheet's unnamed 'Free Port' rows and its Components entry refer to this, but the module itself is specified in the printed art and the rulebook, not in the sheet.",
       "One Port (Aerodrome) card per player, printed as identical copies on the Vegetable front sheet. They are NOT shuffled into the Vegetable deck, so they are absent from cards.json.",
-      "The Aerodrome is the freight delivery destination that several Vegetable cards reference. Unlike an island slot, a balloon is MOVED rather than claimed, so it can be collected repeatedly. It is deliberately unrationed.",
+      "The Aerodrome is the freight delivery destination that several Vegetable cards reference. Unlike an island delivery space, a balloon is MOVED rather than claimed, so it can be collected repeatedly. It is deliberately unrationed.",
       "Moving a balloon IS the Deliver action, not a free action and not a card-only effect.",
       "moveCost is the printed 'two crates, not equal' icon: two barn cards of two DIFFERENT suits.",
-      "handMoveCost is the ALTERNATIVE payment printed on Vegetable's Depots (V4 and V8, the rebuild of 2026-08-09): discard this many cards from your HAND instead. The base rule above is unchanged for everybody, including a Vegetable seat taking the plain Deliver action; nothing else in the game may use the hand route. No suit constraint: the differing-crops rule belongs to the barn payment, and is what makes the balloon the table's sink for odd cards. LOWERED 2 -> 1 on 2026-08-09, and the reason is worth keeping because it was an arithmetic error rather than a taste call: at 2 the printed route cost a GROW action plus 1 matching card into the Depot's stack plus 2 discards, which is THREE cards of the scarce resource against the base rule's TWO of the abundant one, so the route was a surcharge and the Vegetable seat correctly declined it (0.54 hand-paid flights a game against the 4.2 the same seat took by the ordinary Deliver action). At 1 a flight is two hand cards on a GROW, which leaves the Deliver action free for the island - the point of the privilege. Measured paired at n=1580: flights 0.54 -> 1.22, island deliveries 2.89 -> 3.20, win rate 14.8% -> 18.9%, visits per turn 0.62 -> 0.61 (the hand did NOT starve), game length flat. The dial back up is this number.",
+      "THE MAGENTA BALLOON IS A HARVEST BALLOON (Dean, 02/09/2026, v31). It printed 'Gain GBP 4' and v31 deleted coins, so it needed a new reward rather than a smaller one. It is now 'Harvest any building, even if it is not full', which is the relaxed harvest that used to sit on the Wheat door - the one rider from the enhanced-door era worth keeping, re-homed onto the one card in the game with room for it. It has NO `amount`: 'even if it is not full' is a rule, not a size, so there is nothing here to sweep and the sky-dull arm can only dull three of the four balloons. ITS ID AND COLOUR ARE UNCHANGED ON PURPOSE. `balloonCoins` is now a misnomer and it stays a misnomer, because V19 The Sky Market scores 2 VP per balloon in your Aerodrome by COUNT and any rename would have to be chased through the card handler, the art and the reports for no gain. Read the id as a slot number.",
+      "handMoveCost is the ALTERNATIVE payment printed on Vegetable's Depots (V4 and V8, the rebuild of 2026-08-09): discard this many cards from your HAND instead. The base rule above is unchanged for everybody, including a Vegetable seat taking the plain Deliver action; nothing else in the game may use the hand route. No suit constraint: the differing-crops rule belongs to the barn payment, and is what makes the balloon the table's sink for odd cards. LOWERED 2 -> 1 on 2026-08-09, and the reason is worth keeping because it was an arithmetic error rather than a taste call: at 2 the printed route cost a GROW action plus 1 matching card into the Depot's stack plus 2 discards, which is THREE cards of the scarce resource against the base rule's TWO of the abundant one, so the route was a surcharge and the Vegetable seat correctly declined it (0.54 hand-paid flights a game against the 4.2 the same seat took by the ordinary Deliver action). At 1 a flight is two hand cards on a GROW, which leaves the Deliver action free for the island - the point of the privilege. Measured paired at n=1580: flights 0.54 -> 1.22, island deliveries 2.89 -> 3.20, win rate 14.8% -> 18.9%, visits per turn 0.62 -> 0.61 (the hand did NOT starve), game length flat. The dial back up is this number. RE-READ IT AFTER v31: the measurement was taken with a hand limit and a 2-see-1-keep Draw, and v31 has neither, so hand cards are cheaper now than the arm that set this number saw them.",
       "Setup: all four balloons start unowned beside the play area (the centre) - no per-seat parking and no draft (ticket 06 ruling J). The reference implementation and rulebook v1 park one per seat instead; ruling J explicitly supersedes that, and the divergence is flagged to the rulings audit (ticket 07). No reward is collected at setup - rewards pay only on arrival by a move.",
       "Legal source for a move is a NEIGHBOUR's Port or the unowned central Aerodrome. Never your own Port.",
-      "A balloon move is a Deliver but is NOT a 'Deliver to the island'. Cards gate themselves by printed phrase, which is why the ability dispatcher needs both onDeliver and onDeliverIsland trigger keys. A card printing the gated form cannot re-trigger itself off a balloon move, so no recursion guard is needed."
+      "A balloon move is a Deliver but is NOT a 'Deliver to the island'. Cards gate themselves by printed phrase, which is why the ability dispatcher needs both onDeliver and onDeliverIsland trigger keys. A card printing the gated form cannot re-trigger itself off a balloon move, so no recursion guard is needed. IT ALSO NEVER COUNTS TOWARD THE END TRIGGER, which is a delivery count on the island alone."
     ],
-    "unresolved": []
+    "unresolved": [
+      "The magenta balloon's new reward has never been priced against the other three. Draw 4, Build at a discount of 4 and Sow 4 are all quantities; 'harvest any building, even if it is not full' is a permission, and in a v31 turn that already buys a free Harvest through the Wheat door it may be either the strongest of the four or the dullest. It is the one balloon overlays/sky-dull-v1.overlay.json cannot turn down."
+    ]
   },
   "port": {
     "name": "Aerodrome",
@@ -55,8 +58,8 @@
       "id": "balloonCoins",
       "colour": "magenta",
       "hex": "#c15c90",
-      "rewardText": "Gain £4",
-      "reward": { "type": "gainCoins", "amount": 4 }
+      "rewardText": "Harvest any building, even if it is not full",
+      "reward": { "type": "harvestAny" }
     }
   ],
   "referencedBy": ["V4", "V8", "V16", "V17", "V19"]

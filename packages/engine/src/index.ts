@@ -21,8 +21,8 @@ export * from './query.js';
 export * from './actions.js';
 export { Fx, fireHook, wireHookBus } from './fx.js';
 export type { CardInPlay, FxAudit, HookEvents, HookName } from './fx.js';
-export { workWorker } from './workers.js';
-export type { WorkOptions } from './workers.js';
+export { performDoorAction } from './workers.js';
+export type { DoorVia } from './workers.js';
 export { taskAnswers, resolveTask, drainTasks } from './tasks.js';
 export { handlerFor, registeredCards } from './handlers/registry.js';
 // The two sub-type predicates the sim's per-suit metrics count with. Exported so
@@ -36,7 +36,6 @@ export {
   cloneState,
   growBuilding,
   visitWork,
-  workOwnWorker,
   standingMoves,
   applyCardMove,
   answerTask,
@@ -50,6 +49,8 @@ export {
   newGame,
   islandTilesInPlay,
   demandPool,
+  meeplePool,
+  emptyMeeples,
   buildIsland,
   parkBalloons,
   freshTurn,

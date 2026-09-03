@@ -1,17 +1,8 @@
 {
   "name": "noticeboard-threshold-3",
-  "description": "THE DOOR'S THRESHOLD AFTER CHANGE 6 (20/08/2026), at 3, against the shipped 5 that the sheet prints on the Notice Board. Change 6 says in as many words that this number must not be guessed. The Service the Board absorbed was locked at 2, and the threshold is the ONLY lever ever measured to move suit balance - t=4 gave Orchard 80.8%, t=3 62.8%, t=2 42.0% against an even share of 36.4%. Those arms ran on a TWO-building surface and do NOT carry across the merge: traffic that used to split between a Notice Board and a Service now lands on one card, so the same number throttles roughly twice the freight. Read it two ways. AT 5 the cap is looser than the t=4 arm that produced the worst balance number in this project's history. AT 2 one card is a seat's entire cross-table surface, so a clogged board is TOTAL denial rather than a race - assertion 5 measured denial at 0.4-0.6% only because there was always another building to go to, and that reasoning is gone. WATCH: the suit spread first (Dairy is at 65.6% and Apiary 11.1% before this runs), then assertion 5 (denial), then assertion 4 (the door clog), then visits per turn. All ten knobs move together on purpose - the door is one card in five copies, and a per-suit threshold would be a different design.",
+  "description": "THE DOOR'S THRESHOLD AT 3, AGAINST THE SHIPPED 2 (v31, 02/09/2026). One knob now, not ten: starters are single-faced, so the printed value is one path per card and the ruling lives in rules.economy.noticeBoardThreshold as an override that the v31 sheet finally agrees with. THIS IS THE ONE LEVER EVER MEASURED TO MOVE THE SUIT BALANCE. On the older two-building surface it was monotone across three paired n=1580 arms: t=4 gave Orchard 80.8%, t=3 62.8%, t=2 42.0%, against an even share of 36.4%. On the single-door surface at n=500: t=5 clogged 2.3% of turn boundaries (no brake at all), t=3 5%, t=2 11%, with the suit spread most even at 2. NONE OF THOSE ARMS CARRIES INTO v31 UNCHANGED, and the reason is new traffic: the same board now absorbs SELF-VISITS as well as rivals', because a seat may place its bonus card on its own Notice Board. At 2 the clog is the only brake on that solitaire door, and it bites in two placements; at 3 the brake is a third weaker and a seat can feed its own board two turns running before shutting itself out. So this arm is not really about visitor throughput any more - it is about how long a seat can play solitaire before the rule stops it. READ IT IN THIS ORDER: (1) the bonus mix, four ways, with visit-yourself counted SEPARATELY from visit-a-neighbour - if the self-visit share rises at 3, the brake is what was holding the hook up and the shipped 2 is doing exactly its job; (2) the suit spread; (3) the door clog rate; (4) denial at 2 seats, where a clogged board is total denial rather than a race. THE THIRD CANDIDATE IS 4, and it is unarmed and not refuted: Dean's argument for it is that a tile costs 4 cards, so a door at 4 holds exactly one delivery's worth of freight. If 3 looks better than 2, run 4 before adopting anything.",
   "schemaVersion": 1,
   "set": {
-    "cards.catalogue.W3.faces.starter.threshold": 3,
-    "cards.catalogue.W3.faces.upgraded.threshold": 3,
-    "cards.catalogue.V3.faces.starter.threshold": 3,
-    "cards.catalogue.V3.faces.upgraded.threshold": 3,
-    "cards.catalogue.O3.faces.starter.threshold": 3,
-    "cards.catalogue.O3.faces.upgraded.threshold": 3,
-    "cards.catalogue.A3.faces.starter.threshold": 3,
-    "cards.catalogue.A3.faces.upgraded.threshold": 3,
-    "cards.catalogue.D3.faces.starter.threshold": 3,
-    "cards.catalogue.D3.faces.upgraded.threshold": 3
+    "rules.economy.noticeBoardThreshold": 3
   }
 }

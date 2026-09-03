@@ -9,19 +9,13 @@
 import type { GameData } from '@gp/data';
 import type { PlayerView, Seat } from '@gp/engine';
 
-import { cropIcon, frame, token } from '../view/art';
+import { cropIcon, frame } from '../view/art';
 import { SUIT_META, seatName } from '../view/suits';
-import {
-  farmOf,
-  noticeBoardOf,
-  receiptTotal,
-  seatSuits,
-  workerTrack,
-  workersOwnedBy,
-} from '../view/table';
-import { Tableau, handSizeOf } from './Farm';
+import { doorOf, farmOf, noticeBoardOf, receiptTotal, seatSuits } from '../view/table';
+import { DoorChip } from './Door';
+import { Tableau } from './Farm';
 import { FillBar } from './StackGauge';
-import { WorkerPanel } from './Worker';
+import { MeepleSupply } from './Supply';
 import type { Zoomer } from './Zoom';
 
 export function Inspector({
@@ -43,8 +37,7 @@ export function Inspector({
   const board = noticeBoardOf(data, farm);
   const suits = seatSuits(view);
   const meta = SUIT_META[farm.suit];
-  const workers = workersOwnedBy(view, seat);
-  const handSize = handSizeOf(data, farm.tableau);
+  const door = doorOf(data, farm.suit);
 
   return (
     <div className="overlay" onClick={onClose} role="presentation">
@@ -58,16 +51,18 @@ export function Inspector({
         <header className="inspector-head">
           <img className="farm-crop" src={cropIcon(farm.suit)} alt="" />
           <h2>{seatName(suits[seat], seat, view.seat)}</h2>
-          <span className="farm-coins">
-            <img src={token('coin')} alt="" />£{farm.coins}
-          </span>
           <span className="farm-vp">
             <img src={frame('vp')} alt="" />
             {receiptTotal(farm.receipts)} VP
           </span>
+          {/* ⭐ Against the limit, since it came back on 02/09/2026 - and here
+              it is worth showing for a RIVAL as well as for you: the limit is
+              one global rule, so a neighbour's hand count reads as a fraction of
+              the same ceiling and you can see who is about to have to throw
+              cards away. */}
           <span>
             hand {farm.handCount}
-            {handSize === null ? '' : ` / ${handSize}`}
+            {data.rules.turn.handLimit === null ? '' : ` / ${data.rules.turn.handLimit}`}
           </span>
           <span>barn {farm.barnCount}</span>
           <button className="inspector-close" onClick={onClose} autoFocus>
@@ -82,9 +77,7 @@ export function Inspector({
               <span>
                 {board.full
                   ? 'Their board is full: nobody can visit until they harvest it.'
-                  : `A card on their Notice Board pays you £${board.payout}${
-                      board.twoCard === null ? '' : `, or two cards pay £${board.twoCard}`
-                    }, or works one of their Hired Workers.`}
+                  : `One card on their Notice Board, and you take their door: ${board.actionText}`}
               </span>
             </>
           ) : (
@@ -92,13 +85,14 @@ export function Inspector({
           )}
         </div>
 
-        {workers.length > 0 && (
-          <div className="inspector-workers">
-            {workers.map((w) => (
-              <WorkerPanel key={w.id} track={workerTrack(data, w)} ownerLabel="theirs" />
-            ))}
-          </div>
-        )}
+        {/* Their meeples, at full size: what free actions they are holding, and
+            of which colours. On a rival's panel this is read-only - a meeple is
+            spent by its owner, at the start of their own turn. */}
+        <MeepleSupply data={data} meeples={farm.meeples} label="Their meeples" />
+
+        <div className="inspector-workers">
+          <DoorChip door={door} owner="theirs" showMeeple />
+        </div>
 
         <Tableau data={data} buildings={farm.tableau} cardWidth={cardWidth} zoom={zoom} />
       </div>

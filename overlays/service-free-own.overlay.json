@@ -1,8 +1,0 @@
-{
-  "name": "service-free-own",
-  "schemaVersion": 1,
-  "note": "The owner's own Service is free to activate. The hermit shape v14 had to kill once already (the Draw battery), tested deliberately: it also removes the rule that makes income compulsory, so a seat can run its own farm for ever without visiting anybody. Watch assertion 8.",
-  "set": {
-    "workers.ownerActivationCost": 0
-  }
-}

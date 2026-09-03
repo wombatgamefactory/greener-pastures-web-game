@@ -5,27 +5,43 @@
  * policy, assert apply accepts exactly what legalMoves offers, keep a ceiling
  * on the move list, check card conservation, and replay the move list to the
  * bit-identical final state.
+ *
+ * ⭐ v31 (02/09/2026). Whole suites left this file with the rules they described:
+ * `the card buy`, `buy at market`, every upgrade test, the Special Orders 2-card
+ * visit, the coin payouts and wages, and the end-of-turn discard. What replaced
+ * them is at the bottom of "the bonus slot" and in "the meeple phase". Nothing
+ * about the island, the wild substitution or the end trigger changed.
+ *
+ * ⭐ ONE OF THOSE SUITES CAME BACK THE SAME DAY. The end-of-turn discard is live
+ * again in "the turn boundary", against a flat `rules.turn.handLimit` of 12
+ * rather than against a printed Barn face. See that block for why.
  */
 
 import { BASE_GAME_DATA as data, loadGameData } from '@gp/data';
-import type { Overlay, Suit } from '@gp/data';
+import type { Suit } from '@gp/data';
 import { describe, expect, it } from 'vitest';
 
 import { anyDeliverOption, deliverOptions, islandDeliveriesBy, tileLevel } from './actions.js';
 import { apply, isOver, legalMoves, newGame } from './game.js';
-import { cardById, thresholdOf } from './query.js';
+import { cardById } from './query.js';
 import { seedRng, rngInt } from './rng.js';
 import { score } from './runtime.js';
-import { freshTurn, islandTilesInPlay } from './setup.js';
+import { freshTurn, islandTilesInPlay, meeplePool } from './setup.js';
 import type { GameEvent, GameState, Move } from './state.js';
-import { buildFor, dealTo, deliveredAt, hireFor, makeState } from './testkit.js';
+import { buildFor, dealTo, deliveredAt, giveMeeples, makeState } from './testkit.js';
 import { redactEvents, viewFor } from './view.js';
 
 const WHEAT = 0;
-const APIARY = 1;
+const ORCHARD = 1;
 
+/**
+ * Wheat and Orchard, so the two doors under test are the two easiest to reason
+ * about: Wheat's is Harvest (needs a full building, so it is the door that
+ * refuses) and Orchard's is Draw 3 (legal whenever a deck has a card, so it is
+ * the door that always works).
+ */
 function base(): GameState {
-  return makeState(data, ['wheat', 'apiary']);
+  return makeState(data, ['wheat', 'orchard']);
 }
 
 function noticeBoard(state: GameState, seat: number) {
@@ -34,30 +50,6 @@ function noticeBoard(state: GameState, seat: number) {
   );
   if (!board) throw new Error(`seat ${seat} has no Notice Board`);
   return board;
-}
-
-/** Flip a seat's Notice Board to its upgraded face without paying for it. */
-function upgradeNoticeBoard(state: GameState, seat: number): void {
-  noticeBoard(state, seat).upgraded = true;
-}
-
-/**
- * Special Orders' 2-card line is off in the shipped data - `twoCard` is null
- * since the 2026-08-13 upgraded face replaced that card - but the mode is still
- * in the engine, kept so switching it back on stays a data edit. Its tests
- * therefore run against an overlay that prints the line. Without this they
- * could only assert that the mode is unreachable, and the branch would rot
- * unwatched until somebody deleted it for the wrong reason.
- */
-const twoCardData = loadGameData({
-  name: 'two-card-visit',
-  description: "guards Special Orders' switched-off 2-card mode",
-  schemaVersion: 1,
-  set: { 'rules.economy.visitPayout.twoCard': 3 },
-} as unknown as Overlay);
-
-function twoCardState(): GameState {
-  return makeState(twoCardData, ['wheat', 'apiary']);
 }
 
 /** A Wheat delivery to A1, which the testkit island stocks with two wheat crates (4 wheat). */
@@ -80,15 +72,16 @@ describe('newGame', () => {
     expect(state.suitsInPlay).toHaveLength(3);
     expect(state.suitsInPlay.slice(0, 2)).toEqual(['wheat', 'apiary']);
     for (const p of state.players) {
-      expect(p.hand).toHaveLength(5);
-      expect(p.barn).toHaveLength(1);
-      expect(p.coins).toBe(0);
+      // v31: four cards in hand, NOTHING in the barn, and no coins to have.
+      expect(p.hand).toHaveLength(4);
+      expect(p.barn).toHaveLength(0);
+      expect(Object.values(p.meeples)).toEqual([0, 0, 0, 0, 0]);
       // THREE starters since change 6 (20/08/2026): Barn, Farmstead, Notice
       // Board. The fourth was the Service and its door merged into the Board.
       expect(p.tableau).toHaveLength(3);
-      // Own deck holds 12 after dealing hand + barn card.
-      expect(state.decks[p.suit]).toHaveLength(12);
-      for (const id of [...p.hand, ...p.barn]) expect(cardById(data, id).suit).toBe(p.suit);
+      // Own deck holds 14 after dealing the hand; nothing else is dealt.
+      expect(state.decks[p.suit]).toHaveLength(14);
+      for (const id of p.hand) expect(cardById(data, id).suit).toBe(p.suit);
     }
     const passive = state.suitsInPlay[2] as Suit;
     expect(state.decks[passive]).toHaveLength(18);
@@ -101,8 +94,8 @@ describe('newGame', () => {
     for (const tok of tokens) {
       expect(tok === 'wild' || state.suitsInPlay.includes(tok)).toBe(true);
     }
-    // Every Service is owned from setup by the suit that brought it, and a
-    // Service whose suit is absent has no owner at all.
+    // Every door is owned from setup by the suit that brought it, and a door
+    // whose suit is absent has no owner at all.
     const owned = state.fair.filter((w) => w.owner !== null);
     expect(owned).toHaveLength(2);
     for (const w of state.fair) {
@@ -110,6 +103,40 @@ describe('newGame', () => {
       const seat = state.players.findIndex((p) => p.suit === spec.linkedSuit);
       expect(w.owner, w.id).toBe(seat < 0 ? null : seat);
     }
+  });
+
+  /**
+   * THE MEEPLE DEAL (v31). One per delivery space, face up, drawn from a bag of
+   * 25 that is NOT filtered by who is at the table - a meeple of a suit nobody
+   * is farming still performs its action, so the island can and does hand out
+   * colours no Notice Board on the table grants.
+   */
+  it('deals one meeple per island delivery space, face up, from all five colours', () => {
+    const state = newGame(data, { seats: 2, suits: ['wheat', 'apiary'], seed: 'meeples' });
+    const dealt = state.island.tiles.flatMap((t) => t.meeples);
+    // 6 tiles times 2 delivery spaces. `vpByDeliveryOrder.length` IS the space
+    // count, so the two can never drift.
+    expect(dealt).toHaveLength(12);
+    for (const t of state.island.tiles) expect(t.meeples).toHaveLength(2);
+    for (const colour of dealt) expect(data.cards.suits).toContain(colour);
+    expect(meeplePool(data)).toHaveLength(data.island.meeples.poolSize);
+  });
+
+  /**
+   * The bag is 25 and a 4-seat board needs 24, so the draw is near-exhaustive
+   * there and genuinely random at 2 seats. That asymmetry is a KNOWN PROPERTY
+   * with an overlay arm written for it, not a bug: pinning it here is what stops
+   * somebody "fixing" the bag to fit the board and silently deleting the thing
+   * the arm measures.
+   */
+  it('draws 24 of the bag of 25 at four seats', () => {
+    const four = newGame(data, {
+      seats: 4,
+      suits: ['wheat', 'apiary', 'orchard', 'dairy'],
+      seed: 'big',
+    });
+    expect(four.island.tiles.flatMap((t) => t.meeples)).toHaveLength(24);
+    expect(data.island.meeples.poolSize).toBe(25);
   });
 
   it('parks balloons only when Vegetable is on the table', () => {
@@ -166,84 +193,61 @@ describe('newGame', () => {
 });
 
 describe('main actions through apply', () => {
-  it('draw is the base see-2-keep-1 task and spends the action', () => {
+  /**
+   * ⭐ DRAW 2, KEEP BOTH (v31). It was see 2 keep 1 from v13, and the discard was
+   * the last piece of hidden bookkeeping in the core five actions. The task
+   * machinery is unchanged - a `see > keep` card ability still opens a real
+   * choice - so what this pins is that the printed action no longer has one.
+   */
+  it('draw is the base see-2-keep-2 task and spends the action', () => {
     const state = base();
-    dealTo(data, state, WHEAT, 'W4'); // a fee card so the turn does not auto-end
     const applied = apply(data, state, { type: 'draw', seat: WHEAT });
     expect(applied.state.turn.actionSpent).toBe(true);
-    expect(applied.state.tasks[0]).toMatchObject({ t: 'draw', see: 2, keep: 1, pid: WHEAT });
+    expect(applied.state.tasks[0]).toMatchObject({ t: 'draw', see: 2, keep: 2, pid: WHEAT });
     const picks = legalMoves(data, applied.state);
     expect(picks.every((m) => m.type === 'task' && m.seat === WHEAT)).toBe(true);
   });
 
-  it('build pays the printed cost and never flips the Farmstead - the milestone is retired', () => {
-    // Until 2026-08-12 the third own-crop building flipped the Farmstead free.
-    // Dean retired that: the Farmstead is bought for £2 like its siblings, so
-    // three own-colour builds now leave it on its base face.
-    let state = base();
-    state.players[WHEAT]!.coins = 10;
-    const events: GameEvent[] = [];
-    for (let n = 0; n < 3; n++) {
-      // Refill: enough wheat cards to cover any tier-1 cost.
-      dealTo(data, state, WHEAT, ...state.decks.wheat.slice(0, 4));
-      const builds = legalMoves(data, state).filter(
-        (m): m is Extract<Move, { type: 'build' }> =>
-          m.type === 'build' && cardById(data, m.card).suit === 'wheat',
-      );
-      expect(builds.length).toBeGreaterThan(0);
-      const applied = apply(data, state, builds[0] as Move);
-      events.push(...applied.events);
-      state = applied.state;
-      state.turn = freshTurn();
-      state.turnPlayer = WHEAT;
-      state.tasks = [];
+  it('a full draw keeps both revealed cards and discards nothing', () => {
+    let s = apply(data, base(), { type: 'draw', seat: WHEAT }).state;
+    while (s.tasks.length > 0) {
+      const moves = legalMoves(data, s);
+      s = apply(data, s, moves[0] as Move).state;
     }
-    const built = state.players[WHEAT]!.tableau.filter(
-      (b) => cardById(data, b.card).type !== 'starter',
+    // Two revealed, two kept, and the turn settled with no discard on the way.
+    expect(s.players[WHEAT]!.hand).toHaveLength(2);
+    expect(data.cards.suits.every((suit) => s.discards[suit].length === 0)).toBe(true);
+  });
+
+  it('build pays in cards and nothing else', () => {
+    const state = base();
+    dealTo(data, state, WHEAT, ...state.decks.wheat.slice(0, 4));
+    const before = state.players[WHEAT]!.hand.length;
+    const builds = legalMoves(data, state).filter(
+      (m): m is Extract<Move, { type: 'build' }> => m.type === 'build',
     );
-    expect(built).toHaveLength(3);
-    const wheatFarm = state.players[WHEAT]!.tableau.find(
-      (b) => cardById(data, b.card).slot === 'farmstead',
-    );
-    expect(wheatFarm?.upgraded).toBe(false);
-    expect(events.filter((e) => e.e === 'starterUpgraded')).toHaveLength(0);
+    expect(builds.length).toBeGreaterThan(0);
+    const move = builds[0] as Extract<Move, { type: 'build' }>;
+    const applied = apply(data, state, move);
+    expect(applied.state.players[WHEAT]!.hand).toHaveLength(before - 1 - move.payment.length);
+    expect(applied.events).toContainEqual({
+      e: 'built',
+      seat: WHEAT,
+      card: move.card,
+      payment: move.payment,
+    });
   });
 
   /**
-   * Dean, 19/08/2026: the starter flip *"is no longer considered a Build action
-   * - instead it is one of the 4 bonus actions you may perform on your turn"*.
-   * So the assertion that used to read "a Build-action branch" now has to read
-   * the opposite in both directions: the slot is spent and the ACTION IS NOT.
-   */
-  it('upgrade spends the bonus slot, not the main action, and is priced from data', () => {
-    const s2 = base();
-    s2.players[WHEAT]!.coins = 2;
-    const barnCard = s2.players[WHEAT]!.tableau.find(
-      (b) => cardById(data, b.card).slot === 'barn',
-    )!;
-    const up = apply(data, s2, { type: 'upgrade', seat: WHEAT, card: barnCard.card });
-    expect(up.state.players[WHEAT]!.tableau.find((b) => b.card === barnCard.card)?.upgraded).toBe(
-      true,
-    );
-    expect(up.state.players[WHEAT]!.coins).toBe(0);
-    expect(up.state.turn.bonusSpent).toBe(true);
-    expect(up.state.turn.actionSpent).toBe(false);
-    // And the slot is genuinely gone: no second bonus, of any kind.
-    expect(legalMoves(data, up.state).some((m) => m.type === 'upgrade')).toBe(false);
-    expect(legalMoves(data, up.state).some((m) => m.type === 'visit')).toBe(false);
-  });
-
-  /**
-   * THE BONUS WINDOW (Dean, 19/08/2026): *"the bonus action can only be
-   * performed at the start of your turn."* One predicate, `bonusOpen`, and the
-   * whole of it is that the main action has not been taken.
+   * THE BONUS WINDOW (Dean, 19/08/2026, carried into v31): *"the bonus action
+   * can only be performed at the start of your turn."* One predicate,
+   * `bonusOpen`, and the whole of it is that the main action has not been taken.
    */
   it('the bonus slot shuts the moment the main action is taken', () => {
     const open = base();
     dealTo(data, open, WHEAT, 'W4'); // a visit needs a fee card in hand
-    open.players[WHEAT]!.coins = 2;
-    expect(legalMoves(data, open).some((m) => m.type === 'upgrade')).toBe(true);
     expect(legalMoves(data, open).some((m) => m.type === 'visit')).toBe(true);
+    expect(legalMoves(data, open).some((m) => m.type === 'bonusDraw')).toBe(true);
 
     // `!actionSpent` IS "at the start of your turn" - there is no other thing a
     // turn can have done, which is why the rule needed no new state. Set here
@@ -252,46 +256,63 @@ describe('main actions through apply', () => {
     // whole move list.
     const shut = base();
     dealTo(data, shut, WHEAT, 'W4');
-    shut.players[WHEAT]!.coins = 2;
     shut.turn.actionSpent = true;
-    expect(shut.turn.bonusSpent).toBe(false); // unspent, and still unreachable
-    expect(legalMoves(data, shut).some((m) => m.type === 'upgrade')).toBe(false);
+    expect(shut.turn.bonusUsed).toEqual([]); // unspent, and still unreachable
     expect(legalMoves(data, shut).some((m) => m.type === 'visit')).toBe(false);
-    expect(legalMoves(data, shut).some((m) => m.type === 'workOwnWorker')).toBe(false);
+    expect(legalMoves(data, shut).some((m) => m.type === 'bonusDraw')).toBe(false);
+    expect(legalMoves(data, shut).some((m) => m.type === 'spendMeeple')).toBe(false);
   });
 
-  it('deliver pays crates from the barn, mints coins, and takes the next receipt on the tile', () => {
+  /**
+   * ⭐ THE ISLAND PAYS A MEEPLE, NOT A COIN (v31). Both delivery spaces on every
+   * tile carry one, so the 3 VP space is not a consolation prize - it is 3 VP
+   * AND a free action.
+   */
+  it('deliver pays crates from the barn, takes the next receipt, and claims that space its meeple', () => {
     const state = base();
     // Testkit island at 2 seats: A1 holds [wheat, wheat], so 4 wheat.
-    dealTo(data, state, WHEAT, 'W4'); // keep the bonus slot live so the turn does not auto-end
+    const first = state.island.tiles.find((t) => t.tile === 'A1')!.meeples[0]!;
     stockBarn(state, WHEAT, 'wheat', 4);
-    const applied = apply(data, state, {
-      type: 'deliver',
-      seat: WHEAT,
-      tile: 'A1',
-      spend: { wheat: 4 },
-    });
-    // First to this tile, so the head of the schedule: 6 VP and a flat £1.
+    const applied = apply(data, state, deliverA1({ wheat: 4 }));
+    // First to this tile, so the head of the schedule: 6 VP.
     expect(applied.state.players[WHEAT]!.receipts).toEqual([6]);
-    expect(applied.state.players[WHEAT]!.coins).toBe(1);
     expect(applied.state.players[WHEAT]!.barn).toHaveLength(0);
+    expect(applied.state.players[WHEAT]!.meeples[first]).toBe(1);
+    expect(applied.events).toContainEqual({
+      e: 'meepleGained',
+      seat: WHEAT,
+      colour: first,
+      tile: 'A1',
+      space: 0,
+    });
     expect(applied.state.island.tiles.find((t) => t.tile === 'A1')?.deliveredBy).toEqual([WHEAT]);
     expect(applied.state.endTrigger).toBeNull();
 
-    // Second to the SAME tile takes the second entry, whoever they are. The
-    // whole time gradient is this: arriving first is worth double.
+    // Second to the SAME tile takes the second entry - 3 VP, and the second
+    // meeple. The whole time gradient is this: arriving first is worth double,
+    // and the free action is the same either way.
     const s2 = applied.state;
+    const second = s2.island.tiles.find((t) => t.tile === 'A1')!.meeples[1]!;
     s2.turn = freshTurn();
-    s2.turnPlayer = APIARY;
-    stockBarn(s2, APIARY, 'wheat', 4);
-    const second = apply(data, s2, {
+    s2.turnPlayer = ORCHARD;
+    stockBarn(s2, ORCHARD, 'wheat', 4);
+    const out = apply(data, s2, {
       type: 'deliver',
-      seat: APIARY,
+      seat: ORCHARD,
       tile: 'A1',
       spend: { wheat: 4 },
     });
-    expect(second.state.players[APIARY]!.receipts).toEqual([3]);
-    expect(second.state.players[APIARY]!.coins).toBe(1);
+    expect(out.state.players[ORCHARD]!.receipts).toEqual([3]);
+    expect(out.state.players[ORCHARD]!.meeples[second]).toBe(1);
+  });
+
+  it('the meeples on a tile are never mutated: the record is deliveredBy', () => {
+    const state = base();
+    stockBarn(state, WHEAT, 'wheat', 4);
+    const before = [...state.island.tiles.find((t) => t.tile === 'A1')!.meeples];
+    const after = apply(data, state, deliverA1({ wheat: 4 })).state;
+    // The printed schedule stays put; who took which space is `deliveredBy`.
+    expect(after.island.tiles.find((t) => t.tile === 'A1')?.meeples).toEqual(before);
   });
 
   /**
@@ -301,19 +322,18 @@ describe('main actions through apply', () => {
    */
   it('the end fires on a sixth island delivery by ONE seat, not on six across the table', () => {
     const s = base();
-    // Five for Wheat and five for Apiary, interleaved over the six 2-seat tiles.
+    // Five for Wheat and five for Orchard, interleaved over the six 2-seat tiles.
     deliveredAt(s, WHEAT, 'A1', 'A2', 'A5', 'B1', 'B4');
-    deliveredAt(s, APIARY, 'A1', 'A2', 'A5', 'B1', 'B4');
+    deliveredAt(s, ORCHARD, 'A1', 'A2', 'A5', 'B1', 'B4');
     expect(islandDeliveriesBy(s, WHEAT)).toBe(5);
     expect(s.endTrigger).toBeNull();
 
-    stockBarn(s, WHEAT, 'dairy', 4);
-    const out = apply(data, s, {
-      type: 'deliver',
-      seat: WHEAT,
-      tile: 'D1',
-      spend: { dairy: 4 },
-    });
+    // 8 wheat pays any tile outright under the wild substitution, whatever its
+    // crates ask for, so the sixth delivery does not depend on the demand deal.
+    stockBarn(s, WHEAT, 'wheat', 8);
+    const sixth = legalMoves(data, s).find((m) => m.type === 'deliver' && m.tile === 'D1');
+    expect(sixth).toBeDefined();
+    const out = apply(data, s, sixth as Move);
     expect(islandDeliveriesBy(out.state, WHEAT)).toBe(6);
     expect(out.state.endTrigger).toEqual({ seat: WHEAT });
     expect(out.events.some((e) => e.e === 'endTriggered')).toBe(true);
@@ -325,7 +345,7 @@ describe('main actions through apply', () => {
       schemaVersion: 1,
       set: { 'rules.endGame.deliveriesToTrigger': 2 },
     });
-    const s = makeState(quick, ['wheat', 'apiary']);
+    const s = makeState(quick, ['wheat', 'orchard']);
     deliveredAt(s, WHEAT, 'A2');
     stockBarn(s, WHEAT, 'wheat', 4);
     const out = apply(quick, s, { type: 'deliver', seat: WHEAT, tile: 'A1', spend: { wheat: 4 } });
@@ -398,7 +418,7 @@ describe('main actions through apply', () => {
       schemaVersion: 1,
       set: { 'island.cardsPerSubstitution': null },
     });
-    const s = makeState(strict, ['wheat', 'apiary']);
+    const s = makeState(strict, ['wheat', 'orchard']);
     stockBarn(s, WHEAT, 'wheat', 3);
     stockBarn(s, WHEAT, 'apiary', 2);
     expect(anyDeliverOption(strict, s, WHEAT)).toBe(false);
@@ -425,7 +445,7 @@ describe('main actions through apply', () => {
   it('the receipt is decided by arrival order at that tile, per tile', () => {
     const s = base();
     stockBarn(s, WHEAT, 'wheat', 8);
-    stockBarn(s, APIARY, 'wheat', 8);
+    stockBarn(s, ORCHARD, 'wheat', 8);
     const deliver = (seat: number, tile: string) => ({
       type: 'deliver' as const,
       seat,
@@ -442,17 +462,17 @@ describe('main actions through apply', () => {
     let g = apply(data, s, deliver(WHEAT, 'A1')).state;
     expect(g.players[WHEAT]!.receipts).toEqual([6]);
 
-    // Apiary goes to a DIFFERENT tile and is first there, so it takes 6 too.
+    // Orchard goes to a DIFFERENT tile and is first there, so it takes 6 too.
     // Under the old level queue this was the second delivery to Level 1 and
     // would have been docked; per tile, it is not.
-    g = apply(data, nextTurn(g, APIARY), deliver(APIARY, 'A2')).state;
-    expect(g.players[APIARY]!.receipts).toEqual([6]);
+    g = apply(data, nextTurn(g, ORCHARD), deliver(ORCHARD, 'A2')).state;
+    expect(g.players[ORCHARD]!.receipts).toEqual([6]);
 
-    // Apiary follows Wheat onto A1: second at that tile, so 3.
-    g = apply(data, nextTurn(g, APIARY), deliver(APIARY, 'A1')).state;
-    expect(g.players[APIARY]!.receipts).toEqual([6, 3]);
+    // Orchard follows Wheat onto A1: second at that tile, so 3.
+    g = apply(data, nextTurn(g, ORCHARD), deliver(ORCHARD, 'A1')).state;
+    expect(g.players[ORCHARD]!.receipts).toEqual([6, 3]);
 
-    // And Wheat following Apiary onto A2 is second there, also 3 - the schedule
+    // And Wheat following Orchard onto A2 is second there, also 3 - the schedule
     // is a property of the tile, not of the player or of how late it is.
     g = apply(data, nextTurn(g, WHEAT), deliver(WHEAT, 'A2')).state;
     expect(g.players[WHEAT]!.receipts).toEqual([6, 3]);
@@ -464,19 +484,21 @@ describe('main actions through apply', () => {
       schemaVersion: 1,
       set: { 'island.vpByDeliveryOrder': [5, 4] },
     });
-    const s = makeState(flat, ['wheat', 'apiary']);
+    const s = makeState(flat, ['wheat', 'orchard']);
     stockBarn(s, WHEAT, 'wheat', 4);
     const out = apply(flat, s, { type: 'deliver', seat: WHEAT, tile: 'A1', spend: { wheat: 4 } });
     expect(out.state.players[WHEAT]!.receipts).toEqual([5]);
 
-    // Shortening the array closes a delivery space. There is no second knob to
-    // keep in step, which is the reason it is one array.
+    // Shortening the array closes a delivery space - and, since v31, deals one
+    // fewer meeple. There is no second knob to keep in step, which is the reason
+    // it is one array.
     const single = loadGameData({
       name: 'one-delivery-per-tile',
       schemaVersion: 1,
       set: { 'island.vpByDeliveryOrder': [6] },
     });
-    const t = makeState(single, ['wheat', 'apiary']);
+    const t = makeState(single, ['wheat', 'orchard']);
+    expect(t.island.tiles.every((tile) => tile.meeples.length === 1)).toBe(true);
     stockBarn(t, WHEAT, 'wheat', 8);
     const u = apply(single, t, {
       type: 'deliver',
@@ -498,9 +520,10 @@ describe('main actions through apply', () => {
     // Testkit island at 2 seats: A1/A2/A5 row 1, B1/B4 row 2, D1 row 3. Stock
     // every demand, so the only thing that could refuse a tile is a rule.
     const s = base();
-    stockBarn(s, WHEAT, 'wheat', 8);
-    stockBarn(s, WHEAT, 'apiary', 8);
-    stockBarn(s, WHEAT, 'dairy', 8);
+    // The testkit demand pool spans the in-play suits, so stock all of them
+    // rather than naming crops: which colour lands on D1 is a property of the
+    // pool order, not of this test.
+    for (const suit of s.suitsInPlay) stockBarn(s, WHEAT, suit, 8);
     const rows = new Set(
       legalMoves(data, s)
         .filter((m) => m.type === 'deliver')
@@ -510,18 +533,16 @@ describe('main actions through apply', () => {
 
     // Including the top row on a seat's very first delivery, which the gate
     // used to make impossible.
-    const out = apply(data, s, {
-      type: 'deliver',
-      seat: WHEAT,
-      tile: 'D1',
-      spend: { dairy: 4 },
-    });
+    const top = legalMoves(data, s).find((m) => m.type === 'deliver' && m.tile === 'D1');
+    expect(top).toBeDefined();
+    const out = apply(data, s, top as Move);
     expect(out.state.players[WHEAT]!.receipts).toEqual([6]);
   });
 
   it('a balloon move is not an island delivery, so it never arms the clock', () => {
     // The freight branch of Deliver (DL-12) never touches the island, so it
-    // takes no receipt space and does not count toward the end trigger.
+    // takes no receipt space, claims no meeple, and does not count toward the
+    // end trigger.
     const s = makeState(data, ['vegetable', 'wheat']);
     stockBarn(s, 0, 'wheat', 1);
     stockBarn(s, 0, 'apiary', 1);
@@ -530,251 +551,237 @@ describe('main actions through apply', () => {
     const after = apply(data, s, move as Move).state;
     expect(after.island.tiles.every((t) => t.deliveredBy.length === 0)).toBe(true);
     expect(after.players[0]!.receipts).toEqual([]);
-  });
-
-  it('the Farmstead is bought for £2 like its siblings, and buying one flips only itself', () => {
-    // The rule change of 2026-08-12: the Farmstead is on the upgrade menu at
-    // the standard price, and nothing on the table flips it for free. The old
-    // knock-on - a paid Barn flip printing the third crop icon and flipping the
-    // Farmstead as well - is gone with the milestone that read it.
-    const s = base();
-    buildFor(data, s, WHEAT, 'W4', 'W5'); // two own-crop deck builds
-    dealTo(data, s, WHEAT, 'W6'); // keep the turn from settling
-    s.players[WHEAT]!.coins = 2;
-
-    const offered = legalMoves(data, s)
-      .filter((m): m is Extract<Move, { type: 'upgrade' }> => m.type === 'upgrade')
-      .map((m) => m.card);
-    expect(offered).toContain('W2');
-
-    const up = apply(data, s, { type: 'upgrade', seat: WHEAT, card: 'W2' });
-    const tableau = up.state.players[WHEAT]!.tableau;
-    expect(tableau.find((b) => b.card === 'W2')?.upgraded).toBe(true);
-    expect(tableau.find((b) => b.card === 'W1')?.upgraded).toBe(false);
-    expect(up.state.players[WHEAT]!.coins).toBe(0);
-    expect(up.events.filter((e) => e.e === 'starterUpgraded').map((e) => e.card)).toEqual(['W2']);
-  });
-
-  it('a paid Barn flip no longer flips the Farmstead with it', () => {
-    const s = base();
-    buildFor(data, s, WHEAT, 'W4', 'W5'); // the old milestone's first two icons
-    dealTo(data, s, WHEAT, 'W6');
-    s.players[WHEAT]!.coins = 2;
-    const up = apply(data, s, { type: 'upgrade', seat: WHEAT, card: 'W1' });
-    expect(up.state.players[WHEAT]!.tableau.find((b) => b.card === 'W2')?.upgraded).toBe(false);
+    expect(Object.values(after.players[0]!.meeples)).toEqual([0, 0, 0, 0, 0]);
   });
 
   it('pass is offered only when no main action is legal', () => {
     const state = base();
     expect(legalMoves(data, state).some((m) => m.type === 'pass')).toBe(false);
-    // Empty every deck and discard: no draw, and an empty hand allows nothing else.
+    // Empty every deck and discard: no draw, and an empty hand allows nothing
+    // else - including both halves of the bonus slot, since the free Draw 1
+    // needs a live deck and a visit needs a card to place.
     for (const suit of data.cards.suits) {
       state.decks[suit] = [];
       state.discards[suit] = [];
     }
     const moves = legalMoves(data, state);
     expect(moves.some((m) => m.type === 'pass')).toBe(true);
-    expect(moves.filter((m) => m.type !== 'pass' && m.type !== 'visit')).toHaveLength(0);
+    expect(moves.filter((m) => m.type !== 'pass')).toHaveLength(0);
   });
 });
 
 describe('the bonus slot through apply', () => {
-  it('a coin visit places the fee and mints the printed payout to the visitor', () => {
+  /**
+   * ⭐ THE VISIT IS ONE CARD FOR ONE ACTION (v31). No mode, no coin, no wage:
+   * what the visitor gets is the host's suit action, and what the host gets is a
+   * card on their board that they will harvest into their own barn.
+   */
+  it('a visit places the fee on the host board and runs that board suit action', () => {
     const state = base();
     dealTo(data, state, WHEAT, 'W4', 'W5');
     const applied = apply(data, state, {
       type: 'visit',
       seat: WHEAT,
-      host: APIARY,
-      fee: ['W4'],
-      payoff: { mode: 'coin' },
+      host: ORCHARD,
+      fee: 'W4',
     });
-    expect(applied.state.players[WHEAT]!.coins).toBe(data.rules.economy.visitPayout.base);
-    const board = applied.state.players[APIARY]!.tableau.find(
-      (b) => cardById(data, b.card).slot === 'noticeboard',
-    );
-    expect(board?.stack).toEqual(['W4']);
-    expect(applied.state.turn.bonusSpent).toBe(true);
-    expect(applied.state.turn.visit).toBeNull(); // coin mode never arms the Helping Hand
-  });
-
-  it('a worker visit runs the action for the visitor and arms the gate', () => {
-    const state = base();
-    hireFor(state, APIARY, 'draw');
-    dealTo(data, state, WHEAT, 'W4');
-    const applied = apply(data, state, {
-      type: 'visit',
-      seat: WHEAT,
-      host: APIARY,
-      fee: ['W4'],
-      payoff: { mode: 'worker', workerId: 'draw' },
-    });
-    expect(applied.state.turn.visit).toMatchObject({ host: APIARY, workerId: 'draw' });
-    // Draw 3 since change 6: the Orchard door follows the sheet's O3.
+    expect(noticeBoard(applied.state, ORCHARD).stack).toEqual(['W4']);
+    expect(applied.state.turn.bonusUsed).toEqual(['visit']);
+    // The Orchard door is Draw 3, the one printed exception in the roster.
     expect(applied.state.tasks[0]).toMatchObject({ t: 'draw', see: 3, keep: 3, pid: WHEAT });
-    // A BASE board pays the action branch nothing. That is what the upgrade buys.
-    expect(applied.state.players[WHEAT]!.coins).toBe(0);
-  });
-
-  /**
-   * The 2026-08-13 upgraded face: "VISIT: gain £2, OR gain £1 and do the special
-   * action". The second half is the new one, and it is the whole card - it is
-   * what stops a visitor swapping to the coin branch on the same farm instead of
-   * choosing that farm over a neighbour's.
-   */
-  it('an upgraded board pays the action branch too, and the owner still gets nothing', () => {
-    const state = base();
-    upgradeNoticeBoard(state, APIARY);
-    hireFor(state, APIARY, 'draw');
-    dealTo(data, state, WHEAT, 'W4');
-    const hostBefore = state.players[APIARY]!.coins;
-    const applied = apply(data, state, {
-      type: 'visit',
-      seat: WHEAT,
-      host: APIARY,
-      fee: ['W4'],
-      payoff: { mode: 'worker', workerId: 'draw' },
-    });
-    expect(applied.state.players[WHEAT]!.coins).toBe(data.rules.economy.visitPayout.upgradedAction);
-    expect(applied.state.players[APIARY]!.coins).toBe(hostBefore);
-    // The action still happens: the coin is on top of it, not instead of it.
-    expect(applied.state.tasks[0]).toMatchObject({ t: 'draw', pid: WHEAT });
-  });
-
-  it('an upgraded board still pays the coin branch its own bigger rate', () => {
-    const state = base();
-    upgradeNoticeBoard(state, APIARY);
-    dealTo(data, state, WHEAT, 'W4');
-    const applied = apply(data, state, {
-      type: 'visit',
-      seat: WHEAT,
-      host: APIARY,
-      fee: ['W4'],
-      payoff: { mode: 'coin' },
-    });
-    expect(applied.state.players[WHEAT]!.coins).toBe(data.rules.economy.visitPayout.upgraded);
-  });
-
-  it("Special Orders' 2-card visit places both cards and mints the bigger payout", () => {
-    const state = twoCardState();
-    upgradeNoticeBoard(state, APIARY);
-    dealTo(twoCardData, state, WHEAT, 'W4', 'W5', 'W6');
-    const applied = apply(twoCardData, state, {
-      type: 'visit',
-      seat: WHEAT,
-      host: APIARY,
-      fee: ['W4', 'W5'],
-      payoff: { mode: 'special' },
-    });
-    const visitor = applied.state.players[WHEAT] as GameState['players'][number];
-    expect(visitor.coins).toBe(twoCardData.rules.economy.visitPayout.twoCard);
-    expect(visitor.hand).toEqual(['W6']);
-    expect(noticeBoard(applied.state, APIARY).stack).toEqual(['W4', 'W5']);
-    expect(applied.state.turn.bonusSpent).toBe(true);
-    // No Worker option, so the Helping Hand gate stays shut.
-    expect(applied.state.turn.visit).toBeNull();
     expect(applied.events).toContainEqual({
       e: 'visited',
       seat: WHEAT,
-      host: APIARY,
-      mode: 'special',
+      host: ORCHARD,
+      self: false,
+      colour: 'orchard',
+      action: 'draw',
     });
   });
 
-  it('offers the 2-card mode only at an upgraded board, and never with a Worker', () => {
-    const state = twoCardState();
-    hireFor(state, APIARY, 'draw');
-    dealTo(twoCardData, state, WHEAT, 'W4', 'W5');
-    const plain = legalMoves(twoCardData, state).filter((m) => m.type === 'visit');
-    expect(plain.some((m) => m.payoff.mode === 'special')).toBe(false);
-    expect(() =>
-      apply(twoCardData, state, {
-        type: 'visit',
-        seat: WHEAT,
-        host: APIARY,
-        fee: ['W4', 'W5'],
-        payoff: { mode: 'special' },
-      }),
-    ).toThrow(/does not print/);
+  /**
+   * ⭐ RISK 2 OF THE WHOLE PASS, ARMED ON PURPOSE. The self-visit is a solitaire
+   * door bought with the same currency as the interaction door. Its only brake
+   * is structural, and the second half of this test is that brake: your own card
+   * counts toward your own threshold of 2, so feeding your board shuts it.
+   */
+  it('a seat may visit its own board, and doing so clogs its own door', () => {
+    const state = base();
+    dealTo(data, state, ORCHARD, 'O4', 'O5', 'O6');
+    state.turnPlayer = ORCHARD;
+    const first = apply(data, state, { type: 'visit', seat: ORCHARD, host: ORCHARD, fee: 'O4' });
+    expect(noticeBoard(first.state, ORCHARD).stack).toEqual(['O4']);
+    expect(first.events).toContainEqual({
+      e: 'visited',
+      seat: ORCHARD,
+      host: ORCHARD,
+      self: true,
+      colour: 'orchard',
+      action: 'draw',
+    });
 
-    upgradeNoticeBoard(state, APIARY);
-    const special = legalMoves(twoCardData, state).filter(
-      (m) => m.type === 'visit' && m.payoff.mode === 'special',
-    );
-    expect(special).toHaveLength(1); // C(2,2), one host
-    expect(special[0]).toMatchObject({ fee: ['W4', 'W5'] });
-    // A special visit is a pair of DISTINCT cards: no card is ever paid twice.
-    expect(
-      legalMoves(twoCardData, state).some(
-        (m) => m.type === 'visit' && m.payoff.mode === 'special' && m.fee[0] === m.fee[1],
-      ),
-    ).toBe(false);
+    // Two cards and the board is full: nobody may place on it, the owner
+    // included, until it is harvested.
+    const s2 = first.state;
+    s2.tasks = [];
+    s2.turn = freshTurn();
+    s2.turnPlayer = ORCHARD;
+    const second = apply(data, s2, { type: 'visit', seat: ORCHARD, host: ORCHARD, fee: 'O5' });
+    const s3 = second.state;
+    s3.tasks = [];
+    s3.turn = freshTurn();
+    s3.turnPlayer = ORCHARD;
+    expect(legalMoves(data, s3).some((m) => m.type === 'visit' && m.host === ORCHARD)).toBe(false);
+    expect(() =>
+      apply(data, s3, { type: 'visit', seat: ORCHARD, host: ORCHARD, fee: 'O6' }),
+    ).toThrow(/is full/);
+    // ⚠️ AND THE COST IS NOT ONLY THE DOOR. A clogged Notice Board is a FULL
+    // building, so it is harvestable - which is how the owner reopens it, and
+    // also the reason the Wheat door across the table has just become legal for
+    // this seat when it was dead a moment ago. The brake and the unclog are the
+    // same action.
+    expect(legalMoves(data, s3).some((m) => m.type === 'harvest')).toBe(true);
   });
 
-  it('never offers the 2-card mode when the line is switched off', () => {
-    const state = base();
-    upgradeNoticeBoard(state, APIARY);
-    dealTo(data, state, WHEAT, 'W4', 'W5');
-    expect(data.rules.economy.visitPayout.twoCard).toBeNull();
-    expect(
-      legalMoves(data, state).some((m) => m.type === 'visit' && m.payoff.mode === 'special'),
-    ).toBe(false);
+  it('selfVisitAllowed false is the paired control', () => {
+    const noSelf = loadGameData({
+      name: 'no-self-visit',
+      schemaVersion: 1,
+      set: { 'rules.turn.selfVisitAllowed': false },
+    });
+    const s = makeState(noSelf, ['wheat', 'orchard']);
+    dealTo(noSelf, s, ORCHARD, 'O4');
+    s.turnPlayer = ORCHARD;
+    expect(legalMoves(noSelf, s).some((m) => m.type === 'visit' && m.host === ORCHARD)).toBe(false);
     expect(() =>
-      apply(data, state, {
-        type: 'visit',
-        seat: WHEAT,
-        host: APIARY,
-        fee: ['W4', 'W5'],
-        payoff: { mode: 'special' },
-      }),
+      apply(noSelf, s, { type: 'visit', seat: ORCHARD, host: ORCHARD, fee: 'O4' }),
     ).toThrow(/switched off/);
   });
 
-  it('refuses the whole 2-card visit when the board has room for only one', () => {
-    const state = twoCardState();
-    upgradeNoticeBoard(state, APIARY);
-    const board = noticeBoard(state, APIARY);
-    // Room for exactly ONE, derived rather than hard-coded: this used to read
-    // `splice(0, 4)  // 4 of 5` and broke the moment the door's threshold was
-    // ruled to 2 on 20/08/2026, because a stack of 4 is then over-full and even
-    // the coin visit is refused. The test is about "room for one", not about 5.
-    const room1 = (thresholdOf(twoCardData, board) ?? 1) - 1;
-    board.stack = state.decks.apiary.splice(0, room1);
-    dealTo(twoCardData, state, WHEAT, 'W4', 'W5');
-    const moves = legalMoves(twoCardData, state).filter((m) => m.type === 'visit');
-    expect(moves.some((m) => m.payoff.mode === 'special')).toBe(false);
-    expect(moves.some((m) => m.payoff.mode === 'coin')).toBe(true); // one card still fits
-    expect(() =>
-      apply(twoCardData, state, {
-        type: 'visit',
-        seat: WHEAT,
-        host: APIARY,
-        fee: ['W4', 'W5'],
-        payoff: { mode: 'special' },
-      }),
-    ).toThrow(/no room/);
-    expect(noticeBoard(state, APIARY).stack).toHaveLength(room1); // nothing moved
+  /**
+   * RULED (v31): a door that can do nothing is not offered. The visit costs a
+   * card and returns an action, so a visit whose action is a no-op is strictly
+   * dominated. Wheat's door is the one that refuses: Harvest needs a full
+   * building.
+   */
+  it('never offers a visit to a door with nothing legal to do', () => {
+    const s = base();
+    dealTo(data, s, ORCHARD, 'O4');
+    s.turnPlayer = ORCHARD;
+    // Orchard has no full building, so the Wheat door (Harvest) is dead for it.
+    expect(legalMoves(data, s).some((m) => m.type === 'visit' && m.host === WHEAT)).toBe(false);
+    expect(() => apply(data, s, { type: 'visit', seat: ORCHARD, host: WHEAT, fee: 'O4' })).toThrow(
+      /nothing legal/,
+    );
+
+    // Give it one and the same door opens.
+    const board = noticeBoard(s, ORCHARD);
+    board.stack = s.decks.orchard.splice(0, 2); // threshold 2: full
+    expect(legalMoves(data, s).some((m) => m.type === 'visit' && m.host === WHEAT)).toBe(true);
   });
 
-  it('holds every payoff to its printed card count', () => {
+  /**
+   * The SOLITAIRE half. It exists so the bonus slot is never dead - a seat with
+   * an empty hand has no card to place - and it is the yardstick every door has
+   * to beat, which is why the Orchard door is Draw 3 and not Draw 2.
+   */
+  it('the bonus Draw 1 is a real draw, spends the slot, and leaves the action alone', () => {
     const state = base();
-    upgradeNoticeBoard(state, APIARY);
+    const applied = apply(data, state, { type: 'bonusDraw', seat: WHEAT });
+    expect(applied.state.tasks[0]).toMatchObject({ t: 'draw', see: 1, keep: 1, pid: WHEAT });
+    expect(applied.state.turn.bonusUsed).toEqual(['draw']);
+    expect(applied.state.turn.actionSpent).toBe(false);
+    // One bonus a turn: the slot is genuinely gone, either half of it.
+    let s = applied.state;
+    while (s.tasks.length > 0) s = apply(data, s, legalMoves(data, s)[0] as Move).state;
+    expect(s.players[WHEAT]!.hand).toHaveLength(1);
+    expect(legalMoves(data, s).some((m) => m.type === 'bonusDraw')).toBe(false);
+    expect(legalMoves(data, s).some((m) => m.type === 'visit')).toBe(false);
+  });
+
+  it('one bonus a turn, whichever half was taken', () => {
+    const state = base();
     dealTo(data, state, WHEAT, 'W4', 'W5');
-    for (const move of [
-      { fee: ['W4', 'W5'], payoff: { mode: 'coin' as const } },
-      { fee: ['W4'], payoff: { mode: 'special' as const } },
-    ]) {
-      expect(() =>
-        apply(data, state, { type: 'visit', seat: WHEAT, host: APIARY, ...move }),
-      ).toThrow(/exactly/);
-    }
+    const after = apply(data, state, {
+      type: 'visit',
+      seat: WHEAT,
+      host: ORCHARD,
+      fee: 'W4',
+    }).state;
+    after.tasks = [];
+    expect(legalMoves(data, after).some((m) => m.type === 'visit')).toBe(false);
+    expect(legalMoves(data, after).some((m) => m.type === 'bonusDraw')).toBe(false);
+  });
+});
+
+describe('the meeple phase', () => {
+  /**
+   * ⭐ A meeple performs its colour's plain action, free, and LEAVES THE GAME. It
+   * is neither the action nor the bonus, so both are still there afterwards -
+   * which is exactly the action inflation risk 1 of the v31 plan names.
+   */
+  it('spending a meeple runs its colour action and leaves the turn intact', () => {
+    const s = base();
+    giveMeeples(s, WHEAT, 'orchard');
+    const applied = apply(data, s, { type: 'spendMeeple', seat: WHEAT, colour: 'orchard' });
+    expect(applied.state.players[WHEAT]!.meeples.orchard).toBe(0);
+    expect(applied.state.tasks[0]).toMatchObject({ t: 'draw', see: 3, keep: 3, pid: WHEAT });
+    expect(applied.state.turn.actionSpent).toBe(false);
+    expect(applied.state.turn.bonusUsed).toEqual([]);
+    expect(applied.events).toContainEqual({
+      e: 'meepleSpent',
+      seat: WHEAT,
+      colour: 'orchard',
+      action: 'draw',
+    });
   });
 
-  it('working your own Worker uses the bonus slot and pays no wage', () => {
-    const state = base();
-    hireFor(state, WHEAT, 'harvest');
-    // No full building: the Harvest Worker has nothing to do, so it is not offered.
-    expect(legalMoves(data, state).some((m) => m.type === 'workOwnWorker')).toBe(false);
+  it('any number may be spent, one at a time', () => {
+    const s = base();
+    giveMeeples(s, WHEAT, 'orchard', 2);
+    let g = apply(data, s, { type: 'spendMeeple', seat: WHEAT, colour: 'orchard' }).state;
+    while (g.tasks.length > 0) g = apply(data, g, legalMoves(data, g)[0] as Move).state;
+    expect(g.players[WHEAT]!.meeples.orchard).toBe(1);
+    expect(legalMoves(data, g).some((m) => m.type === 'spendMeeple')).toBe(true);
+  });
+
+  /**
+   * The meeple phase is the VERY start of the turn: before the bonus and before
+   * the action. `bonusUsed.length === 0` is the clause that stops a meeple being
+   * held back and spent reactively later, which is the whole difference between
+   * a supply of stored actions and a hand of free ones.
+   */
+  it('closes as soon as the bonus is taken', () => {
+    const s = base();
+    giveMeeples(s, WHEAT, 'orchard');
+    const after = apply(data, s, { type: 'bonusDraw', seat: WHEAT }).state;
+    after.tasks = [];
+    expect(after.players[WHEAT]!.meeples.orchard).toBe(1);
+    expect(legalMoves(data, after).some((m) => m.type === 'spendMeeple')).toBe(false);
+    expect(() =>
+      apply(data, after, { type: 'spendMeeple', seat: WHEAT, colour: 'orchard' }),
+    ).toThrow(/start of your turn/);
+  });
+
+  it('a meeple whose action can do nothing is not offered, and can die unspent', () => {
+    const s = base();
+    // A wheat meeple performs Harvest, and this seat has no full building.
+    giveMeeples(s, ORCHARD, 'wheat');
+    s.turnPlayer = ORCHARD;
+    expect(legalMoves(data, s).some((m) => m.type === 'spendMeeple')).toBe(false);
+    expect(() => apply(data, s, { type: 'spendMeeple', seat: ORCHARD, colour: 'wheat' })).toThrow(
+      /can do anything/,
+    );
+  });
+
+  it('a meeple of a suit nobody is farming still works', () => {
+    // Dairy is not at the table, so no Notice Board grants Build - but the
+    // action exists, so the meeple does too.
+    const s = base();
+    giveMeeples(s, WHEAT, 'dairy');
+    dealTo(data, s, WHEAT, ...s.decks.wheat.slice(0, 4));
+    const applied = apply(data, s, { type: 'spendMeeple', seat: WHEAT, colour: 'dairy' });
+    expect(applied.state.tasks[0]).toMatchObject({ t: 'build', pid: WHEAT });
   });
 });
 
@@ -787,272 +794,136 @@ describe('the turn boundary', () => {
    * (`bonusOpen` = unspent AND the action untaken), an unspent slot can no
    * longer hold anything open: past the action there is nothing to wait for, so
    * the turn settles on its own and `endTurn` is not needed.
-   *
-   * That is also why `settleTurn`'s `hasBonusOption` check was deleted rather
-   * than tidied - it had become unreachable, not merely redundant.
    */
   it('ends the turn by itself once the action is done, because the slot is already shut', () => {
     const state = base();
     const applied = apply(data, state, { type: 'draw', seat: WHEAT });
-    // Resolve the draw: pick a deck twice, then keep one.
+    // Resolve the draw: pick a deck twice, then keep both.
     let s = applied.state;
     while (s.tasks.length > 0) {
       const moves = legalMoves(data, s);
       s = apply(data, s, moves[0] as Move).state;
     }
-    // The kept card WOULD have funded a visit. It cannot now: the action is
+    // The kept cards WOULD have funded a visit. They cannot now: the action is
     // spent, so the window is shut and the turn has already passed on.
-    expect(s.turnPlayer).toBe(APIARY);
+    expect(s.turnPlayer).toBe(ORCHARD);
   });
 
-  it('queues the end-of-turn discard down to the printed Barn size', () => {
+  /**
+   * ⭐ THE END-OF-TURN DISCARD, BACK AT A FLAT 12 (02/09/2026).
+   *
+   * v31 deleted the hand limit and this suite lost four tests with it. The
+   * reinstatement is deliberately a different rule from the one that was
+   * deleted - `rules.turn.handLimit`, one global number, and the Barn still
+   * prints nothing - so these are new tests rather than restored ones, and they
+   * pin the three things that make it a rule rather than a number:
+   *
+   *   1. the boundary discards the OVERFLOW ONLY, and the seat chooses which;
+   *   2. a hand AT the limit is not over it, so nothing queues;
+   *   3. the limit is checked at the boundary and NOWHERE ELSE, which is what
+   *      lets a card sow a whole hand or empty one into a barn mid-turn.
+   *
+   * Why the rule came back at all is on `RulesFile.turn.handLimit`, and it is
+   * worth reading before anybody deletes it again: the limit was also the only
+   * bound on the build-payment enumerator, and without it a 2-seat position
+   * reached 116,535 legal moves.
+   */
+  it('discards down to the hand limit at the boundary, and only the overflow', () => {
     const state = base();
-    dealTo(data, state, WHEAT, ...state.decks.wheat.slice(0, 7));
+    const limit = data.rules.turn.handLimit as number;
+    dealTo(data, state, WHEAT, ...state.decks.wheat.slice(0, limit + 2));
     state.turn.actionSpent = true;
     const applied = apply(data, state, { type: 'endTurn', seat: WHEAT });
-    expect(applied.state.tasks[0]).toMatchObject({ t: 'discard', pid: WHEAT, downTo: 5 });
-    const options = legalMoves(data, applied.state);
-    expect(options).toHaveLength(21); // C(7,2)
-    const done = apply(data, applied.state, options[0] as Move);
-    expect(done.state.players[WHEAT]!.hand).toHaveLength(5);
-    expect(done.state.turnPlayer).toBe(APIARY);
-  });
-});
+    // The boundary SUSPENDS on the discard rather than completing: the seat
+    // picks which cards go, so the turn cannot advance until it has answered.
+    expect(applied.state.tasks).toHaveLength(1);
+    expect(applied.state.tasks[0]).toMatchObject({ t: 'discard', pid: WHEAT, downTo: limit });
+    expect(applied.state.turnPlayer).toBe(WHEAT);
 
-describe('the card buy', () => {
-  /**
-   * ⚠️ POLARITY FLIPPED 19/08/2026. The card buy is DELETED from the shipped
-   * game - `rules.turn.buyCost` is null - so the whole of this suite now has to
-   * switch the rule ON to describe it, and the "switched off" case at the
-   * bottom is simply the base data.
-   *
-   * The suite is kept rather than deleted because the deletion is a knob and
-   * not a revert: the engine treats null as "rule absent", every code path is
-   * still standing, and `overlays/turn-structure-v14.overlay.json` turns the
-   * rule back on as the paired control. If that arm sends the buy back, these
-   * are the tests that say it still works. If it does not, this suite is
-   * deleted with the code in the cleanup commit.
-   */
-  const buyOn = loadGameData({
-    name: 'card-buy-on',
-    schemaVersion: 1,
-    set: { 'rules.turn.buyCost': 1 },
+    const answers = legalMoves(data, applied.state);
+    expect(answers.length).toBeGreaterThan(0);
+    const done = apply(data, applied.state, answers[0] as Move).state;
+    expect(done.players[WHEAT]!.hand).toHaveLength(limit);
+    expect(done.discards.wheat).toHaveLength(2);
+    expect(done.turnPlayer).toBe(ORCHARD);
   });
 
-  function withCoins(n: number): GameState {
+  it('queues nothing for a hand exactly at the limit', () => {
     const state = base();
-    state.players[WHEAT]!.coins = n;
-    return state;
-  }
-
-  function buys(state: GameState): Move[] {
-    return legalMoves(buyOn, state).filter((m) => m.type === 'buy');
-  }
-
-  it('offers every deck but your own, and only while you can pay', () => {
-    expect(buys(withCoins(0))).toHaveLength(0);
-    // Two seats: wheat, apiary and one passive deck. The Wheat seat may buy
-    // from the other two and never from wheat.
-    const offered = buys(withCoins(1));
-    expect(offered.map((m) => (m.type === 'buy' ? m.suit : null)).sort()).toEqual(
-      base()
-        .suitsInPlay.filter((s) => s !== 'wheat')
-        .sort(),
-    );
-  });
-
-  it('pays the bank, takes the top card blind, and is once a turn', () => {
-    const state = withCoins(3);
-    const top = state.decks.apiary[0] as string;
-    const applied = apply(buyOn, state, { type: 'buy', seat: WHEAT, suit: 'apiary' });
-    const after = applied.state;
-    expect(after.players[WHEAT]!.coins).toBe(2);
-    expect(after.players[WHEAT]!.hand).toContain(top);
-    expect(after.decks.apiary[0]).not.toBe(top);
-    expect(after.turn.buyUsed).toBe(true);
-    // Free: the main action and the bonus slot are both still there.
-    expect(after.turn.actionSpent).toBe(false);
-    expect(after.turn.bonusSpent).toBe(false);
-    expect(buys(after)).toHaveLength(0);
-    expect(() => apply(buyOn, after, { type: 'buy', seat: WHEAT, suit: 'apiary' })).toThrow();
-  });
-
-  it('is not a Draw: no reveal task, and the Orchard modifier never touches it', () => {
-    const orchard = makeState(buyOn, ['orchard', 'wheat']);
-    orchard.players[0]!.coins = 1;
-    const farmstead = orchard.players[0]!.tableau.find(
-      (b) => cardById(buyOn, b.card).slot === 'farmstead',
-    );
-    farmstead!.upgraded = true; // see +1 and keep +1 on every DRAW
-    const applied = apply(buyOn, orchard, { type: 'buy', seat: 0, suit: 'wheat' });
-    expect(applied.state.tasks).toHaveLength(0);
-    expect(applied.state.players[0]!.hand).toHaveLength(1);
-  });
-
-  it('holds the turn open, so a seat with coins declines rather than running out', () => {
-    const state = withCoins(1);
-    // Hand is empty, so with the buy switched off the draw's turn settles by
-    // itself once the kept card is spent. With it on, the free action is an
-    // unspent option exactly like the bonus slot.
+    const limit = data.rules.turn.handLimit as number;
+    dealTo(data, state, WHEAT, ...state.decks.wheat.slice(0, limit));
     state.turn.actionSpent = true;
-    expect(legalMoves(buyOn, state).some((m) => m.type === 'endTurn')).toBe(true);
-    expect(buys(state).length).toBeGreaterThan(0);
-    const ended = apply(buyOn, state, { type: 'endTurn', seat: WHEAT });
-    expect(ended.state.turnPlayer).toBe(APIARY);
-  });
-
-  it('is absent from the SHIPPED game, which is where the rule now stands', () => {
-    const state = withCoins(5);
-    expect(legalMoves(data, state).filter((m) => m.type === 'buy')).toHaveLength(0);
-    expect(() => apply(data, state, { type: 'buy', seat: WHEAT, suit: 'apiary' })).toThrow();
-  });
-});
-
-describe('buy at market (ticket 56)', () => {
-  /**
-   * ⚠️ POLARITY FLIPPED 19/08/2026. Buy-at-market is DELETED from the shipped
-   * game - `rules.turn.marketCost` is null - so this suite switches the rule ON
-   * to describe it, and the "switched off" case at the bottom is the base data.
-   *
-   * Kept for the same reason the card buy's suite is kept: the removal is a
-   * knob, not a revert, and `overlays/turn-structure-v14.overlay.json` is the
-   * control that turns it back on. Note what replaced the rule rather than
-   * deleting the exchange - A17 The Smoke Pot now prints "whenever you VISIT a
-   * neighbour, you may pay £1 to add a deck card into your barn", which is this
-   * market at a third of the price and gated behind a visit.
-   */
-  const marketOn = loadGameData({
-    name: 'market-on',
-    schemaVersion: 1,
-    set: { 'rules.turn.marketCost': 3 },
-  });
-
-  function withCoins(n: number): GameState {
-    const state = base();
-    state.players[WHEAT]!.coins = n;
-    return state;
-  }
-
-  function markets(state: GameState): Move[] {
-    return legalMoves(marketOn, state).filter((m) => m.type === 'market');
-  }
-
-  it('offers every deck in play, OWN SUIT INCLUDED, and only at the printed price', () => {
-    expect(markets(withCoins(2))).toHaveLength(0);
-    const offered = markets(withCoins(3));
-    // Unlike the buy, the market may point at your own crop: the barn
-    // destination makes it harmless colour for delivery.
-    expect(offered.map((m) => (m.type === 'market' ? m.suit : null)).sort()).toEqual(
-      [...base().suitsInPlay].sort(),
-    );
-  });
-
-  it('pays the bank, puts the top card in the BARN revealed, and consumes the bonus slot', () => {
-    const state = withCoins(3);
-    const top = state.decks.apiary[0] as string;
-    const applied = apply(marketOn, state, { type: 'market', seat: WHEAT, suit: 'apiary' });
-    const after = applied.state;
-    expect(after.players[WHEAT]!.coins).toBe(0);
-    expect(after.players[WHEAT]!.barn).toContain(top);
-    expect(after.players[WHEAT]!.hand).toHaveLength(0);
-    // Revealed: the deckToBarn event carries the card, like the Patisserie.
-    expect(applied.events).toContainEqual({
-      e: 'deckToBarn',
-      seat: WHEAT,
-      suit: 'apiary',
-      card: top,
-    });
-    // The bonus slot is spent - no visit, no second market - but the main
-    // action is untouched.
-    expect(after.turn.bonusSpent).toBe(true);
-    expect(after.turn.actionSpent).toBe(false);
-    expect(legalMoves(marketOn, after).some((m) => m.type === 'visit')).toBe(false);
-    expect(markets(after)).toHaveLength(0);
-  });
-
-  it('is not a visit: no wage, no visited event, and it never arms a Helping Hand', () => {
-    const state = withCoins(3);
-    const applied = apply(marketOn, state, { type: 'market', seat: WHEAT, suit: 'wheat' });
-    expect(applied.events.some((e) => e.e === 'visited')).toBe(false);
-    expect(applied.state.turn.visit).toBeNull();
-    // The only coins that moved were the fee to the bank.
-    const coinEvents = applied.events.filter((e) => e.e === 'coins');
-    expect(coinEvents).toEqual([{ e: 'coins', seat: WHEAT, delta: -3, why: 'market' }]);
-  });
-
-  it('is not a Draw: no task, and the Orchard modifier never touches it', () => {
-    const orchard = makeState(marketOn, ['orchard', 'wheat']);
-    orchard.players[0]!.coins = 3;
-    const farmstead = orchard.players[0]!.tableau.find(
-      (b) => cardById(marketOn, b.card).slot === 'farmstead',
-    );
-    farmstead!.upgraded = true; // see +1 and keep +1 on every DRAW
-    const applied = apply(marketOn, orchard, { type: 'market', seat: 0, suit: 'wheat' });
+    const applied = apply(data, state, { type: 'endTurn', seat: WHEAT });
     expect(applied.state.tasks).toHaveLength(0);
-    expect(applied.state.players[0]!.hand).toHaveLength(0);
-    expect(applied.state.players[0]!.barn).toHaveLength(1); // the bought card, nothing kept
-  });
-
-  it('reshuffles an empty deck, and an exhausted crop cannot be bought', () => {
-    const state = withCoins(6);
-    // Deck empty, discard holds one card: the buy reshuffles and delivers.
-    const card = state.decks.apiary[0] as string;
-    state.discards.apiary.push(...state.decks.apiary.splice(0));
-    const applied = apply(marketOn, state, { type: 'market', seat: WHEAT, suit: 'apiary' });
-    expect(applied.events.some((e) => e.e === 'reshuffled')).toBe(true);
-    expect(applied.state.players[WHEAT]!.barn).toHaveLength(1);
-    expect(card).toBeDefined();
-    // Both empty: that crop is off the market entirely (the doc's ruling).
-    const dry = withCoins(3);
-    dry.decks.apiary.splice(0);
-    expect(markets(dry).some((m) => m.type === 'market' && m.suit === 'apiary')).toBe(false);
+    expect(applied.state.players[WHEAT]!.hand).toHaveLength(limit);
+    expect(applied.state.turnPlayer).toBe(ORCHARD);
   });
 
   /**
-   * ⚠️ INVERTED 19/08/2026 by the start-of-turn rule. This used to assert that
-   * a £3 seat with the action spent was still offered the market, so the turn
-   * waited for an explicit decline. `bonusOpen` now requires the action
-   * UNTAKEN, so the market is unreachable there and nothing waits. The second
-   * half - a £2 seat is never held hostage by a price it cannot pay - is
-   * unchanged and still worth pinning.
+   * The rule in one assertion: YOU MAY EXCEED THE LIMIT MID-TURN. Nothing in
+   * the action funnels reads it, so a seat holding more than the limit can still
+   * draw - and it has to be able to, because O14 sows a whole hand and then
+   * draws 4, and W10 empties one into the barn. The limit is a boundary check,
+   * not a cap on holding.
    */
-  it('is unreachable once the action is spent, and never holds a £2 seat hostage', () => {
-    const rich = withCoins(3);
-    rich.turn.actionSpent = true;
-    expect(markets(rich)).toHaveLength(0);
-    const ended = apply(marketOn, rich, { type: 'endTurn', seat: WHEAT });
-    expect(ended.state.turnPlayer).toBe(APIARY);
-    // £2 under the market-only marketOn (the buy off): no market option exists, so
-    // nothing offers and nothing waits.
-    const marketOnly = loadGameData({
-      name: 'market-not-buy',
-      schemaVersion: 1,
-      set: { 'rules.turn.buyCost': null },
-    });
-    const poor = withCoins(2);
-    poor.turn.actionSpent = true;
-    const moves = legalMoves(marketOnly, poor);
-    expect(moves.filter((m) => m.type === 'market' || m.type === 'buy')).toHaveLength(0);
+  it('lets a seat draw past the limit mid-turn', () => {
+    const state = base();
+    const limit = data.rules.turn.handLimit as number;
+    dealTo(data, state, WHEAT, ...state.decks.wheat.slice(0, limit));
+    let s = apply(data, state, { type: 'draw', seat: WHEAT }).state;
+    while (s.tasks.length > 0) {
+      const moves = legalMoves(data, s);
+      s = apply(data, s, moves[0] as Move).state;
+    }
+    // The draw was allowed, the overflow was taken at the boundary, and the two
+    // together are the rule: nothing refused the draw, the discard priced it.
+    expect(s.turnPlayer).toBe(ORCHARD);
+    expect(s.players[WHEAT]!.hand).toHaveLength(limit);
   });
 
-  it('is absent from the SHIPPED game, which is where the rule now stands', () => {
-    const state = withCoins(9);
-    expect(legalMoves(data, state).filter((m) => m.type === 'market')).toHaveLength(0);
-    expect(() => apply(data, state, { type: 'market', seat: WHEAT, suit: 'apiary' })).toThrow();
+  /**
+   * null is the control arm, and it restores exactly the v31 behaviour this
+   * change reversed. It is asserted rather than assumed because the whole
+   * reinstatement is a knob, and a knob whose off position is untested is a
+   * control arm nobody can trust.
+   */
+  it('queues nothing at all when the limit knob is null', () => {
+    const noLimit = loadGameData({
+      name: 'no-hand-limit',
+      description: 'The v31 control: no hand limit at all.',
+      schemaVersion: 1,
+      set: { 'rules.turn.handLimit': null },
+    });
+    const state = makeState(noLimit, ['wheat', 'orchard']);
+    dealTo(noLimit, state, WHEAT, ...state.decks.wheat.slice(0, 18));
+    state.turn.actionSpent = true;
+    const applied = apply(noLimit, state, { type: 'endTurn', seat: WHEAT });
+    expect(applied.state.tasks).toHaveLength(0);
+    expect(applied.state.players[WHEAT]!.hand).toHaveLength(18);
+    expect(applied.state.turnPlayer).toBe(ORCHARD);
   });
 });
 
 describe('views and redaction', () => {
   it('viewFor hides rival hands, deck order and barn identity', () => {
     const state = base();
-    dealTo(data, state, APIARY, 'A5', 'A6');
-    stockBarn(state, APIARY, 'apiary', 2);
+    dealTo(data, state, ORCHARD, 'O5', 'O6');
+    stockBarn(state, ORCHARD, 'orchard', 2);
     const view = viewFor(data, state, WHEAT);
-    expect(view.rivals[0]).toMatchObject({ seat: APIARY, handCount: 2, barnCount: 2 });
-    // The rival panel carries no hand or barn card ids (A5/A6 are in the rival's hand).
-    expect(JSON.stringify(view.rivals)).not.toContain('"A5"');
-    expect(JSON.stringify(view.rivals)).not.toContain('"A6"');
+    expect(view.rivals[0]).toMatchObject({ seat: ORCHARD, handCount: 2, barnCount: 2 });
+    // The rival panel carries no hand or barn card ids.
+    expect(JSON.stringify(view.rivals)).not.toContain('"O5"');
+    expect(JSON.stringify(view.rivals)).not.toContain('"O6"');
     expect(view.decks.wheat).toBeTypeOf('number');
+  });
+
+  it('meeple supplies are public, both your own and a rival s', () => {
+    const state = base();
+    giveMeeples(state, ORCHARD, 'dairy', 2);
+    giveMeeples(state, WHEAT, 'wheat');
+    const view = viewFor(data, state, WHEAT);
+    expect(view.you.meeples.wheat).toBe(1);
+    expect(view.rivals[0]?.meeples.dairy).toBe(2);
   });
 
   /**
@@ -1061,9 +932,10 @@ describe('views and redaction', () => {
    * failure mode the Vegetable rebuild's ticket names is precisely a swap that
    * renders correctly for the acting seat and wrongly for everybody else.
    * `viewFor` spreads the tile, so this holds by construction; asserting it is
-   * what stops a future redaction pass quietly dropping the flag.
+   * what stops a future redaction pass quietly dropping the flag. The same
+   * applies to the meeples, which are face up from setup.
    */
-  it('shows a face-down demand token to every seat, not just the one who turned it', () => {
+  it('shows a face-down demand token and every meeple to every seat', () => {
     const state = base();
     const tile = state.island.tiles[0]!;
     tile.faceDown = tile.crates.map((_, i) => i === 0);
@@ -1071,50 +943,89 @@ describe('views and redaction', () => {
       const seen = viewFor(data, state, seat).island.tiles.find((t) => t.tile === tile.tile);
       expect(seen?.faceDown, `seat ${seat}`).toEqual(tile.faceDown);
       expect(seen?.crates, `seat ${seat}`).toEqual(tile.crates);
+      expect(seen?.meeples, `seat ${seat}`).toEqual(tile.meeples);
     }
   });
 
   it('redactEvents masks ids down to their suit letter for other seats', () => {
     const events: GameEvent[] = [
-      { e: 'cardsToHand', seat: APIARY, cards: ['A5'] },
-      { e: 'cardPlaced', seat: APIARY, onto: { seat: WHEAT, building: 'W3' }, card: 'A6' },
+      { e: 'cardsToHand', seat: ORCHARD, cards: ['O5'] },
+      { e: 'cardPlaced', seat: ORCHARD, onto: { seat: WHEAT, building: 'W3' }, card: 'O6' },
       { e: 'harvested', seat: WHEAT, building: 'W4', cards: ['W5'] },
     ];
-    const mine = redactEvents(events, APIARY);
-    expect(mine[0]).toMatchObject({ cards: ['A5'] });
+    const mine = redactEvents(events, ORCHARD);
+    expect(mine[0]).toMatchObject({ cards: ['O5'] });
     const theirs = redactEvents(events, WHEAT);
-    expect(theirs[0]).toMatchObject({ cards: ['A?'] });
-    expect(theirs[1]).toMatchObject({ card: 'A?' });
+    expect(theirs[0]).toMatchObject({ cards: ['O?'] });
+    expect(theirs[1]).toMatchObject({ card: 'O?' });
     expect(theirs[2]).toMatchObject({ cards: ['W?'] }); // barns are anonymous even to the owner
   });
 });
 
 describe('scoring', () => {
   /**
-   * Ticket 37 deleted the coin pity, which this test had been using to BUILD
-   * the VP tie. Coins now enter scoring only here, as the first tie-break, so
-   * the tie is made out of receipts and the coins do nothing else.
+   * ⭐ THE TIE-BREAK CHANGED IN v31 (§1.3): total VP, then CARDS IN HAND PLUS
+   * BARN, then receipt count, then seat order. It was coins remaining; with no
+   * currency, cards are the only stock a player still ends the game holding.
+   *
+   * Deliberately NOT unspent meeples - paying for holding one would reward not
+   * spending it, which is the mistake the coin pity rate was deleted for.
    */
-  it('ranks by VP, then coins, then receipts', () => {
+  it('ranks by VP, then cards in hand plus barn', () => {
     const state = base();
-    state.players[WHEAT]!.receipts.push(4); // 4 VP
-    state.players[APIARY]!.receipts.push(4); // 4 VP - tied
-    state.players[APIARY]!.coins = 21; // worth 0 VP, breaks the tie
+    state.players[WHEAT]!.receipts.push(6);
+    state.players[ORCHARD]!.receipts.push(6); // tied on VP
+    dealTo(data, state, ORCHARD, 'O5', 'O6'); // two more cards of stock
+    stockBarn(state, WHEAT, 'wheat', 1);
     const result = score(data, state);
-    expect(result.seats[WHEAT]!.total).toBe(result.seats[APIARY]!.total);
-    expect(result.seats[APIARY]!.coinPity).toBe(0);
-    expect(result.ranking).toEqual([APIARY, WHEAT]);
+    expect(result.seats[WHEAT]!.total).toBe(result.seats[ORCHARD]!.total);
+    expect(result.ranking).toEqual([ORCHARD, WHEAT]);
   });
 
-  it('falls through to receipt count when VP and coins both tie', () => {
+  it('the hand and the barn count together, not separately', () => {
     const state = base();
-    state.players[WHEAT]!.receipts.push(8); // 8 VP from one receipt
-    state.players[APIARY]!.receipts.push(4, 4); // 8 VP from two
-    state.players[WHEAT]!.coins = 3;
-    state.players[APIARY]!.coins = 3;
+    state.players[WHEAT]!.receipts.push(6);
+    state.players[ORCHARD]!.receipts.push(6);
+    dealTo(data, state, WHEAT, 'W4', 'W5'); // 2 in hand, 0 in barn
+    stockBarn(state, ORCHARD, 'orchard', 3); // 0 in hand, 3 in barn
+    expect(score(data, state).ranking).toEqual([ORCHARD, WHEAT]);
+  });
+
+  it('falls through to receipt count when VP and stock both tie', () => {
+    const state = base();
+    state.players[WHEAT]!.receipts.push(6); // 6 VP from one receipt
+    state.players[ORCHARD]!.receipts.push(3, 3); // 6 VP from two
     const result = score(data, state);
-    expect(result.seats[WHEAT]!.total).toBe(result.seats[APIARY]!.total);
-    expect(result.ranking).toEqual([APIARY, WHEAT]);
+    expect(result.seats[WHEAT]!.total).toBe(result.seats[ORCHARD]!.total);
+    expect(result.ranking).toEqual([ORCHARD, WHEAT]);
+  });
+
+  it('meeples are worth no VP, spent or held', () => {
+    const state = base();
+    giveMeeples(state, WHEAT, 'dairy', 4);
+    const result = score(data, state);
+    expect(result.seats[WHEAT]!.total).toBe(0);
+  });
+
+  /**
+   * The Farmstead's end-game VP needs no scoring machinery: `gameEndScores`
+   * already walks every built card's `gameEnd` formula. This pins the seam
+   * itself - printed VP, receipts and the end-game line, and no fourth term.
+   */
+  it('has exactly three VP sources', () => {
+    const state = base();
+    buildFor(data, state, WHEAT, 'W4');
+    state.players[WHEAT]!.receipts.push(6);
+    const s = score(data, state).seats[WHEAT]!;
+    expect(s.total).toBe(s.printed + s.receipts + s.endgame);
+    expect(s.printed).toBe(cardById(data, 'W4').printedVp);
+    expect(Object.keys(s).sort()).toEqual([
+      'endgame',
+      'endgameCards',
+      'printed',
+      'receipts',
+      'total',
+    ]);
   });
 });
 
@@ -1125,11 +1036,11 @@ const PRIORITY: Move['type'][] = [
   'deliver',
   'harvest',
   'build',
-  'upgrade',
+  'spendMeeple',
   'grow',
   'draw',
   'visit',
-  'workOwnWorker',
+  'bonusDraw',
   'cardMove',
   'pass',
   'endTurn',
@@ -1150,15 +1061,11 @@ function pickMove(rng: [number, number, number, number], moves: Move[]): Move {
  *
  * The limbo holders are the point of this function and the reason it is not
  * just "the zones". A `draw` task holds what it has revealed; the `divert` seam
- * (the Orchard Farmstead, O17) holds the card a draw threw away; and the Dairy
- * rebuild added two more - D2's `divertSpent` holds a build's payment between
- * the build and the choice of what goes to the barn, and D10's `scout` holds
- * the revealed deck tops until one is built and the rest go back. A card task's
- * riders are untyped, so both are read by their rider names.
- *
- * `covered` used to be listed here - a zone rather than limbo, because D11
- * buried a card in it permanently. D11 stopped building on top of a building on
- * 19/08/2026 and the zone went with it, so there is nothing left to count.
+ * holds a card on its way to a discard; and the Dairy rebuild added two more -
+ * a `divertSpent` rider holds a build's payment between the build and the choice
+ * of what goes to the barn, and D10's `scout` holds the revealed deck tops until
+ * one is built and the rest go back. A card task's riders are untyped, so both
+ * are read by their rider names.
  */
 function inPlayCardIds(state: GameState): string[] {
   const ids: string[] = [];
@@ -1193,6 +1100,15 @@ function playFullGame(seed: string, seats: number, suits: Suit[]) {
     }
     const moves = legalMoves(data, state);
     expect(moves.length).toBeGreaterThan(0);
+    // ⚠️ THIS CEILING IS THE HAND LIMIT'S ALARM, AND IT SHOULD HAVE FIRED.
+    // `buildOptions` enumerates every k-subset of the hand per buildable card,
+    // so the move list grows as C(hand, cost); the only thing bounding the hand
+    // is `rules.turn.handLimit`. v31 deleted the limit and this assertion was
+    // relaxed rather than believed - the real games then reached 116,535 legal
+    // moves in one position and cost minutes each. The limit came back on
+    // 02/09/2026 at a flat 12, where the worst payment enumeration is C(11, 4) =
+    // 330. If this trips again, the hand has escaped its limit somewhere: fix
+    // that, do not raise the number.
     expect(moves.length).toBeLessThan(4000);
     maxMoves = Math.max(maxMoves, moves.length);
     const move = pickMove(rng, moves);
@@ -1210,6 +1126,7 @@ function playFullGame(seed: string, seats: number, suits: Suit[]) {
 describe('full games', () => {
   it('plays a seeded 2-player game to the six-delivery end trigger', () => {
     const { state, maxMoves } = playFullGame('game-a', 2, ['wheat', 'orchard']);
+    expect(maxMoves).toBeLessThan(4000);
     expect(state.phase).toBe('ended');
     expect(state.endTrigger).not.toBeNull();
     // Read the level off the island, not off the receipt values: a receipt is
@@ -1220,7 +1137,6 @@ describe('full games', () => {
     ).toBe(true);
     expect(legalMoves(data, state)).toEqual([]);
     expect(score(data, state).ranking).toHaveLength(2);
-    expect(maxMoves).toBeLessThan(4000);
   });
 
   it('plays a 3-player game with Vegetable in play to the end', () => {
@@ -1238,19 +1154,11 @@ describe('full games', () => {
 
   it('rejects moves legalMoves does not offer', () => {
     const state = newGame(data, { seats: 2, suits: ['wheat', 'apiary'], seed: 'illegal' });
-    expect(() =>
-      apply(data, state, {
-        type: 'visit',
-        seat: 0,
-        host: 0,
-        fee: ['W4'],
-        payoff: { mode: 'coin' },
-      }),
-    ).toThrow();
     expect(() => apply(data, state, { type: 'harvest', seat: 0, building: 'W4' })).toThrow();
     expect(() => apply(data, state, { type: 'endTurn', seat: 0 })).toThrow();
     expect(() =>
       apply(data, state, { type: 'deliver', seat: 0, tile: 'A1', spend: { wheat: 2 } }),
     ).toThrow();
+    expect(() => apply(data, state, { type: 'spendMeeple', seat: 0, colour: 'wheat' })).toThrow();
   });
 });

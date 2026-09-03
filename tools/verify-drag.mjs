@@ -189,10 +189,28 @@ try {
       .locator('.prompt')
       .innerText()
       .catch(() => '');
+    /*
+     * ⭐ REWRITTEN FOR v31. This used to look for "from the bank, to you" and
+     * then click a `.payoff` - the panel offered up to three of them (take the
+     * money, the Special Orders prize, work one of the host's Hired Workers) and
+     * the fee could be two cards. A v31 visit has ONE payoff, the host farm's
+     * suit action, and costs exactly one card, so the panel is a title, a hint
+     * and a row of fee chips: there is nothing left for a payoff button to be.
+     *
+     * What is checked instead is the property that matters and survived the
+     * rewrite: a card dropped on a neighbour lands on the panel FOR THAT
+     * NEIGHBOUR, and it is the hook's panel rather than the self-visit's.
+     */
     check(
-      'the drop lands on the visit panel with the fee paid',
-      /from the bank, to you/i.test(panel),
+      'the drop lands on a neighbour visit panel',
+      /visit /i.test(panel) && !/no neighbour involved/i.test(panel),
       `the prompt read: ${panel.slice(0, 120).replace(/\s+/g, ' ')}`,
+    );
+    check(
+      'it is the hook, drawn as the hook',
+      (await page.locator('.assembly-hook').count()) === 1 &&
+        (await page.locator('.assembly-self').count()) === 0,
+      'the panel is not marked as a neighbour visit',
     );
     check(
       'the host is marked as the one being visited',
@@ -200,23 +218,23 @@ try {
       'no .rival-visiting',
     );
 
-    // The payoff still works from here, which is the "same confirmation
-    // surface" half of the ticket. The signal is the LAST feed line rather than
-    // the number of them: the feed caps at 40 and a warmed position is already
-    // there, so a count is a check that can never pass.
+    // Choosing the fee still makes the move from here, which is the "same
+    // confirmation surface" half of the ticket. The signal is the LAST feed line
+    // rather than the number of them: the feed caps at 40 and a warmed position
+    // is already there, so a count is a check that can never pass.
     const lastLine = () => page.locator('.feed-line').last().innerText();
     const before = await lastLine();
-    await page.locator('.payoff').first().click();
+    await page.locator('.assembly-visit .chip').first().click();
     await page.waitForTimeout(150);
     check(
-      'taking a payoff makes the move',
+      'naming the fee makes the move',
       (await lastLine()) !== before,
       'the event feed did not change',
     );
     check(
       'the panel closes behind the move',
-      (await page.locator('.payoff').count()) === 0,
-      'the payoffs are still on offer',
+      (await page.locator('.assembly-visit').count()) === 0,
+      'the visit panel is still open',
     );
   }
 
@@ -309,7 +327,7 @@ try {
       .catch(() => '');
     check(
       'a finger drag opens the same visit panel',
-      /from the bank, to you/i.test(panel),
+      /visit /i.test(panel) && !/no neighbour involved/i.test(panel),
       `the prompt read: ${panel.slice(0, 120).replace(/\s+/g, ' ')}`,
     );
     const scrollAfter = await page.evaluate(() => ({

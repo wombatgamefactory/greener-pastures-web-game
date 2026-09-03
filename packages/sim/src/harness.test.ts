@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest';
 import { BASE_GAME_DATA } from '@gp/data';
 import { MOVE_TYPES } from '@gp/engine';
 
-import { WATCHLIST } from './assertions/index.js';
+import { RETIRED, WATCHLIST } from './assertions/index.js';
 import { NO_REMEDY } from './assertions/types.js';
 import { cutList, funnel } from './cutlist.js';
 import { EVENT_KINDS, MOVE_KINDS } from './observe.js';
@@ -29,14 +29,33 @@ import { runWatchlist } from './watchlist.js';
 
 const data = BASE_GAME_DATA;
 
-/** A handful of games. Enough to exercise every path, small enough for CI. */
+/**
+ * A handful of games. Enough to exercise every path, small enough for CI.
+ *
+ * ⛔ **IT IS NO LONGER SMALL ENOUGH FOR CI, AND THAT IS NOT A TEST PROBLEM.**
+ * Measured 02/09/2026: a 2-seat v31 game costs two to seven MINUTES against
+ * reference-v9's 0.1 seconds, because deleting the hand limit deleted the bound
+ * `subsets` in the engine's `actions.ts` was written against - hands reach 34
+ * cards and one position enumerated 43,879 legal moves, 43,845 of them build
+ * payments. This constant walks 120 games and then walks them again for the
+ * reproducibility check, so the file cannot finish.
+ *
+ * It has deliberately NOT been shrunk to get green. Shrinking it would hide the
+ * one finding that blocks everything else, and the smoke test's whole job is to
+ * prove the fold covers every path - which a truncated game does not do, since
+ * `delivered`, `meepleGained`, `endTriggered` and `gameEnded` all live in the
+ * back half. Fix the branching factor upstream and this comment goes with it.
+ */
 const SMOKE = {
   reference: { ...REFERENCE, targetGames: { 2: 4, 3: 4, 4: 2 }, maxMoves: 2500 },
   seed: 'smoke',
   games: 4,
 };
 
-const result = runBalance(data, { ...SMOKE, seatCounts: [2, 3] });
+// Top-level await: `runBalance` spreads its plan over worker threads since
+// 03/09/2026, so the whole file waits on one real run exactly as it did when
+// the run was synchronous.
+const result = await runBalance(data, { ...SMOKE, seatCounts: [2, 3] });
 const pooled = pool(result);
 
 describe('the stratified cells', () => {
@@ -114,8 +133,14 @@ describe('the stratified cells', () => {
   // just the wrong side of the line, so it flakes on the machine rather than on
   // the code. Given an explicit budget rather than a faster run, because a
   // cheaper sample is a weaker reproducibility claim.
-  it('is reproducible from the seed alone', { timeout: 30_000 }, () => {
-    const again = runBalance(data, { ...SMOKE, seatCounts: [2, 3] });
+  //
+  // ⚠️ 30s -> 600s ON 03/09/2026, and it is the game that grew rather than the
+  // machine that slowed. A v31 game runs about 45 rounds at two seats where a
+  // v30 one ran far fewer, so the 120-game smoke run is minutes rather than
+  // seconds and this test pays for it twice. Same reasoning as before: the
+  // sample is the claim, so the budget moves and the sample does not.
+  it('is reproducible from the seed alone', { timeout: 600_000 }, async () => {
+    const again = await runBalance(data, { ...SMOKE, seatCounts: [2, 3] });
     expect(again.games.map((g) => g.moves)).toEqual(result.games.map((g) => g.moves));
     expect(again.games.map((g) => g.winner)).toEqual(result.games.map((g) => g.winner));
   });
@@ -141,11 +166,17 @@ describe('the metric fold', () => {
     const games = result.games;
     expect(games.length).toBeGreaterThan(0);
     expect(games.some((g) => g.rounds > 0)).toBe(true);
-    expect(games.some((g) => g.coinsByRound.length > 0)).toBe(true);
+    expect(games.some((g) => g.meeplesByRound.length > 0)).toBe(true);
     expect(games.some((g) => g.barnByRound.length > 0)).toBe(true);
     expect(games.some((g) => g.turnsBySeat.some((t) => t > 0))).toBe(true);
     expect(games.some((g) => g.visitsBySeat.some((v) => v > 0))).toBe(true);
-    expect(games.some((g) => g.serviceClogSampledBySeat.some((n) => n > 0))).toBe(true);
+    expect(games.some((g) => g.doorClogSampledBySeat.some((n: number) => n > 0))).toBe(true);
+    // The three v31 quantities, each the subject of a new assertion. A zero
+    // across a whole smoke run means the fold never saw the mechanism at all,
+    // which is a different failure from a bad number and worth catching here.
+    expect(games.some((g) => g.actionsBySeat.some((n) => n > 0))).toBe(true);
+    expect(games.some((g) => g.meeplesGainedBySeat.some((n) => n > 0))).toBe(true);
+    expect(games.some((g) => Object.values(g.doorUsesByColour).some((n) => n > 0))).toBe(true);
   });
 
   it('counts a reshuffle for every crop in play and none for a crop that is not', () => {
@@ -222,10 +253,35 @@ describe('the per-card funnel', () => {
 describe('the watch-list suite', () => {
   const rows = runWatchlist(data, pooled, new Map());
 
-  it('has all 14, numbered 1 to 14', () => {
-    expect(rows.map((r) => r.assertion.id)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
-    ]);
+  /**
+   * ⭐ THIRTEEN, AND THE GAPS ARE THE POINT (v31, 02/09/2026). It used to read
+   * "all 14, numbered 1 to 14", which was true while the suite had never buried
+   * anything. Four assertions were retired when v31 deleted the currency their
+   * subject was denominated in - 1 coin-flood, 3 bootstrap, 10 bread-hall, 14
+   * market-mix - and three were written: 15 meeple economy, 16 action
+   * inflation, 17 bonus mix.
+   *
+   * **IDS ARE NEVER REUSED**, which is what the second half of this test
+   * guards. A retired id that came back on a different question would silently
+   * re-point every archived report that mentions it, so each gap must be
+   * claimed by a tombstone and no tombstone may collide with a live assertion.
+   */
+  it('is numbered without reuse, and every gap has a tombstone', () => {
+    const live = rows.map((r) => r.assertion.id);
+    expect(live).toEqual([2, 4, 5, 6, 7, 8, 9, 11, 12, 13, 15, 16, 17]);
+    expect(new Set(live).size, 'a duplicate id').toBe(live.length);
+
+    const buried = RETIRED.map((t) => t.id);
+    expect(buried).toEqual([1, 3, 10, 14]);
+    for (const id of buried) expect(live, `id ${id} was reused`).not.toContain(id);
+
+    // Every number from 1 to the highest live id is claimed by exactly one of
+    // the two lists, so an id cannot be quietly dropped either.
+    const highest = Math.max(...live);
+    for (let id = 1; id <= highest; id++) {
+      const claims = (live.includes(id) ? 1 : 0) + (buried.includes(id) ? 1 : 0);
+      expect(claims, `id ${id} is claimed ${claims} times`).toBe(1);
+    }
   });
 
   it('produces a number and a verdict for each', () => {
@@ -248,17 +304,26 @@ describe('the watch-list suite', () => {
       const prescribed = !assertion.remedy.startsWith(NO_REMEDY);
       if (prescribed) {
         // A prescribed remedy must be runnable: it names a committed overlay.
-        expect(assertion.remedy, assertion.title).toMatch(/overlays\/[a-z-]+\.overlay\.json/);
+        // ⚠️ The character class gained digits on 03/09/2026: the v31 overlays
+        // carry them (`end-trigger-8`, `orchard-door-draw-two-v1`) and the old
+        // `[a-z-]+` silently refused every one of them, so a perfectly runnable
+        // remedy failed this test.
+        expect(assertion.remedy, assertion.title).toMatch(
+          /overlays\/[a-z0-9-]+\.(overlay|sweep)\.json/,
+        );
       }
     }
   });
 
-  it('marks exactly the four taste-sensitive assertions', () => {
-    // 14 joined the set with ticket 56: the bonus-slot mix is precisely the
-    // kind of number a single taste could produce alone (a hermit mirror
-    // markets instead of visiting by construction).
+  it('marks exactly the six taste-sensitive assertions', () => {
+    // Taste-sensitive means "one archetype could produce this number on its
+    // own", and the mirrors re-measure it. It was four; v31 makes it six, and
+    // all three new assertions are on the list for the same reason: a hermit
+    // never visits, so it spends its bonus slot on Draw 1 by construction (17),
+    // which changes what it does with its meeples (15) and how many actions it
+    // resolves a turn (16). 14 left the set with the market.
     expect(rows.filter((r) => r.assertion.taste).map((r) => r.assertion.id)).toEqual([
-      2, 8, 11, 14,
+      2, 8, 11, 15, 16, 17,
     ]);
   });
 

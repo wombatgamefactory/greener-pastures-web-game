@@ -9,4 +9,4 @@
 export const ENGINE_VERSION = '0.1.0';
 
 /** Rules edition this engine implements. Bumped when the design version moves. */
-export const RULES_EDITION = 'v14';
+export const RULES_EDITION = 'v31';

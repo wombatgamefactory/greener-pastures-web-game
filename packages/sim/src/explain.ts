@@ -69,7 +69,10 @@ export function explainReport(data: GameData, opts: ExplainOptions): string {
 
   const lines = [
     `${policy.id} - decision ${index + 1} of ${frames.length}, seat ${seat} (${view.you.suit})`,
-    `hand ${view.you.hand.length}, coins ${view.you.coins}, ` +
+    `hand ${view.you.hand.length}, meeples ${Object.entries(view.you.meeples)
+      .filter(([, n]) => n > 0)
+      .map(([colour, n]) => `${colour} x${n}`)
+      .join(' ')} , ` +
       `receipts [${view.you.receipts.join(', ')}], ${frame.moves.length} legal moves`,
     '',
   ];

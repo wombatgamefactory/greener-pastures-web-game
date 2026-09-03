@@ -1,0 +1,11 @@
+{
+  "name": "hand-limit",
+  "description": "The hand limit, swept, and the ladder now BRACKETS 7 (03/09/2026) rather than 12. Cards you may still hold when your turn ends; the overflow discards at the boundary. Shipped at 7 since 03/09/2026, down from 12: the argument is that a hand ceiling is what puts a DIMINISHING RETURN on drawing, and with the limit deleted in v31 the free bonus Draw 1 beat a neighbour visit 3:1 and failed the hook assertion. Read the BONUS MIX first, four ways (Draw 1 / visit a neighbour / visit yourself / slot unspent): the whole design case for 7 is that the visit share rises when a free card starts costing you the card it displaces. Read the median hand and the boundary discard rate second - a value the maximum hand never reaches is inert, and a value that discards every turn is a tax rather than a ceiling, which is the risk 5 arm's job. Read game length third, because cards pay for deliveries and a tighter hand is a slower barn. NOTE THE COST GRADIENT, which is arithmetic and never a finding: the worst-case build payment is C(limit - 1, 4), so 5 is 1, 6 is 5, 7 is 15, 9 is 70 and 12 is 330 - the high cell is genuinely slower to run. 12 is kept as the top rung deliberately: it is the value 7 replaced, so this ladder also re-measures that decision rather than assuming it. Do not add a null cell; the no-limit control is what the whole reinstatement reversed, and its numbers are in rules.json.",
+  "schemaVersion": 1,
+  "sweep": [
+    {
+      "knob": "rules.turn.handLimit",
+      "values": [5, 6, 7, 9, 12]
+    }
+  ]
+}

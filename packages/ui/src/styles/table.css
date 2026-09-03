@@ -247,8 +247,9 @@
   white-space: nowrap;
 }
 
-/* The price is not a caption, so it is not caption-coloured. It is one of the
-   two numbers the visit is decided on and it reads in full ink. */
+/* The door is not a caption, so it is not caption-coloured. Since v31 it IS the
+   payoff - a visit pays nothing and buys this farm's suit action - so it is the
+   thing the decision is made on and it reads in full ink. */
 .rival-payout {
   font-size: 11px;
   color: var(--ink);
@@ -285,17 +286,17 @@
   transition: opacity var(--motion-ui) ease;
 }
 
-/* The rail is compressed hard so three neighbours fit above the 700px fold.
-   Everything a visit decision does not need lives in the inspector instead -
-   and as of phase 4 the chip does not RENDER those parts at rail size rather
-   than drawing them and hiding them, which is what let the two facts that
-   remain (the action, and the price) come up to a size worth printing. */
-.worker-rail .worker-name {
+/* The rail is compressed hard so three neighbours fit above the 700px fold, and
+   the door chip is the thing that had to shrink: at rail size it does not RENDER
+   the painting or the printed sentence rather than drawing them and hiding them,
+   which is what lets the one fact that remains - which of the five actions this
+   farm grants - come up to a size worth printing. */
+.door-rail .door-name {
   font-size: 12px;
   align-items: baseline;
 }
 
-.worker-rail .worker-name em {
+.door-rail .door-name em {
   font-size: 10px;
   color: var(--ink);
 }
@@ -557,9 +558,12 @@
   letter-spacing: 0.04em;
 }
 
-.fair {
+/* The doors legend: five chips, one per colour, in the panel the Hiring Fair
+   used to have. `auto-fit` rather than a fixed count so the legend reflows to
+   one column at the 1024 floor instead of clipping the fifth. */
+.doors {
   display: grid;
-  gap: 4px;
+  gap: 3px;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
@@ -655,13 +659,41 @@
   color: var(--ink);
 }
 
+/*
+ * ⚠️ THE ROW'S CAP DID NOT REACH THE TILES, and this is where it broke.
+ *
+ * `.island-row` has carried `max-width: 100%` since phase 5 precisely so a
+ * too-wide pyramid cannot paint over the column to its right. It capped the ROW
+ * and stopped: this inner flex box is the row's only child, it had no cap and
+ * the default `min-width: auto`, so it refused to shrink below its content and
+ * simply overflowed the row it was supposed to be constrained by. Measured at
+ * the 1024 floor with four seats - a five-tile bottom row runs 65px past the
+ * panel and straight across the AERODROME caption, which is exactly the failure
+ * the row's cap was written to prevent.
+ *
+ * It bites now because the commons' third column got taller and busier: it used
+ * to hold one Service chip and now holds the five-door legend that is also the
+ * meeple key, so what the island was painting over is a panel a player has to
+ * read. Same fix as the row's, one level down, plus the `min-width: 0` that
+ * makes a flex item actually honour it.
+ */
 .island-tiles {
   display: flex;
+  max-width: 100%;
+  min-width: 0;
 }
 
+/*
+ * `flex-shrink` and `min-width` are what let the cap above do anything. A tile
+ * is `width: var(--island-tile)` with an `aspect-ratio`, so shrinking it stays
+ * proportional in both directions and the art never distorts - the pyramid just
+ * gets smaller than its nominal step at the width where it would not fit.
+ */
 .island-tile {
   position: relative;
   width: var(--island-tile);
+  min-width: 0;
+  flex-shrink: 1;
   aspect-ratio: 375 / 520;
   overflow: hidden;
 }
@@ -735,6 +767,39 @@
   display: flex;
   justify-content: center;
   gap: 3px;
+}
+
+/*
+ * ⭐ THE MEEPLES ON THE DELIVERY SPACES (v31), one per space, face up from
+ * setup.
+ *
+ * They sit ABOVE the receipt discs rather than beside them, and the pairing is
+ * positional: meeple i is on delivery space i, and the disc under it says what
+ * that space pays and who has taken it. Two rows of the same count, aligned by
+ * the same gap, so the reading is "this space: 6 VP and an orange meeple".
+ *
+ * A CLAIMED SPACE LEAVES A GAP of exactly the pawn's footprint - not a faded
+ * pawn - because on the real board the meeple has physically gone into
+ * somebody's supply. `.island-meeple-gone` is that reserved space, so the
+ * surviving pawns stay lined up with their own discs instead of sliding along.
+ */
+.island-meeples {
+  position: absolute;
+  inset: auto 0 calc(4% + max(16px, var(--island-tile) * 0.23));
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 3px;
+  pointer-events: none;
+}
+
+.island-meeples .meeple {
+  filter: drop-shadow(0 1px 1px rgb(47 35 24 / 45%));
+}
+
+.island-meeple-gone {
+  width: max(9px, calc(var(--island-tile) * 0.15));
+  height: max(11px, calc(var(--island-tile) * 0.2));
 }
 
 .receipt {
@@ -843,7 +908,22 @@
   box-shadow: var(--shadow-lift);
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--card-read);
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  /*
+   * ⭐ FOUR ROWS SINCE v31, NOT THREE: head, MEEPLE SUPPLY, tableau, strips.
+   *
+   * The supply is a row of its own rather than a chip in the header, and the
+   * order is the order of the turn: meeples are spent before the bonus and
+   * before the action, so the piece sits above everything the rest of the turn
+   * acts on and the eye meets it first.
+   *
+   * ⚠️ ONLY THE TABLEAU FLEXES, still. The supply row is `auto`, and
+   * `.supply-row`'s fixed `min-height` is what stops it changing height between
+   * its open, shut and empty states - the tableau's whole budget is measured
+   * from the bottom of everything above it, so a strip that grew when the
+   * window opened would push every building down at the moment a player is
+   * reading them.
+   */
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   row-gap: 6px;
   column-gap: min(6px, var(--card-read));
   min-height: 0;
@@ -875,14 +955,19 @@
   max-height: 100%;
 }
 
-.farm > .tableau {
+.farm > .supply-full {
   grid-column: 1;
   grid-row: 2;
 }
 
-.farm > .farm-strips {
+.farm > .tableau {
   grid-column: 1;
   grid-row: 3;
+}
+
+.farm > .farm-strips {
+  grid-column: 1;
+  grid-row: 4;
 }
 
 /*
@@ -919,7 +1004,7 @@
  */
 .reading {
   grid-column: 2;
-  grid-row: 1 / 4;
+  grid-row: 1 / 5;
   position: relative;
   min-height: 0;
   min-width: 0;
@@ -1150,6 +1235,7 @@
  */
 .farm-head {
   grid-column: 1;
+  grid-row: 1;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1171,7 +1257,7 @@
   object-fit: contain;
 }
 
-.farm-coins,
+.farm-meeples,
 .farm-vp {
   display: inline-flex;
   align-items: center;
@@ -1180,7 +1266,10 @@
   font-size: 14px;
 }
 
-.farm-coins img,
+.farm-meeples {
+  color: var(--ink-soft);
+}
+
 .farm-vp img {
   width: 17px;
   height: 17px;
@@ -1406,6 +1495,36 @@
  * Helping Hand still offers its repeat. So the badge steps down below it rather
  * than landing on top of it, which is one line here and no branch in the tree.
  */
+/*
+ * ⭐ THE SELF-VISIT BADGE (v31), on your own Notice Board and nowhere else.
+ *
+ * It is deliberately NOT the green of a live target or of the power badge. A
+ * card on your OWN board is solitaire that also clogs your own door, and the
+ * green in this interface has meant "a move you want" since phase 3 - so this
+ * one wears the amber the over-full and coin-taxed things wear, and reads as an
+ * option with a price rather than as an opportunity. The rail's neighbour
+ * panels, which are the other half of the same move, keep the green.
+ */
+.building-selfdoor {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  z-index: 3;
+  font-family: var(--font-display);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid #b07a1c;
+  background: #f6e6b4;
+  color: #6b4a0c;
+}
+
+.building-selfdoor:hover {
+  background: #f0d78a;
+}
+
 .building-power {
   position: absolute;
   top: 3px;
@@ -1424,7 +1543,37 @@
   box-shadow: 0 1px 3px rgb(58 42 24 / 34%);
 }
 
-.building-full .building-power {
+.building-full /*
+ * ⭐ THE SELF-VISIT BADGE (v31), on your own Notice Board and nowhere else.
+ *
+ * It is deliberately NOT the green of a live target or of the power badge. A
+ * card on your OWN board is solitaire that also clogs your own door, and the
+ * green in this interface has meant "a move you want" since phase 3 - so this
+ * one wears the amber the over-full and coin-taxed things wear, and reads as an
+ * option with a price rather than as an opportunity. The rail's neighbour
+ * panels, which are the other half of the same move, keep the green.
+ */
+.building-selfdoor {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  z-index: 3;
+  font-family: var(--font-display);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid #b07a1c;
+  background: #f6e6b4;
+  color: #6b4a0c;
+}
+
+.building-selfdoor:hover {
+  background: #f0d78a;
+}
+
+.building-power {
   top: 19px;
 }
 
@@ -1560,6 +1709,13 @@
   letter-spacing: 0;
 }
 
+/*
+ * A hand over `rules.turn.handLimit`. The same #a2493a the clog flag and the
+ * cancel control wear - the screen's one "this takes something away" colour -
+ * because that is exactly what the turn boundary is about to do. Restored with
+ * the hand limit on 02/09/2026; it is a warning and never a block, since the
+ * limit is checked only when the turn ends.
+ */
 .over-limit {
   color: #a2493a;
   font-weight: 700;
@@ -1768,9 +1924,18 @@
   gap: 4px;
 }
 
-/* ---- workers ------------------------------------------------------------ */
+/* ---- the five doors, and the meeples that share their colours ----------- */
 
-.worker {
+/*
+ * ⭐ THIS REPLACED THE WORKER BLOCK (v31), and about half of it is gone rather
+ * than renamed. The Working Week track (`.worker-space`, `.worker-space-here`,
+ * `.worker-space-home`, `.worker-meeple`) died on 2026-08-10 with the track
+ * itself and had been dead CSS for three weeks; the wage line (`.worker-next`)
+ * and the hire colour (`.worker-hire`) went with the currency. What is left is
+ * the one fact a colour carries: which of the five actions it is.
+ */
+
+.door {
   border: 1px solid var(--rule);
   border-left-width: 3px;
   border-radius: 6px;
@@ -1782,94 +1947,205 @@
   min-width: 0;
 }
 
-.worker-art {
+.door-art {
   width: 54px;
   border-radius: 4px;
   flex: none;
 }
 
-.worker-body {
+.door-body {
   display: grid;
   gap: 2px;
   min-width: 0;
   flex: 1;
 }
 
-.worker-name {
+.door-name {
   font-family: var(--font-display);
   font-size: 11px;
   display: flex;
   gap: 4px;
   justify-content: space-between;
   /* Without this the chip cannot be narrower than its longest word, and the
-     commons' own Service panel is a fixed grid column - a long label there does
+     legend is a fixed grid column in the commons - a long farm name there does
      not wrap, it shoulders the panel out over the island beside it. */
   min-width: 0;
 }
 
-.worker-verb {
+.door-verb {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.worker-name em {
+.door-name em {
   font-style: normal;
   font-size: 9px;
   color: var(--ink-soft);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.worker-hire {
-  color: #3f7a3a !important;
-}
-
-.worker-action {
+.door-action {
   font-size: 10px;
   color: var(--ink-soft);
 }
 
-.worker-track {
-  list-style: none;
+/* ---- meeples ------------------------------------------------------------ */
+
+/*
+ * The pawn is an inline SVG (see Meeple.tsx for why it is drawn rather than
+ * painted), so it needs no sizing here - the component sets width and height in
+ * px off one number. What CSS owns is how a pawn sits with type beside it.
+ */
+.meeple {
+  display: block;
+  flex: none;
+}
+
+.supply {
+  min-width: 0;
+}
+
+.supply-rail {
   margin: 0;
-  padding: 0;
   display: flex;
-  gap: 2px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-height: 15px;
 }
 
-.worker-space {
-  min-width: 17px;
-  height: 15px;
-  border-radius: 3px;
-  background: var(--paper-deep);
-  box-shadow: inset 0 0 0 1px var(--ink-line);
+.supply-pawn {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.supply-pawn b {
+  font-family: var(--font-display);
+  font-size: 10px;
+  color: var(--ink-soft);
+}
+
+.supply-none {
+  font-size: 9px;
+  color: var(--ink-soft);
+}
+
+/*
+ * YOUR OWN SUPPLY. It sits between the farm header and the tableau, which is
+ * where the turn starts - meeples are spent before the bonus and before the
+ * action - so the eye meets it in the order the rules do.
+ *
+ * ⚠️ IT MUST NOT CHANGE HEIGHT BETWEEN THE THREE STATES. The tableau's whole
+ * height budget is measured from the bottom of everything above it (phase 1's
+ * height invariance), so a strip that grew when the window opened would push
+ * every building down at exactly the moment a player is looking at them. The
+ * row is therefore a fixed min-height and the state is carried by colour and by
+ * the caption, never by size.
+ */
+.supply-full {
   display: grid;
-  place-items: center;
+  gap: 3px;
+  padding: 4px 6px;
+  border-radius: 7px;
+  border: 1px dashed var(--rule);
+  background: color-mix(in srgb, var(--paper) 60%, transparent);
+}
+
+.supply-open {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--seat-pip) 70%, var(--rule));
+  background: color-mix(in srgb, var(--seat-pip) 12%, var(--paper));
+}
+
+/*
+ * ⚠️ `stuck` LOOKS LIKE `shut` AND READS DIFFERENTLY, on purpose. The window is
+ * open but not one of the meeples held has a legal action - so nothing is
+ * clickable, exactly as when the window has passed, and the strip must not look
+ * live. What separates them is the caption, because that is the fact that
+ * differs; giving it a third border treatment would be inventing a visual state
+ * for a difference that is entirely about WHY, not about what you can do.
+ */
+.supply-stuck {
+  border-style: dashed;
+}
+
+.supply-head {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.supply-open .supply-head {
+  color: var(--seat-ink);
+}
+
+.supply-head em {
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-soft);
+}
+
+.supply-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  min-height: 30px;
+}
+
+.supply-row .empty-note {
+  margin: 0;
+}
+
+.supply-meeple {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  padding: 2px 8px 2px 5px;
+  text-align: left;
+}
+
+.supply-meeple:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.supply-meeple-body {
+  display: grid;
+  gap: 0;
+}
+
+.supply-verb {
+  font-family: var(--font-display);
+  font-size: 12px;
+}
+
+.supply-meeple em {
+  font-style: normal;
   font-size: 9px;
   color: var(--ink-soft);
 }
 
-.worker-space-here {
-  background: #4a3a26;
-}
-
-.worker-space-home {
-  background: none;
-  box-shadow: inset 0 0 0 1px var(--rule);
-}
-
-.worker-meeple {
-  width: 7px;
-  height: 11px;
-  border-radius: 3px 3px 1px 1px;
-  background: #f3e7cd;
-  box-shadow: 0 -4px 0 -1px #f3e7cd;
-}
-
-.worker-next {
-  font-size: 9px;
-  color: var(--ink-soft);
+.supply-meeple .meeple-stack b,
+.meeple-stack b {
+  font-family: var(--font-display);
+  font-size: 10px;
 }
 
 /* ---- zoom, inspector, banner -------------------------------------------- */
@@ -1889,16 +2165,6 @@
 
 .zoom .card {
   box-shadow: var(--shadow-lift);
-}
-
-.zoom-other {
-  margin: 0;
-  background: var(--paper-panel);
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  padding: 4px 7px;
-  font-size: 11px;
-  line-height: 1.3;
 }
 
 /* The scrim arrives rather than appearing. `--motion-ui`, not the band: it is

@@ -7,13 +7,15 @@
  * exactly what legalMoves offers, and a Worker performing an action obeys the
  * same rules as the action itself.
  *
- * Suit-power seams: the Farmstead powers (Wheat's relaxed harvest, Orchard's
- * draw modifier, Apiary's any-card Grow, Dairy's substitution, Vegetable's
- * deliver coin) attach to these funnels when their suit tickets land. Nothing
- * here hardcodes a tunable number - every dial reads from GameData.
+ * ⛔ THE SUIT-POWER SEAMS ARE GONE (v31). The Farmstead powers - Wheat's relaxed
+ * harvest, Orchard's draw modifier, Apiary's any-card Grow, Dairy's diversion,
+ * Vegetable's deliver head - used to attach to these funnels. All five
+ * Farmsteads print one end-game scorer and nothing else now, so the funnels are
+ * the plain printed actions and a suit's identity lives entirely in its deck.
+ * Nothing here hardcodes a tunable number - every dial reads from GameData.
  */
 
-import type { GameData, Suit, WorkerAction } from '@gp/data';
+import type { GameData, Suit } from '@gp/data';
 import { deliveriesPerTile, deliveryVp } from '@gp/data';
 
 import type { Fx } from './fx.js';
@@ -21,20 +23,18 @@ import { fireHook } from './fx.js';
 import {
   canTakeCard,
   cardById,
+  doorOf,
   faceOf,
   drawableSuits,
   isFull,
   noticeBoardOf,
   player,
-  roomOn,
-  serviceIdOf,
   visitTargetOf,
-  withDrawModifier,
   workerData,
-  workerState,
 } from './query.js';
 import type {
   AerodromeState,
+  BonusOption,
   BuildingState,
   CardId,
   GameState,
@@ -43,34 +43,116 @@ import type {
   Seat,
   TaskAnswer,
 } from './state.js';
-import { workWorker } from './workers.js';
+import { performDoorAction } from './workers.js';
 
-/** All k-card subsets. Bounded: hands are 6-8, costs at most 5 cards. */
+/**
+ * All k-card subsets, as a list. `k` is a build cost (at most 5 cards) or a hand
+ * overflow; `items` is a hand.
+ *
+ * ⚠️ **WHAT BOUNDS THIS IS `rules.turn.handLimit`, AND NOTHING ELSE.** The
+ * comment here used to say "hands are 6-8" as though that were a property of the
+ * game. It was a property of ONE RULE - the hand limit - and when v31 deleted
+ * that rule on 02/09/2026 this function silently became unbounded. It is
+ * C(hand, k): at a hand of 33 and a cost of 4 that is 40,920 payments FOR ONE
+ * BUILDABLE CARD, and the measured worst position offered 116,535 legal moves
+ * and took a 2-seat game from about 0.1 seconds to minutes. The limit came back
+ * the same day, at a flat 12, expressly to bound this - see
+ * `RulesFile.turn.handLimit` for the full measurement.
+ *
+ * So: at the shipped limit of **7** (03/09/2026, down from 12) the worst payment
+ * enumeration is C(6, 4) = 15, and it grows as C(limit - 1, 4) - 330 at 12, 70
+ * at 9, 1 at 5. ANY CHANGE THAT LETS A HAND GROW PAST THE LIMIT - a new knob, a
+ * card, a relaxation of the turn boundary - is a change to the branching factor
+ * of the whole game, and belongs in a paired arm with the legal-move count read
+ * off it.
+ *
+ * ⚠️ **THE WIDEST ENUMERATION IN THE GAME IS NO LONGER THIS ONE.** At a limit of
+ * 7 the measured worst position offers 368 legal moves, and the widest single
+ * answer list is the end-of-turn `discard` task at 330 - the OTHER C(n, k) in
+ * the game, and the one that grows when a card effect stuffs a hand well past
+ * the ceiling mid-turn. Whoever comes here next looking for the explosion should
+ * look there first.
+ */
 export function subsets<T>(items: readonly T[], k: number): T[][] {
-  if (k === 0) return [[]];
-  if (k > items.length) return [];
-  const [head, ...rest] = items as [T, ...T[]];
-  return [...subsets(rest, k - 1).map((s) => [head, ...s]), ...subsets(rest, k)];
+  // ⭐ REWRITTEN 03/09/2026, SAME OUTPUT, SAME ORDER, a third of the cost. The
+  // previous body was the textbook two-line recursion - `[...subsets(rest, k-1)
+  // .map(s => [head, ...s]), ...subsets(rest, k)]` - which builds and throws
+  // away an intermediate array and a spread PER SUBTREE. A CPU profile of a
+  // 2-seat game put 12.5% of the whole run inside this one function, more than
+  // any other, and about half of that was allocation the answer never keeps.
+  //
+  // This walks index combinations in increasing order, which is EXACTLY the
+  // order the recursion produced (subsets containing item 0 first, then those
+  // without, applied recursively, is lexicographic by index). That equality is
+  // load-bearing rather than tidy: enumeration order reaches the bots' tie-break
+  // and the metric fold's `legal` list, so a reordering here would move balance
+  // numbers without changing a single rule.
+  const out: T[][] = [];
+  if (k < 0 || k > items.length) return out;
+  const pick: T[] = new Array<T>(k) as T[];
+  const walk = (start: number, depth: number): void => {
+    if (depth === k) {
+      out.push(pick.slice());
+      return;
+    }
+    // Stop early where too few items remain to finish the choice.
+    const last = items.length - (k - depth);
+    for (let i = start; i <= last; i++) {
+      pick[depth] = items[i] as T;
+      walk(i + 1, depth + 1);
+    }
+  };
+  walk(0, 0);
+  return out;
 }
 
 // --- shared queries --------------------------------------------------------
 
-/** The absolute hand limit printed on the seat's current Barn face. */
-export function handLimitOf(data: GameData, state: GameState, seat: Seat): number | null {
-  const barn = player(state, seat).tableau.find((b) => cardById(data, b.card).slot === 'barn');
-  if (!barn) return null;
-  return faceOf(data, barn).handSize ?? null;
+/**
+ * THE HAND LIMIT: cards a seat may still be holding when its turn ENDS, or null
+ * for no limit at all.
+ *
+ * ⭐ **IT IS ONE GLOBAL RULE NOW, NOT A CARD VALUE** (Dean, 02/09/2026). For
+ * three editions the Barn printed it per suit (5/5/5/6/6, 7 on a flipped face)
+ * and this function read the showing face. v31 deleted the printed number and
+ * the whole rule with it; the same day's simulator run reversed that, and the
+ * reinstated rule is deliberately a different shape: `rules.turn.handLimit`, one
+ * number on the player aid, with the Barn still printing nothing. The function
+ * keeps its name and its signature so every seam that used to ask it still asks
+ * it, and takes `state` it no longer reads for the same reason - a limit that
+ * varies by seat again would change only this body.
+ *
+ * ## Why it came back - the measurement, because this is the paragraph the next
+ * person to think "a hand limit is just a clock, delete it" needs to find
+ *
+ * The limit was ALSO the only bound on `subsets` above, and nothing in the
+ * design knew that. With it gone hands reached 34 cards, one 2-seat position
+ * offered 43,879 legal moves (43,845 of them build payments), a re-measurement
+ * found a worse one at 116,535, and a 2-seat game went from ~0.1s to 1-15
+ * minutes - which reduced the entire watch-list suite to n=8 and made every
+ * conclusion from that run an anecdote. Behind the engineering sits the design
+ * failure: with no ceiling a card in hand has no diminishing return, so the free
+ * bonus Draw 1 became strictly dominant and beat a neighbour visit 3:1. The hook
+ * lost to arithmetic. See `RulesFile.turn.handLimit` for the rest.
+ */
+export function handLimitOf(data: GameData, _state: GameState, _seat: Seat): number | null {
+  return data.rules.turn.handLimit;
 }
 
 /**
  * A seat's free hand space (reference DL-63): limit minus hand size, floored at
- * 0. The gift family's capacity rule - a gift never forces an out-of-turn
- * discard, so a neighbour at their limit cannot be given anything. Lives beside
- * `handLimitOf` because both the divert seam and the Orchard handlers ask it.
+ * 0, and `Infinity` when the limit is off.
+ *
+ * THE GIFT FAMILY'S CAPACITY RULE, and the reason it is back: a gift never
+ * forces an out-of-turn discard, so a neighbour already at their limit cannot be
+ * given anything. Without it the Orchard gift cards (O6, O9, O16) stop being
+ * gifts and become a way to make a rival discard, which is a different card and
+ * a much nastier one. v31 read this as moot rather than repealed and said so at
+ * this seam; with the limit back it is live again.
  */
 export function freeHandSpace(data: GameData, state: GameState, seat: Seat): number {
   const limit = handLimitOf(data, state, seat);
-  if (limit === null) return 0;
+  if (limit === null) return Number.POSITIVE_INFINITY;
   return Math.max(0, limit - player(state, seat).hand.length);
 }
 
@@ -100,7 +182,11 @@ export function tileLevel(data: GameData, tileId: string): 1 | 2 | 3 {
   return tile.level;
 }
 
-// --- Build (and its branches: hire, upgrade) -------------------------------
+// --- Build -----------------------------------------------------------------
+//
+// It had two branches until v31 and has none now: HIRE went with the Hiring
+// Fair (2026-08-10) and the GBP 2 starter UPGRADE went with the upgraded faces.
+// Build is the plain action again: pay cards, put a card in your tableau.
 
 /**
  * Modifiers a Build runs under. Absent = the plain printed rules, so every
@@ -113,14 +199,21 @@ export function tileLevel(data: GameData, tileId: string): 1 | 2 | 3 {
  *    end - nothing may move barn to hand or barn to stack - and barn to build
  *    was the same violation wearing a different hat: it is what let the barn
  *    accelerate an engine instead of only buying score.
- *  - `coinWild` (the old D7) let coins stand in for cards. Seats end games on
- *    about £1, so a coin-priced build option was dead text. If the Notice
- *    Board faucet is ever widened, the Versatile Shed is where it comes back.
+ *  - `coinWild` (the old D7) let coins stand in for cards. Seats ended games on
+ *    about GBP 1, so a coin-priced build option was dead text even before v31
+ *    deleted the currency. The reading outlives it: a payment route nobody can
+ *    afford is not a choice, it is a paragraph of teach for nothing.
  */
 export interface BuildMods {
   /** Card count reduction (the cream balloon, the Builder's Yard, D4/D9/D11/D12). Waives the own-suit half. */
   discount?: number;
-  /** The Builder's Yard: any card pays any slot - the own-suit minimum is waived, never coins. */
+  /**
+   * ANY CARD PAYS ANY SLOT: the own-suit minimum is waived and a hand card's
+   * crop stops mattering. ⚠️ NOTHING IN THE SHIPPED DATA GRANTS IT since the v31
+   * doors went plain - the Dairy door did - so it is currently a mod with no
+   * producer, kept because it is the one expression of "crop requirements
+   * waived" and the next card that prints those words needs it.
+   */
   substitute?: boolean;
   /**
    * D7 The Versatile Shed: cards on ONE of the seat's own buildings may join the
@@ -173,34 +266,37 @@ export interface BuildOption {
  * Returns the Farmstead's card id (the `src` the divert task is resolved by)
  * and how many spent cards it may take, or null for a seat without the power.
  */
-export function buildDivertPower(
-  data: GameData,
-  state: GameState,
-  seat: Seat,
-): { card: CardId; limit: number } | null {
-  const p = player(state, seat);
-  if (p.suit !== 'dairy') return null;
-  const farmstead = p.tableau.find((b) => cardById(data, b.card).slot === 'farmstead');
-  if (farmstead === undefined) return null;
-  return { card: farmstead.card, limit: farmstead.upgraded ? 2 : 1 };
-}
+/**
+ * ⛔ `buildDivertPower` IS GONE (v31), and with it the last of the Dairy
+ * Farmstead. It read "When you Build, put 1 card you spend from your hand into
+ * your barn instead of discarding it" (2 on the flipped face) and returned the
+ * Farmstead's id plus that limit.
+ *
+ * The ruling it encoded is worth keeping even though the card is not, because
+ * anything that reaches into a build payment will meet it again: ONE DESTINATION
+ * PER SPENT CARD, enforced by ORDERING rather than by three assertions. The
+ * diversion was taken out BEFORE the discard, never reclaimed from the pile
+ * afterwards, so that D5 (sow the cards this build spent) and D6 (give one away)
+ * - which both reach into the discard on `afterBuild` - could never race it for
+ * the same card. `divertOrDiscard` below is where that order lives, and it is
+ * where O17's v31 text wants to hook.
+ */
 
-/** How many cards and coins a build actually costs under its modifiers. */
+/** How many cards a build actually costs under its modifiers. Coins are gone (v31). */
 function priceOf(
   data: GameData,
   card: CardId,
   mods: BuildMods,
-): { cardsNeeded: number; coinsNeeded: number; ownSuitMin: number } | null {
+): { cardsNeeded: number; ownSuitMin: number } | null {
   const cost = cardById(data, card).buildCost;
   if (!cost) return null;
   const discount = mods.discount ?? 0;
   const totalCards = cost.suit + cost.wild;
   const cardsNeeded = Math.max(0, totalCards - discount);
-  const coinsNeeded = discount - totalCards >= cost.coins ? 0 : cost.coins;
   // A discount waives the own-suit half (reference buildDiscount), and so does
   // the Builder's Yard's granted substitution.
   const ownSuitMin = discount > 0 || mods.substitute === true ? 0 : cost.suit;
-  return { cardsNeeded, coinsNeeded, ownSuitMin };
+  return { cardsNeeded, ownSuitMin };
 }
 
 /**
@@ -333,9 +429,10 @@ function paymentsFor(
         // resources fill OWN-CROP slots exactly as readily as wild ones, and
         // its printed suit is irrelevant. Hand cards still have to actually BE
         // the crop; only the stack is wild.
-        const own =
-          payment.filter((c) => cardById(data, c).suit === suit).length +
-          STACK_WILD_VALUE * stacks.length;
+        // Counted rather than filtered: this runs once per enumerated payment,
+        // and `filter().length` allocated an array per option for a number.
+        let own = STACK_WILD_VALUE * stacks.length;
+        for (const c of payment) if (cardById(data, c).suit === suit) own += 1;
         if (own < price.ownSuitMin) continue;
         out.push(stacks.length > 0 ? { card, payment, stacks } : { card, payment });
       }
@@ -346,9 +443,11 @@ function paymentsFor(
 
 /**
  * Every legal (card, payment) pair. A cost is n cards of the BUILT card's suit
- * plus m of any suit plus c coins; the built card never pays for itself; own-
- * suit cards may fill the wild half. `hand` overrides the seat's hand for the
- * post-fee re-check a visit's worker payoff needs.
+ * plus m of any suit - the coin third of it went with the currency (v31), and
+ * the 30 Power and Endgame cards that printed two coin icons now print two crop
+ * icons of their own suit. The built card never pays for itself; own-suit cards
+ * may fill the wild half. `hand` overrides the seat's hand for the post-fee
+ * re-check a visit's door action needs.
  *
  * Under `mods` the price and the own-suit minimum move (see priceOf) and cards
  * on ONE of the seat's own buildings may join the payment (D7). The enumeration
@@ -369,29 +468,34 @@ export function buildOptions(
   // cards from at most one stack.
   const sources = mods.fromStacks === true ? stackSourcesFor(data, state, seat) : [[]];
   const out: BuildOption[] = [];
-  const seen = new Set<string>();
+  // ⭐ THE DEDUPE IS SKIPPED WHEN THERE IS NOTHING TO DEDUPE (03/09/2026). It
+  // exists because a hand-only payment is reachable once per BUILDING, so the
+  // per-building union repeats it - which can only happen with more than one
+  // source. Without D7 there is exactly one source, `[[]]`, and every option is
+  // already unique, so the key-building was a sorted copy and a joined string
+  // per enumerated payment for a Set that never fired. That was measurable: at
+  // a hand of 12 it is a few hundred throwaway strings per buildable card, per
+  // decision. Identical output either way; this only stops paying for the check
+  // in the position where it cannot be needed.
+  const seen = sources.length > 1 ? new Set<string>() : null;
   for (const id of cards) {
     const price = priceOf(data, id, mods);
     if (!price) continue;
-    if (p.coins < price.coinsNeeded) continue;
+    // Hoisted: the hand-minus-this-card list was rebuilt once per SOURCE.
+    const rest = cards.filter((h) => h !== id);
     for (const groups of sources) {
-      for (const option of paymentsFor(
-        data,
-        id,
-        cards.filter((h) => h !== id),
-        groups,
-        price,
-      )) {
-        // A hand-only payment is reachable once per building, so dedupe on the
-        // canonical payment. Sorted because two sources can reach the same
-        // multiset by different orders.
-        const key = [
-          option.card,
-          [...option.payment].sort().join(','),
-          [...(option.stacks ?? [])].sort().join(','),
-        ].join('|');
-        if (seen.has(key)) continue;
-        seen.add(key);
+      for (const option of paymentsFor(data, id, rest, groups, price)) {
+        if (seen !== null) {
+          // Sorted because two sources can reach the same multiset by different
+          // orders.
+          const key = [
+            option.card,
+            [...option.payment].sort().join(','),
+            [...(option.stacks ?? [])].sort().join(','),
+          ].join('|');
+          if (seen.has(key)) continue;
+          seen.add(key);
+        }
         out.push(option);
       }
     }
@@ -402,7 +506,7 @@ export function buildOptions(
 /**
  * Ways this seat could pay for a card that is NOT in their hand - D10's
  * revealed deck top, which is in limbo and never touches the hand. Returns []
- * when the card has no build cost or the coins are not there.
+ * when the card has no build cost.
  */
 export function paymentOptions(
   data: GameData,
@@ -410,14 +514,11 @@ export function paymentOptions(
   seat: Seat,
   card: CardId,
   mods: BuildMods = {},
-): { payment: CardId[]; coins: number }[] {
+): { payment: CardId[] }[] {
   const price = priceOf(data, card, mods);
   if (!price) return [];
-  const p = player(state, seat);
-  if (p.coins < price.coinsNeeded) return [];
-  return paymentsFor(data, card, p.hand, [], price).map((o) => ({
+  return paymentsFor(data, card, player(state, seat).hand, [], price).map((o) => ({
     payment: o.payment,
-    coins: price.coinsNeeded,
   }));
 }
 
@@ -439,7 +540,7 @@ export function anyBuildOption(
   const cards = hand ?? p.hand;
   return cards.some((id) => {
     const price = priceOf(data, id, mods);
-    if (!price || p.coins < price.coinsNeeded) return false;
+    if (!price) return false;
     const suit = cardById(data, id).suit;
     const others = cards.filter((h) => h !== id);
     const own = others.filter((c) => cardById(data, c).suit === suit).length;
@@ -492,7 +593,6 @@ export function doBuild(
     throw new Error(`${card} needs ${price.ownSuitMin} ${c.suit} cards in payment`);
   }
 
-  if (price.coinsNeeded > 0) fx.payCoins(seat, price.coinsNeeded, `build:${card}`);
   fx.removeFromHand(seat, card);
   for (const id of payment) fx.removeFromHand(seat, id);
   // SPENT, not harvested (D7's ruling): the cards come straight off the stack,
@@ -500,40 +600,34 @@ export function doBuild(
   for (const id of stacks) fx.spendFromStack(seat, id);
   divertOrDiscard(fx, seat, payment);
   fx.discard(stacks);
-  placeBuilt(fx, seat, card, spent, price.coinsNeeded, src);
+  placeBuilt(fx, seat, card, spent, src);
 }
 
 /**
- * THE DIVERT SEAM FOR A BUILD PAYMENT, and it sits BEFORE the discard rather
- * than reclaiming from it afterwards.
+ * THE DIVERT SEAM FOR A BUILD PAYMENT: the one place a build's spent cards go,
+ * and it sits BEFORE the discard rather than reclaiming from it afterwards.
  *
  * That placement is the whole design. D5 The Churning Shed sows the cards this
  * build spent and D6 The Trading Shed gives one away, and both reach into the
- * discard for them on `afterBuild`; a Farmstead that also reclaimed from the
- * pile would be a third consumer racing over one pile, which is how a card ends
- * up in two places. Taking the diversion out first means the pile only ever
- * holds what nobody else claimed, so ONE DESTINATION PER SPENT CARD falls out of
- * the ordering instead of being asserted three times.
+ * discard for them on `afterBuild`; anything that also reclaimed from the pile
+ * would be a third consumer racing over one pile, which is how a card ends up in
+ * two places. Taking a diversion out FIRST means the pile only ever holds what
+ * nobody else claimed, so ONE DESTINATION PER SPENT CARD falls out of the
+ * ordering instead of being asserted three times. Anything queued here must be
+ * PREPENDED, so it resolves before whatever was already waiting (the second half
+ * of D12's two builds, say) and `placeBuilt`'s reactors append behind it.
  *
- * The task is PREPENDED so it resolves before anything already queued - the
- * second half of D12's two builds, say - and `placeBuilt`'s own reactors append
- * behind it. So the order is always: choose the diversion, discard the rest,
- * then D5 and D6 pick over what is left.
+ * ⚠️ IT CURRENTLY JUST DISCARDS, AND THAT IS A HOLE THE CARD PASS HAS TO FILL.
+ * Its only diverter was the Dairy Farmstead, which is gone (v31). O17 The Fruit
+ * Basket's v31 text - *"Instead of discarding a card you spend, you may put it
+ * into your barn"* - is exactly this moment, moved off the draw discard where
+ * the card used to live. The seam is kept, named and exported for that handler
+ * to wire; deleting it and inlining `fx.discard` at the call site would lose the
+ * ordering rule above, which is not re-derivable from the code that replaced it.
  */
-function divertOrDiscard(fx: Fx, seat: Seat, payment: readonly CardId[]): void {
+export function divertOrDiscard(fx: Fx, _seat: Seat, payment: readonly CardId[]): void {
   if (payment.length === 0) return;
-  const power = buildDivertPower(fx.data, fx.state, seat);
-  if (power === null) {
-    fx.discard([...payment]);
-    return;
-  }
-  fx.prependTask({
-    t: 'card',
-    pid: seat,
-    src: power.card,
-    kind: 'divertSpent',
-    riders: { cards: [...payment], remaining: Math.min(power.limit, payment.length) },
-  });
+  fx.discard([...payment]);
 }
 
 /**
@@ -542,19 +636,19 @@ function divertOrDiscard(fx: Fx, seat: Seat, payment: readonly CardId[]): void {
  * afterBuild reactors fire.
  *
  * It used to also check the Farmstead's free flip at the 3-own-crop-building
- * milestone. That rule is GONE (2026-08-12, Dean): the Farmstead is bought for
- * £2 like the Barn and the Notice Board, so a build no longer flips anything.
+ * milestone. That rule went on 2026-08-12 (the Farmstead was bought for GBP 2
+ * like its siblings), and v31 deleted the flip itself, so a build has not moved
+ * a starter's face for two editions and never will again.
  */
 export function placeBuilt(
   fx: Fx,
   seat: Seat,
   card: CardId,
   payment: CardId[],
-  coins: number,
   src: CardId | null = null,
 ): void {
-  player(fx.state, seat).tableau.push({ card, stack: [], upgraded: false });
-  fx.emit({ e: 'built', seat, card, payment, coins });
+  player(fx.state, seat).tableau.push({ card, stack: [] });
+  fx.emit({ e: 'built', seat, card, payment });
   // `turn.buildSources` used to be recorded here, for D16 The Ledger's
   // once-per-build-SOURCE guard; the Dairy rebalance (2026-08-12) moved the
   // Ledger onto the general `turn.firedThisTurn` rule and the field lost its
@@ -564,195 +658,73 @@ export function placeBuilt(
 }
 
 /**
- * What it costs this seat to activate their OWN Service from the bonus slot.
- * Floors at 0.
+ * ⛔ `ownServiceCost` IS GONE (v31). It priced the bonus slot's other half -
+ * activate your OWN Service, paid to the bank - and the rule it enforced was
+ * that you never earn from your own farm, so running your own door had to cost
+ * something. In v31 the owner places a card on their own board exactly as a
+ * rival does, and the price is that card plus a step toward their own threshold
+ * of 2. That is a sharper brake than a coin ever was, because it shuts the door
+ * on everybody rather than emptying one wallet.
  *
- * ⛔ NOTHING DISCOUNTS IT any more. A10 The Cross-Pollinator used to, as the one
- * card id named in a funnel rather than in a handler; the Apiary rebuild
- * (2026-08-11) repointed A10 at "Draw 1 for each of your HIVEs", so the
- * discount and the seat-scoped lookup that read it are both gone. The `discount`
- * parameter stays because a future card may print one and every call site
- * already passes through here.
+ * ⛔ `apiaryGrowBonus` IS GONE (v31), and the convention it demonstrated is
+ * worth keeping even though the card is not. It was the Apiary Farmstead's "When
+ * you GROW, Draw 1", and it lived on the GROW ACTION branch in `game.ts` rather
+ * than inside `doGrow` - because `doGrow` is also called by O13 The Grand
+ * Orchard and by A6, so a seam inside it fires once per BUILDING grown and The
+ * Honey Hut would have drawn three. The standing rule (how-to-design-a-suit §8)
+ * is that a suit power modifies the ACTION, never card text that happens to use
+ * the same word.
+ *
+ * ⛔ `upgradeOptions`, `upgradeTargets` and `doUpgrade` ARE GONE (v31). They
+ * flipped a starter for GBP 2, and the flip was a bonus-slot option from
+ * 19/08/2026 - a change that attacked a measured playtest failure (2026-07-14:
+ * "nobody upgraded a starter and nobody bought an end-game card", every GBP 2
+ * sink untouched, because an upgrade costing a whole main action was never going
+ * to be taken in a game whose clock is cards). v31 deletes all fifteen upgraded
+ * faces, so there is nothing to flip.
+ *
+ * ⚠️ ONE BUG FIX DIED WITH THEM AND ITS SHAPE RECURS, so it is recorded here.
+ * `upgradeTargets` was split out of `upgradeOptions` because `apply` spends the
+ * main action BEFORE it calls the doer, so under the control arm where the flip
+ * was a main action again, `doUpgrade` re-validated through a gate
+ * (`!turn.actionSpent`) that `apply` had just falsified - `legalMoves` offered
+ * every upgrade and `apply` refused every one, and five of six seeds crashed.
+ * THE RULE: a re-validation must check what the move NEEDS, never the window the
+ * caller has already consumed. `doVisit`, `doBonusDraw` and `doSpendMeeple` all
+ * obey it below.
+ *
+ * ⛔ `buyOptions`, `hasBuyOption` and `doBuy` ARE GONE (v31). The card BUY paid
+ * the bank for the blind top card of a deck that was NOT your own suit, once a
+ * turn, as a free action. Dean's own-suit exclusion (2026-08-03) was what kept
+ * the two supply lines distinct - money bought VARIETY, your own crop came from
+ * your own deck - and it is why the buy could not quietly become a second Draw.
+ * With no coins there is nothing to pay with, and `rules.turn.bonusDraw` is what
+ * a seat reaches for instead.
  */
-export function ownServiceCost(data: GameData, discount = 0): number {
-  return Math.max(0, data.workers.ownerActivationCost - discount);
-}
-
-/**
- * THE APIARY FARMSTEAD, and the whole of it: "When you GROW, Draw 1", plus the
- * upgraded face's "and you may put 1 card from your hand into your barn".
- *
- * ⛔ It lives on the GROW ACTION branch in `game.ts` and must NEVER move into
- * `doGrow`, which is also called by O13 The Grand Orchard and by A6 - a seam
- * inside `doGrow` would fire once per building grown, so The Honey Hut would
- * draw three. The standing convention (how-to-design-a-suit §8) is that a suit
- * power modifies the ACTION, never card text that happens to use the same word,
- * and Orchard's Farmstead is ruled the same way for the Draw.
- *
- * The draw is a card-ability draw and not the Draw action, so no draw modifier
- * applies (DL-47). The barn task is optional and may whiff on an empty hand,
- * which is legal and silent.
- *
- * It is the suit's card-neutrality guarantee and it had to be: after the
- * rebuild all five Tier 1 HIVEs are card-negative and nothing else in the suit
- * refills the hand.
- */
-export function apiaryGrowBonus(fx: Fx, seat: Seat): void {
-  const p = player(fx.state, seat);
-  if (p.suit !== 'apiary') return;
-  const farmstead = p.tableau.find((b) => cardById(fx.data, b.card).slot === 'farmstead');
-  if (!farmstead) return;
-  fx.pushTask({ t: 'draw', pid: seat, src: farmstead.card, see: 1, keep: 1, revealed: [] });
-  if (farmstead.upgraded) {
-    fx.pushTask({
-      t: 'handToBarn',
-      pid: seat,
-      src: farmstead.card,
-      remaining: 1,
-      optional: true,
-    });
-  }
-}
-
-/**
- * Starters a seat can pay to flip: all three of them - Barn, Notice Board and,
- * since 2026-08-12, the Farmstead. The free flip at the 3-own-crop milestone is
- * retired; the Farmstead is bought at the same £2 as its siblings, so the
- * upgrade grammar is now one line ("£2 flips any starter") instead of two.
- *
- * The Service is deliberately not here: it is a slot on the Notice Board, not a
- * starter with a second face.
- *
- * ⚠️ A BONUS-SLOT OPTION SINCE 19/08/2026, not a main action. Dean: upgrading a
- * starter *"is no longer considered a Build action - instead it is one of the 4
- * bonus actions you may perform on your turn"*. So it gates on `bonusOpen` and
- * `doUpgrade` spends the slot, exactly as `doVisit` and `doWorkOwn` do.
- *
- * Why: it attacks a measured playtest failure. 2026-07-14 found *"nobody
- * upgraded a starter and nobody bought an end-game card"* - every £2 sink
- * untouched. An upgrade costing a whole main action, in a game whose clock is
- * cards, was never going to be taken.
- *
- * ⚠️ It is a coin-priced SOLITAIRE option in the interaction slot, which is the
- * shape this project has already measured as pushing the visit rate down. The
- * difference from the market it replaces is that THIS ONE IS CAPPED: three
- * starters, once each, then never again. A repeatable faucet-drain can crowd
- * the visit out all game; a capped one cannot. Net the slot goes from five
- * options to four and the visit's share of the menu rises. An upgrade spike in
- * the opening rounds followed by a visit-heavy midgame is a PASS, not a fail.
- */
-export function upgradeOptions(data: GameData, state: GameState, seat: Seat): CardId[] {
-  const open = data.rules.turn.upgradeIsBonus ? bonusOpen(data, state) : !state.turn.actionSpent;
-  return open ? upgradeTargets(data, state, seat) : [];
-}
-
-/**
- * The starters this seat could flip IF the window were open: built, not already
- * flipped, and affordable. The WINDOW is deliberately not part of it.
- *
- * ⚠️ THIS SPLIT IS A BUG FIX, and the bug is worth recording because the shape
- * of it recurs. `apply` spends the main action BEFORE it calls the doer, so
- * under `upgradeIsBonus: false` - the paired control arm, where the flip is a
- * main action again - `doUpgrade` re-validated through `upgradeOptions`, whose
- * gate is `!turn.actionSpent`, which `apply` had just made false. So
- * `legalMoves` offered every upgrade and `apply` refused every one of them,
- * unconditionally, and five of six seeds crashed under
- * `overlays/turn-structure-v14.overlay.json` - the one arm the plan says must
- * be run before any buy/market code is deleted.
- *
- * The rule is: a re-validation must check what the move NEEDS, never the window
- * the caller has already consumed. `doUpgrade` checks these targets, and checks
- * the bonus window itself only on the branch where the slot is what pays.
- */
-export function upgradeTargets(data: GameData, state: GameState, seat: Seat): CardId[] {
-  const p = player(state, seat);
-  return p.tableau
-    .filter((b) => {
-      const card = cardById(data, b.card);
-      if (card.slot !== 'barn' && card.slot !== 'noticeboard' && card.slot !== 'farmstead') {
-        return false;
-      }
-      if (b.upgraded) return false;
-      const cost = card.upgradeCostCoins ?? data.rules.economy.upgradeCostCoins;
-      return p.coins >= cost;
-    })
-    .map((b) => b.card);
-}
-
-export function doUpgrade(fx: Fx, seat: Seat, card: CardId): void {
-  if (!upgradeTargets(fx.data, fx.state, seat).includes(card)) {
-    throw new Error(`Seat ${seat} cannot upgrade ${card}`);
-  }
-  // The window, on the branch where the window is what pays. Under the control
-  // knob the main action pays, and `apply` has already spent it by the time we
-  // get here - see the note on `upgradeTargets` for what checking it here cost.
-  if (fx.data.rules.turn.upgradeIsBonus && !bonusOpen(fx.data, fx.state)) {
-    throw new Error('The bonus slot is shut: spent, or the action is taken');
-  }
-  const building = player(fx.state, seat).tableau.find((b) => b.card === card);
-  if (!building) throw new Error(`Seat ${seat} has not built ${card}`);
-  const cost = cardById(fx.data, card).upgradeCostCoins ?? fx.data.rules.economy.upgradeCostCoins;
-  fx.payCoins(seat, cost, `upgrade:${card}`);
-  // The slot, not the action (19/08/2026). Set here for the same reason
-  // `doVisit` and `doWorkOwn` set it here: the spend belongs to the thing that
-  // spends, so a caller that forgets is visibly wrong rather than quietly
-  // relying on `apply`. Under the control knob the action is spent by `apply`
-  // through MAIN_ACTIONS instead, exactly as it used to be.
-  if (fx.data.rules.turn.upgradeIsBonus) fx.state.turn.bonusSpent = true;
-  building.upgraded = true;
-  fx.emit({ e: 'starterUpgraded', seat, card });
-}
 
 // --- Draw ------------------------------------------------------------------
 
 /**
- * The plain Draw action: push the see-N/keep-K task with the printed base
- * numbers, through the Orchard Farmstead's draw modifier (see +1 base, see +1
- * keep +1 upgraded - never for card-ability draws, DL-47).
+ * The plain Draw ACTION: `rules.turn.baseDraw`, which is see 2 KEEP 2 since v31.
+ *
+ * ⭐ THE DRAW KEEPS BOTH CARDS AND DISCARDS NOTHING. It was see 2 keep 1 from
+ * v13 until v31, and the change is not generosity: the discard was the last
+ * piece of hidden bookkeeping in the core five actions and it bought nothing
+ * measurable. The task machinery is unchanged - it is still the see-N/keep-K
+ * task - so a `see > keep` card ability still opens a real choice; it is only
+ * the printed action that no longer has one.
+ *
+ * ⚠️ WATCH THE INTERACTION WITH `bonusDraw`. The plain action and the free bonus
+ * option are now the same verb at two sizes, so a seat that takes Draw as its
+ * action and Draw 1 as its bonus nets three cards a turn with no interaction at
+ * all. That is the shape action inflation shows up in first.
+ *
+ * No draw modifier is consulted: the Orchard Farmstead's `withDrawModifier` went
+ * with the suit powers (v31), so the printed numbers are the numbers.
  */
 export function doDraw(fx: Fx, seat: Seat): void {
-  const spec = withDrawModifier(fx.data, fx.state, seat, fx.data.rules.turn.baseDraw);
-  fx.pushTask({ t: 'draw', pid: seat, src: null, see: spec.see, keep: spec.keep, revealed: [] });
-}
-
-// --- Buy (the once-per-turn free action) -----------------------------------
-
-/**
- * The suits a seat may BUY from right now: every deck on the table except its
- * OWN, while that suit still has cards (the discard reshuffles, as everywhere).
- *
- * Not your own suit, by Dean's rule (2026-08-03). It is what keeps the two
- * supply lines distinct - money buys VARIETY, your own crop comes from your own
- * deck - and it is why the buy cannot quietly become a second Draw.
- *
- * `rules.turn.buyCost` of null switches the whole rule off, which is what the
- * paired overlay run turns on and off.
- */
-export function buyOptions(data: GameData, state: GameState, seat: Seat): Suit[] {
-  const cost = data.rules.turn.buyCost;
-  if (cost === null) return [];
-  if (state.turn.buyUsed) return [];
-  const p = player(state, seat);
-  if (p.coins < cost) return [];
-  return drawableSuits(data, state).filter((s) => s !== p.suit && state.suitsInPlay.includes(s));
-}
-
-export function hasBuyOption(data: GameData, state: GameState, seat: Seat): boolean {
-  return buyOptions(data, state, seat).length > 0;
-}
-
-/** Pay the bank, take the top card of that suit's deck into hand. Blind, and never a Draw. */
-export function doBuy(fx: Fx, seat: Seat, suit: Suit): void {
-  if (!buyOptions(fx.data, fx.state, seat).includes(suit)) {
-    throw new Error(`Seat ${seat} cannot buy from the ${suit} deck`);
-  }
-  const cost = fx.data.rules.turn.buyCost;
-  if (cost === null) throw new Error('The card buy is switched off');
-  const card = fx.takeDeckTop(suit);
-  if (card === null) throw new Error(`The ${suit} deck is empty`);
-  fx.payCoins(seat, cost, 'buy');
-  fx.state.turn.buyUsed = true;
-  fx.cardsToHand(seat, [card]);
+  const { see, keep } = fx.data.rules.turn.baseDraw;
+  fx.pushTask({ t: 'draw', pid: seat, src: null, see, keep, revealed: [] });
 }
 
 // --- Grow ------------------------------------------------------------------
@@ -763,13 +735,20 @@ export interface GrowOption {
 }
 
 /**
- * The activation surcharge a card prints ("You must pay £1 to activate this
- * card", A8 The Wild Hive), keyed by the data trigger like the harvest
- * surcharge: checked at legality, paid in doGrow after the card lands.
+ * ⛔ `activationSurchargeOf` AND `harvestSurchargeOf` ARE GONE (v31). Both read
+ * a printed GBP 1 toll off a data trigger - `activationSurcharge` ("You must pay
+ * £1 to activate this card", A8 The Wild Hive) and `harvestSurcharge` ("You must
+ * pay £1 to Harvest this Field", W8) - and both were checked at legality and
+ * paid after the card landed.
+ *
+ * They go with the currency, and the v31 extract confirms it: NO card in the
+ * catalogue carries either trigger any more. The pattern is worth remembering
+ * though, because it is the right one for a printed toll: keyed on a DATA
+ * TRIGGER so no funnel names a card, checked in the enumerator so an unaffordable
+ * target is never offered, and charged in the funnel so the two cannot disagree.
+ * If a toll returns it will be priced in cards or in a discard, which is the
+ * only currency left.
  */
-export function activationSurchargeOf(data: GameData, card: CardId): number {
-  return cardById(data, card).abilityTrigger.includes('activationSurcharge') ? 1 : 0;
-}
 
 /** What a caller may relax about a GROW's targeting. */
 export interface GrowOptionMods {
@@ -811,7 +790,6 @@ export function growOptions(
     if (mods.exclude?.includes(b.card)) continue;
     const type = faceOf(data, b).activationType;
     if (type === null) continue;
-    if (activationSurchargeOf(data, b.card) > p.coins) continue;
     for (const card of p.hand) {
       if (mods.anyCrop === true || type === 'wild' || cardById(data, card).suit === type) {
         out.push({ building: b.card, payment: card });
@@ -828,10 +806,11 @@ export function growOptions(
  * Deliberately WIDER than `growOptions`: a FULL building is legal, because the
  * only reason a full building cannot be grown is that no card may be placed on
  * it, and nothing is being placed. It is also deliberately narrower in one
- * place - the Notice Board (its text is a VISITOR ability) and the SERVICE are
- * never targets. ⚠️ The Service exclusion is load-bearing rather than tidiness:
- * firing your own Service is bonus-slot option 1, so a card that reached it
- * would be selling a bonus slot.
+ * place: the NOTICE BOARD is never a target, because its text is a VISITOR
+ * ability. ⚠️ That exclusion is load-bearing rather than tidiness, and more so
+ * in v31 than before: the board's text IS the bonus slot's payoff, so a card
+ * that reached it would be handing out a free bonus option. (The `service` slot
+ * used to be excluded on the same grounds; it stopped existing on 20/08/2026.)
  *
  * `exclude` is the card doing the firing; `turn.firedThisTurn` is everything
  * that has already fired, and filtering it here rather than throwing at
@@ -845,10 +824,7 @@ export function activateTargets(
 ): CardId[] {
   return player(state, seat)
     .tableau.filter((b) => faceOf(data, b).activationType !== null)
-    .filter((b) => {
-      const slot = cardById(data, b.card).slot;
-      return slot !== 'noticeboard' && slot !== 'service';
-    })
+    .filter((b) => cardById(data, b.card).slot !== 'noticeboard')
     .filter((b) => !exclude.includes(b.card))
     .filter((b) => !state.turn.firedThisTurn.includes(b.card))
     .map((b) => b.card);
@@ -857,56 +833,41 @@ export function activateTargets(
 // --- Harvest ---------------------------------------------------------------
 
 /**
- * The harvest surcharge a card prints ("You must pay £1 to Harvest this
- * Field", W8), keyed by the data trigger so nothing here names a card. The £1
- * is printed text, like every ability number in a handler.
- */
-export function harvestSurchargeOf(data: GameData, card: CardId): number {
-  return cardById(data, card).abilityTrigger.includes('harvestSurcharge') ? 1 : 0;
-}
-
-/** Printed on the base Wheat Farmstead: "Harvest: any card with 2+ cards on it." */
-/**
- * ⛔ THE WHEAT RELAXED-HARVEST GATE HAS LEFT THIS FILE (19/08/2026), and where
- * it went is the point.
+ * ⛔ THE WHEAT RELAXED-HARVEST GATE LEFT THIS FILE ON 19/08/2026 AND LEFT THE
+ * GAME IN v31. It is worth two paragraphs because it moved twice.
  *
- * `WHEAT_RELAXED_MIN` / `WHEAT_RELAXED_MIN_UPGRADED`, `farmsteadFlipped` and
- * `wheatRelaxedMin` stood here and made "harvest a building with 2+ cards even
- * if it is not full" a property of the WHEAT SEAT, face-aware at 2+ / 1+.
+ * `WHEAT_RELAXED_MIN` and `wheatRelaxedMin` stood here and made "harvest a
+ * building with 2+ cards even if it is not full" a property of the WHEAT SEAT.
+ * On 19/08/2026 Dean confirmed the sheet had deliberately swapped W2 and W3's
+ * powers and the engine had them the wrong way round, so the relaxation became
+ * the Wheat DOOR's action - belonging to whoever WORKED that door rather than to
+ * whoever owned it, which was the first time the suit's signature verb had been
+ * rentable. In v31 the doors are PLAIN: every enhancement the doors carried is
+ * gone, because a door now buys a whole core action for one card and stacking a
+ * rider on top of it was pricing a sweetener into a deal that no longer needed
+ * one.
  *
- * Dean confirmed on 19/08/2026 that the sheet has deliberately SWAPPED W2 and
- * W3's powers, and that the engine had them the old way round:
- *
- *   W2 the Farmstead    printed the barn deposit   / ran the relaxed harvest
- *   W3 the Notice Board printed the relaxed harvest / ran the barn deposit
- *
- * So the relaxation is no longer a suit power at all. It is the WHEAT VISITOR
- * DOOR's action now - the Harvest Service, `relaxedMin: 2` in workers.json -
- * which means it belongs to whoever WORKS that door rather than to whoever owns
- * it, and it is a flat 2+ on both faces (W3 prints "2 or more" on each). The
- * barn deposit went the other way onto W2 and is the suit power now.
- *
- * ⚠️ TWO CONSEQUENCES, both intended, both worth knowing before reading an arm.
- * A Wheat seat's own plain Harvest ACTION no longer relaxes at all: it reaches
- * the relaxed gate only by working its own Service for the owner fee, or
- * through a card that prints its own gate (W8, W11, W12). And a RIVAL visiting
- * a Wheat farm now gets the relaxed harvest on their OWN buildings, which is
- * the first time the suit's signature verb has been rentable.
+ * So a Wheat seat's Harvest is the strict printed rule like everybody else's,
+ * and the only relaxations left in the game are the ones a CARD prints for
+ * itself (W11, W12) plus the magenta balloon's "harvest any building, even if it
+ * is not full".
  */
 
 /**
- * The Harvest ACTION's targets. Strict gate: full buildings, and that is the
- * whole of the printed rule for every seat since the W2/W3 swap.
+ * The Harvest ACTION's targets: FULL buildings, and since v31 that is the whole
+ * of the printed rule for every seat by every route.
  *
  * `relaxedMin` unions in any building at or above that many cards even when it
- * is not full. The two gates genuinely cross: a threshold-1 building is
+ * is not full, and the two gates genuinely cross - a threshold-1 building is
  * strict-harvestable at 1 card but never relaxed-harvestable at a floor of 2.
- * Surcharged buildings (W8) drop out when the seat cannot pay.
  *
- * Only the Wheat SERVICE passes a floor, through the `chooseBuilding` task's
- * `relaxedMin` rider - the 'harvestable' filter routes through here and must
- * keep doing so. Card-effect harvests pass nothing and so relax nothing, which
- * is the answer the old suit-power ruling gave for a different reason.
+ * ⚠️ NOTHING PASSES A FLOOR ANY MORE. The Wheat door did until v31 (via the
+ * `chooseBuilding` task's `relaxedMin` rider, which the 'harvestable' filter
+ * still routes through). The parameter stays because the balloon's `harvestAny`
+ * and the printed exceptions need the same union, and because a gate and the
+ * action it gates must be handed the SAME modifiers - a mismatch here refused a
+ * perfectly legal harvest for a few hours on 19/08/2026 and was not local, it
+ * reached five call sites.
  */
 export function harvestOptions(
   data: GameData,
@@ -918,43 +879,40 @@ export function harvestOptions(
    */
   relaxedMin: number = Infinity,
 ): CardId[] {
-  const p = player(state, seat);
-  const min = relaxedMin;
-  return p.tableau
-    .filter((b) => isFull(data, b) || b.stack.length >= min)
-    .filter((b) => harvestSurchargeOf(data, b.card) <= p.coins)
+  return player(state, seat)
+    .tableau.filter((b) => isFull(data, b) || b.stack.length >= relaxedMin)
     .map((b) => b.card);
 }
 
 /**
- * ⛔ DEAD SINCE THE WHEAT REBALANCE (2026-08-12), and deliberately left in
- * place rather than deleted.
+ * ⛔ `harvestAgainPower` AND THE WHOLE ActionAgain MACHINERY ARE GONE (v31).
  *
- * This was the upgraded Wheat Farmstead's "Harvest is 2 buildings": one
- * optional repeat of the Harvest ACTION, via the `turn.again` gate. The
- * rebalance took the repeat off the card - the upgraded face now deepens the
- * relaxed gate to 1+ instead (`wheatRelaxedMin`) - because Wheat came in first
- * at 50.0% against an even share of 36.4% and a free extra action on the
- * suit's own core verb was the largest single term in it.
+ * It was the upgraded Wheat Farmstead's "Harvest is 2 buildings": one optional
+ * repeat of the Harvest ACTION, armed after the main action only and never after
+ * a door's, held open by `turn.again`. The Wheat rebalance took the repeat off
+ * the card on 2026-08-12 because Wheat came in first at 50.0% against an even
+ * share of 36.4% and a free extra action on the suit's own core verb was the
+ * largest single term in it; the Dairy "you may BUILD again" had already gone on
+ * 2026-08-10 for the same reason at twice the price.
  *
- * ⛔ W2 was the ONLY producer of `turn.again` in the engine; the Dairy "you may
- * BUILD again" went on 2026-08-10 (state.ts:153). So the whole ActionAgain
- * machinery - game.ts:105/185/189-190/227-228/252, turnflow.ts:30,
- * setup.ts:45, state.ts:158 - is now unreachable. It is NOT removed here on
- * purpose: deleting it changes the `GameState` shape and moves serialisation
- * and view tests, which is noise inside a balance arm. Ripping it out is a
- * separate commit, once the arm has been measured and kept.
+ * It was left standing as a dead stub on the explicit grounds that ripping it
+ * out changed the `GameState` shape and moved the serialisation and view tests,
+ * which was noise inside a balance arm. v31 changes that shape anyway and the
+ * arm is long since measured, so this is that separate commit: `turn.again`, the
+ * repeat branch in `apply`, the hold in `settleTurn` and the `endTurn` decline
+ * all go with it. Nothing in the catalogue has produced it for three weeks.
+ *
+ * ⚠️ IT IS NOT KNOB-CONTROLLED, which is the difference between this deletion
+ * and the one `settleTurn` refuses to make. A branch whose only producer is a
+ * card that no longer exists is dead; a branch whose only producer is a knob at
+ * its shipped value is a control arm, and deleting it silently deletes the
+ * measurement.
  */
-export function harvestAgainPower(_data: GameData, _state: GameState, _seat: Seat): boolean {
-  return false;
-}
 
 export function doHarvestAction(fx: Fx, seat: Seat, building: CardId): void {
   if (!harvestOptions(fx.data, fx.state, seat).includes(building)) {
     throw new Error(`${building} is not harvestable by seat ${seat}`);
   }
-  const fee = harvestSurchargeOf(fx.data, building);
-  if (fee > 0) fx.payCoins(seat, fee, `surcharge:${building}`);
   fx.harvest(seat, building);
 }
 
@@ -963,125 +921,37 @@ export function doHarvestAction(fx: Fx, seat: Seat, building: CardId): void {
 export interface DeliverOption {
   tile: string;
   spend: Partial<Record<Suit, number>>;
-  /**
-   * V2 The Vegetable Farmstead, BASE face: hand cards loaded into the barn
-   * BEFORE the payment is made. Absent on every other option and for every
-   * other suit.
-   */
-  head?: CardId[];
-  /**
-   * V2 The Vegetable Farmstead, UPGRADED face (19/08/2026): the top card of
-   * this deck into the barn, again BEFORE the payment. The two heads are
-   * ALTERNATIVES, not a pair - the printed faces read "1 hand card" and "1 deck
-   * card" - so a seat has one or the other and never both.
-   *
-   * A deck IS a suit, so this is enumerable with no information leak: the crop
-   * that arrives is fully known, only the card's identity is not, and barn
-   * identity is inert anyway.
-   */
-  deckHead?: Suit;
 }
 
 /**
- * THE VEGETABLE FARMSTEAD'S HEAD: "When you Deliver to the island, you may
- * FIRST put N cards from your hand into your barn." 0 for every other suit.
+ * ⛔ THE VEGETABLE FARMSTEAD'S HEAD IS GONE (v31), and with it
+ * `deliverHeadSize`, `deliverDeckHead`, `deckHeadCandidates`, `headCandidates`,
+ * `withHead` and the `head` / `deckHead` fields on every deliver option, move
+ * and task answer.
  *
- * The word "first" is the whole card (changed 2026-08-09). Before it, the
- * Farmstead fired on `afterDeliver`, so the card it moved could not help pay for
- * the delivery that triggered it - you had to already be able to deliver in
- * order to earn the fuel for the next delivery, which is a circle. Wheat's
- * Farmstead relaxes the harvest and Orchard's modifies the draw; both sit
- * UPSTREAM of their suit's bottleneck, and this one now does too.
+ * It read "When you Deliver, you may FIRST put 1 card from your hand into your
+ * barn" (upgraded: 1 card off a deck top instead). Two things it taught are
+ * worth carrying, because the next card that touches a delivery will meet both:
  *
- * It composes with the wild substitution rather than duplicating it: 2 cards of
- * any crops pay any single card the island asks for, so one hand card plus one
- * spare barn card is a card of the crate. Live from turn 1 like every Farmstead
- * base power; the flip takes it to 2.
+ *  1. **The word "first" was the whole card.** Until 2026-08-09 the Farmstead
+ *     fired on `afterDeliver`, so the card it moved could not help pay for the
+ *     delivery that triggered it - you had to already be able to deliver in
+ *     order to earn the fuel for the next delivery, which is a circle. Moving it
+ *     upstream of the payment is what made it a card. Wheat's Farmstead relaxed
+ *     the harvest and Orchard's modified the draw for the same reason: a suit
+ *     power belongs UPSTREAM of that suit's bottleneck.
+ *  2. **A head had to ride on the ANSWER, not be re-derived at resolution.** It
+ *     was loaded before the payment and was frequently the only reason the
+ *     payment was affordable, so an answer that dropped it was an answer the
+ *     barn could not pay. `deliverAnswers` shipped exactly that bug on the day
+ *     the balloon heads landed.
+ *
+ * The enumeration also carried a pruning rule that is general and outlives the
+ * card: a head is only ever worth offering when it CHANGES WHAT YOU CAN PAY,
+ * because loading a card you are not about to spend is the same move as loading
+ * it on your next delivery instead. `deliverOptions` still de-dupes on that
+ * principle for the wild substitution.
  */
-export function deliverHeadSize(data: GameData, state: GameState, seat: Seat): number {
-  const p = player(state, seat);
-  if (p.suit !== 'vegetable') return 0;
-  const farmstead = p.tableau.find((b) => cardById(data, b.card).slot === 'farmstead');
-  if (farmstead === undefined) return 0;
-  // ⚠️ 19/08/2026: the UPGRADED face no longer loads a hand card at all. It used
-  // to load 2; sheet v30 re-points it to "1 DECK card" instead, which is
-  // `deliverDeckHead` below. Leaving this at `upgraded ? 2 : 1` was the one bug
-  // this rewrite could have shipped silently: the flipped face would have taken
-  // two hand cards AND a deck card, three cards of head on a card that prints
-  // one.
-  return farmstead.upgraded ? 0 : 1;
-}
-
-/**
- * THE UPGRADED VEGETABLE FARMSTEAD'S HEAD (19/08/2026): "When you Deliver, you
- * may first put 1 DECK card into your barn."
- *
- * The flip changes the head's SOURCE, not its size - hand card becomes deck
- * card - which is a real trade rather than a straight upgrade: the hand card is
- * chosen and the deck card is not, but the deck card costs nothing off the
- * clock. `deliverHeadSize` is 0 on this face for exactly that reason.
- *
- * The word "first" is load-bearing here for the same reason it is on the base
- * face: fired after the payment, the card it moves cannot help pay for the
- * delivery that triggered it, which is the circle the 2026-08-09 change broke.
- */
-export function deliverDeckHead(data: GameData, state: GameState, seat: Seat): boolean {
-  const p = player(state, seat);
-  if (p.suit !== 'vegetable') return false;
-  const farmstead = p.tableau.find((b) => cardById(data, b.card).slot === 'farmstead');
-  return farmstead !== undefined && farmstead.upgraded;
-}
-
-/** The decks a deck-head may name: in play, and with a card left to take. */
-function deckHeadCandidates(data: GameData, state: GameState, seat: Seat): Suit[] {
-  if (!deliverDeckHead(data, state, seat)) return [];
-  return drawableSuits(data, state).filter((s) => state.suitsInPlay.includes(s));
-}
-
-/**
- * Every head worth offering, shortest first.
- *
- * BARN IDENTITY IS INERT - a barn is a per-crop tally - so two hand cards of the
- * same crop make the same head, and enumerating by CROP rather than by card
- * collapses a hand of seven to at most five heads of one. Each crop contributes
- * its first cards, which is a canonical choice and not a preference: the cards
- * are interchangeable once they land.
- */
-function headCandidates(data: GameData, state: GameState, seat: Seat, max: number): CardId[][] {
-  if (max <= 0) return [];
-  const byCrop = new Map<Suit, CardId[]>();
-  for (const card of player(state, seat).hand) {
-    const suit = cardById(data, card).suit;
-    byCrop.set(suit, [...(byCrop.get(suit) ?? []), card]);
-  }
-  const groups = [...byCrop.values()];
-  const out: CardId[][] = [];
-  const walk = (i: number, chosen: CardId[]): void => {
-    if (i === groups.length) {
-      if (chosen.length > 0) out.push(chosen);
-      return;
-    }
-    const cards = groups[i] as CardId[];
-    for (let take = 0; take <= Math.min(cards.length, max - chosen.length); take++) {
-      walk(i + 1, take === 0 ? chosen : [...chosen, ...cards.slice(0, take)]);
-    }
-  };
-  walk(0, []);
-  return out.sort((a, b) => a.length - b.length);
-}
-
-function withHead(
-  data: GameData,
-  tally: Partial<Record<Suit, number>>,
-  head: readonly CardId[],
-): Partial<Record<Suit, number>> {
-  const out = { ...tally };
-  for (const card of head) {
-    const suit = cardById(data, card).suit;
-    out[suit] = (out[suit] ?? 0) + 1;
-  }
-  return out;
-}
 
 /**
  * Levels this seat already holds a receipt from. Derived from the island, never
@@ -1392,43 +1262,19 @@ export function deliverOptions(data: GameData, state: GameState, seat: Seat): De
   const demands = deliverDemands(data, state, seat);
   const out: DeliverOption[] = [];
   const seen = new Set<string>();
-  const collect = (tally: Partial<Record<Suit, number>>, head?: CardId[], deckHead?: Suit) => {
-    for (const demand of demands) {
-      const affordable = (Object.entries(demand.spend) as [Suit, number][]).every(
-        ([s, n]) => (tally[s] ?? 0) >= n,
-      );
-      const spends = affordable
-        ? [demand.spend]
-        : substitutedSpends(data, state.suitsInPlay, demand.spend, tally);
-      for (const spend of spends) {
-        const key = spendKey(demand.tile, spend);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        out.push({
-          tile: demand.tile,
-          spend,
-          ...(head === undefined ? {} : { head }),
-          ...(deckHead === undefined ? {} : { deckHead }),
-        });
-      }
+  for (const demand of demands) {
+    const affordable = (Object.entries(demand.spend) as [Suit, number][]).every(
+      ([s, n]) => (barn[s] ?? 0) >= n,
+    );
+    const spends = affordable
+      ? [demand.spend]
+      : substitutedSpends(data, state.suitsInPlay, demand.spend, barn);
+    for (const spend of spends) {
+      const key = spendKey(demand.tile, spend);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ tile: demand.tile, spend });
     }
-  };
-  collect(barn);
-  // V2's head, run AFTER the plain barn and de-duped against it, shortest head
-  // first. So a payment the barn already covers is never offered at the price of
-  // a hand card, and a payment it does not cover is offered with the cheapest
-  // head that unlocks it. THE PRUNING LOSES NOTHING: loading a card you are not
-  // about to spend is exactly the same move as loading it on your next delivery
-  // instead, so the only head worth taking is one that changes what you can pay.
-  for (const head of headCandidates(data, state, seat, deliverHeadSize(data, state, seat))) {
-    collect(withHead(data, barn, head), head);
-  }
-  // The upgraded face's deck head, on exactly the same terms: run last, de-duped
-  // against everything above, so a payment the barn already covers is never
-  // offered at the price of a deck card. One option per DECK, because the crop
-  // is the whole of the choice.
-  for (const suit of deckHeadCandidates(data, state, seat)) {
-    collect({ ...barn, [suit]: (barn[suit] ?? 0) + 1 }, undefined, suit);
   }
   return out;
 }
@@ -1442,22 +1288,7 @@ export function deliverOptions(data: GameData, state: GameState, seat: Seat): De
  */
 export function anyDeliverOption(data: GameData, state: GameState, seat: Seat): boolean {
   const barn = barnTally(data, state, seat);
-  if (state.island.tiles.some((tile) => payableBy(data, state, tile, barn))) return true;
-  // V2's head has to be visible to LEGALITY and not only to enumeration, or the
-  // Deliver action is never offered to the seat whose Farmstead exists to make
-  // it payable - which is the whole point of moving the card upstream.
-  if (
-    headCandidates(data, state, seat, deliverHeadSize(data, state, seat)).some((head) => {
-      const tally = withHead(data, barn, head);
-      return state.island.tiles.some((tile) => payableBy(data, state, tile, tally));
-    })
-  ) {
-    return true;
-  }
-  return deckHeadCandidates(data, state, seat).some((suit) => {
-    const tally = { ...barn, [suit]: (barn[suit] ?? 0) + 1 };
-    return state.island.tiles.some((tile) => payableBy(data, state, tile, tally));
-  });
+  return state.island.tiles.some((tile) => payableBy(data, state, tile, barn));
 }
 
 /** Could this barn pay this open tile, by any nomination of its wild crates? */
@@ -1508,41 +1339,10 @@ export function doDeliver(
    * asserted twice.
    */
   receipts = 1,
-  /**
-   * V2 The Vegetable Farmstead's "you may FIRST put N cards from your hand into
-   * your barn". Applied before anything is validated, because the whole point is
-   * that these cards are part of the payment.
-   */
-  head?: readonly CardId[],
-  /**
-   * V2's UPGRADED head: the top card of this deck into the barn, before
-   * anything is validated, for the same reason the hand head goes first.
-   */
-  deckHead?: Suit,
 ): void {
   const state = fx.state;
   const tile = state.island.tiles.find((t) => t.tile === tileId);
   if (!tile) throw new Error(`Tile ${tileId} is not in play`);
-  if (deckHead !== undefined) {
-    if (!deckHeadCandidates(fx.data, state, seat).includes(deckHead)) {
-      throw new Error(`Seat ${seat} may not take a ${deckHead} deck card before delivering`);
-    }
-    fx.deckTopToBarn(seat, deckHead);
-  }
-  if (head !== undefined && head.length > 0) {
-    if (head.length > deliverHeadSize(fx.data, state, seat)) {
-      throw new Error(
-        `Seat ${seat} may load at most ${deliverHeadSize(fx.data, state, seat)} cards`,
-      );
-    }
-    const hand = [...player(state, seat).hand];
-    for (const card of head) {
-      const i = hand.indexOf(card);
-      if (i < 0) throw new Error(`${card} is not in seat ${seat}'s hand`);
-      hand.splice(i, 1);
-    }
-    for (const card of head) fx.handToBarn(seat, card);
-  }
   if (receipts < 1) throw new Error('A delivery takes at least one receipt');
   if (tile.deliveredBy.length + receipts > deliveriesPerTile(fx.data)) {
     throw new Error(
@@ -1584,20 +1384,28 @@ export function doDeliver(
   }
 
   const cards = fx.spendFromBarn(seat, spend);
-  const coins = fx.data.island.tileRule.coinsPerDelivery;
-  // Read each VP BEFORE its delivery joins the tile, or the first deliverer
-  // would be paid the second deliverer's rate. The tile's own fill order is the
-  // whole gradient now: 6 for being first here, 3 for being second - so V14's
-  // "both receipts" is 6 + 3 = 9 with no scoring rule of its own. One
-  // `delivered` event per receipt, so nothing counting deliveries has to learn
-  // that one of them can be double; only the first carries the spend, because
-  // only one payment was made.
+  // Read each VP and each MEEPLE off the space BEFORE the delivery joins the
+  // tile, or the first deliverer would be paid the second deliverer's rate and
+  // handed the second deliverer's meeple. The tile's own fill order is the whole
+  // gradient: 6 for being first here, 3 for being second - so V14's "both
+  // receipts" is 6 + 3 = 9 plus BOTH meeples, with no scoring rule of its own.
+  //
+  // ⭐ THE MEEPLE REPLACED THE COIN (v31). Every delivery used to also mint a
+  // flat GBP 1 (`island.tileRule.coinsPerDelivery`, pinned at 0 as a tombstone
+  // now). Both spaces on every tile carry one, and both are claimed - the 3 VP
+  // space is not a consolation, it is 3 VP AND a free action.
+  //
+  // One `delivered` event per receipt, so nothing counting deliveries has to
+  // learn that one of them can be double; only the first carries the spend,
+  // because only one payment was made.
   for (let i = 0; i < receipts; i++) {
-    const vp = deliveryVp(fx.data, tile.deliveredBy.length);
+    const space = tile.deliveredBy.length;
+    const vp = deliveryVp(fx.data, space);
     player(state, seat).receipts.push(vp);
     tile.deliveredBy.push(seat);
-    fx.gainCoins(seat, coins, `deliver:${tileId}`);
-    fx.emit({ e: 'delivered', seat, tile: tileId, vp, coins, spend: i === 0 ? spend : {} });
+    fx.emit({ e: 'delivered', seat, tile: tileId, vp, spend: i === 0 ? spend : {} });
+    const meeple = tile.meeples[space];
+    if (meeple !== undefined) fx.gainMeeple(seat, meeple, tileId, space);
   }
   // ONE Deliver, so one afterDeliver: the rebuilt Farmstead puts one card in the
   // barn for a delivery, not one per receipt taken.
@@ -1619,25 +1427,6 @@ export function doDeliver(
 export interface BalloonMoveOption {
   balloon: string;
   spend: Partial<Record<Suit, number>>;
-  /**
-   * V2 The Vegetable Farmstead's head, on a FLIGHT. It reaches here because the
-   * card's trigger widened from "When you Deliver to the island" to "When you
-   * Deliver" on 19/08/2026, and a balloon move IS the Deliver action (DL-12).
-   *
-   * Without this the widening would have been a no-op in the only place it was
-   * supposed to show: the hook fired on a flight but the head - which is where
-   * the whole of the card's value lives, because "first" is what lets the card
-   * pay for the delivery that triggered it - was enumerated for island claims
-   * alone. `head` is the base face's hand card, `deckHead` the upgraded face's
-   * deck card, and as on the island they are alternatives, never a pair.
-   *
-   * Deliberately NOT offered on the two free-or-hand-paid flights (V4's
-   * hand-paid flight, V8's free one): a head that is not spent on the move it
-   * heads is just a card you could have loaded next turn instead, which is the
-   * same pruning rule the island's enumeration already applies.
-   */
-  head?: CardId[];
-  deckHead?: Suit;
 }
 
 /**
@@ -1649,15 +1438,10 @@ function balloonSpends(
   data: GameData,
   state: GameState,
   seat: Seat,
-  extra: Partial<Record<Suit, number>> = {},
 ): Partial<Record<Suit, number>>[] {
   const cost = data.aerodrome.moveCost;
   if (!cost.mustDiffer) throw new Error('Only the printed different-suits move cost is modelled');
-  const base = barnTally(data, state, seat);
-  const tally: Partial<Record<Suit, number>> = { ...base };
-  for (const [s, n] of Object.entries(extra) as [Suit, number][]) {
-    tally[s] = (tally[s] ?? 0) + n;
-  }
+  const tally = barnTally(data, state, seat);
   const suits = state.suitsInPlay.filter((s) => (tally[s] ?? 0) >= 1);
   return subsets(suits, cost.barnCards).map(
     (pick) => Object.fromEntries(pick.map((s) => [s, 1])) as Partial<Record<Suit, number>>,
@@ -1674,52 +1458,15 @@ export function balloonMoveOptions(
   if (!aero) return [];
   const movable = aero.balloons.filter((b) => b.at !== seat);
   if (movable.length === 0) return [];
-  const plain = balloonSpends(data, state, seat);
-  const out: BalloonMoveOption[] = movable.flatMap((b) =>
-    plain.map((spend) => ({ balloon: b.id, spend })),
+  return movable.flatMap((b) =>
+    balloonSpends(data, state, seat).map((spend) => ({ balloon: b.id, spend })),
   );
-  // V2's heads, run after the plain barn and de-duped against it, so a flight
-  // the barn already covers is never offered at the price of a card.
-  const seen = new Set(plain.map((spend) => spendKey('*', spend)));
-  const push = (spends: Partial<Record<Suit, number>>[], extra: Partial<BalloonMoveOption>) => {
-    for (const spend of spends) {
-      if (seen.has(spendKey('*', spend))) continue;
-      for (const b of movable) out.push({ balloon: b.id, spend, ...extra });
-    }
-  };
-  for (const head of headCandidates(data, state, seat, deliverHeadSize(data, state, seat))) {
-    push(balloonSpends(data, state, seat, tallyOf(data, head)), { head });
-  }
-  for (const suit of deckHeadCandidates(data, state, seat)) {
-    push(balloonSpends(data, state, seat, { [suit]: 1 }), { deckHead: suit });
-  }
-  return out;
-}
-
-/** A list of cards as a per-crop tally - the shape every barn calculation wants. */
-function tallyOf(data: GameData, cards: readonly CardId[]): Partial<Record<Suit, number>> {
-  const out: Partial<Record<Suit, number>> = {};
-  for (const card of cards) {
-    const suit = cardById(data, card).suit;
-    out[suit] = (out[suit] ?? 0) + 1;
-  }
-  return out;
 }
 
 export function anyBalloonMoveOption(data: GameData, state: GameState, seat: Seat): boolean {
   const aero = state.aerodrome;
   if (!aero || !aero.balloons.some((b) => b.at !== seat)) return false;
-  if (balloonSpends(data, state, seat).length > 0) return true;
-  if (
-    headCandidates(data, state, seat, deliverHeadSize(data, state, seat)).some(
-      (head) => balloonSpends(data, state, seat, tallyOf(data, head)).length > 0,
-    )
-  ) {
-    return true;
-  }
-  return deckHeadCandidates(data, state, seat).some(
-    (suit) => balloonSpends(data, state, seat, { [suit]: 1 }).length > 0,
-  );
+  return balloonSpends(data, state, seat).length > 0;
 }
 
 /**
@@ -1779,32 +1526,8 @@ export function doMoveBalloon(
   seat: Seat,
   balloonId: string,
   spend: Partial<Record<Suit, number>> | null,
-  /** V2's head, applied FIRST so it can pay for the flight it heads. */
-  head?: readonly CardId[],
-  deckHead?: Suit,
 ): void {
   movableBalloon(fx, seat, balloonId);
-
-  if (head !== undefined && head.length > 0) {
-    if (head.length > deliverHeadSize(fx.data, fx.state, seat)) {
-      throw new Error(
-        `Seat ${seat} may load at most ${deliverHeadSize(fx.data, fx.state, seat)} cards`,
-      );
-    }
-    const hand = [...player(fx.state, seat).hand];
-    for (const card of head) {
-      const i = hand.indexOf(card);
-      if (i < 0) throw new Error(`${card} is not in seat ${seat}'s hand`);
-      hand.splice(i, 1);
-    }
-    for (const card of head) fx.handToBarn(seat, card);
-  }
-  if (deckHead !== undefined) {
-    if (!deckHeadCandidates(fx.data, fx.state, seat).includes(deckHead)) {
-      throw new Error(`Seat ${seat} may not take a ${deckHead} deck card before a flight`);
-    }
-    fx.deckTopToBarn(seat, deckHead);
-  }
 
   let cards: CardId[] = [];
   if (spend !== null) {
@@ -1866,8 +1589,11 @@ export function doMoveBalloonFromHand(
  * way to pay for it out of hand. Enumerated concretely, like every other option
  * set, so `apply` re-validates exactly what was offered.
  *
- * Bounded by hand size: `subsets(hand, 2)` over a hand of 5-7 is at most 21 fee
- * choices per balloon.
+ * Bounded by the HAND LIMIT and by nothing else - `subsets(hand, 2)` is C(hand,
+ * 2), which is 66 fee choices per balloon at the shipped limit of 12 and 561 at
+ * a hand of 34. See the warning on `subsets` itself: this comment used to quote
+ * "a hand of 5-7" as though that were a fact about the game, and it was a fact
+ * about `rules.turn.handLimit`.
  */
 export function handBalloonMoveOptions(
   data: GameData,
@@ -1886,10 +1612,16 @@ export function handBalloonMoveOptions(
 export function grantBalloonReward(fx: Fx, seat: Seat, balloonId: string): void {
   const balloon = fx.data.aerodrome.balloons.find((b) => b.id === balloonId);
   if (!balloon) throw new Error(`No balloon ${balloonId} in the data`);
-  const { type: reward, amount } = balloon.reward;
+  const { type: reward } = balloon.reward;
+  // `harvestAny` prints no size, so `amount` is optional on the type and every
+  // sized reward has to say what it does without one. 1 is the floor rather than
+  // a default worth tuning: a balloon with no printed number is a data error.
+  const amount = balloon.reward.amount ?? 1;
   switch (reward) {
     case 'draw':
-      // A card-ability draw: the Orchard Farmstead modifier does not apply (DL-47).
+      // A card-ability draw, and since v31 there is no draw modifier at all for
+      // it to skip (DL-47 kept it clear of the Orchard Farmstead's; that power
+      // is gone).
       fx.pushTask({ t: 'draw', pid: seat, src: null, see: amount, keep: amount, revealed: [] });
       break;
     case 'buildDiscount':
@@ -1899,8 +1631,18 @@ export function grantBalloonReward(fx: Fx, seat: Seat, balloonId: string): void 
       // "Sow 4 cards from your hand" reads as up-to: skippable, stops early.
       fx.pushTask({ t: 'sow', pid: seat, src: null, remaining: amount, optional: true });
       break;
-    case 'gainCoins':
-      fx.gainCoins(seat, amount, `balloon:${balloonId}`);
+    case 'harvestAny':
+      // ⭐ THE MAGENTA BALLOON, REPOINTED IN v31. It read "Gain £4" and was the
+      // last coin faucet on the board; it now reads "Harvest any building, even
+      // if it is not full."
+      //
+      // `filter: 'loaded'` is that sentence: any building of yours with 1 or
+      // more cards on it, however far off its threshold. It carries no `amount`
+      // - "even if it is not full" is a permission, not a size - and it is NOT
+      // optional, because a seat with nothing loaded has no legal answer and the
+      // drain loop drops the task, which is the printed "whiffs" reading and
+      // needs no skip.
+      fx.pushTask({ t: 'chooseBuilding', pid: seat, src: null, filter: 'loaded', then: 'harvest' });
       break;
     default:
       reward satisfies never;
@@ -1915,39 +1657,40 @@ export function grantBalloonReward(fx: Fx, seat: Seat, balloonId: string): void 
 export function deliverAnswers(data: GameData, state: GameState, seat: Seat): TaskAnswer[] {
   return [
     ...deliverOptions(data, state, seat).map(
-      (o) =>
-        ({
-          kind: 'deliver',
-          tile: o.tile,
-          spend: o.spend,
-          ...(o.head ? { head: o.head } : {}),
-          ...(o.deckHead ? { deckHead: o.deckHead } : {}),
-        }) as TaskAnswer,
+      (o) => ({ kind: 'deliver', tile: o.tile, spend: o.spend }) as TaskAnswer,
     ),
-    // ⚠️ The heads ride on the answer. They are loaded BEFORE the payment and
-    // are frequently the only reason it is affordable, so an answer that drops
-    // them is an answer the barn cannot pay - which is precisely the crash this
-    // enumerator produced on the day the balloon heads landed.
     ...balloonMoveOptions(data, state, seat).map(
-      (o) =>
-        ({
-          kind: 'balloon',
-          balloon: o.balloon,
-          spend: o.spend,
-          ...(o.head ? { head: o.head } : {}),
-          ...(o.deckHead ? { deckHead: o.deckHead } : {}),
-        }) as TaskAnswer,
+      (o) => ({ kind: 'balloon', balloon: o.balloon, spend: o.spend }) as TaskAnswer,
     ),
   ];
 }
 
-// --- Workers: shared action legality --------------------------------------
+// --- The five doors: shared action legality --------------------------------
 
 /**
- * Can this Worker's action do anything for this seat right now? Reuses the
- * same enumerators the action funnels enforce, so a Worker is never offered
- * and then wedged. `excludingHandCard` re-checks as if a card (the visit fee)
- * had already left the hand.
+ * Can this DOOR's action do anything for this seat right now? Reuses the same
+ * enumerators the action funnels enforce, so a door is never offered and then
+ * wedged. `excludingHandCard` re-checks as if a card - the visit fee - had
+ * already left the hand.
+ *
+ * ⚠️ THE GATE AND THE ACTION MUST BE HANDED THE SAME MODIFIERS. This is one
+ * function gating three call sites (`visitOptions`, `doVisit`, `meepleOptions`)
+ * and one mismatch is never local: for a few hours on 19/08/2026 the harvest
+ * branch asked the strict full gate while the door it gated ran a relaxed one,
+ * so a visitor whose only target was a 2-of-3 building was told the door had
+ * nothing legal to do. In v31 the doors are PLAIN, which removes every modifier
+ * that could disagree - but the rule survives the reason for it.
+ *
+ * ⭐ RULED (v31): A DOOR THAT CAN DO NOTHING IS NOT OFFERED. `workers.json`
+ * flags this as an open question - "whether a door should ever refuse a visitor
+ * who cannot use it" - and the engine rules it refuses. The visit costs a card
+ * and returns an action, so a visit whose action is a no-op is a strictly
+ * dominated move: no player would take it, and offering it would bloat every
+ * bot's move list with choices it has to price and reject. It became a live case
+ * in v31 rather than a rare one, because the plain doors no longer carry riders
+ * that mostly applied. ⚠️ It has a cost worth knowing: a seat can be locked out
+ * of the bonus slot's interaction half entirely (every board clogged, or every
+ * door dead for them), which is what `bonusDraw` exists to backstop.
  */
 export function workerActionLegal(
   data: GameData,
@@ -1956,46 +1699,31 @@ export function workerActionLegal(
   workerId: string,
   opts?: { excludingHandCard?: CardId },
 ): boolean {
-  const worker = workerData(data, workerId);
+  const door = workerData(data, workerId);
   const hand = opts?.excludingHandCard
     ? withoutFirst(player(state, seat).hand, opts.excludingHandCard)
     : player(state, seat).hand;
-  switch (worker.action) {
+  switch (door.action) {
     case 'draw':
       return drawableSuits(data, state).length > 0;
     case 'harvest':
-      // ⚠️ THE GATE MUST PASS THE SAME `relaxedMin` THE ACTION WILL USE, or it
-      // refuses a visit for a harvest that is perfectly legal. It did exactly
-      // that for a few hours on 19/08/2026: the Wheat Service gained the 2+
-      // relaxation from W3 (see the note on `harvestOptions`) while this line
-      // still asked the strict full gate, so a visitor whose only target was a
-      // 2-of-3 building was told "Service harvest has nothing legal to do".
-      //
-      // It is one function and it gates FIVE call sites - `visitOptions`,
-      // `doVisit`, `workOwnOptions`, `chooseWorker` in tasks.ts and the Helping
-      // Hand - so a mismatch here is never local. The rule: a legality gate and
-      // the action it gates must be handed the same modifiers.
-      return harvestOptions(data, state, seat, worker.relaxedMin).length > 0;
+      return harvestOptions(data, state, seat).length > 0;
     case 'sow':
-      // The deck-sowing Service needs a live deck, not a hand card - which is
-      // exactly what makes it worth a visitor's card instead of costing them two.
-      return worker.sow?.from === 'deck'
+      // The Apiary door sows FROM THE HAND (v31), so it needs a card as well as
+      // a target - which is exactly why it is the weakest door on the table:
+      // two cards out, one threshold step in. `from: 'deck'` is the ruled fix if
+      // the board takes no traffic, and this branch already handles it.
+      return door.sow?.from === 'deck'
         ? drawableSuits(data, state).length > 0 &&
             player(state, seat).tableau.some((b) => canTakeCard(data, b))
         : hand.length > 0 && player(state, seat).tableau.some((b) => canTakeCard(data, b));
     case 'build':
-      // The Service's OWN mods, both of them: the Builder's Yard waives the crop
-      // requirements and takes a card off the price (2026-08-10). A legality
-      // check that saw only the waiver would offer the Service and then refuse
-      // the build it granted.
-      return anyBuildOption(data, state, seat, hand, { ...(worker.build ?? {}) });
+      return anyBuildOption(data, state, seat, hand);
     case 'deliver':
-      // Island or freight: a balloon move IS the Deliver action (DL-12). The
-      // handToBarn head is optional, so a seat with a payable barn qualifies
-      // whether or not it wants to top it up first.
+      // Island or freight: a balloon move IS the Deliver action (DL-12).
       return anyDeliverOption(data, state, seat) || anyBalloonMoveOption(data, state, seat);
     default:
-      return worker.action satisfies never;
+      return door.action satisfies never;
   }
 }
 
@@ -2007,323 +1735,270 @@ function withoutFirst(items: readonly CardId[], drop: CardId): CardId[] {
 // --- The bonus slot --------------------------------------------------------
 
 /**
- * THE BONUS WINDOW: the start of your turn, before the main action.
+ * EXTRA BONUS OPTIONS granted by card text, on top of
+ * `rules.turn.bonusSlotsPerTurn`.
+ *
+ * Wired at import time by the handler registry, exactly as `wireHookBus` wires
+ * the hook bus in fx.ts, and for the same reason: A Helping Hand's v31 text is
+ * *"Each turn, you may take both bonus options: Draw 1 AND place a card on a
+ * Notice Board"*, so the number of slots is a property of a BUILT CARD - but
+ * actions.ts may not import the handler registry (the Helping Hand imports
+ * actions.ts for `workerActionLegal`, and a value cycle between the two would be
+ * fragile). An indirection, not laziness.
+ *
+ * Unwired it contributes nothing, so the printed rule stands on its own and
+ * every test that never touches a Helping Hand behaves identically.
+ */
+type ExtraBonusLookup = (data: GameData, state: GameState, seat: Seat) => number;
+let extraBonusLookup: ExtraBonusLookup | null = null;
+
+export function wireExtraBonusSlots(lookup: ExtraBonusLookup): void {
+  extraBonusLookup = lookup;
+}
+
+/** How many bonus options this seat may take this turn: the printed one, plus card text. */
+export function bonusSlotsFor(data: GameData, state: GameState, seat: Seat): number {
+  return data.rules.turn.bonusSlotsPerTurn + (extraBonusLookup?.(data, state, seat) ?? 0);
+}
+
+/**
+ * THE BONUS WINDOW: the start of your turn, after the meeple phase and before
+ * the main action.
  *
  * Dean, 19/08/2026: *"the bonus action can only be performed at the start of
- * your turn."* This replaces v14's "bonus slot (once per turn, any point)".
+ * your turn."* `!actionSpent` IS "at the start of your turn" - there is no other
+ * thing a turn can have done - so the rule needs one predicate and no new state.
  *
- * `!actionSpent` IS "at the start of your turn" - there is no other thing a
- * turn can have done, so the rule needs one predicate and no new state. Every
- * bonus option reads it: the two visits, your own Service, and (new on the same
- * date) the GBP 2 starter upgrade.
+ * With `option` given it also answers "is THIS half still available?", which is
+ * what stops a seat holding a Helping Hand from taking Draw 1 twice: the card
+ * grants both options, not two of either.
  *
- * What it deliberately removes: you can no longer harvest, see what you got,
- * and then decide whether to visit. The gain is a legible turn and a shorter
- * teach - "start of turn: one bonus. Then your action." - and it kills a class
- * of table confusion about when a passive fired. The loss is the small mid-turn
- * adaptation, and that trade is a gateway call.
+ * What the window deliberately removes: you can no longer harvest, see what you
+ * got, and then decide whether to visit. The gain is a legible turn and a
+ * shorter teach - "start of turn: spend meeples, then one bonus. Then your
+ * action." - and it kills a class of table confusion about when a passive fired.
  *
  * ⚠️ It also points the visit rate DOWN, because a bonus you must commit to
- * before you act is a bonus that gets forgotten. That is why `skipBonus` exists
- * (an honesty affordance, not a rule) and why the sim's bonus-slot tally gained
+ * before you act is a bonus that gets forgotten. That is why the sim's tally has
  * a SLOT UNSPENT bucket: a rising unspent share is this restriction biting, and
- * it is a different disease from the market's - the visit is not being
- * outcompeted, it is being missed.
+ * it is a different disease from the visit being outcompeted.
  */
-export function bonusOpen(data: GameData, state: GameState): boolean {
-  if (state.turn.bonusSpent) return false;
+export function bonusOpen(data: GameData, state: GameState, option?: BonusOption): boolean {
+  const turn = state.turn;
+  if (turn.bonusUsed.length >= bonusSlotsFor(data, state, state.turnPlayer)) return false;
+  if (option !== undefined && turn.bonusUsed.includes(option)) return false;
   // `bonusAtStartOnly: false` is v14's "any point in your turn", kept as the
-  // paired control. A knob and not a constant because this change ships with
-  // three others that all move the visit rate, and the plan is explicit: they
-  // arm together, but the diagnosis needs them separable.
+  // paired control (overlays/bonus-any-time.overlay.json). A knob and not a
+  // constant because this rule ships with others that all move the visit rate,
+  // and the diagnosis needs them separable.
   if (!data.rules.turn.bonusAtStartOnly) return true;
-  return !state.turn.actionSpent;
+  return !turn.actionSpent;
+}
+
+/**
+ * THE MEEPLE PHASE: the very start of your turn, before the bonus option and
+ * before the core action.
+ *
+ * Both clauses are the rule and neither is redundant. `!actionSpent` is the
+ * obvious half; `bonusUsed.length === 0` is the half that stops a meeple being
+ * held back and spent after the bonus, which is what would turn the supply into
+ * a hand of free reactive actions rather than a decision taken up front.
+ *
+ * ⚠️ Under `bonusAtStartOnly: false` (the control arm) the bonus may be taken at
+ * any point, so a seat that takes it late keeps the meeple phase open longer.
+ * That is the arm behaving as an arm: the two rules interact, and a reading is
+ * only meaningful against the shipped value of the knob.
+ */
+export function meepleOpen(state: GameState): boolean {
+  return !state.turn.actionSpent && state.turn.bonusUsed.length === 0;
+}
+
+/**
+ * The colours this seat may spend right now: held, and with something legal for
+ * that colour's action to do.
+ *
+ * ⭐ A MEEPLE THAT CAN DO NOTHING IS NOT OFFERED, on the same ruling as a dead
+ * door (see `workerActionLegal`), and it bites harder here: spending a meeple is
+ * FREE, so a meeple spent for nothing is a pure loss of a stored action. The
+ * consequence is deliberate and is one of the numbers the v31 plan wants
+ * measured - a seat can be left holding meeples it can never legally spend, and
+ * `meepleGained` minus `meepleSpent` is exactly that dead-component count.
+ */
+export function meepleOptions(data: GameData, state: GameState, seat: Seat): Suit[] {
+  if (!meepleOpen(state)) return [];
+  const held = player(state, seat).meeples;
+  return data.cards.suits.filter(
+    (colour) =>
+      (held[colour] ?? 0) > 0 && workerActionLegal(data, state, seat, doorOf(data, colour).id),
+  );
+}
+
+/**
+ * Spend one meeple: perform its colour's plain door action, free, and REMOVE IT
+ * FROM THE GAME.
+ *
+ * It returns to no pool, which is the whole economy: the island is the only
+ * source, 25 exist in the bag and 24 at most reach the table, so every meeple
+ * spent is one fewer action left in the game for anybody. Nothing here spends
+ * the bonus slot or the action - a meeple is neither - and `meepleOpen` is what
+ * keeps it at the start of the turn.
+ *
+ * The action is taken as the SPENDER's, on the standing ruling that suit powers
+ * apply to actions performed through a door or by a meeple: it is your action,
+ * whatever wooden thing paid for it. A meeple of a suit nobody is farming works
+ * exactly the same, which is why the colour is looked up in `workers.roster` and
+ * never in `state.fair`.
+ */
+export function doSpendMeeple(fx: Fx, seat: Seat, colour: Suit): void {
+  if (!meepleOpen(fx.state)) {
+    throw new Error('Meeples are spent at the start of your turn, before your bonus and action');
+  }
+  if (!meepleOptions(fx.data, fx.state, seat).includes(colour)) {
+    throw new Error(`Seat ${seat} has no ${colour} meeple that can do anything`);
+  }
+  const door = doorOf(fx.data, colour);
+  fx.spendMeeple(seat, colour);
+  fx.emit({ e: 'meepleSpent', seat, colour, action: door.action });
+  performDoorAction(fx, seat, colour, 'meeple');
+}
+
+/**
+ * The bonus slot's SOLITAIRE half: Draw `rules.turn.bonusDraw` off the top of
+ * any one deck in play.
+ *
+ * Offered as a single move with no deck named, because the deck pick is the draw
+ * task's own answer - the same see/keep machinery as the plain Draw, so
+ * `afterDrawKeep` fires and any future draw reactor sees it. That is deliberate:
+ * this is a real Draw, unlike the `buy` and `market` it replaced, both of which
+ * were carefully NOT draws so that no draw modifier could reach them.
+ */
+export function bonusDrawOpen(data: GameData, state: GameState): boolean {
+  if (!bonusOpen(data, state, 'draw')) return false;
+  if (data.rules.turn.bonusDraw <= 0) return false;
+  return drawableSuits(data, state).length > 0;
+}
+
+export function doBonusDraw(fx: Fx, seat: Seat): void {
+  if (!bonusDrawOpen(fx.data, fx.state)) {
+    throw new Error('The bonus slot is shut, or no deck has a card left');
+  }
+  const n = fx.data.rules.turn.bonusDraw;
+  fx.state.turn.bonusUsed.push('draw');
+  fx.pushTask({ t: 'draw', pid: seat, src: null, see: n, keep: n, revealed: [] });
 }
 
 export type VisitOption = Extract<Move, { type: 'visit' }>;
 
 /**
- * Every visit on offer. Since the Services (2026-08-10) a host has TWO
- * targetable buildings and they clog independently:
+ * Every visit on offer: one card from hand onto ANY unclogged Notice Board,
+ * your own included.
  *
- *   their NOTICE BOARD -> the printed coins, to the VISITOR.
- *   their SERVICE      -> its action for the visitor, and `visitWage` minted to
- *                         the HOST by the bank.
+ * ⭐ THE SELF-VISIT IS RISK 2 OF THE WHOLE PASS, and `rules.turn.selfVisitAllowed`
+ * is its paired control. It replaces the old "activate your own Service for a
+ * coin", and the difference is that the card now LANDS on the board: your own
+ * traffic clogs your own door at threshold 2 exactly as a rival's does, so
+ * feeding your board shuts it in two turns and locks every neighbour out of your
+ * suit's action until you spend a Harvest clearing it. That structural brake is
+ * the ONLY thing holding the solitaire option back, because both halves of the
+ * slot now cost the same currency - one card - where every previous version had
+ * the solitaire half bought with coins.
  *
- * A clogged Notice Board no longer locks a rival out of the host's action, which
- * was the denial worry (v14 watch-list 5) and is now structurally halved.
+ * A dead door is not offered (see `workerActionLegal`), so a visit always buys
+ * something.
  */
 export function visitOptions(data: GameData, state: GameState, seat: Seat): VisitOption[] {
-  if (!bonusOpen(data, state)) return [];
+  if (!bonusOpen(data, state, 'visit')) return [];
   const out: VisitOption[] = [];
   const hand = player(state, seat).hand;
+  if (hand.length === 0) return out;
   for (let host = 0; host < state.players.length; host++) {
-    if (host === seat) continue;
-    // ⭐ CHANGE 6 (20/08/2026): ONE DOOR. `board` was `board` and `service`,
-    // two rival-touchable buildings that clogged independently; the Notice
-    // Board is now both, so a single `boardOpen` gates both payoffs and a
-    // clogged board shuts the whole farm to visitors rather than half of it.
-    const board = noticeBoardOf(data, state, host);
-    const serviceId = serviceIdOf(data, state, host);
-    const boardOpen = !isFull(data, board);
+    if (host === seat && !data.rules.turn.selfVisitAllowed) continue;
+    if (isFull(data, noticeBoardOf(data, state, host))) continue;
+    const doorId = doorOf(data, player(state, host).suit).id;
     for (const fee of hand) {
-      if (boardOpen) {
-        out.push({ type: 'visit', seat, host, fee: [fee], payoff: { mode: 'coin' } });
-      }
-      if (
-        boardOpen &&
-        workerActionLegal(data, state, seat, serviceId, { excludingHandCard: fee })
-      ) {
-        out.push({
-          type: 'visit',
-          seat,
-          host,
-          fee: [fee],
-          payoff: { mode: 'worker', workerId: serviceId as WorkerAction },
-        });
-      }
-    }
-    // Special Orders' second line, upgraded face only: two distinct cards for a
-    // bigger payout, gated up front on room for BOTH (a board at 4-of-5 refuses
-    // the whole visit rather than taking one card and paying the smaller rate).
-    // Null since 2026-08-13: the face that printed it is gone, so the mode is
-    // never offered and the branch below is unreachable until a data edit
-    // brings it back.
-    if (
-      data.rules.economy.visitPayout.twoCard !== null &&
-      boardOpen &&
-      board.upgraded &&
-      roomOn(data, board) >= 2
-    ) {
-      for (const pair of subsets(hand, 2)) {
-        out.push({ type: 'visit', seat, host, fee: pair, payoff: { mode: 'special' } });
-      }
+      if (!workerActionLegal(data, state, seat, doorId, { excludingHandCard: fee })) continue;
+      out.push({ type: 'visit', seat, host, fee });
     }
   }
   return out;
 }
 
 /**
- * Activating your OWN Service: one option, always your suit's, and only when you
- * can pay the bank for it. A seat with no coins simply has no own-Service
- * option, which is the rule doing its job - the money to run your farm comes
- * from your neighbours or it does not come.
- */
-export function workOwnOptions(data: GameData, state: GameState, seat: Seat): WorkerAction[] {
-  if (!bonusOpen(data, state)) return [];
-  if (player(state, seat).coins < ownServiceCost(data)) return [];
-  const id = serviceIdOf(data, state, seat);
-  return workerActionLegal(data, state, seat, id) ? [id as WorkerAction] : [];
-}
-
-/**
- * BUY AT MARKET's deck choices (docs/Market Bonus Action 2026-08-03.md). A
- * bonus-slot option, so it gates on `bonusSpent` like the visit - competing
- * with the visit is the entire point of the rule. Any deck in play, OWN SUIT
- * INCLUDED (legal here and illegal at the card buy, both deliberate: the barn
- * destination makes own-suit harmless colour for delivery, the hand destination
- * made it a second Draw). A suit whose deck and discard are both empty cannot
- * be bought (the doc's ruling); the reshuffle happens in the funnel as usual.
+ * Is ANY bonus-slot option legal right now? Two of them since v31, and the
+ * shrinking is the point: the slot held five options on 19/08/2026 (two visit
+ * modes, your own Service, the market and the GBP 2 upgrade), four of which were
+ * bought with coins. Deleting the currency deleted the competitors.
  *
- * A seat that cannot afford the fee simply has no market option, so the turn is
- * never held open waiting for a market it cannot take - the `settleTurn`
- * decline behaviour falls out of `hasBonusOption` reading this.
- */
-export function marketOptions(data: GameData, state: GameState, seat: Seat): Suit[] {
-  const cost = data.rules.turn.marketCost;
-  if (cost === null) return [];
-  if (!bonusOpen(data, state)) return [];
-  if (player(state, seat).coins < cost) return [];
-  return drawableSuits(data, state).filter((s) => state.suitsInPlay.includes(s));
-}
-
-/**
- * Is ANY bonus-slot option legal right now? Four options since 19/08/2026:
- * visit-and-gain-£1, visit-and-use-their-power, £1 for your own power, and the
- * £2 starter upgrade. `marketOptions` stays in the list and returns nothing
- * while `marketCost` is null, which is what makes the removal a one-line
- * reversal rather than a revert.
- *
- * Read by `settleTurn` and by the UI's bonus phase, which is why the upgrade
- * had to be added here the moment it moved: a seat whose only bonus option is
- * an upgrade must still be offered the phase.
+ * Read by `settleTurn` and by the UI's bonus phase.
  */
 export function hasBonusOption(data: GameData, state: GameState, seat: Seat): boolean {
-  return (
-    visitOptions(data, state, seat).length > 0 ||
-    workOwnOptions(data, state, seat).length > 0 ||
-    marketOptions(data, state, seat).length > 0 ||
-    (data.rules.turn.upgradeIsBonus && upgradeOptions(data, state, seat).length > 0)
-  );
+  return bonusDrawOpen(data, state) || visitOptions(data, state, seat).length > 0;
 }
 
 /**
- * Pay the bank, top card of that deck straight into the barn, revealed (the
- * `deckToBarn` event carries it - the Patisserie / Meadow Hive primitive, so
- * the narrator and redaction inherit it). Consumes the bonus slot and nothing
- * else: `turn.visit` stays null, so a Helping Hand never arms, and no
- * `afterVisit` fires - the ticket 23 precedent. Never a Draw: no task, no
- * keep, and `withDrawModifier` is never consulted.
+ * THE VISIT: one card from your hand onto a Notice Board, then that board's suit
+ * action, taken by YOU.
+ *
+ * The order is load-bearing and unchanged from v14: the fee LANDS first, then
+ * `afterVisit` fires host-side, then the action runs. A host-side reactor
+ * therefore sees the card on the board, and a door that clogged on this very
+ * card is still the door that was bought.
+ *
+ * ⛔ NOTHING IS MINTED. In v14 this function paid the visitor for a coin visit
+ * and the host a wage for a Service visit, and the whole design rested on
+ * interaction MINTING money from the bank rather than moving it between players.
+ * v31 keeps the shape and deletes the payment: what the visitor gets is the
+ * ACTION, and what the host gets is a card on their board that they will harvest
+ * into their own barn. "Your junk is their treasure" survives the currency.
  */
-export function doMarket(fx: Fx, seat: Seat, suit: Suit): void {
-  if (!marketOptions(fx.data, fx.state, seat).includes(suit)) {
-    throw new Error(`Seat ${seat} cannot buy the ${suit} crop at market`);
-  }
-  const cost = fx.data.rules.turn.marketCost;
-  if (cost === null) throw new Error('The market is switched off');
-  fx.payCoins(seat, cost, 'market');
-  fx.state.turn.bonusSpent = true;
-  fx.deckTopToBarn(seat, suit);
-}
-
-/**
- * The unified visit: cards from hand onto ONE of the host's two targetable
- * buildings, then that building's printed payoff.
- *
- *   coin / special -> the NOTICE BOARD; the bank pays the VISITOR.
- *   worker         -> the SERVICE;      the bank pays the HOST `visitWage`.
- *
- * The mode picks the building, so the two clog independently and a leader
- * sitting on a full Notice Board no longer denies access to their action.
- *
- * The wage is paid HERE rather than inside workWorker, because since the Working
- * Week died the card landing on the Service IS the use being paid for - a Herb
- * Hive free work places no card and correctly mints nothing.
- */
-export function doVisit(
-  fx: Fx,
-  visitor: Seat,
-  host: Seat,
-  fee: CardId[],
-  payoff: { mode: 'coin' } | { mode: 'worker'; workerId: WorkerAction } | { mode: 'special' },
-): void {
-  if (visitor === host) throw new Error('You may never visit your own farm');
+export function doVisit(fx: Fx, visitor: Seat, host: Seat, fee: CardId): void {
   const state = fx.state;
-  if (!bonusOpen(fx.data, state))
-    throw new Error('The bonus slot is shut: spent, or the action is taken');
-  const target = visitTargetOf(fx.data, state, host, payoff.mode);
-
-  const cards = payoff.mode === 'special' ? 2 : 1;
-  if (fee.length !== cards) {
-    throw new Error(`A ${payoff.mode} visit places exactly ${cards} card(s), not ${fee.length}`);
+  if (visitor === host && !fx.data.rules.turn.selfVisitAllowed) {
+    throw new Error('Self-visiting is switched off');
   }
+  if (!bonusOpen(fx.data, state, 'visit')) {
+    throw new Error('The bonus slot is shut: spent, or the action is taken');
+  }
+  const target = visitTargetOf(fx.data, state, host);
   if (isFull(fx.data, target)) throw new Error(`${target.card} is full`);
-
-  if (payoff.mode === 'special') {
-    if (fx.data.rules.economy.visitPayout.twoCard === null) {
-      throw new Error('The 2-card visit is switched off');
-    }
-    if (!target.upgraded) throw new Error(`${target.card} does not print the 2-card visit`);
-    if (new Set(fee).size !== fee.length) throw new Error('The two cards must be distinct');
-    // Room for BOTH, checked before anything moves.
-    if (roomOn(fx.data, target) < cards) {
-      throw new Error(`${target.card} has no room for ${cards} cards`);
-    }
+  const colour = player(state, host).suit;
+  const door = doorOf(fx.data, colour);
+  if (!workerActionLegal(fx.data, state, visitor, door.id, { excludingHandCard: fee })) {
+    throw new Error(`The ${colour} door has nothing legal to do for seat ${visitor}`);
   }
 
-  if (payoff.mode === 'worker') {
-    if (workerState(state, payoff.workerId).owner !== host) {
-      throw new Error(`Service ${payoff.workerId} is not the host's`);
-    }
-    const spent = fee[0] as CardId;
-    if (
-      !workerActionLegal(fx.data, state, visitor, payoff.workerId, { excludingHandCard: spent })
-    ) {
-      throw new Error(`Service ${payoff.workerId} has nothing legal to do for seat ${visitor}`);
-    }
-  }
-
-  for (const card of fee) fx.placeOnBuilding(visitor, { seat: host, card: target.card }, card);
-  state.turn.bonusSpent = true;
-  // O16 The Orchard Keeper reacts host-side in every branch, once per visit,
-  // after the fee lands and before the payoff (the reference fires it here too).
-  fireHook(fx, 'afterVisit', { visitor, host, mode: payoff.mode });
-
-  if (payoff.mode === 'worker') {
-    state.turn.visit = { host, workerId: payoff.workerId, repeats: 0 };
-    fx.emit({ e: 'visited', seat: visitor, host, mode: 'worker' });
-    payServiceWage(fx, visitor, host, payoff.workerId);
-    payActionBranch(fx, visitor, host);
-    workWorker(fx, visitor, payoff.workerId, { progress: true });
-  } else {
-    const rates = fx.data.rules.economy.visitPayout;
-    const paid =
-      payoff.mode === 'special'
-        ? (rates.twoCard ?? 0)
-        : target.upgraded
-          ? rates.upgraded
-          : rates.base;
-    fx.gainCoins(visitor, paid, 'visit');
-    fx.emit({ e: 'visited', seat: visitor, host, mode: payoff.mode });
-  }
-}
-
-/**
- * The bank mints `visitWage` to a Service's owner, and only for a RIVAL's use -
- * the standing law that you never earn from your own farm. Shared by the visit
- * and by a Helping Hand repeat, since a repeat is another card on the Service.
- */
-export function payServiceWage(fx: Fx, actor: Seat, owner: Seat, workerId: string): void {
-  if (actor === owner) return;
-  const wage = fx.data.workers.visitWage;
-  if (wage > 0) fx.gainCoins(owner, wage, `wage:${workerId}`);
-}
-
-/**
- * The upgraded Notice Board's action branch (Dean, 2026-08-13). The card reads
- * "VISIT: gain £2, OR gain £1 and do the special action", so a visitor who
- * takes the action at an UPGRADED board is paid too, where at a base board they
- * are paid nothing.
- *
- * It is keyed on the host's NOTICE BOARD face even though this build lands the
- * action on their Service, because the Notice Board is the card that prints the
- * rule and change 6 merges the two buildings into it. When that merge reaches
- * the engine this reads the same building it already names.
- *
- * Paid on a Helping Hand repeat as well, on the same reasoning `payServiceWage`
- * uses: another card on their farm is another use bought, and the card prints
- * the coin as part of taking the action rather than as part of the visit.
- */
-export function payActionBranch(fx: Fx, visitor: Seat, host: Seat): void {
-  if (visitor === host) return;
-  const board = noticeBoardOf(fx.data, fx.state, host);
-  if (!board.upgraded) return;
-  const paid = fx.data.rules.economy.visitPayout.upgradedAction;
-  if (paid > 0) fx.gainCoins(visitor, paid, 'visit');
-}
-
-/**
- * The bonus slot's other half: activate your OWN Service. Pay the bank, take the
- * action, place NOTHING - so an owner never clogs their own Service, never
- * advances it toward a harvest, and never earns from it.
- */
-export function doWorkOwn(fx: Fx, seat: Seat, workerId: WorkerAction): void {
-  if (!bonusOpen(fx.data, fx.state))
-    throw new Error('The bonus slot is shut: spent, or the action is taken');
-  if (workerState(fx.state, workerId).owner !== seat) {
-    throw new Error(`Service ${workerId} is not yours`);
-  }
-  const cost = ownServiceCost(fx.data);
-  if (cost > 0) fx.payCoins(seat, cost, `service:${workerId}`);
-  fx.state.turn.bonusSpent = true;
-  workWorker(fx, seat, workerId, { progress: true });
+  fx.placeOnBuilding(visitor, { seat: host, card: target.card }, fee);
+  state.turn.bonusUsed.push('visit');
+  // Host-side reactors fire once per visit, after the fee lands and before the
+  // payoff (the reference fires it here too).
+  fireHook(fx, 'afterVisit', { visitor, host, self: visitor === host });
+  fx.emit({
+    e: 'visited',
+    seat: visitor,
+    host,
+    self: visitor === host,
+    colour,
+    action: door.action,
+  });
+  performDoorAction(fx, visitor, colour, 'visit');
 }
 
 // --- The main-action umbrella ---------------------------------------------
 
 /**
- * Is ANY main action legal? Decides whether `pass` is offered (and nothing else is).
+ * Is ANY main action legal? Decides whether `pass` is offered (and nothing else
+ * is).
  *
- * `upgradeOptions` came OUT of this list on 19/08/2026 when the upgrade moved
- * into the bonus slot. It has to: leaving it in would suppress `pass` for a
- * seat whose only remaining option is a bonus, and that seat would be left with
- * no legal move at all.
+ * It must list the MAIN actions and only those. The GBP 2 upgrade came out of
+ * this list on 19/08/2026 when it moved into the bonus slot, because leaving it
+ * in would suppress `pass` for a seat whose only remaining option was a bonus -
+ * and that seat would then have no legal move at all. The same trap waits for
+ * anything that is added here.
  */
 export function hasMainOption(data: GameData, state: GameState, seat: Seat): boolean {
   return (
     drawableSuits(data, state).length > 0 ||
     anyBuildOption(data, state, seat) ||
-    (!data.rules.turn.upgradeIsBonus && upgradeOptions(data, state, seat).length > 0) ||
     growOptions(data, state, seat).length > 0 ||
     harvestOptions(data, state, seat).length > 0 ||
     anyDeliverOption(data, state, seat) ||

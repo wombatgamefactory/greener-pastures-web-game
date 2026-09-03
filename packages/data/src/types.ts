@@ -5,6 +5,23 @@
  * `assertGameData`. Nothing here is inferred from the JSON, deliberately: the
  * extractor can be re-run at any time against a sheet that has moved, and a
  * silently-inferred type would absorb the change instead of failing on it.
+ *
+ * ⭐ v31 (02/09/2026, docs/design-changes-v31-2026-09-02-v1.md). Two structural
+ * changes to read before anything else:
+ *
+ *   1. **There are no coins.** Not a currency at zero: no currency. Every coin
+ *      field is gone from every file - `startingCoins`, `upgradeCostCoins`,
+ *      `coinPityDivisor`, `visitPayout`, `giftDiscardCoins`, `buyCost`,
+ *      `marketCost`, `BuildCost.coins`, `ownerActivationCost`, `visitWage`. The
+ *      one survivor is `IslandTileRule.coinsPerDelivery`, pinned at 0 as a
+ *      tombstone; see its doc comment.
+ *   2. **Starters are single-faced.** `CardFace` and `Card.faces` are deleted,
+ *      so every card in the catalogue is one flat object and a card knob is one
+ *      path shorter. `handSize` went with them - and it has NOT come back. The
+ *      hand limit returned on 02/09/2026, but as `RulesFile.turn.handLimit`, one
+ *      global number on the player aid rather than five printed per-suit ones.
+ *      The Barn still prints nothing. See that field for what the deletion
+ *      measured and why the reinstatement is shaped differently.
  */
 
 export type Suit = 'wheat' | 'vegetable' | 'orchard' | 'apiary' | 'dairy';
@@ -14,14 +31,13 @@ export const SUITS: readonly Suit[] = ['wheat', 'vegetable', 'orchard', 'apiary'
 export type CardType = 'starter' | 'tier1' | 'tier2' | 'tier3' | 'power' | 'endgame';
 
 /**
- * Which of the FOUR printed starters a starter card is. Null for deck cards.
+ * Which of the THREE printed starters a starter card is. Absent on deck cards.
  *
- * `service` joined the set on 2026-08-10 with the suit Services. It is the only
- * starter the extractor does not produce: the sheet has no Service row yet, so
- * the five Service cards are synthesised from workers.json at load (see
- * `withServices` in index.ts) and cards.json stays a faithful extract.
+ * `service` left the set on 20/08/2026 with the Service card itself, when the
+ * door merged into the Notice Board. Nothing synthesises a fourth starter any
+ * more: the catalogue is exactly the 105 rows of the sheet.
  */
-export type StarterSlot = 'barn' | 'farmstead' | 'noticeboard' | 'service';
+export type StarterSlot = 'barn' | 'farmstead' | 'noticeboard';
 
 /**
  * Trigger keywords detected in the printed text. This is keyword detection, not a
@@ -52,26 +68,24 @@ export type AbilityTrigger =
   | 'gameEnd';
 
 /**
- * A build cost as printed in the icon columns: n cards of the card's own suit,
- * m cards of any suit, and c coins.
+ * A build cost as printed in the icon columns: n cards of the card's own suit
+ * and m cards of any suit.
+ *
+ * The `coins` third of this went with the currency (v31). The 30 Power and
+ * Endgame cards that used to print two coin icons now print two crop icons of
+ * their own suit, so they arrive here as `{ suit: 2, wild: 0 }` and are paid for
+ * in the same resource as everything else.
  */
 export interface BuildCost {
   readonly suit: number;
   readonly wild: number;
-  readonly coins: number;
 }
 
-/** One printed face of a starter. Starters are double-sided; deck cards are not. */
-export interface CardFace {
-  readonly name: string;
-  readonly printedVp: number;
-  readonly threshold: number | null;
-  readonly activationType: string | null;
-  readonly abilityText: string | null;
-  /** Absolute printed hand size. Barn faces only; null everywhere else. */
-  readonly handSize?: number | null;
-}
-
+/**
+ * One card. Flat since v31: starters print one face for the whole game, so there
+ * is no `faces` block and no upgrade price, and every field below means the same
+ * thing on a starter as on a deck card.
+ */
 export interface Card {
   readonly id: string;
   readonly suit: Suit;
@@ -85,18 +99,20 @@ export interface Card {
    * better without it.
    */
   readonly enabled: boolean;
+  /** Null on the three starters, which are never built. */
   readonly buildCost: BuildCost | null;
+  /** The crop a GROW must pay in, or `wild` for any card. Null: cannot be grown. */
+  readonly activationType: string | null;
+  /** Cards the building holds before it is full and clogged. Null: not a building. */
+  readonly threshold: number | null;
+  /** Scored at game end for having built it. 0 on all fifteen starters. */
+  readonly printedVp: number;
+  /** Empty string where the card prints nothing, which is the five Barns. */
+  readonly abilityText: string;
   readonly abilityTrigger: readonly AbilityTrigger[];
   readonly needsDesignReview: boolean;
-  /** Starters only. */
+  /** Starters only; absent on the 90 deck cards. */
   readonly slot?: StarterSlot;
-  readonly upgradeCostCoins?: number;
-  readonly faces?: { readonly starter: CardFace; readonly upgraded: CardFace };
-  /** Deck cards only. */
-  readonly activationType?: string | null;
-  readonly threshold?: number | null;
-  readonly printedVp?: number;
-  readonly abilityText?: string | null;
 }
 
 export interface DataMeta {
@@ -131,7 +147,36 @@ export type IslandLevel = 1 | 2 | 3;
 export interface IslandTileRule {
   readonly crates: number;
   readonly cardsPerCrate: number;
+  /**
+   * ⚰️ TOMBSTONE, PINNED AT 0. v31 deleted coins and the island pays a MEEPLE
+   * instead, so this can never be anything but 0. It survives because the v31
+   * plan named the key explicitly rather than deleting it, and because a visible
+   * zero is a louder record than a silent removal for anybody arriving from a
+   * pre-v31 report. It deliberately has no knob.
+   */
   readonly coinsPerDelivery: number;
+}
+
+/**
+ * The bag of meeples the island's delivery spaces are seeded from (v31).
+ *
+ * One is placed FACE UP on every delivery space at setup and is claimed with
+ * that delivery; its owner spends it at the start of a later turn to perform its
+ * colour's plain action, after which it leaves the game. The colour-to-action
+ * map is NOT here: a meeple performs the same action as that colour's Notice
+ * Board door, which is `workers.roster`. One map, one file.
+ */
+export interface MeeplePool {
+  readonly perColour: number;
+  readonly colours: readonly Suit[];
+  /**
+   * Stored rather than derived, so an overlay that moves `perColour` has to move
+   * this too and cannot half-change the bag. `data.test.ts` asserts the two
+   * agree, and that assertion is the whole reason it is not a computed getter.
+   */
+  readonly poolSize: number;
+  readonly perDeliverySpace: number;
+  readonly faceUpAtSetup: boolean;
 }
 
 export interface IslandTile {
@@ -158,7 +203,8 @@ export interface IslandFile {
    * `[6, 3]`: first deliverer 6, second 3, third illegal.
    *
    * There is no separate deliveriesPerTile, on purpose. Opening a third delivery
-   * space means writing down what it pays, in the same edit.
+   * space means writing down what it pays, in the same edit - and since v31,
+   * finding it a third meeple out of a bag that is only 25 deep.
    */
   readonly vpByDeliveryOrder: readonly number[];
   /**
@@ -170,6 +216,8 @@ export interface IslandFile {
   readonly cardsPerSubstitution: number | null;
   /** What every tile costs and pays. Flat since 2026-08-09; was levelRules. */
   readonly tileRule: IslandTileRule;
+  /** The v31 meeple bag: 5 of each of the 5 colours, one per delivery space. */
+  readonly meeples: MeeplePool;
   readonly slotsBySeats: Readonly<Record<string, Readonly<Record<string, number>>>>;
   readonly levelThreeTilesBySeats: Readonly<Record<string, readonly string[]>>;
   readonly demandTokensBySeats: Readonly<Record<string, DemandTokenPool>>;
@@ -180,65 +228,71 @@ export interface IslandFile {
 export type WorkerAction = 'harvest' | 'deliver' | 'draw' | 'sow' | 'build';
 
 /**
- * One suit's SERVICE: the fourth starter, owned by whoever plays that suit and
- * by nobody else. `id` is still the action it performs, so every existing
- * "which worker" reference keeps working.
+ * One suit's DOOR: the action its Notice Board grants to whoever places a card
+ * on it, and the action a meeple of that colour performs when spent. `id` is the
+ * action, so every existing "which worker" reference keeps working.
  *
- * Each Service performs an ENHANCED version of its action. The optional blocks
- * below are that enhancement, and which of them a Service carries is set by how
- * card-hungry its action is - see the note block in workers.json.
+ * ⭐ v31: the doors are PLAIN. Every enhancement the old Services carried (the
+ * relaxed harvest, the hand card into the barn, the deck-sown card, the build at
+ * a discount with crop requirements waived) is gone, because the bonus slot
+ * itself became the enhancement - a door buys a whole core action for one card.
+ * The `draw` and `sow` blocks below survive only because those two actions need
+ * a size, not because they are riders.
  */
-export interface SuitService {
+export interface SuitDoor {
   readonly id: WorkerAction;
+  /**
+   * Flavour only. These were the Service cards' printed names and nothing prints
+   * them now; they are kept so the UI and the reports read better than an action
+   * id would. See the note in workers.json.
+   */
   readonly name: string;
   readonly action: WorkerAction;
   readonly actionText: string;
-  /** Ownership, not flavour: the seat playing this suit owns this Service. */
+  /** Ownership of the BOARD, not of the meeple: the seat playing this suit owns this door. */
   readonly linkedSuit: Suit;
-  /** Draw's printed see/keep. Never the base action's - see the self-cancellation note. */
+  /**
+   * ⭐ THE ONE EXCEPTION IN THE SET, AND IT IS LOAD-BEARING. Draw 3, where a
+   * plain door would be Draw 2. A visitor pays 1 card, and the bonus slot's
+   * other option is a free Draw 1 (`rules.turn.bonusDraw`), so a Draw 2 door
+   * nets +1 - exactly what the free option gives for nothing - and would be
+   * strictly worse than its own alternative. Draw 3 nets +2. Tidy it to 2 for
+   * consistency and the Orchard door dies silently.
+   */
   readonly draw?: { readonly see: number; readonly keep: number };
-  /** `from: 'deck'` is the Apiary Service: the sown card comes off a deck top, not the hand. */
+  /**
+   * The Apiary door. `from: 'hand'` in v31 and RULED that way knowingly: it
+   * makes this the weakest door on the table, because the visitor pays a card
+   * onto the board and a second card into the sow for one threshold step.
+   * `from: 'deck'` is the fix if the door takes no traffic - see workers.json.
+   */
   readonly sow?: { readonly amount: number; readonly from?: 'hand' | 'deck' };
-  /** The Dairy Service: crop requirements waived, price unchanged. */
-  readonly build?: { readonly substitute?: boolean; readonly discount?: number };
-  /**
-   * Wheat and Vegetable: this many OPTIONAL hand cards into your own barn,
-   * after the harvest and before the delivery respectively.
-   */
-  readonly handToBarn?: number;
-  /**
-   * Harvest Service only: buildings holding at least this many cards may be
-   * harvested even when NOT full. The Wheat visitor door prints it - "Harvest a
-   * building with 2 or more cards, even if not full" - and since the W2/W3 swap
-   * of 19/08/2026 it lives here rather than being a Wheat suit power, so it
-   * belongs to whoever WORKS the door and not to whoever owns it.
-   */
-  readonly relaxedMin?: number;
 }
 
 export interface WorkersFile {
   readonly meta: DataMeta;
-  /** Cards a Service holds before it clogs. Printed on the card; a knob here. */
-  readonly serviceThreshold: number;
-  /** What the OWNER pays the bank to activate their own Service from the bonus slot. */
-  readonly ownerActivationCost: number;
-  /** What the bank mints to the OWNER when a RIVAL activates their Service. 0 switches the wage off. */
-  readonly visitWage: number;
   /** Named `roster` for the same reason `catalogue` is: no `workers.workers`. */
-  readonly roster: readonly SuitService[];
+  readonly roster: readonly SuitDoor[];
 }
 
-/** @deprecated The Hiring Fair is gone (2026-08-10). Alias kept so old imports fail loudly at review, not silently. */
-export type HiredWorker = SuitService;
+/** @deprecated The Services are gone (v31). Alias kept so old imports fail loudly at review, not silently. */
+export type SuitService = SuitDoor;
 
-export type BalloonRewardType = 'draw' | 'buildDiscount' | 'sowFromHand' | 'gainCoins';
+/** @deprecated The Hiring Fair is gone (2026-08-10). */
+export type HiredWorker = SuitDoor;
+
+/**
+ * `harvestAny` replaced `gainCoins` on the magenta balloon (v31). It carries no
+ * `amount`: "even if it is not full" is a permission, not a size.
+ */
+export type BalloonRewardType = 'draw' | 'buildDiscount' | 'sowFromHand' | 'harvestAny';
 
 export interface Balloon {
   readonly id: string;
   readonly colour: string;
   readonly hex: string;
   readonly rewardText: string;
-  readonly reward: { readonly type: BalloonRewardType; readonly amount: number };
+  readonly reward: { readonly type: BalloonRewardType; readonly amount?: number };
 }
 
 export interface AerodromeFile {
@@ -270,138 +324,143 @@ export interface RulesFile {
   readonly meta: DataMeta;
   readonly setup: {
     readonly startingHand: number;
+    /** 0 since v31: the barn starts empty. */
     readonly startingBarnCards: number;
-    readonly startingCoins: number;
   };
   readonly turn: {
     readonly actionsPerTurn: number;
     readonly bonusSlotsPerTurn: number;
-    /** The plain Draw action: see this many, keep this many. The Draw Worker prints its own numbers. */
+    /**
+     * The plain Draw action. `see` equals `keep` since v31 - Draw 2, keep both,
+     * discard nothing. A door prints its own numbers (`workers.roster`).
+     */
     readonly baseDraw: { readonly see: number; readonly keep: number };
     /**
-     * Coins for the once-per-turn free BUY: one card, blind, off the top of a
-     * deck that is not your own suit. Null switches the rule off, which is the
-     * paired control (`overlays/no-card-buy.overlay.json`).
-     */
-    readonly buyCost: number | null;
-    /**
-     * Coins for BUY AT MARKET (docs/Market Bonus Action 2026-08-03.md): a
-     * bonus-slot option - top card of any one deck in play, own suit included,
-     * into the BARN, revealed. Null deletes the rule. Independent of `buyCost`
-     * so ticket 56's paired arms stay clean: they are two different rules.
-     */
-    readonly marketCost: number | null;
-    /**
-     * THE BONUS WINDOW (Dean, 19/08/2026): true means the bonus slot may be
-     * taken only at the START of your turn, before the main action. False is
-     * the v14 rule it replaced, "once per turn, any point".
+     * The SOLITAIRE half of the bonus slot: this many cards off the top of any
+     * one deck in play, taken instead of placing a card on a Notice Board.
      *
-     * A knob rather than a constant because the change ships alongside three
-     * others that all move the same number - the visit rate - and the plan is
-     * explicit that they arm together but must be separable when the arm is
-     * DIAGNOSED. This is the one of the four with no precedent in the reports,
-     * and it points down: a bonus you must commit to before you act is a bonus
-     * that gets forgotten.
+     * It exists so the bonus slot is never dead - an empty hand has no card to
+     * place - and it is the yardstick every door has to beat. Raising it is the
+     * cheapest way to kill all five doors at once, which is why the Orchard door
+     * is Draw 3 rather than Draw 2.
+     */
+    readonly bonusDraw: number;
+    /**
+     * ⭐ THE HAND LIMIT, BACK AT A FLAT 12 AND AS ONE GLOBAL RULE (Dean,
+     * 02/09/2026, reversing one v31 change on evidence).
+     *
+     * Cards you may still be holding when your turn ENDS. You may exceed it
+     * mid-turn - several cards need you to (O14 sows a whole hand, W10 empties
+     * one into the barn) - and the overflow is discarded at the turn boundary.
+     * null disables the rule and restores v31's no-limit behaviour, which is the
+     * control arm.
+     *
+     * ## Why it came back, and what the deletion measured
+     *
+     * v31 deleted the limit as a printed Barn value and expected to lose only a
+     * clock. It also lost the bound on the LEGAL-MOVE ENUMERATOR, which nothing
+     * else in the game was holding: `subsets` in the engine's `actions.ts`
+     * carried the comment *"hands are 6-8"*, and that bound WAS the hand limit.
+     * With hands reaching 34 cards, one 2-seat position offered 43,879 legal
+     * moves, 43,845 of them build payments - C(33,4) is 40,920 ways to pay for
+     * one buildable card - and a re-measurement found a worse position at
+     * 116,535. A 2-seat game went from ~0.1s to 1-15 minutes, so the watch-list
+     * suite could only be run at n=8 and every conclusion from that run is an
+     * anecdote. The bots hoarded to a median hand of 18, the free bonus Draw 1
+     * became strictly dominant (beating a neighbour visit 3:1, failing the hook
+     * assertion), and the 2-seat game ran to 45 rounds.
+     *
+     * It is a DESIGN failure before it is an engineering one. A gateway player
+     * choosing between forty thousand ways to pay for one build is not a
+     * shippable turn, and a hand with no ceiling has no diminishing return - so
+     * a free card always beats a neighbour, which is the hook losing to
+     * arithmetic rather than to a design decision.
+     *
+     * ## The shape is deliberately NOT the old rule
+     *
+     * One global number, not five printed per-suit ones. The Barn prints nothing
+     * and stays blank (v31 §1.4 is untouched): a rule that applies to everybody
+     * belongs on the player aid, not on a card, and restoring the old
+     * `Card.handSize` field would have restored the 5/5/5/4/5 table with it.
+     *
+     * ## ⭐ 12 -> 7 (Dean, 03/09/2026), and it is a design decision that happens
+     * also to be the biggest speed lever in the project
+     *
+     * 12 was a guess - roughly three turns of accumulation above the 4-card
+     * opening hand - and it bought correctness without buying much else. Two
+     * arguments took it to 7, and the design one comes first:
+     *
+     *   - **THE DIMINISHING RETURN HAS TO BITE.** The hook assertion has been
+     *     failing because the free bonus Draw 1 beats visiting a neighbour about
+     *     3:1, and the standing hypothesis is that a free card is strictly
+     *     dominant only while a hand can absorb it indefinitely. At 12 it very
+     *     nearly can. At 7 - three above the opening hand - a draw starts
+     *     costing you the card it displaces, which is the price a visit has to
+     *     compete with. If the bonus mix moves toward the visit, that is this
+     *     rule working, and it must NOT be read as an artefact of the same day's
+     *     simulator optimisation.
+     *   - **The worst build payment is C(limit - 1, 4)**: 330 at 12, 15 at 7.
+     *     That is about 22x off the widest enumeration in the game, and it puts
+     *     the branching factor back inside the 4-7 band where the suite used to
+     *     run at 9.7 games per second.
+     *
+     * It is still a knob and still a guess, only a better-argued one. Sweep it
+     * with `overlays/hand-limit.sweep.json`, whose ladder now brackets 7.
+     */
+    readonly handLimit: number | null;
+    /**
+     * ⭐ RISK 2 OF THE WHOLE v31 PASS, ARMED ON PURPOSE. True: you may place
+     * your bonus card on your OWN Notice Board and take your own suit's action.
+     *
+     * Every previous version of this game has had the solitaire option crowd the
+     * visit out when the two competed for one slot. The only brake is
+     * structural: your own card counts toward your own threshold of 2, so
+     * feeding your board clogs it in two turns and shuts your own door.
+     * `a08-the-hook` must count self-visits SEPARATELY or it will report a
+     * healthy hook while the table plays solitaire. False is the paired control.
+     */
+    readonly selfVisitAllowed: boolean;
+    /**
+     * THE BONUS WINDOW (Dean, 19/08/2026): true means the bonus option may be
+     * taken only at the START of your turn, and in v31 it sits immediately after
+     * the meeple phase. False is the v14 rule it replaced, "once per turn, any
+     * point". Still the one turn-structure rule with no measurement behind it,
+     * and it still points down: a bonus you must commit to before you act is a
+     * bonus that gets forgotten. Read SLOT UNSPENT, not the visit rate.
      */
     readonly bonusAtStartOnly: boolean;
-    /**
-     * THE STARTER UPGRADE'S SLOT (Dean, 19/08/2026): true means flipping a
-     * starter for £2 is one of the four BONUS actions. False is the old rule,
-     * where it cost the whole main action - which is why the 2026-07-14 table
-     * left every £2 sink untouched.
-     */
-    readonly upgradeIsBonus: boolean;
   };
   readonly economy: {
     /**
-     * What it costs to flip a starter, and since 2026-08-12 that is ALL THREE of
-     * them: the Farmstead's free flip at the own-crop milestone is retired and
-     * it is bought like its siblings. A per-card `upgradeCostCoins` still
-     * overrides this.
-     */
-    /**
-     * ⭐ THE DOOR'S THRESHOLD, RULED 2 BY DEAN ON 20/08/2026, and an OVERRIDE
-     * of what the Notice Board prints rather than a second opinion about it.
+     * ⭐ THE ONLY ECONOMY NUMBER LEFT, AND THE BALANCE LEVER. How many cards a
+     * Notice Board holds before it clogs and the farm shuts to visitors - and,
+     * since v31, to its owner too.
      *
-     * ⚠️ THE SHEET STILL PRINTS 5, AND THAT IS A DRIFT THIS FILE IS CREATING
-     * ON PURPOSE. The threshold lives on a card face, and card faces come out
-     * of the designer spreadsheet through `extract_cards.py` - so it cannot be
-     * changed in `cards.json`, which is generated and would be silently
-     * reverted at the next extract. Dean ruled the number provisionally
-     * ("let's make it 2 for now"), so it is authored HERE, where a ruling can
-     * live without pretending to be a printed value. **The sheet owes ten cells
-     * - five Notice Boards, both faces - and when it gets them this override
-     * should go back to null and the printed value take over.**
+     * An OVERRIDE of the printed face, kept as an override because the value is
+     * a ruling and the face is generated from the spreadsheet. Ruled 2 on
+     * 20/08/2026; null hands the number back to the card. The v31 sheet prints
+     * 2, so the long-standing 5-versus-2 drift is closed and this now agrees
+     * with the print.
      *
-     * null = no override, use whatever the card prints.
-     *
-     * WHY IT IS 2. Change 6 merged the Service door into the Notice Board, so
-     * one threshold now throttles the traffic that used to split across two
-     * buildings. Measured at n=500: t=5 clogs 2.3% of turn boundaries (no brake
-     * at all), t=3 5%, t=2 11%; and the suit spread is most even at 2 (54.6
-     * points from even, against 67.2 at t=3 and 70.2 at t=5). Dean's reading of
-     * why: at 5 "you get to use other player's cards a lot, but that number
-     * also decreases how often you can harvest and make use of the cards people
-     * give you - making it more valuable to the visitor, rather than the person
-     * who is visited."
-     *
-     * ⭐ 4 IS A LIVE CANDIDATE AND IS NOT REFUTED. Dean: "2 is also half a
-     * delivery, which makes me think 4 might also work" - a tile costs 4 cards,
-     * so a door at 4 holds exactly one delivery's worth of freight. It was
-     * never armed; `overlays/noticeboard-threshold-4.overlay.json` exists.
+     * The only lever ever measured to move the suit balance: on the older
+     * two-building surface, t=4 gave Orchard 80.8%, t=3 62.8%, t=2 42.0% against
+     * an even share of 36.4%; on the single-door surface, t=5 clogged 2.3% of
+     * turn boundaries, t=3 5%, t=2 11%, with the spread most even at 2. In v31
+     * it throttles self-visit traffic as well, so 2 is doing more work than any
+     * arm has yet measured. Never raise it without re-running the suite.
      */
     readonly noticeBoardThreshold: number | null;
-    readonly upgradeCostCoins: number;
-    /** VP at game end is `floor(coins / divisor)`. Null disables the rule. */
-    readonly coinPityDivisor: number | null;
-    /**
-     * What the bank pays a VISITOR, by which face the host's Notice Board is
-     * showing and which branch the visitor took. The card prints exactly this:
-     *
-     *   base face        VISIT: gain `base`, or take the action.
-     *   upgraded face    VISIT: gain `upgraded`, or gain `upgradedAction` AND
-     *                    take the action.
-     *
-     * `upgradedAction` is the half added on 2026-08-13 and it is the whole
-     * point of the card. Sweetening only the coin branch (which is what shipped
-     * before it) was measured to move visitors from the host's action branch to
-     * their coin branch rather than from another farm to this one - a swap of
-     * doors on the same farm, worth nothing to the owner once change 6 merges
-     * the two doors into one building. Paying both branches equally removes the
-     * reason to switch and puts the pull where the traffic actually is: per
-     * offer, a visitor takes the action about three times as often as the coin.
-     * Setting it to 0 is the paired control, and restores the old behaviour.
-     *
-     * The OWNER is paid nothing, on either face. Their return is the freight -
-     * one more card landing on their farm per visit they win - which is the
-     * standing "your junk is their treasure" rule and the reason `visitWage`
-     * sits at 0.
-     *
-     * `twoCard` was Special Orders' second line ("2 cards, take £3"). Change 6
-     * retired Special Orders and the 2026-08-13 card replaces its face, so the
-     * line is no longer printed anywhere: NULL switches it off and is what
-     * ships. The mode survives in the engine so switching it back on is a data
-     * edit, not a rebuild.
-     */
-    readonly visitPayout: {
-      readonly base: number;
-      readonly upgraded: number;
-      readonly upgradedAction: number;
-      readonly twoCard: number | null;
-    };
-    /**
-     * The coin the UPGRADED Orchard Farmstead mints per card it gives away at
-     * the discard divert seam. 0 leaves the gift free, which is the paired
-     * control (`overlays/orchard-farmstead-coin.overlay.json`). The base face
-     * never pays it; the coin is the whole of what the upgrade buys.
-     */
-    readonly giftDiscardCoins: number;
   };
   readonly endGame: {
     /**
      * The flat island's clock (2026-08-09): the end fires when one seat
      * completes its `deliveriesToTrigger`-th ISLAND delivery. Balloon moves are
      * Deliver actions but not island deliveries and never count.
+     *
+     * ⭐ THE FIRST KNOB TO SWEEP AFTER v31. The bonus slot now buys a whole core
+     * action for one card and meeples add uncapped free ones, so the same 6
+     * deliveries arrive sooner and turns are materially more powerful than
+     * v30's. Expect a shorter game and higher scores before anything is dialled.
      */
     readonly trigger: 'deliveryCount';
     readonly deliveriesToTrigger: number;

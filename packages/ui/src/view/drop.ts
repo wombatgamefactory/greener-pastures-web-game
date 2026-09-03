@@ -20,11 +20,19 @@ import type { CardId, Seat } from '@gp/engine';
 
 import type { Intent, Live } from './intent';
 
-export type DropKind = 'building' | 'rival' | 'assembly';
+/**
+ * ⭐ `rival` BECAME `host` (v31), and the rename is a rule. A Notice Board drop
+ * target used to be a NEIGHBOUR by definition; since v31 your own board is a
+ * legal visit target too, so a zone called `rival` would be lying about half the
+ * boards it now covers. What it means is "a farm's Notice Board", whoever farms
+ * it, and the components that stamp it are the rail's neighbour cards and your
+ * own Notice Board's badge.
+ */
+export type DropKind = 'building' | 'host' | 'assembly';
 
 export interface DropTarget {
   readonly kind: DropKind;
-  /** The building's card id, the host's seat, or '' for the assembly panel. */
+  /** The building's card id, the host seat, or '' for the assembly panel. */
   readonly id: string;
 }
 
@@ -37,9 +45,8 @@ export const DROP_ATTR = 'data-drop';
  * The `null`s are the interesting half and each one is a judgement:
  *  - **tiles** take barn cards, not hand cards. A delivery is chosen, not carried.
  *  - **balloons** are freight moved by the Deliver action; nothing is placed on them.
- *  - **workers** are worked, hired or taken as a visit payoff - a card never lands
- *    on one. The card that buys a Worker's use goes on the Notice Board, which is
- *    the `rival` zone.
+ *  - **meeples** are wooden pieces in your own supply, spent by clicking them.
+ *    Nothing is placed on a meeple and nothing ever will be.
  *  - **decks** are where cards come FROM.
  *  - **hand** is the source itself.
  *
@@ -49,10 +56,10 @@ export const DROP_ATTR = 'data-drop';
  */
 export const DROP_FAMILIES = {
   buildings: 'building',
-  hosts: 'rival',
+  hosts: 'host',
   tiles: null,
   balloons: null,
-  workers: null,
+  meeples: null,
   decks: null,
   hand: null,
 } satisfies Record<keyof Live, DropKind | null>;
@@ -66,7 +73,7 @@ export function parseDrop(value: string | null | undefined): DropTarget | null {
   if (!value) return null;
   const at = value.indexOf(':');
   const kind = at === -1 ? value : value.slice(0, at);
-  if (kind !== 'building' && kind !== 'rival' && kind !== 'assembly') return null;
+  if (kind !== 'building' && kind !== 'host' && kind !== 'assembly') return null;
   return { kind, id: at === -1 ? '' : value.slice(at + 1) };
 }
 
@@ -83,7 +90,7 @@ export function dropAllowed(live: Live, intent: Intent, target: DropTarget, card
   switch (target.kind) {
     case 'building':
       return live.buildings.has(target.id);
-    case 'rival':
+    case 'host':
       return live.hosts.has(Number(target.id) as Seat);
     case 'assembly':
       return (intent.k === 'build' || intent.k === 'visit') && live.hand.has(card);
@@ -97,7 +104,7 @@ export function dropAllowed(live: Live, intent: Intent, target: DropTarget, card
  */
 export interface DropSink {
   building(card: CardId): void;
-  rival(seat: Seat): void;
+  host(seat: Seat): void;
   hold(card: CardId): void;
 }
 
@@ -112,8 +119,8 @@ export function dispatchDrop(sink: DropSink, target: DropTarget, card: CardId): 
     case 'building':
       sink.building(target.id);
       return;
-    case 'rival':
-      sink.rival(Number(target.id) as Seat);
+    case 'host':
+      sink.host(Number(target.id) as Seat);
       return;
     case 'assembly':
       // Mid-assembly `hold` means "add this to the price", which is what the

@@ -8,6 +8,7 @@
  */
 
 import type { GameData, Suit, WorkerAction } from '@gp/data';
+import { doorForSuit } from '@gp/data';
 import type { BuildingView, CardId, PlayerView, RivalView, Seat, WorkerState } from '@gp/engine';
 
 import { printedFace } from './printed';
@@ -16,12 +17,7 @@ import { printedFace } from './printed';
  * ⭐ THE THRESHOLD SEAM. The number the ENGINE enforces, which is not always the
  * one the card prints.
  *
- * `rules.economy.noticeBoardThreshold` overrides the Notice Board's printed 5
- * with 2 (ruled 20/08/2026) until the sheet catches up - ten cells, five boards,
- * both faces - at which point the knob goes back to null and the printed value
- * takes over with no other change.
- *
- * The engine applies that override at exactly one seam, `thresholdOf` in
+ * The engine applies its override at exactly one seam, `thresholdOf` in
  * query.ts, so that `isFull`, `canTakeCard` and `roomOn` cannot disagree about
  * when a farm is shut. **This is the interface's matching seam, and it exists
  * for the same reason.** Every surface that draws a threshold reads through
@@ -29,17 +25,18 @@ import { printedFace } from './printed';
  * rail, the inspector and the visit panel.
  *
  * It was not always so. Until 26/08/2026 the gauge and the fill bar read the
- * printed face directly, so the rail drew a neighbour's board as "1 / 5, visit
- * pays £2" while the engine considered it full at 2 and refused the visit. The
- * rail exists to answer "who should I visit"; it was answering it wrongly. An
- * interface may lag the sheet, but it may never contradict the engine about
- * whether a move is legal.
+ * printed face directly, so the rail drew a neighbour's board as "1 / 5" while
+ * the engine considered it full at 2 and refused the visit. The rail exists to
+ * answer "who should I visit"; it was answering it wrongly. An interface may lag
+ * the sheet, but it may never contradict the engine about whether a move is
+ * legal.
  *
- * ⚠️ ONE SURFACE DELIBERATELY DOES NOT READ THROUGH HERE: the number printed on
- * the card art itself (`Card.tsx`), which is generated from the spreadsheet and
- * still says 5. That is the sheet's debt to pay, not the renderer's - a card
- * that draws one number and the gauge beside it another is honest about the
- * disagreement, whereas a card face silently rewritten by a knob would hide it.
+ * ⭐ THE DRIFT IT WAS BUILT FOR IS CLOSED (v31): the sheet prints 2 on all five
+ * Notice Boards and `rules.economy.noticeBoardThreshold` is 2, so override and
+ * print now agree and this function is currently the identity. It stays because
+ * the knob stays - an overlay sweeping the threshold (2 versus 3 is a named arm
+ * in the v31 plan) moves the engine, and this is what moves the interface with
+ * it.
  */
 export function liveThreshold(data: GameData, card: CardId, printed: number | null): number | null {
   if (printed === null) return null;
@@ -53,7 +50,17 @@ export function liveThreshold(data: GameData, card: CardId, printed: number | nu
 export interface Farm {
   readonly seat: Seat;
   readonly suit: Suit;
-  readonly coins: number;
+  /**
+   * MEEPLES HELD, BY COLOUR (v31) - what replaced the coin count that used to
+   * sit here. Fully public, like the coins were: they are claimed face up off
+   * the island and sit in front of their owner, so knowing which free action a
+   * neighbour is holding is part of reading the table.
+   *
+   * It is NOT a wallet. Each is one specific action, spent only at the start of
+   * a turn, and it leaves the game when spent - so a surface that sums them into
+   * a single number is drawing something the rules do not have.
+   */
+  readonly meeples: Readonly<Record<Suit, number>>;
   readonly tableau: readonly BuildingView[];
   readonly receipts: readonly number[];
   readonly handCount: number;
@@ -67,7 +74,7 @@ export function farmOf(view: PlayerView, seat: Seat): Farm {
     return {
       seat,
       suit: view.you.suit,
-      coins: view.you.coins,
+      meeples: view.you.meeples,
       tableau: view.you.tableau,
       receipts: view.you.receipts,
       handCount: view.you.hand.length,
@@ -79,7 +86,7 @@ export function farmOf(view: PlayerView, seat: Seat): Farm {
   return {
     seat,
     suit: rival.suit,
-    coins: rival.coins,
+    meeples: rival.meeples,
     tableau: rival.tableau,
     receipts: rival.receipts,
     handCount: rival.handCount,
@@ -95,25 +102,40 @@ export function seatSuits(view: PlayerView): (Suit | undefined)[] {
   return suits;
 }
 
+/** Meeples held, as colour/count pairs with the empty colours dropped. */
+export function meepleTally(meeples: Readonly<Record<Suit, number>>): [Suit, number][] {
+  return (Object.entries(meeples) as [Suit, number][]).filter(([, n]) => n > 0);
+}
+
+export function meepleCount(meeples: Readonly<Record<Suit, number>>): number {
+  return meepleTally(meeples).reduce((sum, [, n]) => sum + n, 0);
+}
+
 export interface BoardState {
   readonly building: BuildingView;
   readonly filled: number;
   readonly threshold: number;
   readonly full: boolean;
-  /** What a visitor is paid for one card: the printed face decides. */
-  readonly payout: number;
-  /** Special Orders' two-card line, on the upgraded face only. */
-  readonly twoCard: number | null;
+  /**
+   * WHAT A CARD PLACED HERE BUYS: this farm's suit door, in one word. Since v31
+   * that is the whole payoff - no coins are minted, no wage is paid, and the
+   * visitor takes the action. It is therefore the only thing on a rail card that
+   * a visit decision actually turns on.
+   */
+  readonly action: WorkerAction;
+  readonly actionLabel: string;
+  /** The printed sentence, for a tooltip and the inspector. */
+  readonly actionText: string;
 }
 
 /**
- * A seat's FARMSTEAD: the card its suit power is printed on.
+ * A seat's FARMSTEAD: the card its end-game scorer is printed on.
  *
- * It is the only building in the game that is live from turn one, has no stack
- * and is never a target of anything - so nothing in the interface had ever had
- * to find it before. What wants it now is the reading region's idle state: the
- * suit power is the most-forgotten rule at the table, and a region that would
- * otherwise be an empty rectangle can spend its time saying what yours does.
+ * It is the only building in the game that has no stack and is never a target of
+ * anything - so nothing in the interface had ever had to find it before. What
+ * wants it is the reading region's idle state: since v31 the Farmstead prints
+ * *"Game end: 1 VP for each `<CROP>` card you have built"*, which is the standing
+ * reason to build your own colour and the rule a table forgets first.
  *
  * Null is a reachable answer, not padding - D14 can demolish a building - and
  * the caller falls back to the old hint rather than assuming.
@@ -126,64 +148,62 @@ export function farmsteadOf(data: GameData, tableau: readonly BuildingView[]): B
 }
 
 /**
- * A seat's Notice Board - under v14 the only visit target in the game.
+ * A seat's Notice Board - the only visit target in the game, and since v31 that
+ * includes visits from its OWN owner.
  *
  * Returns null rather than throwing when the seat has none. That is not
  * defensive padding: D14 can demolish a building, so a seat with no Notice
  * Board is a reachable position (ticket 30, where it hard-crashes the engine).
- * The interface must render that seat, not white-screen on it. D11 was the
- * second way in until 19/08/2026, when its build-on-top and the whole `covered`
- * zone were deleted.
+ * The interface must render that seat, not white-screen on it.
  */
 export function noticeBoardOf(data: GameData, farm: Farm): BoardState | null {
   const building = farm.tableau.find(
     (b) => data.cards.catalogue.find((c) => c.id === b.card)?.slot === 'noticeboard',
   );
   if (!building) return null;
-  const face = printedFace(data, building.card, building.upgraded);
+  const face = printedFace(data, building.card);
   // Through the seam, not off the face: this bar is what tells a player whether
   // a visit will be accepted, so it has to agree with the engine.
   const threshold = liveThreshold(data, building.card, face.threshold) ?? 0;
+  const door = doorOf(data, farm.suit);
   return {
     building,
     filled: building.stack.length,
     threshold,
     full: threshold > 0 && building.stack.length >= threshold,
-    payout: building.upgraded
-      ? data.rules.economy.visitPayout.upgraded
-      : data.rules.economy.visitPayout.base,
-    twoCard: building.upgraded ? data.rules.economy.visitPayout.twoCard : null,
+    action: door.action,
+    actionLabel: door.actionLabel,
+    actionText: door.actionText,
   };
 }
 
 /**
- * A Service as the interface needs it. The Working Week is gone (2026-08-10), so
- * there is no track to draw: what a player needs to see is what the Service
- * DOES, what it pays its owner when a rival buys it, and what it costs its owner
- * to run. The clog is already visible - the Service is an ordinary building in
- * the tableau with an ordinary stack.
+ * A SUIT'S DOOR, as the interface needs it (v31).
+ *
+ * There are no Services, no Working Week, no wage and no owner activation cost.
+ * A colour means exactly one thing now, and it means it in two places at once:
+ * it is the action that colour's Notice Board grants to whoever places a card on
+ * it, AND the action a MEEPLE of that colour performs when spent. One lookup for
+ * both, because a second one is a second thing to keep in step.
  */
-export interface WorkerTrack {
-  readonly worker: WorkerState;
+export interface Door {
+  readonly id: WorkerAction;
+  readonly action: WorkerAction;
+  /** Flavour: the old Service card's printed name. Nothing prints it now. */
   readonly name: string;
   readonly actionText: string;
   /**
-   * The action in ONE WORD, which is what the rail's compressed chip prints.
+   * The action in ONE WORD, which is what a rail chip, a meeple tooltip and the
+   * doors legend all print.
    *
-   * `actionText` is a printed sentence ("Build at a discount of 2. Cards of any
-   * crop may satisfy its crop requirements.") and a sentence does not compress -
-   * it wraps to three lines in a 196px rail and turns a neighbour's panel into a
-   * paragraph. But the FIRST question a visitor asks across three neighbours is
-   * only ever "which of the five actions is that one", and that fits in a word.
-   * The sentence is one click away in the inspector, which is the rail's
-   * standing rule for everything it cannot print at a readable size.
+   * `actionText` is a printed sentence ("Sow 1 card from your hand onto one of
+   * your buildings.") and a sentence does not compress - it wraps to three lines
+   * in a 196px rail and turns a neighbour's panel into a paragraph. The FIRST
+   * question anybody asks of a colour is only ever "which of the five actions is
+   * that one", and that fits in a word. The sentence is one hover away.
    */
   readonly actionLabel: string;
-  readonly linkedSuit: Suit;
-  /** Minted by the bank to the OWNER when a RIVAL places a card here. */
-  readonly wage: number;
-  /** Paid to the bank by the OWNER to activate it from their own bonus slot. */
-  readonly ownCost: number;
+  readonly colour: Suit;
 }
 
 /** The five actions, named as the turn bar names them. Keyed by the enum, so a
@@ -196,21 +216,33 @@ const ACTION_LABEL: Readonly<Record<WorkerAction, string>> = {
   build: 'Build',
 };
 
-export function workerTrack(data: GameData, worker: WorkerState): WorkerTrack {
-  const spec = data.workers.roster.find((w) => w.id === worker.id);
-  if (!spec) throw new Error(`Unknown Service ${worker.id}`);
+export function doorOf(data: GameData, colour: Suit): Door {
+  const spec = doorForSuit(data, colour);
+  if (!spec) throw new Error(`No door for ${colour}`);
   return {
-    worker,
+    id: spec.id,
+    action: spec.action,
     name: spec.name,
     actionText: spec.actionText,
     actionLabel: ACTION_LABEL[spec.action],
-    linkedSuit: spec.linkedSuit,
-    wage: data.workers.visitWage,
-    ownCost: data.workers.ownerActivationCost,
+    colour: spec.linkedSuit,
   };
 }
 
-export function workersOwnedBy(view: PlayerView, seat: Seat): WorkerState[] {
+/** All five doors in printed order, which is also the meeple key. */
+export function allDoors(data: GameData): Door[] {
+  return data.workers.roster.map((spec) => doorOf(data, spec.linkedSuit));
+}
+
+/** Which seat, if any, owns the board granting this colour's action. */
+export function doorOwner(view: PlayerView, colour: Suit): Seat | null {
+  const seats = seatSuits(view);
+  const seat = seats.findIndex((suit) => suit === colour);
+  return seat < 0 ? null : seat;
+}
+
+/** The board this seat owns, as a `WorkerState`. Kept for the doors legend. */
+export function boardsOwnedBy(view: PlayerView, seat: Seat): WorkerState[] {
   return view.fair.filter((w) => w.owner === seat);
 }
 
@@ -234,5 +266,5 @@ export function displayOrder(data: GameData, tableau: readonly BuildingView[]): 
   return [...tableau].sort((a, b) => rank(a) - rank(b));
 }
 
-/** Workers whose action a visitor could rent here, ordered as printed. */
-export const WORKER_ORDER: readonly WorkerAction[] = ['harvest', 'deliver', 'draw', 'sow', 'build'];
+/** The five colours in printed order. Doors, meeple key and legend all use it. */
+export const DOOR_ORDER: readonly WorkerAction[] = ['harvest', 'deliver', 'draw', 'sow', 'build'];

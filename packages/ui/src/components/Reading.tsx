@@ -14,11 +14,10 @@
  *   2. the cost, in words rather than a row of icons
  *   3. what you could do with it right now, off the live position
  *
- * The second face of an upgradable starter is folded in at the bottom rather
- * than left as the free-floating `zoom-other` paragraph it used to be. That
- * paragraph placed itself, and at 1366 "placing itself" meant printing across
- * the bottom of the card art; inside this block it is one more line in a column
- * that already knows how to run out of room.
+ * ⛔ THE SECOND-FACE PARAGRAPH IS GONE (v31). It printed "what does this become
+ * when I flip it" for the fifteen starters. Starters have one face, nothing
+ * flips, and there is no currency to flip it with - so the block is three parts
+ * rather than four and the column has that line back.
  *
  * WHAT IT WILL NOT DO. Part 3 is the only text on this screen a player will act
  * on without checking it, so it is silent wherever it cannot be certain: no
@@ -33,17 +32,20 @@ import type { GameData } from '@gp/data';
 import type { Play } from '../session/play';
 import { glossAbility, glossCost, glossNow } from '../view/moveText';
 import { printedFace } from '../view/printed';
-import { SUIT_META } from '../view/suits';
+import { maskedCardPhrase } from '../view/suits';
+
+/** "an Orchard card" -> "An Orchard card". The phrase opens a sentence here. */
+function sentenceCase(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
 
 export function Reading({
   data,
   id,
-  upgraded,
   play,
 }: {
   data: GameData;
   id: string;
-  upgraded: boolean;
   /** Absent on the read-only render path and in the rival inspector. */
   play?: Play | undefined;
 }) {
@@ -60,8 +62,8 @@ export function Reading({
     return (
       <div className="reading-gloss">
         <p className="gloss-masked">
-          {suit ? `A ${SUIT_META[suit].label} card.` : 'A card.'} Its crop is public; which card it
-          is stays hidden until it is played.
+          {sentenceCase(maskedCardPhrase(suit))}. Its crop is public; which card it is stays hidden
+          until it is played.
         </p>
       </div>
     );
@@ -70,8 +72,7 @@ export function Reading({
   const card = data.cards.catalogue.find((c) => c.id === id);
   if (!card) return null;
 
-  const face = printedFace(data, id, upgraded);
-  const other = card.faces ? printedFace(data, id, !upgraded) : null;
+  const face = printedFace(data, id);
 
   const terms = glossAbility(data, face.abilityText);
   const cost = glossCost(data, face);
@@ -104,15 +105,6 @@ export function Reading({
             <li key={line}>{line}</li>
           ))}
         </ul>
-      )}
-
-      {other && (
-        <p className="gloss-face">
-          <b>
-            {other.upgraded ? 'Upgraded' : 'Base'} face, {other.name}:
-          </b>{' '}
-          {other.abilityText}
-        </p>
       )}
     </div>
   );

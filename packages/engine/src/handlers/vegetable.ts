@@ -74,6 +74,7 @@ import type { DemandRef } from '../actions.js';
 import type { Fx } from '../fx.js';
 import { cardById, drawableSuits, player } from '../query.js';
 import type { BuildingState, CardId, GameState, Seat, TaskAnswer } from '../state.js';
+import { farmsteadHandler } from './farmstead.js';
 import type { CardHandler } from './types.js';
 
 const DEPOT_NAME = /\bDepot\b/;
@@ -159,108 +160,79 @@ function faceDownTargets(data: GameData, state: GameState): DemandRef[] {
 }
 
 /**
- * V1 Barn (starter) - "Hand size 5. When you build a DEPOT, Draw 2." /
- * upgraded "Hand size 7. When you build a DEPOT, Draw 2."
+ * V1 Barn (starter) - prints NOTHING (v31).
+ *
+ * ⛔ Both lines went: the hand size with the hand limit itself, and the build
+ * rider ("When you build a DEPOT, Draw 2") with the other four. It mattered more
+ * here than anywhere else - it was the main thing paying for flights, and the
+ * hand is what this suit is short of - so losing it is the single biggest change
+ * to Vegetable in v31 and the first place to look if the balloon layer goes
+ * unused. The upgraded face's freight refund had already gone on 19/08/2026,
+ * taking the suit's only use of the reclaimDiscard primitive with it; O17 The
+ * Fruit Basket is the primitive's caller now. *
+ * ⭐ THE HAND LIMIT CAME BACK ON 02/09/2026 AND THIS CARD DID NOT. The
+ * reinstated limit is a flat 12 for everybody, in `rules.turn.handLimit` and
+ * on the player aid; the Barn stays blank. A rule that applies to every seat
+ * is not a card value, which is the whole difference between the old shape and
+ * the new one - so nothing here should be un-deleted.
  */
 export const vegetableBarn: CardHandler = {
   difficulty: {
-    score: 2,
-    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
+    score: 1,
+    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'Identical in shape to W1 and O1 - three rebuilt suits now teach the same sentence with ' +
-      'one word changed. The printed hand size stays engine-read (handLimitOf off the current ' +
-      'face); what is new is the rider, and it is on BOTH faces deliberately, because on the ' +
-      'base face only, paying £2 to upgrade would delete the power. It fires on any build path ' +
-      '- the action, a Service, a card-granted build - because afterBuild is the one funnel ' +
-      'every landing goes through. A card-ability draw, so the Orchard modifier does not apply ' +
-      '(DL-47). It matters more here than in the other two suits: this is the main thing paying ' +
-      'for flights, and the hand is what the whole suit is short of. The old upgraded-face ' +
-      'freight refund ("return 1 Vegetable to barn") is GONE, and with it this suit\'s only use ' +
-      'of the reclaimDiscard primitive.',
-  },
-  on: {
-    afterBuild(fx, event, self) {
-      if (event.seat !== self.seat) return;
-      if (!isDepotCard(fx.data, event.card)) return;
-      drawN(fx, self.seat, self.card, 2);
-    },
+      'No behaviour, and no printed text to have behaviour about. Registered so that a Barn ' +
+      'with no entry reads as a deliberate blank rather than as a card nobody implemented.',
   },
 };
 
 /**
- * V2 Farmstead (starter) - "When you Deliver, you may first put 1 hand card into
- * your barn." / upgraded "When you Deliver, you may first put 1 deck card into
- * your barn."
+ * V2 Farmstead (starter) - "Game end: 1 VP for each Vegetable card you have
+ * built."
  *
- * (The sheet prints a double space in the base text. Left alone: the extract is
- * the source of truth and a whitespace fix is a sheet edit, not an engine one.)
+ * ⛔ THE DELIVERY HEAD IS GONE (v31), and with it `deliverHeadSize`,
+ * `deliverDeckHead`, `deckHeadCandidates`, `headCandidates`, `withHead` and the
+ * `head` / `deckHead` fields on every deliver option, move and task answer. It
+ * read "When you Deliver, you may FIRST put 1 card from your hand into your
+ * barn".
+ *
+ * TWO THINGS IT TAUGHT ARE WORTH CARRYING, because the next card that touches a
+ * delivery will meet both. THE WORD "FIRST" WAS THE WHOLE CARD: until 2026-08-09
+ * it fired on `afterDeliver`, so the card it moved could not help pay for the
+ * delivery that triggered it - you had to already be able to deliver in order to
+ * earn the fuel for the next delivery, which is a circle, and it is why the card
+ * was worth 1.5 VP a game in a suit that needed four. A suit power belongs
+ * UPSTREAM of that suit's bottleneck. And A HEAD HAD TO RIDE ON THE ANSWER
+ * rather than be re-derived at resolution, because it was frequently the only
+ * reason the payment was affordable; `deliverAnswers` shipped exactly that bug
+ * on the day the balloon heads landed.
+ *
+ * ⚠️ A stopgap `deckToBarn` task briefly lived in this handler, firing off
+ * `afterDeliver`, and was deleted the same day for the circle above. If a future
+ * pass is tempted to put a head back on a hook, that is why it cannot be.
  */
-export const vegetableFarmstead: CardHandler = {
-  difficulty: {
-    score: 3,
-    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
-    notes:
-      'THE OLD "When you Deliver, gain £1 / £2" IS GONE, and its deletion was a rules fix rather ' +
-      'than a balance one: it minted coins on a solitaire action, which the coin rule adopted ' +
-      'with the Wheat rebuild forbids outright (a card may only mint at the moment another ' +
-      'player acts). What replaces it moves a card instead of a coin. ' +
-      'THE WORD "FIRST" (2026-08-09, Dean) IS THE WHOLE CARD, AND MOST OF IT DOES NOT LIVE IN ' +
-      'THIS FILE. Until it was added, this handler pushed a handToBarn on afterDeliver - which ' +
-      'fires AFTER the payment - so the card it moved could not help pay for the delivery that ' +
-      'triggered it. You had to already be able to deliver in order to earn the fuel for the ' +
-      'next delivery, which is a circle, and it is why the card was worth 1.5 VP a game in a ' +
-      "suit that needed four. Wheat's Farmstead relaxes the harvest and Orchard's modifies the " +
-      "draw; both sit UPSTREAM of their suit's bottleneck and this one has to as well. " +
-      "The hand head is enumerated in actions.ts (deliverHeadSize / headCandidates / doDeliver's " +
-      '`head`), NOT here, because it has to be visible to option enumeration and to LEGALITY: ' +
-      'a Deliver that only becomes payable once a hand card is loaded has to be offered in the ' +
-      'first place. It composes with the wild substitution rather than duplicating it: one hand ' +
-      'card plus one spare barn card is a card of the crate. ' +
-      'TWO CHANGES ON 19/08/2026, one of them structural. ' +
-      '(1) THE TRIGGER WIDENED from "When you Deliver to the island" to "When you Deliver", so ' +
-      'the `event.island` guard that used to open this listener is GONE. A balloon move IS the ' +
-      'Deliver action (DL-12), so the card now fires on a flight as well as on an island claim - ' +
-      'every route, including V4 and V8 and the Deliver Service. That closes the old split where ' +
-      'V17 owned the flight trigger and this owned the island one; both hooks are now the same ' +
-      "hook, and `afterDeliver`'s `island` boolean is what the two ever differed on. " +
-      '(2) THE UPGRADED FACE IS RE-POINTED. The barn swap is DELETED outright - "swap 1 barn ' +
-      'card for the top card of any deck" was a recolouring power the wild substitution took ' +
-      'over on 8 August - and the deposit source moves from a HAND card to a DECK card. The two ' +
-      'faces are ALTERNATIVES and not cumulative, read literally off the printed text: base puts ' +
-      'a hand card in, upgraded puts a deck card in. That is what makes the flip worth £2 - a ' +
-      'deck card is free where a hand card is the scarcest resource the suit has - and it is why ' +
-      'the upgrade does not simply stack a second head on the first. ' +
-      'SO THIS HANDLER HAS NO BEHAVIOUR AT ALL, AND THAT IS CORRECT. Both faces are enumerated ' +
-      'in actions.ts and nowhere else: `deliverHeadSize` (1 on the base face, ⚠️ **0** on the ' +
-      'upgraded one - it does not load a hand card any more), `deliverDeckHead` / ' +
-      '`deckHeadCandidates` for the upgraded deck card, and the `head` / `deckHead` arguments ' +
-      'threaded through `deliverOptions`, `anyDeliverOption`, `doDeliver`, `balloonMoveOptions` ' +
-      'and `doMoveBalloon`. It has to live there because it must be visible to option ' +
-      'enumeration AND to LEGALITY: a Deliver that only becomes payable once a card is loaded ' +
-      'has to be offered in the first place. The deck head is enumerable with no information ' +
-      'leak, because A DECK IS A SUIT - the arriving crop is fully known and only the card is ' +
-      'not, and barn identity is inert anyway. ' +
-      '⚠️ A stopgap `deckToBarn` task briefly lived here, firing off `afterDeliver`. It was ' +
-      'deleted the same day: `afterDeliver` fires AFTER the payment, so the card it moved could ' +
-      'not help pay for the delivery that triggered it - the exact circle the word "first" ' +
-      'exists to break, and the same bug the 2026-08-09 change was made to fix. If a future ' +
-      'pass is tempted to put a head back on a hook, that is why it cannot be.',
-  },
-};
+export const vegetableFarmstead: CardHandler = farmsteadHandler('vegetable');
 
-/** V3 Notice Board (starter) - "VISITOR: Take £1 from bank OR ..." */
+/**
+ * V3 Notice Board (starter) - "VISITOR: place 1 card here, then Deliver."
+ * Threshold 2, wild activation.
+ */
 export const vegetableNoticeBoard: CardHandler = {
   difficulty: {
     score: 2,
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'No behaviour here, and untouched by the rebuild: the whole visit - fee placement, the ' +
-      'payoffs and the wage minting - is engine-level. Change 6 (the Notice Board absorbing the ' +
-      'Service) has landed in the SHEET and not in the engine, so the printed text on this card ' +
-      "is ahead of the code; that is change 6's ticket, not this one.",
+      'No behaviour here: the fee landing, the door action and the clog at threshold 2 are ' +
+      'all engine-level, and the door is the PLAIN Deliver - island or freight, since a ' +
+      'balloon move IS the Deliver action (DL-12). ' +
+      '⛔ Its coin payoff and its hand-card-into-the-barn rider are both gone (v31). ' +
+      '⚠️ IT IS THE DOOR MOST LIKELY TO BE DEAD FOR A VISITOR, and the engine rules that a ' +
+      'door which can do nothing is not offered: a seat with an empty barn and no movable ' +
+      'balloon simply is not shown this board. That is a real lockout - a seat can be shut ' +
+      "out of the bonus slot's interaction half entirely - and `bonusDraw` is what backstops " +
+      'it.',
   },
 };
 
@@ -753,30 +725,24 @@ export const distributionCenter: CardHandler = {
           (o) =>
             ({
               kind: 'card',
-              // ⚠️ BOTH heads ride on the answer or the spend is validated
-              // against a barn the cards never reached. This is a `card` payload
+              // ⛔ THE TWO HEADS ARE GONE WITH THE VEGETABLE FARMSTEAD (v31), and
+              // the warning they carried is kept because it will recur the next
+              // time anything rides on a delivery. This is a `card` payload
               // rather than the shared `deliver` answer, so it does NOT get the
-              // wiring in tasks.ts for free and has to carry it by hand - and
-              // `deckHead` was missed exactly that way when it landed, crashing
-              // roughly 4% of games with "no <crop> card left to spend" on a
-              // spend that was only ever affordable because a deck card was
+              // wiring in tasks.ts for free and has to carry every rider by
+              // hand - `deckHead` was missed exactly that way when it landed,
+              // crashing roughly 4% of games with "no <crop> card left to spend"
+              // on a spend that was only ever affordable because a deck card was
               // supposed to arrive first.
-              payload: {
-                tile: o.tile,
-                spend: o.spend,
-                ...(o.head ? { head: o.head } : {}),
-                ...(o.deckHead ? { deckHead: o.deckHead } : {}),
-              },
+              payload: { tile: o.tile, spend: o.spend },
             }) as TaskAnswer,
         );
       },
       resolve(fx, task, answer) {
         if (answer.kind !== 'card') throw new Error('sweepDeliver expects a card answer');
-        const { tile, spend, head, deckHead } = answer.payload as {
+        const { tile, spend } = answer.payload as {
           tile: string;
           spend: Partial<Record<Suit, number>>;
-          head?: CardId[];
-          deckHead?: Suit;
         };
         // "Every receipt" = every receipt THIS TILE has left (Dean, 19/08/2026).
         // Read off the live island rather than assumed, so the card takes 2 from
@@ -785,7 +751,7 @@ export const distributionCenter: CardHandler = {
         const target = fx.state.island.tiles.find((t) => t.tile === tile);
         if (!target) throw new Error(`Tile ${tile} is not in play`);
         const receipts = deliveriesPerTile(fx.data) - target.deliveredBy.length;
-        doDeliver(fx, task.pid, tile, spend, undefined, receipts, head, deckHead);
+        doDeliver(fx, task.pid, tile, spend, undefined, receipts);
         return true;
       },
     },
@@ -839,7 +805,7 @@ export const internationalPort: CardHandler = {
 
 /**
  * V16 The Market Signal Tower - "Whenever a neighbour moves a Balloon from your
- * Aerodrome, take £2."
+ * Aerodrome, Draw 1."
  */
 export const marketSignalTower: CardHandler = {
   difficulty: {
@@ -847,21 +813,23 @@ export const marketSignalTower: CardHandler = {
     verified: { prompts: false, crossPlayer: true, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
     notes:
-      'The second of the two cards in the suit that print a £, and like the first it needs a ' +
-      'neighbour: this pays for BEING RAIDED. Owner-scoped on the afterBalloonMove hook, guarded ' +
-      "both ways - the balloon left THIS seat's Aerodrome and somebody else took it - so it can " +
-      "never fire on its owner's own flight. crossPlayer: it mints for its owner mid a rival's " +
-      'turn. ' +
-      'Together with V19 and re-flying, it makes a parked balloon worth three different things ' +
-      'you can only have one of: 2 VP if you keep it, £2 if a neighbour comes for it, or a fresh ' +
-      'reward if you fly it out again. That triangle costs no rules at all. ' +
+      'It pays for BEING RAIDED, and since v31 it pays in cards (plan section 3.3). ' +
+      'Owner-scoped on the afterBalloonMove hook, guarded both ways - the balloon left THIS ' +
+      "seat's Aerodrome and somebody else took it - so it can never fire on its owner's own " +
+      "flight. crossPlayer: it fires for its owner mid a rival's turn, and it is now the " +
+      'ONLY place in the suit that happens, D17 and V15 having gone owner-scoped. ' +
+      'Together with V19 and re-flying, it makes a parked balloon worth three different ' +
+      'things you can only have one of: 2 VP if you keep it, a card if a neighbour comes for ' +
+      'it, or a fresh reward if you fly it out again. That triangle costs no rules at all. ' +
+      '⚠️ £2 became Draw 1, so in real terms the card got stronger: the raid now refunds ' +
+      'most of a flight rather than a fifth of one. ' +
       '⚠️ Assertion 12 (a12-balloon-raid) reports the score gap for raided seats, and this card ' +
       'plus V19 deliberately make being raided profitable. Re-read it before believing it.',
   },
   on: {
     afterBalloonMove(fx, event, self) {
       if (event.from !== self.seat || event.seat === self.seat) return;
-      fx.gainCoins(self.seat, 2, 'V16');
+      drawN(fx, self.seat, self.card, 1);
     },
   },
 };

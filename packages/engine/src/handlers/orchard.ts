@@ -24,7 +24,11 @@
  *      see/keep draw throws away - and they are mutually exclusive per card by
  *      construction, so it is one seam and not two. The rebuilt Farmstead gives
  *      that card to a neighbour (+£1 upgraded); O17 The Fruit Basket buys it
- *      into the barn for £1. This file contributes the O17 half as a one-line
+ *      into the barn for £1. ⛔ NEITHER HALF SURVIVES: the Farmstead is an
+ *      end-game scorer (v31) and O17 moved onto the BUILD PAYMENT and lost its
+ *      price, then gained a once-per-turn cap (v32). The seam itself is still in
+ *      the engine with no card declaring `divertsDiscard`. This file used to
+ *      contribute the O17 half as a one-line
  *      `divertsDiscard` declaration and nothing else.
  *   2. **The Farmstead is a keep, not a look.** `withDrawModifier` now returns
  *      see +1 / keep +1 on BOTH faces (the upgrade buys coins, not cards).
@@ -62,11 +66,12 @@
 
 import type { GameData, Suit } from '@gp/data';
 
-import { freeHandSpace, growOptions, handLimitOf } from '../actions.js';
+import { freeHandSpace, growOptions } from '../actions.js';
 import type { Fx } from '../fx.js';
 import { buildingOf, canTakeCard, cardById, drawableSuits, player } from '../query.js';
-import { doGrow } from '../runtime.js';
+import { doGrow, markFired } from '../runtime.js';
 import type { BuildingState, CardId, GameState, Seat, TaskAnswer } from '../state.js';
+import { farmsteadHandler } from './farmstead.js';
 import type { CardHandler, CustomTask } from './types.js';
 
 /**
@@ -98,12 +103,35 @@ function drawN(fx: Fx, pid: Seat, src: CardId, n: number): void {
   fx.pushTask({ t: 'draw', pid, src, see: n, keep: n, revealed: [] });
 }
 
+/**
+ * O14 The Conservatory's printed draw. Named rather than inlined because it is
+ * the card's one dial and the v32 ruling put it on the sheet: it used to be an
+ * engine reading of "a full hand" off `rules.setup.startingHand`, and it is a
+ * printed 4 now, so a change here is a card change and belongs on the sheet.
+ */
+const CONSERVATORY_DRAW = 4;
+
 /** Decks on the table with cards left - O15's "each deck". */
 function liveDecks(data: GameData, state: GameState): Suit[] {
   return drawableSuits(data, state).filter((s) => state.suitsInPlay.includes(s));
 }
 
-/** Rivals who could physically accept a gift right now (DL-63). */
+/**
+ * Rivals who could physically accept a gift right now (DL-63).
+ *
+ * ⭐ DL-63 IS LIVE AGAIN (02/09/2026). The rule is that a gift never forces an
+ * out-of-turn discard, so a rival already at their hand limit drops out of the
+ * list. v31 deleted the hand limit and this filter went moot with it - the file
+ * said "moot, not repealed", and named this as the one function that would have
+ * to learn about a cap again. It has. The reinstated limit is
+ * `rules.turn.handLimit`, one global number, so `freeHandSpace` answers for
+ * every seat off one rule rather than off five printed Barn faces.
+ *
+ * ⚠️ WITHOUT IT THE ORCHARD GIFTS STOP BEING GIFTS. A give to a rival already at
+ * 12 cards would cost them a card at their own turn boundary, which turns O6 and
+ * O9 from "your junk is their treasure" into a way to make a neighbour discard -
+ * a different card, and a much nastier one than the design asked for.
+ */
 function giftableSeats(data: GameData, state: GameState, pid: Seat, already: Seat[]): Seat[] {
   const out: Seat[] = [];
   for (let seat = 0; seat < state.players.length; seat++) {
@@ -115,70 +143,72 @@ function giftableSeats(data: GameData, state: GameState, pid: Seat, already: Sea
 }
 
 /**
- * O1 Barn (starter) - "Hand size 4. When you build an ORCHARD, Draw 2." /
- * upgraded "Hand size 7. When you build an ORCHARD, Draw 2."
+ * O1 Barn (starter) - prints NOTHING (v31).
+ *
+ * ⛔ Both lines went: the hand size with the hand limit itself, and the build
+ * rider ("When you build an ORCHARD, Draw 2") with the other four. This one was
+ * the biggest of the five - Draw 2 on the cheapest Tier 1 row in the game - and
+ * it is what made a 2-cost ORCHARD card-neutral to build and the 1-cost Apple
+ * card-POSITIVE. Losing it makes every ORCHARD card-negative to build, which is
+ * the number to watch in this suit after v31: the card tax is a tax on total
+ * cards again, not just on assembly. *
+ * ⭐ THE HAND LIMIT CAME BACK ON 02/09/2026 AND THIS CARD DID NOT. The
+ * reinstated limit is a flat 12 for everybody, in `rules.turn.handLimit` and
+ * on the player aid; the Barn stays blank. A rule that applies to every seat
+ * is not a card value, which is the whole difference between the old shape and
+ * the new one - so nothing here should be un-deleted.
  */
 export const orchardBarn: CardHandler = {
   difficulty: {
-    score: 2,
-    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
+    score: 1,
+    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'W1 with one word changed, and the same three readings. The printed hand size is ' +
-      'engine-read (handLimitOf off the current face). The rider is on BOTH faces ' +
-      'deliberately: without it, paying £2 to upgrade would DELETE the power. It fires on ' +
-      "any build path - the action, a Service, O8's granted build - because afterBuild is " +
-      'the one funnel every landing goes through. A card-ability draw, so the Farmstead ' +
-      'modifier does not apply (DL-47). It is what makes a 2-cost ORCHARD card-neutral to ' +
-      'build and the 1-cost Apple card-POSITIVE, so the card tax the design doc claimed is ' +
-      'now a tax on ASSEMBLY (holding two orchard cards at once out of a hand of 4), never ' +
-      'on total cards. The Barn cannot refund a BUILD ACTION, which is why O8 is the most ' +
-      'important Tier 1 in the suit.',
-  },
-  on: {
-    afterBuild(fx, event, self) {
-      if (event.seat !== self.seat) return;
-      if (!isOrchardCard(fx.data, event.card)) return;
-      drawN(fx, self.seat, self.card, 2);
-    },
+      'No behaviour, and no printed text to have behaviour about. Registered so that a Barn ' +
+      'with no entry reads as a deliberate blank rather than as a card nobody implemented.',
   },
 };
 
 /**
- * O2 Farmstead (starter) - "Your Draw is Draw 3, discard 1. Give the discarded
- * card to a neighbour." / upgraded "... and take £1 from the bank."
+ * O2 Farmstead (starter) - "Game end: 1 VP for each Orchard card you have built."
+ *
+ * ⛔ THE DRAW MODIFIER AND THE DRAW GIFT ARE BOTH GONE (v31), and this card had
+ * the most machinery of the five. `withDrawModifier` (query.ts) was the numbers
+ * half - see +1 and keep +1, applied where a Draw ACTION's numbers were set and
+ * deliberately never to card-ability draws (DL-47) - and `drawGiftPower` plus
+ * the `divert` task was the other half, "give the discarded card to a
+ * neighbour".
+ *
+ * TWO THINGS FROM IT ARE WORTH CARRYING. A draw modifier has to attach to the
+ * ACTION, or every card that prints the word "Draw" fires it. And the gift
+ * SCOPED ITSELF with no exception list: the base Draw was see 2 keep 1 so it had
+ * exactly one discard to give, a door's Draw kept everything so it had none, and
+ * the end-of-turn discard was not a draw - which closed the give-four-cards
+ * exploit for free. In v31 the base Draw keeps both cards, so there would have
+ * been nothing left to give in any case.
  */
-export const orchardFarmstead: CardHandler = {
-  difficulty: {
-    score: 4,
-    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: true, conditional: true, counts: false, interrupts: false },
-    notes:
-      'Behaviour lives in two engine seams, not this entry. (1) withDrawModifier (query.ts) ' +
-      'is the numbers half: see +1 AND keep +1, now on BOTH faces, which reproduces the ' +
-      'printed "Draw 3, discard 1" on the base action ((2,1)->(3,2)) and composes with the ' +
-      'Draw Service ((2,2)->(3,3)). (2) drawGiftPower + the `divert` task (tasks.ts) are the ' +
-      'discard half. THE WORDING SCOPES ITSELF and that is why there is no exception list: ' +
-      'a Draw 2 with keep 2 has no discard, so there is nothing to give; card-ability draws ' +
-      'bypass the modifier under DL-47; and the end-of-turn discard is not a draw, which ' +
-      'closes the four-cards-for-£4 exploit with no special case at all. The base face is ' +
-      'now strictly stronger than it was (keep 2 from turn 1), which is exactly why the ' +
-      'upgrade had to stop being a bigger number. ⚠️ The upgraded £1 is the number the ' +
-      'design flags as most likely wrong, at roughly £8-10 a game where seats currently end ' +
-      'with £1 - overlays/orchard-farmstead-coin.overlay.json is the knob that zeroes it.',
-  },
-};
+export const orchardFarmstead: CardHandler = farmsteadHandler('orchard');
 
-/** O3 Notice Board (starter) - "VISITOR: Take £1 from bank." / upgraded Special Orders. */
+/**
+ * O3 Notice Board (starter) - "VISITOR: place 1 card here, then Draw 3."
+ * Threshold 2, wild activation.
+ */
 export const orchardNoticeBoard: CardHandler = {
   difficulty: {
     score: 2,
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'No behaviour here: the whole visit - fee placement, all three payoffs (coin, ' +
-      "Service, the upgraded face's 2-cards-take-£3 mode) and the wage minting - is " +
-      'engine-level.',
+      'No behaviour here: the fee landing, the door action and the clog at threshold 2 are ' +
+      'all engine-level. ' +
+      '⭐ THIS IS THE ONE DOOR IN THE SET THAT IS NOT A PLAIN ACTION, AND THE EXCEPTION IS ' +
+      'LOAD-BEARING (workers.json, v31). The self-cancellation law: a visitor pays 1 card to ' +
+      'use a door, so a door whose action PRODUCES cards has to over-deliver or buying it is ' +
+      "net zero. The bonus slot's other option is a free Draw 1, so a plain Draw 2 door " +
+      'would cost 1 card and return 2 - exactly what the free option gives for nothing - and ' +
+      'would be STRICTLY WORSE than its own alternative. Draw 3 nets +2. Tidy it to 2 for ' +
+      'consistency with the other four and this door dies overnight, silently: nothing ' +
+      'errors, the traffic simply goes somewhere else.',
   },
 };
 
@@ -223,12 +253,11 @@ export const pearOrchard: CardHandler = {
 };
 
 /**
- * O6 The Cherry Orchard - "Draw 2, then give 1 card to a neighbour and take
- * £1."
+ * O6 The Cherry Orchard - "Draw 2, then give 1 card to a neighbour and Draw 1."
  *
- * v30 trimmed the wording only ("from your hand", "from the bank"): the card
- * has always given a hand card and always minted from the bank, so there is no
- * code change here and none was intended.
+ * ⛔ The £1 is a Draw 1 (v31, plan section 3.3). The shape is untouched: the
+ * payout still fires only when a card actually crosses the table, which is the
+ * suit's standing rule that a payoff needs somebody else at the table.
  */
 export const cherryOrchard: CardHandler = {
   difficulty: {
@@ -236,11 +265,15 @@ export const cherryOrchard: CardHandler = {
     verified: { prompts: true, crossPlayer: true, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
     notes:
-      'Converts into COINS, and like every £ in the rebuilt suit it needs somebody else at ' +
-      'the table - the coin rule the design sets itself. The draw resolves first, so the ' +
-      'card given may be one just drawn. Mandatory as printed, auto-skipping when no ' +
-      'neighbour has free hand space (DL-63: a gift never forces an out-of-turn discard) or ' +
-      'the hand is empty. The £1 mints only when the card actually crosses.',
+      'Converts into A CARD BACK, and like every payout in the rebuilt suit it needs ' +
+      'somebody else at the table. The Draw 2 resolves first, so the card given may be one ' +
+      'just drawn. Mandatory as printed, auto-skipping on an empty hand or an empty table. ' +
+      'The refund fires only when a card actually crosses. ' +
+      '⚠️ THE CONVERSION MADE IT NEARLY FREE. Giving a card and taking £1 was a real ' +
+      'trade at a table where seats ended on about £1; giving a card and drawing one is ' +
+      'card-neutral, so the cross-table half now costs its owner nothing at all and the ' +
+      'card is a plain Draw 2 with a rider that only ever helps. That is the shape the ' +
+      'gift-aversion research says players like and the balance sheet should distrust.',
   },
   activate(fx, self) {
     drawN(fx, self.seat, self.card, 2);
@@ -257,7 +290,7 @@ export const cherryOrchard: CardHandler = {
       resolve(fx, task, answer) {
         if (answer.kind !== 'card') throw new Error('give expects a card answer');
         fx.giveCard(task.pid, answer.payload.to as Seat, answer.payload.card as CardId);
-        fx.gainCoins(task.pid, 1, 'O6');
+        drawN(fx, task.pid, task.src, 1);
         return true;
       },
     },
@@ -466,7 +499,8 @@ export const fruitPress: CardHandler = {
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
       'The noun is CARDS IN YOUR HAND, and one of only three routes this suit has to the ' +
-      "barn (the others being O7's harvest and O17's £1 divert) - Orchard is rich in cards " +
+      "barn (the others being O7's harvest and O17's build-payment divert, which since v31 " +
+      'reaches build payments alone rather than every discard) - Orchard is rich in cards ' +
       'and deliberately poor in freight. Re-entrant handToBarn, optional so any number ' +
       'means any number including none. ⚠️ Overlaps W10 The Furrow at the same tier and ' +
       'price and is the BETTER card, being chosen and partial where the Furrow is total and ' +
@@ -572,7 +606,7 @@ export const seedBank: CardHandler = {
 
 /**
  * O14 The Conservatory - "SOW every card in your hand onto your buildings, then
- * draw until your hand is full."
+ * Draw 4."
  */
 export const conservatory: CardHandler = {
   difficulty: {
@@ -580,15 +614,33 @@ export const conservatory: CardHandler = {
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: true, counts: true, interrupts: false },
     notes:
-      'The quantifier is EVERY CARD IN YOUR HAND, and the hand size of 4 is the only thing ' +
-      'capping it. Mandatory while a placement exists (printed "SOW", not "you may"), so ' +
-      'the answer set is placements alone; the single forced `skip` that follows is the ' +
-      'refill, which cannot be inline because a task that offers nothing is dropped. The ' +
-      'refill is a card-ability draw - autoDraw, which by construction never fires ' +
-      'afterDrawKeep and so never reaches the divert seam. ⚠️ The card most likely to be ' +
-      'over budget at four placements plus a full refill for one action; the dial the ' +
-      "design names is the REFILL, not the sow. ⚠️ Its mass SOW crosses into Apiary's verb " +
-      "the way W11's Deliver crosses into Vegetable's - RULED YES on the same standard: " +
+      '⭐ RULED AND RETEXTED (Dean, v32). The card read "then draw until your hand is ' +
+      'full", which lost its referent when v31 deleted the hand limit and was the one ' +
+      'printed line in the catalogue with no rule behind it; the engine had to pick a ' +
+      'reading and refilled to `rules.setup.startingHand`. It now prints a flat DRAW 4. ' +
+      '⚠️ THIS IS NOT THE SAME NUMBER, AND THE DIFFERENCE IS THE WHOLE RULING. A refill ' +
+      'and a flat draw agree only when every card actually gets sown, because that empties ' +
+      'the hand and "back up to 4" and "draw 4" land on the same total. THEY DIVERGE WHEN ' +
+      'THE SOW CANNOT PLACE EVERYTHING - a farm whose buildings are full or clogged - where ' +
+      'a refill drew fewer, one for each card the sow could not shift, and a flat draw ' +
+      'draws four regardless. So THE CARD IS NOW STRONGEST IN EXACTLY THE POSITION WHERE ' +
+      'IT USED TO BE WEAKEST: a clogged farm can no longer punish it, and a seat with ' +
+      'nowhere at all to sow still takes four cards for one GROW. That is the case to ' +
+      'watch, and orchard.test.ts pins it. ' +
+      'The quantifier on the sow half is EVERY CARD IN YOUR HAND and nothing caps it. ' +
+      'Mandatory while a placement exists (printed "SOW", not "you may"), so the answer set ' +
+      'is placements alone; the single forced `skip` that follows is the draw, which cannot ' +
+      'be inline because a task that offers nothing is dropped. ' +
+      '⚠️ THE DRAW IS AN ORDINARY CARD-ABILITY DRAW NOW, not the old `autoDraw` refill. ' +
+      'That is deliberate: the printed word is "Draw", so it goes through the see-N/keep-N ' +
+      'task like every other Draw in the suit, the player picks the decks, and ' +
+      '`afterDrawKeep` fires. The old refill used autoDraw specifically so it could never ' +
+      'reach the divert seam, and that reason has gone twice over - a keep-everything draw ' +
+      'discards nothing, and O17 moved off the draw discard entirely. ' +
+      '⚠️ The card most likely to be over budget, at four placements plus four cards for ' +
+      'one action; the dial the design names is the DRAW, not the sow, and it is now a ' +
+      "printed number rather than an engine reading. ⚠️ Its mass SOW crosses into Apiary's " +
+      "verb the way W11's Deliver crosses into Vegetable's - RULED YES on the same standard: " +
       "Apiary's identity is CROSS-TABLE sow, not sow as such. " +
       'RETIRED THE ACTION SEAM 19/08/2026: it was an ACTION card whose standing move was ' +
       'the main action, and it is now an ordinary GROW building (threshold 1, wild ' +
@@ -597,8 +649,8 @@ export const conservatory: CardHandler = {
       'worry above is a little smaller. That payment fills O14 itself to its threshold of ' +
       '1, so O14 drops out of its own target list on the same activation - the sow is onto ' +
       'the REST of the farm, which is what the card is for. And the old `moves` gate ' +
-      '(could it sow, or could it refill?) is gone: GROW is offered by the generic ' +
-      'enumerator, and an activation that finds nothing to sow simply refills.',
+      '(could it sow, or could it draw?) is gone: GROW is offered by the generic ' +
+      'enumerator, and an activation that finds nothing to sow simply draws its four.',
   },
   activate(fx, self) {
     fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'sowAll', riders: {} });
@@ -611,14 +663,17 @@ export const conservatory: CardHandler = {
         const out = p.hand.flatMap((card) =>
           targets.map((b) => ({ kind: 'card', payload: { card, onto: b.card } }) as TaskAnswer),
         );
-        // Nothing left to sow: the one forced answer IS the refill.
+        // Nothing left to sow: the one forced answer IS the draw. It is reached
+        // either because the hand is empty (every card was sown) or because
+        // nothing on the farm can take another card - and since v32 those two
+        // routes pay the same four cards, which is the ruling.
         return out.length > 0 ? out : [{ kind: 'skip' }];
       },
       resolve(fx, task, answer) {
         if (answer.kind === 'skip') {
-          const limit = handLimitOf(fx.data, fx.state, task.pid);
-          const room = limit === null ? 0 : limit - player(fx.state, task.pid).hand.length;
-          fx.autoDraw(task.pid, Math.max(0, room));
+          // A FLAT FOUR, not a refill to four: the hand is not consulted. See
+          // the notes - this is the half of the card the v32 ruling changed.
+          drawN(fx, task.pid, task.src, CONSERVATORY_DRAW);
           return true;
         }
         if (answer.kind !== 'card') throw new Error('sowAll expects a card or skip answer');
@@ -635,7 +690,7 @@ export const conservatory: CardHandler = {
 
 /**
  * O15 The Garden Library - "Draw the top card of each deck. You may give a card
- * to every other player and gain £1 per card given."
+ * to every other player and Draw 1 per card given."
  */
 export const gardenLibrary: CardHandler = {
   difficulty: {
@@ -657,8 +712,12 @@ export const gardenLibrary: CardHandler = {
       'read "Draw" and expect the Orchard Farmstead modifier and the divert seam to fire on ' +
       'it, which would gift away the cards this card just took. A RULING IS OWED: either ' +
       'the sheet goes back to "Take", or somebody accepts a genuinely different card. ' +
-      'The £1 mints per card that actually crosses. A rival at their hand limit cannot ' +
-      'receive (DL-63) and simply drops out, taking their £1 with them. ⚠️ Deck-top ' +
+      'The refund fires per card that actually crosses. ⚠️ ITS SELF-BALANCING PROPERTY IS ' +
+      'GONE WITH THE COIN, and that was its best one: two seats kept four cards and took ' +
+      '£1, four seats kept two and took £3, so the card was worth about the same at every ' +
+      'seat count. Paying a CARD per gift makes it exactly neutral instead - give one, draw ' +
+      'one - so the card is now "keep the top of every deck" at every seat count and the ' +
+      'give is free flavour. Re-read the give rate if the card runs hot. ⚠️ Deck-top ' +
       'pressure: this is the first card to cut if reshuffles per played deck climb. ' +
       'v30 (19/08/2026) made two changes here. The give became OPTIONAL ("you may"), so ' +
       'the skip answer - keep everything, mint nothing - is offered at EVERY step and not ' +
@@ -687,10 +746,11 @@ export const gardenLibrary: CardHandler = {
     //
     // ⚠️ It changes nothing observable TODAY, and that is worth writing down so
     // nobody "simplifies" it back. Nothing in the catalogue listens to
-    // `afterDrawKeep` yet, and O17 The Fruit Basket cannot fire because a draw
-    // that keeps everything discards nothing. The next card that keys off
-    // drawing will see this one; the old `takeDeckTop`-into-limbo shape would
-    // have been invisible to it.
+    // `afterDrawKeep` yet, and O17 The Fruit Basket cannot reach it for two
+    // independent reasons since v31 - a draw that keeps everything discards
+    // nothing, and O17 is not on the discard seam at all any more. The next card
+    // that keys off drawing will see this one; the old `takeDeckTop`-into-limbo
+    // shape would have been invisible to it.
     fx.pushTask({
       t: 'draw',
       pid: self.seat,
@@ -737,7 +797,11 @@ export const gardenLibrary: CardHandler = {
         // genuinely a card down. `passCard` is the divert seam's move, for a
         // card that never reached a hand at all.
         fx.giveCard(task.pid, to, card);
-        fx.gainCoins(task.pid, 1, 'O15');
+        // "Draw 1 per card given", paid one at a time as each gift lands. The
+        // draw task is APPENDED, so it resolves after the whole library task has
+        // finished handing cards out - a replacement card can therefore never be
+        // given away by the same activation that drew it.
+        drawN(fx, task.pid, task.src, 1);
         task.riders.cards = cards.filter((c) => c !== card);
         task.riders.given = [...((task.riders.given as Seat[]) ?? []), to];
         return (task.riders.cards as CardId[]).length === 0;
@@ -759,70 +823,194 @@ export const fruitStore: CardHandler = {
     notes:
       'THE MOST IMPORTANT SINGLE EDIT IN THE REBUILD, and it is a one-word guard flip: the ' +
       'card used to pay Orchard for BEING VISITED, on the suit whose entire measured ' +
-      'advantage is being visited. It now pays for GOING OUT. Fires on any visit the owner ' +
-      'MAKES - coin, Service or the 2-card Special Orders mode - once per visit, after the ' +
-      'fee lands and before the payoff. The draw is a choiceless own-suit-fallback autoDraw ' +
-      '(DL-67): no picker, no divert seam, no recursion. A Helping Hand repeat is not a ' +
-      'visit and never fires it. Under D1 this card is not an ORCHARD, and since the v30 ' +
-      'rename its name no longer claims to be one either.',
+      'advantage is being visited. It now pays for GOING OUT. Fires once per visit the ' +
+      'owner MAKES, after the fee lands and before the door action runs. The draw is a ' +
+      'choiceless own-suit-fallback autoDraw (DL-67): no picker, no divert seam, no ' +
+      'recursion. Under D1 this card is not an ORCHARD, and since the v30 rename its name ' +
+      'no longer claims to be one either. ' +
+      '⚠️ IT NOW GUARDS ON `event.self` (v31), like A17 The Smoke Pot. Self-visiting is ' +
+      'risk 2 of the whole pass, and a card that paid out on it would be paying its owner ' +
+      'for the SOLITAIRE half of the bonus slot - the exact shape every previous edition of ' +
+      'this game has had crowd the visit out.',
   },
   on: {
     afterVisit(fx, event, self) {
       if (event.visitor !== self.seat) return;
+      // "a NEIGHBOUR" - a self-visit is not one (v31). NEW GUARD, and it is a
+      // rule the card's own text always carried: before v31 a visitor and a host
+      // could not be the same seat, so the word did no work and needed no code.
+      // Without it this card would draw on every bonus slot its owner ever
+      // spends, with nobody else at the table involved at all.
+      if (event.self) return;
       fx.autoDraw(self.seat, 1);
     },
   },
 };
 
 /**
- * O17 The Fruit Basket - "Instead of discarding a card, you may pay £1 to put
- * it into your barn."
+ * O17 The Fruit Basket - "Once per turn, instead of discarding a card you spend,
+ * put it into your barn."
  *
- * ⚠️ v30 re-worded this from "Whenever you discard a card, you may pay £1 to
- * put it into your barn instead", and the v30 plan rules explicitly that the
- * rewording does NOT move the seam: it is the same moment, the same funnel and
- * the same one-line declaration. "Instead of discarding" reads more naturally
- * at a table but scopes identically - every discard, including the end-of-turn
- * overflow, and never a barn spend.
+ * ⭐ THE CAP IS THE v32 RULING, AND DEAN TOOK IT INSTEAD OF A PRICE. v31 moved
+ * the card off the draw discard onto the build payment and deleted its £1, which
+ * left it free, mandatory in effect and taken every single time: a card in your
+ * barn is delivery fuel where a card in the discard is nothing, so "you may" was
+ * a prompt with one sensible answer. The plan named the alternative price
+ * ("discard a card from your hand", the only currency left); the ruling is a
+ * ONCE-PER-TURN LIMIT instead.
+ *
+ * ⛔ AND "YOU MAY" IS GONE WITH IT, DELIBERATELY. The decision the card now asks
+ * is WHICH spent card and ON WHICH BUILD, not whether - so the task offers no
+ * skip. "Which build" is a real question because a turn can hold more than one:
+ * D12 The Butter Factory builds two, D10 and D15 grant builds, and the Dairy
+ * door is a Build alongside your own main action. The cap goes to the FIRST
+ * build of the turn, so the way to spend it on a later one is to take that build
+ * first - the choice is expressed in build ORDER rather than in a decline.
+ *
+ * ⚠️ THE ONE ARGUMENT AGAINST THE MANDATORY READING, recorded here so it is not
+ * rediscovered: A CARD SENT TO THE BARN LEAVES THE SHARED DECK PERMANENTLY,
+ * where a discarded card comes back on the natural reshuffle. So a mandatory
+ * diversion is a small permanent drain on that suit's deck, every turn its owner
+ * builds. Almost certainly a non-issue at this scale, and arguably a feature
+ * given Orchard's identity is patient accumulation - but IF IT EVER BITES, THE
+ * FIX IS TO RESTORE THE OPTION, NOT TO CHANGE THE CAP.
+ *
+ * ⛔ WHAT IT USED TO BE. Before v31 it read "Instead of discarding a card, you
+ * may pay £1 to put it into your barn" and was one declaration and no code: the
+ * `divertsDiscard` flag put it on the shared DISCARD funnel (`discardOrDivert`,
+ * tasks.ts), where every discard reached it, the end-of-turn overflow included.
+ * "A card you SPEND" is a strictly narrower moment and a different funnel - a
+ * card thrown away by a see-N/keep-K draw is not spent, a card that pays for a
+ * Build is - so the flag came off and the card listens to its own builds.
+ *
+ * ⚠️ WHERE IT HOOKS, AND WHY IT IS NOT `divertOrDiscard` ITSELF.
+ * `divertOrDiscard` (actions.ts) is the build payment's one funnel and is
+ * exported as the seam this card wants, but it runs INSIDE `doBuild` with no
+ * wiring point a handler can reach, so this handler takes the next moment after
+ * it: `afterBuild`, with the payment already face up in the discard, and
+ * `fx.reclaimDiscard` to lift a card back out. That is the same route D5 The
+ * Churning Shed and D6 The Trading Shed already take to reach the cards a build
+ * spent, and `stillDiscarded` is the shared idea that keeps the three honest - a
+ * card another effect has already claimed is no longer in the pile.
+ *
+ * ⭐ THE TASK IS PREPENDED, which is the ordering rule `divertOrDiscard`'s own
+ * docblock states: a diversion is taken out FIRST, so the pile only ever holds
+ * what nobody else claimed, and ONE DESTINATION PER SPENT CARD falls out of the
+ * ordering instead of being asserted three times. Without the prepend a seat
+ * holding both O17 and D6 would resolve them in tableau order, which is not a
+ * rule anybody could read off the cards.
  */
 export const fruitBasket: CardHandler = {
   difficulty: {
     score: 3,
-    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: true, conditional: true, counts: false, interrupts: false },
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
     notes:
-      'One declaration and no code: the behaviour is the shared DIVERT SEAM (tasks.ts, the ' +
-      '`divert` task), which it shares with the rebuilt Farmstead because both act on the ' +
-      'same moment and are mutually exclusive per card by construction - a discard either ' +
-      'crosses the fence for +£1 or goes in your barn for -£1, a £2 swing on every Draw ' +
-      'with no new rule. Scoped at the discard funnel rather than at the draw, which is ' +
-      'what its text says and which is why it also reaches the END-OF-TURN overflow. ' +
-      'Deliberately NOT reached: barn spends, because paying the island is a spend and ' +
-      'buying a just-spent delivery card back would stop the barn being a dead end. THE ' +
-      'ONCE-PER-TURN CAP IS GONE - the wallet is the cap. ⚠️ A rich Orchard turns every ' +
-      'discard into freight and freight is 80% of a winning score; this is the uncapped ' +
-      'card the watch-list names.',
+      'ONCE PER TURN, on the shared `turn.firedThisTurn` guard through `markFired` ' +
+      '(runtime.ts, THE ONE WRITER of that list) - the same seam W16 The Granary was moved ' +
+      'onto by the 2026-08-12 rebalance, and not a private counter. ✅ Safe for a Power ' +
+      'card, CHECKED not assumed: `growOptions` and `activateTargets` filter on that list ' +
+      'but also require `activationType !== null`, and O17 has none; both sow-target ' +
+      'filters read it too, and O17 prints no threshold, so it was never a legal target to ' +
+      'remove in the first place. ' +
+      'The guard is checked AND set in the HOOK rather than at resolution, which is the ' +
+      'pattern the retired W2 rider used: the payment is verified non-empty first, and ' +
+      '`divertOrDiscard` has already put those cards face up in the discard by the time ' +
+      '`afterBuild` fires, so a task that burns the cap and then finds nothing is not a ' +
+      'reachable state. ' +
+      '⚠️ ITS SCOPE SHRANK TWICE. It used to reach EVERY discard, which is why the ' +
+      'watch-list called it "a rich Orchard turns every discard into freight"; v31 narrowed ' +
+      'it to build payments, and v32 caps it at one card a turn. Its owner is an Orchard ' +
+      'seat, which is not the suit that builds most, so expect it to fire once a turn at ' +
+      'the very best. ' +
+      'Deliberately NOT reached, and unchanged: barn spends. Paying the island is a spend ' +
+      'in the plain-English sense, and buying a just-spent delivery card back would stop ' +
+      'the barn being a dead end - the one rule that keeps freight from accelerating an ' +
+      'engine. Cards D7 lifts off a stack are not reached either: they are spent, but they ' +
+      'never go through the payment funnel this listens to.',
   },
-  divertsDiscard: true,
+  on: {
+    afterBuild(fx, event, self) {
+      if (event.seat !== self.seat) return;
+      if (event.payment.length === 0) return;
+      // ONCE PER TURN (v32). Checked and marked here, before the task is queued,
+      // so a second build in the same turn never even opens a prompt.
+      if (fx.state.turn.firedThisTurn.includes(self.card)) return;
+      markFired(fx, self.card);
+      fx.prependTask({
+        t: 'card',
+        pid: self.seat,
+        src: self.card,
+        kind: 'basket',
+        riders: { spent: [...event.payment] },
+      });
+    },
+  },
+  tasks: {
+    basket: {
+      answers(data, state, task) {
+        const spent = stillDiscarded(data, state, (task.riders.spent as CardId[]) ?? []);
+        // NO SKIP: the card prints "put", not "you may" (v32). With nothing left
+        // in the pile the list is empty and the drain loop drops the task, which
+        // is the same silent no-op a skip would have produced.
+        return spent.map((card) => ({ kind: 'card', payload: { card } }) as TaskAnswer);
+      },
+      resolve(fx, task, answer) {
+        if (answer.kind !== 'card') throw new Error('basket expects a card answer');
+        // The card is already in its suit's discard: `divertOrDiscard` put it
+        // there when the build paid. Lifting it back out is one primitive, and
+        // it emits `discardToBarn`, so the freight metrics see it.
+        fx.reclaimDiscard(task.pid, answer.payload.card as CardId);
+        // ONE card, and done. It was re-entrant until v32, walking the whole
+        // payment; the cap is a card a TURN, not a card a build.
+        return true;
+      },
+    },
+  },
 };
 
-/** O19 The Fruit Hall - "Game end: 1 VP for each empty space in your hand." */
+/**
+ * The payment cards still face up in their suits' discards - O17's live target
+ * set.
+ *
+ * The same helper dairy.ts writes for D5 and D6, duplicated here rather than
+ * shared across suit files on purpose: it is two lines, and a cross-suit import
+ * between two card files is a coupling neither suit asked for. The RULE it
+ * encodes is the shared thing, and it lives in `divertOrDiscard`'s docblock:
+ * only the face-up cards this build discarded, no reaching into the pile's
+ * history, and no reaching for one another effect has already claimed.
+ */
+function stillDiscarded(data: GameData, state: GameState, spent: readonly CardId[]): CardId[] {
+  return spent.filter((id) => state.discards[cardById(data, id).suit]?.includes(id) === true);
+}
+
+/** O19 The Fruit Hall - "Game end: 1 VP for every 3 cards in your hand." */
 export const fruitHall: CardHandler = {
   difficulty: {
     score: 1,
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: true },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
-      'Counts DID YOU CONVERT - the suit whose whole thesis is cards through your hands ' +
-      'rather than cards in it, scored. Empty spaces = the hand limit on the current Barn ' +
-      'face minus the hand, floored at 0. THE CAP IS THE HAND LIMIT, not a printed number: ' +
-      'the old "(max 4)" is gone, so an upgraded Barn raises the ceiling to 7 and the card ' +
-      'asks a harder question of the seat that bought the bigger hand.',
+      '⛔ REPLACED (v31, plan section 3.2). It read "1 VP for each EMPTY SPACE in your ' +
+      'hand" and lost its referent when the hand limit went, so the mirror image is the ' +
+      'honest replacement: it used to count DID YOU CONVERT and it now counts DID YOU ' +
+      "ACCUMULATE, which states Orchard's identity - patient accumulation - directly. " +
+      '⚠️ THE DIVISOR IS THE DIAL AND IT IS THE FIRST THING TO SWEEP (the plan says so). ' +
+      '⭐ RE-READ IT AGAINST THE HAND LIMIT, back at a flat 12 since 02/09/2026: this card ' +
+      'is now CAPPED AT 4 VP, because 12 cards is the most a seat can be holding when the ' +
+      'game is scored. That is a different card from the uncapped one v31 wrote, and the ' +
+      'divisor should be swept WITH rules.turn.handLimit rather than against it - the two ' +
+      'numbers set the ceiling together. It still scores on the ONE zone nothing forces a ' +
+      'player to empty. ' +
+      'It is also the exact inverse of what every other suit is doing at game end - ' +
+      'everybody else is trying to get cards out of their hand and onto the island - which ' +
+      'is both what makes it a real decision and what makes it dangerous. ' +
+      '⚠️ It pairs with O21 The Harvest Festival, which counts the same resource in ' +
+      "everybody ELSE'S hands at a divisor of 2. A seat holding both is paid for a table " +
+      'that never spends, and 3-versus-2 is the only thing separating the two cards.',
   },
-  gameEnd(data, state, seat) {
-    const limit = handLimitOf(data, state, seat);
-    if (limit === null) return 0;
-    return Math.max(0, limit - player(state, seat).hand.length);
+  gameEnd(_data, state, seat) {
+    return Math.floor(player(state, seat).hand.length / 3);
   },
 };
 

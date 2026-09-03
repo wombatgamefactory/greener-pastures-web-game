@@ -49,8 +49,18 @@ export function totalTurns(games: readonly GameMetrics[]): number {
   return sum(games.map((g) => sum(g.turnsBySeat)));
 }
 
+/** Every visit, self-visits included. Use `totalNeighbourVisits` for the hook. */
 export function totalVisits(games: readonly GameMetrics[]): number {
   return sum(games.map((g) => sum(g.visitsBySeat)));
+}
+
+/**
+ * Visits to SOMEBODY ELSE'S board. The only figure the hook may be measured
+ * with: a self-visit is a solitaire door bought with the interaction door's
+ * currency, so crediting it would report a healthy hook at a solitaire table.
+ */
+export function totalNeighbourVisits(games: readonly GameMetrics[]): number {
+  return sum(games.map((g) => sum(g.visitsBySeat) - sum(g.selfVisitsBySeat)));
 }
 
 export function totalBonusTurns(games: readonly GameMetrics[]): number {
@@ -72,7 +82,9 @@ export function visitsPerTurnBySuit(games: readonly GameMetrics[]): Map<Suit, nu
   const turns = new Map<Suit, number>();
   for (const g of games) {
     g.suits.forEach((suit, seat) => {
-      visits.set(suit, (visits.get(suit) ?? 0) + (g.visitsBySeat[seat] ?? 0));
+      // NEIGHBOUR visits only, for the reason `totalNeighbourVisits` states.
+      const mine = (g.visitsBySeat[seat] ?? 0) - (g.selfVisitsBySeat[seat] ?? 0);
+      visits.set(suit, (visits.get(suit) ?? 0) + mine);
       turns.set(suit, (turns.get(suit) ?? 0) + (g.turnsBySeat[seat] ?? 0));
     });
   }
@@ -82,16 +94,12 @@ export function visitsPerTurnBySuit(games: readonly GameMetrics[]): Map<Suit, nu
   return out;
 }
 
-/** Rival uses of every Worker, by worker id. */
-export function rivalUses(games: readonly GameMetrics[]): Map<string, number> {
-  const out = new Map<string, number>();
-  for (const g of games) {
-    for (const [worker, n] of Object.entries(g.rivalUsesByWorker)) {
-      out.set(worker, (out.get(worker) ?? 0) + n);
-    }
-  }
-  return out;
-}
+/**
+ * ⛔ `rivalUses` IS GONE (v31). It pooled rival uses of every Hired Worker by
+ * worker id, for the Draw Worker assertion. There are no Workers; the door mix
+ * (a07) folds `doorUsesByColour` itself, because it needs the three routes
+ * split and a shared helper would only have pooled them again.
+ */
 
 /** Every seat-game as a flat row - the unit most of the taste readings work in. */
 export interface SeatRow {

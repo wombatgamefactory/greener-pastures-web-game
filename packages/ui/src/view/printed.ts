@@ -5,40 +5,47 @@
  * works if the DOM card knows the same things InDesign knows, so this module
  * reproduces the sheet's `@` art columns as derivations rather than data:
  *
- *   @suit_icon   card_starter (base starter) else suit_<crop>   -> ticket 07's crop rule
+ *   @suit_icon   card_starter (starter) else suit_<crop>       -> ticket 07's crop rule
  *   @vp_icon     vp.png when the face prints VP
- *   @activation  suit_<activationType> | suit_wild              -> the GROW payment
- *   @convert     action_convert (Notice Board) | action_harvest  -> what full means
- *   @cost_icon   build | caboose | game_end                     -> by card type
- *   @cost1..6    one icon per unit of buildCost                 -> crop, wild, coin
- *                (the Farmstead's bar prints its MILESTONE instead: one own-crop
- *                icon per building that flips it free - ticket 46)
+ *   @activation  suit_<activationType> | suit_wild             -> the GROW payment
+ *   @convert     action_convert (Notice Board) | action_harvest -> what full means
+ *   @cost_icon   build | caboose | game_end                    -> by card type
+ *   @cost1..6    one icon per unit of buildCost                -> crop or wild
  *   @cost_bar    cost_bg_<n> where n is that icon count
  *   @top_bar     ability_bg_<suit>, on every card and always at the top
- *                (the printed template retired the bottom band; see below)
  *
- * The band moved on 2026-08-20. The sheet still carries a `@bottom_bar`
- * column, and it is still filled in for the Barn, the Farmstead, Power and
- * Endgame - but the printed template now lays BOTH columns' frame across the
- * top of the card, which is why the InDesign sheets show every ability in one
- * top band. There is therefore nothing left for a band POSITION to select, so
- * the field is gone rather than pinned to 'top': one band, one layer
- * (`ability_bg_<suit>`, byte-identical to `bottom_bg_<suit>` on disk), and no
- * second geometry for the CSS to keep in step.
+ * ⭐ v31 (02/09/2026). THREE THINGS LEFT THIS MODULE AT ONCE, and all three were
+ * the same rule seen from different sides:
+ *
+ *   - **`upgraded` is gone.** Starters have ONE printed face for the whole game
+ *     (design-changes-v31 §1.4), so `faceOf`'s two-face pick is a straight card
+ *     lookup and every caller drops its second argument. The renderer no longer
+ *     has a concept of a card with a back to flip to.
+ *   - **The coin cost icon is gone.** `CostIcon` is crop-or-wild. The 30 Power
+ *     and Endgame cards that printed two coins now print two crop icons of their
+ *     own suit, and they arrive here already shaped that way in `buildCost`.
+ *   - **A starter prints NO cost bar.** It used to print the GBP 2 that flipped
+ *     it. There is no flip and there is no currency, so `costIcons` returns
+ *     nothing for a card with no build cost, full stop. That is the whole of
+ *     "remove every upgrade affordance" at this layer: nothing downstream can
+ *     draw a price that does not exist.
+ *
+ * `handSize` went with the Barn's printed hand limit - there is no hand limit -
+ * so the Barn now prints nothing at all and is simply where cards ready for
+ * delivery are stored.
  *
  * Verified against the sheet for W1/W2/W3/W4/W7/W10/W13/W18/W19/V1/O2, and
  * asserted for all 105 cards by printed.test.ts - which is what stops the web
  * card and the printed card drifting apart.
  */
 
-import type { Card, CardFace, GameData, Suit } from '@gp/data';
+import type { Card, GameData, Suit } from '@gp/data';
 
-export type CostIcon = { kind: 'crop'; suit: Suit } | { kind: 'wild' } | { kind: 'coin' };
+export type CostIcon = { kind: 'crop'; suit: Suit } | { kind: 'wild' };
 
 export interface PrintedFace {
   readonly id: string;
   readonly suit: Suit;
-  readonly upgraded: boolean;
   readonly name: string;
   readonly abilityText: string;
   readonly printedVp: number;
@@ -46,51 +53,23 @@ export interface PrintedFace {
   readonly threshold: number | null;
   /** The suit a GROW payment must match; 'wild' = any card. Null when the face never activates. */
   readonly activation: Suit | 'wild' | null;
-  /** What reaching the threshold is for: harvest, or the Notice Board's visitor payout. */
+  /** What reaching the threshold is for: harvest, or the Notice Board's visitor door. */
   readonly convert: 'harvest' | 'convert' | null;
   /** The chip on the left: the generic starting-building icon, or the crop. */
   readonly identityIcon: 'starter' | Suit;
-  /** Empty when the face is not buildable (an upgraded starter is flipped, never bought). */
+  /** Empty when the face is not buildable, which since v31 is exactly the fifteen starters. */
   readonly cost: readonly CostIcon[];
   /** The icon at the head of the cost bar. Null when there is no cost bar. */
   readonly costIcon: 'build' | 'caboose' | 'game_end' | null;
-  /** Absolute printed hand size. Barn faces only. */
-  readonly handSize: number | null;
 }
 
-function faceOf(card: Card, upgraded: boolean): CardFace {
-  if (card.faces) return upgraded ? card.faces.upgraded : card.faces.starter;
-  return {
-    name: card.name,
-    printedVp: card.printedVp ?? 0,
-    threshold: card.threshold ?? null,
-    activationType: card.activationType ?? null,
-    abilityText: card.abilityText ?? null,
-  };
-}
-
-function costIcons(data: GameData, card: Card, upgraded: boolean): CostIcon[] {
-  // An upgraded starter face is flipped, not bought: the £2 belongs to the base
-  // face, which is the one printing the cost bar. The sheet agrees - every
-  // upgraded face leaves @cost1..6 empty.
-  if (upgraded) return [];
+function costIcons(card: Card): CostIcon[] {
   const cost = card.buildCost;
-  if (!cost) {
-    // A starter has no build cost, so its bar prints the £2 that flips it -
-    // all three of them since 2026-08-12, when the Farmstead's milestone bar
-    // (three own-crop icons, ticket 46) went with the free flip it printed.
-    // The per-card override falls back to the rule so a card and a knob cannot
-    // disagree, and a non-starter with no cost prints nothing.
-    // Change 6 (20/08/2026): there is no Service card, so the only reason to
-    // print nothing is a card with no slot at all.
-    if (!card.slot) return [];
-    const upgradeCost = card.upgradeCostCoins ?? data.rules.economy.upgradeCostCoins;
-    return Array.from({ length: upgradeCost }, () => ({ kind: 'coin' }) as CostIcon);
-  }
+  // A starter is never bought and never flipped (v31), so it prints no bar.
+  if (!cost) return [];
   return [
     ...Array.from({ length: cost.suit }, () => ({ kind: 'crop', suit: card.suit }) as CostIcon),
     ...Array.from({ length: cost.wild }, () => ({ kind: 'wild' }) as CostIcon),
-    ...Array.from({ length: cost.coins }, () => ({ kind: 'coin' }) as CostIcon),
   ];
 }
 
@@ -100,30 +79,27 @@ function costIconFor(card: Card): PrintedFace['costIcon'] {
   return 'build';
 }
 
-export function printedFace(data: GameData, id: string, upgraded = false): PrintedFace {
+export function printedFace(data: GameData, id: string): PrintedFace {
   const card = data.cards.catalogue.find((c) => c.id === id);
   if (!card) throw new Error(`Unknown card id ${id}`);
-  const face = faceOf(card, upgraded);
-  const activation = (face.activationType ?? null) as Suit | 'wild' | null;
-  const cost = costIcons(data, card, upgraded);
+  const activation = (card.activationType ?? null) as Suit | 'wild' | null;
+  const cost = costIcons(card);
   const isNoticeBoard = card.slot === 'noticeboard';
 
   return {
     id: card.id,
     suit: card.suit,
-    upgraded,
-    name: face.name,
-    abilityText: face.abilityText ?? '',
-    printedVp: face.printedVp,
-    threshold: face.threshold,
+    name: card.name,
+    abilityText: card.abilityText,
+    printedVp: card.printedVp,
+    threshold: card.threshold,
     activation,
-    convert: face.threshold === null ? null : isNoticeBoard ? 'convert' : 'harvest',
-    // Ticket 07's rule, and the reason the £2 upgrade sinks pull double duty:
-    // a base starter prints the generic icon and counts for no crop, an
-    // upgraded one prints the crop.
-    identityIcon: card.type === 'starter' && !upgraded ? 'starter' : card.suit,
+    convert: card.threshold === null ? null : isNoticeBoard ? 'convert' : 'harvest',
+    // Ticket 07's rule, unchanged by v31: a starter prints the generic
+    // starting-building icon and counts for no crop. What changed is that there
+    // is no longer a second face on which it printed the crop instead.
+    identityIcon: card.type === 'starter' ? 'starter' : card.suit,
     cost,
     costIcon: cost.length === 0 ? null : costIconFor(card),
-    handSize: face.handSize ?? null,
   };
 }

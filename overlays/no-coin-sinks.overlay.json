@@ -1,9 +1,0 @@
-{
-  "name": "no-coin-sinks",
-  "description": "Ticket 56's neither arm: both coin-to-card exchanges off - no £1 card buy, no £3 market. The pre-2026-08-03 economy, where coins spend only on hiring, the starter flips and the coin-priced cards. The floor both rules are measured against, and the arm that shows what the ticket 43 results (visits per turn, the supply lock, the shorter clock) owe to having ANY sink at all.",
-  "schemaVersion": 1,
-  "set": {
-    "rules.turn.buyCost": null,
-    "rules.turn.marketCost": null
-  }
-}

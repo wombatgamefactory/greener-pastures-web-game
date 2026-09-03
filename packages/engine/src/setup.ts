@@ -4,16 +4,23 @@
  * reproducibility contract starts at move zero.
  *
  * Setup follows rules.json and island.json: seats + 1 suit decks in play (one
- * passive), FOUR starters pre-built per seat (Barn, Farmstead, Notice Board and
- * the suit's Service), a hand and one face-down barn card from the own deck, the
- * island tiled by seat count with demand tokens dealt onto the crates, balloons
- * only when Vegetable is on the table.
+ * passive), THREE starters pre-built per seat (Barn, Farmstead, Notice Board),
+ * FOUR cards in hand off the seat's own deck and NOTHING IN THE BARN, the island
+ * tiled by seat count with demand tokens dealt onto the crates AND A MEEPLE
+ * DEALT FACE UP ONTO EVERY DELIVERY SPACE, balloons only when Vegetable is on
+ * the table.
+ *
+ * ⭐ v31: no coins, no starting barn card, and the meeple deal is new. The barn
+ * used to be seeded with 1 card; it now starts empty, because the barn is purely
+ * a place to keep cards ready for delivery and the game no longer has a hand
+ * limit for it to relieve.
  *
  * There is no Hiring Fair step any more: `state.fair` is written once here as the
  * suit-to-seat ownership index and never touched again.
  */
 
 import type { GameData, Suit } from '@gp/data';
+import { deliveriesPerTile } from '@gp/data';
 
 import { seedRng, shuffle } from './rng.js';
 import type { AerodromeState, CardId, GameState, IslandTileState, TurnState } from './state.js';
@@ -38,14 +45,40 @@ export interface NewGameOptions {
 export function freshTurn(): TurnState {
   return {
     actionSpent: false,
-    bonusSpent: false,
-    buyUsed: false,
+    bonusUsed: [],
     ending: false,
-    visit: null,
-    again: null,
     onceUsed: [],
     firedThisTurn: [],
   };
+}
+
+/** An empty meeple supply - all five colours present at zero, so nothing has to test for a missing key. */
+export function emptyMeeples(data: GameData): Record<Suit, number> {
+  return Object.fromEntries(data.cards.suits.map((s) => [s, 0])) as Record<Suit, number>;
+}
+
+/**
+ * THE MEEPLE BAG: `perColour` of each of the five colours, in colour order, for
+ * the caller to shuffle.
+ *
+ * ⚠️ ALL FIVE COLOURS REGARDLESS OF WHO IS AT THE TABLE. A meeple of a suit
+ * nobody is farming still works - the five door actions exist independently of
+ * which suits the seats chose - so the bag is not filtered by `suitsInPlay`, and
+ * a 2-seat game can and will deal meeples for actions no Notice Board on the
+ * table grants.
+ *
+ * ⚠️ THE BAG IS 25 AND A 4-SEAT BOARD NEEDS 24. That is a known property and not
+ * a bug to fix: at 4 seats the draw is near-exhaustive, so the island's colours
+ * are almost the whole bag every game and the variance lives entirely in WHICH
+ * space gets which colour; at 2 seats only 12 of 25 come out and the mix is
+ * genuinely random. An overlay arm is written for the pool composition, and
+ * "fixing" the 24-of-25 would silently remove the thing that arm measures.
+ */
+export function meeplePool(data: GameData): Suit[] {
+  const { perColour, colours } = data.island.meeples;
+  const pool: Suit[] = [];
+  for (const colour of colours) pool.push(...Array<Suit>(perColour).fill(colour));
+  return pool;
 }
 
 /**
@@ -87,23 +120,41 @@ export function demandPool(data: GameData, seats: number, suitsInPlay: Suit[]): 
   return pool;
 }
 
-/** Deal a token pool onto the in-play tiles' crates. Throws if the pool runs short. */
+/**
+ * Deal a demand-token pool onto the in-play tiles' crates and a MEEPLE POOL onto
+ * their delivery spaces. Both are dealt in the order given, so the caller
+ * shuffles; both throw if their pool runs short.
+ *
+ * The two deals are in one function because they are one physical setup step -
+ * you lay out the island, then seed it - and because a tile is not a legal tile
+ * state without both. `deliveriesPerTile(data)` meeples per tile: at 4 seats
+ * that is 12 tiles times 2, which is 24 of the bag's 25 (see `meeplePool`).
+ */
 export function buildIsland(
   data: GameData,
   seats: number,
   tokens: (Suit | 'wild')[],
+  meeples: Suit[],
 ): IslandTileState[] {
+  const crates = data.island.tileRule.crates;
+  const spaces = deliveriesPerTile(data) * data.island.meeples.perDeliverySpace;
   let next = 0;
+  let nextMeeple = 0;
   return islandTilesInPlay(data, seats).map((tileId) => {
-    const crates = data.island.tileRule.crates;
     if (next + crates > tokens.length) {
       throw new Error(
         `Demand pool ran out: ${tokens.length} tokens for at least ${next + crates} crates`,
       );
     }
+    if (nextMeeple + spaces > meeples.length) {
+      throw new Error(
+        `Meeple bag ran out: ${meeples.length} meeples for at least ${nextMeeple + spaces} delivery spaces`,
+      );
+    }
     return {
       tile: tileId,
       crates: tokens.slice(next, (next += crates)),
+      meeples: meeples.slice(nextMeeple, (nextMeeple += spaces)),
       deliveredBy: [],
     };
   });
@@ -184,20 +235,30 @@ export function newGame(data: GameData, opts: NewGameOptions): GameState {
     allSuits.map((s) => [s, [] as CardId[]]),
   ) as GameState['discards'];
 
-  const { startingHand, startingBarnCards, startingCoins } = data.rules.setup;
+  const { startingHand, startingBarnCards } = data.rules.setup;
   const players = playerSuits.map((suit) => ({
     suit,
-    coins: startingCoins,
     hand: decks[suit].splice(0, startingHand),
+    // 0 since v31. `splice(0, 0)` is a deliberate no-op rather than a branch, so
+    // the knob still works if a starting barn is ever wanted back.
     barn: decks[suit].splice(0, startingBarnCards),
+    meeples: emptyMeeples(data),
     tableau: data.cards.catalogue
       .filter((c) => c.suit === suit && c.type === 'starter' && c.enabled)
-      .map((c) => ({ card: c.id, stack: [] as CardId[], upgraded: false })),
+      .map((c) => ({ card: c.id, stack: [] as CardId[] })),
     receipts: [] as number[],
   }));
 
+  // Two shuffles, two bags, one island. The demand tokens are drawn from the
+  // in-play suits; the meeples are drawn from all five colours regardless of who
+  // is at the table - see `meeplePool`.
   const island = {
-    tiles: buildIsland(data, seats, shuffle(rng, demandPool(data, seats, suitsInPlay))),
+    tiles: buildIsland(
+      data,
+      seats,
+      shuffle(rng, demandPool(data, seats, suitsInPlay)),
+      shuffle(rng, meeplePool(data)),
+    ),
   };
   const aerodrome = suitsInPlay.includes('vegetable')
     ? parkBalloons(
@@ -220,10 +281,12 @@ export function newGame(data: GameData, opts: NewGameOptions): GameState {
     players,
     decks,
     discards,
-    // The Services, owned from setup by the suit that brought them and never
-    // changing hands. A Service whose suit is not at the table has no owner and
-    // is simply not in the game - which is how the table's menu of buyable
-    // actions comes to be decided by which suits the seats chose.
+    // The DOORS, owned from setup by the suit that brought them and never
+    // changing hands. A door whose suit is not at the table has no owner, so
+    // nobody's Notice Board grants that action - which is how the table's menu
+    // of buyable actions comes to be decided by which suits the seats chose.
+    // ⚠️ A MEEPLE of that colour still works: a meeple's action is looked up in
+    // `workers.roster`, never here.
     fair: data.workers.roster.map((w) => {
       const owner = playerSuits.indexOf(w.linkedSuit);
       return { id: w.id, owner: owner < 0 ? null : owner };

@@ -32,14 +32,19 @@ const BAR = {
   centreX: 972 / 1039,
 } as const;
 
+/*
+ * ⛔ THE COIN ICON IS GONE (v31). A cost bar printed `frame/coin_front` for each
+ * GBP in a build cost, and the 30 Power and Endgame cards printed two of them.
+ * Those cards now cost 2 cards of their own suit, so every icon a bar can print
+ * is a crop or a cornucopia - and a starter, which used to print the GBP 2 that
+ * flipped it, prints no bar at all.
+ */
 function costIconSrc(icon: CostIcon): string {
-  if (icon.kind === 'coin') return frame('coin_front');
   if (icon.kind === 'wild') return cropIcon('wild');
   return cropIcon(icon.suit);
 }
 
 function costIconAlt(icon: CostIcon): string {
-  if (icon.kind === 'coin') return '£1';
   if (icon.kind === 'wild') return 'any card';
   return `${SUIT_META[icon.suit].label} card`;
 }
@@ -95,14 +100,13 @@ export interface CardProps {
 
 export function Card({ face, width, zoomTier = false, children, className = '' }: CardProps) {
   const meta = SUIT_META[face.suit];
-  const src = zoomTier ? cardArtZoom(face.id, face.upgraded) : cardArt(face.id, face.upgraded);
+  const src = zoomTier ? cardArtZoom(face.id) : cardArt(face.id);
 
   return (
     <article
       className={`card ${className}`}
       style={{ width: `${width}px`, ['--suit-ink' as string]: meta.ink }}
       data-suit={face.suit}
-      data-upgraded={face.upgraded ? 'yes' : 'no'}
       aria-label={`${face.name}, ${meta.label}`}
     >
       <img className="card-art" src={src} alt="" loading="lazy" draggable={false} />

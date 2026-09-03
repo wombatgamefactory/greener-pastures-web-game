@@ -1,8 +1,0 @@
-{
-  "name": "orchard-farmstead-coin",
-  "description": "The upgraded Orchard Farmstead's £1 per card given away, zeroed. The rebuild's own risk list calls this the number most likely to be wrong: at roughly £8-10 a game in a game where seats currently end with about £1, it is a faucet that fires on almost every Draw and needs nothing from anybody except a neighbour with room in hand. It is also the one part of a data-and-handler rebuild an overlay CAN express cleanly, which is why it gets its own arm rather than a paragraph. Base is the rebuild with the £1 in, this cell is the rebuild with the gift free, and the delta is what the coin is worth. Two things to read, not one: end coins per player is the obvious half, but the half that decides it is whether the GIVEAWAY survives - if cards given to rivals per game barely moves, the coin was paying for something the seat was going to do anyway and should come off; if the giveaway collapses without it, the coin is the whole reason the power fires and the suit's signature is bought rather than chosen.",
-  "schemaVersion": 1,
-  "set": {
-    "rules.economy.giftDiscardCoins": 0
-  }
-}

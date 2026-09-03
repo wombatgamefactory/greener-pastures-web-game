@@ -1,8 +1,0 @@
-{
-  "name": "upgrade-main-action",
-  "description": "One quarter of turn-structure-v14, on its own: flipping a starter for GBP 2 goes back to costing the whole MAIN ACTION instead of a bonus slot. Everything else stays as shipped. The change it controls attacks a measured playtest failure - 2026-07-14 found 'nobody upgraded a starter and nobody bought an end-game card', every GBP 2 sink untouched - on the diagnosis that an upgrade costing a whole main action, in a game whose clock is cards, was never going to be taken. READ THE UPGRADE TAKE RATE AND ITS TIMING, separately from everything else. If starters still do not get flipped with the upgrade in the slot, THE DIAGNOSIS WAS WRONG and the price, not the slot, is the problem. Read the visit share second: the upgrade is a coin-priced solitaire option arriving in the interaction slot, which is the shape this project has already measured as pushing the visit down ('money is what buys solitaire in this game'). The bet is that a CAPPED faucet-drain cannot do what the market's uncapped one did - three starters, once each, then never again.",
-  "schemaVersion": 1,
-  "set": {
-    "rules.turn.upgradeIsBonus": false
-  }
-}

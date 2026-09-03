@@ -1,8 +1,0 @@
-{
-  "name": "own-service-two-v1",
-  "schemaVersion": 1,
-  "note": "The subtractive control for the County Show arms: raise the price of activating your OWN Service from GBP 1 to GBP 2 and change nothing else - no new card, no new mint, no upgraded face. The County Show arms found that every coin minted into the visit loop LOWERED visits, because a visit is bought with a card and the solitaire half of the bonus slot is bought with a coin, so money is what buys solitaire in this game. If that is right, then the cheapest way to raise visits is not to pay people to visit, it is to charge more for not visiting. This arm asks whether the hook can be fixed with one number that is already on the sheet, before anything is printed on the back of a Notice Board.",
-  "set": {
-    "workers.ownerActivationCost": 2
-  }
-}

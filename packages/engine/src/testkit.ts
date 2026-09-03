@@ -10,13 +10,21 @@
 import type { GameData, Suit } from '@gp/data';
 
 import { seedRng } from './rng.js';
-import { buildIsland, demandPool, freshTurn, parkBalloons } from './setup.js';
+import {
+  buildIsland,
+  demandPool,
+  emptyMeeples,
+  freshTurn,
+  meeplePool,
+  parkBalloons,
+} from './setup.js';
 import type { CardId, GameState, Seat } from './state.js';
 
 /**
- * A playable state: starters built, decks full (catalogue order), fair
- * unhired, island tiled with demand tokens dealt in pool order - everything
- * deterministic, nothing consumes the rng.
+ * A playable state: starters built, decks full (catalogue order), fair unhired,
+ * island tiled with demand tokens AND MEEPLES dealt in pool order - everything
+ * deterministic, nothing consumes the rng. Players start with an empty meeple
+ * supply; `giveMeeples` seeds one.
  */
 export function makeState(data: GameData, suits: Suit[]): GameState {
   const decks = Object.fromEntries(
@@ -48,18 +56,23 @@ export function makeState(data: GameData, suits: Suit[]): GameState {
     endTrigger: null,
     players: suits.map((suit) => ({
       suit,
-      coins: 0,
       hand: [],
       barn: [],
+      meeples: emptyMeeples(data),
       tableau: data.cards.catalogue
         .filter((c) => c.suit === suit && c.type === 'starter')
-        .map((c) => ({ card: c.id, stack: [], upgraded: false })),
+        .map((c) => ({ card: c.id, stack: [] })),
       receipts: [],
     })),
     decks,
     discards,
-    fair: data.workers.roster.map((w) => ({ id: w.id, owner: null, trackPos: 0 })),
-    island: { tiles: buildIsland(data, seats, demandPool(data, seats, poolSuits)) },
+    fair: data.workers.roster.map((w) => ({ id: w.id, owner: null })),
+    // The meeple bag UNSHUFFLED, so a scenario knows exactly which colour sits
+    // on which delivery space: colour order, `perColour` of each. Nothing here
+    // consumes the rng.
+    island: {
+      tiles: buildIsland(data, seats, demandPool(data, seats, poolSuits), meeplePool(data)),
+    },
     aerodrome: suits.includes('vegetable')
       ? parkBalloons(data.aerodrome.balloons.map((b) => b.id))
       : null,
@@ -89,17 +102,13 @@ export function dealTo(data: GameData, state: GameState, seat: Seat, ...cards: C
 /** Build a specific deck card straight into a tableau (no cost paid). */
 export function buildFor(data: GameData, state: GameState, seat: Seat, ...cards: CardId[]): void {
   for (const card of cards) {
-    state.players[seat]?.tableau.push({
-      card: pullFromDeck(data, state, card),
-      stack: [],
-      upgraded: false,
-    });
+    state.players[seat]?.tableau.push({ card: pullFromDeck(data, state, card), stack: [] });
   }
 }
 
 /**
- * Record a free delivery by `seat` on each tile - no barn cards spent, no coins
- * minted, no receipt VP on the player. This is how a scenario fills the island
+ * Record a free delivery by `seat` on each tile - no barn cards spent, no MEEPLE
+ * claimed, no receipt VP on the player. This is how a scenario fills the island
  * without playing the deliveries out.
  *
  * It DOES take the tile's delivery space, and since the flat island the space
@@ -118,14 +127,21 @@ export function deliveredAt(state: GameState, seat: Seat, ...tiles: string[]): v
 }
 
 /**
- * Force a Service's ownership. Setup already assigns every Service from its
- * suit, so this is only for tests that want an ownership the suits do not give -
- * it can no longer happen in a real game.
+ * Force a DOOR's ownership. Setup already assigns every door from its suit, so
+ * this is only for tests that want an ownership the suits do not give - it can
+ * no longer happen in a real game.
  */
 export function hireFor(state: GameState, seat: Seat, workerId: string): void {
   const w = state.fair.find((x) => x.id === workerId);
-  if (!w) throw new Error(`Unknown Service ${workerId}`);
+  if (!w) throw new Error(`Unknown door ${workerId}`);
   w.owner = seat;
+}
+
+/** Put meeples in a seat's supply, for scenarios that test the meeple phase. */
+export function giveMeeples(state: GameState, seat: Seat, colour: Suit, n = 1): void {
+  const p = state.players[seat];
+  if (!p) throw new Error(`No player in seat ${seat}`);
+  p.meeples[colour] += n;
 }
 
 /** Fill a building's stack from its own suit's deck top (testing clogs and harvests). */

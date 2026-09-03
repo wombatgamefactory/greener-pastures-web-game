@@ -56,8 +56,7 @@ import {
   tradingShed,
   versatileShed,
 } from './dairy.js';
-import { helpingHand } from './helpingHand.js';
-import { suitService } from './service.js';
+import { helpingHand, wireHelpingHand } from './helpingHand.js';
 import type { CardHandler } from './types.js';
 import {
   appleOrchard,
@@ -126,15 +125,17 @@ import {
   wheatNoticeBoard,
 } from './wheat.js';
 
+// ⛔ THE FIVE SERVICE STARTERS (W0/V0/O0/A0/D0) AND `service.ts` ARE GONE
+// (v31). The card stopped existing on 20/08/2026, when change 6 merged the door
+// into the Notice Board, but the five registrations outlived it because they
+// cost nothing to leave in place. They are removed now for the reason the
+// `actionMoves` tombstone in types.ts gives: a registration for a card the
+// catalogue does not carry reads as an oversight rather than as a decision, and
+// it is how a retired concept comes back one entry at a time with nobody
+// choosing to bring it. `registeredCards()` is asserted against the live
+// catalogue in vegetable.test.ts, which is what would have caught it.
 const HANDLERS = new Map<CardId, CardHandler>([
   // Wheat - the full suit (ticket 18).
-  // The five Services (2026-08-10). One shared entry: same card, five texts.
-  ['W0', suitService],
-  ['V0', suitService],
-  ['O0', suitService],
-  ['A0', suitService],
-  ['D0', suitService],
-
   ['W1', wheatBarn],
   ['W2', wheatFarmstead],
   ['W3', wheatNoticeBoard],
@@ -259,3 +260,10 @@ export function registeredCards(): CardId[] {
 // The hook bus lives in fx.ts (primitives fire hooks) but needs this lookup;
 // wiring it here avoids a value cycle between the two modules.
 wireHookBus(handlerFor);
+
+// The same pattern, for the same reason: `bonusSlotsFor` (actions.ts) has to ask
+// whether a seat has built A Helping Hand, and actions.ts may not import this
+// registry - helpingHand.ts imports actions.ts, so a value cycle between the two
+// would be fragile. Unwired, the printed one-bonus-a-turn rule stands on its own
+// and every test that never builds a Helping Hand behaves identically.
+wireHelpingHand();

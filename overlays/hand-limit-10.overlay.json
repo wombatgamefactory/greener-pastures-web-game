@@ -1,0 +1,8 @@
+{
+  "name": "hand-limit-10",
+  "description": "THE HAND LIMIT AT 10 (02/09/2026, RE-POINTED 03/09/2026). ⚠️ WRITTEN AS THE TIGHTER ARM AGAINST A SHIPPED 12 AND IT IS NOW A LOOSE ARM: the shipped limit is 7. Read every tightening sentence below as its opposite. The tighter arm that brackets a number nobody has measured: 12 was chosen as roughly three turns of accumulation above the 4-card opening hand, and there is no evidence behind it beyond the fact that it bounds the enumerator. This arm asks whether the limit should be doing more work than that. WHAT TO READ, IN THIS ORDER: (1) THE BONUS MIX, four ways - Draw 1 / visit a neighbour / visit yourself / slot unspent. The whole design argument for a hand limit is that it puts a DIMINISHING RETURN on drawing, and the free bonus Draw 1 is the move that a no-limit game made strictly dominant (it beat a neighbour visit 3:1 with the limit gone). If tightening to 10 moves the visit share up, the limit is pricing the hook and the shipped 12 is too loose. (2) The median and maximum hand size - if the max sits well under 10 the rule is inert at both values and the arm is measuring nothing. (3) The DISCARD rate at the turn boundary: a limit that bites every turn is a tax on drawing rather than a ceiling on hoarding, and a rising discard count is what that looks like. (4) Game length and the delivery clock, because cards are what a delivery is paid in and a tighter hand is a slower barn. A CAVEAT ON THE INSTRUMENT: the end-of-turn discard is a C(hand, excess) enumeration, so a tighter limit is also cheaper to run - do not read a speed difference between the arms as a design result.",
+  "schemaVersion": 1,
+  "set": {
+    "rules.turn.handLimit": 10
+  }
+}

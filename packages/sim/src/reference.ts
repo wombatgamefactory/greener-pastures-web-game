@@ -414,8 +414,107 @@ export const REFERENCE_V9: ReferenceConfig = {
   seed: 'reference-v9',
 };
 
+/**
+ * `reference-v10` - the current instrument, cut 02/09/2026 for v31.
+ *
+ * ⛔⛔ **NOTHING IN `reports/` IS COMPARABLE ACROSS THIS BOUNDARY.** Not a suit
+ * win rate, not a per-card economic, not a headline metric, not an assertion
+ * value. This is the largest re-baseline in the file's history and it is the
+ * only one where the reason is the GAME rather than the instrument.
+ *
+ * ## What changed, and why none of it can be held still
+ *
+ * v9 through v1 all measured a game with a CURRENCY in it. v31 deletes coins
+ * outright, and with them: the wage a visit minted, the GBP 2 starter upgrades
+ * and all fifteen upgraded faces, the market, the card buy, the coin tie-break
+ * and the coin-priced half of thirty Power and Endgame cards. It also deletes
+ * the hand limit, makes the plain Draw 2-keep-2, gives the bonus slot a free
+ * Draw 1 and a self-visit, and hands the island's reward over to MEEPLES - a
+ * stored free action that leaves the game when spent.
+ *
+ * Every previous minting in this file could say "sampling plan unchanged" or
+ * "only the evaluator changed", and the honest ones said which numbers survived
+ * and which did not. This one can say neither. The rules, the cards, the
+ * evaluator and the metric set all moved together, because they had to:
+ *
+ *   - **The bots** lost `coinWorth`, `coinGain`, `coinRunway`, `sinkGap` and
+ *     the hand-limit exemption in `handSpendCost`, and gained `meepleGain` /
+ *     `meepleSpend` (pinned to each other at 2.5), `meepleWorth`, a spend-meeple
+ *     act, a self-visit act priced apart from a visit, and a Farmstead own-suit
+ *     VP term. The evaluator also had to be taught to take a CLOSING WINDOW
+ *     before acting, because a term-table argmax always prefers the big main
+ *     action and would otherwise forfeit the bonus slot on every turn.
+ *   - **The metrics** lost the end-coin series, the wage income line, the
+ *     five-way bonus tally, the Farmstead flip timing and the per-card coin
+ *     column, and gained the meeple series, the door mix, actions resolved and
+ *     the four-way bonus tally.
+ *   - **The suite** retired four assertions whose subject no longer exists and
+ *     wrote three new ones (see `tombstones.ts` and `assertions/index.ts`).
+ *
+ * ## The two numbers with no measurement behind them
+ *
+ * Stated here rather than buried, because they are the instrument's own
+ * uncertainty and they sit directly under the newest assertion. `meepleGain`
+ * (2.5) and `MEEPLE_LATENT` (0.4) were pinned by argument. They are the
+ * HOARDING DIAL: raise them and the bots hoard meeples, lower them and they
+ * dump. Sweep both before drawing any conclusion about the meeple economy in
+ * either direction.
+ *
+ * ## What did NOT change
+ *
+ * The sampling plan, exactly - the same mixed profile pool one per seat from
+ * the run seed, the same stratification through every legal (player suits +
+ * neutral deck) combination, the same 2/3/4 seat counts, the same rotation of
+ * suits around the table by game index that v9 introduced. That is deliberate
+ * and is the one thing holding the two eras in the same shape: the sample is
+ * drawn the same way, so a v10 number is at least ASKING the same question of
+ * the same population. It is answering it about a different game.
+ */
+export const REFERENCE_V10: ReferenceConfig = {
+  ...REFERENCE_V9,
+  id: 'reference-v10',
+  description:
+    'The v31 game and the v31 evaluator. Sampling plan identical to reference-v9 - mixed scored ' +
+    'profiles one per seat from the run seed, suits stratified through every legal (player ' +
+    'suits + neutral deck) combination and rotated around the table by game index, 2/3/4 ' +
+    'seats - measuring a game with NO CURRENCY: coins, wages, starter upgrades, the market and ' +
+    'the card buy are all deleted, the island pays a meeple instead of a coin, the bonus slot ' +
+    'offers a free Draw 1 or a card on any Notice Board including your own, and the bots price ' +
+    'a meeple by the action it buys rather than a coin by what it can still be spent on. The ' +
+    'hand limit is a single global rules.turn.handLimit of 12, checked once at the turn ' +
+    'boundary, after v31 deleted the per-Barn one and the simulator measured what that cost. ' +
+    'NO NUMBER IN ANY EARLIER REPORT IS COMPARABLE.',
+  seed: 'reference-v10',
+};
+
+/**
+ * ⚠️ ONE THING INSIDE reference-v10 MOVED, AND THE REPORTS THAT STRADDLE IT SAY
+ * `REDUCED` IN THEIR FILENAMES.
+ *
+ * v31 shipped on 02/09/2026 with NO hand limit at all. The first run of this
+ * instrument measured what that did to the game tree - hands to 34 cards, one
+ * position enumerating 43,879 legal moves of which 43,845 were build payments,
+ * and a 2-seat game costing 91.5 seconds against reference-v9's 0.1 - and a
+ * single global `rules.turn.handLimit: 12` went back in the same day. The
+ * before-and-after is paired and measured: worst legal moves 116,535 -> 2,788,
+ * worst payment enumeration for one card 15,260 -> 495, median/max hand 11/41
+ * -> 7/16, seconds per 2-seat game 91.5 -> 0.91.
+ *
+ * The reference id did NOT move for it, and that is a deliberate call rather
+ * than an oversight: no reference-scale run ever completed in the no-limit
+ * tree, because none could. The only numbers taken there are the five
+ * `-REDUCED` reports of 02/09/2026, 8 games each at 2 seats, and their
+ * filenames carry the warning. Everything at n=1580 under this id is the
+ * limit-12 game.
+ *
+ * `rules.turn.handLimit: null` reproduces the no-limit tree exactly, as the
+ * control arm. It is not a cell in `overlays/hand-limit.sweep.json` on purpose:
+ * a ladder that includes it spends most of its wall time on the one rung the
+ * project has already rejected.
+ */
+
 /** The instrument every current number is defined against. */
-export const REFERENCE = REFERENCE_V9;
+export const REFERENCE = REFERENCE_V10;
 
 /**
  * The noise floor, measured once and quoted constantly.
@@ -460,43 +559,43 @@ export interface NoiseFloor {
  * obvious way to misuse this table. Where a metric reads 0 the honest floor is
  * one unit of whatever it counts.
  */
-export const NOISE_FLOOR: NoiseFloor | null = {
-  reference: 'reference-v9',
-  games: 500,
-  // RE-MEASURED 2026-08-19, after the v30 pass changed 31 cards, converted Tier 3
-  // and re-cut the turn. The floor is a function of the instrument, so it does
-  // not survive a change of that size; the 2026-08-08 values are gone rather
-  // than kept alongside, because two floors in one file is how the wrong one
-  // gets quoted. Most of it barely moved, which is itself worth knowing.
-  measured: '2026-08-19',
-  movement: {
-    'end coins per player': 0,
-    'barn at game end': 0,
-    'game length, rounds': 1,
-    'visits per turn': 0.003,
-    'unfinished games': 0.005,
-    'winning score': 1,
-    'last as % of winner': 0.003,
-    'tied top score': 0.004,
-    // Both added 2026-08-09 and unmeasured until now; the 2026-08-08 floor could
-    // not carry them because it predates them.
-    'deck reshuffles per game': 1,
-    'reshuffles, played crop': 0,
-    'seat deviation': 6.255,
-  },
-  // ⚠️ STILL NOT MEASURED, AND `--noise` CANNOT MEASURE IT: the five-way
-  // bonus-slot tally (visit-coin / visit-power / own-power / upgrade / SLOT
-  // UNSPENT) and every other assertion DETAIL line. `--noise` diffs the eleven
-  // metrics above and nothing else, so re-running it - as was done on
-  // 2026-08-19 - does NOT give the new columns a floor, and it is worth saying
-  // so here because the v30 handoff asked for exactly that and would have been
-  // satisfied by a run that never touched them. For the 19/08 reading the point
-  // was moot: the tally moved 38.1 points over ~150,000 paired turns, which is
-  // orders of magnitude clear of any plausible sampling variation. A tighter
-  // question would need two --watchlist runs on different seeds, diffed on the
-  // assertion values.
-};
 /**
+ * ⛔ NOT MEASURED FOR `reference-v10`, and deliberately left null rather than
+ * carried over.
+ *
+ * The floor is a function of the instrument, and reference-v10 changes the
+ * rules, the cards, the evaluator AND the metric set at once. Worse, three of
+ * the eleven metrics it was recorded against no longer exist under their old
+ * names - `end coins per player` is now `meeples held at game end`, and
+ * `actions per turn`, `meeple spend rate` and `self-visit share of visits` are
+ * new - so a carried-over table would silently quote a floor for a metric it
+ * never saw while leaving the three newest numbers with none at all. A stale
+ * floor is worse than an absent one, because it licenses a claim about a run it
+ * did not watch.
+ *
+ * The v9 values, for the record and NOT for use: end coins 0, barn at game end
+ * 0, game length 1 round, visits per turn 0.003, unfinished games 0.005,
+ * winning score 1, last as % of winner 0.003, tied top score 0.004, deck
+ * reshuffles 1, reshuffles per played crop 0, seat deviation 6.255 (measured
+ * 2026-08-19 at n=500 per arm).
+ *
+ * Two readings that survive the boundary because they are about the METHOD
+ * rather than about this game:
+ *
+ *   - **A movement of exactly 0 means "below this metric's own resolution",
+ *     never "noiseless".** Most of these are medians over discrete quantities,
+ *     so both arms land on the same integer and the difference is floored at
+ *     zero. Where a metric reads 0, the honest floor is one unit of whatever it
+ *     counts.
+ *   - **The seat figure is the WORST chair at any seat count**, a maximum over
+ *     nine chairs, so it runs high by construction. The +/-3 band is a design
+ *     target, not a detection threshold.
+ *
+ * Re-measure with `npm run sim -- --noise --n=<the reference n>` and paste the
+ * literal it prints back in here. A small run overstates the floor enormously
+ * and is worse than not measuring it at all.
+ */
+export const NOISE_FLOOR: NoiseFloor | null = null; /**
  * One stratified cell: the suits at the table.
  *
  * Ticket 07 put exactly (seats + 1) decks in play with unchosen crops out of

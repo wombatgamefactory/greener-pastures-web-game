@@ -4,7 +4,7 @@
  * physical table: your own hand ids; rivals' hands as counts; decks as counts;
  * every barn as anonymous tallies (identity dies on harvest, even for the
  * owner); building stacks as suits (identity dies on placement); discards,
- * coins, workers, island and receipts fully public.
+ * MEEPLES, doors, island and receipts fully public.
  *
  * Masked ids keep their suit letter (`W?`): the suit of a placed or drawn card
  * is public knowledge, its identity is not.
@@ -12,7 +12,7 @@
 
 import type { GameData, Suit } from '@gp/data';
 
-import { cardById } from './query.js';
+import { cardById, isCardId } from './query.js';
 import type {
   AerodromeState,
   CardId,
@@ -26,17 +26,27 @@ import type {
   WorkerState,
 } from './state.js';
 
-/** A building as everyone sees it: the stack collapses to suits. */
+/**
+ * A building as everyone sees it: the stack collapses to suits.
+ *
+ * `upgraded` left with the second printed faces (v31): every card shows one
+ * face, so there is nothing about a building's identity that a view has to
+ * carry beyond its card id.
+ */
 export interface BuildingView {
   card: CardId;
   stack: Suit[];
-  upgraded: boolean;
 }
 
 export interface RivalView {
   seat: Seat;
   suit: Suit;
-  coins: number;
+  /**
+   * MEEPLES HELD, BY COLOUR - fully public, like the coins they replaced. They
+   * are claimed face up off the island and sit in front of their owner, so
+   * knowing what free action a rival is holding is part of reading the table.
+   */
+  meeples: Record<Suit, number>;
   handCount: number;
   barnCount: number;
   tableau: BuildingView[];
@@ -52,7 +62,7 @@ export interface PlayerView {
   endTrigger: { seat: Seat } | null;
   you: {
     suit: Suit;
-    coins: number;
+    meeples: Record<Suit, number>;
     hand: CardId[];
     barn: Partial<Record<Suit, number>>;
     tableau: BuildingView[];
@@ -65,7 +75,7 @@ export interface PlayerView {
   island: IslandState;
   aerodrome: AerodromeState | null;
   turn: TurnState;
-  /** Pending tasks, with another seat's in-flight draw reveals masked. */
+  /** Pending tasks, with another seat's in-flight reveals and riders masked. */
   tasks: Task[];
   resume: Resume | null;
 }
@@ -76,34 +86,61 @@ export function maskCard(id: CardId): CardId {
 }
 
 /**
+ * Every card id anywhere inside a handler-defined rider bag, masked. Walks
+ * arrays and nested objects, leaves everything that is not an id alone.
+ */
+function maskRiders(data: GameData, riders: Record<string, unknown>): Record<string, unknown> {
+  const mask = (value: unknown): unknown => {
+    if (typeof value === 'string') return isCardId(data, value) ? maskCard(value) : value;
+    if (Array.isArray(value)) return value.map(mask);
+    if (value !== null && typeof value === 'object') {
+      return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, mask(v)]));
+    }
+    return value;
+  };
+  return Object.fromEntries(Object.entries(riders).map(([k, v]) => [k, mask(v)]));
+}
+
+/**
  * One pending task as a seat may see it: another seat's in-flight draw reveals
- * masked, and another seat's in-flight DIVERT cards with them, everything else
- * public.
+ * masked, another seat's in-flight DIVERT cards with them, and another seat's
+ * CARD-TASK RIDERS with both. Everything else public.
  *
  * A divert holds cards in limbo on their way to a discard (the Orchard
  * rebuild). Their owner has seen them - they came off that seat's own reveal or
  * out of its own hand, and the answers name them - so the owner's copy is
  * unmasked and everybody else's is not, exactly as a draw's reveal is.
  *
+ * ⚠️ THE THIRD BRANCH WAS MISSING FROM THE DAY CARD TASKS WERE ADDED, and it
+ * was a real leak rather than a tidy-up. `riders` is the escape hatch's
+ * untyped bag, and three cards fill it with card ids: D10 The Scout's Post and
+ * D15 The Grand Creamery hold DECK TOPS in limbo there, and O15 The Lending
+ * Library holds the ids it has just drawn INTO ITS OWNER'S HAND. Falling
+ * through to `{ ...task }` handed every one of those to every rival's
+ * PlayerView - deck order and a rival's hand, the two things this file exists
+ * to withhold - for as long as the task sat unanswered.
+ *
+ * THE WHOLE BAG IS MASKED, not a named field, because `riders` is defined by
+ * the handler and this seam cannot know which of its ids are public. The two
+ * failure modes are not symmetric: masking a public id (D5's `built`, a
+ * tableau card a rival can read off the table anyway) costs a rival's panel a
+ * name it can look up elsewhere, while leaking a private one cannot be undone.
+ * So the default is mask, and a future card that genuinely needs a rider read
+ * across the table should say so by putting it somewhere other than `riders`.
+ *
  * Shared by `viewFor` and the probe (ticket 50), which needed to hand a rollout
  * the task it stopped on. One function so the two can never redact differently.
  */
-export function redactTask(task: Task, seat: Seat): Task {
+export function redactTask(data: GameData, task: Task, seat: Seat): Task {
   if (task.pid === seat) return { ...task };
   if (task.t === 'draw') return { ...task, revealed: task.revealed.map(maskCard) };
   if (task.t === 'divert') return { ...task, cards: task.cards.map(maskCard) };
+  if (task.t === 'card') return { ...task, riders: maskRiders(data, task.riders) };
   return { ...task };
 }
 
-function buildingView(
-  data: GameData,
-  b: { card: CardId; stack: CardId[]; upgraded: boolean },
-): BuildingView {
-  return {
-    card: b.card,
-    stack: b.stack.map((id) => cardById(data, id).suit),
-    upgraded: b.upgraded,
-  };
+function buildingView(data: GameData, b: { card: CardId; stack: CardId[] }): BuildingView {
+  return { card: b.card, stack: b.stack.map((id) => cardById(data, id).suit) };
 }
 
 export function viewFor(data: GameData, state: GameState, seat: Seat): PlayerView {
@@ -125,7 +162,7 @@ export function viewFor(data: GameData, state: GameState, seat: Seat): PlayerVie
     endTrigger: state.endTrigger === null ? null : { ...state.endTrigger },
     you: {
       suit: you.suit,
-      coins: you.coins,
+      meeples: { ...you.meeples },
       hand: [...you.hand],
       barn,
       tableau: you.tableau.map((b) => buildingView(data, b)),
@@ -138,7 +175,7 @@ export function viewFor(data: GameData, state: GameState, seat: Seat): PlayerVie
             {
               seat: s,
               suit: p.suit,
-              coins: p.coins,
+              meeples: { ...p.meeples },
               handCount: p.hand.length,
               barnCount: p.barn.length,
               tableau: p.tableau.map((b) => buildingView(data, b)),
@@ -157,6 +194,9 @@ export function viewFor(data: GameData, state: GameState, seat: Seat): PlayerVie
       tiles: state.island.tiles.map((t) => ({
         ...t,
         crates: [...t.crates],
+        // Face up from setup, so no redaction: which colour the first and second
+        // deliverer to a tile will take is public all game.
+        meeples: [...t.meeples],
         deliveredBy: [...t.deliveredBy],
       })),
     },
@@ -166,10 +206,10 @@ export function viewFor(data: GameData, state: GameState, seat: Seat): PlayerVie
         : { balloons: state.aerodrome.balloons.map((b) => ({ ...b })) },
     turn: {
       ...state.turn,
-      visit: state.turn.visit === null ? null : { ...state.turn.visit },
+      bonusUsed: [...state.turn.bonusUsed],
       onceUsed: [...state.turn.onceUsed],
     },
-    tasks: state.tasks.map((task) => redactTask(task, seat)),
+    tasks: state.tasks.map((task) => redactTask(data, task, seat)),
     resume: state.resume,
   };
 }

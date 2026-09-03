@@ -31,7 +31,7 @@ export interface Difficulty {
   verified: {
     /** Pushes at least one task - the player gets asked something. */
     prompts: boolean;
-    /** Reads or writes another seat's zones or coins. */
+    /** Reads or writes another seat's zones. */
     crossPlayer: boolean;
     /** Contributes standing moves to legalMoves. */
     addsMoves: boolean;
@@ -114,24 +114,34 @@ export interface CardHandler {
   gameEnd?: (data: GameData, state: GameState, seat: Seat) => number;
 
   /**
-   * This card's own rate REPLACES the coin pity for its owner (the Bread Hall,
-   * per the reference). Scoring zeroes their `coinPity` line and the card's
-   * `gameEnd` returns the whole value of their coins.
+   * ⛔ `replacesCoinPity` STOOD HERE AND IS GONE (v31). It marked a card whose
+   * own rate REPLACED the coin pity for its owner - W21 The Bread Hall, "1 VP
+   * for every £2" - so that scoring zeroed the holder's pity line and let the
+   * card return the whole value of their coins.
    *
-   * It exists so the two lines reconcile on the scoring screen: encoded as a
-   * delta against the pity instead, the total was right but the card printed
-   * "1 VP for every £2" beside a number that was not the holder's coins over
-   * two, and no player could check it.
+   * The reading it encoded outlives the currency and is why it is recorded
+   * rather than simply deleted: a card that RESTATES a standing scoring rule at
+   * a different rate must REPLACE that rule, never stack a delta on top of it.
+   * Encoded as a delta the total was right, but the card printed a rate beside a
+   * number that was not its own arithmetic, and no player at a table could check
+   * the score. The coin pity went on 2026-08-03 and the currency on 02/09/2026;
+   * `ScoreBreakdown` lost both `coinPity` and `coinPityReplacedBy` with it, so
+   * this flag had no reader left.
    */
-  replacesCoinPity?: true;
 
   /**
-   * This built card lets its owner buy a card OUT of a discard for £1 (O17 The
-   * Fruit Basket). Declared here rather than named in `tasks.ts` for the same
-   * reason `replacesCoinPity` is: the divert seam is engine-level - it sits on
-   * the one funnel every discard goes through - and the engine may not know a
-   * card id. `handToBarn`'s free-hand-space and once-per-turn caps are
-   * deliberately absent: the wallet is the cap.
+   * This built card takes a card that was about to be DISCARDED into its owner's
+   * barn instead. Declared here rather than named in `tasks.ts` because the
+   * divert seam is engine-level - it sits on the one funnel every discard goes
+   * through - and the engine may not know a card id.
+   *
+   * ⚠️ NOTHING DECLARES IT SINCE v31. O17 The Fruit Basket was its only
+   * holder, and O17's v31 text scopes itself to "a card you SPEND", which is the
+   * BUILD PAYMENT funnel (`divertOrDiscard` in actions.ts) and not the draw's
+   * discard funnel (`discardOrDivert` in tasks.ts) that reads this flag. The
+   * declaration is kept because the seam it drives is kept: the next card that
+   * prints "whenever you discard" wires itself in here and needs no engine
+   * change at all.
    */
   divertsDiscard?: true;
 }

@@ -7,29 +7,23 @@
 import type { GameData } from '@gp/data';
 
 import {
-  apiaryGrowBonus,
   balloonMoveOptions,
+  bonusDrawOpen,
   buildOptions,
-  buyOptions,
-  doBuy,
   deliverOptions,
+  doBonusDraw,
   doBuild,
   doDeliver,
   doDraw,
-  doMarket,
   doMoveBalloon,
   doHarvestAction,
-  doUpgrade,
+  doSpendMeeple,
   doVisit,
-  doWorkOwn,
   growOptions,
-  marketOptions,
-  harvestAgainPower,
   harvestOptions,
   hasMainOption,
-  upgradeOptions,
+  meepleOptions,
   visitOptions,
-  workOwnOptions,
 } from './actions.js';
 import { Fx } from './fx.js';
 import { handlerFor } from './handlers/registry.js';
@@ -82,62 +76,39 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
       moves.push({ type: 'harvest', seat, building });
     }
     for (const o of deliverOptions(data, state, seat)) {
-      moves.push({
-        type: 'deliver',
-        seat,
-        tile: o.tile,
-        spend: o.spend,
-        ...(o.head ? { head: o.head } : {}),
-        ...(o.deckHead ? { deckHead: o.deckHead } : {}),
-      });
+      moves.push({ type: 'deliver', seat, tile: o.tile, spend: o.spend });
     }
     // The Deliver action's freight branch (DL-12): balloon moves.
     for (const o of balloonMoveOptions(data, state, seat)) {
-      moves.push({
-        type: 'moveBalloon',
-        seat,
-        balloon: o.balloon,
-        spend: o.spend,
-        ...(o.head ? { head: o.head } : {}),
-        ...(o.deckHead ? { deckHead: o.deckHead } : {}),
-      });
+      moves.push({ type: 'moveBalloon', seat, balloon: o.balloon, spend: o.spend });
     }
     // ⛔ This used to read "...and no Tier 3 ACTION card is live either": an
     // ACTION card was a main action too, so it had to suppress `pass` exactly as
     // the five printed actions do. The concept was retired on 19/08/2026 (all
     // fifteen are GROW buildings now), so `pass` is back to meaning what it
     // says: no main action of any kind is legal.
+    //
+    // ⚠️ It counts only the MAIN-action moves above, which is why the meeple and
+    // bonus blocks are appended after it. `pass` must stay available to a seat
+    // whose only remaining options are start-of-turn ones, or that seat has no
+    // legal move at all - the same trap the GBP 2 upgrade fell into on
+    // 19/08/2026.
     if (moves.length === 0) moves.push({ type: 'pass', seat });
-  } else if (turn.again === 'harvest') {
-    // The upgraded Wheat Farmstead's optional second harvest. `endTurn` is now
-    // the ONLY way to decline it: this used to say "or by taking a bonus-slot
-    // move first - the gate stays open", and that second path died on
-    // 19/08/2026 when the slot became start-of-turn only. After a harvest
-    // `actionSpent` is true, so `bonusOpen` is false and the slot is shut. The
-    // only ActionAgain left: the Dairy "you may BUILD again" is gone.
-    for (const building of harvestOptions(data, state, seat)) {
-      moves.push({ type: 'harvest', seat, building });
-    }
   }
 
-  // THE BONUS SLOT, and the free actions beside it.
+  // THE MEEPLE PHASE, then THE BONUS SLOT - the two start-of-turn windows, in
+  // the order they are played.
   //
-  // Every option below gates itself on `bonusOpen` (actions.ts), which since
-  // 19/08/2026 means "unspent AND the main action not yet taken" - so this
-  // block is offered at the START of the turn only, and empties the moment an
-  // action is taken. Nothing here needs to test the window itself.
-  for (const suit of buyOptions(data, state, seat)) moves.push({ type: 'buy', seat, suit });
+  // Every option below gates itself (`meepleOpen`, `bonusOpen`), so this block
+  // is offered at the start of the turn only and empties the moment an action is
+  // taken. Nothing here needs to test a window itself. Meeples come first
+  // because they are first in the rule and because taking the bonus SHUTS the
+  // meeple phase - a meeple may not be held back past it.
+  for (const colour of meepleOptions(data, state, seat)) {
+    moves.push({ type: 'spendMeeple', seat, colour });
+  }
+  if (bonusDrawOpen(data, state)) moves.push({ type: 'bonusDraw', seat });
   moves.push(...visitOptions(data, state, seat));
-  for (const suit of marketOptions(data, state, seat)) moves.push({ type: 'market', seat, suit });
-  for (const workerId of workOwnOptions(data, state, seat)) {
-    moves.push({ type: 'workOwnWorker', seat, workerId });
-  }
-  // Option 4 (Dean, 19/08/2026): flip a starter for £2. It used to cost the
-  // whole main action, which is why the 2026-07-14 table left every £2 sink
-  // untouched.
-  for (const card of upgradeOptions(data, state, seat)) {
-    moves.push({ type: 'upgrade', seat, card });
-  }
   moves.push(...standingMoves(data, state, seat));
   if (turn.actionSpent) moves.push({ type: 'endTurn', seat });
 
@@ -147,10 +118,12 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
 /**
  * The moves that SPEND the turn's one action.
  *
- * `upgrade` left this set on 19/08/2026 when the starter flip became the fourth
- * bonus-slot option; `doUpgrade` spends `bonusSpent` instead. It had to leave
- * `hasMainOption` at the same time, or a seat whose only remaining option was a
- * bonus would have had `pass` suppressed and no legal move at all.
+ * ⚠️ `bonusDraw`, `visit` and `spendMeeple` are deliberately NOT here, and none
+ * of them may ever be added: they spend `turn.bonusUsed` or a meeple in their
+ * own funnels. The GBP 2 upgrade taught the cost of getting this wrong - it left
+ * this set on 19/08/2026 and had to leave `hasMainOption` in the same edit, or a
+ * seat whose only remaining option was a bonus would have had `pass` suppressed
+ * and no legal move at all.
  */
 const MAIN_ACTIONS = new Set<Move['type']>([
   'draw',
@@ -163,27 +136,13 @@ const MAIN_ACTIONS = new Set<Move['type']>([
 ]);
 
 /**
- * Which half of the turn a task should resume into. The bonus-slot moves resume
- * as 'worker'; everything else is the main action. `upgrade` joined the bonus
- * family on 19/08/2026, and follows the knob that moved it so the paired
- * control arm resumes the way it always did.
+ * Which half of the turn a task should resume into. The start-of-turn moves -
+ * both bonus options and a spent meeple - resume as 'bonus'; everything else is
+ * the main action. ('bonus' was called 'worker' until v31, when the Services it
+ * named stopped existing.)
  */
-function resumeFor(data: GameData, type: Move['type']): Resume {
-  if (type === 'visit' || type === 'workOwnWorker') return 'worker';
-  if (type === 'upgrade' && data.rules.turn.upgradeIsBonus) return 'worker';
-  return 'main';
-}
-
-/**
- * Does this move spend the turn's one main action?
- *
- * `upgrade` is the one move whose answer is DATA, not shape: it is a bonus-slot
- * option under `rules.turn.upgradeIsBonus` (the rule since 19/08/2026, where
- * `doUpgrade` spends the slot instead) and a main action under the control arm.
- */
-function spendsAction(data: GameData, type: Move['type']): boolean {
-  if (type === 'upgrade') return !data.rules.turn.upgradeIsBonus;
-  return MAIN_ACTIONS.has(type);
+function resumeFor(type: Move['type']): Resume {
+  return type === 'visit' || type === 'bonusDraw' || type === 'spendMeeple' ? 'bonus' : 'main';
 }
 
 /** Apply one move. Throws on anything legalMoves would not offer. */
@@ -213,57 +172,44 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
   const fx = new Fx(data, draft, move.seat);
   const turn = draft.turn;
 
-  const againRepeat = turn.actionSpent && move.type === 'harvest' && turn.again === 'harvest';
-  if (spendsAction(data, move.type)) {
-    if (!turn.actionSpent) {
-      turn.actionSpent = true;
-    } else if (againRepeat) {
-      turn.again = null; // the one repeat, consumed
-    } else {
-      throw new Error('Main action already spent this turn');
-    }
+  if (MAIN_ACTIONS.has(move.type)) {
+    if (turn.actionSpent) throw new Error('Main action already spent this turn');
+    turn.actionSpent = true;
   }
 
   switch (move.type) {
     case 'draw':
       doDraw(fx, move.seat);
       break;
-    case 'buy':
-      doBuy(fx, move.seat, move.suit);
+    case 'bonusDraw':
+      doBonusDraw(fx, move.seat);
       break;
-    case 'market':
-      doMarket(fx, move.seat, move.suit);
+    case 'spendMeeple':
+      doSpendMeeple(fx, move.seat, move.colour);
       break;
     case 'build':
       // The plain printed rules: no mods. The Build ACTION carries no
       // substitution since 2026-08-10 - that is the Builder's Yard's to grant.
       doBuild(fx, move.seat, { card: move.card, payment: move.payment });
       break;
-    case 'upgrade':
-      doUpgrade(fx, move.seat, move.card);
-      break;
     case 'grow':
+      // ⛔ `apiaryGrowBonus` was called here, on the GROW ACTION branch and
+      // nowhere else, so that A5, A6 and A12 did not each trigger it. The card
+      // is gone (v31); the rule that an action-scoped effect belongs on this
+      // branch and never inside `doGrow` is not.
       doGrow(fx, move.seat, move.building, move.payment);
-      // The Apiary Farmstead ("When you GROW, Draw 1", plus the upgraded face's
-      // optional card into the barn) hangs off the GROW ACTION and nowhere
-      // else, so A5, A6 and A12 do not each trigger it - or The Honey Hut
-      // would draw three. Queued after the activation's own tasks.
-      apiaryGrowBonus(fx, move.seat);
       break;
     case 'harvest':
+      // ⛔ The ActionAgain arming stood here ("Harvest is 2 buildings", the
+      // upgraded Wheat Farmstead) and is gone with the whole gate - see the
+      // tombstone on `harvestAgainPower` in actions.ts.
       doHarvestAction(fx, move.seat, move.building);
-      // "Harvest is 2 buildings" (upgraded Wheat Farmstead): arm one optional
-      // repeat off the MAIN action only - a Worker's harvest never repeats,
-      // following the reference's afterMainAction gate.
-      if (!againRepeat && harvestAgainPower(data, draft, move.seat)) {
-        turn.again = 'harvest';
-      }
       break;
     case 'deliver':
-      doDeliver(fx, move.seat, move.tile, move.spend, undefined, 1, move.head, move.deckHead);
+      doDeliver(fx, move.seat, move.tile, move.spend);
       break;
     case 'moveBalloon':
-      doMoveBalloon(fx, move.seat, move.balloon, move.spend, move.head, move.deckHead);
+      doMoveBalloon(fx, move.seat, move.balloon, move.spend);
       break;
     case 'pass':
       // A standing move never blocks `pass` any more. It used to, for the Tier 3
@@ -275,16 +221,11 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
       }
       break;
     case 'visit':
-      doVisit(fx, move.seat, move.host, move.fee, move.payoff);
-      break;
-    case 'workOwnWorker':
-      doWorkOwn(fx, move.seat, move.workerId);
+      doVisit(fx, move.seat, move.host, move.fee);
       break;
     case 'endTurn':
       if (!turn.actionSpent) throw new Error('End turn requires the action spent (or passed)');
       turn.ending = true;
-      turn.visit = null;
-      turn.again = null;
       break;
     case 'cardMove': {
       const offered = standingMoves(data, draft, move.seat);
@@ -300,7 +241,7 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
       move satisfies never;
   }
 
-  if (draft.tasks.length > 0 && draft.resume === null) draft.resume = resumeFor(data, move.type);
+  if (draft.tasks.length > 0 && draft.resume === null) draft.resume = resumeFor(move.type);
   drainTasks(data, draft);
   settleTurn(data, draft, fx);
   return { state: draft, events: fx.events, audit: fx.audit };

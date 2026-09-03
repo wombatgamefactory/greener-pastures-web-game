@@ -3,9 +3,11 @@
  *
  * Every seat holds its three starters - Farmstead, Barn, Notice Board - for the
  * whole game. A great deal quietly rests on that: `noticeBoardOf` throws rather
- * than returning null, `handLimitOf` reads a missing Barn as NO hand limit, the
- * suit power lives on the Farmstead, and v14's Notice Board is the only visit
- * target in the game.
+ * than returning null, the Notice Board is the only visit target in the game,
+ * and since v31 the Farmstead is an end-game scorer that has to be on the table
+ * to score. (It used to also hold the seat's suit power, and the Barn used to
+ * print the hand limit; neither exists now, which makes the Notice Board the
+ * load-bearing one.)
  *
  * It was false until ticket 30. D14's demolish took `emptyBuildings` unfiltered,
  * so a seat could remove its own starters, and `noticeBoardOf` then threw from

@@ -16,9 +16,9 @@ import {
   demandTokenLayers,
   frame,
   islandTileArt,
+  doorArt,
   starterIcon,
   token,
-  workerArt,
 } from './art';
 
 const BASE: string = import.meta.env.BASE_URL;
@@ -29,7 +29,7 @@ describe('art paths', () => {
       cardArt('W7'),
       cardArtZoom('W7'),
       deckBack('wheat'),
-      workerArt('draw'),
+      doorArt('draw'),
       islandTileArt('A1'),
       token('coin'),
       frame('vp'),
@@ -41,7 +41,9 @@ describe('art paths', () => {
 
   it('lowercases card ids, because the sheet does not and a web server cares', () => {
     expect(cardArt('W7')).toBe(`${BASE}art/cards/w7.webp`);
-    expect(cardArt('A1', true)).toBe(`${BASE}art/cards/a1u.webp`);
+    // ⛔ NO `u` SUFFIX ANY MORE (v31). `cardArt('A1', true)` used to fetch
+    // `a1u.webp`, a starter's second printed face. Starters are single-faced, so
+    // the argument is gone and the fifteen `*u.webp` files have no reader.
     expect(cardArtZoom('D11')).toBe(`${BASE}art/cards/zoom/d11.webp`);
     expect(islandTileArt('C3')).toBe(`${BASE}art/island/c3.webp`);
   });

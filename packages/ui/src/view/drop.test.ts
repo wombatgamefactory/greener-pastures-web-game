@@ -19,15 +19,15 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { BASE_GAME_DATA as data, loadGameData } from '@gp/data';
-import type { GameData, Overlay, Suit } from '@gp/data';
+import { BASE_GAME_DATA as data } from '@gp/data';
+import type { GameData, Suit } from '@gp/data';
 import { apply, isOver, legalMoves, makeProber, newGame, viewFor } from '@gp/engine';
 import type { CardId, Move, PlayerView, Seat } from '@gp/engine';
 import { makePolicy, policyRng } from '@gp/bots';
 
 import { DROP_FAMILIES, dispatchDrop, dropAllowed, dropZone, parseDrop } from './drop';
 import type { DropSink, DropTarget } from './drop';
-import { clickBuilding, clickRival, liveTargets, visitPayoffs } from './intent';
+import { clickBuilding, clickHost, liveTargets, visitComplete } from './intent';
 import type { Intent } from './intent';
 
 interface Position {
@@ -60,19 +60,16 @@ function corpus(
   return out;
 }
 
-/**
- * Special Orders' 2-card line is null in the shipped data since the 2026-08-13
- * upgraded face replaced that card, so no corpus built from the real rules
- * contains a two-card visit and the drag that pays the second card would be
- * asserting over an empty set. The mode is still in the engine, so it keeps its
- * drag test - against a corpus built from an overlay that prints the line.
+/*
+ * ⛔ THE TWO-CARD CORPUS IS GONE (v31), and it is worth recording what it was
+ * for. Special Orders' upgraded Notice Board took two cards for GBP 3 and was
+ * the only route in the game that ever placed two cards in one visit; it was
+ * switched off on 2026-08-13, so the corpus here was rebuilt from an overlay
+ * that turned the line back on, purely so the drag that pays the SECOND card
+ * kept a test. v31 deletes the upgraded faces and the currency, and `visit.fee`
+ * is a single `CardId` rather than a list - so there is no second card, no
+ * assembly to drop it on and no overlay that could bring one back.
  */
-const twoCardData = loadGameData({
-  name: 'two-card-visit',
-  description: "guards the drag for Special Orders' switched-off 2-card mode",
-  schemaVersion: 1,
-  set: { 'rules.economy.visitPayout.twoCard': 3 },
-} as unknown as Overlay);
 
 // `drop-d` was added on 2026-08-08, not because anything broke but because the
 // wild substitution shifted these seeds toward Deliver and away from Sow, and
@@ -84,22 +81,32 @@ const positions = [
   ...corpus(['drop-d'], 3, ['apiary', 'vegetable', 'dairy']),
 ];
 
-/** The same shape, under rules that still print the 2-card line. */
-const twoCardPositions = [
-  ...corpus(['drop-a', 'drop-b'], 3, ['wheat', 'vegetable', 'orchard'], twoCardData),
-  ...corpus(['drop-c'], 4, ['wheat', 'vegetable', 'orchard', 'dairy'], twoCardData),
-];
-
 const held = (card: CardId): Intent => ({ k: 'hold', card });
+
+/**
+ * ⏱️ TWO CASES BELOW SWEEP THE WHOLE CORPUS AND NEED MORE THAN vitest's 5s.
+ *
+ * They are the widest assertions in the file - every visit and every grow in
+ * ~2,000 real positions, each one asking `liveTargets` what is lit - and the
+ * cost is the corpus, not the code under test: measured on 02/09/2026 there are
+ * ~12,500 grow moves across the four seeds, and a `liveTargets` on a mid-game
+ * position is a scan of a move list that can run to the hundreds.
+ *
+ * The budget is raised rather than the corpus cut. What these two catch is a
+ * move that is legal and simply cannot be dragged to - which throws nothing,
+ * looks like nothing, and is only ever caught by sweeping everything - so
+ * sampling would trade the whole point of the file for a faster run.
+ */
+const SWEEP = 120_000;
 
 function recorder(): { sink: DropSink; calls: string[] } {
   const calls: string[] = [];
   return {
     calls,
     sink: {
-      building: (card) => calls.push(`building:${card}`),
-      rival: (seat) => calls.push(`rival:${seat}`),
-      hold: (card) => calls.push(`hold:${card}`),
+      building: (card: CardId) => calls.push(`building:${card}`),
+      host: (seat: Seat) => calls.push(`host:${seat}`),
+      hold: (card: CardId) => calls.push(`hold:${card}`),
     },
   };
 }
@@ -116,7 +123,7 @@ describe('the drop vocabulary', () => {
       kind: 'building',
       id: 'W3',
     });
-    expect(parseDrop(dropZone('rival', 2)['data-drop'])).toEqual({ kind: 'rival', id: '2' });
+    expect(parseDrop(dropZone('host', 2)['data-drop'])).toEqual({ kind: 'host', id: '2' });
     expect(parseDrop(dropZone('assembly')['data-drop'])).toEqual({ kind: 'assembly', id: '' });
     expect(parseDrop(null)).toBeNull();
     expect(parseDrop('')).toBeNull();
@@ -127,7 +134,7 @@ describe('the drop vocabulary', () => {
   it('sends each kind to exactly one handler, the one the click path uses', () => {
     const cases: [DropTarget, string][] = [
       [{ kind: 'building', id: 'W3' }, 'building:W3'],
-      [{ kind: 'rival', id: '2' }, 'rival:2'],
+      [{ kind: 'host', id: '2' }, 'host:2'],
       [{ kind: 'assembly', id: '' }, 'hold:V9'],
     ];
     for (const [target, expected] of cases) {
@@ -139,62 +146,70 @@ describe('the drop vocabulary', () => {
 });
 
 describe('a drag reaches what a click reaches', () => {
-  it('every one-card visit, by dropping its fee on the host', () => {
-    let checked = 0;
-    for (const p of positions) {
-      for (const move of p.moves) {
-        if (move.type !== 'visit' || move.fee.length !== 1) continue;
-        const card = move.fee[0] as CardId;
-        const intent = held(card);
-        const live = liveTargets(p.view, p.moves, intent);
-        const target: DropTarget = { kind: 'rival', id: String(move.host) };
-        expect(dropAllowed(live, intent, target, card)).toBe(true);
-        // And the drop lands on the same panel, with the fee already paid.
-        const opened = clickRival(p.moves, intent, move.host);
-        expect(opened).toEqual({ k: 'visit', host: move.host, fee: [card] });
-        expect(visitPayoffs(p.moves, { host: move.host, fee: [card] })).toContain(move);
-        checked++;
+  /**
+   * ⭐ THE TWO HALVES OF THE VISIT ARE COUNTED SEPARATELY, for the same reason
+   * `a08-the-hook` counts them separately in the simulator: an assertion that
+   * pooled them could pass on neighbour visits alone while the self one was
+   * dead, and the self one is half the bonus slot.
+   *
+   * ⚠️ THEY ARE REACHED BY DIFFERENT GESTURES, AND THAT IS A DECISION RATHER
+   * THAN A GAP IN THE SWEEP. A neighbour's rail card is a whole drop zone, so a
+   * visit is a drag. Your OWN Notice Board is a building in your own tableau and
+   * its drop zone already means SOW - an element carries one `data-drop`, and
+   * silently changing what a drop on your own board meant would be the worst
+   * kind of overloading. So the self-visit is reached by a badge on that card,
+   * click-only, and this checks the path each one actually has.
+   */
+  it(
+    'every visit: a neighbour by dragging, your own board by its badge',
+    () => {
+      let checkedOut = 0;
+      let checkedSelf = 0;
+      for (const p of positions) {
+        for (const move of p.moves) {
+          if (move.type !== 'visit') continue;
+          const card = move.fee;
+          const intent = held(card);
+          const live = liveTargets(p.view, p.moves, intent);
+          if (move.host !== move.seat) {
+            const target: DropTarget = { kind: 'host', id: String(move.host) };
+            expect(dropAllowed(live, intent, target, card)).toBe(true);
+          }
+          // Both land on the same panel, with the fee already paid.
+          const opened = clickHost(p.view, p.moves, intent, move.host);
+          expect(opened).toEqual({ k: 'visit', host: move.host, fee: card });
+          expect(visitComplete(p.moves, { host: move.host, fee: card })).toBe(move);
+          if (move.host === move.seat) checkedSelf++;
+          else checkedOut++;
+        }
       }
-    }
-    // ~1,180 in this corpus; the floor is a collapse detector, not a target.
-    expect(checked).toBeGreaterThan(400);
-  });
+      // Floors are collapse detectors, not targets. Both must be non-trivial, or
+      // one half of the bonus slot could be unreachable and this would be green.
+      expect(checkedOut).toBeGreaterThan(200);
+      expect(checkedSelf).toBeGreaterThan(50);
+    },
+    SWEEP,
+  );
 
-  it('the second card of a two-card visit, by dropping it on the open panel', () => {
-    let checked = 0;
-    for (const p of twoCardPositions) {
-      for (const move of p.moves) {
-        if (move.type !== 'visit' || move.fee.length !== 2) continue;
-        const [first, second] = move.fee as [CardId, CardId];
-        const intent: Intent = { k: 'visit', host: move.host, fee: [first] };
-        const live = liveTargets(p.view, p.moves, intent);
-        expect(dropAllowed(live, intent, { kind: 'assembly', id: '' }, second)).toBe(true);
-        checked++;
+  it(
+    'every grow, by dropping the payment on the building',
+    () => {
+      let checked = 0;
+      for (const p of positions) {
+        for (const move of p.moves) {
+          if (move.type !== 'grow') continue;
+          const intent = held(move.payment);
+          const live = liveTargets(p.view, p.moves, intent);
+          const target: DropTarget = { kind: 'building', id: move.building };
+          expect(dropAllowed(live, intent, target, move.payment)).toBe(true);
+          expect(clickBuilding(p.moves, intent, move.building)).toContain(move);
+          checked++;
+        }
       }
-    }
-    // Special Orders needs an upgraded Notice Board with room for two, so this
-    // is the thinnest of the four (~250 here) - but it must not be empty, or
-    // the assertion is asserting nothing.
-    // Lowered from 50 with the zero wage (2026-08-10): coins are scarcer, so
-    // fewer Notice Boards get flipped and the 2-card visit is offered less often.
-    expect(checked).toBeGreaterThan(25);
-  });
-
-  it('every grow, by dropping the payment on the building', () => {
-    let checked = 0;
-    for (const p of positions) {
-      for (const move of p.moves) {
-        if (move.type !== 'grow') continue;
-        const intent = held(move.payment);
-        const live = liveTargets(p.view, p.moves, intent);
-        const target: DropTarget = { kind: 'building', id: move.building };
-        expect(dropAllowed(live, intent, target, move.payment)).toBe(true);
-        expect(clickBuilding(p.moves, intent, move.building)).toContain(move);
-        checked++;
-      }
-    }
-    expect(checked).toBeGreaterThan(80);
-  });
+      expect(checked).toBeGreaterThan(80);
+    },
+    SWEEP,
+  );
 
   it('every sow answer, by dropping the sown card on the building', () => {
     let checked = 0;
@@ -208,12 +223,10 @@ describe('a drag reaches what a click reaches', () => {
         checked++;
       }
     }
-    // NO floor, deliberately. The real assertion is the one inside the loop: every
-    // hand-sow that appears must be reachable by dragging. A floor was meaningful
-    // while sowing came out of a hand; since the suit Services (2026-08-10) the
-    // Apiary Service sows off a DECK TOP, so hand-sows are rare in sampled play and
-    // some samples hold none. `deckSow` has no drag affordance at all, which is a
-    // real UI gap and is tracked as one rather than asserted here.
+    // NO floor, deliberately. The real assertion is the one inside the loop:
+    // every hand-sow that appears must be reachable by dragging. `deckSow` has no
+    // drag affordance at all, which is a real UI gap and is tracked as one rather
+    // than asserted here.
     expect(checked).toBeGreaterThanOrEqual(0);
   });
 });
@@ -231,9 +244,10 @@ describe('a drop that would do nothing is refused', () => {
   it('refuses a seat that is not visitable', () => {
     const intent = held(card);
     const live = liveTargets(p.view, p.moves, intent);
-    const shut = ([0, 1, 2, 3] as Seat[]).find((s) => !live.hosts.has(s));
+    // Seat 9 is not at any table this corpus builds, so it can never be lit.
+    const shut = ([9, 0, 1, 2, 3] as Seat[]).find((s) => !live.hosts.has(s));
     expect(shut).toBeDefined();
-    expect(dropAllowed(live, intent, { kind: 'rival', id: String(shut) }, card)).toBe(false);
+    expect(dropAllowed(live, intent, { kind: 'host', id: String(shut) }, card)).toBe(false);
   });
 
   it('refuses the assembly zone when no assembly is open', () => {

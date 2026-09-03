@@ -1,9 +1,0 @@
-{
-  "name": "county-show-half-v1",
-  "schemaVersion": 1,
-  "note": "Dean's upgraded Notice Board (2026-08-13), modelled at HALF DOSE with the coins in the CORRECT POCKETS. The proposed card is: base face VISIT: gain GBP 1 or take the action; upgraded face VISIT: gain GBP 2, or gain GBP 1 AND take the action; and the OWNER gains GBP 1 either way. Net of the base face that is +GBP 2 minted per visit, split +GBP 1 to the visitor and +GBP 1 to the host, IDENTICALLY on both branches - so the card does not shift the visitor's coin-versus-action choice, it only makes the whole visit worth more. The engine is still change 5 (Notice Board and Service are separate buildings) and has no knob for the visitor's coin on the action branch, nor for the host's coin on the coin branch. What IS expressible is +GBP 1 to the visitor on the coin branch (visitPayout.base 1 -> 2) and +GBP 1 to the host on the action branch (visitWage 0 -> 1), which is exactly half the proposed mint, spread evenly over the two branches, with every coin landing in the pocket the card would put it in. Applied to EVERY board from turn 1, so this is the ceiling case: it asks what happens if the upgrade is universal and free, not what happens at the 1.4 flips a game the base run measures. Paired control is the base game.",
-  "set": {
-    "rules.economy.visitPayout.base": 2,
-    "workers.visitWage": 1
-  }
-}

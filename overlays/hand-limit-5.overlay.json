@@ -1,0 +1,8 @@
+{
+  "name": "hand-limit-5",
+  "description": "THE HAND LIMIT AT 5, AGAINST THE SHIPPED 7 (03/09/2026). The tight arm of the pair that brackets 7. Five is one card above the 4-card opening hand, so a seat is at its ceiling from the first Draw and every turn after it is a genuine choice about what to throw. That is the strongest form of the diminishing-return argument that took the limit from 12 to 7, and this arm is where it either shows up or is shown to be a story. READ, IN THIS ORDER: (1) THE BONUS MIX, four ways - Draw 1 / visit a neighbour / visit yourself / slot unspent. If tightening from 7 to 5 lifts the neighbour-visit share further, the limit is genuinely pricing the hook and 7 may still be loose. If it does not move, the mechanism is somewhere else and 7 should not be tightened again on this argument. (2) The DISCARD rate at the turn boundary: at 5 this is expected to bite nearly every turn, which is the definition of a tax rather than a ceiling - so a rising discard count alongside a flat visit share is this arm FAILING, not passing. (3) Game length and the delivery clock, because a hand that cannot hold freight is a barn that fills slower. (4) The build rate, which is the thing a 5-card hand can least afford. A CAVEAT ON THE INSTRUMENT: a tighter limit is also cheaper to enumerate, so do not read a speed difference between the arms as a design result.",
+  "schemaVersion": 1,
+  "set": {
+    "rules.turn.handLimit": 5
+  }
+}

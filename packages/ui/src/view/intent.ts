@@ -9,18 +9,20 @@
  * copy of it, so there is no shape to get subtly wrong.
  *
  * That also means this module needs no rules knowledge at all. It does not know
- * that a Notice Board takes one card or two, that a harvest needs a full
- * building, or that a tile takes two deliveries, not one - it knows that some
- * move in the list mentions this building, this seat, this tile. A rules
- * change that moves any of those lands in the engine and arrives here for free.
+ * that a Notice Board takes two cards, that a harvest needs a full building, or
+ * that a tile takes two deliveries - it knows that some move in the list
+ * mentions this building, this seat, this tile. A rules change that moves any of
+ * those lands in the engine and arrives here for free.
  *
- * Ticket 23's instruction - "build a visit, do not render the enumeration" -
- * generalises: `visitOffers` and `buildOffers` are progressive filters over
- * families too wide to render (C(hand,2) per host, one build option per way to
- * pay), and the panels drive them one click at a time.
+ * ⭐ v31 SHRANK THIS FILE, and every deletion is a rule deletion rather than a
+ * tidy: `clickWorker` went with the Services, the `buy` and `market` branches of
+ * `clickDeck` went with the currency that bought them, and the `upgrade` branch
+ * of `clickBuilding` went with the second printed faces. What arrived is smaller
+ * still - a visit now costs exactly ONE card, so the fee is a card or nothing
+ * and the progressive filter it used to need is gone.
  */
 
-import type { Suit, WorkerAction } from '@gp/data';
+import type { Suit } from '@gp/data';
 import type { CardId, Move, MoveType, PlayerView, Seat, TaskAnswer } from '@gp/engine';
 
 export type TaskMove = Extract<Move, { type: 'task' }>;
@@ -32,15 +34,21 @@ export type VisitMove = Extract<Move, { type: 'visit' }>;
  * `hold` is the fast path: a card is out of the hand and its destinations light
  * up. `arm` is the guided path: the action bar named a family and its targets
  * light up. `build` and `visit` are the two assemblies. `choose` is the generic
- * fallback for a click that matched more than one move - a spend, a payment, a
- * balloon's differing-suits cost.
+ * fallback for a click that matched more than one move.
+ *
+ * ⭐ `arm` CARRIES A `self` FLAG AND ONLY THE VISIT READS IT. A visit and a
+ * self-visit are the same move type with a different host, and they are opposite
+ * acts - one is the game's whole social hook, the other is solitaire. The turn
+ * bar therefore offers them as two separate buttons, and this is what tells the
+ * glow which set of doors that button armed. Undefined means "either", which is
+ * what any other family means by it.
  */
 export type Intent =
   | { k: 'idle' }
-  | { k: 'arm'; type: MoveType }
+  | { k: 'arm'; type: MoveType; self?: boolean }
   | { k: 'hold'; card: CardId }
   | { k: 'build'; draft: BuildDraft }
-  | { k: 'visit'; host: Seat; fee: readonly CardId[] }
+  | { k: 'visit'; host: Seat; fee: CardId | null }
   | { k: 'choose'; title: string; moves: readonly Move[] };
 
 export const IDLE: Intent = { k: 'idle' };
@@ -56,15 +64,28 @@ export function taskMoves(moves: readonly Move[]): TaskMove[] {
   return moves.filter((m): m is TaskMove => m.type === 'task');
 }
 
+/**
+ * ⚡ ONE PASS, NO INTERMEDIATE. This was `taskMoves(moves).flatMap(...)`, which
+ * allocates a full copy of every task move and then a one-element array per
+ * match, and it is called several times per resolver and several resolvers deep
+ * inside `liveTargets` - so a render was allocating a multiple of the move list
+ * just to find the handful of answers of one kind.
+ *
+ * It matters more since v31 than it ever did: there is no hand limit, so a
+ * mid-game hand of twenty makes `buildOptions` enumerate payments and move lists
+ * run to the thousands where they used to run to the hundreds. Same results, in
+ * the same order, without the copies.
+ */
 export function answersOfKind<K extends TaskAnswer['kind']>(
   moves: readonly Move[],
   kind: K,
 ): { move: TaskMove; answer: Extract<TaskAnswer, { kind: K }> }[] {
-  return taskMoves(moves).flatMap((move) =>
-    move.answer.kind === kind
-      ? [{ move, answer: move.answer as Extract<TaskAnswer, { kind: K }> }]
-      : [],
-  );
+  const out: { move: TaskMove; answer: Extract<TaskAnswer, { kind: K }> }[] = [];
+  for (const move of moves) {
+    if (move.type !== 'task' || move.answer.kind !== kind) continue;
+    out.push({ move, answer: move.answer as Extract<TaskAnswer, { kind: K }> });
+  }
+  return out;
 }
 
 /** The head task facing this seat, if any. `view.tasks[0]` is the one being answered. */
@@ -83,147 +104,173 @@ function armed(intent: Intent, type: MoveType): boolean {
   return intent.k !== 'build' && intent.k !== 'visit';
 }
 
+/** Does an armed visit family cover this host? `self` undefined means either. */
+function armedHost(intent: Intent, host: Seat, you: Seat): boolean {
+  if (intent.k !== 'arm') return true;
+  if (intent.self === undefined) return true;
+  return intent.self === (host === you);
+}
+
 // --- click resolvers --------------------------------------------------------
 //
 // Each returns every move that click could mean. The caller sends it when there
 // is exactly one, and opens a `choose` menu when there is more than one. Zero
 // means the thing is not a target right now, which is also what drives the glow.
 
-/** One of YOUR buildings: harvest it, upgrade it, grow it, or answer a task with it. */
+/**
+ * One of YOUR buildings: harvest it, grow it, or answer a task with it.
+ *
+ * ⚡ ONE PASS OVER `moves`, AND THE REASON IS `liveTargets`. This used to be four
+ * passes with three `answersOfKind` calls, each of which allocates two
+ * intermediate arrays over the whole move list - and the glow calls it once per
+ * building on every render, so a 14-building farm meant 56 scans and 84 throwaway
+ * arrays for one frame. Measured on 02/09/2026 at 2.5ms per `liveTargets` in a
+ * mid-game position, which is a third of a 60fps frame spent deciding what to
+ * outline. Same predicates, same order of results, same single source of truth
+ * for "what does clicking this mean" - just without the allocations.
+ */
 export function clickBuilding(moves: readonly Move[], intent: Intent, building: CardId): Move[] {
   const held = intent.k === 'hold' ? intent.card : null;
-  const out: Move[] = [];
+  // Kept in the original order - building answers, then activates, then sows,
+  // then the two main actions - because `resolve` sends a single candidate and
+  // a menu lists them in the order they arrive.
+  const answers: Move[] = [];
+  const activates: Move[] = [];
+  const sows: Move[] = [];
+  const actions: Move[] = [];
+  const canHarvest = armed(intent, 'harvest');
+  const canGrow = armed(intent, 'grow');
 
-  for (const { move, answer } of answersOfKind(moves, 'building')) {
-    if (answer.card === building) out.push(move);
-  }
-  // GROW WITHOUT PLACING (A5, A12): clicking the building fires it. Nothing is
-  // held and nothing is placed, so it needs no armed intent - the task is the
-  // only thing on offer while it is pending.
-  for (const { move, answer } of answersOfKind(moves, 'activate')) {
-    if (answer.card === building) out.push(move);
-  }
-  for (const { move, answer } of answersOfKind(moves, 'sow')) {
-    if (answer.onto !== building) continue;
-    if (held !== null && answer.card !== held) continue;
-    out.push(move);
-  }
   for (const move of moves) {
-    if (move.type === 'harvest' && move.building === building && armed(intent, 'harvest')) {
-      out.push(move);
+    if (move.type === 'task') {
+      const answer = move.answer;
+      if (answer.kind === 'building') {
+        if (answer.card === building) answers.push(move);
+      } else if (answer.kind === 'activate') {
+        // GROW WITHOUT PLACING (A5, A12): clicking the building fires it.
+        // Nothing is held and nothing is placed, so it needs no armed intent -
+        // the task is the only thing on offer while it is pending.
+        if (answer.card === building) activates.push(move);
+      } else if (answer.kind === 'sow') {
+        if (answer.onto === building && (held === null || answer.card === held)) sows.push(move);
+      }
+      continue;
     }
-    if (move.type === 'upgrade' && move.card === building && armed(intent, 'upgrade')) {
-      out.push(move);
-    }
-    if (move.type === 'grow' && move.building === building && armed(intent, 'grow')) {
-      if (held === null || move.payment === held) out.push(move);
+    if (move.type === 'harvest') {
+      if (canHarvest && move.building === building) actions.push(move);
+    } else if (move.type === 'grow') {
+      if (canGrow && move.building === building && (held === null || move.payment === held)) {
+        actions.push(move);
+      }
     }
   }
-  return out;
+  return [...answers, ...activates, ...sows, ...actions];
 }
 
 /**
  * A STANDING MOVE OFFERED BY A BUILT CARD, made on the card that offers it.
  *
- * Until 26/08 these were reached through a generic "Card power" button in the
- * turn bar, which named no card and sat fourteenth in a flat row. The research
- * is blunt about that shape: a move a board component grants should be made on
- * the component, the way it would be at the table. So the tableau draws a badge
- * on the card and this is what the badge asks.
+ * The research is blunt about the alternative: a move a board component grants
+ * should be made on the component, the way it would be at the table. So the
+ * tableau draws a badge on the card and this is what the badge asks.
  *
- * NO INTENT FILTER, deliberately, and it matches exactly what the bar did. The
- * one card in the sheet that offers one - the Helping Hand's repeat - becomes
- * legal in the middle of a visit that has already resolved, so there is no
- * armed family to gate it behind and gating it would be inventing a rule. The
- * engine's list is the whole of the legality.
+ * NO INTENT FILTER, deliberately. The engine's list is the whole of the
+ * legality, and a standing move can become legal in the middle of something
+ * else, so gating it behind an armed family would be inventing a rule.
  */
 export function clickCardPower(moves: readonly Move[], card: CardId): Move[] {
   return moves.filter((m) => m.type === 'cardMove' && m.card === card);
 }
 
 /**
- * A neighbour. Always an intent rather than a move: a visit is assembled, never
- * picked off a list of up to ~90 (ticket 23). Returns null when that seat is
- * not visitable right now.
+ * A FARM'S NOTICE BOARD as a visit target - a neighbour's, or since v31 your
+ * own. Always an intent rather than a move: the host is half the decision and
+ * the fee is the other half, so the panel takes them one at a time.
+ *
+ * Returns null when that seat is not visitable right now.
+ *
+ * ⚠️ `host` MAY BE THE VIEWER'S OWN SEAT and the caller must not assume
+ * otherwise. That is the v31 self-visit, and it is deliberately reached through
+ * the SAME resolver as a neighbour's board: they are one move with one flag, so
+ * a second code path here would be the first place the two could drift. What
+ * makes them read differently is everything downstream - two turn-bar buttons,
+ * a differently-titled panel and a differently-worded feed line.
  */
-export function clickRival(moves: readonly Move[], intent: Intent, host: Seat): Intent | null {
+export function clickHost(
+  view: PlayerView,
+  moves: readonly Move[],
+  intent: Intent,
+  host: Seat,
+): Intent | null {
   if (intent.k === 'arm' && intent.type !== 'visit') return null;
   if (intent.k === 'build' || intent.k === 'choose') return null;
+  if (!armedHost(intent, host, view.seat)) return null;
   const held = intent.k === 'hold' ? intent.card : null;
-  const fee = held === null ? [] : [held];
-  if (visitOffers(moves, { host, fee }).length === 0) return null;
-  return { k: 'visit', host, fee };
+  if (visitOffers(moves, { host, fee: held }).length === 0) return null;
+  return { k: 'visit', host, fee: held };
 }
 
-/** An island tile: the Deliver action, or a deliver task's answer. */
+/**
+ * An island tile: the Deliver action, or a deliver task's answer.
+ *
+ * ⚡ One pass, like `clickBuilding`. The action and the task answer used to be
+ * two sweeps of the move list with two allocations, and `liveTargets` calls this
+ * once per tile - twelve times a render at four seats.
+ */
 export function clickTile(moves: readonly Move[], intent: Intent, tile: string): Move[] {
-  const out: Move[] = moves.filter(
-    (m) => m.type === 'deliver' && m.tile === tile && armed(intent, 'deliver'),
-  );
-  for (const { move, answer } of answersOfKind(moves, 'deliver')) {
-    if (answer.tile === tile) out.push(move);
+  const canDeliver = armed(intent, 'deliver');
+  const actions: Move[] = [];
+  const answers: Move[] = [];
+  for (const move of moves) {
+    if (move.type === 'deliver') {
+      if (canDeliver && move.tile === tile) actions.push(move);
+    } else if (move.type === 'task' && move.answer.kind === 'deliver') {
+      if (move.answer.tile === tile) answers.push(move);
+    }
   }
-  return out;
+  return [...actions, ...answers];
 }
 
 /** A balloon: the Deliver action's freight branch (DL-12), or a deliver task's balloon answer. */
 export function clickBalloon(moves: readonly Move[], intent: Intent, balloon: string): Move[] {
-  const out: Move[] = moves.filter(
-    (m) => m.type === 'moveBalloon' && m.balloon === balloon && armed(intent, 'moveBalloon'),
-  );
-  for (const { move, answer } of answersOfKind(moves, 'balloon')) {
-    if (answer.balloon === balloon) out.push(move);
-  }
-  return out;
-}
-
-/**
- * A Hired Worker, wherever it is standing: hire it out of the Fair, work your
- * own for free, answer a chooseWorker task with it, or - inside a visit - take
- * it as the payoff.
- */
-export function clickWorker(
-  moves: readonly Move[],
-  intent: Intent,
-  workerId: WorkerAction,
-): Move[] {
-  if (intent.k === 'visit') {
-    return visitOffers(moves, intent).filter(
-      (m) => m.payoff.mode === 'worker' && m.payoff.workerId === workerId,
-    );
-  }
-  const out: Move[] = [];
-  for (const { move, answer } of answersOfKind(moves, 'worker')) {
-    if (answer.workerId === workerId) out.push(move);
-  }
+  const canMove = armed(intent, 'moveBalloon');
+  const actions: Move[] = [];
+  const answers: Move[] = [];
   for (const move of moves) {
-    if (
-      move.type === 'workOwnWorker' &&
-      move.workerId === workerId &&
-      armed(intent, 'workOwnWorker')
-    ) {
-      out.push(move);
+    if (move.type === 'moveBalloon') {
+      if (canMove && move.balloon === balloon) actions.push(move);
+    } else if (move.type === 'task' && move.answer.kind === 'balloon') {
+      if (move.answer.balloon === balloon) answers.push(move);
     }
   }
-  return out;
+  return [...actions, ...answers];
 }
 
 /**
- * A deck spine: pick it for a revealing draw task, or BUY its top card.
+ * ONE MEEPLE OF THIS COLOUR, spent (v31). Made on the meeple in your own supply,
+ * for the same reason a card power is made on the card: it is a component in
+ * front of you and the gesture is picking it up.
  *
- * The two never collide - a pending task is the only thing legal while it is
- * pending - so the deck stays one surface with one meaning, "that crop".
+ * It carries no intent filter and needs none. `spendMeeple` is legal only in the
+ * start-of-turn window, so the engine's list is already the whole gate, and
+ * arming a family to reach a piece you are looking straight at would be a click
+ * spent on nothing.
  */
-export function clickDeck(moves: readonly Move[], intent: Intent, suit: Suit): Move[] {
-  const out: Move[] = answersOfKind(moves, 'deck')
-    .filter(({ answer }) => answer.suit === suit)
-    .map(({ move }) => move);
+export function clickMeeple(moves: readonly Move[], colour: Suit): Move[] {
+  return moves.filter((m) => m.type === 'spendMeeple' && m.colour === colour);
+}
+
+/**
+ * A deck spine. Since v31 a deck is a draw target and nothing else: the £1 buy
+ * and the £3 market both went with the currency, so a click here can only ever
+ * be a revealing draw task's answer.
+ */
+export function clickDeck(moves: readonly Move[], _intent: Intent, suit: Suit): Move[] {
+  const out: Move[] = [];
   for (const move of moves) {
-    if (move.type === 'buy' && move.suit === suit && armed(intent, 'buy')) out.push(move);
-    // The bonus-slot market buy (ticket 56) is deck-targeted too. When both it
-    // and the card buy are live on one deck, the resolver returns two moves and
-    // the caller opens its `choose` menu, which is the designed fallback.
-    if (move.type === 'market' && move.suit === suit && armed(intent, 'market')) out.push(move);
+    if (move.type === 'task' && move.answer.kind === 'deck' && move.answer.suit === suit) {
+      out.push(move);
+    }
   }
   return out;
 }
@@ -232,10 +279,17 @@ export function clickDeck(moves: readonly Move[], intent: Intent, suit: Suit): M
 
 export interface Live {
   readonly buildings: ReadonlySet<CardId>;
+  /**
+   * Seats whose Notice Board is a legal visit target. ⚠️ MAY CONTAIN YOUR OWN
+   * SEAT (v31): the rail draws the neighbours in it and your own farm draws
+   * itself, and the two must be told apart on screen even though they are one
+   * set here.
+   */
   readonly hosts: ReadonlySet<Seat>;
   readonly tiles: ReadonlySet<string>;
   readonly balloons: ReadonlySet<string>;
-  readonly workers: ReadonlySet<WorkerAction>;
+  /** Meeple colours in your supply that can be spent right now. */
+  readonly meeples: ReadonlySet<Suit>;
   readonly decks: ReadonlySet<Suit>;
   /** Hand cards worth picking up: they lead somewhere from here. */
   readonly hand: ReadonlySet<CardId>;
@@ -246,7 +300,7 @@ const EMPTY_LIVE: Live = {
   hosts: new Set(),
   tiles: new Set(),
   balloons: new Set(),
-  workers: new Set(),
+  meeples: new Set(),
   decks: new Set(),
   hand: new Set(),
 };
@@ -277,8 +331,10 @@ export function liveTargets(view: PlayerView, moves: readonly Move[], intent: In
   if (intent.k === 'visit') {
     hosts.add(intent.host);
   } else {
-    for (const rival of view.rivals) {
-      if (clickRival(moves, intent, rival.seat) !== null) hosts.add(rival.seat);
+    // Every seat, yours included - the self-visit is a real door and the farm
+    // has to be able to light it.
+    for (let seat = 0; seat < view.seats; seat++) {
+      if (clickHost(view, moves, intent, seat) !== null) hosts.add(seat);
     }
   }
 
@@ -292,9 +348,9 @@ export function liveTargets(view: PlayerView, moves: readonly Move[], intent: In
     if (clickBalloon(moves, intent, balloon.id).length > 0) balloons.add(balloon.id);
   }
 
-  const workers = new Set<WorkerAction>();
-  for (const worker of view.fair) {
-    if (clickWorker(moves, intent, worker.id).length > 0) workers.add(worker.id);
+  const meeples = new Set<Suit>();
+  for (const colour of Object.keys(view.you.meeples) as Suit[]) {
+    if (clickMeeple(moves, colour).length > 0) meeples.add(colour);
   }
 
   const decks = new Set<Suit>();
@@ -302,7 +358,15 @@ export function liveTargets(view: PlayerView, moves: readonly Move[], intent: In
     if (clickDeck(moves, intent, suit).length > 0) decks.add(suit);
   }
 
-  return { buildings, hosts, tiles, balloons, workers, decks, hand: liveHand(view, moves, intent) };
+  return {
+    buildings,
+    hosts,
+    tiles,
+    balloons,
+    meeples,
+    decks,
+    hand: liveHand(view, moves, intent),
+  };
 }
 
 /**
@@ -313,12 +377,13 @@ export function liveTargets(view: PlayerView, moves: readonly Move[], intent: In
  */
 function liveHand(view: PlayerView, moves: readonly Move[], intent: Intent): Set<CardId> {
   if (intent.k === 'build') return new Set(buildAdditions(moves, intent.draft).hand);
-  if (intent.k === 'visit') return visitFeeAdditions(moves, intent);
+  if (intent.k === 'visit') return visitFeeOptions(moves, intent.host);
   // A card is already out of the hand: the question is where it goes, so the
   // rest of the hand goes quiet. Lighting it would be lighting sources, which
   // is the exact thing ticket 09 ruled out.
   if (intent.k === 'hold') return new Set();
   if (intent.k === 'arm') {
+    if (intent.type === 'visit') return visitFeeOptions(moves, null, view.seat, intent.self);
     if (intent.type !== 'build') return new Set();
     return new Set(view.you.hand.filter((card) => buildOffers(moves, card).length > 0));
   }
@@ -337,56 +402,75 @@ export function holdLeadsSomewhere(
 ): boolean {
   const held: Intent = { k: 'hold', card };
   if (view.you.tableau.some((b) => clickBuilding(moves, held, b.card).length > 0)) return true;
-  if (view.rivals.some((r) => clickRival(moves, held, r.seat) !== null)) return true;
+  for (let seat = 0; seat < view.seats; seat++) {
+    if (clickHost(view, moves, held, seat) !== null) return true;
+  }
   return buildOffers(moves, card).length > 0;
 }
 
-// --- the two assemblies -----------------------------------------------------
+// --- the visit --------------------------------------------------------------
 
+/**
+ * A part-made visit: whose board, and which card is going on it.
+ *
+ * ⭐ `fee` IS ONE CARD OR NONE (v31), where it used to be a list. The upgraded
+ * Notice Board's "2 cards, take GBP 3" was the only route that ever placed two,
+ * and it went with the second printed faces - so `legalMoves` now offers exactly
+ * one visit per (host, hand card) pair and the progressive subset filter this
+ * used to need has nothing left to narrow.
+ */
 export interface VisitDraft {
   readonly host: Seat;
-  readonly fee: readonly CardId[];
+  readonly fee: CardId | null;
 }
 
-function sameCards(a: readonly CardId[], b: readonly CardId[]): boolean {
-  return a.length === b.length && [...a].sort().join() === [...b].sort().join();
-}
-
-function contains(whole: readonly CardId[], part: readonly CardId[]): boolean {
-  const pool = [...whole];
-  return part.every((card) => {
-    const i = pool.indexOf(card);
-    if (i < 0) return false;
-    pool.splice(i, 1);
-    return true;
-  });
-}
-
-/** Visits to this host whose fee still contains everything picked so far. */
+/** Visits to this host, narrowed to the fee if one has been chosen. */
 export function visitOffers(moves: readonly Move[], draft: VisitDraft): VisitMove[] {
   return moves.filter(
     (m): m is VisitMove =>
-      m.type === 'visit' && m.host === draft.host && contains(m.fee, draft.fee),
+      m.type === 'visit' && m.host === draft.host && (draft.fee === null || m.fee === draft.fee),
   );
 }
 
-/** Cards that could join the fee from here. The 2-card mode is the only reason there are any. */
-export function visitFeeAdditions(moves: readonly Move[], draft: VisitDraft): Set<CardId> {
+/**
+ * Cards that could pay for a visit. With a host, the fees that host will accept;
+ * without one, every fee that buys SOME door - filtered to neighbours or to your
+ * own board when the turn bar armed one of the two.
+ */
+export function visitFeeOptions(
+  moves: readonly Move[],
+  host: Seat | null,
+  you?: Seat,
+  self?: boolean,
+): Set<CardId> {
   const out = new Set<CardId>();
-  for (const offer of visitOffers(moves, draft)) {
-    if (offer.fee.length <= draft.fee.length) continue;
-    for (const card of offer.fee) {
-      if (!draft.fee.includes(card)) out.add(card);
+  for (const move of moves) {
+    if (move.type !== 'visit') continue;
+    if (host !== null && move.host !== host) continue;
+    if (host === null && self !== undefined && you !== undefined) {
+      if (self !== (move.host === you)) continue;
     }
+    out.add(move.fee);
   }
   return out;
 }
 
-/** The payoffs the fee as assembled can actually buy. Nothing else is offered. */
-export function visitPayoffs(moves: readonly Move[], draft: VisitDraft): VisitMove[] {
-  if (draft.fee.length === 0) return [];
-  return visitOffers(moves, draft).filter((m) => sameCards(m.fee, draft.fee));
+/** The one move a fully-specified draft names, if it names one. */
+export function visitComplete(moves: readonly Move[], draft: VisitDraft): VisitMove | null {
+  if (draft.fee === null) return null;
+  return visitOffers(moves, draft)[0] ?? null;
 }
+
+/** The distinct hosts a visit family could still be aimed at. */
+export function visitHosts(moves: readonly Move[]): Seat[] {
+  const out = new Set<Seat>();
+  for (const move of moves) {
+    if (move.type === 'visit') out.add(move.host);
+  }
+  return [...out].sort((a, b) => a - b);
+}
+
+// --- the build assembly -----------------------------------------------------
 
 /**
  * A build, from either side of the fence: the main action's `build` moves and a
@@ -417,11 +501,8 @@ export function buildOffers(moves: readonly Move[], card?: CardId): BuildOffer[]
 /**
  * A part-assembled build. Two lists of card IDS since the Dairy rebuild
  * (2026-08-10), where there used to be a hand list, a per-suit barn TALLY and a
- * coin count: D8's barn payment and D7's coins-as-wilds are both deleted, and
- * D7's replacement pays with cards off the player's own buildings - which are
- * public and ordered, so they are picked by id exactly like hand cards. The
- * panel is a card-toggle surface again rather than a card-toggle plus two
- * steppers.
+ * coin count. The panel is a card-toggle surface rather than a card-toggle plus
+ * two steppers.
  */
 export interface BuildDraft {
   readonly card: CardId;
@@ -431,6 +512,20 @@ export interface BuildDraft {
 
 export function emptyBuildDraft(card: CardId): BuildDraft {
   return { card, payment: [], stacks: [] };
+}
+
+function sameCards(a: readonly CardId[], b: readonly CardId[]): boolean {
+  return a.length === b.length && [...a].sort().join() === [...b].sort().join();
+}
+
+function contains(whole: readonly CardId[], part: readonly CardId[]): boolean {
+  const pool = [...whole];
+  return part.every((card) => {
+    const i = pool.indexOf(card);
+    if (i < 0) return false;
+    pool.splice(i, 1);
+    return true;
+  });
 }
 
 /** Offers still reachable from a partly-assembled payment. */
@@ -507,12 +602,22 @@ export function withStackPayment(draft: BuildDraft, card: CardId): BuildDraft {
   };
 }
 
-// --- subset answers (keep, discard) -----------------------------------------
+// --- subset answers ---------------------------------------------------------
 
 /**
- * The two tasks answered by choosing a SUBSET of cards: the draw's keep and the
- * end-of-turn discard. Both enumerate every subset, which is a validator rather
- * than a menu once a hand is 6 cards, so the surface is a toggle-and-confirm.
+ * The two tasks answered by choosing a SUBSET of cards: the draw's keep, and the
+ * turn-boundary DISCARD.
+ *
+ * ⭐ The discard half is back with the hand limit (02/09/2026), and it is the
+ * half that carries a real choice: v31's Draw is see 2, keep 2, so a keep offers
+ * exactly one subset - the lot - and the surface plays it on the first click. An
+ * overflow of two from a hand of fourteen offers C(14, 2) = 91, every one of them
+ * a decision, which is why the toggle-and-confirm machinery exists at all.
+ *
+ * ⚠️ THE TWO ARE THE SAME SHAPE AND OPPOSITE IN SIGN - a keep names what you
+ * are taking, a discard names what you are losing - so the surface must say which
+ * it is asking (`taskPrompt` does) and must never share a highlight style between
+ * them.
  */
 export function subsetAnswer(
   moves: readonly Move[],
@@ -551,16 +656,14 @@ export const MOVE_ROUTES = {
   task: 'prompt',
   cardMove: 'building-badge',
   draw: 'action-bar',
-  buy: 'deck',
-  market: 'deck',
+  bonusDraw: 'action-bar',
+  spendMeeple: 'meeple-supply',
   build: 'build-panel',
-  upgrade: 'building',
   grow: 'building',
   harvest: 'building',
   deliver: 'island-tile',
   moveBalloon: 'balloon',
   visit: 'visit-panel',
-  workOwnWorker: 'worker',
   pass: 'action-bar',
   endTurn: 'action-bar',
 } satisfies Record<MoveType, string>;

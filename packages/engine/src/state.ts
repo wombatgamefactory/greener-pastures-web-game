@@ -6,6 +6,21 @@
  * GameState survives structuredClone, JSON round-trips, and being diffed by a
  * human. Card properties are never copied into state; a zone holds card ids and
  * the properties are read from GameData.
+ *
+ * ⭐ v31 (02/09/2026, docs/design-changes-v31-2026-09-02-v1.md). Read these
+ * three before anything else; every other change in the file falls out of them:
+ *
+ *   1. **There are no coins.** `PlayerState.coins` is deleted, and so is the
+ *      `coins` event, the `coins` field on `built` and `delivered`, and every
+ *      move that spent money (`buy`, `market`, `upgrade`).
+ *   2. **Players hold MEEPLES instead.** `PlayerState.meeples` is a count per
+ *      colour, claimed off the island's delivery spaces and spent at the start
+ *      of a turn to perform that colour's door action, after which the meeple
+ *      leaves the game. It is not a currency: it buys one specific action and
+ *      nothing else.
+ *   3. **Starters have one face.** `BuildingState.upgraded` is deleted with the
+ *      fifteen upgraded faces, and the five Farmstead suit powers went with
+ *      them - the Farmstead prints an end-game scorer and nothing else now.
  */
 
 import type { Suit, WorkerAction } from '@gp/data';
@@ -17,21 +32,45 @@ export type Seat = number;
 /** A card's spreadsheet Ref, e.g. "W13". All 105 are unique; the id IS the card. */
 export type CardId = string;
 
-/** A built card in a player's tableau. Starters live here too, from setup. */
+/**
+ * A built card in a player's tableau. Starters live here too, from setup.
+ *
+ * ⛔ `upgraded` IS GONE (v31, 02/09/2026). Starters used to flip to a second
+ * printed face for GBP 2 and this flag said which side was showing; v31 deletes
+ * all fifteen upgraded faces along with the currency that bought them, so every
+ * card in the game shows one face for the whole game and there is nothing left
+ * for the flag to record. What went with it: `faceOf`'s two-face pick (now a
+ * straight card lookup), the `upgrade` move, the `starterUpgraded` event and
+ * every `b.upgraded ? x : y` in the suit powers.
+ */
 export interface BuildingState {
   card: CardId;
   /** Cards paid or sown onto this building, oldest first. Full = length >= threshold. */
   stack: CardId[];
-  /** Starters flip; deck cards never do. */
-  upgraded: boolean;
 }
 
 export interface PlayerState {
   suit: Suit;
-  coins: number;
   hand: CardId[];
   /** Stored value. Identity is inert here (views tally by suit) but ids keep card conservation checkable. */
   barn: CardId[];
+  /**
+   * MEEPLES HELD, BY COLOUR (v31, 02/09/2026) - the component that replaced the
+   * currency.
+   *
+   * A meeple is claimed with an island delivery (it sits face up on the delivery
+   * space from setup), and is spent at the START of a later turn to perform its
+   * colour's plain door action free, after which it LEAVES THE GAME. So this is
+   * a count of stored future actions, not a wallet: nothing refills it but the
+   * island, and nothing but spending empties it.
+   *
+   * A count per colour rather than a list, because meeples of a colour are
+   * interchangeable in every way a rule can read. All five colours are always
+   * present as keys, including colours no seat is farming - a meeple of a suit
+   * that is not at the table still works, because the five door actions exist
+   * independently of who farms what.
+   */
+  meeples: Record<Suit, number>;
   tableau: BuildingState[];
   /**
    * VP taken from the island, in delivery order - one entry per delivery, so
@@ -44,14 +83,18 @@ export interface PlayerState {
 }
 
 /**
- * Which seat owns each Service. Set at setup from the suit that brought it and
+ * Which seat owns each DOOR. Set at setup from the suit that brought it and
  * NEVER changed: there is no hiring, no expiry and no track since 2026-08-10.
- * `owner: null` means that suit is not at the table, so that Service is not in
- * the game at all.
+ * `owner: null` means that suit is not at the table, so nobody's Notice Board
+ * grants that action.
  *
- * Derivable from `players[].suit`, and kept anyway: it is the index every
- * "whose Service performs action X" lookup wants, and it is one line of setup
- * against a scan in a dozen hot call sites.
+ * ⚠️ It is ownership of the BOARD, not of a meeple. Anybody may hold and spend a
+ * meeple of any colour, including a colour no seat is farming, so a meeple's
+ * action is looked up from `workers.roster` and never from here.
+ *
+ * Derivable from `players[].suit`, and kept anyway: it is the index every "whose
+ * board grants action X" lookup wants, and it is one line of setup against a
+ * scan in a dozen hot call sites.
  */
 export interface WorkerState {
   id: WorkerAction;
@@ -59,15 +102,31 @@ export interface WorkerState {
 }
 
 /**
- * One island tile in play. Cost, coins and VP are the same on every tile and
- * live in `island.tileRule` / `island.vpByDeliveryOrder`; the state stores only
- * what setup randomised (the demand tokens) and what play has done.
+ * One island tile in play. Cost and VP are the same on every tile and live in
+ * `island.tileRule` / `island.vpByDeliveryOrder`; the state stores only what
+ * setup randomised (the demand tokens and the meeples) and what play has done.
  */
 export interface IslandTileState {
   /** Printed face id, e.g. "A1". Its level is layout only - see tileLevel. */
   tile: string;
   /** One demand token per crate, dealt at setup. 'wild' is the cornucopia. */
   crates: (Suit | 'wild')[];
+  /**
+   * ONE MEEPLE PER DELIVERY SPACE (v31), drawn from a bag of 25 at setup and
+   * placed FACE UP - so which colour the first and second deliverer to this tile
+   * will take is public from the first turn, and is the whole of the island's
+   * new pull.
+   *
+   * Parallel to `deliveredBy` by INDEX, and deliberately never mutated: entry i
+   * is the meeple on delivery space i, so the seat at `deliveredBy[i]` took
+   * `meeples[i]`, and spaces from `deliveredBy.length` up are the ones still on
+   * the board. That is the same trick `deliveredBy` itself plays with
+   * `vpByDeliveryOrder` - one immutable printed schedule plus one growing record
+   * of who arrived - and it means the tile still re-derives its whole history
+   * rather than storing a second copy of it. `length` is
+   * `deliveriesPerTile(data)`.
+   */
+  meeples: Suit[];
   /**
    * THE DEMAND TOKENS ARE MUTABLE (the Vegetable rebuild, 2026-08-09). Parallel
    * to `crates`: entry i true = that token has been turned FACE DOWN by V6 The
@@ -109,47 +168,65 @@ export interface AerodromeState {
 }
 
 /**
+ * The two halves of the bonus slot (v31). One per turn by the printed rule;
+ * `bonusUsed` records which have gone, so a card that grants a SECOND bonus
+ * option (A Helping Hand: "you may take both") gives one of each rather than
+ * two of the same.
+ */
+export type BonusOption = 'draw' | 'visit';
+
+/**
  * Everything scoped to the current turn. Turn end replaces the whole object,
  * so a turn-scoped leak is structurally impossible.
+ *
+ * ⛔ TWO FIELDS LEFT IN v31 AND BOTH DELETIONS ARE RULE DELETIONS, not tidying:
+ *
+ *  - `buyUsed` was the once-per-turn card BUY (2026-08-03) - pay the bank, take
+ *    the top card of a deck that was not your own suit. It had its own flag
+ *    rather than a share of the bonus slot because it was a free action, on the
+ *    argument that a coin should never be dead. v31 has no coins, so the whole
+ *    argument and the move went (docs/design-changes-v31 §1.3).
+ *  - `visit` was the Helping Hand gate: a visit that bought a Service's action
+ *    recorded the host and the action so the card could pay a second card to
+ *    work it again. The Helping Hand is rewritten as a bonus-slot modifier
+ *    (§3.1), and there is no repeat to gate, so the record has no reader. The
+ *    thing it used to guard is now `bonusUsed` above.
  */
 export interface TurnState {
   actionSpent: boolean;
-  bonusSpent: boolean;
   /**
-   * The once-per-turn card BUY (2026-08-03): pay the bank and take the top card
-   * of a deck that is not your own suit. Its own flag rather than a share of the
-   * bonus slot, because it is a free action - the design's point is that a coin
-   * is never dead, and a sink that competed with the visit would not be one.
+   * Bonus options taken this turn, in order. Empty is "the slot is open".
+   *
+   * ⭐ A LIST, NOT A BOOLEAN, SINCE v31. The printed rule is one option a turn,
+   * which a boolean expressed perfectly well; A Helping Hand's rewrite ("Each
+   * turn, you may take BOTH bonus options: Draw 1 AND place a card on a Notice
+   * Board") is what needs the shape. Two facts have to be checked and a boolean
+   * carries only one of them: how many options are left (`bonusSlotsFor`) and
+   * whether THIS option has already gone. Without the second, a seat holding a
+   * Helping Hand would take Draw 1 twice, which is not what the card says.
    */
-  buyUsed: boolean;
+  bonusUsed: BonusOption[];
   /**
    * Set when turn end has been committed (explicit endTurn, or nothing left to
-   * do): once the queue drains - the end-of-turn discard may still be pending -
-   * the turn finalises unconditionally. Prevents a standing move from wedging
-   * an ending turn open.
+   * do): once the queue drains the turn finalises unconditionally. Prevents a
+   * standing move from wedging an ending turn open.
    */
   ending: boolean;
   /**
-   * The Helping Hand gate. Set only by a visit's Service payoff; a repeat
-   * re-works that Service by placing another card ON IT. `repeats` counts
-   * repeats taken this visit.
-   */
-  visit: { host: Seat; workerId: WorkerAction; repeats: number } | null;
-  /**
-   * The ActionAgain gate (the reference's state 14): an upgraded Farmstead's
-   * one optional repeat of the main action just taken. 'harvest' = the Wheat
-   * "Harvest is 2 buildings". Armed by apply after the qualifying MAIN action
-   * (never a Worker's - the reference offers the repeat from afterMainAction
-   * only), consumed by the repeat move, declined by endTurn or by the turn
-   * settling.
+   * ⛔ `again` IS GONE (v31). It was the ActionAgain gate (the reference's state
+   * 14): one optional repeat of the main action just taken, armed by `apply`
+   * after a qualifying MAIN action and never after a door's, consumed by the
+   * repeat move, declined by `endTurn` or by the turn settling.
    *
-   * It used to have a second value, 'build', for the upgraded Dairy Farmstead's
-   * "BUILD: you may BUILD again". That card is gone (2026-08-10): it sold a
-   * second Build ACTION - the scarcest resource in the game - for £2, and the
-   * suit still came last by a distance. Wheat's repeat is the only one left,
-   * and the union is narrowed to say so.
+   * Both producers are dead cards. The upgraded Dairy Farmstead's "BUILD: you
+   * may BUILD again" went on 2026-08-10 - it sold a second Build ACTION, the
+   * scarcest resource in the game, for GBP 2, and the suit still came last by a
+   * distance. The upgraded Wheat Farmstead's "Harvest is 2 buildings" went on
+   * 2026-08-12, because Wheat came in first at 50.0% against an even share of
+   * 36.4% and a free extra action on the suit's own core verb was the largest
+   * single term in it. Both readings are worth keeping: a free repeat of a
+   * suit's OWN core verb is the strongest thing a card can print.
    */
-  again: 'harvest' | null;
   /**
    * Built cards whose once-per-turn standing move has been taken this turn
    * (the upgraded Orchard Barn's gift). A handler's moves() checks membership;
@@ -203,30 +280,20 @@ export interface BuildingRef {
  *
  * The vocabulary is deliberately small and generic: a task describes WHAT is
  * being chosen with data riders, never card-specific logic. Card-specific
- * behaviour rides as riders the generic resolver applies (e.g. `ownerCoins` on
- * chooseWorker), or in the last resort as a `card` task resolved by the card's
- * own handler.
+ * behaviour rides as riders the generic resolver applies, or in the last resort
+ * as a `card` task resolved by the card's own handler.
+ *
+ * ⛔ `chooseWorker` IS GONE (v31). It picked a SERVICE and performed its action,
+ * with an `owned: 'rival' | 'own' | 'any'` filter, a `progress` flag for the
+ * Herb Hive's off-the-books use and an `ownerCoins` rider for the wage. All
+ * three referents are gone: there are no Services, there is no threshold to
+ * advance except the Notice Board's own, and there are no coins. It had no
+ * producer left in the catalogue when it was deleted, which is why it goes
+ * rather than being repointed - a door action is now reached by exactly two
+ * routes, a visit and a meeple, and both name a COLOUR rather than choosing a
+ * worker.
  */
 export type Task =
-  | {
-      /** Pick a Service and perform its action. */
-      t: 'chooseWorker';
-      pid: Seat;
-      src: CardId;
-      /** Whose Services qualify. */
-      owned: 'rival' | 'own' | 'any';
-      /**
-       * false = the Herb Hive mode: the action happens but NO card is placed on
-       * the Service, so its threshold does not move and no wage is minted. It
-       * was "the meeple does not advance" until the Working Week died; the
-       * meaning ("this use is off the books") is unchanged.
-       */
-      progress: boolean;
-      /** Coins the Service's owner mints from the bank when the pick resolves. */
-      ownerCoins: number;
-      /** "You may then WORK": a skip answer is offered. */
-      optional?: boolean;
-    }
   | {
       /**
        * The see-N / keep-K draw engine, one task for the whole draw. While
@@ -383,7 +450,23 @@ export type Task =
       optional?: boolean;
     }
   | {
-      /** End-of-turn discard down to the printed Barn hand size. */
+      /**
+       * THE END-OF-TURN OVERFLOW DISCARD, down to `rules.turn.handLimit`.
+       * `finishTurn` is its only producer, and it is the ONLY enforcement of the
+       * hand limit anywhere: a hand may be any size mid-turn, and is checked
+       * once, at the boundary.
+       *
+       * ⭐ Deleted by v31 and reinstated the same day (02/09/2026) when the
+       * simulator measured what the deletion actually cost - see
+       * `RulesFile.turn.handLimit`. `downTo` is carried on the task rather than
+       * re-read at resolution so that a limit changed mid-turn (by a knob reload
+       * or, one day, by a card) cannot move the target between push and answer.
+       *
+       * ⚠️ Its answers are C(hand, excess) subsets, which is the second-widest
+       * enumeration in the game after a build payment. That is affordable only
+       * because the hand it reads was bounded by the previous turn's pass
+       * through the same task.
+       */
       t: 'discard';
       pid: Seat;
       downTo: number;
@@ -417,6 +500,23 @@ export type Task =
        * Escape hatch: a card-specific choice the generic vocabulary cannot
        * express. Resolved by the handler registered for `src`, keyed by `kind`.
        * None of the spanning set needed it; prefer the generic tasks.
+       *
+       * ⚠️ TWO RULES ABOUT CARD IDS IN `riders`, both of them the hidden-
+       * information boundary and neither of them enforceable by the type:
+       *
+       *   1. Riders are MASKED for every seat but `pid` (`redactTask`). The bag
+       *      is untyped, so the seam masks all of it; do not put an id in here
+       *      expecting a rival to read it.
+       *   2. An answer may NEVER name a rider's LIMBO card by id. Limbo is a
+       *      zone no PlayerView models - a card off a deck top that is in no
+       *      hand, no pile and no stack - so an answer naming one puts an id in
+       *      the move list that nothing in the view can justify, and the move
+       *      list is not redacted (ticket 10). Answer by SLOT instead, via
+       *      `revealedIn` / `pickFromReveal` below.
+       *
+       * Rule 2 binds LIMBO only. An answer naming a card in the seat's own hand
+       * (O15) or face up in a discard (D5, D6, O17) names something the view
+       * already carries, which is why those enumerators read the way they do.
        */
       t: 'card';
       pid: Seat;
@@ -425,9 +525,15 @@ export type Task =
       riders: Record<string, unknown>;
     };
 
-/** An answer to the head task. Shape depends on the task type. */
+/**
+ * An answer to the head task. Shape depends on the task type.
+ *
+ * ⛔ One kind left v31 and did not come back: `worker` answered `chooseWorker`
+ * (see its tombstone above). `discard` went with it and DID come back on
+ * 02/09/2026 with the hand limit; it is the answer to the turn-boundary
+ * overflow, and names which cards go.
+ */
 export type TaskAnswer =
-  | { kind: 'worker'; workerId: WorkerAction }
   | { kind: 'deck'; suit: Suit }
   | { kind: 'keep'; cards: CardId[] }
   | { kind: 'building'; card: CardId }
@@ -455,33 +561,82 @@ export type TaskAnswer =
       stacks?: CardId[];
     }
   /**
-   * `head` / `deckHead` are V2 The Vegetable Farmstead's, and they MUST be
-   * carried on the answer rather than re-derived when it resolves. The head is
-   * loaded BEFORE the payment and is often the only reason the payment is
-   * affordable, so an answer that drops it is an answer the barn cannot pay -
-   * which is exactly what happened when `deliverAnswers` first enumerated the
-   * head-augmented options and then threw the head away.
+   * ⛔ `head` / `deckHead` rode on both of these until v31 and are GONE with the
+   * card that printed them. They were V2 The Vegetable Farmstead's "you may
+   * FIRST put 1 card from your hand (upgraded: 1 card from a deck) into your
+   * barn", and they had to be carried on the ANSWER rather than re-derived at
+   * resolution: the head is loaded before the payment and was frequently the
+   * only reason the payment was affordable, so an answer that dropped it was an
+   * answer the barn could not pay. That trap is worth remembering if any future
+   * card loads the barn mid-delivery. The five Farmsteads print one line each in
+   * v31 and it is an end-game scorer, so there is no head to carry.
    */
   | {
       kind: 'deliver';
       tile: string;
       spend: Partial<Record<Suit, number>>;
-      head?: CardId[];
-      deckHead?: Suit;
     }
   | {
       kind: 'balloon';
       balloon: string;
       spend: Partial<Record<Suit, number>>;
-      head?: CardId[];
-      deckHead?: Suit;
     }
+  /** The turn-boundary overflow: exactly `hand.length - downTo` cards, chosen by their holder. */
   | { kind: 'discard'; cards: CardId[] }
   | { kind: 'skip' }
   | { kind: 'card'; payload: Record<string, unknown> };
 
-/** Where control returns when the task queue drains. */
-export type Resume = 'main' | 'worker' | 'turnflow';
+/**
+ * THE ONE RIDER KEY that may hold cards in LIMBO - off a deck top, in no hand,
+ * no pile and no stack - and the two functions that read it.
+ *
+ * One key rather than a convention per card, so `redactTask`'s docblock, this
+ * one and the sim's view-safety walk are all describing the same thing. Two
+ * cards use it: D10 The Scout's Post ("Reveal the top card of each deck") and
+ * D15 The Grand Creamery ("Reveal the top two deck cards"). Both then let the
+ * owner CHOOSE one, which is the whole reason limbo needs a vocabulary at all -
+ * a reveal nobody chooses from can just resolve and never be asked about.
+ *
+ * ⭐ THE CHOICE IS BY SLOT, NEVER BY ID, and that is the rule the helpers exist
+ * to make convenient. `legalMoves` hands a policy the move list UNREDACTED
+ * beside a redacted view (ticket 10: "the Move union is view-safe by
+ * construction"), and that claim holds only while every id in a move is one the
+ * seat's view also carries. A limbo id is in no view field, so an answer naming
+ * one breaks the claim - the move list becomes the side channel, and the move
+ * LOG, which is captured, replayed and shared, records the deck order with it.
+ * `{ pick: 1 }` says the same thing to the owner (who holds the reveal in their
+ * own unmasked copy of the task) and nothing at all to anybody else.
+ */
+export const REVEAL_RIDER = 'revealed';
+
+/** The cards a card task is holding in limbo. Empty when it holds none. */
+export function revealedIn(task: Extract<Task, { t: 'card' }>): CardId[] {
+  const held = task.riders[REVEAL_RIDER];
+  return Array.isArray(held) ? (held as CardId[]) : [];
+}
+
+/**
+ * The limbo card a `{ pick }` answer chose. Throws rather than returning null:
+ * `apply` has already matched the answer against the enumerator, so an
+ * out-of-range slot here means the two disagree, which is a bug and not a move.
+ */
+export function pickFromReveal(
+  task: Extract<Task, { t: 'card' }>,
+  answer: Extract<TaskAnswer, { kind: 'card' }>,
+): CardId {
+  const card = revealedIn(task)[answer.payload['pick'] as number];
+  if (card === undefined) {
+    throw new Error(`${task.src}/${task.kind}: no revealed card in slot ${answer.payload['pick']}`);
+  }
+  return card;
+}
+
+/**
+ * Where control returns when the task queue drains. 'bonus' was called 'worker'
+ * until v31, when the Services it named stopped existing; it covers both halves
+ * of the bonus slot and the meeple phase, all of which resume the same way.
+ */
+export type Resume = 'main' | 'bonus' | 'turnflow';
 
 export interface GameState {
   schema: 1;
@@ -528,47 +683,51 @@ export type Move =
       kind: string;
       payload: Record<string, unknown>;
     }
-  /** The plain Draw action. Deck picks and the keep are the draw task's answers. */
+  /** The plain Draw action: `rules.turn.baseDraw`, see 2 keep 2. Deck picks are the draw task's answers. */
   | { type: 'draw'; seat: Seat }
   /**
-   * BUY one card, blind, off the top of a deck that is NOT your own suit, for
-   * `rules.turn.buyCost` to the bank. A free action, once a turn, and
-   * deliberately not a Draw: no reveal, no keep, and no draw modifier - so the
-   * Orchard Farmstead and the Draw Worker keep the draw lane to themselves.
+   * THE SOLITAIRE HALF OF THE BONUS SLOT (v31): Draw `rules.turn.bonusDraw` off
+   * the top of any ONE deck in play. A real Draw - it pushes the same see/keep
+   * task, so the deck pick is the task's answer and `afterDrawKeep` fires -
+   * which is why it carries no `suit` of its own.
+   *
+   * It exists so the bonus slot is never dead: a seat with an empty hand has no
+   * card to place on a Notice Board and would otherwise skip the slot entirely.
+   * It is also the yardstick every door has to beat, which is the whole reason
+   * the Orchard door is Draw 3 rather than Draw 2.
+   *
+   * ⛔ It replaces THREE deleted coin sinks that used to sit in or beside this
+   * slot: `buy` (blind top card of a deck that was not your own suit, a free
+   * action once a turn), `market` (top card of any deck straight into your barn,
+   * a bonus option) and `upgrade` (flip a starter for GBP 2, a bonus option
+   * since 19/08/2026). All three were bought with coins, and the standing
+   * finding they died on is worth keeping: money is what buys SOLITAIRE in this
+   * game, because a visit is bought with a card and every other bonus option was
+   * bought with a coin, so a coin sink in the bonus slot crowds the visit out
+   * all game. v31 deletes the currency, which deletes the competitor.
    */
-  | { type: 'buy'; seat: Seat; suit: Suit }
+  | { type: 'bonusDraw'; seat: Seat }
   /**
-   * BUY AT MARKET (docs/Market Bonus Action 2026-08-03.md): a bonus-slot option
-   * beside the coin visit and the worker visit. Pay `rules.turn.marketCost` to
-   * the bank, take the top card of any one deck in play - own suit included -
-   * straight into your BARN, revealed as it goes. Consumes the bonus slot; not
-   * a visit (no Helping Hand, no afterVisit, no wage) and not a Draw (no
-   * reveal-and-keep, no draw modifier). Ticket 56 holds it beside `buy` so the
-   * paired arms can decide which coin sink is the game's.
+   * SPEND ONE MEEPLE (v31): perform its colour's plain door action, free, and
+   * the meeple LEAVES THE GAME - it returns to no pool and cannot be re-earned
+   * except off the island.
+   *
+   * Legal only at the very start of a turn: before the bonus option and before
+   * the core action. Any number may be spent, one at a time, and a meeple may
+   * never be held back and spent later in the same turn - which is the only
+   * thing stopping the supply from being a hand of free reactive actions.
    */
-  | { type: 'market'; seat: Seat; suit: Suit }
-  /** Build a card from hand. `payment` is the chosen card ids; a coin-priced card pays coins and an empty payment. */
+  | { type: 'spendMeeple'; seat: Seat; colour: Suit }
+  /** Build a card from hand. `payment` is the chosen card ids - since v31 a build costs cards and nothing else. */
   | { type: 'build'; seat: Seat; card: CardId; payment: CardId[] }
-  /** Flip a starter for coins - a Build-action branch, and all three of them since 2026-08-12. */
-  | { type: 'upgrade'; seat: Seat; card: CardId }
   | { type: 'grow'; seat: Seat; building: CardId; payment: CardId }
   | { type: 'harvest'; seat: Seat; building: CardId }
-  /**
-   * Deliver from barn to an island tile. `spend` is a per-suit map - barn identity
-   * is inert. `head` is V2 The Vegetable Farmstead's "you may FIRST put N cards
-   * from your hand into your barn", moved before the payment is made and absent
-   * for every other suit. `deckHead` is the same card on the UPGRADED face,
-   * where the source moves from the hand to the top of a deck of your choice;
-   * the two are alternatives, never a pair.
-   */
+  /** Deliver from barn to an island tile. `spend` is a per-suit map - barn identity is inert. */
   | {
       type: 'deliver';
       seat: Seat;
       tile: string;
       spend: Partial<Record<Suit, number>>;
-      head?: CardId[];
-      /** V2's UPGRADED head (19/08/2026): the top card of this deck, not a hand card. */
-      deckHead?: Suit;
     }
   /**
    * The Deliver action's freight branch (reference DL-12): pay 2 differing
@@ -580,37 +739,37 @@ export type Move =
       seat: Seat;
       balloon: string;
       spend: Partial<Record<Suit, number>>;
-      /** V2's head on a flight - a balloon move IS the Deliver action (DL-12). */
-      head?: CardId[];
-      deckHead?: Suit;
     }
   /**
-   * The visit half of the bonus slot: cards from hand onto a neighbour's
-   * building, then the payoff printed on it. The MODE PICKS THE BUILDING, which
-   * is why there is no separate target field:
+   * THE INTERACTION HALF OF THE BONUS SLOT (v31): place exactly ONE card from
+   * your hand on any Notice Board, then immediately perform that board's suit
+   * action. The board must not be clogged.
    *
-   *   coin / special -> their NOTICE BOARD, and the bank pays the VISITOR.
-   *   worker         -> their SERVICE, and the bank pays the HOST.
+   * ⭐ THE MODE DISCRIMINATOR IS GONE, AND THAT IS THE CHANGE. It used to pick
+   * which of the host's two rival-touchable buildings the fee landed on - the
+   * Notice Board paid the VISITOR coins, the Service granted its action and paid
+   * the HOST a wage - with a third `special` mode for the upgraded board's "2
+   * cards, take GBP 3". Change 6 (20/08/2026) merged the two buildings into one;
+   * v31 deletes the coins, so the board has one payoff and the visit has one
+   * shape: one card in, one action out, and `fee` is a single id rather than a
+   * list because no route places two.
    *
-   * `fee` is exactly 1 card for `coin` and `worker`, and exactly 2 distinct
-   * cards for `special` (Special Orders' "2 cards, take £3", upgraded face only,
-   * which never offers a Service). Either building refuses the whole visit when
-   * it is clogged, and they clog independently - which is the point of there
-   * being two of them.
+   * ⭐ `host` MAY BE THE VISITOR'S OWN SEAT, gated by
+   * `rules.turn.selfVisitAllowed`, and that is risk 2 of the whole pass, armed
+   * on purpose. It replaces the old `workOwnWorker` move (activate your own
+   * Service, paid to the bank, placing no card): the owner now places a card on
+   * their own board exactly as a rival does, so the only brake on self-visiting
+   * is structural - your own card counts toward your own threshold of 2, so
+   * feeding your board clogs it in two turns and shuts your own door.
+   * `a08-the-hook` must count self-visits SEPARATELY, which is what the
+   * `visited` event's `self` flag is for.
    */
   | {
       type: 'visit';
       seat: Seat;
       host: Seat;
-      fee: CardId[];
-      payoff: { mode: 'coin' } | { mode: 'worker'; workerId: WorkerAction } | { mode: 'special' };
+      fee: CardId;
     }
-  /**
-   * The other half of the bonus slot: activate your OWN Service. Costs
-   * `workers.ownerActivationCost` to the bank, places no card, moves no
-   * threshold and earns nothing - you never earn from your own farm.
-   */
-  | { type: 'workOwnWorker'; seat: Seat; workerId: WorkerAction }
   /** Legal only when no main action is: spends the action, keeps the bonus slot. */
   | { type: 'pass'; seat: Seat }
   /** Decline whatever options are still live and end the turn. Legal once the action is spent. */
@@ -631,25 +790,32 @@ const MOVE_TYPE_KEYS = {
   task: true,
   cardMove: true,
   draw: true,
-  buy: true,
-  market: true,
+  bonusDraw: true,
+  spendMeeple: true,
   build: true,
-  upgrade: true,
   grow: true,
   harvest: true,
   deliver: true,
   moveBalloon: true,
   visit: true,
-  workOwnWorker: true,
   pass: true,
   endTurn: true,
 } satisfies Record<MoveType, true>;
 
 export const MOVE_TYPES = Object.keys(MOVE_TYPE_KEYS) as readonly MoveType[];
 
-/** One truth-level stream; redactEvents masks per seat. Feeds UI animation and sim metrics alike. */
+/**
+ * One truth-level stream; redactEvents masks per seat. Feeds UI animation and
+ * sim metrics alike.
+ *
+ * ⛔ `coins` IS GONE (v31) and it was the busiest event in the game. Every
+ * narrator, every bot pricing term and every sim assertion that read a coin
+ * delta now reads `meepleGained` / `meepleSpent` instead - which is not a
+ * rename: coins were fungible and continuous, meeples are five discrete
+ * colours, each worth exactly one specific action, and they leave the game when
+ * used. A metric that averages them is measuring nothing.
+ */
 export type GameEvent =
-  | { e: 'coins'; seat: Seat; delta: number; why: string }
   | { e: 'cardPlaced'; seat: Seat; onto: { seat: Seat; building: CardId }; card: CardId }
   | { e: 'cardsToHand'; seat: Seat; cards: CardId[] }
   | { e: 'cardsDiscarded'; suit: Suit; cards: CardId[] }
@@ -657,9 +823,33 @@ export type GameEvent =
   /** One card lifted from a building's stack into its owner's barn (W14) - NOT a harvest, no on-harvest passives. */
   | { e: 'stackToBarn'; seat: Seat; building: CardId; card: CardId }
   | { e: 'harvested'; seat: Seat; building: CardId; cards: CardId[] }
-  | { e: 'workerWorked'; seat: Seat; workerId: WorkerAction; owner: Seat | null; free: boolean }
+  /**
+   * A DOOR ACTION RAN. `colour` is whose door it is (which is also what a meeple
+   * of that colour does), `action` is what it did, and `via` is what paid for
+   * it - a card on a Notice Board, or a meeple leaving the game.
+   *
+   * Replaces `workerWorked`, whose `owner` and `free` fields described the old
+   * Service economy: `owner` was who collected the wage and `free` marked the
+   * Herb Hive's off-the-books use that advanced no track. There are no wages, no
+   * tracks and no off-the-books uses in v31, so both fields would have been
+   * constants. Whose farm was used is on `visited` instead, where it belongs.
+   */
+  | { e: 'doorUsed'; seat: Seat; colour: Suit; action: WorkerAction; via: 'visit' | 'meeple' }
+  /**
+   * A MEEPLE WAS CLAIMED off an island delivery space and is now in a player's
+   * supply. `space` is the index into the tile's `meeples`, so a UI can animate
+   * the exact one and a metric can tell the 6 VP space from the 3 VP one.
+   */
+  | { e: 'meepleGained'; seat: Seat; colour: Suit; tile: string; space: number }
+  /**
+   * A MEEPLE WAS SPENT and has LEFT THE GAME. It goes back to no pool - there is
+   * no supply to return it to - so `meepleGained` minus `meepleSpent` over a
+   * whole game is exactly the meeples that died unspent in players' supplies,
+   * which is the dead-component number the v31 plan asks the sim to watch.
+   */
+  | { e: 'meepleSpent'; seat: Seat; colour: Suit; action: WorkerAction }
   | { e: 'reshuffled'; suit: Suit; count: number }
-  | { e: 'built'; seat: Seat; card: CardId; payment: CardId[]; coins: number }
+  | { e: 'built'; seat: Seat; card: CardId; payment: CardId[] }
   /**
    * An empty building demolished by D14 The Cream Refinery. It goes to its own
    * suit's DISCARD, not to the barn - Dean's ruling of 19/08/2026 - so it is
@@ -668,20 +858,19 @@ export type GameEvent =
    */
   | { e: 'demolished'; seat: Seat; card: CardId }
   /**
-   * A starter flipped to its upgraded face. Always a purchase since 2026-08-12,
-   * when the Farmstead's free milestone flip was retired - which is why the
-   * event no longer carries a `free` flag. Readers that care WHICH starter (the
-   * Farmstead's arrival is still the moment the suit power doubles) take it off
-   * the card's slot.
+   * ⛔ `starterUpgraded` IS GONE (v31): starters have one face and nothing
+   * flips. It fired when a seat paid GBP 2 to turn a Barn, Farmstead or Notice
+   * Board over, and the last thing it recorded that no other event did was the
+   * moment a suit power doubled. There are no suit powers on the starters now -
+   * the Farmstead prints an end-game scorer and nothing else - so nothing is
+   * listening for that moment.
    */
-  | { e: 'starterUpgraded'; seat: Seat; card: CardId }
   | {
       e: 'delivered';
       seat: Seat;
       tile: string;
       /** The receipt taken: 6 for arriving first at this tile, 3 for second. */
       vp: number;
-      coins: number;
       spend: Partial<Record<Suit, number>>;
     }
   | {
@@ -735,7 +924,19 @@ export type GameEvent =
   | { e: 'cardGifted'; from: Seat; to: Seat; card: CardId; fromHand: boolean }
   /** A card sent from its owner's hand into their own barn (O17's £1 divert). */
   | { e: 'handToBarn'; seat: Seat; card: CardId }
-  | { e: 'visited'; seat: Seat; host: Seat; mode: 'coin' | 'worker' | 'special' }
+  /**
+   * A card was placed on a Notice Board and its door action taken.
+   *
+   * ⭐ `self` IS THE NUMBER THE WHOLE v31 PASS TURNS ON. Self-visiting is a
+   * solitaire door bought with the same currency as the interaction door, and
+   * every previous version of this game has had the solitaire option crowd the
+   * visit out when the two competed for one slot. `a08-the-hook` must count
+   * these SEPARATELY and must never credit a self-visit as interaction, or the
+   * assertion will report a healthy hook while the table plays solitaire. It is
+   * a flag on the event rather than a `seat === host` check at every reader
+   * precisely so that nobody can forget to make the distinction.
+   */
+  | { e: 'visited'; seat: Seat; host: Seat; self: boolean; colour: Suit; action: WorkerAction }
   | { e: 'endTriggered'; seat: Seat }
   | { e: 'turnEnded'; seat: Seat; next: Seat }
   | { e: 'gameEnded' };

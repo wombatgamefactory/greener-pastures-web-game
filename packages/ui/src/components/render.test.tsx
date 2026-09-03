@@ -109,6 +109,44 @@ describe('the table renders', () => {
     ).not.toContain('Aerodrome');
   });
 
+  /**
+   * ⭐ THE HAND LIMIT IS ON THE TABLE, AND THE BARN IS NOT WHERE IT IS.
+   *
+   * It came back on 02/09/2026 as one global rule (`rules.turn.handLimit`), so
+   * this strip is the only place a player can read it - which makes the
+   * denominator load-bearing rather than decorative. The over-limit warning is
+   * asserted from a hand pushed past the limit, because the interesting half of
+   * the rule is that holding more than the limit is LEGAL until your turn ends,
+   * so the surface has to warn without blocking.
+   */
+  it('prints the hand against the limit, and warns without blocking when over it', () => {
+    const limit = data.rules.turn.handLimit as number;
+    const table = dealTable({
+      seats: 2,
+      suits: ['wheat', 'orchard'],
+      seed: 'handlimit',
+      depth: 60,
+      minHand: 0,
+    });
+    const under = renderToStaticMarkup(<Table data={data} view={table.view} events={[]} />);
+    expect(under).toContain(`/ ${limit}`);
+    expect(under).not.toContain('over-limit');
+
+    const deck = table.view.you.hand;
+    const swollen: PlayerView = {
+      ...table.view,
+      you: {
+        ...table.view.you,
+        // Repeat the seat's own cards: the strip counts and never dedupes, and
+        // the assertion is about the count against the limit.
+        hand: Array.from({ length: limit + 2 }, (_, i) => deck[i % deck.length] as string),
+      },
+    };
+    const over = renderToStaticMarkup(<Table data={data} view={swollen} events={[]} />);
+    expect(over).toContain('over-limit');
+    expect(over).toContain('discard at end of turn');
+  });
+
   it('renders a seat whose Notice Board no longer exists (ticket 30)', () => {
     const table = dealTable({
       seats: 3,
@@ -157,29 +195,28 @@ describe('the table renders', () => {
       expect(html).toContain('close');
     }
     const zoom = renderToStaticMarkup(
-      <ZoomPanel
-        data={data}
-        zoom={{ current: { id: 'W1', upgraded: false }, show: () => {}, clear: () => {} }}
-      />,
+      <ZoomPanel data={data} zoom={{ current: { id: 'W1' }, show: () => {}, clear: () => {} }} />,
     );
-    expect(zoom).toContain('Upgraded Barn');
+    // The Barn's ONE face (v31). It used to assert 'Upgraded Barn', which was
+    // the second face the panel printed underneath - there is no second face.
+    expect(zoom).toContain('Barn');
   });
 });
 
 describe('every image the interface asks for exists', () => {
-  it('for every one of the 105 cards, both faces', () => {
+  /**
+   * ⭐ ONE FACE EACH SINCE v31, where this used to walk 120. The fifteen `*u.webp`
+   * files are still on disk and nothing fetches them; leaving them there costs a
+   * browser nothing and they are the only surviving picture of the upgrade layer.
+   */
+  it('for every one of the 105 cards', () => {
     const missing: string[] = [];
     for (const card of data.cards.catalogue) {
-      const faces = card.faces
-        ? [printedFace(data, card.id), printedFace(data, card.id, true)]
-        : [printedFace(data, card.id)];
-      for (const face of faces) {
-        const html = renderToStaticMarkup(<Card face={face} width={300} />);
-        for (const url of imageSources(html)) {
-          const path = assetPath(url);
-          if (path && !existsSync(path))
-            missing.push(`${face.id}${face.upgraded ? 'u' : ''}: ${url}`);
-        }
+      const face = printedFace(data, card.id);
+      const html = renderToStaticMarkup(<Card face={face} width={300} />);
+      for (const url of imageSources(html)) {
+        const path = assetPath(url);
+        if (path && !existsSync(path)) missing.push(`${face.id}: ${url}`);
       }
     }
     expect(missing).toEqual([]);

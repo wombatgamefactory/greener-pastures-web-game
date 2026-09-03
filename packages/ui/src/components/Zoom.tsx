@@ -17,13 +17,11 @@
  *            for the floor step, where there is no width to give a column and a
  *            panel that costs no layout space is the only thing that fits.
  *
- * The second face of an upgradable starter - "what does this become when I flip
- * it" - is a reading question too, and both shapes answer it. They answer it
- * DIFFERENTLY since step B: the region folds it into `Reading`'s gloss block,
- * which is a column that knows how to run out of room, while the overlay keeps
- * the free-standing `zoom-other` paragraph it always had. The overlay is
- * `position: fixed` with nothing under it, so a paragraph that grows costs
- * nothing there; in the column it was landing on the card art at 1366.
+ * ⛔ BOTH SHAPES USED TO ANSWER "what does this become when I flip it" - the
+ * region inside `Reading`'s gloss block, the overlay as a free-standing
+ * `zoom-other` paragraph. Starters are single-faced since v31 and there is no
+ * currency to flip one with, so neither shape has a second face to show and the
+ * question has stopped existing.
  */
 
 import { useCallback, useState } from 'react';
@@ -37,21 +35,20 @@ import { Reading } from './Reading';
 
 export interface Zoomed {
   readonly id: string;
-  readonly upgraded: boolean;
 }
 
 export interface Zoomer {
   readonly current: Zoomed | null;
-  show(id: string, upgraded?: boolean): void;
+  show(id: string): void;
   clear(): void;
 }
 
 export function useZoom(): Zoomer {
   const [current, setCurrent] = useState<Zoomed | null>(null);
-  const show = useCallback((id: string, upgraded = false) => {
+  const show = useCallback((id: string) => {
     // A masked id (`W?`) names no card: the suit is public, the identity is not.
     if (id.endsWith('?')) return;
-    setCurrent({ id, upgraded });
+    setCurrent({ id });
   }, []);
   const clear = useCallback(() => setCurrent(null), []);
   return { current, show, clear };
@@ -127,19 +124,19 @@ export function ZoomPanel({
       return (
         <aside className="reading reading-standing" aria-live="polite">
           <div className="reading-body">
-            <Card
-              face={printedFace(data, standing.card, standing.upgraded)}
-              width={width}
-              zoomTier
-            />
+            <Card face={printedFace(data, standing.card)} width={width} zoomTier />
             {/* UNDER the card, not over it. Phase 1 pinned the card to the top
                 of the span on purpose - "the card's top edge is in the same
                 place whatever is being read" is what makes the region read as
                 furniture rather than as something that appears - and a caption
                 above would have pushed the card down by its own height every
                 time the pointer left the farm. */}
-            <p className="reading-caption">Your farm&rsquo;s power</p>
-            <Reading data={data} id={standing.card} upgraded={standing.upgraded} play={play} />
+            {/* "Power" was the suit power the Farmstead used to print. Its
+                v31 text is an end-game scorer - 1 VP for each card of your own
+                crop you have built - so the caption names what it now is: the
+                standing reason to build your own colour. */}
+            <p className="reading-caption">Your farm&rsquo;s end-game bonus</p>
+            <Reading data={data} id={standing.card} play={play} />
           </div>
         </aside>
       );
@@ -158,37 +155,26 @@ export function ZoomPanel({
     );
   }
 
-  const { id, upgraded } = zoom.current;
-  const face = printedFace(data, id, upgraded);
-  const card = data.cards.catalogue.find((c) => c.id === id);
-  const other = card?.faces ? printedFace(data, id, !upgraded) : null;
+  const { id } = zoom.current;
+  const face = printedFace(data, id);
 
   /* The region wraps its contents in `.reading-body`, which is taken out of
      flow so the column can never set the height of the tableau beside it. The
      overlay has no such duty: it is fixed to the corner and measures nothing.
 
-     The two shapes deliberately do NOT share a `body` fragment any more. They
-     put different things under the card - a gloss block in one, a one-line
-     footnote in the other - and pretending otherwise cost a level of
-     indirection for no shared markup at all. */
+     The two shapes still do NOT share a `body` fragment: the region puts a
+     gloss block under the card and the overlay, which is the floor step where
+     there is no room for one, puts nothing. */
   return region ? (
     <aside className="reading" aria-live="polite">
       <div className="reading-body">
         <Card face={face} width={width} zoomTier />
-        <Reading data={data} id={id} upgraded={upgraded} play={play} />
+        <Reading data={data} id={id} play={play} />
       </div>
     </aside>
   ) : (
     <aside className="zoom" aria-live="polite">
       <Card face={face} width={width} zoomTier />
-      {other && (
-        <p className="zoom-other">
-          <b>
-            {other.upgraded ? 'Upgraded' : 'Base'} face - {other.name}:
-          </b>{' '}
-          {other.abilityText}
-        </p>
-      )}
     </aside>
   );
 }

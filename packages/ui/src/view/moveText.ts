@@ -9,18 +9,22 @@
  * bespoke surface for.
  */
 
-import type { BuildCost, GameData, Suit, WorkerAction } from '@gp/data';
+import type { BuildCost, GameData, Suit } from '@gp/data';
+import { revealedIn } from '@gp/engine';
 import type { CardId, Move, MoveType, PlayerView, Seat, Task, TaskAnswer } from '@gp/engine';
+
+/** The escape-hatch task, which is the only kind whose answers need it to be read. */
+type CardTask = Extract<Task, { t: 'card' }>;
 
 import { buildOffers, pendingTask } from './intent';
 import type { PrintedFace } from './printed';
-import { SUIT_META, seatName } from './suits';
-import { liveThreshold, seatSuits } from './table';
+import { SUIT_META, maskedCardPhrase, seatName, suitArticle } from './suits';
+import { doorOf, liveThreshold, seatSuits } from './table';
 
 export function cardName(data: GameData, id: string): string {
   if (id.endsWith('?')) {
     const suit = data.cards.suits.find((s) => s.charAt(0).toUpperCase() === id.charAt(0));
-    return suit ? `a ${SUIT_META[suit].label} card` : 'a card';
+    return maskedCardPhrase(suit);
   }
   return data.cards.catalogue.find((c) => c.id === id)?.name ?? id;
 }
@@ -32,8 +36,9 @@ export function spendText(spend: Partial<Record<Suit, number>>): string {
   return parts.length === 0 ? 'nothing' : parts.join(' + ');
 }
 
-export function workerName(data: GameData, id: WorkerAction): string {
-  return data.workers.roster.find((w) => w.id === id)?.name ?? id;
+/** What a colour's door does, in one word: "Harvest", "Draw", and so on. */
+export function doorLabel(data: GameData, colour: Suit): string {
+  return doorOf(data, colour).actionLabel;
 }
 
 function who(view: PlayerView, seat: Seat): string {
@@ -45,14 +50,15 @@ function cardList(data: GameData, ids: readonly string[]): string {
 }
 
 /**
- * V2 The Vegetable Farmstead's head, spelled out on the option. Without it two
- * deliveries to the same tile read identically and one of them silently costs a
- * hand card, which is the difference between the option list explaining the
- * card and the option list hiding it.
+ * The head task when it is the escape hatch, which is the only kind that is
+ * read. `view.tasks[0]` rather than `pendingTask`, deliberately: `pendingTask`
+ * returns null for a task belonging to ANOTHER seat, and a move log read from
+ * the outside still has to render that seat's move as something - which, for a
+ * rival, is the masked form the view already carries.
  */
-function headText(data: GameData, head: readonly string[] | undefined): string {
-  if (head === undefined || head.length === 0) return '';
-  return ` (loading ${cardList(data, head)} from your hand first)`;
+function headCardTask(view: PlayerView): CardTask | undefined {
+  const head = view.tasks[0];
+  return head?.t === 'card' ? head : undefined;
 }
 
 /**
@@ -65,10 +71,27 @@ function seatSuffix(ontoSeat: Seat | undefined): string {
   return ontoSeat === undefined ? '' : " on a neighbour's farm";
 }
 
-export function describeAnswer(data: GameData, answer: TaskAnswer): string {
+/**
+ * A task answer, said in words.
+ *
+ * ⭐ `task` IS OPTIONAL AND ONLY THE `card` KIND READS IT.
+ *
+ * An escape-hatch answer is a bag of riders whose MEANING lives on the task that
+ * offered it - `{ suit: 'wheat' }` says four different things depending on which
+ * card asked - and until 03/09/2026 this function had no way to tell, so it
+ * guessed from the shape of the bag and got some of them wrong. Handing it the
+ * task is what makes those answers sayable at all.
+ *
+ * ⚠️ IT MUST BE THE TASK AS **THIS VIEW** CARRIES IT, never one fetched from
+ * anywhere else. `redactTask` masks a card task's riders for every seat but its
+ * owner, so a revealed deck top reads `D15` in the owner's copy and `D?` in a
+ * rival's - and that is the whole of the entitlement check. Nothing below
+ * compares seats or decides who may see what; it renders what the view already
+ * holds, which is precisely why it cannot be the place the boundary is got
+ * wrong.
+ */
+export function describeAnswer(data: GameData, answer: TaskAnswer, task?: CardTask): string {
   switch (answer.kind) {
-    case 'worker':
-      return `the ${workerName(data, answer.workerId)}`;
     case 'deck':
       return `the ${SUIT_META[answer.suit].label} deck`;
     case 'keep':
@@ -84,7 +107,7 @@ export function describeAnswer(data: GameData, answer: TaskAnswer): string {
         answer.stacks?.length ? ` + ${cardList(data, answer.stacks)} off your buildings` : ''
       }`;
     case 'deliver':
-      return `island ${answer.tile}, spending ${spendText(answer.spend)}${headText(data, answer.head)}`;
+      return `island ${answer.tile}, spending ${spendText(answer.spend)}`;
     case 'balloon':
       return `the ${balloonWord(answer.balloon)} balloon, spending ${spendText(answer.spend)}`;
     case 'deckSow':
@@ -96,14 +119,48 @@ export function describeAnswer(data: GameData, answer: TaskAnswer): string {
     case 'skip':
       return 'decline';
     case 'card':
-      return describeCardPayload(data, answer.payload);
+      return describeCardPayload(data, answer.payload, task);
     default:
       return answer satisfies never;
   }
 }
 
 /**
- * The escape-hatch answer, said in words.
+ * What one `{ suit }` answer means, by the task that offered it.
+ *
+ * ⚠️ FOUR CARDS PRODUCE THE IDENTICAL PAYLOAD AND NONE OF THEM MEANS THE SAME
+ * THING. Until 03/09/2026 this branch printed one sentence for all four -
+ * "discard a Vegetable card from your barn", which was V13's meaning and V13 has
+ * since been retexted - so every one of them was rendering a rule the game does
+ * not have. The bag cannot say which; the task's `kind` can. The default names
+ * the crop and claims nothing else, rather than inventing a fifth wrong sentence
+ * for a producer somebody adds later.
+ */
+const SUIT_ANSWER: Readonly<Record<string, (crop: string) => string>> = {
+  // The Apiary skim: a card of that crop off the hive, into your barn.
+  skimHive: (crop) => `take a ${crop} card off it, into your barn`,
+  // A17 The Smoke Pot, and the Dairy deck-to-barn: the top card of that deck.
+  smokeBuy: (crop) => `the top ${crop} card, into your barn`,
+  deckToBarn: (crop) => `the top ${crop} card, into your barn`,
+  // D15 The Grand Creamery, first stage: which deck to turn over.
+  creameryFlip: (crop) => `reveal the top card of the ${crop} deck`,
+};
+
+/**
+ * What one `{ pick }` answer means, by the task that offered it.
+ *
+ * `name` arrives already masked or not, because it came off the view's own copy
+ * of the task - so neither of these decides anything about entitlement either.
+ */
+const PICK_ANSWER: Readonly<Record<string, (name: string, paying: string) => string>> = {
+  // D10 The Scout's Post: build the revealed card, at a discount of 2.
+  scout: (name, paying) => `build ${name}, paying ${paying}`,
+  // D15 The Grand Creamery: build one of the two revealed cards for nothing.
+  creameryPick: (name) => `build ${name} for free`,
+};
+
+/**
+ * The escape-hatch answer's payload, said in words.
  *
  * A `card` payload is whatever its handler decided, so this cannot be
  * exhaustive and does not pretend to be: it recognises the shapes in play and
@@ -112,7 +169,11 @@ export function describeAnswer(data: GameData, answer: TaskAnswer): string {
  * that reach the island's demand tokens are the suit, and `{"a":{"tile":"A5",…}}`
  * is not a choice anybody can make.
  */
-function describeCardPayload(data: GameData, payload: Record<string, unknown>): string {
+function describeCardPayload(
+  data: GameData,
+  payload: Record<string, unknown>,
+  task?: CardTask,
+): string {
   const crate = (ref: unknown): string => {
     const r = ref as { tile?: string; crate?: number };
     return r.tile === undefined ? '?' : `${r.tile} crate ${(r.crate ?? 0) + 1}`;
@@ -138,15 +199,43 @@ function describeCardPayload(data: GameData, payload: Record<string, unknown>): 
       ? `the ${balloonWord(String(payload.balloon))} balloon's reward`
       : `the ${balloonWord(String(payload.balloon))} balloon, discarding ${cardList(data, cards)}`;
   }
-  // V2's upgraded Farmstead: a barn card traded for a deck top.
-  if (payload.gone !== undefined && payload.into !== undefined) {
-    return `swap a ${SUIT_META[payload.gone as Suit].label} card for the top ${
-      SUIT_META[payload.into as Suit].label
-    } card`;
+  // The divert seam: a card on its way to a discard, put in the barn instead.
+  if (payload.card !== undefined && payload.barn === true) {
+    return `put ${cardName(data, String(payload.card))} into your barn instead`;
   }
-  // V13: one barn card at a time out, and the deck each one comes back from.
+  /*
+   * ⭐ A CHOICE OUT OF LIMBO, ANSWERED BY SLOT (the engine's leak fix,
+   * 03/09/2026).
+   *
+   * D10 The Scout's Post and D15 The Grand Creamery turn deck tops face up into
+   * a zone no `PlayerView` models, and their answers used to name the revealed
+   * card BY ID - which put a deck top into the unredacted move list every policy
+   * reads, and into the replayable move log. They answer `{ pick: 1 }` now, and
+   * the id lives only on the task.
+   *
+   * So the slot is resolved back THROUGH THE TASK, and the entitlement comes
+   * free with it: `redactTask` has already masked the riders for every seat but
+   * the owner, so the owner's view yields `The Cider House` and a rival's yields
+   * `D?`, which `cardName` renders as "a Dairy card". Rendering the raw
+   * `{"pick":0}` was meaningless to a player; rendering the old `{"card":"D15"}`
+   * WAS the leak. This is the same fix said in the interface.
+   *
+   * ⚠️ WITH NO TASK IT NAMES NO CARD AT ALL. A caller that cannot supply one has
+   * no way to know what the slot refers to, and guessing there is exactly how an
+   * id gets in front of somebody not entitled to it.
+   */
+  if (typeof payload.pick === 'number') {
+    const id = task ? revealedIn(task)[payload.pick] : undefined;
+    const name = id === undefined ? 'the card in that slot' : cardName(data, id);
+    const paying = cardList(data, (payload.payment as CardId[] | undefined) ?? []);
+    const say = task ? PICK_ANSWER[task.kind] : undefined;
+    return say ? say(name, paying) : `take ${name}`;
+  }
+  // Four cards, four meanings, one payload: see SUIT_ANSWER.
   if (payload.suit !== undefined) {
-    return `discard a ${SUIT_META[payload.suit as Suit].label} card from your barn`;
+    const crop = SUIT_META[payload.suit as Suit].label;
+    const say = task ? SUIT_ANSWER[task.kind] : undefined;
+    return say ? say(crop) : `the ${crop} crop`;
   }
   if (payload.take === true) return 'accept';
   return JSON.stringify(payload);
@@ -162,10 +251,39 @@ export function balloonWord(id: string): string {
   );
 }
 
+/**
+ * ⭐ A SELF-VISIT AND A NEIGHBOUR VISIT NEVER SHARE A SENTENCE.
+ *
+ * They are the same move with a flag and they are opposite acts: one is the
+ * game's whole social hook, the other is solitaire bought with the same
+ * currency. `move.host === move.seat` is the only difference in the data, so
+ * this is the one place the interface can guarantee they never read alike - and
+ * the wording is deliberately blunt about which is which, because the v31 plan's
+ * risk 2 is precisely that the solitaire door quietly wins.
+ */
+export function visitText(
+  data: GameData,
+  view: PlayerView,
+  move: Extract<Move, { type: 'visit' }>,
+): string {
+  const colour = seatSuits(view)[move.host];
+  const door = colour ? doorLabel(data, colour) : 'their';
+  const fee = cardName(data, move.fee);
+  return move.host === move.seat
+    ? `Your own door: ${fee} onto your own Notice Board, then ${door}. No neighbour involved, and it fills your own board.`
+    : `Visit ${who(view, move.host)}: ${fee} onto their Notice Board, then ${door}.`;
+}
+
 export function describeMove(data: GameData, view: PlayerView, move: Move): string {
   switch (move.type) {
     case 'task':
-      return describeAnswer(data, move.answer);
+      /*
+       * The head task AS THIS VIEW CARRIES IT - already redacted for the seat
+       * the view belongs to - so an answer naming a slot resolves to a card's
+       * name for its owner and to a mask for anybody else, with nothing here
+       * having to know which is which.
+       */
+      return describeAnswer(data, move.answer, headCardTask(view));
     case 'cardMove':
       // A Tier 3 ACTION card is a main action, so it reads as one rather than
       // as an internal move kind. Everything else keeps the generic form.
@@ -173,33 +291,23 @@ export function describeMove(data: GameData, view: PlayerView, move: Move): stri
         ? `${cardName(data, move.card)}: take its ACTION (instead of your action)`
         : `${cardName(data, move.card)}: ${move.kind}`;
     case 'draw':
-      return 'Draw';
-    case 'buy':
-      return `Buy the top ${SUIT_META[move.suit].label} card for £${data.rules.turn.buyCost ?? 0}`;
-    case 'market':
-      return `Buy at market: the top ${SUIT_META[move.suit].label} card into your barn, for £${data.rules.turn.marketCost ?? 0}`;
+      return `Draw ${data.rules.turn.baseDraw.see}, keep ${data.rules.turn.baseDraw.keep}`;
+    case 'bonusDraw':
+      return `Bonus: draw ${data.rules.turn.bonusDraw} off the top of any deck`;
+    case 'spendMeeple':
+      return `Spend ${suitArticle(SUIT_META[move.colour].label)} ${SUIT_META[move.colour].label} meeple: ${doorLabel(data, move.colour)}. It leaves the game.`;
     case 'build':
       return `Build ${cardName(data, move.card)}, paying ${cardList(data, move.payment)}`;
-    case 'upgrade':
-      return `Upgrade ${cardName(data, move.card)} for £${data.rules.economy.upgradeCostCoins}`;
     case 'grow':
       return `Grow ${cardName(data, move.building)}, paying ${cardName(data, move.payment)}`;
     case 'harvest':
       return `Harvest ${cardName(data, move.building)}`;
     case 'deliver':
-      return `Deliver to island ${move.tile}: ${spendText(move.spend)}${headText(data, move.head)}`;
+      return `Deliver to island ${move.tile}: ${spendText(move.spend)}`;
     case 'moveBalloon':
       return `Bring in the ${balloonWord(move.balloon)} balloon: ${spendText(move.spend)}`;
     case 'visit':
-      return `Visit ${who(view, move.host)} with ${cardList(data, move.fee)} - ${
-        move.payoff.mode === 'coin'
-          ? 'take the money'
-          : move.payoff.mode === 'special'
-            ? 'the Special Orders prize'
-            : `work their ${workerName(data, move.payoff.workerId)}`
-      }`;
-    case 'workOwnWorker':
-      return `Work your own ${workerName(data, move.workerId)}`;
+      return visitText(data, view, move);
     case 'pass':
       return 'Pass';
     case 'endTurn':
@@ -212,14 +320,10 @@ export function describeMove(data: GameData, view: PlayerView, move: Move): stri
 /** What a pending task is asking for, as a prompt line. */
 export function describeTask(data: GameData, task: Task): string {
   switch (task.t) {
-    case 'chooseWorker':
-      return task.owned === 'rival'
-        ? "Work one of your neighbours' Hired Workers."
-        : 'Choose a Hired Worker to work.';
     case 'draw':
       return task.revealed.length < task.see
         ? `Turn over a card: pick a deck (${task.revealed.length} of ${task.see} seen).`
-        : `Keep ${Math.min(task.keep, task.revealed.length)} of the ${task.revealed.length} you saw. The rest go to their discards.`;
+        : `Keep ${Math.min(task.keep, task.revealed.length)} of the ${task.revealed.length} you saw.`;
     case 'chooseBuilding':
       return 'Choose one of your buildings to harvest.';
     case 'sow':
@@ -235,11 +339,17 @@ export function describeTask(data: GameData, task: Task): string {
     case 'deliver':
       return 'Deliver: choose an island tile, or bring in a balloon.';
     case 'discard':
-      return `Your barn caps your hand at ${task.downTo}. Choose what to discard.`;
+      // ⭐ NOT "your barn caps your hand at N" any more (02/09/2026). The limit
+      // is one global rule and the Barn prints nothing, so naming the Barn here
+      // would point a player at a card that says nothing. It also says WHY now:
+      // this is the only moment the limit is checked, and a player who has just
+      // been allowed to hold fifteen cards needs telling that the boundary is
+      // where it lands.
+      return `Your turn ends with a hand of ${task.downTo}. Choose what to discard.`;
     case 'divert':
       return task.fromDraw
-        ? `${task.cards.length} card${task.cards.length === 1 ? '' : 's'} heading for the discard: give one to a neighbour, buy one into your barn for £1, or let them go.`
-        : `${task.cards.length} card${task.cards.length === 1 ? '' : 's'} heading for the discard: buy one into your barn for £1, or let them go.`;
+        ? `${task.cards.length} card${task.cards.length === 1 ? '' : 's'} heading for the discard: give one to a neighbour, put one in your barn, or let them go.`
+        : `${task.cards.length} card${task.cards.length === 1 ? '' : 's'} heading for the discard: put one in your barn, or let them go.`;
     case 'card':
       return `${cardName(data, task.src)}: choose.`;
     default:
@@ -250,22 +360,24 @@ export function describeTask(data: GameData, task: Task): string {
 // --- the turn bar's families ------------------------------------------------
 
 /**
- * WHERE A FAMILY BELONGS ON THE BAR (phase 3).
+ * WHERE A FAMILY BELONGS ON THE BAR.
  *
- * The turn is one action plus one bonus slot, and until 26/08 the bar said
- * otherwise: fourteen buttons in one flat row, all the same size, half of them
- * greyed. That is not merely dense, it is a lie about the rules - it reads as
- * fourteen verbs. The zone is how the table states the truth once, in the data,
- * rather than leaving every call site to infer it:
+ * The turn is three parts since v31 and the bar says so in the data rather than
+ * leaving every call site to infer it:
  *
+ *   meeple   spends a MEEPLE from your supply. Any number, one at a time, and
+ *            ONLY at the very start of your turn - before the bonus and before
+ *            the action. Each one leaves the game.
+ *   bonus    spends your BONUS SLOT. One a turn (two with a Helping Hand),
+ *            at the start of your turn.
  *   action   spends your MAIN ACTION. Exactly one of these a turn.
- *   bonus    spends your BONUS SLOT. Exactly one of these a turn, at its start.
- *   exit     spends neither: leaving the turn, or leaving a half-made decision.
+ *   exit     spends none of the three: leaving the turn, or leaving a
+ *            half-made decision.
  *
- * It replaces the old `bonus?: true` boolean, which could only ever answer half
- * the question and left "is End turn an action?" to whoever was rendering.
+ * The order of those four is the order of the turn, and the bar draws them in
+ * it, so the shape of a turn is legible off the interface without being taught.
  */
-export type TurnZone = 'action' | 'bonus' | 'exit';
+export type TurnZone = 'meeple' | 'action' | 'bonus' | 'exit';
 
 export interface ActionGroup {
   readonly type: MoveType;
@@ -273,8 +385,15 @@ export interface ActionGroup {
   readonly hint: string;
   /** True when clicking it needs a target next rather than playing immediately. */
   readonly needsTarget: boolean;
-  /** Which of the turn's three parts this family spends. */
+  /** Which of the turn's parts this family spends. */
   readonly zone: TurnZone;
+  /**
+   * Distinguishes two families that share a move TYPE. Only the visit uses one:
+   * `visit` and `visit-self` are the same move with a different host, and they
+   * are opposite acts, so the bar draws two buttons and this is what splits the
+   * move list between them.
+   */
+  readonly key: string;
   /**
    * False when this game is not playing the rule at all - the knob is null, or
    * the module is not on the table. Distinct from "no legal move right now",
@@ -292,49 +411,104 @@ export interface ActionGroup {
 }
 
 /**
- * The five main actions, the bonus slot and the turn's exits, in the order the
- * rulebook teaches them. A family with no legal move is still listed, greyed:
- * "what can I not do" is half of learning a turn, and hiding it would make the
- * bar jump about between turns.
+ * The turn's families, in the order the rulebook teaches them. A family with no
+ * legal move is still listed, greyed: "what can I not do" is half of learning a
+ * turn, and hiding it would make the bar jump about between turns.
  *
- * ⚠️ `buy` and `market` STAY IN THIS TABLE. Both rules were deleted on
- * 19/08/2026 and both knobs are null in the shipped data, but they are knobs -
- * `overlays/*.json` flip them back and the paired arms are how the decision gets
- * re-measured. Deleting the rows would take the interface out of that loop; what
- * `inPlay` does instead is stop drawing a permanently dead button while the rule
- * is off, and start drawing it again the moment an overlay turns it on. Which
- * moves EXIST is a rules question, settled elsewhere.
+ * ⛔ FOUR ROWS LEFT IN v31 AND EVERY ONE WAS A RULE DELETION: `buy` and `market`
+ * (both coin sinks in or beside the bonus slot), `upgrade` (the GBP 2 starter
+ * flip, which was the bonus slot's fourth option from 19/08/2026) and
+ * `workOwnWorker` (activate your own Service, paid to the bank). The first three
+ * died with the currency; the fourth is REPLACED rather than deleted, and the
+ * replacement is the row marked `visit-self` below - an owner now places a card
+ * on their own board exactly as a rival does, which is why it is a visit and not
+ * a family of its own.
  */
 const FAMILIES: readonly {
+  key: string;
   type: MoveType;
   label: string;
   hint: string;
   needsTarget: boolean;
   zone: TurnZone;
-  /**
-   * Is this game playing the rule at all? Absent means "always".
-   */
+  /** Splits a shared move type between two families. Absent means "all of them". */
+  match?: (move: Move, view: PlayerView) => boolean;
+  /** Is this game playing the rule at all? Absent means "always". */
   inPlay?: (data: GameData) => boolean;
   /** See `ActionGroup.onBoard`. */
   onBoard?: true;
 }[] = [
+  /*
+   * ON THE BOARD, NOT ON THE BAR. A meeple is a wooden piece sitting in your own
+   * supply and spending it is picking it up - so the supply carries the
+   * affordance and the bar draws no button. It stays in the table because the
+   * ZONE is what the bar needs: the meeple phase is a labelled part of the turn
+   * whether or not any meeple is currently spendable, and a player has to be
+   * able to see the window open and shut.
+   */
   {
+    key: 'spendMeeple',
+    type: 'spendMeeple',
+    label: 'Meeples',
+    hint: 'Start of turn: spend any number, one at a time. Each leaves the game.',
+    needsTarget: true,
+    zone: 'meeple',
+    onBoard: true,
+  },
+  {
+    key: 'bonusDraw',
+    type: 'bonusDraw',
+    label: 'Draw 1',
+    hint: 'Bonus: the top card of any one deck. Free, and never dead.',
+    needsTarget: false,
+    zone: 'bonus',
+  },
+  /*
+   * ⭐ THE TWO HALVES OF THE VISIT, DRAWN AS TWO BUTTONS. One move type, one
+   * flag, and opposite acts: a card on a NEIGHBOUR's board is the hook, a card
+   * on your OWN is solitaire that also clogs your own door. Every previous
+   * version of this game has had the solitaire option quietly crowd the visit
+   * out when the two competed for one slot, so the interface's job is to make
+   * sure nobody takes one thinking it is the other. One button, however
+   * carefully worded, could not do that.
+   */
+  {
+    key: 'visit',
+    type: 'visit',
+    label: 'Visit a neighbour',
+    hint: "Bonus: 1 card onto a neighbour's Notice Board, and you take their suit's action",
+    needsTarget: true,
+    zone: 'bonus',
+    match: (move, view) => move.type === 'visit' && move.host !== view.seat,
+  },
+  {
+    key: 'visit-self',
+    type: 'visit',
+    label: 'Your own door',
+    hint: 'Bonus: 1 card onto your OWN Notice Board for your own action - and it clogs your board',
+    needsTarget: true,
+    zone: 'bonus',
+    match: (move, view) => move.type === 'visit' && move.host === view.seat,
+    inPlay: (data) => data.rules.turn.selfVisitAllowed,
+  },
+  {
+    key: 'draw',
     type: 'draw',
     label: 'Draw',
-    hint: 'Top of any two decks, keep one',
+    hint: 'Top of any two decks, keep both',
     needsTarget: false,
     zone: 'action',
   },
   {
-    type: 'buy',
-    label: 'Buy',
-    hint: 'Free, once a turn: £1 for the top card of a neighbouring crop',
+    key: 'build',
+    type: 'build',
+    label: 'Build',
+    hint: 'Pay cards from hand',
     needsTarget: true,
     zone: 'action',
-    inPlay: (data) => data.rules.turn.buyCost !== null,
   },
-  { type: 'build', label: 'Build', hint: 'Pay cards from hand', needsTarget: true, zone: 'action' },
   {
+    key: 'grow',
     type: 'grow',
     label: 'Grow',
     hint: 'Activate one of your buildings',
@@ -342,6 +516,7 @@ const FAMILIES: readonly {
     zone: 'action',
   },
   {
+    key: 'harvest',
     type: 'harvest',
     label: 'Harvest',
     hint: 'Take a full stack into your barn',
@@ -349,6 +524,7 @@ const FAMILIES: readonly {
     zone: 'action',
   },
   {
+    key: 'deliver',
     type: 'deliver',
     label: 'Deliver',
     hint: 'Barn to the island',
@@ -363,16 +539,10 @@ const FAMILIES: readonly {
    * Harvest and Deliver, and `moveBalloon` is the DELIVER action's freight
    * branch: it exists only when Vegetables is at the table, it is one of two
    * destinations for the same action, and `MOVE_ROUTES` has always said its home
-   * is the balloon. Drawing it as a permanent sixth verb, greyed on most turns
-   * and absent from most games, is the same lie this phase came to fix - a bar
-   * claiming more verbs than the rules have.
-   *
-   * It costs nothing in reach. The Aerodrome is a labelled panel in the commons,
-   * every balloon in it is a button, and a balloon you could bring in wears the
-   * live glow like any other target - so the move is one click away, on the
-   * piece it moves, which is where a player looks for it anyway.
+   * is the balloon.
    */
   {
+    key: 'moveBalloon',
     type: 'moveBalloon',
     label: 'Freight',
     hint: 'Bring in a balloon',
@@ -380,48 +550,14 @@ const FAMILIES: readonly {
     zone: 'action',
     onBoard: true,
   },
-  {
-    type: 'visit',
-    label: 'Visit',
-    hint: "Bonus: a card on a neighbour's board, for £1 or their power",
-    needsTarget: true,
-    zone: 'bonus',
-  },
-  {
-    type: 'market',
-    label: 'Market',
-    hint: 'Bonus: £3 for the top card of any crop, into your barn',
-    needsTarget: true,
-    zone: 'bonus',
-    inPlay: (data) => data.rules.turn.marketCost !== null,
-  },
-  {
-    type: 'workOwnWorker',
-    label: 'Work yours',
-    hint: 'Bonus: £1 to use your own power. No card, no wage.',
-    needsTarget: true,
-    zone: 'bonus',
-  },
-  // Moved down here on 19/08/2026 with the rule: the starter flip stopped being
-  // a Build-action branch and became the fourth bonus option.
-  {
-    type: 'upgrade',
-    label: 'Upgrade',
-    hint: 'Bonus: £2 to flip a starter. Three of them, once each, all game.',
-    needsTarget: true,
-    zone: 'bonus',
-  },
   /*
    * ON THE CARD, NOT ON THE BAR (26/08/2026). A `cardMove` is a standing move a
-   * BUILT CARD is offering - today only the Helping Hand's repeat - so the card
-   * is where it is made. "Card power" as a bar button was the interface asking a
-   * player to look away from the thing that grants the move and hunt for a
-   * generic button that names no card.
-   *
-   * The row stays here so the table remains the complete list of families and
-   * the fallback is one line: drop `onBoard` and it prints in the exits again.
+   * BUILT CARD is offering, so the card is where it is made. "Card power" as a
+   * bar button was the interface asking a player to look away from the thing
+   * that grants the move and hunt for a generic button that names no card.
    */
   {
+    key: 'cardMove',
     type: 'cardMove',
     label: 'Card power',
     hint: 'A standing move on a card',
@@ -430,6 +566,7 @@ const FAMILIES: readonly {
     onBoard: true,
   },
   {
+    key: 'pass',
     type: 'pass',
     label: 'Pass',
     hint: 'Nothing else is legal',
@@ -437,6 +574,7 @@ const FAMILIES: readonly {
     zone: 'exit',
   },
   {
+    key: 'endTurn',
     type: 'endTurn',
     label: 'End turn',
     hint: 'Decline what is left',
@@ -447,24 +585,28 @@ const FAMILIES: readonly {
 
 /**
  * Build is the one family reachable from two move types. A card that grants a
- * Build (W7 Golden Field, the Build Worker) offers it as a build TASK, whose
- * moves are `type: 'task'` - so a plain `m.type === family.type` filter greys
- * the Build button at the exact moment the prompt is asking for a build. Every
- * other task is answered in place on a building, a deck or a tile, which is why
- * this stays a one-family exception rather than a general answer-to-family map.
+ * Build (W7 Golden Field, the Dairy door) offers it as a build TASK, whose moves
+ * are `type: 'task'` - so a plain `m.type === family.type` filter greys the
+ * Build button at the exact moment the prompt is asking for a build. Every other
+ * task is answered in place on a building, a deck or a tile, which is why this
+ * stays a one-family exception rather than a general answer-to-family map.
  *
- * `data` is here only for `inPlay`. It is read once per render and never
+ * `view` is here for the visit split and `data` for `inPlay`. Neither is
  * consulted about legality: the moves list is still the only thing that decides
  * whether a family is enabled.
  */
-export function actionGroups(data: GameData, moves: readonly Move[]): ActionGroup[] {
+export function actionGroups(
+  data: GameData,
+  view: PlayerView,
+  moves: readonly Move[],
+): ActionGroup[] {
   return FAMILIES.map((family) => ({
     ...family,
     inPlay: family.inPlay?.(data) ?? true,
     onBoard: family.onBoard === true,
     moves: moves.filter(
       (m) =>
-        m.type === family.type ||
+        (m.type === family.type && (family.match?.(m, view) ?? true)) ||
         (family.type === 'build' && m.type === 'task' && m.answer.kind === 'build'),
     ),
   }));
@@ -480,9 +622,8 @@ export function actionGroups(data: GameData, moves: readonly Move[]): ActionGrou
 // that a tap tells you what the icon MEANS, in a sentence, in your own language.
 //
 // So the block never reprints the card. The card is directly above it at
-// reading size and already says "GROW another of your buildings without placing
-// a card"; printing that a second time doubles the reading and teaches nothing.
-// What is added is only what the card cannot say about itself:
+// reading size, and printing that a second time doubles the reading and teaches
+// nothing. What is added is only what the card cannot say about itself:
 //
 //   glossAbility  what its KEYWORDS mean, once each, in plain English
 //   glossCost     what it costs, in words rather than in a row of icons
@@ -510,16 +651,12 @@ export interface GlossTerm {
  * much as the words - VISIT must not fire on VISITOR, which is the same rule
  * seen from the other side of the table and gets its own line.
  *
- * ⚠️ HIRE and WORK appear on NO card in the current sheet. They are kept
- * because change 6 (20/08/2026) folded the Hiring Fair into the Notice Board
- * and a re-text could bring the words back, and an unglossed keyword is exactly
- * the failure this block exists to prevent. They are worded from the rulebook
- * rather than from the data, which is the honest limit of what can be said
- * about a system the code does not currently run.
+ * ⛔ HIRE and WORK ARE GONE (v31). They were kept through change 6 on the
+ * argument that a re-text could bring the Hiring Fair's vocabulary back; there
+ * is no Fair, no Working Week, no wage and no Service left for either word to
+ * describe, so a gloss for them would now be teaching a game nobody is playing.
  *
- * `means` takes the data so a number that is a knob stays a knob: the visit
- * payout has moved twice this month and a hard-coded "£1" here would be a lie
- * the moment somebody sweeps it.
+ * `means` takes the data so a number that is a knob stays a knob.
  */
 const KEYWORDS: readonly {
   readonly term: string;
@@ -541,26 +678,14 @@ const KEYWORDS: readonly {
   {
     term: 'VISIT',
     pattern: /\bvisit(s|ed|ing)?\b/i,
-    means: (data) =>
-      `Your bonus slot: 1 card onto a neighbour's Notice Board, for £${data.rules.economy.visitPayout.base} or their Service's action.`,
+    means: () =>
+      "Your bonus slot: 1 card onto a Notice Board, then take that farm's suit action. Your own board counts, and fills up just the same.",
   },
   {
     term: 'VISITOR',
     pattern: /\bvisitors?\b/i,
-    means: () => 'What a neighbour gets for visiting you. You never visit your own farm.',
-  },
-  {
-    term: 'HIRE',
-    // Deliberately narrower than the others: "Hired Worker" is the NAME of a
-    // component and appears wherever workers do, so matching "hired" would
-    // gloss the noun every time the card merely mentioned one.
-    pattern: /\bhires?\b/i,
-    means: () => 'Build a Hired Worker out of the centre, paying the bank. One to a farm.',
-  },
-  {
-    term: 'WORK',
-    pattern: /\bwork(s|ed|ing)?\b/i,
-    means: () => "Take a Hired Worker's action, and advance it one space along its Working Week.",
+    means: (data) =>
+      `What anybody gets for placing a card here: your suit's action, and the card stays on the board until you harvest it. Full at ${data.rules.economy.noticeBoardThreshold ?? 2}.`,
   },
 ];
 
@@ -569,8 +694,8 @@ const KEYWORDS: readonly {
  *
  * Fixed order rather than order of appearance so the block does not reshuffle
  * itself between two cards that print the same pair of keywords the other way
- * round. Empty for a card with no ability text, which is the Barn and the
- * Farmstead's whole answer here and is not a defect.
+ * round. Empty for a card with no ability text, which is the Barn's whole answer
+ * here and is not a defect.
  */
 export function glossAbility(data: GameData, text: string): GlossTerm[] {
   if (text.trim() === '') return [];
@@ -590,14 +715,14 @@ function slotOf(data: GameData, id: CardId): string | undefined {
  * `spendText` does the crop half, deliberately: it is the formatter the action
  * bar, the disambiguation menu and the task prompt already share, so a suit
  * renamed in `SUIT_META` cannot come out one way on a button and another way
- * here. The wild and coin halves have no equivalent, because no other surface
- * has ever had to name them.
+ * here. The coin half went with the currency - the 30 Power and Endgame cards
+ * that used to print two coins now cost 2 cards of their own suit, which this
+ * already knew how to say.
  */
 function buildCostWords(suit: Suit, cost: BuildCost): string {
   const parts: string[] = [];
   if (cost.suit > 0) parts.push(spendText({ [suit]: cost.suit }));
   if (cost.wild > 0) parts.push(`${cost.wild} of any crop`);
-  if (cost.coins > 0) parts.push(`£${cost.coins}`);
   return parts.length === 0 ? 'nothing' : parts.join(' + ');
 }
 
@@ -609,9 +734,9 @@ function buildCostWords(suit: Suit, cost: BuildCost): string {
  * whether or not there is a game going on. That is why it is separate from
  * `glossNow`: the read-only render path and the rival inspector still get it.
  *
- * The starter is the one shape that needs its own line. It has no build cost -
- * you begin with it - so its icons print the £2 that FLIPS it, and calling that
- * "to build" would teach a rule the game does not have.
+ * ⛔ THE STARTER LINE IS GONE. It used to read "To flip: GBP 2, in your bonus
+ * slot". Starters have one face and there is nothing to buy, so a starter now
+ * simply has no cost line - which is the correct answer rather than a gap.
  */
 export function glossCost(data: GameData, face: PrintedFace): string[] {
   const card = data.cards.catalogue.find((c) => c.id === face.id);
@@ -619,9 +744,6 @@ export function glossCost(data: GameData, face: PrintedFace): string[] {
 
   if (card?.buildCost) {
     out.push(`To build: ${buildCostWords(face.suit, card.buildCost)}.`);
-  } else if (card?.type === 'starter' && !face.upgraded) {
-    const price = card.upgradeCostCoins ?? data.rules.economy.upgradeCostCoins;
-    out.push(`To flip: £${price}, in your bonus slot. Once each, all game.`);
   }
 
   const noticeBoard = card?.slot === 'noticeboard';
@@ -640,7 +762,7 @@ export function glossCost(data: GameData, face: PrintedFace): string[] {
   if (threshold !== null) {
     out.push(
       noticeBoard
-        ? `Neighbours fill it: ${threshold}, then it clogs until you harvest.`
+        ? `Visitors fill it: ${threshold}, then it clogs until you harvest.`
         : `Holds ${threshold}; full, it clogs until you harvest.`,
     );
   }
@@ -660,8 +782,8 @@ export function glossCost(data: GameData, face: PrintedFace): string[] {
  *
  * The rule the engine actually enforces (`paymentsFor`): pay `suit + wild`
  * cards out of hand, of which at least `suit` must really be the built card's
- * crop, and hold `coins`. So the gap is own-crop first, then any-crop for
- * whatever is still owed after those arrive, then coins.
+ * crop. So the gap is own-crop first, then any-crop for whatever is still owed
+ * after those arrive. The coin term went with the currency.
  *
  * Returns null when the arithmetic says the build should be affordable and the
  * engine says otherwise. That is not an error to hide - it is the case where we
@@ -683,12 +805,10 @@ function shortfallWords(
   ).length;
   const ownShort = Math.max(0, cost.suit - own);
   const anyShort = Math.max(0, cost.suit + cost.wild - rest.length - ownShort);
-  const coinShort = Math.max(0, cost.coins - view.you.coins);
 
   const parts: string[] = [];
   if (ownShort > 0) parts.push(spendText({ [face.suit]: ownShort }));
   if (anyShort > 0) parts.push(`${anyShort} more card${anyShort === 1 ? '' : 's'}`);
-  if (coinShort > 0) parts.push(`£${coinShort}`);
   return parts.length === 0 ? null : parts.join(' + ');
 }
 
@@ -719,14 +839,6 @@ export function glossNow(
 ): string[] {
   const mine = view.you.tableau.find((b) => b.card === face.id);
   if (mine) {
-    /*
-     * ONE LINE, and the length is the reason rather than the style.
-     *
-     * The block gets 66px at 1600 and 63px at 1366, which is four lines, and it
-     * has three sections to fit into them. The fill and the GROW verdict are one
-     * thought - "two of three on it, and you cannot add to it this turn" - so
-     * they are one sentence, which is a whole line back for the sections above.
-     */
     const threshold = liveThreshold(data, face.id, face.threshold);
     if (threshold === null) return [];
     if (mine.stack.length >= threshold) {
@@ -741,11 +853,6 @@ export function glossNow(
      * the three can EVER be grown. "No GROW this turn" on one of them is worse
      * than saying nothing: it is true, and it teaches a player to keep coming
      * back to check a door that does not exist.
-     *
-     * Where there IS a question the answer is a bare yes or no. Every reason a
-     * GROW might be missing - action spent, no card of the crop in hand, the
-     * building already fired this turn - is a different sentence, and we cannot
-     * tell which from the move list alone.
      */
     const growable = face.activation !== null && slotOf(data, face.id) !== 'noticeboard';
     const verdict =
@@ -769,9 +876,8 @@ export function glossNow(
    * "You cannot build this yet" is safe to say about any unbuildable card in
    * your hand. The REASON is only safe when the printed cost is the price being
    * charged, which is exactly when the main Build action is the thing on offer:
-   * a pending task builds under its own modifiers (a discount, a substitution,
-   * cards off a stack), and a spent action means the price was never the
-   * problem in the first place. In both of those the honest answer is nothing.
+   * a pending task builds under its own modifiers, and a spent action means the
+   * price was never the problem in the first place.
    */
   const priced = pendingTask(view) === null && !view.turn.actionSpent;
   const short = priced ? shortfallWords(data, face, card.buildCost, view) : null;

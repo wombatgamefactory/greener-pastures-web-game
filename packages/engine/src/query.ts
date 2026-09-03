@@ -4,7 +4,7 @@
  * only what a camera pointed at the table could not reconstruct.
  */
 
-import type { Card, CardFace, GameData, HiredWorker, Suit } from '@gp/data';
+import type { Card, GameData, Suit, SuitDoor } from '@gp/data';
 
 import type { BuildingState, CardId, GameState, PlayerState, Seat, WorkerState } from './state.js';
 
@@ -34,6 +34,26 @@ export function cardById(data: GameData, id: CardId): Card {
   return card;
 }
 
+/**
+ * The asking form of `cardById`, for code that is handed an arbitrary string
+ * and has to decide whether it is a card at all - today only the redaction of a
+ * card task's untyped rider bag, which holds suits, seat numbers and tile ids
+ * beside its card ids and must mask exactly one of those kinds.
+ *
+ * ⚠️ Card ids and ISLAND TILE ids share a namespace: `A5` is both the Apiary
+ * Barn and a Level 1 tile, so a true answer here means "this could be a card",
+ * never "this is one". No rider holds a tile today; a caller that might see one
+ * has to disambiguate by key, exactly as the sim's view-safety walk does.
+ */
+export function isCardId(data: GameData, id: string): boolean {
+  let index = CARD_INDEX.get(data);
+  if (index === undefined) {
+    index = new Map(data.cards.catalogue.map((c) => [c.id, c]));
+    CARD_INDEX.set(data, index);
+  }
+  return index.has(id);
+}
+
 export function player(state: GameState, seat: Seat): PlayerState {
   const p = state.players[seat];
   if (!p) throw new Error(`No player in seat ${seat}`);
@@ -46,17 +66,23 @@ export function buildingOf(state: GameState, seat: Seat, card: CardId): Building
   return b;
 }
 
-/** The face currently showing: starters flip, deck cards have one printed side. */
-export function faceOf(data: GameData, building: BuildingState): CardFace {
-  const card = cardById(data, building.card);
-  if (card.faces) return building.upgraded ? card.faces.upgraded : card.faces.starter;
-  return {
-    name: card.name,
-    printedVp: card.printedVp ?? 0,
-    threshold: card.threshold ?? null,
-    activationType: card.activationType ?? null,
-    abilityText: card.abilityText ?? null,
-  };
+/**
+ * The face a building is showing - which since v31 is simply its card.
+ *
+ * ⛔ THERE ARE NO FACES. This function existed to pick between `card.faces.starter`
+ * and `card.faces.upgraded` off `building.upgraded`, and it was the one place
+ * that knew a starter had two printed sides. v31 deletes all fifteen upgraded
+ * faces along with the currency that bought them, `cards.json` is flat, and
+ * `BuildingState.upgraded` is gone, so the choice has one arm.
+ *
+ * KEPT AS A NAMED FUNCTION rather than inlined into thirty call sites, for the
+ * same reason `visitTargetOf` was kept when it collapsed: "what is this building
+ * showing?" is a real question with a real answer, and if a printed face ever
+ * varies again this is the one place that has to learn about it. It differs from
+ * `cardById` only in taking a building rather than an id.
+ */
+export function faceOf(data: GameData, building: BuildingState): Card {
+  return cardById(data, building.card);
 }
 
 export function thresholdOf(data: GameData, building: BuildingState): number | null {
@@ -104,23 +130,26 @@ export function fullBuildings(data: GameData, state: GameState, seat: Seat): Bui
 }
 
 /**
- * The CROP a building prints on its showing face - ticket 07's rule for every
- * "buildings of crop X" count in the game, so it is never derived twice.
+ * The CROP a building prints - ticket 07's rule for every "buildings of crop X"
+ * count in the game, so it is never derived twice.
  *
- * A deck card prints its crop icon. A starter prints the generic
- * starting-building icon on its base face and its crop icon only once flipped
- * (verified in print by ticket 13: all 15 base faces carry `card_starter.png`,
- * all 15 upgraded faces carry `suit_<crop>.png`). So a BASE starter belongs to
- * no crop at all: it counts neither for its crop nor against it, and the £2
- * upgrade sinks buy a crop icon as well as their printed rider.
+ * A deck card prints its crop icon. A STARTER PRINTS NONE: all fifteen carry the
+ * generic starting-building icon (verified in print by ticket 13), so a starter
+ * counts neither for its crop nor against it. That used to be true only of the
+ * BASE face - the GBP 2 flip bought a crop icon along with its rider - and since
+ * v31 deleted the flip it is true for the whole game.
+ *
+ * ⭐ It agrees with the new Farmstead, which is the card that cares most: "Game
+ * end: 1 VP for each CROP card you have built" is DECK CARDS ONLY, your three
+ * starters do not count, and that reading falls straight out of this function
+ * rather than needing a carve-out.
  *
  * Not the keyword sub-types - FIELD, DEPOT, ORCHARD, HIVE come from title
  * keywords and are untouched by this.
  */
 export function cropOf(data: GameData, building: BuildingState): Suit | null {
   const card = cardById(data, building.card);
-  if (card.type === 'starter') return building.upgraded ? card.suit : null;
-  return card.suit;
+  return card.type === 'starter' ? null : card.suit;
 }
 
 /** Buildings in a seat's tableau printing this crop's icon. */
@@ -156,10 +185,27 @@ export function workerState(state: GameState, id: string): WorkerState {
   return w;
 }
 
-export function workerData(data: GameData, id: string): HiredWorker {
+/** One door's printed row, by action id. Throws on an id the roster does not carry. */
+export function workerData(data: GameData, id: string): SuitDoor {
   const w = data.workers.roster.find((x) => x.id === id);
-  if (!w) throw new Error(`Unknown worker ${id}`);
+  if (!w) throw new Error(`Unknown door action ${id}`);
   return w;
+}
+
+/**
+ * The DOOR a suit owns - its Notice Board's action, which is also what a meeple
+ * of that colour does when spent. Throws rather than returning undefined: all
+ * five entries are asserted present in `data.test.ts`, so an absent one is a
+ * corrupt roster and not a state a caller should be handling.
+ *
+ * Wraps the data package's `doorForSuit` so the engine has one non-optional
+ * answer, and so a colour with no seat behind it (a meeple of a suit nobody is
+ * farming, which is legal) still resolves.
+ */
+export function doorOf(data: GameData, suit: Suit): SuitDoor {
+  const door = data.workers.roster.find((w) => w.linkedSuit === suit);
+  if (!door) throw new Error(`No door action for suit ${suit}`);
+  return door;
 }
 
 /**
@@ -174,33 +220,25 @@ export function workerData(data: GameData, id: string): HiredWorker {
  * behaviour and never described a card.
  */
 export function serviceIdOf(data: GameData, state: GameState, seat: Seat): string {
-  const suit = player(state, seat).suit;
-  const svc = data.workers.roster.find((w) => w.linkedSuit === suit);
-  if (!svc) throw new Error(`No door action for suit ${suit}`);
-  return svc.id;
+  return doorOf(data, player(state, seat).suit).id;
 }
 
 /**
- * The building a visit's fee lands on: the host's NOTICE BOARD, whichever payoff
- * the visitor takes.
+ * The building a visit's fee lands on: the host's NOTICE BOARD, always.
  *
- * ⭐ CHANGE 6 (20/08/2026) is this function collapsing. It used to send a
- * `worker` visit to the Service and a `coin` visit to the Notice Board - two
- * rival-touchable buildings that clogged INDEPENDENTLY, which is where the
- * denial numbers came from ("there was always another building to go to").
- * There is one door now, so popularity clogs the whole cross-table surface of a
- * farm at once.
+ * ⭐ CHANGE 6 (20/08/2026) is this function collapsing, and v31 finished the
+ * job by deleting its `mode` argument. It used to send a `worker` visit to the
+ * Service and a `coin` visit to the Notice Board - two rival-touchable buildings
+ * that clogged INDEPENDENTLY, which is where the denial numbers came from
+ * ("there was always another building to go to"). There is one door now, so
+ * popularity clogs the whole cross-table surface of a farm at once - and since
+ * v31, the owner's own traffic clogs it too.
  *
  * Kept as a named function rather than inlined: "the building a visit lands on"
  * is a real concept with a real invariant, and if a card ever adds a second
  * door this is the one place that has to learn about it.
  */
-export function visitTargetOf(
-  data: GameData,
-  state: GameState,
-  host: Seat,
-  _mode: 'coin' | 'worker' | 'special',
-): BuildingState {
+export function visitTargetOf(data: GameData, state: GameState, host: Seat): BuildingState {
   return noticeBoardOf(data, state, host);
 }
 
@@ -227,67 +265,41 @@ export function noticeBoardOf(data: GameData, state: GameState, seat: Seat): Bui
 }
 
 /**
- * Only the three starters upgrade (Barn, Farmstead, Notice Board; the free
- * Farmstead flip counts) - ticket 06 ruling C, so endgame "upgraded buildings"
- * counts cap at 9 VP.
+ * ⛔ THE FIVE FARMSTEAD SUIT POWERS ARE GONE (v31, 02/09/2026), and this is the
+ * largest single deletion in the pass, so the list is recorded here where four
+ * of the five had a seam.
+ *
+ * All five Farmsteads now print ONE line and it is the same line bar the crop
+ * name: *"Game end: 1 VP for each CROP card you have built."* No passive, no
+ * modifier, no upgraded face. `cards.json` is the contract and it carries
+ * exactly that text on W2/V2/O2/A2/D2.
+ *
+ * What died, and where its seam was:
+ *
+ *  - **`upgradedBuildingCount`** (here) counted starters showing their flipped
+ *    side, for the old D21's "2 VP for each of your starters showing its
+ *    upgraded side". Nothing flips; D21 is retexted to count SHEDs (v31 §3.2).
+ *  - **`withDrawModifier`** (here) was Orchard's "your Draw sees and keeps 1
+ *    extra", applied where a Draw ACTION's numbers were set - the base Draw and
+ *    the Draw door - and deliberately never to card-ability draws (DL-47). That
+ *    scoping rule is worth keeping in mind if a draw modifier ever returns: it
+ *    has to attach to the ACTION, or a card that says "Draw" fires it too.
+ *  - **`drawGiftPower`** (here) was the other half of the same card: "when one
+ *    of your draws discards a card, give it to a neighbour instead". Its self-
+ *    scoping was the clever part - the base Draw was see 2 keep 1 so it had one
+ *    discard to give, a door's Draw kept everything so it had none, and the
+ *    end-of-turn discard was not a draw - which closed the give-four-cards
+ *    exploit with no special case at all. In v31 the base Draw keeps both cards,
+ *    so there would have been nothing to give in any case.
+ *  - **`deliverHeadSize` / `deliverDeckHead`** (actions.ts) were Vegetable's
+ *    "you may FIRST put a card into your barn" before a delivery.
+ *  - **`apiaryGrowBonus`** (actions.ts) was Apiary's "when you GROW, Draw 1".
+ *  - **`buildDivertPower`** (actions.ts) was Dairy's "put 1 card you spend from
+ *    your hand into your barn instead of discarding it".
+ *
+ * Wheat's had already left this file on 19/08/2026 when the relaxed harvest
+ * moved onto the Notice Board door; in v31 the doors are plain, so that went too.
  */
-export function upgradedBuildingCount(state: GameState, seat: Seat): number {
-  return player(state, seat).tableau.filter((b) => b.upgraded).length;
-}
-
-/**
- * The Orchard Farmstead suit power as a DRAW MODIFIER (the reference's
- * `Farmstead::orchardDraw`, DL-34), REBUILT 2026-08-09.
- *
- * Both faces now read "Your Draw is Draw 3, discard 1", so the modifier is
- * `see +1, keep +1` on BOTH - the upgrade stopped being a bigger number and
- * became £1 per card given away, which lives in the divert seam and not here.
- * Applied where a Draw ACTION's numbers are set - the base Draw and the Draw
- * Service (suit powers apply to Service actions) - so it composes:
- * (2,1)->(3,2), Draw Service (2,2)->(3,3). Deliberately NOT applied to
- * card-ability draws (DL-47); handlers push their printed numbers directly.
- *
- * ⚠️ This makes the BASE Farmstead strictly stronger than it was (a keep of 2
- * from turn 1 where it used to be a keep of 1). Expected, and it is exactly why
- * the upgrade had to stop being a bigger number.
- */
-export function withDrawModifier(
-  data: GameData,
-  state: GameState,
-  seat: Seat,
-  spec: { see: number; keep: number },
-): { see: number; keep: number } {
-  const p = player(state, seat);
-  if (p.suit !== 'orchard') return spec;
-  const farmstead = p.tableau.find((b) => cardById(data, b.card).slot === 'farmstead');
-  if (!farmstead) return spec;
-  return { see: spec.see + 1, keep: spec.keep + 1 };
-}
-
-/**
- * The OTHER half of the rebuilt Orchard Farmstead: "when one of your draws
- * discards a card, give it to a neighbour instead", and on the upgraded face
- * "and take £1 from the bank".
- *
- * Returns the coins the giver mints per card given (0 base, 1 upgraded), or
- * null when the seat has no such power.
- *
- * THE WORDING SCOPES ITSELF, which is why there is no exception list. The base
- * Draw is see 2 keep 1, which with the modifier becomes see 3 keep 2 - one
- * discard, one gift. A Service's Draw 2 is see 2 keep 2, which becomes see 3
- * keep 3 - no discard, so there is nothing to give. Card-ability draws already
- * bypass the modifier under DL-47. And the end-of-turn discard to hand limit is
- * not a draw, which closes the four-cards-for-£4 exploit with no special case at
- * all: `discardOrDivert` passes `fromDraw: false` there and this power is not
- * offered.
- */
-export function drawGiftPower(data: GameData, state: GameState, seat: Seat): number | null {
-  const p = player(state, seat);
-  if (p.suit !== 'orchard') return null;
-  const farmstead = p.tableau.find((b) => cardById(data, b.card).slot === 'farmstead');
-  if (!farmstead) return null;
-  return farmstead.upgraded ? data.rules.economy.giftDiscardCoins : 0;
-}
 
 /** Suits whose deck or discard still has cards - the drawable suits. */
 export function drawableSuits(data: GameData, state: GameState): Suit[] {

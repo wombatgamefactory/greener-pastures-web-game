@@ -64,11 +64,15 @@ export function runWatchlist(
 }
 
 /** One mirror pool per archetype, at the reduced `games` count. */
-export function runMirrors(data: GameData, opts: RunOptions, games: number): Map<PolicyId, Pooled> {
+export async function runMirrors(
+  data: GameData,
+  opts: RunOptions,
+  games: number,
+): Promise<Map<PolicyId, Pooled>> {
   const out = new Map<PolicyId, Pooled>();
   if (games <= 0) return out;
   for (const profile of MIRROR_PROFILES) {
-    const result = runBalance(data, {
+    const result = await runBalance(data, {
       ...opts,
       reference: { ...opts.reference, pool: [profile] },
       seed: `${opts.seed ?? opts.reference.seed}:mirror:${profile}`,

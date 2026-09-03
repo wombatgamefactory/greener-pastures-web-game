@@ -10,8 +10,8 @@
  *
  * **The pricer reads no card identity, ever.** Dean's ruling on this ticket:
  * a probe may price anything the seat would legitimately know before
- * committing - how many coins, how many cards, which building filled, which
- * tile opened - but never a card the probe itself just turned face up. A bot
+ * committing - how many cards, which meeple was claimed, which building filled,
+ * which tile opened - but never a card the probe itself just turned face up. A bot
  * that grows when the deck is kind and refuses when it is not is a bot that can
  * see the deck, and every card economic in the balance report would carry it.
  *
@@ -42,7 +42,7 @@ import type { Act } from './acts.js';
 import { actOf, spendSize } from './acts.js';
 import { cardValue } from './junk.js';
 import type { Scratch } from './scratch.js';
-import { coinWorth, handSpendCost } from './scratch.js';
+import { handSpendCost, meepleWorth } from './scratch.js';
 import type { WeightTable } from './weights.js';
 
 /**
@@ -87,6 +87,48 @@ export function meanCardValue(data: GameData): number {
   return mean;
 }
 
+/**
+ * The mean VP printed on a card that could be BUILT - the same blind trick
+ * `meanCardValue` plays, for the same reason, one field along. 1.389 on the
+ * shipped v31 catalogue.
+ *
+ * ⭐ ADDED IN v31 TO CLOSE A GAP THAT HAD BECOME LOAD-BEARING. A build inside a
+ * rollout was priced `build - handSpend x cards`, which is NEGATIVE for every
+ * card in the game (3 - 2.5 x 2 = -2 at the cheapest), while the same build as a
+ * MOVE also collects `buildVp` and now `farmsteadVp` and comes out positive. So
+ * the pricer and the move table disagreed about whether building is a good idea,
+ * by about three points.
+ *
+ * That gap cost nothing while a probe only ever reached a build through a card
+ * effect. v31 made it decisive: **the Dairy door and a Dairy meeple ARE a
+ * build**, and a door is priced entirely by its rollout - so across 12 whole
+ * smoke games the Dairy door was used exactly **0 times by any profile**, which
+ * would have gone into the report as "the Build door is dead" when it is this
+ * arithmetic.
+ *
+ * Only the printed-VP half is corrected. The Farmstead's own-suit VP needs the
+ * built card's SUIT, which is card identity, which this file may never read - so
+ * a probed build stays about one VP cheap, always in the same direction, and
+ * that is stated at the `built` case rather than papered over with a guess about
+ * how often a bot builds its own crop. Guessing THAT would put a thumb on risk
+ * 3's own-crop build share, which is the one number the pass most needs clean.
+ */
+const MEAN_PRINTED_VP = new WeakMap<GameData, number>();
+
+export function meanPrintedVp(data: GameData): number {
+  let mean = MEAN_PRINTED_VP.get(data);
+  if (mean === undefined) {
+    // Deck cards only: the fifteen starters print 0 and are never built, so
+    // including them would drag the mean down by a sixth for no reason.
+    const cards = data.cards.catalogue.filter((card) => card.inDeck && card.enabled);
+    let sum = 0;
+    for (const card of cards) sum += card.printedVp;
+    mean = cards.length === 0 ? 0 : sum / cards.length;
+    MEAN_PRINTED_VP.set(data, mean);
+  }
+  return mean;
+}
+
 function weight(w: WeightTable, name: string): number {
   return w[name] ?? 0;
 }
@@ -102,11 +144,37 @@ function weight(w: WeightTable, name: string): number {
  */
 function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): number {
   switch (event.e) {
-    case 'coins':
-      if (event.seat !== me) return 0;
-      // A spend is not a loss: it bought whatever the same effect is paying
-      // for, and that arrives as its own event.
-      return event.delta > 0 ? weight(w, 'coinGain') * coinWorth(s, event.delta) : 0;
+    /**
+     * A MEEPLE CLAIMED OFF THE ISLAND - the busiest priced event in v31, and
+     * the direct replacement for `coins`, which was the busiest in v30.
+     *
+     * It is NOT a rename. A coin was fungible, continuous and spendable on
+     * anything; a meeple is one of five discrete colours, worth exactly one
+     * specific action, and it leaves the game when used. So it is priced by
+     * what that colour's door can do for THIS seat (`meepleWorth`) and never by
+     * a count - a metric that averaged the five would be measuring nothing.
+     *
+     * Reached inside a rollout whenever a door's Deliver, or a card's, lands a
+     * delivery. A delivery taken as the seat's OWN move is priced by the
+     * `meepleGain` MOVE term instead, at the same weight; `deliver` is
+     * deliberately not on `isProbed`, which is what keeps the two from ever
+     * both firing for one decision.
+     */
+    case 'meepleGained':
+      return event.seat === me ? weight(w, 'meepleGain') * meepleWorth(s, event.colour) : 0;
+
+    /**
+     * Priced at ZERO here on purpose: the `meepleSpend` MOVE term charges it,
+     * so charging it again inside the rollout of the very move that spent it
+     * would double the cost and the bots would hoard.
+     *
+     * ⚠️ That is only safe while `spendMeeple` is the ONLY thing that can spend
+     * a meeple, which it is - no card in the 105 touches the supply. If one
+     * ever does, this line becomes a silent hole and the charge has to move
+     * here, exactly as `balloonMoved`'s freight did in ticket 49.
+     */
+    case 'meepleSpent':
+      return 0;
 
     case 'harvested': {
       if (event.seat !== me) return 0;
@@ -148,20 +216,51 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
       }
       return 0;
 
-    // Only placements onto your OWN buildings are a gain. A fee landing on a
-    // rival's Notice Board is the price of a visit, and `visitFeeJunk` has
-    // already charged for it. Priced flat rather than with `sowCompletes`,
-    // because `Scratch` holds the position BEFORE the move and a probe may
-    // place several cards - the stack it would have to read has moved on.
-    case 'cardPlaced':
-      return event.onto.seat === me ? weight(w, 'sow') : 0;
+    /**
+     * Only placements onto your OWN buildings are a gain. A fee landing on a
+     * rival's Notice Board is the price of a visit, and `visitFeeJunk` has
+     * already charged for it. Priced flat rather than with `sowCompletes`,
+     * because `Scratch` holds the position BEFORE the move and a probe may
+     * place several cards - the stack it would have to read has moved on.
+     *
+     * ⭐ YOUR OWN NOTICE BOARD IS THE ONE EXCLUSION, AND IT IS RISK 2 (v31).
+     * A self-visit places the fee on the visitor's own board, so without this
+     * line every self-visit would collect `sow` on top of its door action while
+     * a neighbour visit collected nothing - a 1.5 thumb on the scale, pointing
+     * at solitaire, in the exact place the plan says the game is most likely to
+     * break. And the placement is not a gain in any case: a card on your own
+     * board advances it toward CLOGGING, which shuts your own door. What that
+     * costs is charged once, by the `clogOwnBoard` move term, at the moment the
+     * board actually fills.
+     *
+     * ⚠️ **A KNOWN, ADMITTED OVER-VALUATION, AND IT LANDS ON THE APIARY DOOR.**
+     * A sow FROM HAND and a sow from a DECK TOP emit the identical event, so
+     * this cannot charge the hand card and does not: a sow inside a rollout is
+     * worth a flat `sow` with nothing deducted, where the same sow answered as
+     * a real task is charged 2.5 by `handSpend` and comes out roughly a point
+     * NEGATIVE. Nothing in the event stream distinguishes the two sources, and
+     * inventing the distinction from the card that granted it would be reading
+     * identity.
+     *
+     * It matters because the Apiary door is Sow 1 from hand, and the plan says
+     * outright that it is "the weakest door on the table by some distance" -
+     * two cards out for one threshold step in. This pricer cannot see the second
+     * card, so **it will report the Apiary door as healthier than it is.** If the
+     * door mix comes back saying the Apiary board takes normal traffic, that is
+     * the one door-mix reading not to trust.
+     */
+    case 'cardPlaced': {
+      if (event.onto.seat !== me) return 0;
+      const board = s.noticeBoard;
+      if (board !== null && event.onto.building === board.card) return 0;
+      return weight(w, 'sow');
+    }
 
     case 'delivered': {
       if (event.seat !== me) return 0;
-      const coins = weight(w, 'coinGain') * coinWorth(s, event.coins);
       // The freight, charged at the price the move table puts on a barn card
       // leaving (ticket 48). Without it a delivery inside a rollout - a rented
-      // Deliver Worker, a Vegetable card's own deliver - was free where the same
+      // door's Deliver, a Vegetable card's own deliver - was free where the same
       // delivery as a move costs 4 cards, which is the split ticket 47 found in
       // `built` arriving on the other action. Blind: a count off the event's own
       // spend, never a card.
@@ -171,7 +270,10 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
       // the receipt itself with no taste weight of its own. That is deliberate:
       // a bot given a separate appetite for going first would be tuned to chase
       // the gradient rather than measuring whether the gradient is worth chasing.
-      return weight(w, 'deliver') * event.vp + coins - freight;
+      //
+      // The MEEPLE the same delivery hands over arrives as its own
+      // `meepleGained` event, above, so nothing about it is added here.
+      return weight(w, 'deliver') * event.vp - freight;
     }
 
     case 'balloonMoved':
@@ -206,8 +308,12 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
       );
 
     case 'built':
-      // Priced for happening, not for what was built: the card's identity is
-      // off limits (it may have been drawn inside this probe).
+      // Priced for happening plus the catalogue's MEAN printed VP, never for
+      // what was actually built: the card's identity is off limits (it may have
+      // been drawn inside this probe). See `meanPrintedVp` for why the mean is
+      // there at all - without it a probed build was worth about three points
+      // less than the identical build as a move, and the Dairy door, which IS a
+      // build, went unused in every smoke game.
       //
       // The payment is charged at `handSpend`, the price the move terms put on a
       // card leaving hand, and no longer at `buildSpend` (ticket 47). Two
@@ -217,11 +323,22 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
       // backwards. It was charging a build's cards 0.2 each where the bot's own
       // table charges 2.5. Count only, so a barn card in the payment (D8) prices
       // as a hand card - blind, and the same direction.
+      //
+      // ⚠️ THE FARMSTEAD'S 1 VP PER OWN-SUIT CARD IS NOT ADDED HERE, and it
+      // cannot be: reading it needs the built card's SUIT, which is card
+      // identity, which this pricer may never see. A build reached through a
+      // door or a meeple is therefore worth one VP less to the bot than it
+      // really is, always in the same direction, and only inside a rollout - a
+      // build taken as the seat's own move is priced correctly by the
+      // `farmsteadVp` move term. It is the one place the blindness rule and
+      // risk 3 disagree, and blindness wins, because the alternative is a bot
+      // that can see the deck.
       if (event.seat !== me) return 0;
-      return weight(w, 'build') - weight(w, 'handSpend') * handSpendCost(s, event.payment.length);
-
-    case 'starterUpgraded':
-      return event.seat === me ? weight(w, 'upgrade') : 0;
+      return (
+        weight(w, 'build') +
+        weight(w, 'buildVp') * meanPrintedVp(s.data) -
+        weight(w, 'handSpend') * handSpendCost(s, event.payment.length)
+      );
 
     // THE MUTABLE DEMAND TOKENS (V5, V6) are priced POSITIONALLY, not here.
     // Their whole effect is on the shared board, so there is no delta in the
@@ -232,10 +349,10 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
     case 'demandFaceDown':
       return 0;
 
-    // A Service's wage arrives as its own `coins` event and the action it
-    // performs arrives as that action's events, so scoring the activation too
-    // would double count.
-    case 'workerWorked':
+    // A door action's worth arrives as that action's own events, so scoring the
+    // fact that a door ran would double count. Same for `visited`: the fee is
+    // charged by `handSpend` and `visitFeeJunk`, the payoff is the door.
+    case 'doorUsed':
     case 'reshuffled':
     case 'cardsDiscarded':
     case 'visited':
@@ -268,9 +385,10 @@ export interface Outcomes {
  * `keep`, and `cardsToHand` - the only priced event in the whole effect - fires
  * on the keep. So a "Draw N" costs N+1 rollout levels against a DEPTH of 3, and
  * everything drawing 3 or more was worth exactly its flat weight and no more.
- * Measured on the Draw Worker, the one the design calls a traffic magnet and
- * watch-list assertion 7 exists to measure: priced at **exactly zero in 82.2%**
- * of the positions it was offered in, against 0.0% for all four other Workers.
+ * Measured on the old Draw Service, the door the design calls a traffic magnet:
+ * priced at **exactly zero in 82.2%** of the positions it was offered in,
+ * against 0.0% for all four other doors. The Orchard door is Draw 3 in v31, so
+ * the same trap is set one card deeper.
  *
  * Walking further is the wrong fix. Every deck pick is an `apply` off a budget
  * shared by the whole decision (`PROBE_BUDGET`), and they carry no information
@@ -283,23 +401,23 @@ export interface Outcomes {
  * before - the reveals are never applied at all - and blind by construction,
  * since only the counts are read and never `revealed`.
  *
- * **Capped by room in hand, and that half is ticket 49's** (2026-08-04). The
- * first version priced `keep x meanCardValue` flat, which says a Draw 4 into a
- * full hand is worth as much as a Draw 4 into an empty one - where the
- * move-level `drawAction` term has always scaled by exactly the room in hand,
- * because a card drawn into the end-of-turn discard is an action thrown away.
- * The understatement was invisible on the Draw Worker (keep 2) and decisive on
- * the Draw 4 balloon the moment ticket 49 let the bots see it: balloon moves
- * taken went 89 -> 414 over 55 games, 60.9% of them the Draw balloon, **32.9%
- * with no room in hand at all**, and the widest position in the UI's own corpus
- * went from 792 legal moves to 8008 - C(hand, excess) discard subsets, a seat
- * ending its turn seven cards over its limit.
+ * ⭐ **THE HAND-ROOM CAP IS BACK (02/09/2026), WITH THE HAND LIMIT ITSELF.**
+ * Ticket 49 put it here because a card drawn into the end-of-turn discard is an
+ * action thrown away, and measured it on the Draw 4 balloon: the bots took that
+ * balloon **32.9% of the time with no room in hand at all**, and it widened the
+ * UI's worst position from 792 legal moves to 8008 as C(hand, excess) discard
+ * subsets piled up. v31 deleted the limit and the cap went with it, on the
+ * correct reading that there was nothing left to cap against. What that removed
+ * was a brake, and the consequence pointed exactly where the note predicted: a
+ * draw could never be a bad move, every door and meeple that draws was worth
+ * strictly more, and the free bonus Draw 1 came out dominant over a neighbour
+ * visit 3:1. The rule is back at a flat `rules.turn.handLimit`, so this reads it
+ * again.
  *
  * The room is read off the PROBE, not off `Scratch`, and that is not fussiness:
- * a rented Worker is reached by a VISIT, which pays a card out of hand first, so
- * a pre-move reading is short by exactly one on the case ticket 50 exists to
- * fix - and short by one at room 0 is the difference between "worth a card" and
- * "worth nothing". `handLimit` null means no Barn, which the engine reads as no
+ * a visit pays a card out of hand FIRST, so a pre-move reading is short by
+ * exactly one on the case that matters - and short by one at room 0 is the
+ * difference between "worth a card" and "worth nothing". A null limit means no
  * limit, so nothing is capped there either.
  */
 function pendingDrawValue(probe: ReturnType<Prober>, s: Scratch, w: WeightTable): number | null {
@@ -316,7 +434,7 @@ function pendingDrawValue(probe: ReturnType<Prober>, s: Scratch, w: WeightTable)
  * `priceEvent` reads what happened to the acting seat's own zones, which is the
  * right rule for 103 of 105 cards and prices the other two at exactly zero: V5
  * swaps two of the island's demand tokens and V6 turns one face down, and
- * neither moves a card, a coin or a receipt. Left alone, the bots would never
+ * neither moves a card, a meeple or a receipt. Left alone, the bots would never
  * play two of the five Depots, the arm would report them at ~0% and the report
  * would read as a design failure when it is a pricing gap. Change 8's log
  * records the identical trap on Orchard: *"the pricer had to be FIXED before the
@@ -329,10 +447,10 @@ function pendingDrawValue(probe: ReturnType<Prober>, s: Scratch, w: WeightTable)
  * that changes nothing prices at zero, which is correct and is also what makes
  * `skip` the right answer most of the time.
  *
- * It shares `marketPayability`'s weight, and that is exactness rather than
- * thrift: that term converts "a tile that flipped from unpayable to payable"
- * into score, and this is the same quantity arriving through a different door.
- * If one moves, move both.
+ * It is the `deliverability` weight - renamed from `marketPayability` in v31,
+ * when the GBP 3 market that shared it was deleted and this became its only
+ * reader. Nothing about the quantity changed: it is still "a tile that flipped
+ * from unpayable to payable", converted into score.
  *
  * ⚠️ THE BOTS CANNOT JUDGE V5'S DENIAL USE, and no weight fixes that. This file
  * prices what a seat GAINS and never rival harm, so every swap a bot takes is
@@ -342,7 +460,7 @@ function pendingDrawValue(probe: ReturnType<Prober>, s: Scratch, w: WeightTable)
  */
 function deliverabilityValue(probe: ReturnType<Prober>, w: WeightTable): number {
   if (probe.truncated) return 0;
-  return weight(w, 'marketPayability') * (probe.deliverable - probe.deliverableBefore);
+  return weight(w, 'deliverability') * (probe.deliverable - probe.deliverableBefore);
 }
 
 /**
@@ -381,7 +499,8 @@ function rollout(
   for (let i = 0; i < limit; i++) {
     const stepped = probe.step(probe.next[i] as Move);
     // Ranked by the same valuation the rollout would give it, so an answer
-    // leading into a draw is not scored at zero against one that pays a coin -
+    // leading into a draw is not scored at zero against one that claims a
+    // meeple -
     // and so a demand-token swap, whose whole worth is positional, can win a
     // level it would otherwise tie flat and lose to enumeration order.
     const immediate =
@@ -406,9 +525,15 @@ function rollout(
  * the move collapses that to three probes. The payment card is not lost - it is
  * priced separately and per card by `growSpend`.
  *
- * The same holds across the bonus slot: a worker visit is determined by whose
- * Worker and which one, never by which junk card pays the fee (`visitFeeJunk`
- * prices that), so every fee for a host shares one rollout.
+ * The same holds across the bonus slot: a visit is determined by WHOSE board,
+ * because the host's suit is the door, and never by which junk card pays the
+ * fee (`visitFeeJunk` prices that), so every fee for a host shares one rollout.
+ *
+ * ⚠️ ONE KNOWN LEAK IN THAT COLLAPSE, unchanged from v30 and worth stating: the
+ * fee does change what the door can do, because the engine gates a door on the
+ * hand MINUS the fee. Pay away the only card a Build door could have built with
+ * and the door is dead. The first enumerated fee's rollout stands for all of
+ * them, which is the same bargain `grow` strikes with its payment card.
  */
 function effectKey(move: Move, act: Act): string {
   switch (act.a) {
@@ -419,16 +544,16 @@ function effectKey(move: Move, act: Act): string {
     case 'activate':
       return `activate:${act.building}`;
     case 'visit':
-      return `visit:${act.host}:${JSON.stringify(act.payoff)}`;
-    case 'workOwn':
-    case 'worker':
-      return `work:${act.workerId}`;
+      return `visit:${act.host}`;
+    // The colour IS the action, and nothing else about the move varies.
+    case 'spendMeeple':
+      return `meeple:${act.colour}`;
     /**
      * The same collapse, and it is what makes probing a balloon affordable
      * (ticket 49). A decision is offered 8.4 balloon moves on average and up to
      * 40 - every balloon crossed with every way to pick 2 differing barn suits -
-     * against a whole-decision budget of 96 applies shared with the grows and
-     * the Workers. All the ways to pay for one balloon grant the same reward, so
+     * against a whole-decision budget of 96 applies shared with the grows, the
+     * visits and the meeples. All the ways to pay for one balloon grant the same reward, so
      * keying on the balloon collapses 8.4 probes to 3.2.
      *
      * The one thing that survives the collapse is measured rather than assumed:

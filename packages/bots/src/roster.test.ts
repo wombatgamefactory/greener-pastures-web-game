@@ -51,9 +51,50 @@ describe('weight tables', () => {
     expect(() => weightsFor('nope')).toThrow();
   });
 
-  it('keeps the hermit control incapable of visiting', () => {
-    // The control for watch-list assertion 8 only has teeth if it is absolute.
+  it('keeps the hermit control incapable of visiting a NEIGHBOUR', () => {
+    // The control for the hook assertion only has teeth if it is absolute.
     expect(weightsFor('hermit')['visit']).toBeLessThan(0);
+  });
+
+  it('leaves the hermit free to self-visit, which is the v31 narrowing', () => {
+    // ⭐ A hermit that refused the bonus slot outright would control for two
+    // things at once - the cross-table door AND the solitaire one - and risk 2
+    // is exactly the question of which of those a table takes. So the veto is
+    // narrowed to neighbours and the solitaire door is left alone.
+    expect(weightsFor('hermit')['selfVisit']).toBeGreaterThanOrEqual(0);
+  });
+
+  it('gives neither bonus-slot door an intrinsic taste in the reference', () => {
+    // Risk 2 is measured, not chosen: a weight on either door would have the
+    // instrument reporting its own preference as the table's behaviour.
+    expect(weightsFor('balanced')['visit']).toBe(0);
+    expect(weightsFor('balanced')['selfVisit']).toBe(0);
+  });
+
+  it('pins the meeple price to itself in both directions', () => {
+    // One price for a meeple whichever way it travels, so the bot's books
+    // balance and the spend decision turns entirely on the rolled-out action.
+    const table = weightsFor('balanced');
+    expect(table['meepleSpend']).toBe(table['meepleGain']);
+  });
+
+  it('pins the Farmstead VP to the printed VP it sits beside', () => {
+    // 1 VP through the Farmstead is 1 VP through the card, so one weight.
+    const table = weightsFor('balanced');
+    expect(table['farmsteadVp']).toBe(table['buildVp']);
+  });
+
+  it('pins shutting your own door to the price of reopening it', () => {
+    const table = weightsFor('balanced');
+    expect(table['clogOwnBoard']).toBe(table['unclogBoard']);
+  });
+
+  it('leaves the reference no taste for its own crop beyond what the rules pay', () => {
+    // ⚠️ The v31 instrument change. `farmsteadVp` prices the rule; a taste on
+    // top of it would have the reference manufacturing risk 3's own-crop build
+    // share. `loyalist` is where a taste above the rule lives.
+    expect(weightsFor('balanced')['buildOwnCrop']).toBe(0);
+    expect(weightsFor('loyalist')['buildOwnCrop']).toBeGreaterThan(0);
   });
 
   it('keeps the magpie control incapable of building its own crop', () => {
@@ -66,13 +107,7 @@ describe('weight tables', () => {
 
   it('leaves the magpie terms inert in every other profile', () => {
     // The whole reason reference-v9 survives this bot's arrival.
-    const targetTerms = [
-      'buildTargetCrop',
-      'deckTargetCrop',
-      'keepTargetCrop',
-      'buyTargetCrop',
-      'visitFeeOwnCrop',
-    ];
+    const targetTerms = ['buildTargetCrop', 'deckTargetCrop', 'keepTargetCrop', 'visitFeeOwnCrop'];
     for (const profile of Object.keys(PROFILES)) {
       if (profile === 'magpie') continue;
       for (const name of targetTerms) {
@@ -158,8 +193,11 @@ describe('the roster', () => {
 });
 
 describe('the junk rank', () => {
-  it('ranks a coin-priced card above a cheap one', () => {
-    // W20 Wheat Exchange (endgame, £2) against W4, a Tier 1 field.
+  it('ranks a dearer card above a cheaper one', () => {
+    // W20 The Grand Granary (endgame, 2 own-suit cards) against W4, a Tier 1
+    // field at 1. The COIN leg of this rank went with the currency (v31) and
+    // the order survived it: what used to sort as "priced in money, therefore
+    // precious" now sorts as "costs two cards, therefore dear".
     expect(cardValue(data, 'W20')).toBeGreaterThan(cardValue(data, 'W4'));
   });
 

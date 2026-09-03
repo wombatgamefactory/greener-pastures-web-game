@@ -20,6 +20,7 @@ import { LADDER, POLICY_IDS } from '@gp/bots';
 import { cutList, funnel } from './cutlist.js';
 import type { CutRow, FunnelRow } from './cutlist.js';
 import type { GameMetrics } from './observe.js';
+import { RETIRED } from './assertions/index.js';
 import { NOISE_FLOOR, REFERENCE } from './reference.js';
 import type { Pooled, RunResult } from './run.js';
 import { mean, median, num, pct, proportion, separated, sum } from './stats.js';
@@ -75,13 +76,125 @@ function header({ result, pooled, overlayName, mirrorGames }: ReportInput): stri
     `data        ${result.data.cards.meta.sourceSha256 ?? 'unknown'}   overlay: ${overlayName ?? 'none (base)'}`,
     `games       ${games.length} (${perSeat})`,
     `mirrors     ${mirrorGames > 0 ? `${MIRROR_PROFILES.join(', ')} at ${mirrorGames} games per seat count` : 'not run'}`,
-    `wall        ${(wallMs / 1000).toFixed(1)}s   (${num(games.length / (wallMs / 1000), 1)} games/s, single core)`,
+    `wall        ${(wallMs / 1000).toFixed(1)}s   (${num(games.length / (wallMs / 1000), 2)} games/s on ` +
+      `${result.workers === 1 ? '1 thread, inline' : `${result.workers} threads`})`,
+    ...costNote(games.length / (wallMs / 1000), mirrorGames, result.workers),
     `engine      ${ENGINE_VERSION}, rules ${RULES_EDITION}, ${result.data.cards.catalogue.length} cards, ${POLICY_IDS.length} bots`,
     '',
     'Every number below is defined against this reference and is meaningless without it.',
+    ...boundaryBanner(reference.id),
     ...crashBanner(pooled),
     '',
   ];
+}
+
+/**
+ * ⛔ THE INCOMPARABILITY BANNER, printed at the TOP where it cannot be missed
+ * rather than in a footnote, because the failure mode it guards against is a
+ * reader opening this file beside an older one and diffing two numbers that
+ * were never measuring the same game.
+ *
+ * It fires on reference-v10 and only on v10. When v11 is cut, this block moves
+ * with it or goes: a permanent banner is a banner nobody reads.
+ */
+function boundaryBanner(id: string): string[] {
+  if (id !== 'reference-v10') return [];
+  return [
+    '',
+    '*** reference-v10: NO NUMBER IN ANY EARLIER REPORT IN reports/ IS COMPARABLE WITH THIS ONE. ***',
+    '',
+    '    v31 (02/09/2026) deletes the CURRENCY. Coins, the visit wage, the GBP 2 starter',
+    '    upgrades and all fifteen upgraded faces, the market, the card buy, the coin tie-break',
+    '    and the coin half of thirty Power and Endgame cards are all gone. The plain Draw is',
+    '    2-keep-2, the bonus slot offers a free Draw 1 or a card on ANY Notice Board INCLUDING',
+    '    YOUR OWN, and the island pays a MEEPLE - a stored free action that leaves the game when',
+    '    spent.',
+    '',
+    '    The HAND LIMIT was deleted too and came back the same day as one global',
+    '    rules.turn.handLimit of 12, checked at the turn boundary, after the first run of this',
+    '    instrument measured what the deletion cost: hands to 34 cards, 43,879 legal moves in a',
+    '    single position, and 91.5 seconds a game against reference-v9s 0.1. The only numbers',
+    '    ever taken in the no-limit tree are the five -REDUCED reports of 02/09/2026, 8 games',
+    '    each; every n=1580 run under this reference is the limit-12 game.',
+    '',
+    '    So the rules, the cards, the bots and the metric set all moved at once. Four watch-list',
+    '    assertions were retired because their subject no longer exists (listed below the suite)',
+    '    and three were written. Every report before 02/09/2026 measured a different game: a',
+    '    suit win rate, a per-card economic, a headline metric and an assertion value are all',
+    '    incomparable across this line. The sampling plan is the ONE thing held still.',
+    '',
+    '    THE NOISE FLOOR HAS NOT BEEN RE-MEASURED FOR THIS INSTRUMENT unless the footer below',
+    '    says otherwise, and the v9 floor was NOT carried over - three of its eleven metrics no',
+    '    longer exist under their old names.',
+  ];
+}
+
+/**
+ * ⏱️ WHAT A RUN COSTS, printed in the header rather than left for the reader to
+ * infer from the wall time, because it decides what is affordable to ask.
+ *
+ * reference-v9 ran 1580 games at **9.7 games a second** on one thread.
+ * reference-v10 is nowhere near that, and FOUR things are tangled in the gap.
+ * The body below reports the two that were fixed; these are all of them, kept
+ * apart because only one is a defect that is still open:
+ *
+ *   - **The v31 branching factor**, catastrophic and now bounded. Deleting the
+ *     hand limit made a 2-seat game cost 91.5 seconds; `rules.turn.handLimit`
+ *     brought that to 0.91, with the worst position going from 116,535 legal
+ *     moves to 2,788. FIXED.
+ *   - **The option collapse** in @gp/bots plus the engine's payment enumerator:
+ *     4.5x, with zero behavioural change (120 of 120 game digests identical).
+ *     FIXED.
+ *   - **The v31 GAME being bigger**, which is not a defect at all. A turn
+ *     resolves about two actions rather than one (the bonus slot buys a whole
+ *     core action, and meeples add more) and there is a meeple phase to
+ *     enumerate at the start of every turn, so a 4-seat game takes 393-591
+ *     decisions. That is what the design asked for.
+ *   - **⛔ THE COST OF EACH DECISION, which is still open and is the larger
+ *     factor.** Measured 03/09/2026 at the shipped hand limit and AFTER the
+ *     option collapse: a decision costs **18.6 to 34.4 applies** against a
+ *     historical 5.9-6.4 and ticket 40's published 6.7. Three to five times
+ *     dearer per decision, on top of more decisions per game.
+ *     `bots.test.ts > keeps a whole game inside the throughput` is the guard;
+ *     both of its gates are firing and NEITHER has been re-cut, because a guard
+ *     that is firing correctly is not a stale constant.
+ *
+ * The practical consequence, and it is a finding rather than an inconvenience:
+ * **the full suite WITH the five mirrors is not affordable in one sitting.** A
+ * mirror pool is five more runs, so a report that skips them is the norm now
+ * rather than the exception - and it costs the reader the taste spread on the
+ * six taste-sensitive assertions, which is exactly the diagnostic that says
+ * whether one archetype is producing a number on its own. Ticket 10's control
+ * goes with it: without a hermit mirror, nothing checks that assertion 8 has
+ * teeth. Read a mirror-less report knowing that.
+ */
+function costNote(gamesPerSecond: number, mirrorGames: number, workers: number): string[] {
+  const out = [
+    `throughput  ${num(gamesPerSecond, 2)} games/s against reference-v9's 9.7 (single core). ⚠️ THE TWO ` +
+      `ARE NOT
+            COMPARABLE AS ENGINEERING: since 03/09/2026 a run is spread over ` +
+      `${workers === 1 ? 'ONE thread' : `${workers} THREADS`}
+            (pool.ts), so this figure is wall-clock throughput and not the cost ` +
+      `of a game. What
+            moved under it, on 03/09/2026 and measured paired on identical seeds: ` +
+      `the option
+            collapse in @gp/bots plus the engine's payment enumerator ` +
+      `(4.5x, ZERO behavioural
+            change, 120 of 120 game digests identical), and the hand limit ` +
+      `12 -> 7 (a further
+            2.7x, and a REAL rule change that moves the game - see ` +
+      `rules.turn.handLimit).`,
+  ];
+  if (mirrorGames === 0) {
+    out.push(
+      `            ⚠️ MIRRORS NOT RUN. That costs the taste spread on every taste-sensitive` +
+        `
+            assertion, and it removes ticket 10's control: without a hermit mirror` +
+        `
+            nothing checks that assertion 8 has teeth. A mirror pool is five more runs.`,
+    );
+  }
+  return out;
 }
 
 /**
@@ -148,6 +261,30 @@ function watchlistSection({ rows, mirrorGames }: ReportInput): string[] {
       (counts.FAIL === 0 ? '' : '   <- the run exits non-zero'),
   );
   out.push('');
+  out.push(...retiredSection());
+  return out;
+}
+
+/**
+ * The tombstones, printed short and under the suite.
+ *
+ * An assertion whose subject has been deleted cannot FAIL, so leaving it in
+ * would print a permanent PASS that reads as evidence and is not. But a reader
+ * who remembers assertion 1 and finds a gap where it was will assume it was
+ * quietly dropped, which is the other half of the same problem. So the ids stay
+ * visible, the reasoning stays in `assertions/tombstones.ts`, and ids are never
+ * reused.
+ */
+function retiredSection(): string[] {
+  if (RETIRED.length === 0) return [];
+  const out = [`RETIRED (ids are never reused, so the gaps above are these ${RETIRED.length}):`];
+  for (const t of RETIRED) {
+    out.push(`  ${String(t.id).padStart(2)} ${t.title} - retired ${t.retired}`);
+  }
+  out.push('     Full reasoning, and what each last measured, in packages/sim/src/assertions/');
+  out.push('     tombstones.ts. Each was deleted because its SUBJECT no longer exists, not');
+  out.push('     because it was inconvenient.');
+  out.push('');
   return out;
 }
 
@@ -195,9 +332,8 @@ function seriesSection({ pooled }: ReportInput): string[] {
   // only one.
   out.push(pad('end reasons', 34) + 'below the table');
   line('game length, rounds (median)', (g) => num(median(g.map((x) => x.rounds)), 0));
-  line(
-    'end coins per player (median)',
-    (g) => `£${num(median(g.flatMap((x) => x.coinsByRound.slice(-1))), 0)}`,
+  line('meeples held at game end (median)', (g) =>
+    num(median(g.flatMap((x) => x.meeplesByRound.slice(-1))), 1),
   );
   line('barn at game end (median)', (g) =>
     num(median(g.flatMap((x) => x.barnByRound.slice(-1))), 0),
@@ -205,6 +341,23 @@ function seriesSection({ pooled }: ReportInput): string[] {
   line('deliveries per player (mean)', (g) =>
     num(mean(g.map((x) => sum(x.deliveriesBySeat) / x.seats)), 2),
   );
+  // ⭐ THE THREE v31 LINES. Actions per turn is risk 1 and the number the whole
+  // pass moves; the meeple spend rate is the dead-component check; the
+  // self-visit share is risk 2 in one number. They are in the SERIES table as
+  // well as in their own assertions because this table is what a reader scans
+  // first and what a paired arm is diffed on.
+  line('actions per turn (mean)', (g) => {
+    const turns = sum(g.map((x) => sum(x.turnsBySeat)));
+    return num(turns === 0 ? NaN : sum(g.map((x) => sum(x.actionsBySeat))) / turns, 2);
+  });
+  line('meeples spent / gained', (g) => {
+    const got = sum(g.map((x) => sum(x.meeplesGainedBySeat)));
+    return pct(got === 0 ? NaN : sum(g.map((x) => sum(x.meeplesSpentBySeat))) / got, 0);
+  });
+  line('self-visit share of visits', (g) => {
+    const all = sum(g.map((x) => sum(x.visitsBySeat)));
+    return pct(all === 0 ? NaN : sum(g.map((x) => sum(x.selfVisitsBySeat))) / all, 0);
+  });
   line('lead changes (median)', (g) => num(median(g.map((x) => x.leadChanges)), 0));
   line('winning score (median)', (g) =>
     num(median(g.flatMap((x) => (x.winner === null ? [] : [x.scores[x.winner]?.total ?? NaN]))), 0),
@@ -289,18 +442,17 @@ function seriesSection({ pooled }: ReportInput): string[] {
   out.push('VP sources on a winning score (the design wants island deliveries at 50%+):');
   const winners = pooled.ended.flatMap((g) => (g.winner === null ? [] : [g.scores[g.winner]]));
   const part = (
-    pick: (s: {
-      printed: number;
-      receipts: number;
-      endgame: number;
-      coinPity: number;
-      total: number;
-    }) => number,
+    pick: (s: { printed: number; receipts: number; endgame: number; total: number }) => number,
   ) => pct(mean(winners.flatMap((s) => (s && s.total > 0 ? [pick(s) / s.total] : []))), 0);
   out.push(
     `  island receipts ${part((s) => s.receipts)}   printed VP ${part((s) => s.printed)}   ` +
-      `endgame cards ${part((s) => s.endgame)}   coin pity ${part((s) => s.coinPity)}`,
+      `endgame cards ${part((s) => s.endgame)}`,
   );
+  out.push(
+    '  The coin pity column is gone with the currency (v31). The Farmstead is an end-game ' +
+      'scorer now,',
+  );
+  out.push('  so every seat has at least one endgame card and that column is no longer optional.');
   out.push('');
   return out;
 }
@@ -474,29 +626,13 @@ function freightSection({ data, pooled }: ReportInput): string[] {
       .join('   ')}`,
   );
   out.push('');
-  // FARMSTEAD FLIP BY SUIT (the Wheat rebalance, 2026-08-12). Printed beside
-  // the builds line because every suit rebalance that touches an upgraded
-  // Farmstead face has so far assumed most seats get there, and nobody had
-  // measured it. Rate first, then the median round among the seats that
-  // flipped - a suit that flips late has the power for a shorter time than its
-  // rate suggests.
-  //
-  // ⚠️ Later the same day the free flip at the own-crop milestone was retired
-  // and the Farmstead went on sale at £2, so this is now a measure of a COIN
-  // DECISION (does the £2 go here, or on the Barn, or into a hire) and not of a
-  // building count. Do not compare it across that change.
-  out.push('  Farmstead flip, by suit (rate, then median round among those that flipped):');
-  out.push(
-    `    ${data.cards.suits
-      .map(
-        (suit) =>
-          `${suit} ${pct(farmsteadFlipRateBySuit(games, suit))}` +
-          ` r${num(farmsteadFlipRoundBySuit(games, suit), 1)}`,
-      )
-      .join('   ')}`,
-  );
-  out.push('    ⚠️ NO NOISE FLOOR YET - new metric, not in the --noise pair.');
-  out.push('');
+  // ⛔ THE FARMSTEAD FLIP LINE IS GONE (v31). It reported how often and how
+  // early each suit reached its upgraded Farmstead face, first as a milestone
+  // and then, from 2026-08-12, as a GBP 2 purchase. Starters are single-faced
+  // now: the Farmstead prints one end-game scorer and nothing flips, so there
+  // is no moment to time. What replaced the question is the own-crop build
+  // share (assertion 8's last detail line), because the Farmstead's VP is what
+  // that share is now paying for.
   out.push(
     `  demand tokens altered per game        ` +
       `${num(
@@ -635,7 +771,6 @@ function apiarySection({ pooled }: ReportInput): string[] {
   let full = 0;
   let foreign = 0;
   let total = 0;
-  let towerCoins = 0;
   let tableWide = 0;
   let offered = 0;
   for (const g of games) {
@@ -655,7 +790,6 @@ function apiarySection({ pooled }: ReportInput): string[] {
       full += g.activationsOfFullBySeat[seat] ?? 0;
       foreign += g.activationsOfForeignBySeat[seat] ?? 0;
       total += g.activationsBySeat[seat] ?? 0;
-      towerCoins += g.towerCoinsBySeat[seat] ?? 0;
     });
   }
 
@@ -689,14 +823,11 @@ function apiarySection({ pooled }: ReportInput): string[] {
     `  activations of a FOREIGN-crop card    ${pct(total === 0 ? NaN : foreign / total, 1)}` +
       `   (${foreign}; risk 5, and A19 The Honey Hall pays for it)`,
   );
-  out.push(
-    `  coins minted by A14 per game          ${num(towerCoins / games.length, 2)}` +
-      `   (risk 2, the first repeatable coin faucet. Read against the coin flood, not against A14's play rate)`,
-  );
-  out.push(
-    `  market buys per game                  ${num(mean(games.map((g) => sum(g.marketBuysBySeat))), 2)}` +
-      `   (was 0.1. A14 and A15 exist to move it)`,
-  );
+  // ⛔ TWO LINES LEFT WITH THE CURRENCY (v31): coins minted by A14 The
+  // Honeycomb Tower (the suit's risk 2, the first repeatable coin faucet) and
+  // market buys per game (the sink A14 and A15 existed to feed). A14 draws a
+  // card per HIVE now and the market is deleted, so both questions are answered
+  // by the card clock and the funnel instead.
   out.push(
     `  cards into an Apiary seat's barn      ${num(barnInBySuit(games, 'apiary'), 1)}` +
       `   (risk 4; Dairy ran 10.2 against Orchard's 25.7 and that gap was the win ranking in order)`,
@@ -734,32 +865,6 @@ function barnInBySuit(games: readonly GameMetrics[], suit: string): number {
 /** Buildings put down by the seats actually farming a given suit, per game. */
 function buildsBySuit(games: readonly GameMetrics[], suit: string): number {
   return bySuit(games, suit, (g, seat) => g.buildsBySeat[seat] ?? 0);
-}
-
-/**
- * Share of the seats farming a given suit whose Farmstead reached its upgraded
- * face. A 0/1 projection through the same `bySuit` mean everything else uses,
- * so it is a rate over SEATS rather than over games.
- */
-function farmsteadFlipRateBySuit(games: readonly GameMetrics[], suit: string): number {
-  return bySuit(games, suit, (g, seat) => (g.farmsteadFlipRoundBySeat[seat] == null ? 0 : 1));
-}
-
-/**
- * Median round of the flip, counted ONLY over the seats that flipped. Seats
- * that never flipped are excluded rather than scored as "late": mixing them in
- * would make the rate and the round the same measurement twice, and the rate
- * beside it already carries them.
- */
-function farmsteadFlipRoundBySuit(games: readonly GameMetrics[], suit: string): number {
-  const per: number[] = [];
-  for (const g of games) {
-    g.suits.forEach((s, seat) => {
-      const round = g.farmsteadFlipRoundBySeat[seat];
-      if (s === suit && round != null) per.push(round);
-    });
-  }
-  return per.length === 0 ? NaN : median(per);
 }
 
 /** Mean of a per-seat counter over the seats actually farming a given suit. */
@@ -1090,7 +1195,6 @@ function funnelSection(input: ReportInput): string[] {
       pad('junk', 8) +
       pad('acts', 7) +
       pad('VP/g', 7) +
-      pad('£/g', 7) +
       pad('uplift', 8) +
       'diff',
   );
@@ -1109,7 +1213,6 @@ function funnelSection(input: ReportInput): string[] {
         pad(pct(r.junk, 0), 8) +
         pad(num(r.activations, 1), 7) +
         pad(num(r.vpPerGame, 1), 7) +
-        pad(num(r.coinsPerGame, 1), 7) +
         pad(
           Number.isFinite(r.winUplift)
             ? `${r.winUplift >= 0 ? '+' : ''}${pct(r.winUplift, 0)}`

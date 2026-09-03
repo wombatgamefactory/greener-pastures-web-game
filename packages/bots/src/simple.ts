@@ -34,8 +34,8 @@ export const random: Policy = {
 };
 
 /**
- * `random` with Deliver forced whenever it is legal - including the Deliver
- * Worker's task answer, because `actOf` collapses both spellings. Genuinely
+ * `random` with Deliver forced whenever it is legal - including a Deliver
+ * door's task answer, because `actOf` collapses both spellings. Genuinely
  * weak, genuinely coherent, and it finishes games.
  *
  * Balloon moves are Deliver ACTIONS but not island deliveries, so they are
@@ -57,33 +57,48 @@ export const pulse: Policy = {
  * on the engine). The duplication is deliberate and the two are free to drift:
  * the engine's copy is scaffolding for a rules test, this one is the roster's
  * regression baseline.
+ *
+ * ⭐ **THE START-OF-TURN WINDOWS MOVED TO THE TOP IN v31, AND THE OLD ORDER WAS
+ * NOT MERELY WORSE, IT WAS UNREACHABLE.**
+ *
+ * Every previous version of this list put the main actions above the bonus slot
+ * on the argument that a slot option must never displace a Deliver. That
+ * argument assumed the slot survived the action. It does not: `bonusOpen` is
+ * gated on `!actionSpent` and `meepleOpen` on that plus an unspent bonus, so
+ * taking any main action THROWS BOTH WINDOWS AWAY. Measured on the first v31
+ * build with the old order, over 12 whole games: greedy took **0 visits, 0 bonus
+ * draws** and reached a meeple only on the turns it had nothing else to do.
+ *
+ * A baseline that cannot reach three of the thirteen move types is not a fixed
+ * point, it is a hole in the smoke test - so the two windows go first, meeples
+ * before the bonus because that is the order the rules play them and because
+ * taking the bonus shuts the meeple phase.
+ *
+ * ⚠️ `visit` ahead of `bonusDraw` keeps the one judgement the deleted `market`
+ * and `buy` lines carried: a solitaire option must never displace the slot while
+ * a cross-table one is on offer. ⚠️ But the move type does NOT distinguish a
+ * self-visit, so what this actually guarantees is only that the slot is spent on
+ * SOME board - a greedy seat takes whichever visit the engine enumerated first,
+ * its own included. That is a real blind spot in the baseline and greedy must
+ * never be read for anything about risk 2. It is not in `BALANCE_PROFILES`, so
+ * no arm is measured through it.
  */
 export const GREEDY_PRIORITY: readonly MoveType[] = [
   'task',
+  // DL-78 "Deliver is absolute" stays at the top, above the windows, and it has
+  // to: a visit is legal on almost every turn, so a greedy bot that put the slot
+  // first stopped delivering altogether and ran two of twelve smoke games to the
+  // move ceiling. It costs the windows on the turns a delivery is available,
+  // which is few - greedy delivers about ten times in five hundred moves.
   'deliver',
+  'spendMeeple',
+  'visit',
+  'bonusDraw',
   'moveBalloon',
   'harvest',
   'build',
-  // ⚠️ `upgrade` BECAME A BONUS-SLOT MOVE ON 19/08/2026 and this line did not
-  // move with it, deliberately. By the reasoning three lines below, an option
-  // that spends the bonus slot has no business outranking the visit - and here
-  // it does, so a greedy seat with £2 and an unflipped starter will flip rather
-  // than visit, every time, until all three are flipped. That is left alone on
-  // purpose: `greedy` is the roster's REGRESSION BASELINE, its whole job is to
-  // be a fixed point the other bots are read against, and reordering it would
-  // silently move every baseline comparison in the same commit as a rules
-  // change. It is not in `BALANCE_PROFILES`, so no arm is measured through it.
-  // If a future ticket does want a greedy that respects the slot, move this
-  // below 'visit' on its own and re-baseline in that commit alone.
-  'upgrade',
   'grow',
   'draw',
-  'buy',
-  'visit',
-  'workOwnWorker',
-  // Below the visit on purpose: greedy is a regression baseline, and the
-  // market must never displace its bonus slot while a visit is on offer.
-  'market',
   'cardMove',
   'pass',
   'endTurn',

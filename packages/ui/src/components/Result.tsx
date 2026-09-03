@@ -2,20 +2,26 @@
  * The end of the game: who won, why, and where every point came from.
  *
  * Two jobs, and the second is why this is not just a totals table. It has to
- * TEACH the scoring architecture - four sources, all countable from public
- * state - so the breakdown shows its working: which receipts, which cards,
- * which coins. `view/scoring.ts` does the deriving and re-checks three of the
- * four sources against the engine's own totals; this file is the surface.
+ * TEACH the scoring architecture - THREE sources since v31, all countable from
+ * public state - so the breakdown shows its working: which receipts, which
+ * cards. `view/scoring.ts` does the deriving and re-checks two of the three
+ * sources against the engine's own totals; this file is the surface.
  *
  * It doubles as a design instrument. The island is meant to carry ~50%+ of a
  * winning score, so the island share is printed per seat rather than left to be
  * worked out, and the winner's share gets a line of its own. That is a number
  * Dean can read off a finished game without opening the simulator.
  *
- * Nothing here knows a rule constant. The coin column exists only while
- * `rules.json` prints a pity divisor - the rule is flagged OPEN in the design
- * and may be deleted - and the island's VP by arrival order, the delivery count
- * that ends the game and the number of further turns are read the same way.
+ * ⛔ THE COIN COLUMN IS GONE (v31), and with it the "leftover coins score
+ * nothing" note that replaced it on 2026-08-03. There is no currency, so there
+ * is nothing to reassure anybody about. What took its place is the FARMSTEAD:
+ * its "1 VP for each CROP card you have built" is an ordinary `gameEnd`
+ * handler, so it arrives in the end-game section like any other card and every
+ * seat now has at least one line there.
+ *
+ * Nothing here knows a rule constant. The island's VP by arrival order, the
+ * delivery count that ends the game and the number of further turns are all read
+ * out of `GameData`.
  */
 
 import { useState } from 'react';
@@ -79,7 +85,6 @@ export function Result({
               <th scope="col">island</th>
               <th scope="col">built</th>
               <th scope="col">end-game</th>
-              {report.pityDivisor !== null && <th scope="col">coins ÷ {report.pityDivisor}</th>}
               <th scope="col">total</th>
             </tr>
           </thead>
@@ -106,7 +111,6 @@ export function Result({
                 </td>
                 <td>{s.breakdown.printed}</td>
                 <td>{s.breakdown.endgame}</td>
-                {report.pityDivisor !== null && <td>{s.breakdown.coinPity}</td>}
                 <td>
                   <b>{s.breakdown.total}</b>
                 </td>
@@ -121,11 +125,23 @@ export function Result({
           thing everyone is supposed to be racing for.
         </p>
 
-        <Detail seat={detail} pityDivisor={report.pityDivisor} zoom={zoom} />
+        <Detail seat={detail} zoom={zoom} />
 
-        {report.pityDivisor === null && (
-          <p className="result-note">Leftover coins score nothing in this edition.</p>
-        )}
+        {/*
+         * ⭐ THE DEAD-COMPONENT NUMBER, printed where a player can see it.
+         *
+         * A meeple is a stored action that leaves the game when spent, so one
+         * still in a supply at the end was never used - and the v31 plan asks
+         * the simulator to watch exactly that count, on the grounds that "a
+         * meeple nobody spends is a dead component". It is NOT a score and the
+         * line says so, because a number on a scoring screen that is not a score
+         * will otherwise be read as one.
+         */}
+        <p className="result-note">
+          {report.meeplesUnspent === 0
+            ? 'Every meeple the island paid out was spent. None went to waste.'
+            : `${report.meeplesUnspent} meeple${report.meeplesUnspent === 1 ? '' : 's'} left the game unspent, still in supplies. They score nothing: a meeple is a stored action, not a point.`}
+        </p>
         {disagrees.length > 0 && (
           <p className="result-warn" role="alert">
             The working below does not add up to the engine&apos;s total for{' '}
@@ -143,16 +159,8 @@ export function Result({
   );
 }
 
-/** One seat's working: the four sources, each traced to what it came from. */
-function Detail({
-  seat,
-  pityDivisor,
-  zoom,
-}: {
-  seat: SeatScore;
-  pityDivisor: number | null;
-  zoom: Zoomer;
-}) {
+/** One seat's working: the three sources, each traced to what it came from. */
+function Detail({ seat, zoom }: { seat: SeatScore; zoom: Zoomer }) {
   return (
     <div className="result-detail" style={{ ['--seat-ink' as string]: SUIT_META[seat.suit].ink }}>
       <h3>
@@ -201,11 +209,19 @@ function Detail({
         ))}
       </Source>
 
+      {/*
+       * ⭐ THE FARMSTEAD LANDS HERE, and that is why this section changed shape
+       * rather than the screen gaining a fourth. All five Farmsteads print
+       * "Game end: 1 VP for each CROP card you have built", which is five
+       * ordinary `gameEnd` handlers - so the loyalty payoff shows its formula
+       * and its number on the same list as a bought Endgame card, and the empty
+       * state below is now unreachable in a normal game.
+       */}
       <Source
         label="End-game cards"
         vp={seat.breakdown.endgame}
         icon={frame('game_end')}
-        empty="No end-game card. They cost £2 and score once, at the end."
+        empty="Nothing scores at the end for this farm."
         isEmpty={seat.endgame.length === 0}
       >
         {seat.endgame.map((c) => (
@@ -213,15 +229,16 @@ function Detail({
         ))}
       </Source>
 
-      {pityDivisor !== null && seat.pity && (
-        <Source label="Coins left over" vp={seat.pity.vp} icon={token('coin')} isEmpty={false}>
-          <span className="result-sum">
-            {seat.pity.replacedBy === null
-              ? `£${seat.pity.coins} ÷ ${seat.pity.divisor} = ${seat.pity.vp} VP, rounded down`
-              : `£${seat.pity.coins}, scored above by ${seat.pity.replacedBy} at its own rate instead of ÷ ${seat.pity.divisor}`}
-          </span>
-        </Source>
-      )}
+      {/* Not a source. The tie-break's second link and the dead-component count,
+          side by side, because both are things a player will look for on this
+          screen and neither is worth a section of its own. */}
+      <p className="result-sum result-stock">
+        Held at the end: <b>{seat.stock}</b> card{seat.stock === 1 ? '' : 's'} in hand and barn,
+        which is the tie-break after VP.{' '}
+        {seat.meeplesLeft === 0
+          ? 'No meeples left over.'
+          : `${seat.meeplesLeft} meeple${seat.meeplesLeft === 1 ? '' : 's'} unspent, worth nothing.`}
+      </p>
     </div>
   );
 }
@@ -262,7 +279,7 @@ function CardChip({ card, zoom, note }: { card: ScoredCard; zoom: Zoomer; note?:
     <span
       className={`chip${note ? ' chip-muted' : ''}`}
       title={note ?? 'hover to read the card'}
-      onMouseEnter={() => zoom.show(card.id, card.upgraded)}
+      onMouseEnter={() => zoom.show(card.id)}
       onMouseLeave={zoom.clear}
     >
       {card.name}

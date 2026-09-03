@@ -1,75 +1,109 @@
 import type { PolicyId } from '@gp/bots';
 
 import type { Assertion } from './types.js';
+import { NO_REMEDY } from './types.js';
 import { seatRows } from './lib.js';
 import type { SeatRow } from './lib.js';
-import { mean, num, pct, proportion, separated } from '../stats.js';
+import { num, pct, proportion, separated, sum } from '../stats.js';
 
 /**
- * Watch-list 2, flagged in the design as "the number one thing to watch".
+ * Watch-list 2, flagged in the design as "the number one thing to watch", and
+ * RE-POINTED FOR v31 (02/09/2026) onto the only half of it that survives.
  *
- * The measurement's whole difficulty is finding one currency. A worker-visit
- * pays the host COINS and the visitor an ACTION, and the two are not comparable
- * on their face - which is why the ratio is taken against what the visitor GAVE
- * UP, not against what the action is worth. Placing the same card on the same
- * board for the coin payoff was available at that exact moment, so the payout
- * the visitor declined is a revealed price the table itself set. Section 7.2
- * frames the concern in precisely that pair: a rival minted "up to £3" against
- * the £1 the visitor could simply have taken.
+ * ⛔ THE WAGE IS GONE, AND WITH IT THE RATIO THIS ASSERTION USED TO BE. Under
+ * v14 a visit paid the HOST coins the bank minted and the VISITOR an action,
+ * and the whole difficulty was finding one currency to compare them in - which
+ * the old version solved by pricing the visitor's gain as what they GAVE UP
+ * (the coin payoff the same board would have paid them for the same card, a
+ * price the table itself set). v31 mints nothing at all. A visit is one card in
+ * and one action out.
  *
- * **The second half does not survive contact, and is deliberately demoted.**
- * Ticket 11 specified the leader-visit win rate as a second FAIL trigger. The
- * first real run showed it cannot carry a verdict: stratifying by bot profile
- * removed the obvious confound (a `hermit` never visits anybody and wins a
- * large share of its games, so unstratified the variable simply WAS "is a
- * hermit"), but a structural one remains and cannot be removed observationally.
- * A seat that is winning IS the leader, and you cannot visit yourself - so
- * "never visited the leader" is close to "led from the front", and the -48%
- * that falls out is reverse causation wearing a measurement's clothes. Answering
- * it properly needs randomised visit targeting, which is an experiment, not a
- * metric.
+ * So what is left of the generosity problem is exactly the card, which is what
+ * the design always said was the load-bearing half: "if it bites, shrink the
+ * wage - never remove the card". Your fee lands on a rival's Notice Board, they
+ * Harvest it into their barn, and it arrives as the mixed colour the island
+ * demands of them. Three numbers say whether that transfer is real:
  *
- * So it is measured, printed with its caveat, and excluded from the verdict.
- * Ticket 11 section 2's own rule decides this: a report that will be believed
- * must not hand a made-up number the authority of a measurement.
+ *   PAID     fees placed on a rival's board - the gift as it leaves
+ *   BANKED   fees the host actually harvested - the gift as it arrives
+ *   LEADER   fees that went to the seat already ahead on VP
+ *
+ * The gap between paid and banked is the only thing that makes the transfer
+ * less than total, and it is not a rounding error: a fee that dies on a board
+ * nobody ever clears was never received. A HIGH banked share is the design
+ * working as written ("your junk is their treasure") and simultaneously the
+ * shape the BGG research flagged as the predecessor's number one dislike. This
+ * instrument can measure the transfer; it cannot measure the resentment.
+ *
+ * ⚠️ IT IS OBSERVE NOW, and that is a demotion made on purpose rather than a
+ * threshold left off. The old FAIL at 2.0x was a ratio of two coin figures and
+ * both are deleted; the design names no number for the card, and inventing one
+ * from this run's own output is the snapshot test ticket 11 section 2 forbids.
+ *
+ * **The leader half does not survive contact, and is deliberately excluded from
+ * the verdict** - unchanged from the v14 version, because the confound is
+ * structural rather than economic. Stratifying by bot profile removes the
+ * obvious one (a `hermit` never visits anybody and wins a large share of its
+ * games), but a seat that is winning IS the leader and you cannot visit
+ * yourself, so "never visited the leader" is close to "led from the front" and
+ * the negative that falls out is reverse causation wearing a measurement's
+ * clothes. Answering it properly needs randomised visit targeting, which is an
+ * experiment and not a metric.
  */
 export const generosity: Assertion = {
   id: 2,
   title: 'The generosity problem',
   quote:
-    'He gives a rival a card and mints them up to £3. This is the exact shape the BGG research ' +
-    'flagged as the predecessor\'s #1 dislike - "reverse engine-building" resentment. It is the ' +
-    'number one thing to watch. If it bites, shrink the wage (£1/£1/£2) - never remove the card.',
-  source: 'docs/Unified Visit v14.md section 7.2',
+    'You give a rival a card. This is the exact shape the BGG research flagged as the ' +
+    'predecessor\'s #1 dislike - "reverse engine-building" resentment. It is the number one ' +
+    'thing to watch. If it bites, shrink the wage - NEVER remove the card. [02/09/2026] There ' +
+    'is no wage left to shrink: the card is the whole of it.',
+  source:
+    'docs/Unified Visit v14.md section 7.2, re-pointed onto the card by ' +
+    'docs/design-changes-v31-2026-09-02-v1.md (no coins)',
   shape:
-    'Ratio of host gain (the minted wage) to visitor gain (the coin payoff declined at that same ' +
-    'board), per worker-visit. The leader-visit win rate is reported alongside but does NOT ' +
-    'trigger the verdict - see below.',
-  threshold: 'FAIL above 2.0x',
+    "Fees paid onto rivals' Notice Boards per game, the share of them the host actually " +
+    'harvested into their own barn, and the share that went to the seat already leading. The ' +
+    'leader line is reported and does NOT trigger the verdict - see below.',
+  threshold:
+    'OBSERVE. The wage the old 2.0x ratio was built on does not exist, and the design names no ' +
+    'number for the card, so this reports the transfer and does not judge it.',
   taste: true,
   remedy:
-    'npm run sim -- --watchlist --sweep=overlays/wage-shrink.overlay.json   (wages [1,1,2]; ' +
-    'the design says never remove the card)',
+    `${NO_REMEDY}. The design forbids the one obvious lever in as many words - never remove ` +
+    'the card - and the wage it prescribes shrinking is deleted. If the transfer reads as too ' +
+    'generous the levers are rules.economy.noticeBoardThreshold (a tighter board banks fewer ' +
+    'fees) and rules.turn.selfVisitAllowed (which decides how much traffic crosses the table ' +
+    'at all).',
   measure({ pooled }) {
-    const visits = pooled.ended.flatMap((g) => g.workerVisits);
-    const hostGain = mean(visits.map((v) => v.hostGain));
-    const visitorAlt = mean(visits.map((v) => v.visitorAlternative));
-    const ratio = visitorAlt > 0 ? hostGain / visitorAlt : NaN;
+    const games = pooled.ended;
+    const paid = sum(games.map((g) => sum(g.freight.paidBySeat)));
+    const banked = sum(games.map((g) => sum(g.freight.bankedBySeat)));
+    const toLeader = sum(games.map((g) => sum(g.freight.toLeaderBySeat)));
+    const perGame = games.length === 0 ? NaN : paid / games.length;
+    const bankedShare = paid === 0 ? NaN : banked / paid;
 
-    const leader = leaderPenalty(seatRows(pooled.ended));
+    const leader = leaderPenalty(seatRows(games));
     return {
-      value: ratio,
+      value: perGame,
       headline:
-        `host £${hostGain.toFixed(2)} per worker-visit against a declined £${visitorAlt.toFixed(2)}` +
-        ` = ${ratio.toFixed(2)}x  (${visits.length} worker-visits)`,
+        `${num(perGame, 2)} fees a game land on a rival's board, ` +
+        `${pct(bankedShare)} of them reach the host's barn ` +
+        `(${paid} paid, ${banked} banked over ${games.length} games)`,
       detail: [
+        `${pct(paid === 0 ? NaN : toLeader / paid)} of fees went to the seat that was ` +
+          'already the sole VP leader at that moment',
+        'The banked share is the transfer made real: a fee that dies on a board nobody clears ' +
+          'was never received. A high share is "your junk is their treasure" working, and it ' +
+          'is the same shape the BGG research named as the resentment risk. The instrument can ' +
+          'see the transfer; only a table can see the resentment.',
         `visiting the leader moves the win rate by ${leader.delta >= 0 ? '+' : ''}` +
           `${pct(leader.delta)}, stratified by bot profile - REPORTED, NOT JUDGED: a seat that ` +
           'is winning IS the leader and so cannot visit one, which makes this variable close to ' +
           '"was ever behind" and its sign reverse causation rather than a finding',
         ...leader.strata,
       ],
-      verdict: !Number.isFinite(ratio) ? 'OBSERVE' : ratio > 2.0 ? 'FAIL' : 'PASS',
+      verdict: 'OBSERVE',
     };
   },
 };

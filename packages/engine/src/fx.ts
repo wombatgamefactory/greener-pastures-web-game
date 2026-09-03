@@ -13,7 +13,7 @@
  * did, so the flags cannot drift from the code.
  */
 
-import type { GameData, Suit } from '@gp/data';
+import type { GameData, Suit, WorkerAction } from '@gp/data';
 
 import { cardById, canTakeCard, drawableSuits, player } from './query.js';
 import { shuffle } from './rng.js';
@@ -53,23 +53,39 @@ export class Fx {
     this.events.push(event);
   }
 
-  // --- coins -------------------------------------------------------------
+  // --- meeples -----------------------------------------------------------
+  //
+  // ⛔ `gainCoins` and `payCoins` stood here and are GONE (v31). They were the
+  // busiest pair of primitives in the file. The pair below is NOT their
+  // replacement in kind: coins were fungible, continuous and could be saved
+  // indefinitely, while a meeple is one of five colours, buys exactly one
+  // specific action, and leaves the game when it is used. Nothing mints a
+  // meeple; the island's delivery spaces are the only source, seeded once at
+  // setup from a bag of 25.
 
-  /** Mint from the bank. Coins are created, never moved between players. */
-  gainCoins(seat: Seat, n: number, why: string): void {
-    if (n <= 0) return;
-    this.touch(seat);
-    player(this.state, seat).coins += n;
-    this.emit({ e: 'coins', seat, delta: n, why });
-  }
-
-  payCoins(seat: Seat, n: number, why: string): void {
-    if (n <= 0) return;
+  /**
+   * Claim the meeple off an island delivery space. Only `doDeliver` calls it,
+   * and the space it names is the one the deliverer just took.
+   */
+  gainMeeple(seat: Seat, colour: Suit, tile: string, space: number): void {
     this.touch(seat);
     const p = player(this.state, seat);
-    if (p.coins < n) throw new Error(`Seat ${seat} cannot pay £${n} (has £${p.coins})`);
-    p.coins -= n;
-    this.emit({ e: 'coins', seat, delta: -n, why });
+    p.meeples[colour] += 1;
+    this.emit({ e: 'meepleGained', seat, colour, tile, space });
+  }
+
+  /**
+   * Spend a meeple: it leaves the supply and LEAVES THE GAME. There is no pool
+   * to return it to, deliberately - it is a stored action, used once.
+   *
+   * The `meepleSpent` event is emitted by `doSpendMeeple` rather than here, so
+   * that it carries the ACTION the colour bought alongside the colour itself.
+   */
+  spendMeeple(seat: Seat, colour: Suit): void {
+    this.touch(seat);
+    const p = player(this.state, seat);
+    if (p.meeples[colour] < 1) throw new Error(`Seat ${seat} has no ${colour} meeple`);
+    p.meeples[colour] -= 1;
   }
 
   // --- decks and discards ------------------------------------------------
@@ -491,7 +507,7 @@ export class Fx {
     const p = player(this.state, seat);
     const i = p.tableau.findIndex((b) => b.card === building);
     if (i < 0) throw new Error(`Seat ${seat} has not built ${building}`);
-    const b = p.tableau[i] as { card: CardId; stack: CardId[]; upgraded: boolean };
+    const b = p.tableau[i] as { card: CardId; stack: CardId[] };
     if (b.stack.length > 0) throw new Error(`${building} is not empty`);
     p.tableau.splice(i, 1);
     this.discard([building]);
@@ -555,24 +571,35 @@ export interface HookEvents {
   afterBalloonMove: { seat: Seat; balloon: string; from: Seat | 'centre' };
   /**
    * A visit landed on the host's Notice Board (fee placed, slot spent), fired
-   * before the payoff resolves - O16 The Orchard Keeper reacts host-side in
-   * every visit branch. Once per visit, so the 2-card `special` mode fires it
-   * once, not twice. A Helping Hand repeat is not a visit and never fires this.
+   * before the door action resolves - O16 The Orchard Keeper reacts host-side.
+   * Once per visit.
+   *
+   * ⚠️ `self` IS TRUE FOR A SELF-VISIT (v31), and a host-side listener has to
+   * decide what it means for that card rather than inherit an answer. Before
+   * v31 a visitor and a host were always different seats, so "whenever a
+   * neighbour visits you" needed no guard; now it needs `!e.self`. The `mode`
+   * field it replaces distinguished the coin, Service and 2-card visits, none of
+   * which exist.
    */
-  afterVisit: { visitor: Seat; host: Seat; mode: 'coin' | 'worker' | 'special' };
+  afterVisit: { visitor: Seat; host: Seat; self: boolean };
   /**
    * A see-N/keep-K draw finished and the kept cards entered the hand - the
-   * reference's onDraw moment (keepFromReveal). Fires for the Draw action,
-   * the Draw Worker and card-ability draws alike; autoDraw never fires it.
+   * reference's onDraw moment (keepFromReveal). Fires for the Draw action, the
+   * bonus Draw, a door's Draw and card-ability draws alike; autoDraw never fires
+   * it.
    */
   afterDrawKeep: { seat: Seat; cards: CardId[] };
   /**
-   * A Service was ACTIVATED - any path: the bonus slot, a visit's payoff, a
-   * Helping Hand repeat, a card-granted work (`free: true` when no card was
-   * placed on it). A17 The Smoke Pot reacts owner-side when `actor !== owner`;
-   * D17 The Strongbox reacts actor-side on every activation.
+   * A DOOR ACTION RAN, by either route: a card placed on a Notice Board
+   * (`via: 'visit'`) or a meeple spent (`via: 'meeple'`).
+   *
+   * ⚠️ IT NO LONGER TELLS YOU WHOSE FARM WAS USED. `owner` and `free` described
+   * the Service economy - who collected the wage, and whether the use was the
+   * Herb Hive's off-the-books one - and both are gone. A card that has to react
+   * to being VISITED listens to `afterVisit`, which carries the host; a card
+   * that reacts to taking an action listens here.
    */
-  afterWork: { actor: Seat; owner: Seat; workerId: string; free: boolean };
+  afterWork: { actor: Seat; colour: Suit; action: WorkerAction; via: 'visit' | 'meeple' };
   /**
    * A card landed in a tableau, by ANY path - the Build action, a Worker's
    * build, a card-granted or free build. `src` is the card whose ability caused

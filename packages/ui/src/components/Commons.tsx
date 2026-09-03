@@ -1,11 +1,20 @@
 /**
  * The commons band: everything on the table that belongs to nobody.
  *
- * Five decks with their face-up discards, the Hiring Fair, the island, and the
+ * Five decks with their face-up discards, the doors legend, the island, and the
  * Aerodrome when Vegetable is at the table. The decks are never merged and
  * never cross-shuffled, so they are shown as five separate spines with five
- * separate discards - the Draw action is "top of any two decks", and that only
- * reads if the five stay visibly apart.
+ * separate discards - the Draw action is "top of any two decks, keep both", and
+ * that only reads if the five stay visibly apart.
+ *
+ * ⭐ THE HIRING FAIR PANEL BECAME THE DOORS LEGEND (v31). It used to print "Your
+ * Service, GBP 2" over the one Service you owned, which is three deleted rules
+ * in one caption. What sits there now is the five COLOURS and what each one
+ * does, which is the single most-consulted fact in the v31 game and is consulted
+ * for two different reasons at once: it is what a card on a farm's Notice Board
+ * buys, and it is the key to every meeple on the island and in every supply.
+ * All five are listed even at 2 seats, because a meeple of a colour nobody farms
+ * still works.
  */
 
 import type { GameData, Suit } from '@gp/data';
@@ -15,11 +24,11 @@ import { mark } from '../session/play';
 import type { Play } from '../session/play';
 import { balloonArt } from '../view/art';
 import { SUIT_META, seatName } from '../view/suits';
-import { seatSuits, workerTrack, workersOwnedBy } from '../view/table';
+import { allDoors, doorOwner, seatSuits } from '../view/table';
 import { printedFace } from '../view/printed';
 import { Card, CardBack } from './Card';
+import { DoorChip } from './Door';
 import { IslandPanel } from './Island';
-import { WorkerPanel } from './Worker';
 import type { Zoomer } from './Zoom';
 
 function DeckSpine({
@@ -59,7 +68,7 @@ function DeckSpine({
       <CardBack suit={suit} width={width} count={count} />
       <div className="deck-discard">
         {top ? (
-          <div onMouseEnter={() => zoom.show(top, false)}>
+          <div onMouseEnter={() => zoom.show(top)}>
             <Card face={printedFace(data, top)} width={width} />
           </div>
         ) : (
@@ -92,7 +101,6 @@ export function Commons({
   onExpandIsland?: (() => void) | undefined;
 }) {
   const suits = seatSuits(view);
-  const yours = workersOwnedBy(view, view.seat);
 
   return (
     <section className="commons" aria-label="the commons">
@@ -144,23 +152,23 @@ export function Commons({
       </div>
 
       <div className="commons-right">
-        <div className="panel panel-fair">
+        <div className="panel panel-doors">
           <h2 className="panel-title">
-            Your Service <em>£{data.workers.ownerActivationCost}</em>
+            The five doors <em>and what a meeple of that colour does</em>
           </h2>
-          <div className="fair">
-            {/* One entry, always: every seat owns its suit's Service from setup
-                and can never own another. The rivals' Services live on the rival
-                rail, which is where the cross-table read belongs. */}
-            {yours.map((w) => (
-              <WorkerPanel
-                key={w.id}
-                track={workerTrack(data, w)}
-                ownerLabel="yours"
-                size="rail"
-                play={play}
-              />
-            ))}
+          <div className="doors">
+            {allDoors(data).map((door) => {
+              const seat = doorOwner(view, door.colour);
+              return (
+                <DoorChip
+                  key={door.colour}
+                  door={door}
+                  owner={seat === null ? null : seatName(suits[seat], seat, view.seat)}
+                  size="rail"
+                  showMeeple
+                />
+              );
+            })}
           </div>
         </div>
 

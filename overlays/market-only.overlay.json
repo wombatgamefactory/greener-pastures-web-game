@@ -1,8 +1,0 @@
-{
-  "name": "market-only",
-  "description": "The other HALF of the sink deletion: the GBP 3 market back ON, the GBP 1 card buy still deleted, the turn structure as shipped. The paired partner of buy-only, and between them they account for the whole of the turn-structure-v14 arm that upgrade-main-action did not explain. The market is a BONUS-SLOT option, so its prediction is the reverse of the buy's: it should push the visit rate DOWN by competing for the slot, which is the entire reason it was deleted ('the metric that decides it is not coins, it is how bonus slots were spent'). If it instead comes back UP, the market was funding visits rather than crowding them out and the 2026-08-19 deletion removed the wrong rule. Read visits per turn and the five-way tally's market column together - a market share that is large AND a visit rate that is higher than shipped is the finding that would reopen the deletion.",
-  "schemaVersion": 1,
-  "set": {
-    "rules.turn.marketCost": 3
-  }
-}

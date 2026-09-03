@@ -81,12 +81,18 @@ export interface Probe {
   /**
    * The probing seat's OWN hand size in the probed position.
    *
-   * Ticket 49. A pending draw is priced as the cards it will keep, and cards it
-   * cannot keep are cards the end-of-turn discard takes - so the price has to
-   * know how full the hand is. The seat's hand size before the move is not that
-   * number: the commonest way to reach a Draw Worker at all is a VISIT, which
-   * pays a card out of hand first, so a pre-move reading is short by one on
-   * exactly the case the design cares most about.
+   * Ticket 49. It was there to price a pending draw against the END-OF-TURN
+   * DISCARD: cards a full hand could not keep were cards the boundary took, so
+   * the price had to know how full the hand was. ⚠️ THAT REASON IS GONE (v31):
+   * there is no hand limit and a draw is worth its cards whatever the hand size.
+   *
+   * It is kept because the second half of the original reasoning still holds and
+   * is the harder half to rediscover: the seat's hand size BEFORE the move is
+   * not the number a pricer wants, because the commonest way to reach a door at
+   * all is a VISIT, which pays a card out of hand first - so a pre-move reading
+   * is short by one on exactly the case the design cares most about. A hand size
+   * is also the natural denominator for anything that scales on cards held, and
+   * v31 added one of those (O19 The Fruit Hall, 1 VP per 3 cards in hand).
    *
    * No redaction question: it is the probing seat's own hand.
    */
@@ -150,7 +156,7 @@ function probeAt(data: GameData, state: GameState, seat: Seat, budget: ProbeBudg
       events: redactEvents(applied.events, seat),
       next: mine ? legalMoves(data, post) : [],
       truncated: false,
-      pending: mine && head !== undefined ? redactTask(head, seat) : null,
+      pending: mine && head !== undefined ? redactTask(data, head, seat) : null,
       handSize: post.players[seat]?.hand.length ?? 0,
       deliverableBefore: shifted ? payableTileCount(data, state, seat) : 0,
       deliverable: shifted ? payableTileCount(data, post, seat) : 0,

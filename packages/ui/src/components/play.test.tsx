@@ -21,6 +21,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { BASE_GAME_DATA as data } from '@gp/data';
 import type { Move, PlayerView } from '@gp/engine';
 
+import type { Suit } from '@gp/data';
+
 import { Session } from '../session/table';
 import type { Play } from '../session/play';
 import { emptyBuildDraft, liveTargets } from '../view/intent';
@@ -28,6 +30,7 @@ import type { Intent } from '../view/intent';
 import { actionGroups } from '../view/moveText';
 import { barFamilies } from './ActionBar';
 import { Start } from './Start';
+import { MeepleSupply, meeplePhaseOf, meepleWindowOpen } from './Supply';
 import { Table } from './Table';
 
 const PUBLIC = join(import.meta.dirname, '..', '..', 'public');
@@ -44,7 +47,11 @@ function staticPlay(view: PlayerView, moves: readonly Move[], intent: Intent): P
     live: liveTargets(view, moves, intent),
     picked: [],
     commitments:
-      intent.k === 'build' ? intent.draft.payment : intent.k === 'visit' ? intent.fee : [],
+      intent.k === 'build'
+        ? intent.draft.payment
+        : intent.k === 'visit' && intent.fee !== null
+          ? [intent.fee]
+          : [],
     subsetKind: null,
     send: noop,
     choose: noop,
@@ -56,10 +63,10 @@ function staticPlay(view: PlayerView, moves: readonly Move[], intent: Intent): P
     setVisitFee: noop,
     building: noop,
     cardPower: noop,
-    rival: noop,
+    host: noop,
     tile: noop,
     balloon: noop,
-    worker: noop,
+    meeple: noop,
     deck: noop,
   };
 }
@@ -90,8 +97,34 @@ function positionWithHand() {
   throw new Error('no warmed position leaves you holding a card');
 }
 
-/** A warmed session sitting on your turn, with a hand and a developed board. */
+/**
+ * ⏱️ MEMOISED, and the reason is the cost of a warm-up rather than tidiness.
+ *
+ * A warmed session walks a real game with scored bots on the other seats -
+ * measured on 02/09/2026 at ~40s for `warmUp(200, 4)`, because a bot move with a
+ * prober costs 36ms and there is no hand limit since v31, so mid-game move lists
+ * run to thousands. `positionWith` searches up to five seeds at three depths, and
+ * four separate tests search overlapping ranges, so the same (seed, depth) was
+ * being walked from scratch a dozen times in one file.
+ *
+ * A session is a pure function of (seed, log) - that is the property
+ * `session.test.ts` pins - so the same pair always produces the same snapshot
+ * and the cache cannot change an answer. It only stops the file paying for it
+ * twice.
+ */
+const WARMED = new Map<string, ReturnType<typeof warm>>();
+
 function position(seed: string, depth = 260) {
+  const key = `${seed}:${depth}`;
+  const hit = WARMED.get(key);
+  if (hit) return hit;
+  const fresh = warm(seed, depth);
+  WARMED.set(key, fresh);
+  return fresh;
+}
+
+/** A warmed session sitting on your turn, with a hand and a developed board. */
+function warm(seed: string, depth: number) {
   const session = new Session(data, {
     seats: 3,
     suits: ['wheat', 'vegetable', 'orchard'],
@@ -136,6 +169,9 @@ function barButton(label: string): string {
   return `class="action-name">${label}</span>`;
 }
 
+/** How long a case that SEARCHES for a position is allowed to take. */
+const SEARCH = 180_000;
+
 function missingImages(html: string): string[] {
   return [...html.matchAll(/src="([^"]+)"/g)]
     .map((m) => m[1] as string)
@@ -153,37 +189,63 @@ describe('the playable table renders', () => {
   });
 
   /**
-   * ⚠️ REWRITTEN 19/08/2026 with the bonus phase. The bar used to open on all
-   * eleven families at once; the slot is start-of-turn only now, so a seat that
-   * HAS a legal bonus is shown its four bonus options and a skip FIRST, and the
-   * five main actions come after. That is shape (c) of the plan's section 5.2:
-   * modal, but auto-skipped whenever there is nothing to skip, so it costs a
-   * click only on the turns where a slot is genuinely about to be forfeited.
+   * ⚠️ THE BONUS PHASE. The slot is start-of-turn only, so a seat that HAS a
+   * legal bonus is shown its options and a skip FIRST, and the five main actions
+   * come after. That is shape (c) of the plan's section 5.2: modal, but
+   * auto-skipped whenever there is nothing to skip, so it costs a click only on
+   * the turns where a slot is genuinely about to be forfeited.
    *
    * The test asserts the phase and not just the buttons, because the whole point
    * of the affordance is the ORDER: offered in one flat row the bonus silently
    * expires the moment somebody clicks Build, and a forfeited visit is the hook
    * not happening.
+   *
+   * ⭐ v31 CUT THE BONUS FAMILIES FROM FOUR TO THREE and made two of them the
+   * same move type: `bonusDraw`, `visit` and `visit-self`. The market, the card
+   * buy and the GBP 2 upgrade went with the currency.
    */
   it('shows the bonus phase when a bonus is live, and the main actions when it is not', () => {
     const html = render(snap, { k: 'idle' });
     // Which shape this position gets is a property of the position, not of the
     // bar, so the test reads it off the legal moves rather than assuming one.
-    // That matters: `play-a` used to open on the phase and now does not, because
-    // the W2/W3 swap moved the warmed game, and a hard-coded expectation would
-    // have read as a UI regression rather than as the phase auto-skipping.
-    const BONUS = ['visit', 'workOwnWorker', 'upgrade', 'market'];
+    const BONUS = ['visit', 'bonusDraw'];
     const live = snap.moves.some((m) => BONUS.includes(m.type));
     if (live) {
       expect(html).toContain('Your bonus, first.');
       expect(html).toContain('>skip bonus action</button>');
     } else {
       expect(html).not.toContain('Your bonus, first.');
-      for (const label of ['Draw', 'Build', 'Grow', 'Harvest', 'Deliver', 'End turn']) {
-        expect(html).toContain(`>${label}</button>`);
+      for (const label of ['Draw', 'Build', 'Grow', 'Harvest', 'Deliver']) {
+        expect(html).toContain(barButton(label));
       }
     }
     expect(missingImages(html)).toEqual([]);
+  });
+
+  /**
+   * ⭐ THE MEEPLE PHASE IS ALWAYS DRAWN, in all three of its states, and this is
+   * the assertion that keeps it so.
+   *
+   * A meeple is spent only at the very start of a turn and it LEAVES THE GAME
+   * when spent, so a player who does not notice the window has silently lost a
+   * stored action for good. Nothing else on screen would say why the pawns in
+   * front of them stopped responding - the supply is not a button that greys
+   * out, it is a row of wooden pieces - so the zone head has to say it.
+   */
+  it('draws the meeple window in whichever of its three states this turn is in', () => {
+    const html = render(snap, { k: 'idle' });
+    const held = Object.values(snap.view.you.meeples).reduce((a, b) => a + b, 0);
+    const spendable = snap.moves.some((m) => m.type === 'spendMeeple');
+    if (spendable) {
+      expect(html).toContain('meeples first');
+      expect(html).toContain('before your bonus');
+    } else if (held > 0) {
+      expect(html).toContain('meeples: not now');
+    } else {
+      expect(html).toContain('no meeples');
+      // Where they come from, said in the one place an empty supply is looked at.
+      expect(html).toContain('Every island delivery brings one.');
+    }
   });
 
   /**
@@ -192,21 +254,56 @@ describe('the playable table renders', () => {
    * bonus silently expires the moment somebody clicks Build, and a forfeited
    * visit is the hook not happening.
    */
-  it('offers all four bonus options and a skip when the slot is open', () => {
-    const withBonus = positionWith('a bonus-slot move', (m) =>
-      ['visit', 'workOwnWorker', 'upgrade'].includes(m.type),
-    );
-    const html = render(withBonus, { k: 'idle' });
-    expect(html).toContain('Your bonus, first.');
-    expect(html).toContain('>skip bonus action</button>');
-    for (const label of ['Visit', 'Work yours', 'Upgrade']) {
-      expect(html).toContain(barButton(label));
-    }
-    // Shape (c), not (b): the main families are held back until the slot is
-    // resolved, so nobody forfeits it by reaching past it.
-    expect(html).not.toContain(barButton('Draw'));
-    expect(missingImages(html)).toEqual([]);
-  });
+  it(
+    'offers every bonus option and a skip when the slot is open',
+    () => {
+      const withBonus = positionWith('a bonus-slot move', (m) =>
+        ['visit', 'bonusDraw'].includes(m.type),
+      );
+      const html = render(withBonus, { k: 'idle' });
+      expect(html).toContain('Your bonus, first.');
+      expect(html).toContain('>skip bonus action</button>');
+      for (const label of ['Draw 1', 'Visit a neighbour', 'Your own door']) {
+        expect(html).toContain(barButton(label));
+      }
+      // Shape (c), not (b): the main families are held back until the slot is
+      // resolved, so nobody forfeits it by reaching past it. `Draw 1` is the bonus
+      // option, so the main Draw is the one that must be absent.
+      expect(html).not.toContain(barButton('Draw'));
+      expect(missingImages(html)).toEqual([]);
+    },
+    SEARCH,
+  );
+
+  /**
+   * ⭐ THE ASSERTION THE WHOLE v31 PASS TURNS ON, at the DOM.
+   *
+   * `visit` and `visit-self` are one move type with a different host and they
+   * are opposite acts - a card on a neighbour's board is the game's social hook,
+   * a card on your own is solitaire that also clogs your own door. The plan's
+   * risk 2 is that the second quietly wins, and the interface's job is to make
+   * certain nobody takes one thinking it was the other.
+   *
+   * Four things differ and three of them are checkable here: two labels, two
+   * classes, and only the hook carrying the player aid's `visit` vignette. The
+   * fourth is the panel, checked further down.
+   */
+  it(
+    'draws the two visits as two labelled buttons, and only one of them as the hook',
+    () => {
+      const withBonus = positionWith('a bonus-slot move', (m) =>
+        ['visit', 'bonusDraw'].includes(m.type),
+      );
+      const html = render(withBonus, { k: 'idle' });
+      expect(html).toContain(barButton('Visit a neighbour'));
+      expect(html).toContain(barButton('Your own door'));
+      expect(html).toContain('action-hook');
+      expect(html).toContain('action-solo');
+      // The two never collapse into one generic button.
+      expect(html).not.toContain(barButton('Visit'));
+    },
+    SEARCH,
+  );
 
   it('lights exactly what liveTargets says is live, and nothing when idle-empty', () => {
     const live = liveTargets(snap.view, snap.moves, { k: 'idle' });
@@ -232,24 +329,28 @@ describe('the playable table renders', () => {
       expect(html).toContain(`data-drop="building:${b.card}"`);
     }
     for (const r of snap.view.rivals) {
-      expect(html).toContain(`data-drop="rival:${r.seat}"`);
+      expect(html).toContain(`data-drop="host:${r.seat}"`);
     }
     // And nowhere else: a drop zone is always a subset of what is clickable.
     const zones = [...html.matchAll(/data-drop="([^"]+)"/g)].map((m) => m[1] as string);
-    expect(zones.every((z) => z.startsWith('building:') || z.startsWith('rival:'))).toBe(true);
+    expect(zones.every((z) => z.startsWith('building:') || z.startsWith('host:'))).toBe(true);
   });
 
-  it('renders the held-card state and its targets', () => {
-    // Searched rather than taken off the shared snap, for the same reason
-    // `positionWith` searches: whether a given seed leaves you holding a card
-    // at a given depth moves whenever the card data does, and it did with the
-    // Orchard rebuild.
-    const held = positionWithHand();
-    const card = held.view.you.hand[0] as string;
-    const html = render(held, { k: 'hold', card });
-    expect(html).toContain('is-held');
-    expect(html).toContain('Card in hand');
-  });
+  it(
+    'renders the held-card state and its targets',
+    () => {
+      // Searched rather than taken off the shared snap, for the same reason
+      // `positionWith` searches: whether a given seed leaves you holding a card
+      // at a given depth moves whenever the card data does, and it did with the
+      // Orchard rebuild.
+      const held = positionWithHand();
+      const card = held.view.you.hand[0] as string;
+      const html = render(held, { k: 'hold', card });
+      expect(html).toContain('is-held');
+      expect(html).toContain('Card in hand');
+    },
+    SEARCH,
+  );
 });
 
 /**
@@ -296,13 +397,13 @@ describe('the turn bar is small enough, and still reaches everything', () => {
      * with no bonus at all is a property of the card data, and a test that
      * failed for that reason would be reporting on the sheet.
      */
-    const BONUS = ['visit', 'workOwnWorker', 'upgrade', 'market'];
+    const BONUS = ['visit', 'bonusDraw'];
     expect(corpus.some((s) => s.moves.some((m) => BONUS.includes(m.type)))).toBe(true);
   });
 
   it('never draws more than eight family buttons in the main phase', () => {
     for (const snap of corpus) {
-      const drawn = barFamilies(actionGroups(data, snap.moves), 'main');
+      const drawn = barFamilies(actionGroups(data, snap.view, snap.moves), 'main');
       expect(drawn.length).toBeLessThanOrEqual(8);
     }
   });
@@ -331,11 +432,14 @@ describe('the turn bar is small enough, and still reaches everything', () => {
       task: 'the prompt',
       cardMove: 'a badge on the card that offers it',
       moveBalloon: 'the balloon itself, in the Aerodrome',
+      spendMeeple: 'the pawn in your own meeple supply',
       pass: 'the exits zone',
       endTurn: 'the exits zone',
     };
     for (const snap of corpus) {
-      const drawn = new Set(barFamilies(actionGroups(data, snap.moves), 'main').map((g) => g.type));
+      const drawn = new Set(
+        barFamilies(actionGroups(data, snap.view, snap.moves), 'main').map((g) => g.type),
+      );
       const missing = [...new Set(snap.moves.map((m) => m.type))].filter(
         (type) => ELSEWHERE[type] === undefined && !drawn.has(type),
       );
@@ -351,45 +455,54 @@ describe('the turn bar is small enough, and still reaches everything', () => {
       const live = liveTargets(snap.view, snap.moves, { k: 'idle' });
       for (const move of snap.moves) {
         if (move.type === 'moveBalloon') expect(live.balloons.has(move.balloon)).toBe(true);
+        // The same argument for the meeple: it lost its button because the pawn
+        // in your own supply IS its home, which is only true if the resolver
+        // lights it. Same `liveTargets` the supply renders its glow from.
+        if (move.type === 'spendMeeple') expect(live.meeples.has(move.colour)).toBe(true);
       }
     }
   });
 
-  it('holds only the bonus families back in the bonus phase, and always with a skip', () => {
-    const withBonus = positionWith('a bonus-slot move', (m) =>
-      ['visit', 'workOwnWorker', 'upgrade'].includes(m.type),
-    );
-    const groups = actionGroups(data, withBonus.moves);
-    const drawn = barFamilies(groups, 'bonus');
-    expect(drawn.every((g) => g.zone === 'bonus')).toBe(true);
-    // Every bonus family with a legal move is on screen in that phase.
-    for (const group of groups) {
-      if (group.zone === 'bonus' && group.moves.length > 0) expect(drawn).toContain(group);
-    }
-    expect(render(withBonus, { k: 'idle' })).toContain('>skip bonus action</button>');
-  });
+  it(
+    'holds only the bonus families back in the bonus phase, and always with a skip',
+    () => {
+      const withBonus = positionWith('a bonus-slot move', (m) =>
+        ['visit', 'bonusDraw'].includes(m.type),
+      );
+      const groups = actionGroups(data, withBonus.view, withBonus.moves);
+      const drawn = barFamilies(groups, 'bonus');
+      expect(drawn.every((g) => g.zone === 'bonus')).toBe(true);
+      // Every bonus family with a legal move is on screen in that phase.
+      for (const group of groups) {
+        if (group.zone === 'bonus' && group.moves.length > 0) expect(drawn).toContain(group);
+      }
+      expect(render(withBonus, { k: 'idle' })).toContain('>skip bonus action</button>');
+    },
+    SEARCH,
+  );
 
   /**
    * The rendered half. `barFamilies` deciding correctly is worth nothing if the
    * component then draws something else, and the number this phase is measured
    * on (`tools/measure-ui.mjs`) is a DOM query - so the DOM is what has to agree.
    */
-  it('renders exactly the families it decided on, and no dead Buy, Market or Pass', () => {
+  it('renders exactly the families it decided on, and no dead coin buttons', () => {
     for (const snap of corpus.slice(0, 6)) {
       const html = render(snap, { k: 'idle' });
       const phase = html.includes('Your bonus, first.') ? 'bonus' : 'main';
-      const drawn = barFamilies(actionGroups(data, snap.moves), phase);
+      const drawn = barFamilies(actionGroups(data, snap.view, snap.moves), phase);
       for (const group of drawn) {
         expect(html).toContain(barButton(group.label));
       }
       /*
-       * The three cuts, pinned so that a well-meaning tidy cannot put them back.
-       * Buy and Market are rules this game is not playing (both knobs null since
-       * 19/08) and drew a permanently greyed button each; Card power named no
-       * card and is a badge now. Pass is only ever legal when it is the only
-       * legal move, which is the only condition the engine emits it under.
+       * The cuts, pinned so that a well-meaning tidy cannot put them back. Buy,
+       * Market and Upgrade were coin sinks in or beside the bonus slot and their
+       * move types no longer exist; "Work yours" was activating your own Service
+       * for a coin and is REPLACED by "Your own door", which is a visit. Card
+       * power named no card and is a badge on the card. Pass is only ever legal
+       * when it is the only legal move.
        */
-      for (const gone of ['Buy', 'Market', 'Card power']) {
+      for (const gone of ['Buy', 'Market', 'Upgrade', 'Work yours', 'Card power']) {
         expect(html).not.toContain(barButton(gone));
       }
       if (snap.moves.some((m) => m.type !== 'pass')) {
@@ -423,35 +536,190 @@ describe('the turn bar is small enough, and still reaches everything', () => {
 });
 
 describe('the two assemblies render', () => {
-  it('the build panel, against a real buildable card', () => {
-    const snap = positionWith(
-      'a build that costs cards',
-      (m) => m.type === 'build' && m.payment.length > 0,
+  /**
+   * ⏱️ Both assembly cases SEARCH for a position rather than pinning a seed, and
+   * a search is a handful of warm-ups: pinning one would rot the first time the
+   * card data moved, which is the trade this file has always taken. See the note
+   * on `position` for what a warm-up costs since v31.
+   */
+  it(
+    'the build panel, against a real buildable card',
+    () => {
+      const snap = positionWith(
+        'a build that costs cards',
+        (m) => m.type === 'build' && m.payment.length > 0,
+      );
+      // A card that costs cards, not a coin-only one: the panel's whole job is
+      // the payment, and a free build never opens it (it plays on the spot).
+      const build = snap.moves.find((m) => m.type === 'build' && m.payment.length > 0) as Extract<
+        Move,
+        { type: 'build' }
+      >;
+      expect(build).toBeDefined();
+      const html = render(snap, { k: 'build', draft: emptyBuildDraft(build.card) });
+      expect(html).toContain('Build it');
+      expect(html).toContain('more to find');
+      expect(missingImages(html)).toEqual([]);
+    },
+    SEARCH,
+  );
+
+  /**
+   * ⭐ THE FOURTH DIFFERENCE, and the one a player is looking straight at when
+   * they commit. The panel is the same component for both halves of the bonus
+   * slot, so this is where the two could most easily read alike - and must not.
+   */
+  it(
+    'the visit panel, titled and coloured differently for the two hosts',
+    () => {
+      const snap = positionWith('a visit to a neighbour', (m) => m.type === 'visit');
+      const visits = snap.moves.filter(
+        (m): m is Extract<Move, { type: 'visit' }> => m.type === 'visit',
+      );
+      const other = visits.find((m) => m.host !== m.seat);
+      const own = visits.find((m) => m.host === m.seat);
+
+      if (other) {
+        const html = render(snap, { k: 'visit', host: other.host, fee: null });
+        expect(html).toContain('assembly-hook');
+        expect(html).toContain('Your junk, their treasure.');
+        expect(html).not.toContain('No neighbour involved');
+        expect(html).toContain('rival-visiting');
+      }
+      if (own) {
+        const html = render(snap, { k: 'visit', host: own.host, fee: null });
+        expect(html).toContain('assembly-self');
+        // The cost is stated as prominently as the payoff: feeding your own board
+        // clogs it and shuts your neighbours out of your suit's action.
+        expect(html).toContain('No neighbour involved');
+        expect(html).toContain('clogs it');
+        expect(html).not.toContain('their treasure');
+      }
+      // At least one of the two must have been on offer, or this asserted nothing.
+      expect(Boolean(other || own)).toBe(true);
+    },
+    SEARCH,
+  );
+});
+
+/**
+ * ⭐ THE MEEPLE SUPPLY, IN ALL FOUR OF ITS STATES.
+ *
+ * The window this strip draws is the one affordance in the game that SHUTS ON
+ * ITS OWN: a meeple is spendable for the first beat of your turn, it stops being
+ * spendable the moment you take your bonus or your action, and spending it
+ * removes it from the game. A player who misses the window has silently lost a
+ * stored action for good, and the pawns give no sign - they are wooden pieces,
+ * not buttons that grey out. So the strip has to say which state it is in, and
+ * this pins that it does - including the two that look identical from the move
+ * list and are not the same fact, `shut` and `stuck`.
+ *
+ * ⚠️ THE MEEPLES ARE INJECTED, and that is not a shortcut round the engine. A
+ * seat's supply fills off ISLAND DELIVERIES, so reaching the open state through
+ * real play means walking a game until the human seat has both delivered and
+ * arrived at a turn top - which is a search over seeds that finds it sometimes,
+ * and a test that only asserts when it gets lucky is a test that has stopped
+ * asserting. What is under test here is the COMPONENT: given a supply and a set
+ * of spendable colours, does it draw the right window. The rule that decides
+ * which colours are spendable is the engine's, is checked against `spendMeeple`
+ * in `intent.test.ts`, and is deliberately not restated here.
+ */
+describe('the meeple supply says which window it is in', () => {
+  const held: Record<Suit, number> = {
+    wheat: 2,
+    vegetable: 0,
+    orchard: 1,
+    apiary: 0,
+    dairy: 0,
+  };
+  const none: Record<Suit, number> = {
+    wheat: 0,
+    vegetable: 0,
+    orchard: 0,
+    apiary: 0,
+    dairy: 0,
+  };
+  /** A turn at its very top, and one that has moved on. */
+  const atTop = { actionSpent: false, bonusUsed: [] } as unknown as PlayerView['turn'];
+  const movedOn = { actionSpent: true, bonusUsed: [] } as unknown as PlayerView['turn'];
+
+  const supply = (
+    meeples: Record<Suit, number>,
+    spendable: Suit[],
+    turn: PlayerView['turn'] = atTop,
+  ) => {
+    const snap = position('play-a');
+    const play = staticPlay(snap.view, snap.moves, { k: 'idle' });
+    return renderToStaticMarkup(
+      <MeepleSupply
+        data={data}
+        meeples={meeples}
+        turn={turn}
+        play={{ ...play, live: { ...play.live, meeples: new Set(spendable) } }}
+      />,
     );
-    // A card that costs cards, not a coin-only one: the panel's whole job is
-    // the payment, and a free build never opens it (it plays on the spot).
-    const build = snap.moves.find((m) => m.type === 'build' && m.payment.length > 0) as Extract<
-      Move,
-      { type: 'build' }
-    >;
-    expect(build).toBeDefined();
-    const html = render(snap, { k: 'build', draft: emptyBuildDraft(build.card) });
-    expect(html).toContain('Build it');
-    expect(html).toContain('more to find');
-    expect(missingImages(html)).toEqual([]);
+  };
+
+  /**
+   * ⚠️ THE TWO "nothing to spend" CASES ARE DIFFERENT FACTS, and telling them
+   * apart is the whole reason `meepleWindowOpen` exists. Both look identical
+   * from the move list; only the turn separates them, and the wrong answer is
+   * checkable from the screen - "the window has passed" printed beside a live
+   * bonus slot is a contradiction a player can see.
+   */
+  it('names the phase off the supply, what is spendable and whether the window is open', () => {
+    expect(meeplePhaseOf(held, new Set<Suit>(['wheat']), true)).toBe('open');
+    expect(meeplePhaseOf(held, new Set<Suit>(), false)).toBe('shut');
+    expect(meeplePhaseOf(held, new Set<Suit>(), true)).toBe('stuck');
+    expect(meeplePhaseOf(none, new Set<Suit>(), true)).toBe('empty');
+    expect(meepleWindowOpen(atTop)).toBe(true);
+    expect(meepleWindowOpen(movedOn)).toBe(false);
   });
 
-  it('the visit panel, with the payoffs the fee has bought', () => {
-    const snap = positionWith('a visit', (m) => m.type === 'visit');
-    const visit = snap.moves.find((m) => m.type === 'visit') as Extract<Move, { type: 'visit' }>;
-    const empty = render(snap, { k: 'visit', host: visit.host, fee: [] });
-    expect(empty).toContain('your junk, their treasure');
-    // With no fee chosen there is nothing to take yet.
-    expect(empty).not.toContain('from the bank, to you');
+  it('OPEN: says spend them now, and lights only the colours that can', () => {
+    const html = supply(held, ['wheat']);
+    expect(html).toContain('supply-open');
+    expect(html).toContain('spend them now, before anything else');
+    // The action each colour buys, not its name: a meeple IS its door.
+    expect(html).toContain('Harvest');
+    expect(html).toContain('Draw');
+    // Lit for the one that is legal, and disabled for the one that is not -
+    // so a colour that can do nothing this turn is visibly not an option.
+    expect((html.match(/is-live/g) ?? []).length).toBe(1);
+    expect(html).toContain('disabled');
+  });
 
-    const priced = render(snap, { k: 'visit', host: visit.host, fee: visit.fee });
-    expect(priced).toContain('from the bank, to you');
-    expect(priced).toContain('rival-visiting');
+  it('SHUT: says the window has passed and nothing is clickable', () => {
+    const html = supply(held, [], movedOn);
+    expect(html).toContain('supply-shut');
+    expect(html).toContain('your turn has moved on - they keep');
+    expect(html).not.toContain('is-live');
+  });
+
+  it('STUCK: says the actions are illegal, NOT that the window has passed', () => {
+    const html = supply(held, [], atTop);
+    expect(html).toContain('supply-stuck');
+    expect(html).toContain('none of them has anything to do right now');
+    // The lie this state exists to prevent.
+    expect(html).not.toContain('your turn has moved on');
+    expect(html).not.toContain('is-live');
+  });
+
+  it('EMPTY: says where meeples come from, which is the only source', () => {
+    const html = supply(none, []);
+    expect(html).toContain('supply-empty');
+    expect(html).toContain('Deliver to the island and take the meeple with it.');
+    expect(html).not.toContain('supply-meeple');
+  });
+
+  it("a neighbour's supply is pawns and counts, and never a button", () => {
+    const html = renderToStaticMarkup(<MeepleSupply data={data} meeples={held} size="rail" />);
+    expect(html).toContain('supply-rail');
+    expect(html).not.toContain('<button');
+    // Two wheat and one orchard: the count only prints where it is not 1.
+    expect(html).toContain('>2</b>');
+    const empty = renderToStaticMarkup(<MeepleSupply data={data} meeples={none} size="rail" />);
+    expect(empty).toContain('no meeples');
   });
 });
 

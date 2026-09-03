@@ -1,49 +1,42 @@
 {
   "meta": {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "kind": "authored",
     "generatedBy": null,
     "sourceSheet": null,
     "notes": [
-      "THE SUIT SERVICES (Dean, 2026-08-10). Each suit owns one Service, printed as its FOURTH starter and in its tableau from setup. There is no Hiring Fair, no hire fee, no Working Week track, no expiry and no meeple: the Service belongs to the suit, permanently, and the only Services on the table are the ones the seats' suits brought.",
-      "The Service is an ordinary building in every respect that matters: it has a threshold, it clogs when full, and its owner clears it with a Harvest action. What is NOT ordinary is who may put a card on it - a rival may, as their bonus slot, and that is the only building in the game besides the Notice Board that a rival may touch.",
-      "TWO WAYS IN, and the asymmetry is the whole rule. A RIVAL places 1 card from hand onto the Service (advancing its threshold), takes the Service's action, and that is the whole transaction. The OWNER pays ownerActivationCost to the bank, takes the action, and places NOTHING - so an owner never clogs their own Service and never earns from their own farm.",
-      "THE CARD IS THE PAYMENT (Dean, 2026-08-10). visitWage is 0: a rival's use pays the owner nothing but the card that lands on their Service. That card rides into their barn on the next harvest as exactly the mixed colour the island demands of them, so being useful is paid in FREIGHT rather than in coin - 'your junk is their treasure', now the only thing a visit gives. The GBP 1 wage the first build shipped was measured and removed; keep the wage at 0 unless a table says the owner feels unrewarded, and reach for overlays/service-wage-one.overlay.json before inventing anything new.",
-      "So the bonus slot is one option per currency: a CARD buys a neighbour's action, a CARD buys GBP 1 at their Notice Board, a COIN buys your own action, GBP 3 buys a card at market. The Notice Board is now the only cross-table faucet in the game, which makes it the thing to watch if coins dry up.",
-      "Every Service performs an ENHANCED version of its action, not the plain one. The reason is the self-cancellation law generalised: a visitor pays a card, so an action that also SPENDS cards (sow, build) is priced in the currency it consumes and is worthless to buy unless it over-delivers. Help is therefore inversely proportional to how card-hungry the action is - draw and sow and build carry real enhancements, harvest and deliver carry small ones.",
-      "THE SELF-CANCELLATION LAW, restated for Draw 2 (2026-08-09). The Draw Service is a plain Draw 2 - see 2, keep 2. The law it obeys is about VOLUME, not selection: a buyer pays 1 card and gains 2, so it is card-POSITIVE and worth buying. If anybody ever tidies this to Draw 1 the Service becomes exactly worthless to visit overnight, which is the trap the old printed exception (Draw 3, keep 2) was written to avoid. The selection was measured and found to be doing nothing - see the arms - so it went, and the only player who now gets selection on it is the Orchard seat, through their Farmstead modifier. That is a better statement of \"this is the draw suit\" than everyone getting best-2-of-3.",
-      "Sow takes its card from the TOP OF A DECK, not from the visitor's hand. A hand-sow would cost the buyer two cards (the fee and the sown card) for one threshold step, which is the Draw problem in reverse; drawing the sown card off a deck fixes it and is the better theme besides - the pollinator carries something in from elsewhere.",
-      "Build waives the crop requirements rather than discounting the price. A discount of 2 was measured against total throughput and rejected: it saves a Dairy player roughly as many cards over a game as base Draw supplies, and it stacks with the Dairy Farmstead's own-crop discount. Waiving the match costs the card economy nothing and unblocks the thing that actually stops a build, which is holding the wrong colours.",
-      "THE BUILDER'S YARD GAINS A DISCOUNT OF 1 (Dean, 2026-08-10, the Dairy rebuild), RAISED TO 2 ON 19/08/2026 (v30 group A, both faces of D3 the Dairy Notice Board). It waives the crop requirements AND takes cards off the price. At 1 the discount exactly refunded the card the visitor placed on it, which is to say it was worth precisely nothing - the same arithmetic that made the old Milking Shed dead text - so at 2 the visit is card-POSITIVE for the visitor, which is what a traffic magnet has to be. This KNOWINGLY REVERSES the paragraph above and outstanding-rule-changes.md section 5, which chose the waiver alone on owner-side grounds. The owner-side argument is not refuted, it is outweighed by the visitor side: Build took 5% of all rival Service uses and 2.8 rival cards a game, both last in the game, and the traffic ranking is the win ranking in exact order. The Dairy Farmstead no longer substitutes for its own seat (it diverts a spent card to the barn instead), so the stacking this paragraph warned about no longer exists - a Dairy seat matches crops like everybody else, which is what makes its own Service worth visiting. Re-measure before keeping it if the Service-suit weld is ever broken.",
-      "DELIVER uses `handToBarn`: an optional hand card into your own barn, landing BEFORE the delivery, which is exactly 'you may pay up to 1 card of the cost from your hand' with no second code path. It is OPTIONAL, so it can never be a downside. HARVEST used to share the primitive with it, landing after as a junk sink; the sheet moved that half onto W2 the Wheat Farmstead on 19/08/2026 and gave this door the RELAXED HARVEST instead (`relaxedMin: 2`, printed on W3: 'Harvest a building with 2 or more cards, even if not full'). So the Wheat door is now the only Service that loosens the gate of the action it grants, and it loosens it for whoever WORKS it rather than for whoever owns it.",
-      "linkedSuit is now ownership, not flavour: the seat playing that suit owns that Service and nobody else can. A Service whose suit is not at the table is simply not in the game, and that is a feature - the table's menu of buyable actions is decided by which suits were chosen.",
-      "RULING (carried over, unchanged): suit powers apply to actions performed by a Service. It is your action, done on someone else's premises."
+      "THE FIVE DOORS (Dean, 02/09/2026, v31). This file is the one place that says what each suit's action IS. Everything else in the game reads it from here, and there are now exactly two readers: a suit's NOTICE BOARD grants the action to whoever places a card on it, and a MEEPLE of that colour performs the same action, free, when its owner spends it at the start of a turn. Same five entries, same five actions, two ways in.",
+      "SCHEMA VERSION 2 IS v31. What left the file in one edit: serviceThreshold, ownerActivationCost and visitWage, plus every enhancement the roster carried. If you are reading a note or a report written before 02/09/2026 that mentions a Service starter, a hire fee, a Working Week, a wage ladder or an enhanced door, it is describing a game that no longer exists.",
+      "THERE IS NO SERVICE CARD, AND NOW THERE IS NO SERVICE. The fourth starter went on 20/08/2026 when the door merged into the Notice Board; the last of its vocabulary goes here. serviceThreshold is deleted because the door's threshold is the Notice Board's, printed on the card and overridden by rules.economy.noticeBoardThreshold, and one number in two files is how the 5-versus-2 drift happened the first time. ownerActivationCost is deleted because there is nothing to pay it with and, more to the point, because the owner is no longer a special case: in v31 the owner places a card on their own board exactly as a rival does, threshold and all. visitWage is deleted because there are no coins to mint - the payment to the owner was already 0 and already the FREIGHT, which is the one part of the old economy that survives intact.",
+      "THE DOORS ARE PLAIN, AND THAT IS THE CHANGE. Every entry below performs its suit's action exactly as the core action performs it, with one marked exception. The enhancements the doors used to carry (a relaxed harvest, a hand card into the barn before a delivery, a deck-sown card, a build at a discount of 2 with the crop requirements waived) are all gone. The reason is that the bonus slot itself became the enhancement: a door now buys a WHOLE CORE ACTION for one card, which is a far bigger prize than any of those riders ever was, and stacking a rider on top of it was pricing a sweetener into a deal that no longer needed one. It also collapses five paragraphs of teach into one sentence - 'place a card, take that suit's action' - which is what a five-minute teach is for.",
+      "THE ONE EXCEPTION IS THE ORCHARD DOOR, AT DRAW 3, AND IT IS LOAD-BEARING. The self-cancellation law is the reason: a visitor pays 1 card to use a door, so a door whose action PRODUCES cards has to over-deliver or buying it is net zero. In v31 the yardstick got higher, because the bonus slot's other option is a free Draw 1 (rules.turn.bonusDraw). A plain Draw 2 door would cost 1 card and return 2, netting +1 - exactly what the free option gives for nothing - so it would be STRICTLY WORSE than the alternative and the Orchard board would take no traffic at all. Draw 3 nets +2: pay your worst card, draw three, and the door is card-positive against the free option by one card. That is the whole margin the door has. If anybody ever tidies this to Draw 2 for consistency with the other four, the Orchard door dies overnight, and it will die silently - nothing will error, the traffic will simply go somewhere else. overlays/orchard-door-draw-two-v1.overlay.json is the paired control that measures exactly this.",
+      "THE APIARY DOOR SOWS FROM THE HAND, AND IT IS THE WEAKEST DOOR ON THE TABLE (Dean, 02/09/2026, ruled that way knowingly). A visitor pays 1 card onto the board and then spends a SECOND card sowing, for 1 threshold step on one of their own buildings: 2 cards out for one step in. That is the self-cancellation law biting on the one door where it was not paid off. The old fix was to sow off a deck top, which cost the visitor nothing extra and had the better theme besides - the pollinator carries something in from elsewhere. It was dropped for v31 because a plain action is a plain action and the exception budget was spent on Orchard. MEASURE THE DOOR MIX FIRST. If the Apiary board takes no traffic, the fix is to move the sown card back to a deck top (`from: 'deck'`), not to make the door cheaper.",
+      "A MEEPLE IS THE SAME ACTION WITHOUT THE CARD. It is drawn face up onto an island delivery space at setup, claimed with that delivery, spent one at a time at the start of a later turn, and then leaves the game for good. A meeple of a suit that is NOT at the table still works, which is why this file lists all five entries regardless of the seat count and why island.json deals its bag from all five colours: the five actions exist independently of who farms what. The colour-to-action map is therefore here and nowhere else, and island.json says so explicitly rather than copying it.",
+      "RULING (carried over, unchanged since v13): suit powers apply to actions performed through a door or by a meeple. It is your action, whoever's premises it is taken on and whatever wooden thing paid for it.",
+      "`name` IS FLAVOUR ONLY. These five names were printed on the Service cards that no longer exist, and nothing in v31 prints them - the door is printed on the Notice Board and the meeple is a colour. They are kept because the UI and the reports read better with a name than with an action id, and because renaming them is a design decision this file is not entitled to make on its own. Treat them as labels awaiting a ruling, not as card titles.",
+      "linkedSuit is ownership in the door sense: the seat playing that suit owns that Notice Board and nobody else does, so the table's menu of buyable actions is decided by which suits were chosen. It is NOT ownership in the meeple sense - anybody may hold and spend a meeple of any colour."
     ],
     "unresolved": [
-      "THE THRESHOLD IS THE BALANCE LEVER, and it is 2 (Dean, 2026-08-09). It is not a flavour number and it must not be raised without re-running the suite. A Service that fills in two cards clogs often, and a clogged Service refuses visits, so the threshold throttles the FREIGHT a popular farm collects - which is the only thing ever measured to touch the suit balance. Monotone and self-targeting across three paired n=1580 arms: at t=4 Orchard won 80.8%, at t=3 62.8%, at t=2 42.0% against an even share of 36.4%. A farm taking 22 rival cards a game feels it; one taking 2.8 does not. Never played at a table.",
-      "visitWage is RULED at 0 (Dean, 2026-08-10): the card is reward enough. overlays/service-wage-one.overlay.json restores the GBP 1 as the paired control, so the question can always be re-read as a delta.",
-      "A10 The Cross-Pollinator printed 'HIRE a Hired Worker, paying GBP 1 less' and hiring no longer exists. Retexted in the handler to 'Your Service costs GBP 1 less to activate', which the sheet has not caught up with."
+      "THE ORCHARD EXCEPTION IS THE ONE ASYMMETRY IN AN OTHERWISE FLAT SET, and it is defended by arithmetic rather than by measurement. The arithmetic is sound (Draw 2 ties the free option, Draw 3 beats it by one card) but nobody has yet run the arm that shows the Orchard board taking MORE traffic than the other four in proportion, which is what would say the margin is right rather than merely non-zero. If Orchard runs away with the door mix, the dial is this number and not the Orchard suit's cards.",
+      "The Apiary door's hand-sow, above. Ruled, not settled.",
+      "Whether a door should ever refuse a visitor who cannot use it. A Wheat door with no full building to harvest, a Vegetable door with an empty barn, a Dairy door with nothing affordable: the visitor pays a card and gets nothing. In v30 that was rare, because the doors were enhanced and the enhancements mostly applied; with plain actions it is a live case at every board. Nothing in the data expresses a legality check, and the engine will have to rule it one way or the other.",
+      "A10 The Cross-Pollinator printed 'HIRE a Hired Worker, paying GBP 1 less', which has been text for a rule that does not exist since 2026-08-10 and is now text for a currency that does not exist either. It is a card, so it belongs to the sheet and to cards.json, but it is recorded here because this file is where the referent died."
     ]
   },
-  "serviceThreshold": 2,
-  "ownerActivationCost": 1,
-  "visitWage": 0,
   "roster": [
     {
       "id": "harvest",
       "name": "The Threshing Mill",
       "action": "harvest",
-      "actionText": "Harvest a building with 2 or more cards, even if not full.",
-      "linkedSuit": "wheat",
-      "relaxedMin": 2
+      "actionText": "Harvest one of your full buildings.",
+      "linkedSuit": "wheat"
     },
     {
       "id": "deliver",
       "name": "The Market Stall",
       "action": "deliver",
-      "actionText": "You may put 1 card from your hand into your barn, then Deliver.",
-      "linkedSuit": "vegetable",
-      "handToBarn": 1
+      "actionText": "Deliver.",
+      "linkedSuit": "vegetable"
     },
     {
       "id": "draw",
@@ -60,23 +53,19 @@
       "id": "sow",
       "name": "The Seed Store",
       "action": "sow",
-      "actionText": "Sow the top card of any deck onto one of your buildings.",
+      "actionText": "Sow 1 card from your hand onto one of your buildings.",
       "linkedSuit": "apiary",
       "sow": {
         "amount": 1,
-        "from": "deck"
+        "from": "hand"
       }
     },
     {
       "id": "build",
       "name": "The Builder's Yard",
       "action": "build",
-      "actionText": "Build at a discount of 2. Cards of any crop may satisfy its crop requirements.",
-      "linkedSuit": "dairy",
-      "build": {
-        "substitute": true,
-        "discount": 2
-      }
+      "actionText": "Build.",
+      "linkedSuit": "dairy"
     }
   ]
 }

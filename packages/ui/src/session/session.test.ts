@@ -17,6 +17,26 @@ import type { Move } from '@gp/engine';
 import { Session, YOU } from './table';
 import type { SessionOptions } from './table';
 
+/**
+ * ⏱️ WHY THREE CASES IN THIS FILE CARRY AN EXPLICIT TIMEOUT.
+ *
+ * They are the only UI tests that drive the REAL bots over a whole game, and a
+ * scored bot move costs what it costs: measured on 02/09/2026 against the v31
+ * engine, `policy.choose` with a prober averages 36ms and peaks at 138ms, with
+ * no interface in the loop at all. A full three-seat game is ~420 moves and the
+ * warm-up walk is up to 440, so the floor for these three is 8s, 8s and 40s -
+ * every one of them past vitest's 5s default, and none of it anything a UI
+ * change can move.
+ *
+ * The number is generous rather than tight on purpose. A budget set just above
+ * the measurement turns into a flake the first time a card gets a wider option
+ * list, and a flaky timeout is read as noise rather than as a finding - which is
+ * exactly how a real hang would get waved through. What is being asserted here
+ * is that the session TERMINATES and stays consistent, not how fast it does it;
+ * if bot cost is worth watching, the simulator is where it is watched.
+ */
+const WHOLE_GAME = 120_000;
+
 const THREE: SessionOptions = {
   seats: 3,
   suits: ['wheat', 'vegetable', 'orchard'],
@@ -47,33 +67,41 @@ function playOut(session: Session, budget = 1600): { moves: number; over: boolea
 }
 
 describe('a session plays a whole game', () => {
-  it('reaches the end trigger with bots on the other seats', () => {
-    const session = new Session(data, THREE);
-    const result = playOut(session);
-    // A locked table (ticket 34) is a legitimate outcome and not this test's
-    // business; what must not happen is an exception or a wedged position.
-    expect(result.moves).toBeGreaterThan(50);
-    const snap = session.snapshot();
-    expect(snap.over || snap.moves.length === 0 || !snap.yours).toBe(true);
-  });
-
-  it('offers moves only when the decision is yours', () => {
-    const session = new Session(data, THREE);
-    for (let i = 0; i < 220; i++) {
+  it(
+    'reaches the end trigger with bots on the other seats',
+    () => {
+      const session = new Session(data, THREE);
+      const result = playOut(session);
+      // A locked table (ticket 34) is a legitimate outcome and not this test's
+      // business; what must not happen is an exception or a wedged position.
+      expect(result.moves).toBeGreaterThan(50);
       const snap = session.snapshot();
-      if (snap.over) break;
-      if (!snap.yours) {
-        expect(snap.moves).toEqual([]);
-        expect(session.stepBot()).toBe(true);
-        continue;
+      expect(snap.over || snap.moves.length === 0 || !snap.yours).toBe(true);
+    },
+    WHOLE_GAME,
+  );
+
+  it(
+    'offers moves only when the decision is yours',
+    () => {
+      const session = new Session(data, THREE);
+      for (let i = 0; i < 220; i++) {
+        const snap = session.snapshot();
+        if (snap.over) break;
+        if (!snap.yours) {
+          expect(snap.moves).toEqual([]);
+          expect(session.stepBot()).toBe(true);
+          continue;
+        }
+        expect(snap.moves.length).toBeGreaterThan(0);
+        // Everything offered belongs to your seat: a task addressed to a rival is
+        // never yours to answer.
+        for (const move of snap.moves) expect(move.seat).toBe(YOU);
+        session.send(snap.moves[0] as Move);
       }
-      expect(snap.moves.length).toBeGreaterThan(0);
-      // Everything offered belongs to your seat: a task addressed to a rival is
-      // never yours to answer.
-      for (const move of snap.moves) expect(move.seat).toBe(YOU);
-      session.send(snap.moves[0] as Move);
-    }
-  });
+    },
+    WHOLE_GAME,
+  );
 });
 
 describe('undo is replay-a-prefix', () => {
@@ -131,13 +159,17 @@ describe('undo is replay-a-prefix', () => {
 });
 
 describe('the warm-up walk', () => {
-  it('hands over a dense position on your turn', () => {
-    const session = new Session(data, THREE);
-    session.warmUp(200, 4);
-    const snap = session.snapshot();
-    if (!snap.over) {
-      expect(snap.view.you.tableau.length).toBeGreaterThan(3);
-      expect(snap.played).toBeGreaterThan(100);
-    }
-  });
+  it(
+    'hands over a dense position on your turn',
+    () => {
+      const session = new Session(data, THREE);
+      session.warmUp(200, 4);
+      const snap = session.snapshot();
+      if (!snap.over) {
+        expect(snap.view.you.tableau.length).toBeGreaterThan(3);
+        expect(snap.played).toBeGreaterThan(100);
+      }
+    },
+    WHOLE_GAME,
+  );
 });

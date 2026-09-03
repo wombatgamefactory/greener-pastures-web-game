@@ -8,9 +8,9 @@
  * branches, not a second API.
  */
 
-import type { GameData, WorkerAction } from '@gp/data';
+import type { GameData } from '@gp/data';
 
-import { activationSurchargeOf, doVisit, doWorkOwn } from './actions.js';
+import { doVisit } from './actions.js';
 import { clonePlain } from './clone.js';
 import { Fx } from './fx.js';
 import type { FxAudit } from './fx.js';
@@ -52,11 +52,13 @@ export interface GrowMods {
  * registry, which actions.ts must not import (the Helping Hand imports
  * actions.ts for workerActionLegal).
  *
- * ⛔ NOTHING SUIT-SPECIFIC LIVES HERE any more. This function is called by the
- * GROW action, by O13 The Grand Orchard and by A6, so anything wired in here
- * fires once per building grown rather than once per action - which is why the
- * Apiary Farmstead's draw is in `apiaryGrowBonus`, on the action branch, and
- * not in this function.
+ * ⛔ NOTHING SUIT-SPECIFIC LIVES HERE. This function is called by the GROW
+ * action, by O13 The Grand Orchard and by A6, so anything wired in here fires
+ * once per BUILDING grown rather than once per action - which is why the Apiary
+ * Farmstead's draw lived on the action branch in game.ts and never in here. That
+ * card is gone (v31) but the constraint is permanent: an ACTION-scoped effect
+ * belongs on the action branch, or a card that grows three buildings fires it
+ * three times.
  */
 export function doGrow(
   fx: Fx,
@@ -80,13 +82,12 @@ export function doGrow(
       throw new Error(`${building} needs a ${activationType} card, got ${paidSuit}`);
     }
   }
-  // A8's £1 activation surcharge: checked before, paid after the card lands
-  // (the reference's order), before the ability fires. Nothing in the catalogue
-  // prints one since the Apiary rebuild; the branch stays, data-driven.
-  const surcharge = activationSurchargeOf(fx.data, building);
-  if (p.coins < surcharge) throw new Error(`${building} needs £${surcharge} to activate`);
+  // The GBP 1 activation surcharge (A8 The Wild Hive) was checked here and paid
+  // after the card landed, before the ability fired. It went with the currency
+  // (v31) and no card in the catalogue carries the trigger; see the tombstone on
+  // `activationSurchargeOf` in actions.ts for the pattern, which is the right
+  // one if a toll ever returns priced in cards.
   fx.placeOnBuilding(seat, { seat, card: building }, payment);
-  if (surcharge > 0) fx.payCoins(seat, surcharge, `surcharge:${building}`);
   markFired(fx, building);
   handlerFor(building)?.activate?.(fx, { seat, card: building });
 }
@@ -159,40 +160,26 @@ export function growBuilding(
 }
 
 /**
- * The visit's Service payoff: place the fee card on the host's SERVICE (not
- * their Notice Board - the mode picks the building), take its action as the
- * visitor, mint the host their wage from the bank, and open the Helping Hand
- * gate.
+ * A VISIT as a bare runtime slice: place the fee card on the host's Notice Board
+ * and take that board's suit action as the visitor. `host` may be `visitor`'s
+ * own seat when `rules.turn.selfVisitAllowed`.
+ *
+ * ⛔ `workOwnWorker` stood beside this and is GONE (v31). It was the bonus
+ * slot's other half - activate your OWN Service, paid to the bank, placing no
+ * card - and it enforced the standing law that you never earn from your own
+ * farm. The self-visit replaces it and is a strictly harder deal: the card lands
+ * on your board and counts toward your own threshold.
  */
 export function visitWork(
   data: GameData,
   state: GameState,
   visitor: Seat,
   host: Seat,
-  workerId: string,
   fee: CardId,
 ): Applied {
   const draft = cloneState(state);
   const fx = new Fx(data, draft, visitor);
-  doVisit(fx, visitor, host, [fee], { mode: 'worker', workerId: workerId as WorkerAction });
-  drainTasks(data, draft);
-  return { state: draft, events: fx.events, audit: fx.audit };
-}
-
-/**
- * The bonus slot's other half: activate your own Service. Costs
- * `workers.ownerActivationCost` to the bank, places no card, earns nothing -
- * you never earn from your own farm.
- */
-export function workOwnWorker(
-  data: GameData,
-  state: GameState,
-  seat: Seat,
-  workerId: string,
-): Applied {
-  const draft = cloneState(state);
-  const fx = new Fx(data, draft, seat);
-  doWorkOwn(fx, seat, workerId as WorkerAction);
+  doVisit(fx, visitor, host, fee);
   drainTasks(data, draft);
   return { state: draft, events: fx.events, audit: fx.audit };
 }
@@ -245,34 +232,38 @@ export function pendingAnswers(data: GameData, state: GameState): TaskAnswer[] {
 }
 
 /**
- * The four locked VP sources, each countable from public state: printed VP on
- * built cards, island receipts, end-game card formulas, and the coin pity
- * rate (a knob; null disables it).
+ * THE THREE VP SOURCES (v31), each countable from public state: printed VP on
+ * built cards, island receipts, and end-game card formulas.
+ *
+ * ⛔ THE COIN PITY RATE IS GONE, and it went twice. It was deleted as a RULE on
+ * 2026-08-03 - in a coin-rich game a pity rate quietly rewards not spending -
+ * and survived as a null knob (`economy.coinPityDivisor`) plus a
+ * `replacesCoinPity` handler flag for the Bread Hall, whose own "1 VP for every
+ * £2" stood in for it so the two lines reconciled on a scoring screen. v31
+ * deletes the currency, so both go.
+ *
+ * ⭐ THE FARMSTEAD'S NEW END-GAME VP NEEDS NO MACHINERY HERE. All five print
+ * "Game end: 1 VP for each CROP card you have built", and `endgameCards` below
+ * already walks every built card's `gameEnd` formula, so five Farmstead handlers
+ * are the whole implementation. That seam is deliberately untouched.
  */
 export interface ScoreBreakdown {
   printed: number;
   receipts: number;
   endgame: number;
-  coinPity: number;
   total: number;
   /**
    * Which built card contributed what to `endgame`, in tableau order, including
    * the ones that scored 0.
    *
-   * The other three sources are re-derivable from a `PlayerView` - receipts are
-   * on the island, printed VP is on the cards in the tableau, coins are in
-   * front of you - but an end-game formula runs against the true state, so a
-   * screen that only got the total would be asking the player to take one of
-   * the four numbers on trust. Ticket 27 needs this to show its working.
+   * The other two sources are re-derivable from a `PlayerView` - receipts are on
+   * the island, printed VP is on the cards in the tableau - but an end-game
+   * formula runs against the true state, so a screen that only got the total
+   * would be asking the player to take one of the three numbers on trust. Ticket
+   * 27 needs this to show its working, and it matters more in v31: the Farmstead
+   * is now an end-game card, so every seat has at least one line here.
    */
   endgameCards: { card: CardId; vp: number }[];
-  /**
-   * The card whose own rate stands in for this seat's coin pity (the Bread
-   * Hall), or null. Their `coinPity` is 0 and the coins are scored inside
-   * `endgame` instead - which a screen has to say out loud, or the coins look
-   * like they were forgotten.
-   */
-  coinPityReplacedBy: CardId | null;
 }
 
 export function gameEndScores(data: GameData, state: GameState): ScoreBreakdown[] {
@@ -281,7 +272,8 @@ export function gameEndScores(data: GameData, state: GameState): ScoreBreakdown[
     // pile - cards buried under a build-on-top, which were not buildings but
     // still scored their printed VP as a bare sum. D11 was retexted on
     // 19/08/2026 ("Build. Sow all the cards spent.") and the `covered` zone went
-    // with it, so printed VP is once again exactly what is on the table.
+    // with it, so printed VP is once again exactly what is on the table. All
+    // fifteen starters print 0 (v31), so a seat's printed line is its deck cards.
     const printed = p.tableau.reduce((sum, b) => sum + faceOf(data, b).printedVp, 0);
     const receipts = p.receipts.reduce((sum, vp) => sum + vp, 0);
     const endgameCards = p.tableau.flatMap((b) => {
@@ -289,42 +281,51 @@ export function gameEndScores(data: GameData, state: GameState): ScoreBreakdown[
       return formula ? [{ card: b.card, vp: formula(data, state, seat) }] : [];
     });
     const endgame = endgameCards.reduce((sum, e) => sum + e.vp, 0);
-    const divisor = data.rules.economy.coinPityDivisor;
-    const coinPityReplacedBy =
-      p.tableau.find((b) => handlerFor(b.card)?.replacesCoinPity)?.card ?? null;
-    const coinPity =
-      divisor === null || coinPityReplacedBy !== null ? 0 : Math.floor(p.coins / divisor);
     return {
       printed,
       receipts,
       endgame,
-      coinPity,
-      total: printed + receipts + endgame + coinPity,
+      total: printed + receipts + endgame,
       endgameCards,
-      coinPityReplacedBy,
     };
   });
 }
 
 export interface GameScore {
   seats: ScoreBreakdown[];
-  /** Seats best-first: VP, then coins remaining, then receipt count (DL-16's full chain), then seat order. */
+  /**
+   * Seats best-first: total VP, then CARDS IN HAND PLUS BARN, then receipt
+   * count, then seat order.
+   *
+   * ⭐ THE SECOND LINK CHANGED IN v31 (docs/design-changes-v31 §1.3). It was
+   * coins remaining, from DL-16's chain; with no currency the tie-break is "most
+   * cards in hand and barn combined", which is the only stock a player still
+   * ends the game holding. It reads a raw count and never the barn's colours,
+   * deliberately - the colour puzzle belongs to the island, not to the tie-break.
+   *
+   * Deliberately NOT unspent meeples. A meeple is a stored action, so paying VP
+   * for holding one would reward not spending it, which is precisely the
+   * mistake the coin pity rate was deleted for on 2026-08-03. Unspent meeples
+   * are a dead-component metric, not a score.
+   */
   ranking: Seat[];
 }
 
 export function score(data: GameData, state: GameState): GameScore {
   const seats = gameEndScores(data, state);
+  const stock = (seat: Seat): number => {
+    const p = player(state, seat);
+    return p.hand.length + p.barn.length;
+  };
   const ranking = state.players
     .map((_, seat) => seat)
     .sort((a, b) => {
       const sa = seats[a] as ScoreBreakdown;
       const sb = seats[b] as ScoreBreakdown;
-      const pa = player(state, a);
-      const pb = player(state, b);
       return (
         sb.total - sa.total ||
-        pb.coins - pa.coins ||
-        pb.receipts.length - pa.receipts.length ||
+        stock(b) - stock(a) ||
+        player(state, b).receipts.length - player(state, a).receipts.length ||
         a - b
       );
     });

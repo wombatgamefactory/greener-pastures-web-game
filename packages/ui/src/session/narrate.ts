@@ -10,12 +10,20 @@
  *
  * Masked ids arrive as `W?`: the suit of a placed or drawn card is public, its
  * identity is not. They are narrated as "a Wheat card", never as a bare `W?`.
+ *
+ * ⭐ v31. `coins` was the busiest event in the game and it is gone, along with
+ * `workerWorked` and `starterUpgraded`. What replaced them is not a rename:
+ * `meepleGained` and `meepleSpent` are five discrete colours each worth one
+ * specific action, `doorUsed` says which action a visit or a meeple actually
+ * bought, and `visited` carries the `self` flag that decides whether a line is
+ * about the hook or about somebody playing solitaire.
  */
 
 import type { GameData, Suit } from '@gp/data';
 import type { GameEvent, Seat } from '@gp/engine';
 
-import { SUIT_META, seatName } from '../view/suits';
+import { SUIT_META, maskedCardPhrase, seatName, suitArticle } from '../view/suits';
+import { doorOf } from '../view/table';
 
 export interface FeedLine {
   readonly text: string;
@@ -33,6 +41,15 @@ const SUIT_LETTER: Readonly<Record<string, Suit>> = {
   D: 'dairy',
 };
 
+/** The five actions, in the words the turn bar uses. */
+const ACTION_WORD: Readonly<Record<string, string>> = {
+  harvest: 'Harvest',
+  deliver: 'Deliver',
+  draw: 'Draw',
+  sow: 'Sow',
+  build: 'Build',
+};
+
 function isMasked(id: string): boolean {
   return id.endsWith('?');
 }
@@ -40,8 +57,7 @@ function isMasked(id: string): boolean {
 /** A card as the reader may know it: its name, or its suit if that is all they saw. */
 function cardWord(data: GameData, id: string): string {
   if (isMasked(id)) {
-    const suit = SUIT_LETTER[id.charAt(0)];
-    return suit ? `a ${SUIT_META[suit].label} card` : 'a card';
+    return maskedCardPhrase(SUIT_LETTER[id.charAt(0)]);
   }
   const card = data.cards.catalogue.find((c) => c.id === id);
   return card ? card.name : id;
@@ -69,11 +85,6 @@ export function narrate(
   });
 
   switch (event.e) {
-    case 'coins':
-      return line(
-        `${who(event.seat)} ${event.delta >= 0 ? 'takes' : 'pays'} £${Math.abs(event.delta)} (${event.why})`,
-        event.seat,
-      );
     case 'cardPlaced': {
       const target =
         event.onto.seat === event.seat
@@ -93,7 +104,7 @@ export function narrate(
       );
     case 'deckToBarn':
       return line(
-        `${who(event.seat)} takes a ${SUIT_META[event.suit].label} card into the barn`,
+        `${who(event.seat)} takes ${maskedCardPhrase(event.suit)} into the barn`,
         event.seat,
       );
     case 'stackToBarn':
@@ -106,9 +117,23 @@ export function narrate(
         `${who(event.seat)} harvests ${cardWord(data, event.building)} (${event.cards.length} card${event.cards.length === 1 ? '' : 's'})`,
         event.seat,
       );
-    case 'workerWorked':
+    /*
+     * ⚠️ DELIBERATELY SILENT. A door action is always announced by the thing that
+     * bought it - `visited` for a card on a Notice Board, `meepleSpent` for a
+     * meeple - and both of those already name the action. Narrating this as well
+     * would print every door use twice, which on a four-seat table is half the
+     * feed saying the same thing.
+     */
+    case 'doorUsed':
+      return null;
+    case 'meepleGained':
       return line(
-        `${who(event.seat)} uses the ${event.workerId} Service${event.free ? ' for free' : ''}`,
+        `${who(event.seat)} takes the ${SUIT_META[event.colour].label} meeple off island ${event.tile}`,
+        event.seat,
+      );
+    case 'meepleSpent':
+      return line(
+        `${who(event.seat)} spends ${suitArticle(SUIT_META[event.colour].label)} ${SUIT_META[event.colour].label} meeple: ${ACTION_WORD[event.action] ?? event.action}. It leaves the game.`,
         event.seat,
       );
     case 'reshuffled':
@@ -119,20 +144,9 @@ export function narrate(
       return line(`${who(event.seat)} builds ${cardWord(data, event.card)}`, event.seat);
     case 'demolished':
       return line(`${who(event.seat)} demolishes ${cardWord(data, event.card)}`, event.seat);
-    case 'starterUpgraded':
-      // Every flip is a £2 purchase now (2026-08-12), so the Farmstead is told
-      // apart by its slot rather than by a `free` flag. It keeps the alarm: the
-      // upgraded suit power is still the moment a farm changes gear.
-      return data.cards.catalogue.find((c) => c.id === event.card)?.slot === 'farmstead'
-        ? line(
-            `${who(event.seat)} flips the Farmstead - the upgraded suit power is live`,
-            event.seat,
-            'alarm',
-          )
-        : line(`${who(event.seat)} upgrades ${cardWord(data, event.card)}`, event.seat);
     case 'delivered':
       return line(
-        `${who(event.seat)} delivers to island ${event.tile}: ${event.vp} VP and £${event.coins}`,
+        `${who(event.seat)} delivers to island ${event.tile} for ${event.vp} VP`,
         event.seat,
       );
     case 'balloonMoved':
@@ -145,6 +159,16 @@ export function narrate(
         `${who(event.seat)} reclaims ${cardWord(data, event.card)} from the discard`,
         event.seat,
       );
+    case 'demandSwapped':
+      return line(
+        `${who(event.seat)} swaps the demand on island ${event.a.tile} with island ${event.b.tile}`,
+        event.seat,
+      );
+    case 'demandFaceDown':
+      return line(
+        `${who(event.seat)} turns a demand token on island ${event.tile} face down: it takes any crop now`,
+        event.seat,
+      );
     case 'cardGifted':
       return line(
         `${who(event.from)} gives ${cardWord(data, event.card)} to ${who(event.to)}`,
@@ -155,17 +179,35 @@ export function narrate(
         `${who(event.seat)} puts ${cardWord(data, event.card)} into the barn`,
         event.seat,
       );
+    /*
+     * ⭐ THE ONE LINE THE WHOLE v31 PASS TURNS ON.
+     *
+     * A visit and a self-visit are one event with a flag, and they are opposite
+     * acts: a card on a neighbour's board is the game's social hook, a card on
+     * your own is solitaire that also clogs your own door. `a08-the-hook` counts
+     * them separately in the simulator for exactly that reason, and the feed is
+     * where a player at the table does the same counting by eye - so the two
+     * lines share no phrasing at all, and the self one names the cost.
+     */
     case 'visited': {
-      const payoff =
-        event.mode === 'coin'
-          ? 'and takes the money'
-          : event.mode === 'special'
-            ? 'with two cards, for the bigger prize'
-            : 'and puts their Worker to work';
-      return line(`${who(event.seat)} visits ${who(event.host)} ${payoff}`, event.seat);
+      const action = ACTION_WORD[event.action] ?? event.action;
+      return event.self
+        ? line(
+            `${who(event.seat)} uses their OWN door for ${action} - a card onto their own Notice Board`,
+            event.seat,
+          )
+        : line(
+            `${who(event.seat)} visits ${who(event.host)} and takes ${action}`,
+            event.seat,
+            'alarm',
+          );
     }
     case 'endTriggered':
-      return line(`${who(event.seat)} made their 6th delivery - last turn each!`, event.seat, 'alarm');
+      return line(
+        `${who(event.seat)} made their ${data.rules.endGame.deliveriesToTrigger}th delivery - last turn each!`,
+        event.seat,
+        'alarm',
+      );
     case 'turnEnded':
       return line(`${who(event.next)} to play`, event.next, 'boundary');
     case 'gameEnded':
@@ -185,4 +227,14 @@ export function narrateAll(
     const l = narrate(data, e, suits, you);
     return l ? [l] : [];
   });
+}
+
+/**
+ * The five door actions by colour, for a tooltip on a meeple. Exported here
+ * rather than re-derived at the call site so the feed and the supply agree about
+ * what a colour means.
+ */
+export function meepleActionWord(data: GameData, colour: Suit): string {
+  const door = doorOf(data, colour);
+  return door.actionLabel;
 }

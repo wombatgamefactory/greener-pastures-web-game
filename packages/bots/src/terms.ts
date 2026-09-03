@@ -15,9 +15,31 @@
  *
  * Three terms come straight from the reference implementation's `BotPolicy.php`
  * - `deliver` (DL-78 "Deliver is absolute"), `unclogBoard`, and the junk rank
- * behind `visitFeeJunk` / `discardJunk`. Everything else is ours: the reference
- * bot never hires, upgrades, visits or answers an optional task, and those are
- * precisely the mechanisms the watch-list has to measure.
+ * behind `visitFeeJunk`. Everything else is ours.
+ *
+ * ## ⭐ v31 (02/09/2026) - what left, and the two things that arrived
+ *
+ * ELEVEN TERMS WENT, and every one of them priced money or a face that no
+ * longer exists: `coinGain`, `buy`, `buyDemand`, `buyTargetCrop`, `buySaving`,
+ * `marketGain`, `marketSaving`, `upgrade`, `workOwn`, `workerTask` and
+ * `discardJunk` (the end-of-turn discard went with the hand limit).
+ * `marketPayability` survives under its honest name, `deliverability` - the
+ * market was never its only reader, V5 and V6 were.
+ *
+ * SIX ARRIVED, and the first four are the whole of this ticket:
+ *
+ *   - **`meepleGain` / `meepleSpend`** - the meeple is the game's second
+ *     resource now, and a bot that does not price one will hoard it and report
+ *     the mechanism dead. Both read `meepleWorth`, and they are pinned to the
+ *     same weight so the bot's own books balance.
+ *   - **`farmsteadVp`** - the Farmstead pays 1 VP per own-suit card built, on
+ *     every build decision. Unpriced, risk 3 (the monoculture pull) would
+ *     measure as absent when it was only invisible.
+ *   - **`selfVisit`** - risk 2. The bonus slot's solitaire door and its
+ *     interaction door cost the same currency, so they need separate weights or
+ *     no arm can tell which one the table is taking.
+ *   - **`clogOwnBoard`** - the only structural brake v31 puts on self-visiting.
+ *   - **`bonusDraw`** - the slot's free Draw 1, the yardstick every door beats.
  */
 
 import type { GameData, Suit } from '@gp/data';
@@ -29,7 +51,7 @@ import { spendSize } from './acts.js';
 import { cardValue, totalValue } from './junk.js';
 import type { Outcomes } from './outcome.js';
 import type { Scratch } from './scratch.js';
-import { cardById, coinWorth, faceOfView, handSpendCost } from './scratch.js';
+import { cardById, handSpendCost, meepleWorth, thresholdOfView } from './scratch.js';
 
 export interface Term {
   readonly name: string;
@@ -73,7 +95,7 @@ function stackOf(s: Scratch, building: CardId): number {
 
 function thresholdOf(s: Scratch, building: CardId): number | null {
   const view = s.buildings.get(building);
-  return view ? faceOfView(s.data, view).threshold : null;
+  return view ? thresholdOfView(s.data, view) : null;
 }
 
 function fillsBuilding(s: Scratch, building: CardId): boolean {
@@ -94,30 +116,7 @@ function countTargetCrop(s: Scratch, ids: readonly CardId[]): number {
   return n;
 }
 
-/**
- * The coins a visit would mint to the VISITOR, from the host's showing Notice
- * Board face. The host's own gain is never priced here: `visitWage` is 0, and
- * what the host actually gets is freight, which the probe values as the card
- * landing on their farm.
- *
- * Since 2026-08-13 the action branch is not free either. An upgraded board pays
- * `upgradedAction` on top of the action itself, and the bot has to see it or
- * the whole point of the card - pulling a visitor to THIS farm rather than the
- * one next door - is invisible to every arm that measures it. A base board
- * still pays the action branch nothing, which is what makes the upgrade worth
- * buying.
- */
-function visitPayout(s: Scratch, act: Extract<Act, { a: 'visit' }>): number {
-  const payout = s.data.rules.economy.visitPayout;
-  const host = s.view.rivals.find((r) => r.seat === act.host);
-  const board = host?.tableau.find((b) => cardById(s.data, b.card).slot === 'noticeboard');
-  const upgraded = board?.upgraded ?? false;
-  if (act.payoff.mode === 'worker') return upgraded ? payout.upgradedAction : 0;
-  if (act.payoff.mode === 'special') return payout.twoCard ?? 0;
-  return upgraded ? payout.upgraded : payout.base;
-}
-
-/** The card a standing move spends out of hand: the Helping Hand's fee, O1's gift. */
+/** The card a standing move spends out of hand. */
 function cardMoveSpend(payload: Record<string, unknown>): CardId | null {
   const fee = payload['fee'];
   if (typeof fee === 'string') return fee;
@@ -130,85 +129,65 @@ function cardMoveSpend(payload: Record<string, unknown>): CardId | null {
  * The acts whose value is unknowable from their label (ticket 40).
  *
  * GROW fires a card's ability, and the ability is the entire value of the move.
- * A Worker's action is likewise whatever that Worker does - renting a rival's
- * Draw Worker (Draw 3, keep 2) and their Sow Worker both scored a flat +2
- * before this.
+ * A VISIT and a MEEPLE are the same shape one level up: both buy a DOOR ACTION,
+ * and a Harvest door, a Draw 3 door and a Sow-from-hand door are three
+ * completely different moves wearing one label. In v30 only the Service branch
+ * of a visit was probed, because the other branch paid a flat coin; v31 deleted
+ * the coin branch, so **every visit is now worth exactly what its door does**
+ * and every one of them is rolled out.
  *
- * `cardMove` IS ONE THING AGAIN as of 19/08/2026: the Helping Hand's repeat,
- * worth what the repeated work is worth. It briefly meant two unrelated things
- * - the Wheat rebuild made a Tier 3 ACTION card a `cardMove` too, a main action
- * competing with Draw, Build, Harvest and Deliver - and all fifteen Tier 3
- * cards became ordinary GROW buildings in the v30 pass, taking the ACTION
- * concept with them. `handlerFor().moves`/`applyMove` now has exactly one
- * implementation in the catalogue, and it is the Helping Hand.
+ * ⭐ `spendMeeple` IS ON THIS LIST FOR THE SAME REASON, and it is the single
+ * most important entry for the v31 report. A meeple is a stored action; what it
+ * is worth is what that action does in this position, and nothing else. A flat
+ * weight would have the bots either dumping every meeple the turn they got it
+ * or sitting on all of them, and either way the "meeples earned versus spent"
+ * assertion would be reporting the weight rather than the rules.
  *
- * Nothing here changes with that, which is the point of pricing by rollout: the
- * term never distinguished the two, because a rollout prices The Bakery by the
- * stacks it harvests and a repeat by the work it repeats, both in this table's
- * own currency. The Tier 3 cards simply arrive through `grow` now and are
- * priced by `outcome` on the way past.
+ * `cardMove` stays on the list although the catalogue currently has no producer
+ * - the Helping Hand became a bonus-slot modifier with no handler body in v31 -
+ * because the move type still exists and the next card to use it would
+ * otherwise be priced at a flat weight in silence.
  *
- * The known understatement is W14 The Pizzeria, whose payoff arrives only after
- * rivals accept - and a probe stops at a rival's task, by design. It is a GROW
- * now rather than a `cardMove`, so it is valued at its flat `grow` weight plus
- * whatever the rollout can see, and no more.
+ * The known understatements, unchanged:
  *
- * ⚠️ **D15 The Grand Creamery is the second, and it is understated on purpose**
- * (the Dairy rebuild, 2026-08-10). Its value is an EXPECTATION OVER A RANDOM
- * RUN - reveal a deck top, build it free, reveal again while each card costs
- * more than the last - and a greedy one-decision-at-a-time rollout cannot hold
- * that: it walks the flips it can see inside `DEPTH` and prices each `built`
- * flat and blind, so what comes out is roughly the first flip or two rather than
- * the run. That is deliberate and it is the safe direction. An under-valued D15
- * is a readable result (the arm reports a low play rate and the card is
- * suspected), where an over-valued one is not - the bots would take it every
- * turn and the report would read as a design finding. If the arm shows D15 never
- * taken at all, suspect this before suspecting the card.
+ * ⚠️ **W14 The Pizzeria**, whose payoff arrives only after rivals accept - and a
+ * probe stops at a rival's task, by design.
  *
- * A balloon move joined them in ticket 49. `grantBalloonReward` pushes a real
- * ability - Draw 4, Sow 4 from hand, a build at a discount, or £4 - and all four
- * scored the identical flat weight, which is precisely the shape ticket 40
- * deleted for GROW. Measured over 55 real games, the four price at 4.8 to 9.9
- * against a flat 2, so the weight was not merely imprecise: it was low almost
- * everywhere, and the balloon the bots took was not the balloon worth taking.
+ * ⚠️ **D15 The Grand Creamery is understated on purpose**. Its value is an
+ * EXPECTATION OVER A RANDOM RUN - reveal a deck top, build it free, reveal again
+ * while each card costs more than the last - and a greedy one-decision-at-a-time
+ * rollout cannot hold that: it walks the flips it can see inside `DEPTH` and
+ * prices each `built` flat and blind, so what comes out is roughly the first
+ * flip or two rather than the run. An under-valued D15 is a readable result (the
+ * arm reports a low play rate and the card is suspected), where an over-valued
+ * one is not. If the arm shows D15 never taken at all, suspect this before
+ * suspecting the card.
  *
- * GROW WITHOUT PLACING joined them with the Apiary rebuild (2026-08-11). A5's
- * and A12's value is ENTIRELY the value of what they fire, so a flat weight on
- * the target choice either never takes them or always does - the exact shape
- * ticket 40 deleted for GROW. A12's second pick is priced by the same path one
- * decision later, which is a beam of one over the two rather than an exhaustive
- * pair, and an under-valued A5 is the safe direction.
+ * ⚠️ **A5 and A12**, grow-without-placing: A12's second pick is priced by the
+ * same path one decision later, which is a beam of one over the two rather than
+ * an exhaustive pair.
  *
  * Everything NOT in this set has a feature that already reads its own value -
- * a delivery's printed VP, a harvest's stack size, a visit's minted coin - so
- * probing it would spend an `apply` to learn what the table already knows.
+ * a delivery's printed VP and its meeple, a harvest's stack size, a build's VP -
+ * so probing it would spend an `apply` to learn what the table already knows.
+ * ⚠️ `deliver` in particular must stay OFF this list: `meepleGain` prices its
+ * meeple as a move term and `priceEvent` prices the same meeple as an event, and
+ * only the fact that a delivery is never probed keeps those two from both firing.
  */
 function isProbed(act: Act): boolean {
   switch (act.a) {
     case 'grow':
-    case 'workOwn':
-    case 'worker':
+    case 'visit':
+    case 'spendMeeple':
     case 'cardMove':
     case 'balloon':
     case 'activate':
       return true;
-    case 'visit':
-      return act.payoff.mode === 'worker';
     default:
       return false;
   }
 }
 
-/**
- * The acting seat's NET coin change, from the printed source.
- *
- * Spending is deliberately not run through here in general - a coin leaving for
- * a hire or an upgrade is already priced by the term that wanted the thing. D7's
- * coins-as-wilds are the exception (ticket 47), because there the coin is not
- * buying anything: it is standing in for a card, and the seat is choosing which
- * of the two to spend. That trade needs both sides in one currency, so it is
- * priced here rather than by a second weight that could drift from this one.
- */
 /**
  * The receipt a delivery to this tile would take, read off how many seats have
  * already delivered there. 0 for a tile with no room, which never reaches here
@@ -219,14 +198,24 @@ function deliverVpOf(s: Scratch, tileId: string): number {
   return tile ? deliveryVp(s.data, tile.deliveredBy.length) : 0;
 }
 
-function coinsMinted(act: Act, s: Scratch): number {
-  if (act.a === 'visit') return visitPayout(s, act);
-  if (act.a === 'deliver') return s.data.island.tileRule.coinsPerDelivery;
-  // The market's fee (ticket 56), priced at the bot's ONE coin price like D7's
-  // wilds: `coinWorth` signs a spend symmetrically, so a hoarder's £3 above the
-  // runway costs nothing and a poor seat's £3 costs what it would have bought.
-  if (act.a === 'market') return -(s.data.rules.turn.marketCost ?? 0);
-  return 0;
+/**
+ * THE MEEPLE THIS DELIVERY WOULD CLAIM - the colour sitting face up on the next
+ * free delivery space of this tile.
+ *
+ * Parallel arrays by index: entry i of `meeples` is the meeple on delivery space
+ * i, and `deliveredBy.length` is the next free one. Face up from setup, so this
+ * is public information and there is no sight question.
+ *
+ * ⚠️ IT READS ONE SPACE AND V14 CAN TAKE TWO. The Depot that claims BOTH
+ * receipts on a tile also claims both meeples, and this returns only the first,
+ * so a V14 delivery is under-priced by one meeple. Left as an understatement
+ * rather than special-cased, on this file's standing rule that a term describes
+ * a move and never a card - and the safe direction, since the alternative is a
+ * bot that over-rates a card it happens to know about.
+ */
+function meepleAtTile(s: Scratch, tileId: string): Suit | null {
+  const tile = s.view.island.tiles.find((t) => t.tile === tileId);
+  return tile?.meeples[tile.deliveredBy.length] ?? null;
 }
 
 /**
@@ -234,19 +223,16 @@ function coinsMinted(act: Act, s: Scratch): number {
  * (ticket 48).
  *
  * Three routes and one price. A tile's card cost is fixed by its crates
- * (`crates x cardsPerCrate`, ticket 14's 2 / 6 / 9) and a wild crate changes
- * which suit pays rather than how many, so this cannot order the spends for one
- * tile - measured over 391 real (decision, tile) pairs it never once varied
- * within a tile. What it prices is the resource leaving.
+ * (`crates x cardsPerCrate`) and a wild crate changes which suit pays rather
+ * than how many, so this cannot order the spends for one tile - measured over
+ * 391 real (decision, tile) pairs it never once varied within a tile. What it
+ * prices is the resource leaving.
  *
- * The build leg is D7 The Versatile Shed's stack payment since the Dairy rebuild
- * (2026-08-10), where it used to be D8's barn payment. A card on one of your own
- * stacks is not in the barn yet, but it is freight in waiting - it goes there on
- * the next harvest and nowhere else - so spending it on a build costs the seat
- * the same thing, and D7's whole printed fork is that a stack card is either
- * freight or building material and never both. That is the fork this weight
- * prices; the hand cards of the same payment are charged separately, by
- * `handSpend`.
+ * The build leg is D7 The Versatile Shed's stack payment. A card on one of your
+ * own stacks is not in the barn yet, but it is freight in waiting - it goes
+ * there on the next harvest and nowhere else - so spending it on a build costs
+ * the seat the same thing, and D7's whole printed fork is that a stack card is
+ * either freight or building material and never both.
  */
 function barnCardsSpent(act: Act): number {
   switch (act.a) {
@@ -259,7 +245,7 @@ function barnCardsSpent(act: Act): number {
   }
 }
 
-/** Cards this act takes OUT of the seat's hand. The end-of-turn discard is forced, so it is not one. */
+/** Cards this act takes OUT of the seat's hand. */
 function cardsLeavingHand(act: Act): number {
   switch (act.a) {
     case 'build':
@@ -267,7 +253,7 @@ function cardsLeavingHand(act: Act): number {
     case 'grow':
       return 1;
     case 'visit':
-      return act.fee.length;
+      return 1;
     case 'sow':
       return 1;
     case 'cardMove':
@@ -283,10 +269,10 @@ export const TERMS: readonly Term[] = [
     /**
      * **What a card in hand is worth, which is not nothing** (Dean, 2026-08-02).
      *
-     * The other half of the exchange. `coinGain` priced what a visit GETS; this
-     * prices what it PAYS, and until it existed the two constants deciding a
-     * worthless visit were unrelated to each other. Measured at the moment the
-     * seat's marginal coin is provably worth zero:
+     * The other half of every exchange. It was written when `coinGain` priced
+     * what a visit GETS and nothing priced what it PAYS, and the two constants
+     * deciding a worthless visit were unrelated to each other. Measured at the
+     * moment the seat's marginal coin was provably worth zero:
      *
      *     worthless coin visit  -1.95   {visitFeeJunk: -1.95}
      *     vs endTurn            -2.00   {endTurn: -2}
@@ -297,10 +283,9 @@ export const TERMS: readonly Term[] = [
      * says "not an economic estimate") that happened to land beside an
      * artificial -2 tax on ending your turn.
      *
-     * So the cost of a card leaving hand becomes its own term, uniform across
-     * every way a card can leave, with the family terms left to do what they are
-     * good at - choosing WHICH card. A card is fuel: it can be built, it can pay
-     * a GROW and fire an ability, it can pay a visit later.
+     * ⭐ v31 MAKES THIS THE ONLY PRICE IN THE GAME. There is no currency any
+     * more: a card is what a build costs, what a grow costs, what a visit costs
+     * and what a Power card costs. Everything the bot spends, it spends here.
      */
     name: 'handSpend',
     claims: ['build', 'grow', 'visit', 'cardMove', ...ACTION_AND_TASK],
@@ -313,16 +298,11 @@ export const TERMS: readonly Term[] = [
      * costs, wherever it leaves for (ticket 48).
      *
      * It used to be two terms with two constants and a hole. `deliverCost` was
-     * `-0.5` against a `-spendSize` feature, so the product paid the bot £0.5 a
+     * `-0.5` against a `-spendSize` feature, so the product paid the bot 0.5 a
      * card for delivering to the tile that ate MORE freight; `buildBarn` (ticket
      * 47) charged D8's barn leg properly but only there; and a balloon move's
      * two barn cards were charged nothing at all. One store, three exits, three
      * different answers.
-     *
-     * So the barn gets what the hand already has: one uniform charge in one
-     * place, with the family terms left to order WHICH card goes. That is not a
-     * tidy-up - it is what stops the NEXT exit route from arriving with a fourth
-     * unrelated constant, which is exactly how the three-in-a-row happened.
      *
      * The third exit, the balloon, is charged at this same weight but not from
      * here: ticket 49 made a balloon move PROBED, so its freight is taken off
@@ -341,8 +321,7 @@ export const TERMS: readonly Term[] = [
      *     the tile's own crates, so 100% of the 1580 cards delivered were a suit
      *     an open tile wanted, and 0 of 1098 (decision, tile) pairs separate on it;
      *   - D8's build leg is a dead lane. Only 0.2% of 896 build groups offered a
-     *     barn card at all and not one chosen move spent one, so this is a
-     *     one-exit question rather than the three-exit one it looks like;
+     *     barn card at all and not one chosen move spent one;
      *   - the balloon is the only exit with a real choice (51.0% of 4604 pairs
      *     pick which two suits burn), and there the demand binary is a coin flip
      *     against what actually matters. Where the choice changes how many island
@@ -352,75 +331,23 @@ export const TERMS: readonly Term[] = [
      * The reason is ticket 38's: the barn's block is MATCHING under an
      * all-or-nothing payment, not quantity. Burning 1 of 3 wheat when a tile wants
      * 3 is fatal and burning 1 of 6 is free, and a binary "is wheat wanted" cannot
-     * tell those apart. So a demand-scaled `barnSpend` would reorder 1.6% of
-     * barn-exit decisions in a direction that is right about half the time, which
-     * is the shape tickets 40 and 49 deleted weights for.
+     * tell those apart.
      *
      * **And it does not read PAYABILITY either, which is the feature 51 named as
      * the one that would work** (ticket 52). That feature is real - "would burning
      * these two cards cost me a delivery I could otherwise have made" separates
      * where demand cannot - but the prize is already collected by accident, and
-     * the whole of it was measured before anything was written:
-     *
-     *   - nothing orders these spends today (the pricer collapses
-     *     `balloon:${balloon}`, and this term does not claim `moveBalloon`), so
-     *     the bot picks among them by random tie-break and the size of the prize
-     *     is simply the REGRET that tie-break pays. Over 55 stratified games it
-     *     is **9 tiles of payability across 215 moves, 0.16 a game** - and a tile
-     *     that stops being payable is a delivery deferred, not one lost;
-     *   - the mechanism is measured, not argued. The balloon is where the choice
-     *     lives (51.0% of pairs) but a balloon needs two DIFFERING barn suits, so
-     *     the bot takes one when its barn is fat - mean 7.1 cards at the chosen
-     *     move against 5.6 at every offer - and a fat barn absorbs two cards
-     *     without dropping a tile. Chosen balloon groups separate on payability
-     *     **2.5%** of the time against 13.5% across all pairs;
-     *   - it also corrects ticket 51's reading of the island exit. 51 called that
-     *     exit immune because 0 of 1098 pairs separate on demand; on payability it
-     *     separates in only 1.7% of pairs but **52.9% of the groups the bot
-     *     actually delivers into** (the wild-crate assignment), and there it picks
-     *     wrong 17.6% of the time. That is the sharpest case in the game and it is
-     *     17 moves in 55 games, worth 4 tiles;
-     *   - and at an ordering weight it does not do the job it was proposed for.
-     *     At 0.3, its siblings' weight, it moves the argmax in 0.9% of barn-exit
-     *     decisions - and **12 of those 19 change which TARGET is taken** rather
-     *     than how it is paid for, which is the reward's job, not a tie-break's.
-     *
-     * So the barn keeps one uniform count charge and no ordering sibling, and the
-     * reason is now the opposite of 51's: the demand feature was uninformative,
-     * the payability feature is informative and there is nothing left for it to
-     * win. Both channels' ceilings are below the noise floor a paired A/B could
-     * resolve (0.16 tiles and 0.35 decisions a game), which is why one was not run.
+     * the whole of it was measured before anything was written: nothing orders
+     * these spends today, so the size of the prize is simply the REGRET the
+     * random tie-break pays, and over 55 stratified games that is **9 tiles of
+     * payability across 215 moves, 0.16 a game**. Both channels' ceilings are
+     * below the noise floor a paired A/B could resolve, which is why one was
+     * never run.
      */
     name: 'barnSpend',
     claims: ['deliver', 'build', ...ACTION_AND_TASK],
     feature: (act) => -barnCardsSpent(act),
     cost: true,
-  },
-  {
-    /**
-     * What coins are worth to THIS seat right now: the part of a gain that
-     * lands under its remaining runway of things to buy (ticket 40).
-     *
-     * The blind spot this closes was the widest one in the table. Nothing read
-     * a seat's coin balance at all, so `visit` scored a flat 6 at £0 and at
-     * £65 - and ticket 37 measured 73.3% of visits taking the coin payoff,
-     * 50.9% of those by a seat already holding £10 or more, with 65.4% of every
-     * coin minted never spent on anything. Since the pity went, a coin above
-     * the runway buys nothing, so paying a card for one is strictly dominated.
-     *
-     * One coin price for the whole bot: the probe pricer values a `coins` event
-     * through this same weight, so a wage a card mints and a wage the island
-     * pays are worth the same thing.
-     *
-     * It no longer claims `build`. That claim existed for the one place a coin
-     * was spent INSTEAD of a card rather than to buy something - D7's
-     * coins-as-wilds, ticket 47 - and the Dairy rebuild deleted the mod
-     * (2026-08-10): seats end games on about £1, so a coin-priced build option
-     * was dead text. The market is the surviving coin-against-card trade.
-     */
-    name: 'coinGain',
-    claims: ['visit', 'deliver', 'market', ...ACTION_AND_TASK],
-    feature: (act, s) => coinWorth(s, coinsMinted(act, s)),
   },
   {
     /**
@@ -434,9 +361,14 @@ export const TERMS: readonly Term[] = [
      * racer's rollout is priced through a racer's eyes. The weight stays
      * tunable for the one thing it can honestly express - how much a profile
      * trusts a rollout against a flat preference.
+     *
+     * ⭐ IT NOW CARRIES BOTH HALVES OF THE BONUS SLOT AND THE MEEPLE PHASE.
+     * A visit is worth its door, a meeple is worth its door, and this is the
+     * only term that can see either. Set `outcome` to 0 in a profile and that
+     * profile goes blind to three of the five things v31 changed.
      */
     name: 'outcome',
-    claims: ['grow', 'visit', 'workOwnWorker', 'cardMove', 'moveBalloon', ...ACTION_AND_TASK],
+    claims: ['grow', 'visit', 'spendMeeple', 'cardMove', 'moveBalloon', ...ACTION_AND_TASK],
     feature: (act, _s, move, o) => (isProbed(act) ? o.value(move) : 0),
   },
 
@@ -447,12 +379,40 @@ export const TERMS: readonly Term[] = [
     //
     // Since the flat island (2026-08-09) that is no longer a property of the
     // tile but of its fill order - 6 for arriving first, 3 for second - so this
-    // one feature now carries the whole race that `deliverClimb` and the
-    // fill-order bonus used to carry between them. It is why the bot prefers a
-    // fresh tile to a half-taken one without any term saying so.
+    // one feature carries the whole race. It is why the bot prefers a fresh tile
+    // to a half-taken one without any term saying so.
     name: 'deliver',
     claims: ['deliver', ...ACTION_AND_TASK],
     feature: (act, s) => (act.a === 'deliver' ? deliverVpOf(s, act.tile) : 0),
+  },
+  {
+    /**
+     * ⭐ **THE MEEPLE THE ISLAND HANDS OVER** (v31), and the reason a delivery
+     * is not simply worth its VP any more.
+     *
+     * The island's coin is gone; every delivery space carries a meeple instead,
+     * face up from setup, so which colour a tile will pay is public all game and
+     * choosing WHICH tile to deliver to is now partly a choice of which free
+     * action to store. A bot blind to this would pick tiles on VP and freight
+     * alone and the whole face-up-meeple design would measure as decorative -
+     * the same failure mode the demand tokens hit before ticket 52.
+     *
+     * The feature is `meepleWorth`: 1 for a colour whose door this seat could
+     * use, `MEEPLE_LATENT` for one it could not. See `scratch.ts` for why that
+     * scale is deliberately FLAT across the five colours - a bot told in advance
+     * that a Draw meeple beats a Sow meeple would hand the plan's door-mix
+     * question back as an answer.
+     *
+     * Pinned to `meepleSpend` in `weights.ts`: one price for a meeple, whichever
+     * direction it travels. If one moves, move both.
+     */
+    name: 'meepleGain',
+    claims: ['deliver', ...ACTION_AND_TASK],
+    feature: (act, s) => {
+      if (act.a !== 'deliver') return 0;
+      const colour = meepleAtTile(s, act.tile);
+      return colour === null ? 0 : meepleWorth(s, colour);
+    },
   },
   {
     /**
@@ -461,13 +421,52 @@ export const TERMS: readonly Term[] = [
      *
      * The flat taste for taking one at all, and nothing more - ticket 49 moved
      * what the move is WORTH into the probe (its printed reward) and what it
-     * COSTS into the pricer (its two barn cards), so this is now the exact twin
-     * of `grow`: a preference about the action, with the outcome priced where
-     * the outcome is. Its default weight is 0; see `weights.ts`.
+     * COSTS into the pricer (its two barn cards), so this is the exact twin of
+     * `grow`: a preference about the action, with the outcome priced where the
+     * outcome is. Its default weight is 0; see `weights.ts`.
      */
     name: 'balloon',
     claims: ['moveBalloon', ...ACTION_AND_TASK],
     feature: (act) => (act.a === 'balloon' ? 1 : 0),
+  },
+
+  // --- the meeple supply ----------------------------------------------------
+  {
+    /**
+     * ⭐ **WHAT SPENDING A MEEPLE COSTS** - the term that decides whether the
+     * bots hoard, and therefore whether the v31 report can be believed on the
+     * meeple economy at all.
+     *
+     * A meeple is spent for free at the start of a turn and then LEAVES THE
+     * GAME. Nothing in the rules charges for that, so a naive evaluator sees an
+     * unconditional free action and spends every meeple the instant it can,
+     * which would report a healthy economy no matter how badly the colours were
+     * distributed. The real cost is the one a person feels: the stored action is
+     * gone, and it might have been worth more next turn.
+     *
+     * So it charges exactly what `meepleGain` credited - the same
+     * `meepleWorth`, the same pinned weight - which gives the bot a balanced set
+     * of books and reduces the whole decision to one honest question: **is what
+     * this door does right now worth more than holding the meeple?** The answer
+     * comes from the rollout (`outcome`), which is a measurement rather than a
+     * taste, and the only thing this term contributes is the reserve price.
+     *
+     * ⚠️ TWO THINGS IT CANNOT SEE, both stated because either could show up as
+     * a false finding:
+     *
+     *  1. **A meeple has no terminal value.** Holding one at the end of the game
+     *     is worth zero VP - deliberately, per the scoring header - so an ideal
+     *     player empties their supply before the end and this term will keep a
+     *     bot holding one it should have burnt. Expect the dead-meeple count to
+     *     be an OVER-estimate near the end trigger.
+     *  2. **It cannot compare this turn with next turn.** The evaluator is
+     *     myopic per decision, so "wait for a better moment" is expressed as a
+     *     flat reserve price and nothing else.
+     */
+    name: 'meepleSpend',
+    claims: ['spendMeeple'],
+    feature: (act, s) => (act.a === 'spendMeeple' ? -meepleWorth(s, act.colour) : 0),
+    cost: true,
   },
 
   // --- the barn supply line -------------------------------------------------
@@ -477,8 +476,15 @@ export const TERMS: readonly Term[] = [
     feature: (act, s) => (act.a === 'harvest' ? stackOf(s, act.building) : 0),
   },
   {
-    // The reference's second rule: a clogged Notice Board shuts off the
-    // table's coin faucet, so unclogging your own is worth more than the cards.
+    /**
+     * The reference's second rule, and it is worth MORE in v31 than it was.
+     * A clogged Notice Board used to shut the table's coin faucet; it now shuts
+     * a DOOR - your suit's action, for every neighbour and, since self-visiting,
+     * for you as well - and only a Harvest reopens it.
+     *
+     * It is also the pin for `clogOwnBoard` below: shutting your own door costs
+     * exactly what reopening it pays.
+     */
     name: 'unclogBoard',
     claims: ['harvest', ...ACTION_AND_TASK],
     feature: (act, s) =>
@@ -509,8 +515,8 @@ export const TERMS: readonly Term[] = [
     /**
      * GROW WITHOUT PLACING (A5, A12). A flat taste for firing something, and
      * deliberately SMALL: the real value comes through `outcome`, because
-     * `isProbed` rolls the activation out. Nothing is spent - no card, no coin,
-     * no stack - so there is no cost term to pair with it.
+     * `isProbed` rolls the activation out. Nothing is spent - no card, no stack
+     * - so there is no cost term to pair with it.
      *
      * ⚠️ Keep it low. A high flat weight here would have the bot picking a
      * target for the label rather than the payoff, which is the failure mode the
@@ -521,6 +527,14 @@ export const TERMS: readonly Term[] = [
     feature: (act) => (act.a === 'activate' ? 1 : 0),
   },
   {
+    /**
+     * ⚠️ HAND SOWS ONLY, AND `deckSow` IS A STANDING BLIND SPOT. A sow off a
+     * deck top (A13, W7, and a deck-sow door if the Apiary board is ever dialled
+     * that way) scores nothing here and nothing anywhere else, so the bot takes
+     * it over `skip` at -1 and then picks its target by random tie-break. That
+     * predates v31 and is left alone on purpose: fixing it in the same pass as
+     * the rules change would make the delta unattributable.
+     */
     name: 'sow',
     claims: ACTION_AND_TASK,
     feature: (act) => (act.a === 'sow' ? 1 : 0),
@@ -540,18 +554,69 @@ export const TERMS: readonly Term[] = [
   {
     name: 'buildVp',
     claims: ['build', ...ACTION_AND_TASK],
-    feature: (act, s) => (act.a === 'build' ? (cardById(s.data, act.card).printedVp ?? 0) : 0),
+    feature: (act, s) => (act.a === 'build' ? cardById(s.data, act.card).printedVp : 0),
   },
   {
     /**
-     * A profile's loyalty to the crop it was DEALT, in one weight.
+     * ⭐ **THE FARMSTEAD'S OWN-SUIT VP** (v31) - *"Game end: 1 VP for each CROP
+     * card you have built"*, printed on all five Farmsteads, on top of each
+     * card's own printed VP.
      *
-     * ⚠️ The comment here used to read "the Farmstead free-flip is the whole
-     * own-suit incentive", and change 14 (2026-08-12) retired that flip - so
-     * this weight is now the bot preferring something the rules no longer pay
-     * for. Left at 2 rather than dropped to 0, because moving it would re-mint
-     * the reference in the same breath as adding the bot that exists to
-     * question it. `magpie` is the control that decides whether it should go.
+     * This is a STANDING TERM ON EVERY BUILD, not an end-game surprise, and that
+     * is exactly why it needs a term: the payoff is decided at the moment a card
+     * is chosen, and a bot that only met it at scoring time would never have
+     * built toward it. Unpriced, **risk 3 of the whole pass - the monoculture
+     * pull - would measure as ABSENT when it was only invisible**, and the
+     * own-crop build share (82.6% before the change) would look like a bot taste
+     * rather than a rule.
+     *
+     * ## What it reads, and why not `mySuit`
+     *
+     * The FARMSTEAD's printed crop, and only while the Farmstead is on the
+     * table. The two cannot differ today - a Farmstead is a starter, so it is
+     * only ever in front of the seat that plays its suit - and keying off the
+     * card is what keeps that a fact rather than an assumption. Deck cards only:
+     * `cropOf` says a starter prints no crop, so a starter counts neither for
+     * its crop nor against it, and a build is never a starter anyway.
+     *
+     * Every deck card of the crop counts, not just the buildings - a Power card
+     * and an Endgame card print their crop icon like anything else - because
+     * that is what the handler does.
+     *
+     * ## The weight is a PIN, not a taste
+     *
+     * 1 VP through this door is 1 VP through any other, so it takes `buildVp`'s
+     * weight and moves with it. That distinction is the whole point of splitting
+     * it from `buildOwnCrop`, which sits right below and IS a taste: after this
+     * change the reference bot's preference for its own crop is the rule's, and
+     * a profile that wants more than the rule pays has to say so out loud.
+     */
+    name: 'farmsteadVp',
+    claims: ['build', ...ACTION_AND_TASK],
+    feature: (act, s) =>
+      act.a === 'build' && s.farmsteadCrop !== null && suitOf(s.data, act.card) === s.farmsteadCrop
+        ? 1
+        : 0,
+  },
+  {
+    /**
+     * A profile's loyalty to the crop it was DEALT, over and above what the
+     * rules pay for it.
+     *
+     * ⚠️ **ZEROED IN THE REFERENCE TABLE FOR v31**, and that is a deliberate
+     * change to the instrument rather than a tidy-up. Its comment has carried a
+     * warning since 2026-08-12: the Farmstead's free flip was retired and this
+     * weight was left "preferring something the rules no longer pay for". v31
+     * makes the rules pay for it again - 1 VP a card - and `farmsteadVp` above
+     * prices exactly that. Leaving 2 here as well would have the reference bot
+     * chasing its own crop for a rule AND for a taste, and then reporting the
+     * result as risk 3's own-crop build share. That is ticket 40's sin in one
+     * line: a weight we chose manufacturing the number an assertion reports.
+     *
+     * Kept as a live knob rather than deleted, exactly as `visit: 0` is:
+     * `loyalist` raises it to express a taste ABOVE the rule (the upper bound on
+     * risk 3), and `magpie` vetoes it at -100 (the control that asks whether the
+     * suit is load-bearing at all).
      */
     name: 'buildOwnCrop',
     claims: ['build', ...ACTION_AND_TASK],
@@ -562,7 +627,7 @@ export const TERMS: readonly Term[] = [
      * The magpie's build: the strongest seated crop that is not its own.
      *
      * Weighted 0 everywhere but `magpie`, so it is inert in the reference and
-     * the four archetype mirrors - adding it cannot move reference-v9.
+     * the four archetype mirrors.
      */
     name: 'buildTargetCrop',
     claims: ['build', ...ACTION_AND_TASK],
@@ -578,16 +643,15 @@ export const TERMS: readonly Term[] = [
      *
      * This used to read `-(payment.length + coinWild)`, which cannot order a
      * build's payments at all: the engine holds
-     * `payment.length + stacks === cardsNeeded` (it was `+ barn + coinWild`
-     * before the Dairy rebuild), so for one built card that sum is a CONSTANT.
-     * Measured over 262 real builds it varied across the alternatives 2 times,
-     * both of them the old barn leg - so 23.7% of builds had a real choice of
-     * which cards to burn and the term was blind to every one of them, leaving
-     * the pick to the evaluator's random tie-break.
+     * `payment.length + stacks === cardsNeeded`, so for one built card that sum
+     * is a CONSTANT. Measured over 262 real builds it varied across the
+     * alternatives 2 times - so 23.7% of builds had a real choice of which cards
+     * to burn and the term was blind to every one of them, leaving the pick to
+     * the evaluator's random tie-break.
      *
      * So it becomes what its siblings already are - `visitFeeJunk`, `growSpend`,
      * `cardMoveSpend`, all `+0.3` on a `-value` feature - and the build's SIZE
-     * stays charged where it always really was, by `handSpend` at 2.5 a card.
+     * stays charged where it always really was, by `handSpend`.
      *
      * Unlike a GROW's payment (which must match the activation suit, so every
      * legal payment is the same suit and differs only as cards), a build's wild
@@ -599,184 +663,83 @@ export const TERMS: readonly Term[] = [
     feature: (act, s) => (act.a === 'build' ? -totalValue(s.data, act.payment) : 0),
     cost: true,
   },
-  {
-    name: 'upgrade',
-    claims: ['upgrade'],
-    feature: (act) => (act.a === 'upgrade' ? 1 : 0),
-  },
-  // `upgradeMilestone` used to sit here: a £2 flip printed a crop icon, so it
-  // could also be the third own-colour building that flipped the Farmstead
-  // free, and this term is what found that double duty. The free flip was
-  // retired on 2026-08-12 (all three starters are simply bought), so the term
-  // measured a rule that no longer exists and went with it.
-  //
-  // ⚠️ WHAT IT LEAVES BEHIND: `upgrade` above is FLAT, so a bot is now
-  // indifferent between the three £2 flips and takes them in tableau order.
-  // That is a systematic artefact, not noise, and the Farmstead is the flip
-  // that doubles a suit power. Before any arm is run on this rule, decide
-  // whether a Farmstead-specific term belongs here.
 
   // --- the hand -------------------------------------------------------------
   {
     /**
-     * Scaled by room in hand: drawing into an end-of-turn discard is a wasted
-     * action, and the base Draw only nets +1 card a turn.
+     * The plain Draw action, worth the cards it ACTUALLY KEEPS - the printed
+     * keep, capped by the room left under the hand limit.
      *
-     * ⚠️ A FULL HAND SCORES -1, NOT 0 (19/08/2026), AND THE FLOOR IS THE WHOLE
-     * FIX. This term always meant "a draw with no room is a wasted action", and
-     * for as long as it bottomed out at zero it could not say so: zero is not a
-     * penalty when every productive move on the menu is NEGATIVE, it is the
-     * argmax. Two 2-seat games in six deadlocked on exactly that and ran to the
-     * 6000-move ceiling - measured across 30 seeds, 3 of them at 2 seats and
-     * none at 3 or 4, because a wide table always has somebody who can still
-     * afford something.
+     * ⭐ **IT SCALES BY ROOM AGAIN (02/09/2026), AND THAT IS THE POINT OF THE
+     * WHOLE CHANGE.** The absence of this cap is the bot-side half of why the
+     * hand limit came back: with no ceiling a card in hand always priced at a
+     * full card, so drawing never got worse and the free bonus Draw 1 became
+     * strictly dominant, beating a neighbour visit 3:1 and failing the hook
+     * assertion. A ceiling is what makes the tenth card worth less than the
+     * second, and a diminishing return on drawing is what makes a neighbour's
+     * farm worth walking to.
      *
-     * The position, from `--explain` on seed `end-2-5` at turn 241: a Wheat
-     * seat holding five Tier 3 cards it cannot afford, at a hand limit of five,
-     * with no non-full building to GROW and £0. Its whole menu priced out as
-     * `draw` 0.00, five `grow`s at -0.60, five `visit`s at -1.60 - every one of
-     * them negative because `handSpend` charges -2.50 for a card, and every one
-     * of them a way OUT of the position. So the bot drew, kept one, discarded
-     * one at -2.20, and did it again for a thousand turns. It paid 2.20 to
-     * throw away the card it would not pay 2.50 to spend.
+     * ⚠️ **THE SHAPE IS NOT THE ONE THAT WAS DELETED, ON PURPOSE.** Before v31
+     * this feature was the raw ROOM (0 up to the limit), which worked while
+     * limits were 5-7 and the base Draw kept 1. The limit is 12 now and the base
+     * Draw keeps 2, so raw room would price an empty-handed Draw at 12 x 1.2 =
+     * 14.4 and drown every other move on the menu. `min(keep, room)` is the
+     * honest statement instead - a draw is worth the cards that survive to your
+     * next turn - and it agrees with `pendingDrawValue`, which caps the same way.
      *
-     * Charging the draw is the honest statement of what the turn costs, and it
-     * is the same accounting the discard already does one decision later: the
-     * evaluator is myopic per decision, so the forced discard at the far end of
-     * a full-hand draw is never seen from the draw itself. -1 is "one card of
-     * room, backwards" in the units this term already uses, so it needs no new
-     * constant and no new weight - the same `drawAction` weight prices both
-     * directions.
-     *
-     * MEASURED: 2p balanced went 26/30 games finishing to 29/30, 3p 28/30 to
-     * 29/30, 4p unchanged at 28/30, and every remaining failure is the V14
-     * `deckHead` engine crash rather than a deadlock. It does move the move mix
-     * - a bot at a full hand now prefers a grow or a visit to churning - and
-     * that is a real change to every arm, so it is stated here rather than
-     * buried: the previous behaviour was not a neutral baseline, it was a bot
-     * spending 240 turns doing nothing, which no arm could be read through.
+     * ⚠️ **THE -1 FLOOR IS DELIBERATE AND IS NOT A TYPO.** It arrived on
+     * 19/08/2026 as the fix for a real deadlock: two 2-seat games in six ran to
+     * the 6000-move ceiling because a full hand priced a draw at 0, and zero is
+     * not a penalty when every productive move on the menu is negative, it is
+     * the argmax. From `--explain` on seed `end-2-5` at turn 241: a Wheat seat
+     * holding five Tier 3 cards it could not afford, hand limit five, no
+     * non-full building to GROW. Its whole menu priced out as `draw` 0.00, five
+     * `grow`s at -0.60, five `visit`s at -1.60 - every one of them a way OUT of
+     * the position. So it drew, kept one, discarded one at -2.20, and did it
+     * again for a thousand turns. **It paid 2.20 to throw away the card it would
+     * not pay 2.50 to spend.** The floor says "churning your hand is worse than
+     * doing something", in the units this term already uses, and needs no new
+     * weight. At a limit of 12 rather than 5 the deadlock is much further away,
+     * but the floor costs nothing and its absence cost two games.
      */
     name: 'drawAction',
     claims: ['draw'],
-    feature: (act, s) => (act.a === 'draw' ? (s.handRoom > 0 ? s.handRoom : -1) : 0),
-  },
-  {
-    /**
-     * The card BUY (2026-08-03): £1, blind, off a deck that is not your own.
-     *
-     * Scaled by hand room for the same reason `drawAction` is - a card bought
-     * into an end-of-turn discard is a coin thrown away - and by nothing else,
-     * because the buy is blind. What suit it is is the only thing knowable in
-     * advance, which is what `buyDemand` prices.
-     */
-    name: 'buy',
-    claims: ['buy'],
-    feature: (act, s) => (act.a === 'buy' && s.handRoom > 0 ? 1 : 0),
-  },
-  {
-    // The one thing a blind buy DOES let you choose: which crop. An open tile
-    // wants suits you cannot grow yourself, which is the whole reason the rule
-    // points at a deck that is not your own.
-    //
-    // The only term separating one buy from another, and it earns its place -
-    // just. Deleting it outright moves the argmax in 1.1% of the 7558 decisions
-    // offering a buy (ticket 53). Its level gate is measured on `demandSuits`.
-    name: 'buyDemand',
-    claims: ['buy'],
-    feature: (act, s) => (act.a === 'buy' && s.demandSuits.has(act.suit) ? 1 : 0),
-  },
-  {
-    /**
-     * The magpie's best lane, and the reason it gets a term of its own rather
-     * than riding on `deckTargetCrop`: the buy takes a card **into hand** and
-     * `buyOptions` already excludes the buyer's own suit, so it is the one
-     * acquisition in the game that is foreign by rule. Left suit-blind, a magpie
-     * would spend its buys on whichever crop `buyDemand` happened to like and
-     * starve the tableau it exists to build.
-     *
-     * 0 in every other profile, like its three siblings.
-     */
-    name: 'buyTargetCrop',
-    claims: ['buy'],
     feature: (act, s) =>
-      act.a === 'buy' && s.targetSuit !== null && act.suit === s.targetSuit ? 1 : 0,
+      act.a === 'draw'
+        ? s.handRoom > 0
+          ? Math.min(s.data.rules.turn.baseDraw.keep, s.handRoom)
+          : -1
+        : 0,
   },
   {
     /**
-     * The only saving instinct the bot has.
+     * THE BONUS SLOT'S SOLITAIRE HALF (v31): a free Draw 1, taken instead of
+     * placing a card on a Notice Board.
      *
-     * The term table prices moves, not plans, so a seat on £1 with a £2 upgrade
-     * in front of it will otherwise buy a card every single turn and never
-     * flip it - an instrument artefact that would be read as a rule effect.
+     * It is the yardstick every door has to beat, and pricing it wrong bends
+     * risk 2 in whichever direction the error points, so the weight is PINNED to
+     * `drawAction`: a card drawn is a card drawn, whichever door it came
+     * through, and the only difference between this and the plain Draw is how
+     * many cards arrive. Nothing here expresses a taste for the slot itself -
+     * ticket 40 measured what a flat taste for spending the bonus slot does, and
+     * it manufactured the exact traffic the hook assertion counts.
      *
-     * The question is "would this leave me short of the cheapest thing I still
-     * want", which is what a person at the table asks. It stops firing the
-     * moment there is nothing left to save for, which is exactly when spare
-     * coins should be turning into cards.
+     * ⭐ CAPPED BY ROOM IN HAND (02/09/2026), like `drawAction`, and for the
+     * reason the hand limit came back at all: a free card into a hand that will
+     * discard it at the boundary is not a free card. This is the term that
+     * decides risk 2, so it is the one place the diminishing return matters most.
      *
-     * Its weight has to clear the `endTurn` floor to do anything: a bot takes
-     * the highest-scoring move, and declining costs -2, so a term that only
-     * pulls the buy down to zero still buys. That is where the magnitude comes
-     * from - the architecture, not a preference.
+     * ⚠️ NO -1 FLOOR HERE, and the asymmetry is deliberate. `drawAction`'s
+     * floor exists because a MAIN ACTION must be spent on something, so 0 can be
+     * an argmax in a position where every alternative is negative. A bonus slot
+     * may simply be left unspent at 0, so a full hand already declines this
+     * option without being pushed - and a negative would push the bot towards
+     * SLOT UNSPENT, which is one of the four numbers the watch-list reads.
      */
-    name: 'buySaving',
-    claims: ['buy'],
-    feature: (act, s) => {
-      if (act.a !== 'buy' || s.sinkGap === null) return 0;
-      return s.coins - (s.data.rules.turn.buyCost ?? 0) < s.sinkGap ? -1 : 0;
-    },
-    cost: true,
-  },
-  {
-    /**
-     * BUY AT MARKET's barn card (ticket 56): one card arriving in the barn,
-     * priced at what this table already pays a card arriving in a barn - the
-     * `harvest` rate, exactly as the probe pricer's `deckToBarn` case would
-     * price the same event. It is a feature-of-1 deliberately NOT probed:
-     * the probe would spend an apply to return this constant, which is the
-     * shape the `outcome` term's own header warns against. The weight is
-     * PINNED to `harvest` in `weights.ts` rather than free, so there is one
-     * price for a barn arrival, not two that can drift.
-     */
-    name: 'marketGain',
-    claims: ['market'],
-    feature: (act) => (act.a === 'market' ? 1 : 0),
-  },
-  {
-    /**
-     * The market's ordering feature, and the whole reason a seat below its
-     * runway ever takes one: the deliveries this card unlocks. Ticket 38
-     * measured the barn's block as MATCHING (89% of blocked deliveries can
-     * afford no open tile, 93% of near-misses short by 1-2 cards), and tickets
-     * 51/52 established payability - not demand - as the feature that tracks
-     * it. This is the acquisition side of that finding: +1 card of a chosen
-     * suit, counted in tiles that flip from unpayable to payable.
-     *
-     * The weight converts an unlocked delivery into score. It cannot be
-     * derived the way `marketGain`'s pin can, so it is set between
-     * `sowCompletes` (2) and `deliverClimb` (5) and the delete test is run in
-     * ticket 56's report rather than asserted here.
-     */
-    name: 'marketPayability',
-    claims: ['market'],
-    feature: (act, s) => (act.a === 'market' ? (s.marketPayability?.get(act.suit) ?? 0) : 0),
-  },
-  {
-    /**
-     * `buySaving`'s twin for the £3 sink (ticket 56): would this market buy
-     * leave me short of the cheapest bounded thing I still want? `sinkGap`
-     * deliberately excludes the market itself (a repeating sink in the gap
-     * would suppress the market to save for the market), so this guards the
-     * upgrades and the Power cards, nothing else. Same derived weight as `buySaving`:
-     * it has to clear the `endTurn` floor to decide anything.
-     */
-    name: 'marketSaving',
-    claims: ['market'],
-    feature: (act, s) => {
-      if (act.a !== 'market' || s.sinkGap === null) return 0;
-      return s.coins - (s.data.rules.turn.marketCost ?? 0) < s.sinkGap ? -1 : 0;
-    },
-    cost: true,
+    name: 'bonusDraw',
+    claims: ['bonusDraw'],
+    feature: (act, s) =>
+      act.a === 'bonusDraw' ? Math.min(s.data.rules.turn.bonusDraw, s.handRoom) : 0,
   },
   {
     name: 'deckOwnCrop',
@@ -792,8 +755,7 @@ export const TERMS: readonly Term[] = [
   },
   {
     /**
-     * **Measured dead** (ticket 53), and left in place pending
-     * [54](../../../.scratch/web-game/issues/54-draw-always-own-suit.md).
+     * **Measured dead** (ticket 53), and left in place.
      *
      * Deleting it outright changes the bot's top move in **0 of 4650** decisions
      * offering a deck pick, over 55 stratified games. It is 0.8 against
@@ -803,17 +765,26 @@ export const TERMS: readonly Term[] = [
      * available. In the remaining 16.1% every deck still on offer is demanded,
      * so the term is uniform there too and cannot order those either.
      *
-     * Not deleted here, because the finding is not "this weight is wrong" but
-     * "the Draw never varies", which is a question about the instrument's whole
-     * acquisition lane and about whether a seat should ever draw a rival's crop.
-     * That is ticket 54, and a weight change made ahead of it would mint a
-     * reference for a number nobody has decided yet.
+     * Not deleted, because the finding is not "this weight is wrong" but "the
+     * Draw never varies", which is a question about the instrument's whole
+     * acquisition lane. ⚠️ v31 gives it more to do than it had: the base Draw is
+     * see 2 keep 2 off any two decks, so a draw is now purely a choice of WHICH
+     * decks, with no keep decision behind it to absorb the error.
      */
     name: 'deckDemand',
     claims: ACTION_AND_TASK,
     feature: (act, s) => (act.a === 'deckPick' && s.demandSuits.has(act.suit) ? 1 : 0),
   },
   {
+    /**
+     * Which cards a see/keep draw keeps.
+     *
+     * ⚠️ MOSTLY INERT IN v31 AND KEPT ANYWAY. The base Draw is see 2 keep 2 and
+     * the Orchard door is see 3 keep 3, so almost every draw in the game now
+     * keeps everything and offers exactly one keep answer. It still fires for
+     * any card that reveals more than it keeps, and it is what the pricer uses
+     * to value a pending draw analytically, which is a much hotter path.
+     */
     name: 'keepValue',
     claims: ACTION_AND_TASK,
     feature: (act, s) => (act.a === 'keep' ? totalValue(s.data, act.cards) : 0),
@@ -824,48 +795,131 @@ export const TERMS: readonly Term[] = [
     feature: (act, s) => (act.a === 'keep' ? countOwnCrop(s, act.cards) : 0),
   },
   {
-    /** Which of a Draw's cards the magpie keeps. 0 in every other profile. */
-    name: 'keepTargetCrop',
-    claims: ACTION_AND_TASK,
-    feature: (act, s) => (act.a === 'keep' ? countTargetCrop(s, act.cards) : 0),
-  },
-  {
-    // The junk rank, negated: the least valuable discard scores highest.
+    /**
+     * The junk rank, negated: the cheapest discard scores highest. Back with the
+     * turn-boundary overflow (02/09/2026).
+     *
+     * ⚠️ It orders the choice and must never price the EVENT. The seat has no
+     * say in whether it discards, only in which cards go, so a term that made
+     * discarding look expensive would be charging for something nobody chose -
+     * and `drawAction`'s deadlock is what that did last time it happened by
+     * accident.
+     */
     name: 'discardJunk',
     claims: ACTION_AND_TASK,
     feature: (act, s) => (act.a === 'discard' ? -totalValue(s.data, act.cards) : 0),
     cost: true,
   },
-
-  // --- the bonus slot -------------------------------------------------------
   {
+    /** Which of a Draw's cards the magpie keeps. 0 in every other profile. */
+    name: 'keepTargetCrop',
+    claims: ACTION_AND_TASK,
+    feature: (act, s) => (act.a === 'keep' ? countTargetCrop(s, act.cards) : 0),
+  },
+
+  // --- the bonus slot: the two doors ----------------------------------------
+  {
+    /**
+     * **A VISIT TO A NEIGHBOUR is worth its payoff and nothing else** (Dean,
+     * ticket 40), which is why the default weight is 0 rather than absent.
+     *
+     * The flat 6 used to BE the visit's value, coin payoff included. `outcome`
+     * now prices the payoff where the payoff is, and the first measured build
+     * left 2 behind as an intrinsic taste for spending the free bonus slot. That
+     * constant turned out to be doing real damage: at `visit: 2` the bots took
+     * coin visits whose marginal coin they valued at exactly zero in **70.4%**
+     * of cases - the slot is free, the fee is junk, so a worthless visit still
+     * beat leaving the slot unused.
+     *
+     * Which made it the wrong number to leave in the instrument, because the
+     * hook assertion counts visits per turn as the design's own "did players
+     * watch each other" metric. A weight we chose was manufacturing the traffic
+     * that metric measures. Measured at 0 against 2: visits/turn 0.443 -> 0.368,
+     * and every remaining visit buying something.
+     *
+     * ⭐ **THAT ARGUMENT IS WHY `selfVisit` BELOW IS ALSO 0.** Risk 2 asks which
+     * of the two doors a table takes when both cost one card out of one slot.
+     * The only way the answer means anything is if the instrument has no
+     * preference between them, so both flat tastes are zero and the whole
+     * difference the bots see is the difference the rules make: which door the
+     * board grants, and whether the card clogs a board you need.
+     */
     name: 'visit',
     claims: ['visit'],
-    feature: (act) => (act.a === 'visit' ? 1 : 0),
+    feature: (act) => (act.a === 'visit' && !act.self ? 1 : 0),
   },
   {
-    name: 'visitWorker',
+    /**
+     * ⭐ **THE SELF-VISIT - RISK 2 OF THE WHOLE PASS, ARMED ON PURPOSE.**
+     *
+     * v31 lets a seat place its bonus card on its OWN Notice Board and take its
+     * own suit's action. That is a solitaire door bought with the same currency,
+     * out of the same slot, as the interaction door - and the plan's own words
+     * are that *"every previous version of this game has had the solitaire
+     * option crowd out the visit when the two competed in one slot"*.
+     *
+     * It gets its own weight, separate from `visit`, for one reason: **the sim
+     * must be able to tell them apart**. `a08-the-hook` counts self-visits
+     * separately and must never credit one as interaction, and a bot that scored
+     * both through one weight could not be pointed either way - there would be
+     * no hermit control worth running.
+     *
+     * At 0 in the reference, for the reason spelled out on `visit` above. The
+     * two things that actually separate the doors in the bots' eyes are both
+     * rules: `outcome` prices whichever door the host's suit grants, and
+     * `clogOwnBoard` charges for shutting your own.
+     */
+    name: 'selfVisit',
     claims: ['visit'],
-    feature: (act) => (act.a === 'visit' && act.payoff.mode === 'worker' ? 1 : 0),
+    feature: (act) => (act.a === 'visit' && act.self ? 1 : 0),
   },
   {
-    name: 'visitSpecial',
+    /**
+     * ⭐ **THE ONLY BRAKE ON SELF-VISITING** - your own fee counts toward your
+     * own threshold of 2, so the second card you feed your own board shuts your
+     * own door, locks every neighbour out of your suit's action, and costs you a
+     * whole Harvest action to reopen.
+     *
+     * The plan names this as the single structural check on risk 2, so a bot
+     * that could not see it would over-self-visit and the arm would report a
+     * hook failure the rules had actually guarded against. It fires only on the
+     * card that FILLS the board, which is exactly when the door shuts: at
+     * threshold 2, the first self-visit of a cycle really is free and the second
+     * really is not.
+     *
+     * The weight is a PIN to `unclogBoard`: shutting your own door costs what
+     * reopening it pays. No new constant, and the two move together.
+     *
+     * ⚠️ It fires on YOUR OWN BOARD ONLY, and the omission is deliberate.
+     * Clogging a NEIGHBOUR's board denies them their own door, which is the
+     * denial play v30's Helping Hand used to enable - but `outcome.ts`'s
+     * standing rule is that this bot prices what it gains and never rival harm,
+     * so the denial value of a visit is invisible here and always has been.
+     * Whether that lands as clever or as the predecessor's "reverse
+     * engine-building" resentment is a table question.
+     */
+    name: 'clogOwnBoard',
     claims: ['visit'],
-    feature: (act) => (act.a === 'visit' && act.payoff.mode === 'special' ? 1 : 0),
+    feature: (act, s) => {
+      if (act.a !== 'visit' || !act.self || s.noticeBoard === null) return 0;
+      return fillsBuilding(s, s.noticeBoard.card) ? -1 : 0;
+    },
+    cost: true,
   },
   {
     // "Your junk is their treasure" made executable: of two identical visits,
-    // take the one that pays with the card you least want.
+    // take the one that pays with the card you least want. An ordering term and
+    // nothing more - `handSpend` charges the card itself.
     name: 'visitFeeJunk',
     claims: ['visit'],
-    feature: (act, s) => (act.a === 'visit' ? -totalValue(s.data, act.fee) : 0),
+    feature: (act, s) => (act.a === 'visit' ? -cardValue(s.data, act.fee) : 0),
     cost: true,
   },
   {
     /**
      * The magpie's disposal lane, and it needs one: `visitFeeJunk` ranks a fee
      * by CARD VALUE, which is the right rank for everybody whose own crop is
-     * worth something and the wrong one here. A magpie is dealt six own-crop
+     * worth something and the wrong one here. A magpie is dealt four own-crop
      * cards at setup and will never build one, so they are the only cards it can
      * spend at no cost at all - and without this term it pays its target crop
      * away instead, exactly the leak "your junk is their treasure" is about.
@@ -875,23 +929,37 @@ export const TERMS: readonly Term[] = [
      */
     name: 'visitFeeOwnCrop',
     claims: ['visit'],
-    feature: (act, s) => (act.a === 'visit' ? countOwnCrop(s, act.fee) : 0),
-  },
-  {
-    name: 'workOwn',
-    claims: ['workOwnWorker'],
-    feature: (act) => (act.a === 'workOwn' ? 1 : 0),
-  },
-  {
-    // Answering a chooseWorker task: doing the work beats declining it. The
-    // skip answer, where one is offered, is scored by `skip`.
-    name: 'workerTask',
-    claims: ACTION_AND_TASK,
-    feature: (act) => (act.a === 'worker' ? 1 : 0),
+    feature: (act, s) => (act.a === 'visit' ? countOwnCrop(s, [act.fee]) : 0),
   },
 
-  // --- standing moves and the turn boundary ---------------------------------
+  // --- positional, and the turn boundary ------------------------------------
   {
+    /**
+     * THE DELIVERABILITY TERM (the Vegetable rebuild, 2026-08-09), renamed from
+     * `marketPayability` when v31 deleted the market that shared it.
+     *
+     * Its whole feature lives in `outcome.ts`'s `deliverabilityValue`, which is
+     * why the entry here has none: V5 swaps two of the island's demand tokens
+     * and V6 turns one face down, neither moves anything in the acting seat's
+     * own zones, and both would price at exactly zero without a positional read
+     * off the probe. This entry exists so the weight has a term to belong to and
+     * `checkWeightTable` can see it.
+     */
+    name: 'deliverability',
+    claims: ACTION_AND_TASK,
+    feature: () => 0,
+  },
+  {
+    /**
+     * Standing moves offered by a built card.
+     *
+     * ⚠️ THE CATALOGUE HAS NO PRODUCER IN v31. A Helping Hand was the last one,
+     * and its rewrite ("take both bonus options") needs no handler body at all,
+     * so `handlerFor().moves` is currently unimplemented across all 105 cards.
+     * The move type survives in the engine and so do these two terms: the next
+     * card to print a standing move would otherwise be scored at 0 in silence,
+     * which is the failure the claims test exists to prevent.
+     */
     name: 'cardMove',
     claims: ['cardMove'],
     feature: (act) => (act.a === 'cardMove' ? 1 : 0),
@@ -913,8 +981,12 @@ export const TERMS: readonly Term[] = [
     feature: (act) => (act.a === 'skip' ? 1 : 0),
   },
   {
-    // The card-task escape hatch. No card in the 105 uses it, so this exists to
-    // keep the coverage honest if one ever does - and to score it last.
+    /**
+     * The card-task escape hatch, and since the Orchard rebuild it has a real
+     * producer: the DIVERT seam answers `card` to put a limbo card into your own
+     * barn instead of discarding it (O17 The Fruit Basket). Scored above `skip`
+     * so the bot takes the barn card rather than binning it.
+     */
     name: 'cardTask',
     claims: ACTION_AND_TASK,
     feature: (act) => (act.a === 'cardTask' ? 1 : 0),
@@ -927,8 +999,16 @@ export const TERMS: readonly Term[] = [
     feature: (act) => (act.a === 'pass' ? 1 : 0),
   },
   {
-    // Ending with the bonus slot unspent is the one thing a v14 bot must not
-    // do: the free visit is where the money is minted.
+    /**
+     * Ending with the bonus slot unspent is the one thing a v31 bot should be
+     * reluctant to do - but only reluctant, and the number is small on purpose.
+     *
+     * ⚠️ The plan asks the sim to tally SLOT UNSPENT as its own bucket, because
+     * a rising unspent share is the start-of-turn restriction biting rather than
+     * the visit being outcompeted. This -2 is the closest thing the bots have to
+     * a thumb on that number, so it is left exactly where reference-v9 had it:
+     * moving it in the same pass as the rule would confound the two readings.
+     */
     name: 'endTurn',
     claims: ['endTurn'],
     feature: (act) => (act.a === 'endTurn' ? 1 : 0),

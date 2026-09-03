@@ -64,18 +64,18 @@ import type { Outcome } from './driver.js';
  * and it is the difference the smoke test enforces.
  */
 export const EVENT_KINDS = {
-  coins: true,
   cardPlaced: true,
   cardsToHand: true,
   cardsDiscarded: true,
   deckToBarn: true,
   stackToBarn: true,
   harvested: true,
-  workerWorked: true,
+  doorUsed: true,
+  meepleGained: true,
+  meepleSpent: true,
   reshuffled: true,
   built: true,
   demolished: true,
-  starterUpgraded: true,
   delivered: true,
   balloonMoved: true,
   discardToBarn: true,
@@ -93,16 +93,14 @@ export const MOVE_KINDS = {
   task: true,
   cardMove: true,
   draw: true,
-  buy: true,
-  market: true,
+  bonusDraw: true,
+  spendMeeple: true,
   build: true,
-  upgrade: true,
   grow: true,
   harvest: true,
   deliver: true,
   moveBalloon: true,
   visit: true,
-  workOwnWorker: true,
   pass: true,
   endTurn: true,
 } satisfies Record<Move['type'], boolean>;
@@ -124,22 +122,38 @@ export interface CardFacts {
   activations: number;
   /** VP it contributed at game end, per seat: printed face plus any endgame formula. */
   vp: number[];
-  /** Coins minted by effects tagged with this card id, per seat. */
-  coins: number[];
   /** Seats that built it. */
   builtBy: Seat[];
 }
 
-/** One worker-visit, priced both ways: what the host minted, what the visitor gave up. */
-export interface WorkerVisit {
-  readonly visitor: Seat;
-  readonly host: Seat;
-  /** Coins the bank minted to the host as the wage. */
-  hostGain: number;
-  /** Coins the visitor could have taken instead, at that same board. */
-  visitorAlternative: number;
-  /** The host was the sole VP leader at the time. */
-  hostWasLeader: boolean;
+/**
+ * ⛔ `WorkerVisit` IS GONE (v31). It priced one worker-visit in coins both ways -
+ * the wage the bank minted to the host against the coin payoff the visitor
+ * declined at that same board - and v31 mints nothing at all: a visit is one
+ * card in and one action out. Assertion 2 is re-pointed onto the only half of
+ * the generosity that survives, which is the CARD, and `RivalFreight` below is
+ * how it is counted.
+ */
+
+/**
+ * FREIGHT GIVEN ACROSS THE TABLE, and the half of it that was actually banked.
+ *
+ * The generosity problem in v31 is a card and nothing else: you place a card on
+ * a rival's Notice Board, they eventually Harvest that board, and your card
+ * lands in their barn as exactly the mixed colour the island demands of them.
+ * `placed` is the gift; `banked` is the gift that arrived. The gap between them
+ * is the fee that died on a board nobody ever cleared, which is the one thing
+ * that makes the transfer less than total.
+ */
+export interface RivalFreight {
+  /** Fees placed on a RIVAL's Notice Board, by the seat that paid them. */
+  paidBySeat: number[];
+  /** Fees a seat RECEIVED from rivals on its own board. */
+  receivedBySeat: number[];
+  /** Of those received, the ones the host later harvested into their own barn. */
+  bankedBySeat: number[];
+  /** Fees received while the host was the sole VP leader. */
+  toLeaderBySeat: number[];
 }
 
 export interface GameMetrics {
@@ -162,8 +176,18 @@ export interface GameMetrics {
   /** Sole winner, or null when the full tie-break chain still ties (seat order breaks it, so null is rare). */
   winner: Seat | null;
 
-  /** Median coins across players, sampled at every round boundary. */
-  coinsByRound: number[];
+  /**
+   * MEEPLES HELD, median across players, sampled at every round boundary - the
+   * series that replaced `coinsByRound` when the currency went.
+   *
+   * It is NOT a wallet series and must not be read as one. A meeple is a stored
+   * ACTION with no upkeep and no score, so the shape that matters is not a
+   * plateau (which is what a coin pile had to show) but a series that keeps
+   * returning to the floor. A supply that climbs and stays up is a pile of
+   * actions nobody could spend, and that is a dead component rather than an
+   * inflation problem.
+   */
+  meeplesByRound: number[];
   /** Median barn size across players, sampled at every round boundary. */
   barnByRound: number[];
   leadChanges: number;
@@ -172,119 +196,104 @@ export interface GameMetrics {
   turnsBySeat: number[];
   bonusTurnsBySeat: number[];
   /**
-   * The market doc's headline metric (ticket 56): how each seat spent its bonus
-   * slots. `visitsBySeat` and `workOwnBySeat` are the other two thirds of the
-   * mix; "market outnumbers visit" is the doc's named hook-losing condition.
+   * ⭐ THE FOUR-WAY BONUS-SLOT TALLY (v31, and the assertion the whole pass
+   * turns on). The slot holds exactly two options now and one way to waste it,
+   * but the interaction option splits in two and THAT SPLIT IS THE POINT:
+   *
+   *   Draw 1        `bonusDrawBySeat`      - the free solitaire card
+   *   visit rival   `visitsBySeat - selfVisitsBySeat`, derived
+   *   visit SELF    `selfVisitsBySeat`     - your own board, your own action
+   *   SLOT UNSPENT  `turnsBySeat - bonusTurnsBySeat`, derived, never stored
+   *
+   * ⛔ THE FIVE-WAY COIN TALLY IT REPLACES IS GONE, and with it every column
+   * that named a currency: visit-coin and visit-power (there is one visit and
+   * it pays an action), own-power (there is no Service to run for GBP 1) and
+   * upgrade (there are no second faces to buy). Do not compare this tally with
+   * any tally in `reports/` before 02/09/2026.
+   *
+   * ⭐ `selfVisitsBySeat` IS RISK 2 MADE ARITHMETIC. A self-visit is a
+   * SOLITAIRE door bought with the interaction door's own currency, and every
+   * previous version of this game has had the solitaire option crowd the visit
+   * out when the two competed in one slot. It is counted off the `visited`
+   * event's `self` flag - a flag the engine carries precisely so that no reader
+   * can forget the distinction - and `a08-the-hook` credits ONLY the neighbour
+   * half.
+   *
+   * ⚠️ SLOT UNSPENT AND THE INSTRUMENT CAVEAT, which must travel with the
+   * number wherever it is printed. The bonus slot is a start-of-turn window
+   * that shuts the moment the seat acts, and a term-table argmax always prefers
+   * the big main action, so the evaluator had to be taught to take a closing
+   * window before acting at all. What the sim therefore measures is the
+   * RATIONAL FLOOR: a bot never forgets. The v31 plan wants unspent tallied
+   * because a HUMAN forgets, and forgetting is a human failure a bot cannot
+   * model. A low unspent share here is NOT evidence that the start-of-turn
+   * restriction is harmless at a table.
    */
-  marketBuysBySeat: number[];
-  workOwnBySeat: number[];
-  /** 1-based round of each market buy, for the doc's midgame split. */
-  marketRounds: number[];
-  /**
-   * 1-based round of each PLAIN coin visit - the £1 payout on a base Notice
-   * Board, the floor move the market doc says the market eats first.
-   */
-  plainVisitRounds: number[];
-  /**
-   * The doc's exploit probe: deliveries whose whole card cost was covered by
-   * market buys made since the seat's last harvest, so the slot could have been
-   * bought outright at market with no farming between. It used to be split by
-   * island level, because a Level 3 slot was the big prize; the flat island
-   * (2026-08-09) makes every tile the same 4 cards, so it is one count.
-   */
-  marketFundedDeliveries: number;
-  /** Of those, the ones by a Vegetable seat - the doc's sharpest case. */
-  marketFundedVeg: number;
+  bonusDrawBySeat: number[];
   visitsBySeat: number[];
-  /**
-   * THE FIVE-WAY BONUS-SLOT TALLY (the v30 plan, section 5.5, 19/08/2026).
-   *
-   * Watch-list item 0 used to be a three-way count - visit / market / own
-   * Worker - and the market half of it stopped existing on 19/08/2026 when
-   * `rules.turn.marketCost` went null. What replaced it is a slot with four
-   * options and one way to waste it, so the tally has five columns:
-   *
-   *   visit-coin   `visitCoinBySeat`   - a card on a rival's Notice Board, £1
-   *   visit-power  `visitPowerBySeat`  - a card on the board, their Service run
-   *   own-power    `workOwnBySeat`     - £1 to run your own, no wage
-   *   upgrade      `upgradesBySeat`    - £2 to flip one of your own starters
-   *   SLOT UNSPENT `turnsBySeat - bonusTurnsBySeat`, derived, never stored
-   *
-   * The split of the visit is by PAYOFF MODE off the `visited` event, and the
-   * engine's third mode rides with the coin half: `special` is the upgraded
-   * County Show's two-card visit, which pays `visitPayout.twoCard` and runs
-   * nobody's Service, so it is a coin visit that costs two cards rather than a
-   * fourth kind of thing. Only `worker` is a power visit.
-   *
-   * ⚠️ SLOT UNSPENT IS THE NEW BUCKET AND THE LOAD-BEARING ONE. It is the only
-   * number that can say whether the start-of-turn restriction is COSTING
-   * visits, because a forfeited slot is invisible to every other column: the
-   * visit is not being outcompeted there, it is being missed. Nothing counts
-   * it - it is turns minus bonus turns, derived where it is read (assertion
-   * 14), so it can never drift out of step with the turn count it is a
-   * remainder of.
-   *
-   * ⚠️ THE INSTRUMENT CAVEAT, and it must travel with the number. The bots
-   * choose ONE move at a time from the whole legal-move list and have no
-   * concept of resolving the bonus before the main action. A seat holding a
-   * live delivery - scored 12 to 48 by the weights, against a visit's 1.5 to
-   * 5 - will always take the delivery and forfeit the slot, where a human
-   * would spend the slot first and then deliver. So the unspent share is
-   * biased PESSIMISTIC against real play, and the number to read is the DELTA
-   * between paired arms (`overlays/bonus-any-time.overlay.json` is the
-   * control), never the absolute.
-   */
-  visitCoinBySeat: number[];
-  visitPowerBySeat: number[];
+  selfVisitsBySeat: number[];
+  /** 1-based round of each visit, split by whose board, for the early/late read. */
+  neighbourVisitRounds: number[];
+  selfVisitRounds: number[];
   visitsToLeaderBySeat: number[];
   deliveriesBySeat: number[];
   ownCropBuildsBySeat: number[];
   foreignCropBuildsBySeat: number[];
-  wageCoinsBySeat: number[];
-  upgradesBySeat: number[];
   /**
-   * 1-based round of each starter flip, the twin of `marketRounds` and added
-   * for the same reason on 19/08/2026: the upgrade took the market's place in
-   * the bonus slot, so it needs the market's timing split. A capped option
-   * SHOULD spike in the opening rounds and then stop - that shape is a PASS -
-   * and only a LATE upgrade share is the solitaire-crowds-out-the-visit
-   * finding. A bare count cannot tell those two apart.
-   */
-  upgradeRounds: number[];
-  /**
-   * The round in which the seat's Farmstead reached its upgraded face, or null
-   * if it never did. Added 2026-08-12 for the Wheat rebalance, whose headline
-   * (W2) rests on a premise nobody had measured: that most seats get the
-   * upgraded suit power at all. It was inferred from 5.30 buildings against a
-   * 3-own-crop-building milestone plus an 84.2% own-crop build rate, which is
-   * an average over a distribution nobody had looked at.
+   * ⭐ ACTIONS RESOLVED, by seat - RISK 1, and the number the whole v31 pass
+   * moves. Nothing in the suite before 02/09/2026 measured it.
    *
-   * ⚠️ The rule under it CHANGED the same day: the free flip at the milestone
-   * is gone and the Farmstead is bought for £2 like its siblings, so this is now
-   * a PURCHASE round and not a milestone round. Numbers measured before
-   * 2026-08-12 are not comparable with numbers measured after.
+   * One count of every core verb actually PERFORMED, whichever thing bought it:
+   *
+   *   the main action        one per turn, by rule
+   *   the bonus slot         a door action, or the free Draw 1
+   *   every meeple spent     free, uncapped, at the start of a turn
+   *
+   * `pass` counts nothing, because nothing was resolved. A card effect that
+   * grants a draw or a sow inside another action is NOT counted: it is part of
+   * the action that fired it, and counting it would make "actions per turn"
+   * into "things that happened per turn", which is a different and much less
+   * useful number.
+   *
+   * The floor is therefore 1.0 (a turn that only acts) and the printed
+   * expectation is 2.0 (action plus bonus). Anything materially above 2.0 is
+   * the meeple supply, which is the uncapped part.
    */
-  farmsteadFlipRoundBySeat: (number | null)[];
+  actionsBySeat: number[];
+  /** Of those, the ones bought by a meeple leaving the game. */
+  meepleActionsBySeat: number[];
   /**
-   * The seat's own turn number when it first activated its OWN Service, or null.
-   * The bootstrap question since the Services (2026-08-10): every seat has one
-   * from turn 1 but starts at GBP 0, so the first own-activation cannot happen
-   * until income has, and income means visiting somebody.
+   * MEEPLES GAINED AND SPENT, by seat and by colour. `gained - spent` over a
+   * whole game is exactly the meeples that died unspent in a supply, because a
+   * spent meeple returns to no pool - which is the dead-component number the
+   * v31 plan asks for.
    */
-  firstOwnServiceTurnBySeat: (number | null)[];
+  meeplesGainedBySeat: number[];
+  meeplesSpentBySeat: number[];
+  meeplesGainedByColour: Record<string, number>;
+  meeplesSpentByColour: Record<string, number>;
+  /** Meeples still in a supply when the game stopped, by seat. Read off the final state. */
+  meeplesUnspentBySeat: number[];
+  /** The seat's own turn number when it first spent a meeple, or null. */
+  firstMeepleTurnBySeat: (number | null)[];
   /** Turns the seat began holding cards with no legal visit anywhere. */
   clogTurnsBySeat: number[];
   /** Turns the seat began, counted only when the clog question was askable. */
   clogSampledBySeat: number[];
 
   /**
-   * Turn ends at which a seat's OWN Service stood clogged, and the turn ends
-   * sampled. The Service threshold is the only brake left on a popular farm now
-   * the Working Week is gone, so this is what replaced the track metrics: too
-   * high and popularity is a harvest tax, too low and the brake never bites.
+   * Turn ends at which a seat's OWN Notice Board stood clogged, and the turn
+   * ends sampled. The board's threshold is the only brake in the game on a
+   * popular farm: too high and popularity is a harvest tax, too low and the
+   * brake never bites.
+   *
+   * ⭐ IT NOW THROTTLES A THIRD KIND OF TRAFFIC and no previous arm has measured
+   * it doing so. The same two spaces absorb a rival's visit, the owner's own
+   * SELF-visit, and any card effect that sows onto a board, so the clog is the
+   * only structural brake on the solitaire door as well as on the busy one.
    */
-  serviceClogTurnsBySeat: number[];
-  serviceClogSampledBySeat: number[];
+  doorClogTurnsBySeat: number[];
+  doorClogSampledBySeat: number[];
   /**
    * Times each crop's discard was shuffled back into its deck, by crop. The
    * C1 metric: a pool that cycles is not a pool that is sampled, and until
@@ -301,9 +310,27 @@ export interface GameMetrics {
    * `suits` and `neutral` without re-running.
    */
   reshufflesByCrop: Record<string, number>;
-  /** Uses of a Service by somebody other than its owner, by Service. */
-  rivalUsesByWorker: Record<string, number>;
-  workerVisits: WorkerVisit[];
+  /**
+   * ⭐ THE DOOR MIX (v31): every use of every suit's door, by the door's COLOUR
+   * and split by what bought it. Which board the table walks to is the question
+   * that replaced "which Worker gets rented"; there is no Working Week, no
+   * track and no wage, so the only thing a door has left is its action.
+   *
+   * ⚠️ THE APIARY READING IS THE ONE NOT TO TRUST, and it is a pricer defect
+   * rather than a metric one. A sow FROM HAND and a sow from a deck top emit
+   * the same event, so the bots' pricer never charges the visitor the SECOND
+   * card the Apiary door costs. The v31 plan says outright that the Apiary door
+   * should be the weakest on the table by some distance; if this table says the
+   * Apiary board takes normal traffic, that is the pricer talking.
+   */
+  doorUsesByColour: Record<string, number>;
+  /** Of those, the ones bought by a card on a RIVAL's board. */
+  neighbourDoorByColour: Record<string, number>;
+  /** ...by a card on the visitor's OWN board. */
+  selfDoorByColour: Record<string, number>;
+  /** ...by a meeple leaving the game. */
+  meepleDoorByColour: Record<string, number>;
+  freight: RivalFreight;
 
   // --- The Dairy rebuild, 2026-08-10 ---------------------------------------
   //
@@ -478,21 +505,16 @@ export interface GameMetrics {
    */
   activationsOfForeignBySeat: number[];
   /**
-   * Coins minted by A14 The Honeycomb Tower, by seat. Risk 2: the first
-   * repeatable coin faucet in the game, and the coin unit is still un-derived.
-   * Every other Tier 3 pays in a resource with a natural cap. Read against
-   * total coins in play and the market's play rate, NEVER against A14's own
-   * play rate. The £1 rate is the dial.
+   * ⛔ `towerCoinsBySeat` IS GONE (v31). A14 The Honeycomb Tower minted GBP 1
+   * per HIVE and was the game's first repeatable coin faucet, which is why it
+   * had a counter of its own. It draws a card per HIVE now, and a draw is
+   * measured everywhere already - the funnel counts A14's activations and the
+   * card clock counts what came out - so a bespoke line would be a second name
+   * for a number the report prints twice over.
    */
-  towerCoinsBySeat: number[];
 
   cards: Map<CardId, CardFacts>;
 }
-
-const WAGE = /^wage:/;
-const RIDER = /^rider:(.+)$/;
-/** A14 The Honeycomb Tower's `why` tag - the game's first repeatable coin faucet. */
-const TOWER = 'A14';
 
 /**
  * The action mix's row label. Move type everywhere except `cardMove`, which is
@@ -518,7 +540,6 @@ function emptyFacts(seats: number, inSupply: boolean): CardFacts {
     junked: false,
     activations: 0,
     vp: Array<number>(seats).fill(0),
-    coins: Array<number>(seats).fill(0),
     builtBy: [],
   };
 }
@@ -541,9 +562,14 @@ export class Fold {
   private turnsEnded = 0;
   private sampledTurn = -1;
   private leader: Seat | null = null;
-  /** Working counter for the exploit probe: market buys since the seat's last harvest. */
-  private marketSinceHarvest: number[] = [];
   private seeded = false;
+  /**
+   * Cards sitting on a Notice Board that a RIVAL put there, keyed by the board's
+   * owning seat. Emptied into `freight.bankedBySeat` when that board is
+   * harvested, which is the moment a gift stops being a gift on a board and
+   * becomes freight in a barn.
+   */
+  private freightOnBoard: Set<CardId>[] = [];
   /**
    * The island's demand tokens AS DEALT, captured once off the first pre-state.
    * The baseline for `deliveriesUnlockedByAlteration`: without it the best that
@@ -557,8 +583,9 @@ export class Fold {
 
   constructor(data: GameData, spec: FoldSpec, seats: number) {
     this.data = data;
-    this.marketSinceHarvest = Array<number>(seats).fill(0);
+    this.freightOnBoard = Array.from({ length: seats }, () => new Set<CardId>());
     const zeros = () => Array<number>(seats).fill(0);
+    const byColour = () => Object.fromEntries(data.cards.suits.map((s) => [s, 0]));
     this.m = {
       seed: spec.seed,
       seats,
@@ -575,37 +602,44 @@ export class Fold {
       scores: [],
       ranking: [],
       winner: null,
-      coinsByRound: [],
+      meeplesByRound: [],
       barnByRound: [],
       leadChanges: 0,
       endTriggerRound: null,
       turnsBySeat: zeros(),
       bonusTurnsBySeat: zeros(),
-      marketBuysBySeat: zeros(),
-      workOwnBySeat: zeros(),
-      marketRounds: [],
-      plainVisitRounds: [],
-      marketFundedDeliveries: 0,
-      marketFundedVeg: 0,
+      bonusDrawBySeat: zeros(),
       visitsBySeat: zeros(),
-      visitCoinBySeat: zeros(),
-      visitPowerBySeat: zeros(),
+      selfVisitsBySeat: zeros(),
+      neighbourVisitRounds: [],
+      selfVisitRounds: [],
       visitsToLeaderBySeat: zeros(),
       deliveriesBySeat: zeros(),
       ownCropBuildsBySeat: zeros(),
       foreignCropBuildsBySeat: zeros(),
-      wageCoinsBySeat: zeros(),
-      upgradesBySeat: zeros(),
-      upgradeRounds: [],
-      farmsteadFlipRoundBySeat: Array<number | null>(seats).fill(null),
-      firstOwnServiceTurnBySeat: Array<number | null>(seats).fill(null),
+      actionsBySeat: zeros(),
+      meepleActionsBySeat: zeros(),
+      meeplesGainedBySeat: zeros(),
+      meeplesSpentBySeat: zeros(),
+      meeplesGainedByColour: byColour(),
+      meeplesSpentByColour: byColour(),
+      meeplesUnspentBySeat: zeros(),
+      firstMeepleTurnBySeat: Array<number | null>(seats).fill(null),
       clogTurnsBySeat: zeros(),
       clogSampledBySeat: zeros(),
-      serviceClogTurnsBySeat: zeros(),
-      serviceClogSampledBySeat: zeros(),
+      doorClogTurnsBySeat: zeros(),
+      doorClogSampledBySeat: zeros(),
       reshufflesByCrop: Object.fromEntries([...spec.suits, ...spec.neutral].map((s) => [s, 0])),
-      rivalUsesByWorker: {},
-      workerVisits: [],
+      doorUsesByColour: byColour(),
+      neighbourDoorByColour: byColour(),
+      selfDoorByColour: byColour(),
+      meepleDoorByColour: byColour(),
+      freight: {
+        paidBySeat: zeros(),
+        receivedBySeat: zeros(),
+        bankedBySeat: zeros(),
+        toLeaderBySeat: zeros(),
+      },
       buildsBySeat: zeros(),
       noBuildTurnsBySeat: zeros(),
       buildSampledBySeat: zeros(),
@@ -631,7 +665,6 @@ export class Fold {
       firstActivationRoundBySeat: Array<number | null>(seats).fill(null),
       activationsOfFullBySeat: zeros(),
       activationsOfForeignBySeat: zeros(),
-      towerCoinsBySeat: zeros(),
       cards: new Map(),
     };
     for (const card of data.cards.catalogue) {
@@ -734,6 +767,7 @@ export class Fold {
     this.creamery(d);
     this.turnStart(d);
     this.move(d);
+    this.mainAction(d);
     for (const e of d.events) this.event(d, e);
   }
 
@@ -811,7 +845,7 @@ export class Fold {
   private turnStart(d: Decision): void {
     const s = d.pre;
     if (this.turnsEnded === this.sampledTurn) return;
-    if (s.tasks.length > 0 || s.turn.actionSpent || s.turn.bonusSpent) return;
+    if (s.tasks.length > 0 || s.turn.actionSpent || s.turn.bonusUsed.length > 0) return;
     this.sampledTurn = this.turnsEnded;
     const seat = s.turnPlayer;
     // The Dairy rebuild's headline risk, asked FIRST: an empty hand is the
@@ -838,18 +872,16 @@ export class Fold {
         for (const id of move.payment) this.facts(id).junked = true;
         return;
       case 'visit':
-        for (const id of move.fee) this.facts(id).junked = true;
+        // ONE fee, not a list, since v31: no route places two cards on a board.
+        this.facts(move.fee).junked = true;
         return;
-      case 'market': {
-        // The bonus-slot mix's third column, plus the exploit probe's counter.
-        const seat = move.seat;
-        this.m.marketBuysBySeat[seat] = (this.m.marketBuysBySeat[seat] ?? 0) + 1;
-        this.m.marketRounds.push(this.round());
-        this.marketSinceHarvest[seat] = (this.marketSinceHarvest[seat] ?? 0) + 1;
-        return;
-      }
-      case 'workOwnWorker':
-        this.m.workOwnBySeat[move.seat] = (this.m.workOwnBySeat[move.seat] ?? 0) + 1;
+      case 'bonusDraw':
+        // The bonus slot's solitaire half. One of the four columns, and the
+        // ONLY one that is counted off a move rather than off an event - there
+        // is no `bonusDrawTaken` event, and the draw it pushes is
+        // indistinguishable from the main action's.
+        this.m.bonusDrawBySeat[move.seat] = (this.m.bonusDrawBySeat[move.seat] ?? 0) + 1;
+        this.m.actionsBySeat[move.seat] = (this.m.actionsBySeat[move.seat] ?? 0) + 1;
         return;
       case 'task':
         this.taskAnswer(d, pre.tasks[0]);
@@ -863,21 +895,43 @@ export class Fold {
         this.facts(move.card).activations += 1;
         return;
       }
-      // Claimed and uninteresting: their effect is measured through events.
-      // `buy` included - the action-mix table counts it, the `coins` event pays
-      // for it, and the card it takes is blind, so there is nothing card-level
-      // to fold.
+      // Claimed and uninteresting at the CARD level: their effect is measured
+      // through events. `spendMeeple` is here because `meepleSpent` and
+      // `doorUsed` between them carry everything about it.
       case 'draw':
-      case 'buy':
-      case 'upgrade':
       case 'harvest':
       case 'deliver':
       case 'moveBalloon':
+      case 'spendMeeple':
       case 'pass':
       case 'endTurn':
         return;
       default:
         move satisfies never;
+    }
+  }
+
+  /**
+   * ⭐ ACTIONS RESOLVED (risk 1). A main action is counted here, off the MOVE,
+   * because the five core verbs have no single event between them and because
+   * only the move can say whether a verb was the turn's action or a door's.
+   *
+   * `pass` is not an action: it exists precisely because nothing was legal.
+   * `bonusDraw` is counted in `move` above, and a door action - visit or meeple -
+   * on the `doorUsed` event, so every route is counted exactly once.
+   */
+  private mainAction(d: Decision): void {
+    const t = d.move.type;
+    if (
+      t === 'draw' ||
+      t === 'build' ||
+      t === 'grow' ||
+      t === 'harvest' ||
+      t === 'deliver' ||
+      t === 'moveBalloon'
+    ) {
+      const seat = d.move.seat;
+      this.m.actionsBySeat[seat] = (this.m.actionsBySeat[seat] ?? 0) + 1;
     }
   }
 
@@ -894,9 +948,17 @@ export class Fold {
       for (const id of a.cards) this.facts(id).kept = true;
     }
     if (a.kind === 'build') for (const id of a.payment) this.facts(id).junked = true;
+    // ⭐ THE `discard` ANSWER IS BACK, and so is this line (02/09/2026). v31
+    // deleted the hand limit and the end-of-turn trim with it, which briefly
+    // made the funnel's junk layer mean "spent on purpose" and nothing else;
+    // `rules.turn.handLimit` reinstated both the same day. So junk is once
+    // again the union of three unrelated fates - a build payment, a visit fee
+    // and a card the boundary took - and the funnel cannot tell them apart. It
+    // never could, and the `fuel` flag in the cut list is what stops that
+    // ambiguity being read as a fault.
     if (a.kind === 'discard') for (const id of a.cards) this.facts(id).junked = true;
 
-    // O17's £1 divert, counted off the ANSWER: the event it emits is the shared
+    // O17's divert, counted off the ANSWER: the event it emits is the shared
     // `handToBarn`, so the route table cannot tell it from The Fruit Press.
     if (task.t === 'divert' && a.kind === 'card' && a.payload.barn === true) {
       this.m.divertsBySeat[task.pid] = (this.m.divertsBySeat[task.pid] ?? 0) + 1;
@@ -931,22 +993,11 @@ export class Fold {
   private event(d: Decision, e: GameEvent): void {
     const m = this.m;
     switch (e.e) {
-      case 'coins': {
-        if (e.delta <= 0) return;
-        if (WAGE.test(e.why))
-          m.wageCoinsBySeat[e.seat] = (m.wageCoinsBySeat[e.seat] ?? 0) + e.delta;
-        // A14 The Honeycomb Tower, split out of the per-card coin fold below
-        // because risk 2 is about the FAUCET rather than about the card: it is
-        // read against total coins in play, not against A14's own play rate.
-        if (e.why === TOWER)
-          m.towerCoinsBySeat[e.seat] = (m.towerCoinsBySeat[e.seat] ?? 0) + e.delta;
-        const card = this.cardTag(e.why);
-        if (card) {
-          const f = this.facts(card);
-          f.coins[e.seat] = (f.coins[e.seat] ?? 0) + e.delta;
-        }
-        return;
-      }
+      // ⛔ THE `coins` BRANCH IS GONE (v31) and it was the busiest one here. It
+      // fed the wage income line, A14's faucet counter and the per-card coin
+      // column of the funnel. There is no currency, so all three go: nothing
+      // that used to be paid in coins is paid in anything now except cards and
+      // actions, both of which are counted elsewhere.
       case 'cardsToHand':
         for (const id of e.cards) this.facts(id).held = true;
         return;
@@ -967,25 +1018,32 @@ export class Fold {
         }
         return;
       }
-      case 'workerWorked':
-        if (e.owner !== null && e.owner !== e.seat) {
-          m.rivalUsesByWorker[e.workerId] = (m.rivalUsesByWorker[e.workerId] ?? 0) + 1;
-        } else if (e.owner !== null && m.firstOwnServiceTurnBySeat[e.seat] === null) {
-          m.firstOwnServiceTurnBySeat[e.seat] = (m.turnsBySeat[e.seat] ?? 0) + 1;
+      // ⭐ THE DOOR MIX AND HALF THE ACTION COUNT. One event per door action,
+      // whichever thing bought it, so this is the single place a door use is
+      // counted and it can never disagree with itself. The visit half is split
+      // rival-against-self on the `visited` event below, which carries the flag;
+      // here only the meeple half needs its own column.
+      case 'doorUsed': {
+        m.doorUsesByColour[e.colour] = (m.doorUsesByColour[e.colour] ?? 0) + 1;
+        if (e.via === 'meeple') {
+          m.meepleDoorByColour[e.colour] = (m.meepleDoorByColour[e.colour] ?? 0) + 1;
+          m.meepleActionsBySeat[e.seat] = (m.meepleActionsBySeat[e.seat] ?? 0) + 1;
         }
+        m.actionsBySeat[e.seat] = (m.actionsBySeat[e.seat] ?? 0) + 1;
         return;
-      case 'starterUpgraded':
-        // Every flip is bought now, so every one of them counts as an upgrade;
-        // the Farmstead is told apart by its slot for the timing metric.
-        m.upgradesBySeat[e.seat] = (m.upgradesBySeat[e.seat] ?? 0) + 1;
-        m.upgradeRounds.push(this.round());
-        if (
-          cardById(this.data, e.card).slot === 'farmstead' &&
-          m.farmsteadFlipRoundBySeat[e.seat] == null
-        ) {
-          m.farmsteadFlipRoundBySeat[e.seat] = this.round();
-        }
+      }
+      case 'meepleGained':
+        m.meeplesGainedBySeat[e.seat] = (m.meeplesGainedBySeat[e.seat] ?? 0) + 1;
+        m.meeplesGainedByColour[e.colour] = (m.meeplesGainedByColour[e.colour] ?? 0) + 1;
         return;
+      case 'meepleSpent':
+        m.meeplesSpentBySeat[e.seat] = (m.meeplesSpentBySeat[e.seat] ?? 0) + 1;
+        m.meeplesSpentByColour[e.colour] = (m.meeplesSpentByColour[e.colour] ?? 0) + 1;
+        m.firstMeepleTurnBySeat[e.seat] ??= (m.turnsBySeat[e.seat] ?? 0) + 1;
+        return;
+      // ⛔ `starterUpgraded` IS GONE (v31): starters have one face and nothing
+      // flips, so the upgrade column of the bonus tally and the Farmstead-flip
+      // timing line both go with it.
       case 'delivered': {
         m.deliveriesBySeat[e.seat] = (m.deliveriesBySeat[e.seat] ?? 0) + 1;
         // First to a tile against second - the flat island's only remaining
@@ -996,11 +1054,9 @@ export class Fold {
           const byOrder = m.receiptsByOrderBySeat[e.seat] as number[];
           byOrder[order] = (byOrder[order] ?? 0) + 1;
         }
-        // The exploit probe (ticket 56): could this slot have been bought
-        // entirely at market, with no harvest between? Conservative in the
-        // exploit's favour - it asks whether the market buys since the last
-        // harvest COVER the cost, not which physical cards were spent, because
-        // barn identity is inert and the engine spends arbitrary ids.
+        // ⛔ THE MARKET EXPLOIT PROBE IS GONE with the market (v31): it asked
+        // whether the market buys made since a seat's last harvest covered a
+        // tile outright, and there is nothing to buy with.
         const cost = Object.values(e.spend).reduce((a, n) => a + (n ?? 0), 0);
         // Was this delivery only payable because a demand token had moved? The
         // spend actually made, re-tested against the tokens AS DEALT. V14 emits
@@ -1009,20 +1065,24 @@ export class Fold {
         if (cost > 0 && !this.dealtWouldPay(d.pre, e.tile, e.spend)) {
           m.deliveriesUnlockedByAlteration += 1;
         }
-        if (cost > 0 && (this.marketSinceHarvest[e.seat] ?? 0) >= cost) {
-          m.marketFundedDeliveries += 1;
-          if (player(d.post, e.seat).suit === 'vegetable') m.marketFundedVeg += 1;
+        return;
+      }
+      case 'harvested': {
+        m.barnInByRoute.harvest = (m.barnInByRoute.harvest ?? 0) + e.cards.length;
+        m.barnInBySeat[e.seat] = (m.barnInBySeat[e.seat] ?? 0) + e.cards.length;
+        // A HARVEST OF THE OWN NOTICE BOARD BANKS THE RIVAL FEES sitting on it
+        // (assertion 2). Counted here rather than at the moment the fee lands,
+        // because a gift that dies on a board nobody clears was never received.
+        const mine = this.freightOnBoard[e.seat];
+        if (mine !== undefined && mine.size > 0) {
+          let banked = 0;
+          for (const id of e.cards) {
+            if (mine.delete(id)) banked += 1;
+          }
+          m.freight.bankedBySeat[e.seat] = (m.freight.bankedBySeat[e.seat] ?? 0) + banked;
         }
         return;
       }
-      case 'harvested':
-        // Any harvest resets the exploit window; the card facts a harvest
-        // carries are folded elsewhere (stack cards were counted as they
-        // arrived on the building).
-        this.marketSinceHarvest[e.seat] = 0;
-        m.barnInByRoute.harvest = (m.barnInByRoute.harvest ?? 0) + e.cards.length;
-        m.barnInBySeat[e.seat] = (m.barnInBySeat[e.seat] ?? 0) + e.cards.length;
-        return;
       case 'balloonMoved': {
         m.balloonMoves += 1;
         m.balloonMovesBySeat[e.seat] = (m.balloonMovesBySeat[e.seat] ?? 0) + 1;
@@ -1041,31 +1101,31 @@ export class Fold {
         m.demandFaceDowns += 1;
         return;
       case 'visited': {
+        // ⭐ RISK 2, COUNTED. `visitsBySeat` is every visit; `selfVisitsBySeat`
+        // is the solitaire half, read off the engine's own `self` flag rather
+        // than re-derived from `seat === host` at each call site, so no reader
+        // can quietly pool the two. `a08-the-hook` credits the difference and
+        // never the whole.
         m.visitsBySeat[e.seat] = (m.visitsBySeat[e.seat] ?? 0) + 1;
-        // The five-way tally's two visit columns (19/08/2026). Split on the
-        // payoff mode the engine already carries, so the two can never
-        // disagree with `visitsBySeat`, which stays the sum of them. `special`
-        // is the County Show's two-card visit: it pays coins and runs nobody's
-        // Service, so it belongs on the coin side.
-        if (e.mode === 'worker') {
-          m.visitPowerBySeat[e.seat] = (m.visitPowerBySeat[e.seat] ?? 0) + 1;
-        } else {
-          m.visitCoinBySeat[e.seat] = (m.visitCoinBySeat[e.seat] ?? 0) + 1;
+        if (e.self) {
+          m.selfVisitsBySeat[e.seat] = (m.selfVisitsBySeat[e.seat] ?? 0) + 1;
+          m.selfDoorByColour[e.colour] = (m.selfDoorByColour[e.colour] ?? 0) + 1;
+          m.selfVisitRounds.push(this.round());
+          return;
         }
-        // The plain £1 visit - a coin payoff on a BASE board - is the floor
-        // move the market doc says the market eats first; its round index
-        // feeds the midgame split (ticket 56).
-        if (e.mode === 'coin') {
-          const board = player(d.pre, e.host).tableau.find(
-            (b) => cardById(this.data, b.card).slot === 'noticeboard',
-          );
-          if (board && !board.upgraded) m.plainVisitRounds.push(this.round());
-        }
+        m.neighbourDoorByColour[e.colour] = (m.neighbourDoorByColour[e.colour] ?? 0) + 1;
+        m.neighbourVisitRounds.push(this.round());
+        // The fee has already landed by the time this event fires (doVisit
+        // places it first), so the card on the host's board is the last one
+        // placed by this move - which is exactly what the `cardPlaced` branch
+        // recorded a moment ago.
+        m.freight.paidBySeat[e.seat] = (m.freight.paidBySeat[e.seat] ?? 0) + 1;
+        m.freight.receivedBySeat[e.host] = (m.freight.receivedBySeat[e.host] ?? 0) + 1;
         const leader = this.leaderOf(d);
         if (leader === e.host) {
           m.visitsToLeaderBySeat[e.seat] = (m.visitsToLeaderBySeat[e.seat] ?? 0) + 1;
+          m.freight.toLeaderBySeat[e.host] = (m.freight.toLeaderBySeat[e.host] ?? 0) + 1;
         }
-        if (e.mode === 'worker') this.workerVisit(d, e.seat, e.host, leader === e.host);
         return;
       }
       case 'turnEnded': {
@@ -1077,29 +1137,12 @@ export class Fold {
         // was not itself the visit, so the post-state's flag is checked too
         // when the boundary and the visit landed in one apply.
         //
-        // ⚠️ `upgrade` JOINED THIS LIST ON 19/08/2026, and it is gated on the
-        // knob that moved it. Flipping a starter is a bonus-slot spend now, so
-        // a turn that flipped one has spent its slot and is NOT an unspent
-        // slot; under `overlays/upgrade-main-action.overlay.json` the flip is a
-        // main action again and must not be counted here, or the control arm
-        // would report its own upgrades as bonus spends and the five-way tally
-        // would not be comparable between the arms - which is the only way it
-        // is ever read.
-        //
-        // `market` is on the list for the same one-apply reason and NOT because
-        // the market is live - it is null as of 19/08/2026. It matters only
-        // under `overlays/turn-structure-v14.overlay.json`, which restores both
-        // the market and the any-time slot together, and that is precisely the
-        // arm the five-way tally is read against: a market taken after the
-        // action would end the turn in the same apply and be scored as an
-        // UNSPENT slot, inflating the control's unspent share and flattering
-        // the shipped rule by exactly the amount being measured.
-        const bonusMove =
-          d.move.type === 'visit' ||
-          d.move.type === 'workOwnWorker' ||
-          d.move.type === 'market' ||
-          (this.data.rules.turn.upgradeIsBonus && d.move.type === 'upgrade');
-        if (d.pre.turn.bonusSpent || bonusMove) {
+        // ⛔ THE COIN-BOUGHT OPTIONS ARE OFF THIS LIST (v31). It used to name
+        // `workOwnWorker`, `market` and a knob-gated `upgrade` alongside the
+        // visit, because each was a bonus-slot spend that could land in the
+        // same apply as the boundary. Two options remain and both are here.
+        const bonusMove = d.move.type === 'visit' || d.move.type === 'bonusDraw';
+        if (d.pre.turn.bonusUsed.length > 0 || bonusMove) {
           m.bonusTurnsBySeat[seat] = (m.bonusTurnsBySeat[seat] ?? 0) + 1;
         }
         // ⭐ THE DOOR CLOG, sampled once per turn boundary for EVERY seat.
@@ -1110,9 +1153,9 @@ export class Fold {
         // measures "the farm is shut" - and assertion 4's threshold moved with
         // it rather than being carried over.
         for (let s2 = 0; s2 < m.seats; s2++) {
-          m.serviceClogSampledBySeat[s2] = (m.serviceClogSampledBySeat[s2] ?? 0) + 1;
+          m.doorClogSampledBySeat[s2] = (m.doorClogSampledBySeat[s2] ?? 0) + 1;
           if (isFull(this.data, noticeBoardOf(this.data, d.post, s2))) {
-            m.serviceClogTurnsBySeat[s2] = (m.serviceClogTurnsBySeat[s2] ?? 0) + 1;
+            m.doorClogTurnsBySeat[s2] = (m.doorClogTurnsBySeat[s2] ?? 0) + 1;
           }
         }
         this.turnsEnded += 1;
@@ -1143,9 +1186,19 @@ export class Fold {
         m.barnInByRoute.hand = (m.barnInByRoute.hand ?? 0) + 1;
         m.barnInBySeat[e.seat] = (m.barnInBySeat[e.seat] ?? 0) + 1;
         return;
+      // ⭐ A FEE LANDING ON A RIVAL'S NOTICE BOARD, remembered by card id so a
+      // later harvest of that board can say which cards were gifts (assertion
+      // 2). Every other `cardPlaced` - a GROW payment, a sow, a self-visit - is
+      // still claimed and uninteresting.
+      case 'cardPlaced': {
+        if (e.seat === e.onto.seat) return;
+        const board = noticeBoardOf(this.data, d.post, e.onto.seat);
+        if (board.card !== e.onto.building) return;
+        this.freightOnBoard[e.onto.seat]?.add(e.card);
+        return;
+      }
       // Claimed and uninteresting for balance: card movement between zones that
       // no assertion and no funnel layer reads.
-      case 'cardPlaced':
       case 'cardsDiscarded':
       case 'demolished':
       case 'gameEnded':
@@ -1156,34 +1209,17 @@ export class Fold {
   }
 
   /**
-   * The worker-visit, priced in one currency so assertion 2's ratio means
-   * something. The host's gain is the wage the bank mints. The visitor's gain
-   * is what they gave up to take the Worker instead: the coins the same board
-   * would have paid them for the same card. v14 section 7.2 frames the concern
-   * in exactly that pair - "he gives a rival a card AND mints them up to £3"
-   * against the £1 he could simply have taken.
+   * ⛔ `workerVisit` IS GONE (v31). It priced one visit in coins both ways for
+   * assertion 2's ratio: the wage the bank minted to the host against the coin
+   * payoff the same board would have paid the visitor for the same card. There
+   * is no wage and no payoff, so there is no ratio - the freight counters above
+   * are what assertion 2 reads instead.
    */
-  private workerVisit(d: Decision, visitor: Seat, host: Seat, hostWasLeader: boolean): void {
-    const wage = d.events
-      .filter((x) => x.e === 'coins' && x.seat === host && WAGE.test(x.why))
-      .reduce((acc, x) => acc + (x.e === 'coins' ? x.delta : 0), 0);
-    const board = player(d.pre, host).tableau.find(
-      (b) => cardById(this.data, b.card).slot === 'noticeboard',
-    );
-    const rates = this.data.rules.economy.visitPayout;
-    this.m.workerVisits.push({
-      visitor,
-      host,
-      hostGain: wage,
-      visitorAlternative: board?.upgraded ? rates.upgraded : rates.base,
-      hostWasLeader,
-    });
-  }
 
   private roundBoundary(state: GameState): void {
     const m = this.m;
     m.rounds += 1;
-    m.coinsByRound.push(medianOf(state.players.map((p) => p.coins)));
+    m.meeplesByRound.push(medianOf(state.players.map((p) => meepleCount(p.meeples))));
     m.barnByRound.push(medianOf(state.players.map((p) => p.barn.length)));
     const leader = this.soleLeader(state);
     if (leader !== null && this.leader !== null && leader !== this.leader) m.leadChanges += 1;
@@ -1215,15 +1251,7 @@ export class Fold {
     return Math.floor(this.turnsEnded / this.m.seats) + 1;
   }
 
-  /** `why` strings that name a card: the bare id, and the `rider:` form. */
-  private cardTag(why: string): CardId | null {
-    if (this.m.cards.has(why)) return why;
-    const rider = RIDER.exec(why);
-    if (rider && rider[1] && this.m.cards.has(rider[1])) return rider[1];
-    return null;
-  }
-
-  /** Close the fold: final scores, VP attribution, and any worker still on its track. */
+  /** Close the fold: final scores, VP attribution, and the meeples nobody spent. */
   finish(
     state: GameState,
     outcome: Outcome,
@@ -1264,9 +1292,21 @@ export class Fold {
         const endgame = handlerFor(b.card)?.gameEnd?.(this.data, state, seat) ?? 0;
         f.vp[seat] = (f.vp[seat] ?? 0) + faceOf(this.data, b).printedVp + endgame;
       }
+      // ⭐ THE DEAD COMPONENT, read off the final state rather than derived as
+      // gained minus spent. The two agree by construction (a spent meeple
+      // returns to no pool), and the report prints both so that a disagreement
+      // between them is an engine bug nobody has to go looking for.
+      m.meeplesUnspentBySeat[seat] = meepleCount(p.meeples);
     });
     return m;
   }
+}
+
+/** Every meeple a supply holds, all colours. */
+function meepleCount(meeples: Readonly<Record<string, number>>): number {
+  let n = 0;
+  for (const held of Object.values(meeples)) n += held;
+  return n;
 }
 
 function medianOf(xs: number[]): number {

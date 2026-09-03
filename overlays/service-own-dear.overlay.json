@@ -1,6 +1,0 @@
-{
-  "name": "service-own-dear",
-  "schemaVersion": 1,
-  "note": "The owner's own Service costs GBP 3 instead of GBP 1. The arm for the Orchard blow-up: under the Hiring Fair the Draw engine was rationed three ways (a GBP 3 fee, one Worker per player, and the Working Week burning it off) and the Services removed all three, leaving the owner's self-use with no brake at all. This asks whether PRICE alone is enough of a brake, or whether the owner's activation has to cost a card and clog the Service like everyone else's.",
-  "set": { "workers.ownerActivationCost": 3 }
-}

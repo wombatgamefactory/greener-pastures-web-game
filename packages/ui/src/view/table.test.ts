@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { BASE_GAME_DATA as data } from '@gp/data';
+import type { Suit } from '@gp/data';
 import type { PlayerView } from '@gp/engine';
 
 import { thresholdOf } from '@gp/engine';
@@ -13,14 +14,17 @@ import { thresholdOf } from '@gp/engine';
 import { dealTable } from '../session/table';
 import { printedFace } from './printed';
 import {
+  allDoors,
   displayOrder,
+  doorOf,
+  doorOwner,
   farmOf,
   liveThreshold,
+  meepleCount,
+  meepleTally,
   noticeBoardOf,
   receiptTotal,
   seatSuits,
-  workerTrack,
-  workersOwnedBy,
 } from './table';
 
 function table(): PlayerView {
@@ -48,47 +52,80 @@ describe('farmOf', () => {
     expect(farmOf(view, view.seat).barnCount).toBe(expected);
   });
 
+  /**
+   * ⭐ MEEPLES REPLACED COINS ON THIS SHAPE (v31), and the two are not
+   * interchangeable: a coin was one fungible number, a supply is five discrete
+   * colours each worth one specific action. Every colour is a key, including the
+   * ones a seat holds none of and the ones nobody at the table farms - a meeple
+   * of a suit that is not in play still works.
+   */
+  it('carries a meeple count for all five colours, on every seat', () => {
+    const view = table();
+    for (const seat of [view.seat, ...view.rivals.map((r) => r.seat)]) {
+      const farm = farmOf(view, seat);
+      expect(Object.keys(farm.meeples).sort()).toEqual([...data.cards.suits].sort() as string[]);
+      for (const n of Object.values(farm.meeples)) expect(n).toBeGreaterThanOrEqual(0);
+    }
+  });
+
   it('refuses a seat that is not at the table', () => {
     expect(() => farmOf(table(), 9)).toThrow(/not at this table/);
   });
 });
 
-describe('noticeBoardOf', () => {
-  it('reads the fill, the threshold and the payout off the printed face', () => {
-    const view = table();
-    const board = noticeBoardOf(data, farmOf(view, view.rivals[0]!.seat));
-    expect(board).not.toBeNull();
-    expect(board!.threshold).toBeGreaterThan(0);
-    expect(board!.filled).toBe(board!.building.stack.length);
-    expect(board!.payout).toBe(
-      board!.building.upgraded
-        ? data.rules.economy.visitPayout.upgraded
-        : data.rules.economy.visitPayout.base,
-    );
+describe('meepleTally', () => {
+  it('drops the empty colours and sums to the count', () => {
+    const held: Record<Suit, number> = {
+      wheat: 2,
+      vegetable: 0,
+      orchard: 1,
+      apiary: 0,
+      dairy: 0,
+    };
+    expect(meepleTally(held)).toEqual([
+      ['wheat', 2],
+      ['orchard', 1],
+    ]);
+    expect(meepleCount(held)).toBe(3);
   });
 
-  it("offers Special Orders' two-card line only on the upgraded face", () => {
+  it('is empty rather than five zeroes for a seat holding none', () => {
+    const none: Record<Suit, number> = {
+      wheat: 0,
+      vegetable: 0,
+      orchard: 0,
+      apiary: 0,
+      dairy: 0,
+    };
+    expect(meepleTally(none)).toEqual([]);
+    expect(meepleCount(none)).toBe(0);
+  });
+});
+
+describe('noticeBoardOf', () => {
+  /**
+   * ⭐ WHAT A VISIT BUYS CHANGED, SO WHAT THIS SHAPE CARRIES CHANGED. There is no
+   * payout and no two-card line: a card on a board buys that farm's suit action
+   * and nothing else, so the board's only payoff field is the door.
+   */
+  it('reads the fill, the threshold and the DOOR the board grants', () => {
     const view = table();
-    const printed = data.rules.economy.visitPayout.twoCard;
     for (const rival of view.rivals) {
-      const board = noticeBoardOf(data, farmOf(view, rival.seat));
-      if (!board) continue;
-      if (!board.building.upgraded) {
-        // A base face never carries the line, whatever the rules say.
-        expect(board.twoCard).toBeNull();
-      } else {
-        // An upgraded face carries exactly what the rules print, which since
-        // 2026-08-13 is nothing: the new upgraded face replaced Special Orders,
-        // so `twoCard` is null and the line is off everywhere.
-        expect(board.twoCard).toBe(printed);
-      }
+      const farm = farmOf(view, rival.seat);
+      const board = noticeBoardOf(data, farm);
+      expect(board).not.toBeNull();
+      expect(board!.threshold).toBeGreaterThan(0);
+      expect(board!.filled).toBe(board!.building.stack.length);
+      // The door is the HOST's suit's, never the visitor's.
+      expect(board!.action).toBe(doorOf(data, farm.suit).action);
+      expect(board!.actionText).toBe(doorOf(data, farm.suit).actionText);
     }
   });
 
   it('returns null, not a throw, for a seat whose board was demolished', () => {
-    // Reachable today: D11 covers and D14 demolishes an empty building, and no
-    // rule stops either targeting a starter. Ticket 30 is the ruling; this is
-    // the interface refusing to be the thing that breaks meanwhile.
+    // Reachable today: D14 demolishes an empty building, and no rule stops it
+    // targeting a starter. Ticket 30 is the ruling; this is the interface
+    // refusing to be the thing that breaks meanwhile.
     const view = table();
     const farm = farmOf(view, view.rivals[0]!.seat);
     const without = {
@@ -101,29 +138,35 @@ describe('noticeBoardOf', () => {
   });
 });
 
-describe('workerTrack', () => {
-  it('carries the printed action, the wage and the owner cost', () => {
-    const view = table();
-    for (const worker of view.fair) {
-      const spec = data.workers.roster.find((w) => w.id === worker.id)!;
-      const track = workerTrack(data, worker);
-      expect(track.actionText).toBe(spec.actionText);
-      expect(track.linkedSuit).toBe(spec.linkedSuit);
-      expect(track.wage).toBe(data.workers.visitWage);
-      expect(track.ownCost).toBe(data.workers.ownerActivationCost);
+describe('the five doors', () => {
+  it('names one door per colour, with the roster action and text', () => {
+    const doors = allDoors(data);
+    expect(doors).toHaveLength(5);
+    for (const door of doors) {
+      const spec = data.workers.roster.find((w) => w.linkedSuit === door.colour)!;
+      expect(door.action).toBe(spec.action);
+      expect(door.actionText).toBe(spec.actionText);
+      expect(door.actionLabel.length).toBeGreaterThan(0);
     }
+    // Every colour, exactly once - which is what makes the legend a meeple key.
+    expect(doors.map((d) => d.colour).sort()).toEqual([...data.cards.suits].sort());
   });
 
-  it('gives every seat exactly one Service, and leaves the absent suits unowned', () => {
+  /**
+   * ⚠️ A COLOUR NOBODY FARMS STILL HAS A DOOR, and the legend must show it. At 2
+   * and 3 seats several suits are off the table, but a MEEPLE of those colours
+   * is dealt from the same 25-strong bag and works exactly the same - so
+   * `doorOwner` returning null is a real answer the legend renders, not an error.
+   */
+  it('owns a door per seat, and leaves the absent colours unowned', () => {
     const view = table();
-    const owned = view.rivals.flatMap((r) => workersOwnedBy(view, r.seat));
-    const mine = workersOwnedBy(view, view.seat);
-    expect(mine).toHaveLength(1);
-    // Four seats, five Services: the suit nobody chose has no Service on the
-    // table at all, which is the rule that makes the menu of buyable actions
-    // depend on which suits were picked.
-    expect(owned.length + mine.length).toBe(4);
-    expect(view.fair.filter((w) => w.owner === null)).toHaveLength(1);
+    const owners = allDoors(data).map((d) => doorOwner(view, d.colour));
+    expect(owners.filter((o) => o !== null)).toHaveLength(view.seats);
+    expect(owners.filter((o) => o === null)).toHaveLength(5 - view.seats);
+    for (const rival of view.rivals) {
+      expect(doorOwner(view, rival.suit)).toBe(rival.seat);
+    }
+    expect(doorOwner(view, view.you.suit)).toBe(view.seat);
   });
 });
 
@@ -149,7 +192,7 @@ describe('seatSuits and receiptTotal', () => {
   });
 
   it('sums receipts', () => {
-    expect(receiptTotal([4, 8, 16])).toBe(28);
+    expect(receiptTotal([6, 3, 6])).toBe(15);
     expect(receiptTotal([])).toBe(0);
   });
 });
@@ -160,18 +203,19 @@ describe('seatSuits and receiptTotal', () => {
  * whether a move is legal.
  *
  * Deliberately asserted against the engine's own `thresholdOf` rather than
- * against the literal 2. The knob goes back to null when the sheet catches up,
- * and a test hard-coding 2 would then fail for the wrong reason - or worse,
- * pass while the two seams had drifted apart.
+ * against a literal. The v31 sheet prints 2 and the knob is 2, so the two agree
+ * today and the seam is currently the identity - but the knob is a named sweep
+ * arm (threshold 2 versus 3), and a test hard-coding either number would fail
+ * for the wrong reason the moment an overlay moved it.
  */
 describe('liveThreshold', () => {
   it('agrees with the engine on every building on the table', () => {
     const view = table();
     for (const seat of [view.seat, ...view.rivals.map((r) => r.seat)]) {
       for (const b of farmOf(view, seat).tableau) {
-        const printed = printedFace(data, b.card, b.upgraded).threshold;
+        const printed = printedFace(data, b.card).threshold;
         expect(liveThreshold(data, b.card, printed)).toBe(
-          thresholdOf(data, { card: b.card, stack: b.stack, upgraded: b.upgraded }),
+          thresholdOf(data, { card: b.card, stack: b.stack }),
         );
       }
     }
@@ -199,11 +243,7 @@ describe('liveThreshold', () => {
       const board = noticeBoardOf(data, farmOf(view, rival.seat));
       if (board === null) continue;
       expect(board.threshold).toBe(
-        thresholdOf(data, {
-          card: board.building.card,
-          stack: board.building.stack,
-          upgraded: board.building.upgraded,
-        }),
+        thresholdOf(data, { card: board.building.card, stack: board.building.stack }),
       );
       expect(board.full).toBe(board.filled >= board.threshold);
     }

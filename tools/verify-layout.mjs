@@ -40,7 +40,7 @@ const VIEWPORTS = [
 const TABLE_LANDMARKS = [
   { name: 'commons', selector: '.commons' },
   { name: 'island', selector: '.island' },
-  { name: 'hiring fair', selector: '.panel-fair' },
+  { name: 'the doors legend', selector: '.panel-doors' },
   { name: 'your farm', selector: '.farm' },
   { name: 'your tableau', selector: '.tableau' },
   { name: 'your hand', selector: '.hand' },
@@ -128,13 +128,26 @@ function urlFor(server) {
 
 async function measure(page, url, viewport) {
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
-  await page.goto(url, { waitUntil: 'load' });
+  /*
+   * ⚠️ THE NAVIGATION ITSELF NEEDS THE LONGER BUDGET IN `--result` MODE, not
+   * just the wait after it.
+   *
+   * `?finish=1` walks a WHOLE GAME synchronously before the first paint, so the
+   * `load` event is what is slow - and Playwright's default `goto` timeout is
+   * 30s, which the walk now exceeds. It is over the line because of v31 rather
+   * than because of anything here: a scored bot move costs ~36ms and there is no
+   * hand limit any more, so mid-game move lists run to the thousands and a
+   * four-seat game is several hundred decisions.
+   *
+   * The `waitForSelector` below already had 60s for exactly this reason; it was
+   * simply guarding the wrong half, because the page never got as far as firing
+   * `load`.
+   */
+  await page.goto(url, { waitUntil: 'load', ...(resultMode ? { timeout: 180_000 } : {}) });
   // `attached`, not `visible`: a region squeezed to zero height IS the failure
   // this check exists to catch, so it has to be measured, not waited on.
   if (resultMode) {
-    // A whole game is walked in the browser before the first paint, so this is
-    // slower than a warmed table and has to be waited for explicitly.
-    await page.waitForSelector('.result', { state: 'attached', timeout: 60_000 });
+    await page.waitForSelector('.result', { state: 'attached', timeout: 180_000 });
   } else {
     await page.waitForSelector('.farm', { state: 'attached' });
     await page.waitForFunction(() => document.querySelectorAll('.rival').length > 0);

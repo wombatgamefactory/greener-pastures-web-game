@@ -15,7 +15,7 @@
  *
  * Query parameters:
  *   ?suit=wheat            one sheet, 7 x 4 cards, 7277 x 3001 (the TTS size)
- *   ?card=W1&upgraded=1    one card at exactly 1039 x 750, for a fidelity diff
+ *   ?card=W1               one card at exactly 1039 x 750, for a fidelity diff
  *   ?scale=0.25            render smaller; the screenshot tool scales back up
  *
  * NOT a print master. The printed cards are set in Berlin Sans FB and this
@@ -73,14 +73,15 @@ async function loadData(): Promise<GameData> {
   }
 }
 
+/**
+ * One suit's faces, which since v31 is exactly one per card: starters print a
+ * single printed face for the whole game, so the second `u` row every starter
+ * used to contribute is gone and every sheet is 21 cards rather than 24.
+ */
 function faces(data: GameData, suit: Suit): PrintedFace[] {
-  const out: PrintedFace[] = [];
-  for (const card of data.cards.catalogue) {
-    if (card.suit !== suit) continue;
-    out.push(printedFace(data, card.id, false));
-    if (card.faces) out.push(printedFace(data, card.id, true));
-  }
-  return out;
+  return data.cards.catalogue
+    .filter((card) => card.suit === suit)
+    .map((card) => printedFace(data, card.id));
 }
 
 function Sheet({ data, suit }: { data: GameData; suit: Suit }) {
@@ -100,7 +101,7 @@ function Sheet({ data, suit }: { data: GameData; suit: Suit }) {
       }}
     >
       {cards.map((face) => (
-        <div className="sheet-cell" key={`${face.id}${face.upgraded ? 'u' : ''}`}>
+        <div className="sheet-cell" key={face.id}>
           <Card face={face} width={CELL_W} zoomTier />
         </div>
       ))}
@@ -108,8 +109,8 @@ function Sheet({ data, suit }: { data: GameData; suit: Suit }) {
   );
 }
 
-function Single({ data, id, upgraded }: { data: GameData; id: string; upgraded: boolean }) {
-  const face = printedFace(data, id, upgraded);
+function Single({ data, id }: { data: GameData; id: string }) {
+  const face = printedFace(data, id);
   return (
     <div className="sheet sheet-single" style={{ width: '1039px', height: '750px' }}>
       <div className="sheet-cell">
@@ -133,10 +134,6 @@ const data = await loadData();
 
 createRoot(container).render(
   <StrictMode>
-    {cardId ? (
-      <Single data={data} id={cardId.toUpperCase()} upgraded={params.get('upgraded') === '1'} />
-    ) : (
-      <Sheet data={data} suit={suit} />
-    )}
+    {cardId ? <Single data={data} id={cardId.toUpperCase()} /> : <Sheet data={data} suit={suit} />}
   </StrictMode>,
 );

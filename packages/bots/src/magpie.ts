@@ -1,38 +1,41 @@
 /**
  * The magpie's target suit: the strongest crop at this table that is not its own.
  *
- * **Why this bot exists.** Until 2026-08-12 the Farmstead flipped free at three
- * own-crop buildings, and the bot's `buildOwnCrop` term carried the comment
- * "the Farmstead free-flip is the whole own-suit incentive". Change 14 retired
- * that flip and priced the Farmstead at £2 like its siblings, which deleted the
- * only rule tying a seat to the colour it was dealt. What survives rewards
- * CONCENTRATION in whatever crop you commit to, not loyalty:
+ * **Why this bot existed.** Between 2026-08-12 and v31 there was NO rule tying a
+ * seat to the colour it was dealt. The Farmstead's free flip at three own-crop
+ * buildings had been retired, and everything left rewarded CONCENTRATION in
+ * whatever crop you commit to rather than loyalty to the dealt one: a build's
+ * suited half matches the BUILT CARD's crop and never the builder's, a GROW
+ * payment matches the BUILDING's crop likewise, and the type scalers ("for each
+ * HIVE / DEPOT / ORCHARD / FIELD") count the card type, so they pay whoever
+ * built them. Meanwhile the reference table could not even ask the question,
+ * because every profile inherited `buildOwnCrop: 2` and the only override RAISED
+ * it. The 82.8% own-crop build rate on reference-v9 was measured by bots told to
+ * prefer their own crop under rules that no longer paid them to - ticket 40's
+ * shape exactly, a weight we chose manufacturing the number an assertion
+ * reports.
  *
- *   - a build's suited half matches the BUILT CARD's crop (`ownSuitMin` against
- *     `c.suit`), never the builder's;
- *   - a GROW payment matches the BUILDING's crop, likewise;
- *   - the type scalers ("for each HIVE / DEPOT / ORCHARD / FIELD") count the
- *     card type, so they pay whoever built them;
- *   - a Farmstead's suit power modifies its owner's ACTIONS, not their cards,
- *     so it is worth the same whatever crop the tableau is made of.
+ * ⭐ **v31 ANSWERS THE QUESTION IN THE RULES, WHICH MAKES THIS BOT MORE USEFUL,
+ * NOT LESS.** The Farmstead is now an end-game scorer - 1 VP for each own-crop
+ * card built - and the 30 Power and Endgame cards cost 2 cards of the CARD's own
+ * suit. Both point at monoculture, which is risk 3 of the whole pass and the one
+ * thing the Innovation lens says the metric axis must not do. So the reference
+ * bot drops its taste to 0 and prices only the rule (`farmsteadVp`), `loyalist`
+ * leans past the rule, and this bot refuses the rule outright. Three seats, one
+ * axis, and the spread between them is the measurement.
  *
- * And two rules push the other way outright: the market may not buy your own
- * suit (Dean, 2026-08-03), and two cards score for non-Dairy / non-Apiary
- * buildings.
+ * ⚠️ **v31 ALSO MADE THE STRATEGY DEARER.** A magpie forfeits the Farmstead's
+ * VP entirely and has to find own-suit pairs in a deck it does not farm to
+ * afford any Power card. Against that it lost its single best lane - the GBP 1
+ * card buy, the one acquisition in the game that was foreign BY RULE - with
+ * nothing replacing it. Expect a weaker magpie than reference-v9's, and do not
+ * read that weakness as a finding about the suit.
  *
- * So the question is whether the suit is load-bearing at all - and the reference
- * table could not ask it, because every profile inherits `buildOwnCrop: 2` and
- * the only override RAISES it (`loyalist` at 6). The 82.8% own-crop build rate
- * on reference-v9 was measured by bots told to prefer their own crop, under
- * rules that no longer pay them to. That is ticket 40's shape exactly: a weight
- * we chose manufacturing the number an assertion reports.
- *
- * ⚠️ **THE TARGET MUST BE A SEATED SUIT.** Both acquisition lanes filter to
- * `state.suitsInPlay` - the Draw at `actions.ts:1803` and the buy at `:635` - so
- * a neutral deck is unreachable even though it sits on the table with all 18 of
- * its cards. A magpie aimed at an unseated crop would have no supply at all and
- * would stall rather than play the strategy, which is why the ranking is
- * filtered by what is actually at the table instead of being a constant.
+ * ⚠️ **THE TARGET MUST BE A SEATED SUIT.** The Draw filters to
+ * `state.suitsInPlay`, so a neutral deck is unreachable even though it sits on
+ * the table with all 18 of its cards. A magpie aimed at an unseated crop would
+ * have no supply at all and would stall rather than play the strategy, which is
+ * why the ranking is filtered by what is actually at the table.
  */
 
 import type { Suit } from '@gp/data';
@@ -53,6 +56,15 @@ import type { Suit } from '@gp/data';
  * table, or the magpie is chasing last month's leader. It is deliberately a
  * hand-maintained constant rather than something read from a report: a bot that
  * read its own scoreboard would make every run depend on the previous one.
+ *
+ * ⚠️ **IT IS ALREADY STALE FOR v31 AND CANNOT BE FIXED YET.** Every number above
+ * was measured under coins, upgraded starters, five different Farmstead suit
+ * powers and per-suit Services - none of which exist - and the five suits are
+ * now differentiated almost entirely by their 18 deck cards and their door. The
+ * first reference-v10 run is the earliest anything can be said, and until then
+ * the magpie is aiming at a ranking from a different game. That is a known
+ * defect in the control, not in the target: the bot still refuses its own crop,
+ * which is the half the risk-3 reading depends on.
  */
 export const SUIT_STRENGTH: readonly Suit[] = ['wheat', 'dairy', 'orchard', 'apiary', 'vegetable'];
 

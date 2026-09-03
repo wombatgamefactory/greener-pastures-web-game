@@ -13,44 +13,33 @@
  * family so its targets light up.
  *
  * ---------------------------------------------------------------------------
- * PHASE 3 (26/08/2026): THREE ZONES, NOT ONE ROW.
+ * PHASE 3 (26/08/2026): THREE ZONES, NOT ONE ROW. v31: FOUR.
  *
- * Measured at fourteen buttons in one flat row, all the same size, half of them
- * greyed. The published digital-board-game UI guidance puts the ceiling at four
- * plus context, but the stronger objection is that fourteen is a LIE ABOUT THE
- * RULES: it says the game has fourteen verbs when the turn is one action plus
- * one bonus slot. The turn's own structure is therefore the layout, and the
- * grouping data already existed - `FAMILIES` in moveText.ts now carries a zone.
+ * The zones ARE the turn, in order, so the shape of a turn is legible off the
+ * interface without being taught:
  *
- * Four cuts got it from fourteen down, and every one is a rule about WHY a
- * button is dead rather than a taste about how many is too many:
+ *   meeples  spend any number, one at a time, at the very START of your turn.
+ *            Each performs its colour's action free and then leaves the game.
+ *   bonus    one option: Draw 1, or a card on a Notice Board.
+ *   action   one of Draw / Build / Grow / Harvest / Deliver.
+ *   then     the exits, which spend none of the three.
  *
- *   the rule is off       `inPlay`. The £1 buy and the £3 market were deleted
- *                         on 19/08 and both knobs are null, so those two
- *                         buttons could never light up. They are still in the
- *                         table and come straight back when an overlay flips
- *                         the knob - which is the only reason it is safe to
- *                         stop drawing them.
- *   nothing else is legal `pass` prints only when it is the only legal move,
- *                         which is exactly when the engine emits it at all
- *                         (game.ts: `if (moves.length === 0)`), so its own
- *                         hint - "Nothing else is legal" - is now always true.
- *   it lives on the board `onBoard`. A standing move a built card offers is
- *                         made ON the card, through a badge in the tableau; and
- *                         Freight is made on the balloon, in the Aerodrome,
- *                         because it is the Deliver action's freight branch
- *                         rather than a sixth verb.
- *   it is not an action   End turn, Pass and undo LEAVE the turn rather than
- *                         spending it, so they sit in their own zone at the
- *                         right instead of at the end of the action row.
+ * ⚠️ THE MEEPLE ZONE DRAWS NO BUTTONS AND IS NOT DECORATION. Spending a meeple
+ * is done on the meeple, in your own supply, because it is a wooden piece
+ * sitting in front of you - the same rule that put Freight on the balloon and
+ * the card power on the card. What the zone contributes is the WINDOW: a meeple
+ * may only be spent before the bonus and before the action, and once that window
+ * shuts the pawns stop being clickable with nothing on screen to say why. The
+ * zone head is that "why", struck through the moment the window closes, in
+ * exactly the way the action and bonus heads already were.
  *
- * And one about the bonus zone, which is the only judgement call in the set. In
- * the BONUS PHASE every bonus family prints, greyed where it is not legal,
- * exactly as before - that phase is where the slot is taught, and "what can I
- * not do" is half of the teaching. In the MAIN phase it prints only what is
- * still live, because the whole set was on screen one click earlier and the
- * zone's job there is not to teach the slot but to say the slot is still open
- * and here is what is left in it.
+ * ⭐ THE BONUS ZONE HAS TWO VISIT BUTTONS AND THAT IS THE POINT OF THE PASS.
+ * `visit` and `visit-self` are one move type with a different host, and they are
+ * opposite acts - a card on a neighbour's board is the hook, a card on your own
+ * is solitaire that also clogs your own door. The v31 plan's risk 2 is precisely
+ * that the second quietly wins, and a single "Visit" button, however carefully
+ * worded, would let a player take one thinking it was the other. Two buttons,
+ * two labels, two glows, two panels, two feed lines.
  */
 
 import type { GameData } from '@gp/data';
@@ -61,16 +50,25 @@ import type { Play } from '../session/play';
 import { actionIcon } from '../view/art';
 import { actionGroups, describeMove } from '../view/moveText';
 import type { ActionGroup, TurnZone } from '../view/moveText';
+import { visitHosts } from '../view/intent';
+import { meepleWindowOpen } from './Supply';
 
 /**
- * THE BONUS WINDOW, read off the view rather than imported from the engine: the
- * slot is unspent AND the main action has not been taken (Dean, 19/08/2026).
+ * THE BONUS WINDOW, read off the view rather than imported from the engine.
+ *
+ * ⭐ `bonusUsed` IS A LIST SINCE v31, not a boolean, and this is where the
+ * difference shows. The printed rule is one option a turn, which a boolean said
+ * perfectly well; A Helping Hand grants BOTH options, so "has the slot gone" and
+ * "how many are left" are two different questions. The interface cannot compute
+ * the second - `bonusSlotsFor` reads a built card against the true state - so it
+ * asks the move list instead, which is the same answer arrived at from the side
+ * the interface is allowed to see.
+ *
  * `rules.turn.bonusAtStartOnly` is the paired control, so the interface honours
- * the knob rather than the rule - an arm that switches the rule back must switch
+ * the knob rather than the rule: an arm that switches the rule back must switch
  * the interface back with it or it is measuring two different games.
  */
 function bonusWindowOpen(data: GameData, view: PlayerView): boolean {
-  if (view.turn.bonusSpent) return false;
   if (!data.rules.turn.bonusAtStartOnly) return true;
   return !view.turn.actionSpent;
 }
@@ -94,7 +92,7 @@ export type BarPhase = 'bonus' | 'main';
  * there, so nothing in this function can make a move unclickable. The bonus
  * phase is the one place a legal family is deliberately held back, and it is
  * not a hole - it is shape (c), it predates this phase, and the skip beside it
- * is the door. The test asserts the two halves separately for that reason.
+ * is the door.
  */
 export function barFamilies(groups: readonly ActionGroup[], phase: BarPhase): ActionGroup[] {
   return groups.filter((group) => {
@@ -104,7 +102,7 @@ export function barFamilies(groups: readonly ActionGroup[], phase: BarPhase): Ac
     if (phase === 'bonus') {
       return group.zone === 'bonus' && (group.inPlay || group.moves.length > 0);
     }
-    // The main phase teaches the ACTION - the same six verbs every turn, greyed
+    // The main phase teaches the ACTION - the same five verbs every turn, greyed
     // where they are shut, so the row never changes shape under a learner.
     if (group.zone === 'action') return group.inPlay || group.moves.length > 0;
     // The bonus zone here is a reminder rather than a lesson: the whole set was
@@ -129,12 +127,10 @@ function exitFamilies(groups: readonly ActionGroup[]): ActionGroup[] {
  * A zone's caption, which is also the turn state that used to need a strip of
  * its own.
  *
- * Folding the two together is the tidiest thing this phase does. The bar used to
- * print "ACTION  BONUS SLOT" as a chip list on the left and label the buttons
- * with nothing, so the moment the zones were labelled the same two words were on
- * screen twice. Now the label IS the state - struck through once it is spent, in
- * the seat's own green while it is still yours to spend - and the row it used to
- * cost is a row the 40px hit targets could have instead.
+ * Folding the two together is the tidiest thing this phase does. The label IS
+ * the state - struck through once it is spent, in the seat's own green while it
+ * is still yours to spend - and the row it used to cost is a row the 40px hit
+ * targets could have instead.
  */
 function ZoneHead({ label, state }: { label: string; state: 'go' | 'spent' | 'idle' }) {
   return <h4 className={`zone-head zone-${state}`}>{label}</h4>;
@@ -154,8 +150,8 @@ export function ActionBar({
   /** Text for whoever the table is waiting on, when it is not you. */
   waitingOn: string | null;
 }) {
-  const groups = actionGroups(data, play.moves);
-  const armedType = play.intent.k === 'arm' ? play.intent.type : null;
+  const groups = actionGroups(data, play.view, play.moves);
+  const armed = play.intent.k === 'arm' ? play.intent : null;
 
   /**
    * THE BONUS PHASE (plan section 5.2, shape (c): modal, auto-skipped when there
@@ -168,23 +164,11 @@ export function ActionBar({
    * Build, and players forfeit it by accident, repeatedly. A forfeited visit is
    * the hook not happening, and that is worth a click.
    *
-   * It is shape (c) and not (b) because (b) charges every player one extra click
-   * on every one of a 60-80 turn game: the phase appears only when the seat
-   * actually HAS a legal bonus option, and otherwise the turn opens straight
-   * into the main phase.
-   *
-   * ⚠️ THE SKIP IS LOCAL STATE AND NOT AN ENGINE MOVE, which is a deliberate
-   * departure from the plan's section 5.3. A `skipBonus` move would be a strict
-   * no-op - a seat that skips reaches the identical state it reaches by taking
-   * its action - and adding it would put a dead move type into `MOVE_TYPES`, the
-   * bots' claims-union assertion, three separate UI priority lists and the sim's
-   * per-decision enumeration, all to record a button press that changes nothing.
-   * The cost is that a human's explicit decline is not distinguishable from a
-   * forfeit in the event stream; nothing reads that distinction, because the
-   * bots never skip, so the sim could not have measured it either way.
-   *
-   * ⚠️ PHASE 3 CHANGED ITS RENDERING AND NOTHING ELSE. When the window opens,
-   * how it is skipped and what it holds back are all exactly as they were.
+   * ⚠️ THE SKIP IS LOCAL STATE AND NOT AN ENGINE MOVE. A `skipBonus` move would
+   * be a strict no-op - a seat that skips reaches the identical state it reaches
+   * by taking its action - and adding it would put a dead move type into
+   * `MOVE_TYPES`, the bots' claims-union assertion and the sim's per-decision
+   * enumeration, all to record a button press that changes nothing.
    */
   const bonusOpen = bonusWindowOpen(data, play.view);
   const bonusGroups = groups.filter((g) => g.zone === 'bonus');
@@ -203,15 +187,44 @@ export function ActionBar({
   const action = zoned('action');
   const bonus = zoned('bonus');
 
-  const onGroup = (type: Move['type'], moves: Move[], needsTarget: boolean) => {
+  /**
+   * THE MEEPLE WINDOW, read the same way the bonus window is: off the move list
+   * rather than off a rule this file re-implements. A `spendMeeple` in the list
+   * IS the window being open for this seat - the engine gates it on
+   * `!actionSpent && bonusUsed.length === 0` and additionally refuses a meeple
+   * whose action could do nothing, and neither of those is a thing the interface
+   * should be re-deriving.
+   */
+  const meepleGroup = groups.find((g) => g.zone === 'meeple');
+  const meepleLive = play.active && (meepleGroup?.moves.length ?? 0) > 0;
+  const meeplesHeld = Object.values(play.view.you.meeples).reduce((a, b) => a + b, 0);
+
+  const onGroup = (group: ActionGroup) => {
+    const { moves, needsTarget, type, key } = group;
     if (moves.length === 0) return;
     if (!needsTarget) {
       play.choose(moves, 'Which one?');
       return;
     }
+    /*
+     * A VISIT NARROWS ON ITS HOST, NOT ON ITS MOVE COUNT. There is one move per
+     * (host, hand card) pair, so a family with five moves may still have exactly
+     * one place to go - and making somebody arm a family and then click the only
+     * neighbour in it is a click spent on nothing. The self-visit always takes
+     * this branch, which is what makes "your own door" a single click.
+     */
+    if (type === 'visit') {
+      const hosts = visitHosts(moves);
+      if (hosts.length === 1) {
+        play.setVisitFee(hosts[0] as number, null);
+        return;
+      }
+      play.arm('visit', key === 'visit-self');
+      return;
+    }
     // One legal target: skip the arming step rather than making someone click a
     // family and then the only thing in it.
-    if (moves.length === 1 && type !== 'build' && type !== 'visit') {
+    if (moves.length === 1 && type !== 'build') {
       play.send(moves[0] as Move);
       return;
     }
@@ -233,31 +246,36 @@ export function ActionBar({
     /*
      * THE ICON, AND WHY ONLY SOME BUTTONS GET ONE (27/08/2026, Dean).
      *
-     * `actionIcon` returns null for a family with no painting, which today is
-     * exactly the exits - End turn and Pass - and that is a rule rather than an
-     * omission. Phase 3 separated the exits from the actions BECAUSE they are a
-     * different kind of thing: they leave the turn instead of spending it. Give
-     * them a glyph and they are back in the same visual class as Build, which
-     * is the confusion the zones were built to remove. undo and cancel are
-     * written by hand further down and get none for the same reason.
+     * `actionIcon` returns null for a family with no painting. The six
+     * paintings are cut out of the printed player aid, so a family gets one
+     * exactly when the aid has a vignette for it - inventing a seventh would put
+     * a drawing on the table that is not in the box. That leaves the exits, the
+     * bonus Draw 1 and, usefully, THE SELF-VISIT without one: the aid's `visit`
+     * vignette is a farmer walking to a neighbour's farm, which is a picture of
+     * the hook and not a picture of feeding your own board. So the two visit
+     * buttons differ in weight as well as in words, and the illustrated one is
+     * the one that puts you on somebody else's farm.
      *
      * ⚠️ `alt=""` PLUS `aria-hidden` IS DELIBERATE AND IS NOT BELT-AND-BRACES.
      * The picture is decorative here: the action's NAME is right beside it in
      * the same button, so any alt text at all makes a screen reader say "Build,
-     * Build". An empty alt is what an image with nothing of its own to add is
-     * supposed to carry, and the hidden flag is what keeps it out of the
-     * button's accessible name in the browsers that compose one from content
-     * rather than from alt alone.
+     * Build".
      */
-    const icon = actionIcon(group.type);
+    const icon = actionIcon(group.key);
+    const isArmed =
+      armed !== null &&
+      armed.type === group.type &&
+      (group.type !== 'visit' || armed.self === (group.key === 'visit-self'));
     return (
       <button
-        key={group.type}
+        key={group.key}
         type="button"
-        className={`${kind}${armedType === group.type ? ' action-armed' : ''}`}
+        className={`${kind}${isArmed ? ' action-armed' : ''}${
+          group.key === 'visit' ? ' action-hook' : ''
+        }${group.key === 'visit-self' ? ' action-solo' : ''}`}
         disabled={!enabled}
         title={title}
-        onClick={() => onGroup(group.type, group.moves, group.needsTarget)}
+        onClick={() => onGroup(group)}
       >
         {icon !== null && <img className="action-icon" src={icon} alt="" aria-hidden="true" />}
         <span className="action-name">{group.label}</span>
@@ -270,25 +288,95 @@ export function ActionBar({
    * THE TRAFFIC LIGHT, and the palette constraint that shapes it. Green is
    * `--seat-pip` - the seat's own colour, already carried by the farm's top
    * edge, the receipts and the pips - and red is the `#a2493a` the clog flag and
-   * the over-limit hand already wear. There is no blue and there is not going to
+   * the over-full stack already wear. There is no blue and there is not going to
    * be one: this is a printed cream-and-sepia palette and a blue "primary"
    * button is the single fastest way to make it look like a web form.
    */
+  const bonusTaken = turn.bonusUsed.length > 0;
   const actionState = turn.actionSpent ? 'spent' : phase === 'main' && play.active ? 'go' : 'idle';
   const bonusState =
-    turn.bonusSpent || !bonusOpen ? 'spent' : phase === 'bonus' && play.active ? 'go' : 'idle';
-  const bonusLabel = turn.bonusSpent
-    ? 'bonus spent'
-    : bonusOpen
-      ? 'bonus slot'
-      : // A slot that is unspent but no longer reachable is neither "spent" nor
-        // an option, and saying "bonus slot" there would be a lie the rule
-        // cannot back.
-        'bonus missed';
+    !bonusOpen || (bonusTaken && bonus.length === 0)
+      ? 'spent'
+      : phase === 'bonus' && play.active
+        ? 'go'
+        : 'idle';
+  /*
+   * FOUR STATES, AND EACH ONE IS A DIFFERENT FACT ABOUT THE SLOT.
+   *
+   *   bonus slot   open and untouched
+   *   bonus again  open, one option taken, and ANOTHER IS ON OFFER - which is A
+   *                Helping Hand ("you may take BOTH bonus options") and nothing
+   *                else in the sheet. ⚠️ It is gated on `bonus.length > 0`
+   *                rather than on `bonusTaken` alone, because this file cannot
+   *                compute `bonusSlotsFor` - that reads a built card against the
+   *                true state - so the move list is what knows. Without the
+   *                gate, every seat would be told it had a second bonus after
+   *                spending its first, which is a rule only one card has.
+   *   bonus taken  spent, and the window is shut
+   *   bonus missed unspent and no longer reachable, which is neither "spent" nor
+   *                an option: saying "bonus slot" there would be a lie the rule
+   *                cannot back.
+   */
+  const bonusLabel = !bonusOpen
+    ? bonusTaken
+      ? 'bonus taken'
+      : 'bonus missed'
+    : bonusTaken
+      ? bonus.length > 0
+        ? 'bonus again'
+        : 'bonus taken'
+      : 'bonus slot';
+
+  /*
+   * THE MEEPLE HEAD says one of FOUR things and each is a different fact.
+   *
+   * ⚠️ THE TWO "nothing to spend" CASES ARE NOT THE SAME, and the wrong one is
+   * checkable from the screen. The window can be SHUT (you have taken your bonus
+   * or your action) or it can be open with nothing legal to spend into - the
+   * engine refuses a meeple whose colour's action could do nothing, so a seat
+   * holding one Harvest meeple and no full building has an open window and no
+   * options. Saying "not now" in the second case contradicts the bonus slot
+   * sitting live beside it. `meepleWindowOpen` is what separates them, read off
+   * the turn rather than off the move list because that is the only place the
+   * two facts differ.
+   *
+   * The fourth is not padding - "no meeples" is where a player learns that they
+   * come off the island, which is the only source there is.
+   */
+  const meepleWindow = meepleWindowOpen(turn);
+  const meepleState = meepleLive ? 'go' : meeplesHeld > 0 && !meepleWindow ? 'spent' : 'idle';
+  const meepleLabel = meepleLive
+    ? 'meeples first'
+    : meeplesHeld === 0
+      ? 'no meeples'
+      : meepleWindow
+        ? 'meeples: nothing to do'
+        : 'meeples: not now';
 
   return (
     <div className="actionbar" aria-label="your turn">
       <div className="action-buttons">
+        {/*
+         * ⭐ A ZONE WITH NO BUTTONS, AND IT IS STILL A ZONE. The move is made on
+         * the pawn in your supply; what the bar owes the player is the WINDOW -
+         * that meeples come first, and that it has shut. Without this the pawns
+         * simply stop responding and nothing anywhere says why.
+         */}
+        <section className="zone zone-meeple" aria-label="your meeples">
+          <ZoneHead label={meepleLabel} state={meepleState} />
+          <div className="zone-row">
+            <p className="zone-note">
+              {meepleLive
+                ? 'Spend them in your supply, below - any number, before your bonus.'
+                : meeplesHeld === 0
+                  ? 'Every island delivery brings one.'
+                  : meepleWindow
+                    ? 'You hold some, but none of their actions is legal right now.'
+                    : 'The window has passed. They keep for the start of your next turn.'}
+            </p>
+          </div>
+        </section>
+
         {action.length > 0 && (
           <section className="zone zone-action" aria-label="your action">
             <ZoneHead label={turn.actionSpent ? 'action spent' : 'action'} state={actionState} />
@@ -302,18 +390,12 @@ export function ActionBar({
             {bonus.map((group) => button(group))}
             {inBonusPhase && (
               /* The skip sits IN the row with the options rather than under it,
-                 and the height budget is why: the bar is 44px in the main phase
-                 and every pixel it takes comes out of the tableau, which at 1366
-                 has exactly two rows of buildings and no spare. A second 40px row
-                 here cost the laptop step its second row - measured, in
-                 `measure-ui`, which takes its geometry in this phase. It reads
-                 correctly too: declining IS the fourth thing you can do with the
-                 slot, and the ghost weight already says it is not an option like
-                 the others. */
+                 and the height budget is why: every pixel the bar takes comes out
+                 of the tableau, which at 1366 has exactly two rows of buildings
+                 and no spare. It reads correctly too: declining IS one of the
+                 things you can do with the slot, and the ghost weight already
+                 says it is not an option like the others. */
               <span className="bonus-exits">
-                {/* The main families are not hidden from the RULES, only from
-                    this step: taking one is still legal and still forfeits the
-                    slot. The button is the honest door to that, not a gate. */}
                 <button
                   type="button"
                   className="ghost"
@@ -326,14 +408,15 @@ export function ActionBar({
             )}
             {!inBonusPhase && bonus.length === 0 && (
               <p className="zone-note">
-                {turn.bonusSpent ? 'Taken.' : bonusOpen ? 'Nothing to take.' : 'Not any more.'}
+                {bonusTaken ? 'Taken.' : bonusOpen ? 'Nothing to take.' : 'Not any more.'}
               </p>
             )}
           </div>
           {inBonusPhase && (
             <p className="bonus-phase" aria-label="bonus slot, at the start of your turn">
               <strong>Your bonus, first.</strong> One of these, or skip it - the slot shuts the
-              moment you take your action.
+              moment you take your action. A card on a <em>neighbour&rsquo;s</em> board is the one
+              that puts you on somebody else&rsquo;s farm.
             </p>
           )}
         </section>
@@ -360,11 +443,7 @@ export function ActionBar({
         </div>
       </section>
 
-      {/* Two lines that belong to the turn rather than to any one zone. The
-          Helping Hand's used to live here too and does not any more: it is a
-          badge on the Helping Hand itself, which is the card the move is on. */}
       {waitingOn !== null && <p className="waiting-on">{waitingOn}</p>}
-      {turn.again && <p className="turn-note">One more {turn.again}, if you want it.</p>}
     </div>
   );
 }

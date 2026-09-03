@@ -23,8 +23,22 @@ export type { Act } from './acts.js';
 export { actOf, spendSize } from './acts.js';
 export { cardValue, lowestValueCard, totalValue } from './junk.js';
 export { SUIT_STRENGTH, magpieTarget } from './magpie.js';
-export { coinWorth, cropOfView, faceOfView, handSpendCost, makeScratch } from './scratch.js';
+export {
+  MEEPLE_LATENT,
+  cropOfView,
+  handSpendCost,
+  makeScratch,
+  meepleWorth,
+  thresholdOfView,
+} from './scratch.js';
 export { makeOutcomes, meanCardValue } from './outcome.js';
+export {
+  IGNORES_BUILD_PAYMENT,
+  KEEPS_SPENT_CARDS,
+  READS_BUILD_PAYMENT,
+  narrowMoves,
+  setNarrowing,
+} from './narrow.js';
 export type { Outcomes } from './outcome.js';
 export type { Scratch } from './scratch.js';
 export { TERMS, TERM_NAMES } from './terms.js';

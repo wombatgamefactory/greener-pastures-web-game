@@ -24,6 +24,7 @@ import { mark } from '../session/play';
 import type { Play } from '../session/play';
 import { cropIcon, demandTokenLayers, islandTileArt } from '../view/art';
 import { SUIT_META } from '../view/suits';
+import { Meeple } from './Meeple';
 
 export type Level = 1 | 2 | 3;
 
@@ -68,15 +69,15 @@ function DemandToken({
  * of the flat island.
  */
 function IslandLegend({ data }: { data: GameData }) {
-  const { crates, cardsPerCrate, coinsPerDelivery } = data.island.tileRule;
+  const { crates, cardsPerCrate } = data.island.tileRule;
   const schedule = data.island.vpByDeliveryOrder;
   return (
     <p className="island-legend">
-      Every tile: {crates} crates of {cardsPerCrate} &rarr; &pound;{coinsPerDelivery}.{' '}
+      Every tile: {crates} crates of {cardsPerCrate}.{' '}
       {schedule
         .map((vp, i) => `${i === 0 ? '1st' : i === 1 ? '2nd' : `${i + 1}th`} ${vp} VP`)
         .join(', ')}
-      .
+      , and the meeple sitting on that space.
     </p>
   );
 }
@@ -193,21 +194,59 @@ export function IslandPanel({
                         const seat = tile.deliveredBy[i];
                         const suit = seat === undefined ? undefined : suitOf(seat);
                         const vp = deliveryVp(data, i);
+                        const meeple = tile.meeples[i];
+                        const taken = seat !== undefined;
                         return (
                           <span
                             key={i}
-                            className={`receipt${seat === undefined ? ' receipt-empty' : ''}`}
+                            className={`receipt${taken ? '' : ' receipt-empty'}`}
                             style={suit ? { background: SUIT_META[suit].pip } : undefined}
                             title={
-                              seat === undefined
-                                ? `open delivery slot, worth ${vp} VP`
-                                : `${suit ? SUIT_META[suit].label : `Seat ${seat}`} delivered here for ${vp} VP`
+                              taken
+                                ? `${suit ? SUIT_META[suit].label : `Seat ${seat}`} delivered here for ${vp} VP${
+                                    meeple ? `, and took the ${SUIT_META[meeple].label} meeple` : ''
+                                  }`
+                                : `Open: ${vp} VP${
+                                    meeple
+                                      ? `, and the ${SUIT_META[meeple].label} meeple on it`
+                                      : ''
+                                  }`
                             }
                           >
                             {suit ? <img src={cropIcon(suit)} alt="" /> : <i>{vp}</i>}
                           </span>
                         );
                       })}
+                    </div>
+                    {/*
+                     * ⭐ THE MEEPLES, FACE UP FROM SETUP (v31), one per delivery
+                     * space and drawn in a row of their own beneath the receipts.
+                     *
+                     * They are the island's whole new pull: which colour the
+                     * first and the second deliverer to this tile will take is
+                     * public from turn one, so a player is choosing between a
+                     * Harvest, a Draw 3 and a free Build as much as between 6 VP
+                     * and 3. Drawn on the tile rather than listed anywhere else,
+                     * because that is where they physically sit.
+                     *
+                     * ⚠️ A CLAIMED SPACE LEAVES A GAP RATHER THAN A PAWN, and the
+                     * gap is on purpose: the meeple has gone into somebody's
+                     * supply and the space is empty on the real board. The
+                     * receipt disc directly above it already says who took it.
+                     */}
+                    <div className="island-meeples" aria-hidden="true">
+                      {tile.meeples.map((colour, i) =>
+                        tile.deliveredBy[i] === undefined ? (
+                          <Meeple
+                            key={i}
+                            colour={colour}
+                            size={Math.max(11, Math.round(tileWidth * 0.2))}
+                            title=""
+                          />
+                        ) : (
+                          <span key={i} className="island-meeple-gone" />
+                        ),
+                      )}
                     </div>
                   </div>
                 );

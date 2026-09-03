@@ -168,8 +168,8 @@ export const DEFAULT_MAX_SWEEP_CELLS = 256;
 
 /**
  * Expand a sweep file into one overlay per cell: the cross product of the axes,
- * with `base` underneath each. This is what makes "try 20 hire prices" one
- * command instead of 20 edits.
+ * with `base` underneath each. This is what makes "try every end trigger from 4
+ * to 10" one command instead of seven edits.
  */
 export function expandSweep(
   file: SweepFile,

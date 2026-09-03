@@ -1,8 +1,0 @@
-{
-  "name": "no-market",
-  "description": "Ticket 56's buy-as-shipped arm: the market off, the £1 card buy on. This is exactly the reference-v8 world - the market's engine code, bot terms and metrics are all gated on rules.turn.marketCost, so this arm must reproduce the committed v8 report to the digit, and any drift means an accidental behaviour change rather than an arm.",
-  "schemaVersion": 1,
-  "set": {
-    "rules.turn.marketCost": null
-  }
-}

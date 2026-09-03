@@ -22,7 +22,16 @@ export interface Metric {
 }
 
 export const HEADLINE_METRICS: readonly Metric[] = [
-  { label: 'end coins per player', of: endCoins, fmt: (x) => `£${num(x, 1)}` },
+  {
+    // ⭐ REPLACED 'end coins per player' (v31). The currency is gone; what a
+    // seat ends holding now is MEEPLES, and a meeple is a stored action rather
+    // than money. The label changed with the meaning, which retires the noise
+    // floor recorded under the old key - by design: a floor keyed to a metric
+    // that no longer exists is worse than none.
+    label: 'meeples held at game end',
+    of: endMeeples,
+    fmt: (x) => num(x, 1),
+  },
   { label: 'barn at game end', of: endBarn, fmt: (x) => num(x, 1) },
   {
     label: 'game length, rounds',
@@ -30,6 +39,26 @@ export const HEADLINE_METRICS: readonly Metric[] = [
     fmt: (x) => num(x, 1),
   },
   { label: 'visits per turn', of: visitsPerTurn, fmt: (x) => num(x, 2) },
+  {
+    // ⭐ NEW IN v31, and the number the whole pass moves (risk 1). It belongs
+    // in the headline list rather than only in assertion 16 because a sweep
+    // prints deltas off this list, and the end trigger is dialled against it.
+    label: 'actions per turn',
+    of: actionsPerTurn,
+    fmt: (x) => num(x, 2),
+  },
+  {
+    label: 'meeple spend rate',
+    of: meepleSpendRate,
+    fmt: (x) => pct(x, 1),
+  },
+  {
+    // The hook, in the headline list, and NEIGHBOUR visits only: pooling in a
+    // self-visit would let a solitaire table report a healthy hook.
+    label: 'self-visit share of visits',
+    of: selfVisitShare,
+    fmt: (x) => pct(x, 1),
+  },
   {
     label: 'unfinished games',
     of: (p) => 1 - p.ended.length / Math.max(1, p.all.length),
@@ -71,17 +100,37 @@ export const HEADLINE_METRICS: readonly Metric[] = [
   },
 ];
 
-export function endCoins(p: Pooled): number {
-  return median(p.ended.flatMap((g) => g.coinsByRound.slice(-1)));
+export function endMeeples(p: Pooled): number {
+  return median(p.ended.flatMap((g) => g.meeplesByRound.slice(-1)));
 }
 
 export function endBarn(p: Pooled): number {
   return median(p.ended.flatMap((g) => g.barnByRound.slice(-1)));
 }
 
+/** NEIGHBOUR visits per turn. A self-visit is solitaire and never counts here. */
 export function visitsPerTurn(p: Pooled): number {
   const turns = sum(p.ended.map((g) => sum(g.turnsBySeat)));
-  return turns === 0 ? NaN : sum(p.ended.map((g) => sum(g.visitsBySeat))) / turns;
+  const visits = sum(p.ended.map((g) => sum(g.visitsBySeat) - sum(g.selfVisitsBySeat)));
+  return turns === 0 ? NaN : visits / turns;
+}
+
+/** Core actions resolved per player per turn, every route pooled (risk 1). */
+export function actionsPerTurn(p: Pooled): number {
+  const turns = sum(p.ended.map((g) => sum(g.turnsBySeat)));
+  return turns === 0 ? NaN : sum(p.ended.map((g) => sum(g.actionsBySeat))) / turns;
+}
+
+/** Meeples spent as a share of meeples gained. Below half is a dead component. */
+export function meepleSpendRate(p: Pooled): number {
+  const gained = sum(p.ended.map((g) => sum(g.meeplesGainedBySeat)));
+  return gained === 0 ? NaN : sum(p.ended.map((g) => sum(g.meeplesSpentBySeat))) / gained;
+}
+
+/** Risk 2, as one number: how much of the bonus slot's interaction went inward. */
+export function selfVisitShare(p: Pooled): number {
+  const all = sum(p.ended.map((g) => sum(g.visitsBySeat)));
+  return all === 0 ? NaN : sum(p.ended.map((g) => sum(g.selfVisitsBySeat))) / all;
 }
 
 /** Total discard-to-deck reshuffles in a game, all crops, median over ended games. */

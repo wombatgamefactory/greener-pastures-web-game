@@ -1,8 +1,0 @@
-{
-  "name": "a14-coin-faucet",
-  "description": "A14 The Honeycomb Tower switched OFF, against the shipped game that has it at 'Gain GBP 2 for each of your HIVEs'. Its old text was 'Sow the top card of any deck onto a neighbour's building. Take GBP 1 from the bank for each of your HIVEs', and the handler's own notes called that sow THE METER: 'every use hands a rival a card of freight and advances one of their thresholds, so a seat printing GBP 5 a turn is feeding the table 25 cards a game'. The 19/08/2026 rewrite deletes the sow AND doubles the rate. So the game's only repeatable coin faucet has had its throttle removed and its output doubled in one edit, and it has turned from a cross-table card into a pure own-suit scaler. READ THIS AGAINST TOTAL COINS IN PLAY, never against A14's own play rate - a faucet that is rarely built can still flood a table, and a play rate cannot see that. Second reading: coins at end of round must PLATEAU, not climb. Third: the Apiary seat's win rate, because an inward scaler that pays for monoculture is a pull away from the hook. The card text cannot be overlaid (the sheet is the single source of truth for wording), so the arm is the card's presence, which is why the control is enabled: false rather than a rate.",
-  "schemaVersion": 1,
-  "set": {
-    "cards.catalogue.A14.enabled": false
-  }
-}

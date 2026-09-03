@@ -22,15 +22,16 @@ import { useHandDock } from '../session/dock';
 import type { Drag } from '../session/drag';
 import { mark } from '../session/play';
 import type { Play } from '../session/play';
-import { cropIcon, frame, token } from '../view/art';
+import { cropIcon, frame } from '../view/art';
 import { dropZone } from '../view/drop';
 import { clickCardPower } from '../view/intent';
 import { cardName, describeMove } from '../view/moveText';
 import { printedFace } from '../view/printed';
 import { SUIT_META } from '../view/suits';
-import { displayOrder, liveThreshold, receiptTotal } from '../view/table';
+import { displayOrder, liveThreshold, meepleCount, receiptTotal } from '../view/table';
 import { Card, CardBack } from './Card';
 import { StackGauge } from './StackGauge';
+import { MeepleSupply } from './Supply';
 import type { Zoomer } from './Zoom';
 
 /**
@@ -50,17 +51,31 @@ export function Tableau({
   cardWidth,
   zoom,
   play,
+  ownSeat,
 }: {
   data: GameData;
   buildings: readonly BuildingView[];
   cardWidth: number;
   zoom: Zoomer;
   play?: Play | undefined;
+  /**
+   * ⭐ THE SELF-VISIT DOOR (v31). Present only on YOUR OWN tableau: passing the
+   * seat is what turns this row's Notice Board into a visit target, and the
+   * rival inspector passes nothing, so a neighbour's board can never grow the
+   * affordance by accident.
+   *
+   * It is a badge on the card rather than a bar button for the same reason a
+   * card power is: the board is the component the move is made on. What it must
+   * NOT do is read like the rail's neighbour panels, because those two acts are
+   * opposites - so it is labelled "your own door" and says out loud that it
+   * fills your own board.
+   */
+  ownSeat?: number | undefined;
 }) {
   return (
     <div className="tableau" onMouseLeave={() => zoom.clear()}>
       {displayOrder(data, buildings).map((b) => {
-        const face = printedFace(data, b.card, b.upgraded);
+        const face = printedFace(data, b.card);
         // The enforced threshold, not the printed one - the gauge and the "full"
         // flag say when this building has clogged, and the engine is the
         // authority on that. See `liveThreshold` in view/table.ts.
@@ -71,6 +86,9 @@ export function Tableau({
         // card with nothing standing draws no badge, so the badge appearing IS
         // the news, and there is never a dead one to learn to ignore.
         const powers = play?.active ? clickCardPower(play.moves, b.card) : [];
+        const isBoard = data.cards.catalogue.find((c) => c.id === b.card)?.slot === 'noticeboard';
+        const selfDoor =
+          isBoard && ownSeat !== undefined && (play?.live.hosts.has(ownSeat) ?? false);
         const powerTitle =
           play && powers.length === 1
             ? describeMove(data, play.view, powers[0] as Move)
@@ -80,7 +98,7 @@ export function Tableau({
             key={b.card}
             className={`building${full ? ' building-full' : ''}${mark(play, live)}`}
             {...(play ? dropZone('building', b.card) : {})}
-            onMouseEnter={() => zoom.show(b.card, b.upgraded)}
+            onMouseEnter={() => zoom.show(b.card)}
             onClick={live ? () => play?.building(b.card) : undefined}
             role={live ? 'button' : undefined}
             tabIndex={live ? 0 : undefined}
@@ -97,6 +115,23 @@ export function Tableau({
               <StackGauge stack={b.stack} threshold={threshold} />
             </div>
             {full && <span className="building-clog">full</span>}
+            {selfDoor && (
+              /* Same `stopPropagation` argument as the power badge below: the
+                 card under it is very often a sow or a harvest target at the
+                 same moment, and a badge that also fired the card's own click
+                 would be the one control on this screen that does two things. */
+              <button
+                type="button"
+                className="building-selfdoor"
+                title="Your own door: put a card here for your own suit's action. It counts toward your own threshold, so it clogs your board and shuts your neighbours out."
+                onClick={(e) => {
+                  e.stopPropagation();
+                  play?.host(ownSeat as number);
+                }}
+              >
+                your own door
+              </button>
+            )}
             {powers.length > 0 && (
               /* `stopPropagation` because the card underneath is very often a
                  target of something else at the same moment - a harvest, a sow,
@@ -126,8 +161,11 @@ function Barn({ barn, cardWidth }: { barn: Partial<Record<Suit, number>>; cardWi
   const total = entries.reduce((a, [, n]) => a + n, 0);
   return (
     <div className="barn">
+      {/* The Barn prints nothing at all since v31 - it is simply where cards
+          ready for delivery are stored - so the caption is the only place that
+          fact is said, and it says it. */}
       <h3 className="strip-title">
-        Barn <em>{total} cards</em>
+        Barn <em>{total} cards, for the island</em>
       </h3>
       <div className="barn-piles">
         {entries.length === 0 && <p className="empty-note">Empty. The island needs feeding.</p>}
@@ -180,7 +218,7 @@ function Hand({
   data,
   hand,
   cardWidth,
-  handSize,
+  handLimit,
   zoom,
   play,
   drag,
@@ -188,12 +226,12 @@ function Hand({
   data: GameData;
   hand: readonly string[];
   cardWidth: number;
-  handSize: number | null;
+  handLimit: number | null;
   zoom: Zoomer;
   play?: Play | undefined;
   drag?: Drag | undefined;
 }) {
-  const over = handSize !== null && hand.length > handSize;
+  const over = handLimit !== null && hand.length > handLimit;
   const held = play?.intent.k === 'hold' ? play.intent.card : null;
   const committed = new Set<string>(play?.commitments ?? []);
   // The contents rather than the count: drawing a card and discarding another
@@ -202,11 +240,20 @@ function Hand({
   const dock = useHandDock(hand.join('|'), drag?.card == null);
   return (
     <div className="hand-strip">
+      {/* ⭐ THE DENOMINATOR IS BACK (02/09/2026) AND IT IS NOT A CARD VALUE.
+          It used to print "5 / 6" off the Barn's printed hand size; the limit
+          is one global rule now (`rules.turn.handLimit`), the Barn prints
+          nothing, and this strip is the only place on the table that shows it -
+          which is why it also has to say WHEN the limit bites. A player who
+          reads "13 / 12" and nothing else assumes the thirteenth card is
+          illegal, and it is not: you may hold anything you like mid-turn and
+          the overflow goes at the boundary. Hence the trailing clause, in the
+          same #a2493a the clog flag wears. */}
       <h3 className="strip-title">
         Hand{' '}
         <em className={over ? 'over-limit' : undefined}>
           {hand.length}
-          {handSize === null ? '' : ` / ${handSize}`}
+          {handLimit === null ? ' cards' : ` / ${handLimit}`}
           {over ? ' - discard at end of turn' : ''}
         </em>
       </h3>
@@ -249,24 +296,17 @@ function Hand({
   );
 }
 
-/** The printed hand size on this seat's Barn, whichever face is showing. */
-export function handSizeOf(data: GameData, buildings: readonly BuildingView[]): number | null {
-  const barn = buildings.find(
-    (b) => data.cards.catalogue.find((c) => c.id === b.card)?.slot === 'barn',
-  );
-  if (!barn) return null;
-  return printedFace(data, barn.card, barn.upgraded).handSize;
-}
-
 /**
  * ⭐ A COUNT THAT MOVED, MARKED FOR ONE BEAT (phase 5).
  *
  * The research names "a count changing" as one of the two things worth
- * animating, and in this game the counts worth marking are your money and your
- * score - because the whole hook is that BOTH OF THEM MOVE ON SOMEBODY ELSE'S
- * TURN. A neighbour visiting your Notice Board mints you a coin from the bank
- * while you are not the one acting, which is precisely the moment a number can
- * change with nobody watching it.
+ * animating, and in this game the counts worth marking are your MEEPLES and your
+ * score - because the whole hook is that both of them move on somebody else's
+ * turn. Your score moves when a neighbour takes the tile you were racing for;
+ * your meeple count moves when your own delivery resolves inside a longer chain
+ * of effects. Both are moments a number can change with nobody watching it.
+ *
+ * ⛔ It was your MONEY until v31. There is no money.
  *
  * ⚠️ THE BEAT IS THE CSS ANIMATION'S OWN, NOT A TIMER. The flag is cleared by
  * `onAnimationEnd` rather than by a `setTimeout` matched to `--motion-state` by
@@ -321,7 +361,8 @@ export function Farm({
   const meta = SUIT_META[view.you.suit];
   const yourTurn = view.turnPlayer === view.seat;
   const vp = receiptTotal(view.you.receipts);
-  const [coinsMoved, coinsDone] = useChanged(view.you.coins);
+  const meeples = meepleCount(view.you.meeples);
+  const [meeplesMoved, meeplesDone] = useChanged(meeples);
   const [vpMoved, vpDone] = useChanged(vp);
 
   return (
@@ -334,11 +375,15 @@ export function Farm({
         <img className="farm-crop" src={cropIcon(view.you.suit)} alt="" />
         <h2>Your {meta.label} farm</h2>
         <span
-          className={`farm-coins${coinsMoved ? ' count-moved' : ''}`}
-          title="coins are spend-only: they are not victory points"
-          onAnimationEnd={coinsDone}
+          className={`farm-meeples${meeplesMoved ? ' count-moved' : ''}`}
+          title="meeples held: each is one free action, spent at the start of a turn, and it leaves the game"
+          onAnimationEnd={meeplesDone}
         >
-          <img src={token('coin')} alt="" />£{view.you.coins}
+          {/* No pawn here, deliberately: the count is a TOTAL across colours
+              and a single coloured pawn beside it would name a colour the number
+              is not about. The colours are drawn immediately below, in the
+              supply, where each one has its own count. */}
+          {meeples} meeple{meeples === 1 ? '' : 's'}
         </span>
         <span
           className={`farm-vp${vpMoved ? ' count-moved' : ''}`}
@@ -355,12 +400,19 @@ export function Farm({
         )}
       </header>
 
+      {/* ⭐ THE SUPPLY SITS BETWEEN THE HEADER AND THE TABLEAU, which is where
+          the turn starts. Meeples are spent before the bonus and before the
+          action, so the piece is above the things the rest of the turn acts on
+          and the eye meets it in the order the rules do. */}
+      <MeepleSupply data={data} meeples={view.you.meeples} play={play} turn={view.turn} />
+
       <Tableau
         data={data}
         buildings={view.you.tableau}
         cardWidth={buildingWidth}
         zoom={zoom}
         play={play}
+        ownSeat={view.seat}
       />
 
       <div className="farm-strips">
@@ -368,7 +420,7 @@ export function Farm({
           data={data}
           hand={view.you.hand}
           cardWidth={handWidth}
-          handSize={handSizeOf(data, view.you.tableau)}
+          handLimit={data.rules.turn.handLimit}
           zoom={zoom}
           play={play}
           drag={drag}

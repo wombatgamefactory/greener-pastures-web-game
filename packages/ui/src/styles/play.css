@@ -35,16 +35,27 @@
 }
 
 .is-target.island-tile,
-.is-target.worker,
+.is-target.supply-meeple,
 .is-target.rival,
 .is-target.deck {
   box-shadow: 0 0 0 3px #3f7a3a;
   border-radius: 6px;
 }
 
-.is-live.worker,
 .is-live.deck {
   box-shadow: 0 0 0 1px var(--ink-line);
+}
+
+/*
+ * A SPENDABLE MEEPLE. Louder than the 1px ring a live deck wears, because the
+ * meeple window is the one affordance in the game that SHUTS on its own: it is
+ * open for the first beat of your turn and gone the moment you take your bonus
+ * or your action, and a meeple missed is a stored action lost for good. The
+ * other targets are still there next turn.
+ */
+.is-live.supply-meeple {
+  box-shadow: 0 0 0 2px #3f7a3a;
+  background: #eef4e6;
 }
 
 /*
@@ -268,6 +279,41 @@ body.is-dragging .zoom {
   grid-template-columns: minmax(0, 1fr);
 }
 
+/*
+ * ⭐ THE TWO VISITS, TOLD APART BY THE PANEL ITSELF.
+ *
+ * `visit` and `visit-self` are one engine move with a different host, and they
+ * are opposite acts - a card on a neighbour's board is the game's hook, a card
+ * on your own is solitaire that clogs your own door. The v31 plan's risk 2 is
+ * that the second quietly wins, so the interface's job is to make certain nobody
+ * takes one thinking it is the other. Four things differ, and this is one of
+ * them: a green left edge on the hook, the amber warning edge on the solo
+ * version, matching the badge on the Notice Board itself.
+ */
+.assembly-hook {
+  border-left: 4px solid #3f7a3a;
+  padding-left: 8px;
+}
+
+.assembly-self {
+  border-left: 4px solid #b07a1c;
+  padding-left: 8px;
+}
+
+.assembly-warn {
+  color: #6b4a0c;
+}
+
+.assembly-self .chip:hover {
+  background: #f6e6b4;
+  border-color: #b07a1c;
+}
+
+.assembly-hook .chip:hover {
+  background: #eef4e6;
+  border-color: #3f7a3a;
+}
+
 .assembly-body {
   display: grid;
   gap: 5px;
@@ -289,10 +335,6 @@ body.is-dragging .zoom {
   margin: 0;
   font-size: 12px;
   color: var(--ink-soft);
-}
-
-.assembly-more {
-  color: #855e0e;
 }
 
 .assembly-actions {
@@ -333,43 +375,29 @@ body.is-dragging .zoom {
   border-color: var(--ink-line);
 }
 
-.chip-empty {
-  border-style: dashed;
-  color: var(--ink-soft);
-}
+/* ⛔ `.payoff` AND `.payoffs` ARE GONE (v31). They laid out the three prizes a
+   visit fee could buy - take the money, the Special Orders line, or work one of
+   the host's Hired Workers. A visit now has ONE payoff, the host farm's suit
+   action, so the panel's whole middle is a row of fee chips and there is nothing
+   left for a payoff card to hold. `.chip-empty` went with it: there is no
+   part-assembled state to caption once the fee is a single card. */
 
-.payoffs {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-/* The three payoffs are the hook made clickable, so they get real estate: what
-   you take, and - the v14 pivot - what the BANK pays your neighbour. */
-.payoff {
-  display: grid;
-  gap: 1px;
-  text-align: left;
-  background: var(--paper);
-  border: 1px solid var(--ink-line);
-  border-radius: 8px;
-  padding: 5px 10px;
-  min-width: 150px;
-}
-
-.payoff:hover {
-  background: #eef4e6;
+/*
+ * THE BONUS SLOT'S TWO VISIT BUTTONS, second of the four differences.
+ *
+ * The hook keeps the aid's `visit` painting and the seat's green; the solo one
+ * has no painting at all (there is no player-aid vignette for feeding your own
+ * board, and inventing one would put a drawing on the table that is not in the
+ * box) and wears the amber. Neither is disabled, neither is hidden: the point is
+ * that both are offered and only one of them is the game's hook.
+ */
+.action-hook:not(:disabled) {
   border-color: #3f7a3a;
 }
 
-.payoff b {
-  font-family: var(--font-display);
-  font-size: 13px;
-}
-
-.payoff span {
-  font-size: 10px;
-  color: var(--ink-soft);
+.action-solo:not(:disabled) {
+  border-color: #b07a1c;
+  background: color-mix(in srgb, #f6e6b4 40%, var(--paper));
 }
 
 /* ---- the turn bar -------------------------------------------------------- */
@@ -441,7 +469,18 @@ body.is-dragging .zoom {
   flex-wrap: wrap;
 }
 
+/*
+ * THE MEEPLE ZONE draws no buttons - the move is made on the pawn in your own
+ * supply - so it is the narrowest zone on the bar and carries one line of text.
+ * It exists for the WINDOW: meeples come first and the window shuts, and without
+ * this the pawns simply stop responding with nothing to say why.
+ */
+.zone-meeple {
+  max-width: 260px;
+}
+
 .zone-bonus,
+.zone-meeple,
 .zone-exit {
   border-left: 1px solid var(--rule);
   padding-left: var(--gap);

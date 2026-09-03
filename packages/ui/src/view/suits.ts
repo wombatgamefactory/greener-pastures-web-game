@@ -67,6 +67,31 @@ export function suitLabel(suit: Suit): string {
 }
 
 /**
+ * "a Wheat card", "an Apiary card".
+ *
+ * Two of the five crops begin with a vowel, and until 03/09/2026 every surface
+ * that named a MASKED card hard-coded "a " - so a rival's draw, a card in limbo
+ * and a card in flight all read "a Apiary card" and "a Orchard card". It was
+ * invisible for a long time because the phrase is only reached through
+ * redaction, and the seed positions the tests pin are mostly Wheat and
+ * Vegetable; the Dairy reveals of 03/09 put it in front of a reader.
+ *
+ * A function rather than a sixth field on `SUIT_META`, because the article
+ * belongs to the sentence and not to the crop: the same label is written "the
+ * Apiary door" and "an Apiary card" a line apart.
+ */
+export function suitArticle(label: string): string {
+  return /^[aeiou]/i.test(label) ? 'an' : 'a';
+}
+
+/** The whole phrase a masked card is named by: its crop is public, its identity is not. */
+export function maskedCardPhrase(suit: Suit | undefined): string {
+  if (!suit) return 'a card';
+  const label = SUIT_META[suit].label;
+  return `${suitArticle(label)} ${label} card`;
+}
+
+/**
  * How a seat is named in the interface. The seat's suit IS its identity - there
  * are no player colours in this game beyond the crop they farm.
  */

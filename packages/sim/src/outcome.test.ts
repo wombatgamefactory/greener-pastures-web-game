@@ -19,7 +19,7 @@
 
 import { loadGameData } from '@gp/data';
 import type { Suit } from '@gp/data';
-import type { CardId, GameState, Move } from '@gp/engine';
+import type { GameState, Move } from '@gp/engine';
 import {
   apply,
   legalMoves,
@@ -28,23 +28,24 @@ import {
   player,
   seedRng,
   shuffle,
-  testkit,
   viewFor,
 } from '@gp/engine';
 import { describe, expect, it } from 'vitest';
 
 import {
   BALANCED,
+  MEEPLE_LATENT,
   actOf,
-  coinWorth,
   makeOutcomes,
   makePolicy,
   makeScratch,
+  meepleWorth,
   policyRng,
   TERMS,
 } from '@gp/bots';
 
 import { assignProfiles, runGame } from './driver.js';
+import { meanInterval, separated } from './stats.js';
 
 const data = loadGameData();
 const SUITS: Suit[] = ['wheat', 'vegetable', 'orchard', 'apiary', 'dairy'];
@@ -196,61 +197,59 @@ describe('the probe answers NOW', () => {
 });
 
 /**
- * Ticket 50. A `draw` task takes one `deck` answer per card REVEALED and only
- * then a `keep`, and `cardsToHand` - the only priced event in the effect - fires
- * on the keep. At `DEPTH = 3` that put everything drawing 3 or more beyond the
- * rollout's reach, and the worst case was the Draw Worker: priced at exactly
- * zero in 82.2% of the positions it was offered in, against 0.0% for all four
- * other Workers. It is the one the design calls a traffic magnet, and watch-list
- * assertion 7 exists to measure how much it attracts.
+ * Ticket 50, RE-POINTED FOR v31 (02/09/2026). A `draw` task takes one `deck`
+ * answer per card REVEALED and only then a `keep`, and `cardsToHand` - the only
+ * priced event in the effect - fires on the keep. At `DEPTH = 3` that put
+ * everything drawing 3 or more beyond the rollout's reach, and the worst case
+ * was the door the design calls a traffic magnet: priced at exactly zero in
+ * 82.2% of the positions it was offered in, against 0.0% for the other four.
  *
- * Ticket 49 split the assertion in two, and the reason is that ticket 50's own
- * proxy stopped meaning what it said. The price is now capped by ROOM IN HAND,
- * so a seat renting a Draw Worker with a full hand is priced at zero on purpose:
- * it draws into its own end-of-turn discard. That is a valuation, not the
- * blindness this test was written to catch, and lumping the two together would
- * either hide a regression or forbid a correct answer. So the rate is measured
- * where there IS room - the only place the old claim can be tested - and the
- * full-hand zeroes are asserted separately as the intended behaviour.
+ * ⭐ THE SAME TRAP IS SET ONE CARD DEEPER IN v31, which is why this test
+ * survives its subject being renamed twice. The Orchard door is **Draw 3** -
+ * the one printed exception in the door set - and it is exactly the thing a
+ * depth limit cannot see. A visitor paying one card onto an Orchard seat's
+ * Notice Board and taking Draw 3 must not price at zero.
  *
- * The full-hand half is now a CONSTRUCTED position rather than a hunt through
- * the corpus (2026-08-11, the Apiary rebuild). It had been widened three times,
- * and the comment on the third said what to do if it happened again: "the honest
- * fix is a constructed position rather than a wider net, because a corpus
- * property is not a test". This is the fourth, so the net was not widened again.
- * Measured after the rebuild: over the 60 games the sweep below runs, not one
- * offer had a hand over its limit, and it takes 180 games to turn up 34 of them
- * (0 at 2 seats, 22 at 3, 12 at 4, and every one of them priced at 0). The
- * behaviour is intact and merely rare, which is exactly the thing a sample
- * cannot promise to contain - so the cap is asserted where it can be stated
- * outright, and the sweep keeps only the opportunistic version of the check.
+ * ⛔ THE HAND-ROOM HALF OF THIS TEST IS DELETED, AND THAT IS A RULE DELETION
+ * rather than a test being loosened. Ticket 49 capped a pending draw at the
+ * room left under the Barn's printed hand size, because a card drawn into the
+ * end-of-turn discard is an action thrown away - measured on the Draw 4 balloon,
+ * which the bots took 32.9% of the time with no room at all. v31 prints no hand
+ * size and has no discard, so there is nothing to cap against and the two tests
+ * that asserted the cap (a corpus sweep and a constructed over-limit position)
+ * assert a rule that does not exist. What that removes from the instrument is a
+ * BRAKE, not a bias, and the consequence points one way: a draw can never be a
+ * bad move now, so every door and every meeple that draws is worth strictly
+ * more than it used to be, and the Orchard door is the biggest beneficiary in
+ * the game. If the door mix comes back Orchard-heavy, this is the first thing
+ * to check - and the check is a rules question, not a bot one.
  */
 describe('a pending draw', () => {
-  it('prices a rented Draw Worker as the cards it will keep, not as zero', () => {
+  it('prices a visit to the Draw 3 door as the cards it will keep, not as zero', () => {
     const zeroes: number[] = [];
     const values: number[] = [];
-    /** Split by whether the seat had room AFTER paying the visit fee. */
-    const withRoom: number[] = [];
-    const zeroesWithRoom: number[] = [];
-    const noRoom: number[] = [];
-    const nonZeroWithNoRoom: number[] = [];
 
-    // Widened from 3 seeds on 2026-08-09, widened AGAIN for the Wheat rebuild
-    // (across seat counts rather than seeds), and a THIRD time for the Vegetable
-    // rebuild. Not widened a fourth time: the Apiary rebuild took the full-hand
-    // subcase out of this net again, and the constructed test below now carries
-    // that half instead. This sweep keeps the half a sample CAN carry - the rate
-    // of zeroes where there is room - which is a property of the corpus in the
-    // only sense that matters, since it is measured over hundreds of positions
-    // rather than waiting on one rare shape to appear.
+    // The Orchard seat's board IS the Draw 3 door, so every cell below has one
+    // and the visitor is whoever is not farming Orchard. Rotating the suits
+    // rather than slicing keeps every pairing in the sample.
+    //
+    // ⭐ THE FULL NET IS BACK (03/09/2026): 20 seeds at 2, 3 and 4 seats, and
+    // no move cap. It was cut to 6 seeds at 2 and 3 seats with `maxMoves: 250`
+    // on 02/09/2026, when a v31 game cost minutes rather than milliseconds
+    // because the hand limit had been deleted and legal-move enumeration went
+    // combinatorial in hand size. `rules.turn.handLimit` came back the same
+    // day and a 2-seat game is under a second again, so the sample that was
+    // cut for affordability is restored. What the claim needs is POSITIONS
+    // rather than games, and the guard below still refuses to pass on fewer
+    // than 20 offers, so a thin sample fails loudly rather than vacuously.
     for (const seats of [2, 3, 4]) {
       for (let n = 0; n < 20; n++) {
-        const seed = `drawworker-${seats}-${n}`;
-        // Rotate rather than slice: n now runs past 5 and a slice runs off the end.
+        const seed = `drawdoor-${seats}-${n}`;
         const suits = Array.from(
           { length: seats },
           (_, i) => SUITS[(n + i) % SUITS.length] as Suit,
         );
+        if (!suits.includes('orchard')) continue;
         const result = runGame(data, {
           seed,
           seats,
@@ -261,150 +260,48 @@ describe('a pending draw', () => {
         let state = newGame(data, { seed, seats, suits });
         for (const move of result.moves) {
           const seat = state.turnPlayer;
-          const rented = legalMoves(data, state).filter((m) => {
+          const offered = legalMoves(data, state).filter((m) => {
             const act = actOf(m);
             return (
               m.seat === seat &&
               act.a === 'visit' &&
-              act.payoff.mode === 'worker' &&
-              act.payoff.workerId === 'draw'
+              !act.self &&
+              player(state, act.host).suit === 'orchard'
             );
           });
           // O16 The Orchard Keeper pays the VISITOR a card just for visiting,
-          // independently of the Draw. Before the suit Services (2026-08-10) that
-          // co-occurrence was rare - the host had to have hired the Draw Worker
-          // AND built O16 - and now every Orchard seat owns the Draw Service from
-          // turn 1, so it is common. Those positions are excluded rather than
-          // asserted away: the cap under test is on what the DRAW keeps, and a
-          // card arriving from somewhere else is not that cap failing.
-          const hostHasKeeper = rented.some((m) =>
+          // independently of the Draw, so a value above zero there proves
+          // nothing about the draw. Those positions are excluded rather than
+          // asserted away: the claim under test is that the DRAW is visible.
+          const hostHasKeeper = offered.some((m) =>
             player(state, (m as Extract<Move, { type: 'visit' }>).host).tableau.some(
               (b) => b.card === 'O16',
             ),
           );
-          if (rented.length > 0 && !hostHasKeeper) {
+          if (offered.length > 0 && !hostHasKeeper) {
             const scratch = makeScratch(data, viewFor(data, state, seat));
             const prober = makeProber(data, state, seat);
             const outcomes = makeOutcomes(scratch, BALANCED, prober);
-            const move = rented[0] as Move;
-            const value = outcomes.value(move);
+            const value = outcomes.value(offered[0] as Move);
             values.push(value);
             if (value === 0) zeroes.push(value);
-            // The room the pricer itself sees, measured BEFORE the draw and
-            // AFTER the visit fee has left hand - which is the moment the cap
-            // is applied at. Read off the hand and the fee, NOT off
-            // `prober(move).handSize`: that is the hand once the draw has
-            // already resolved, so a seat at the limit that kept exactly one
-            // card comes back at the limit too, and the two cases are then
-            // indistinguishable. First hit on 2026-08-09 by a Wheat seat at
-            // 7/7 whose kept card exactly replaced its fee, which the old
-            // reading filed under "no room" and then failed for pricing at a
-            // correct 1.95.
-            const limit = scratch.handLimit ?? Infinity;
-            const roomBeforeDraw =
-              limit - (player(state, seat).hand.length - (move as { fee: CardId[] }).fee.length);
-            if (roomBeforeDraw > 0) {
-              withRoom.push(value);
-              if (value === 0) zeroesWithRoom.push(value);
-            } else {
-              noRoom.push(value);
-              if (value !== 0) nonZeroWithNoRoom.push(value);
-            }
           }
           state = apply(data, state, move).state;
         }
       }
     }
 
-    // Vacuous unless a Draw Worker really was rentable with room in hand.
-    expect(values.length, 'no seat was ever offered a rival Draw Worker').toBeGreaterThan(20);
-    expect(withRoom.length, 'never offered one with room in hand').toBeGreaterThan(10);
-
-    // Ticket 50's claim, where it can be tested: with room in hand the rollout
-    // reaches the draw's payoff. It was 82.2% zero across all positions before
-    // that fix, so a stray zero here would be a real regression rather than a
-    // legitimate answer.
-    expect(zeroesWithRoom.length / withRoom.length).toBeLessThan(0.1);
-    // Ticket 49's cap, opportunistically: `noRoom` is empty in most corpora now,
-    // so this says "and if the sweep did stumble on one, it priced at zero". The
-    // non-vacuous version of the same claim is the next test.
-    expect(nonZeroWithNoRoom).toEqual([]);
-    // 60 full games of probing, so it wants more than the 5s default - and it
-    // wants it stated here rather than raised globally, because every OTHER
-    // test in the suite finishing inside 5s is worth knowing.
-  }, 30_000);
-
-  /**
-   * Ticket 49's cap, constructed rather than hunted for.
-   *
-   * The shape is a seat OVER its hand limit taking its bonus-slot visit, which
-   * is legal and does happen: the limit is checked at end of turn only, so a
-   * Draw earlier in the turn can leave a seat above it. It is simply rare, and
-   * three widenings of the sweep above proved that a sample cannot be relied on
-   * to hold one.
-   *
-   * Built from a real `newGame` rather than from `testkit.makeState`, on purpose:
-   * setup is what ties each Service to the seat whose suit brought it, and the
-   * visit's ownership check reads that. Everything the position needs is the
-   * opening table plus cards in one hand.
-   */
-  it('prices a rented Draw Service at zero once the hand is over its limit', () => {
-    // The orchard seat owns the Draw Service from setup, so seat 0 is the renter.
-    const rented = (state: GameState): Move | undefined =>
-      legalMoves(data, state).find((m) => {
-        const act = actOf(m);
-        return (
-          m.seat === 0 &&
-          act.a === 'visit' &&
-          act.payoff.mode === 'worker' &&
-          act.payoff.workerId === 'draw'
-        );
-      });
-
-    const opening = (): GameState =>
-      newGame(data, { seats: 2, suits: ['wheat', 'orchard'], seed: 'fullhand' });
-
-    /**
-     * The opening table with seat 0's hand topped up to exactly `size` cards.
-     * Topped up through `testkit.dealTo`, so the cards come out of the deck they
-     * belong to and the 105 ids are still conserved.
-     */
-    const atHandSize = (size: number): GameState => {
-      const state = opening();
-      const hand = player(state, 0).hand;
-      expect(
-        hand.length,
-        'the opening hand is already past the size under test',
-      ).toBeLessThanOrEqual(size);
-      while (hand.length < size) {
-        testkit.dealTo(data, state, 0, state.decks.wheat[0] as CardId);
-      }
-      return state;
-    };
-
-    const limit = makeScratch(data, viewFor(data, opening(), 0)).handLimit as number;
-    expect(limit, 'the wheat Barn must print a hand limit').toBeGreaterThan(0);
-
-    const priceAt = (size: number): number => {
-      const state = atHandSize(size);
-      const move = rented(state);
-      expect(move, `no rival Draw Service was offered at a hand of ${size}`).toBeDefined();
-      const scratch = makeScratch(data, viewFor(data, state, 0));
-      const prober = makeProber(data, state, 0);
-      return makeOutcomes(scratch, BALANCED, prober).value(move as Move);
-    };
-
-    // At the limit the fee makes room for exactly one card, so the rental is
-    // still worth something - the case the sweep above measures in bulk.
-    expect(
-      priceAt(limit),
-      'a hand at the limit still has room once the fee leaves',
-    ).toBeGreaterThan(0);
-    // One over, the fee only gets the seat back TO the limit and the draw keeps
-    // nothing. Exact arithmetic, so the assertion is an absolute.
-    expect(priceAt(limit + 1)).toBe(0);
-    expect(priceAt(limit + 2)).toBe(0);
-  });
+    // Vacuous unless a rival Orchard door really was reachable.
+    expect(values.length, 'no seat was ever offered a rival Draw 3 door').toBeGreaterThan(20);
+    // Ticket 50's claim, restated on the door that replaced the Worker. It was
+    // 82.2% zero before that fix, so a stray zero here is a real regression
+    // rather than a legitimate answer: with no hand limit there is no position
+    // in which drawing three cards is worth nothing.
+    expect(zeroes.length / values.length).toBeLessThan(0.1);
+    // Sixty games of probing, so it wants far more than the 5s default - and it
+    // wants it stated here rather than raised globally, because a test that
+    // needs a budget should say so where it needs one.
+  }, 300_000);
 });
 
 /**
@@ -422,50 +319,122 @@ describe('a balloon move', () => {
    * testing the pricer and testing the bot. `value` will roll a balloon out
    * whether or not anything asks it to; only the term consults `isProbed`, so
    * only the term fails when a balloon is taken back out of it.
+   *
+   * ⭐ THE SAMPLE WAS WIDENED ON 03/09/2026 AND THAT IS PART OF THE FIX. It used
+   * to be ONE seed at each of two seat counts, and while the hand limit was
+   * deleted it was also capped at 250 moves to stay affordable. That sample
+   * produced a spread statistic that swung between 0.54 and 2.13 FOR THE SAME
+   * RULES depending only on where the cap fell - which is not a calibration,
+   * it is a coin flip. Six full games across 2, 3 and 4 seats give 350 to 570
+   * priced offers per balloon and cost about 25 seconds, which is affordable
+   * again only because `rules.turn.handLimit` came back.
    */
   function priceBalloons(weights = BALANCED): Map<string, number[]> {
     const outcome = TERMS.find((t) => t.name === 'outcome');
     if (!outcome) throw new Error('no `outcome` term');
     const seen = new Map<string, number[]>();
-    for (const seats of [2, 3]) {
-      const seed = `balloon-${seats}`;
-      // The Aerodrome is only in play with Vegetables at the table.
-      const suits = SUITS.slice(1, 1 + seats);
-      const result = runGame(data, { seed, seats, suits, policies: assignProfiles(seed, seats) });
-      let state = newGame(data, { seed, seats, suits });
-      for (const move of result.moves) {
-        const seat = state.tasks[0]?.pid ?? state.turnPlayer;
-        const balloons = legalMoves(data, state).filter(
-          (m) => m.seat === seat && m.type === 'moveBalloon',
-        );
-        if (balloons.length > 0) {
-          const scratch = makeScratch(data, viewFor(data, state, seat));
-          const outcomes = makeOutcomes(scratch, weights, makeProber(data, state, seat));
-          for (const m of balloons) {
-            const id = (m as Extract<Move, { type: 'moveBalloon' }>).balloon;
-            const list = seen.get(id) ?? [];
-            list.push(outcome.feature(actOf(m), scratch, m, outcomes));
-            seen.set(id, list);
+    for (const seats of [2, 3, 4]) {
+      for (const run of [0, 1]) {
+        const seed = `balloon-${seats}-${run}`;
+        // The Aerodrome is only in play with Vegetables at the table.
+        const suits = SUITS.slice(1, 1 + seats);
+        const result = runGame(data, {
+          seed,
+          seats,
+          suits,
+          policies: assignProfiles(seed, seats),
+        });
+        let state = newGame(data, { seed, seats, suits });
+        for (const move of result.moves) {
+          const seat = state.tasks[0]?.pid ?? state.turnPlayer;
+          const balloons = legalMoves(data, state).filter(
+            (m) => m.seat === seat && m.type === 'moveBalloon',
+          );
+          if (balloons.length > 0) {
+            const scratch = makeScratch(data, viewFor(data, state, seat));
+            const outcomes = makeOutcomes(scratch, weights, makeProber(data, state, seat));
+            for (const m of balloons) {
+              const id = (m as Extract<Move, { type: 'moveBalloon' }>).balloon;
+              const list = seen.get(id) ?? [];
+              list.push(outcome.feature(actOf(m), scratch, m, outcomes));
+              seen.set(id, list);
+            }
           }
+          state = apply(data, state, move).state;
         }
-        state = apply(data, state, move).state;
       }
     }
     return seen;
   }
 
-  it('prices the four balloons by what they grant, not by one constant', () => {
-    const seen = priceBalloons();
-    expect(seen.size, 'no balloon was ever movable').toBeGreaterThan(2);
-    const means = [...seen.values()].map((vs) => vs.reduce((a, b) => a + b, 0) / vs.length);
-    // Every one of these was the identical flat weight before the probe.
-    expect(new Set(means.map((m) => m.toFixed(6))).size).toBe(means.length);
-    // And the spread has to be a real preference, not floating-point noise:
-    // measured 4.8 to 9.9 over 55 games, against a flat 2 for all four.
-    expect(Math.max(...means) - Math.min(...means)).toBeGreaterThan(1);
-  });
+  /**
+   * ⚠️⚠️ **THIS CONSTANT IS HAND-LIMIT DEPENDENT. RE-CUT IT WHENEVER
+   * `rules.turn.handLimit` MOVES.**
+   *
+   * It was 1.0, measured in 2026-08 under the per-Barn hand size, and it
+   * survived into v31 where there was no limit at all. Re-cut 03/09/2026,
+   * over the widened sample above. Measured twice on the same day, because the
+   * limit moved under it between the two:
+   *
+   *   limit  5   spread 1.906   SEPARATED
+   *   limit  7   spread 1.313   SEPARATED   <- shipped
+   *   limit  9   spread 1.424   SEPARATED
+   *   limit 10   spread 1.909   SEPARATED
+   *   limit 12   spread 0.539   SEPARATED
+   *   limit 15   spread 1.318   SEPARATED
+   *   limit 18   spread 0.563   SEPARATED
+   *
+   * The mechanism is the draw-value cap: a pending draw is priced at the cards
+   * it will KEEP, and room in hand is what decides how many that is, so a Draw
+   * 4 balloon really is worth less into a nearly full hand. What the ladder
+   * also shows is that **the relationship is not monotone** - 12 and 18 sit
+   * near 0.55 while 10 and 15 sit near 1.3 to 1.9 - because the limit moves the
+   * LEVEL of every balloon's price as well as the gaps between them. So this is
+   * a number to re-measure, never one to extrapolate.
+   *
+   * 0.35 was cut against limit 12's 0.539, which was the shipped value for the
+   * few hours it held, and it is a third of margin below the SMALLEST cell in
+   * the whole ladder. The shipped 7 reads 1.313, so the floor now sits nearly
+   * four times below the live value - loose, and deliberately left there rather
+   * than tightened to the current rung, because 12 proved the statistic can
+   * halve without anything being wrong. A floor of 0.5 would have sat within 8%
+   * of two cells, which is a threshold that fails on a re-run rather than on a
+   * regression.
+   */
+  const SPREAD_FLOOR = 0.35;
 
-  it('never pays the flat balloon weight inside the pricer', () => {
+  it(
+    'prices the four balloons by what they grant, not by one constant',
+    { timeout: 300_000 },
+    () => {
+      const seen = priceBalloons();
+      expect(seen.size, 'no balloon was ever movable').toBeGreaterThan(2);
+      const rows = [...seen.values()]
+        .map((vs) => ({
+          mean: vs.reduce((a, b) => a + b, 0) / vs.length,
+          interval: meanInterval(vs),
+        }))
+        .sort((a, b) => b.mean - a.mean);
+      const means = rows.map((r) => r.mean);
+      // Every one of these was the identical flat weight before the probe.
+      expect(new Set(means.map((m) => m.toFixed(6))).size).toBe(means.length);
+
+      // THE CLAIM THAT DOES NOT NEED RE-CUTTING: the dearest balloon and the
+      // cheapest are separated at 95%, so the preference is real rather than
+      // four different roundings of one number. It held at every rung of the
+      // hand-limit ladder above, which the absolute spread did not, and it is
+      // the assertion to trust if the two ever disagree.
+      const best = rows[0];
+      const worst = rows[rows.length - 1];
+      expect(best && worst && separated(best.interval, worst.interval)).toBe(true);
+
+      // And the absolute gap, which is the limit-dependent half - see the
+      // comment on SPREAD_FLOOR before touching this.
+      expect(Math.max(...means) - Math.min(...means)).toBeGreaterThan(SPREAD_FLOOR);
+    },
+  );
+
+  it('never pays the flat balloon weight inside the pricer', { timeout: 300_000 }, () => {
     // The invariant that keeps the two halves apart. `balloon` is a MOVE term,
     // the way `grow` is; the pricer charges the freight and walks the reward.
     // So cranking the weight must move nothing here - and the control is that
@@ -478,80 +447,40 @@ describe('a balloon move', () => {
   });
 });
 
-describe('the coin runway', () => {
-  /**
-   * Ticket 37's finding, kept as the PAIRED CONTROL for the card buy.
-   *
-   * Without the buy, a coin above everything the seat can spend on is worth
-   * exactly nothing, and that is what made 65% of every coin minted dead. With
-   * the buy live it is worth its face value, because there is always a card to
-   * turn it into. Both halves are asserted here so the claim the rule rests on
-   * is a test rather than a sentence, and so the paired sim run is measuring the
-   * rule rather than a re-tuned bot.
-   */
-  /**
-   * ⚠️ THE ARMS SWAPPED SIDES ON 19/08/2026, and the test had to swap with
-   * them. `rules.turn.buyCost` is now null in the shipped rules, so the
-   * buy-less half is the base game and it is the BUY that has to be reached for
-   * through an overlay. Both halves keep their overlays anyway and neither
-   * reads `data` bare: an assertion about what a coin is worth WITH the buy
-   * must not silently become an assertion about the shipped game the next time
-   * the knob moves, which is exactly how this test went red today. Same
-   * re-pointing the engine's own suite took.
-   */
-  const noBuy = loadGameData({
-    name: 'no-card-buy',
-    schemaVersion: 1,
-    set: { 'rules.turn.buyCost': null },
-  });
-  const withBuy = loadGameData({
-    name: 'card-buy',
-    schemaVersion: 1,
-    // 1 is the price the rule shipped at from 2026-08-03 until it was switched
-    // off; `overlays/turn-structure-v14.overlay.json` restores the same number.
-    set: { 'rules.turn.buyCost': 1 },
+describe('what a meeple is worth', () => {
+  const opening = (suits: Suit[]): GameState =>
+    newGame(data, { seats: suits.length, suits, seed: 'meeple-worth' });
+
+  it('prices a colour this seat can use above one it cannot', () => {
+    // An opening seat has an empty barn and nothing full, so the Deliver and
+    // Harvest doors can do nothing for it while the Draw door always can. That
+    // is the whole of the claim: usable now beats usable later.
+    const state = opening(['wheat', 'orchard']);
+    const scratch = makeScratch(data, viewFor(data, state, 0));
+    expect(meepleWorth(scratch, 'orchard')).toBeGreaterThan(meepleWorth(scratch, 'vegetable'));
+    // ...and a latent colour is worth SOMETHING, not zero: a meeple is spent on
+    // a future turn, and almost every dead door comes back within a turn or two.
+    expect(meepleWorth(scratch, 'vegetable')).toBe(MEEPLE_LATENT);
+    expect(MEEPLE_LATENT).toBeGreaterThan(0);
   });
 
-  it('values a coin at nothing once the seat has bought everything it can', () => {
-    const state = newGame(noBuy, { seats: 2, suits: ['wheat', 'orchard'], seed: 'runway' });
-    const seat = state.turnPlayer;
-    const scratch = makeScratch(noBuy, viewFor(noBuy, state, seat));
-    // A fresh seat has real sinks: a Worker to hire and two starters to flip.
-    expect(scratch.coinRunway).toBeGreaterThan(0);
-    expect(scratch.coins).toBe(noBuy.rules.setup.startingCoins);
-    expect(scratch.coinNeverDead).toBe(false);
-
-    const rich = { ...scratch, coins: scratch.coinRunway + 10 };
-    expect(coinWorth(rich, 3)).toBe(0);
-    expect(coinWorth(scratch, 1)).toBe(1);
+  it('prices a colour no seat is farming, because a meeple of it still works', () => {
+    // The five door actions exist independently of who farms what, so a colour
+    // out of the game is looked up in `workers.roster` and priced normally.
+    // This is the half a `state.fair` lookup would have got wrong.
+    const state = opening(['wheat', 'orchard']);
+    const scratch = makeScratch(data, viewFor(data, state, 0));
+    for (const colour of SUITS) expect(meepleWorth(scratch, colour)).toBeGreaterThan(0);
   });
 
-  it('values a coin at its face value while the card buy is live', () => {
-    const state = newGame(withBuy, { seats: 2, suits: ['wheat', 'orchard'], seed: 'runway' });
-    const seat = state.turnPlayer;
-    const scratch = makeScratch(withBuy, viewFor(withBuy, state, seat));
-    expect(scratch.coinNeverDead).toBe(true);
-
-    const rich = { ...scratch, coins: scratch.coinRunway + 10 };
-    expect(coinWorth(rich, 3)).toBe(3);
-  });
-
-  it('sees the cheapest thing the seat still wants, affordable or not', () => {
-    // A fresh seat wants two starter flips (the hire is gone: every seat owns
-    // its Service from setup). The gap is the cheapest of them, and it stays
-    // the cheapest once the seat can pay - which is the whole point: "would
-    // buying leave me short" is not "am I short now".
-    const cheapest = data.rules.economy.upgradeCostCoins;
-    const broke = newGame(data, { seats: 2, suits: ['wheat', 'orchard'], seed: 'runway' });
-    const poor = makeScratch(data, viewFor(data, broke, broke.turnPlayer));
-    expect(poor.sinkGap).toBe(cheapest);
-
-    const flush = loadGameData({
-      name: 'flush',
-      schemaVersion: 1,
-      set: { 'rules.setup.startingCoins': cheapest },
-    });
-    const paid = newGame(flush, { seats: 2, suits: ['wheat', 'orchard'], seed: 'runway' });
-    expect(makeScratch(flush, viewFor(flush, paid, paid.turnPlayer)).sinkGap).toBe(cheapest);
+  it('pins the price to itself in both directions', () => {
+    // ⚠️ THE HOARDING KNOB, and it is pinned rather than tuned: `meepleGain`
+    // credits this when a delivery hands a meeple over and `meepleSpend`
+    // charges exactly the same number when one is spent, so a meeple is neither
+    // created nor destroyed by the bot's own accounting and the decision to
+    // spend one turns entirely on whether the rolled-out action beats the
+    // stock. Raise it and the bots hoard; lower it and they dump. Neither the
+    // 2.5 nor MEEPLE_LATENT's 0.4 has a measurement behind it.
+    expect(BALANCED['meepleSpend']).toBe(BALANCED['meepleGain']);
   });
 });

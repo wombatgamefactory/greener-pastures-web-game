@@ -21,14 +21,22 @@ function art(path: string): string {
   return `${BASE}art/${path}`;
 }
 
-/** Play tier, 520x375. `upgraded` selects the starter's second printed face. */
-export function cardArt(id: string, upgraded = false): string {
-  return art(`cards/${id.toLowerCase()}${upgraded ? 'u' : ''}.webp`);
+/**
+ * Play tier, 520x375.
+ *
+ * ⛔ THE `upgraded` ARGUMENT IS GONE (v31). It appended a `u` to the filename to
+ * fetch a starter's second printed face; starters have one face now, so the
+ * fifteen `*u.webp` files on disk have no reader. They are left in `public/`
+ * rather than deleted: nothing fetches them, so they cost a browser nothing, and
+ * they are the only surviving picture of what the upgrade layer looked like.
+ */
+export function cardArt(id: string): string {
+  return art(`cards/${id.toLowerCase()}.webp`);
 }
 
 /** Zoom tier, 1040x750. Fetched only when a card is actually being read. */
-export function cardArtZoom(id: string, upgraded = false): string {
-  return art(`cards/zoom/${id.toLowerCase()}${upgraded ? 'u' : ''}.webp`);
+export function cardArtZoom(id: string): string {
+  return art(`cards/zoom/${id.toLowerCase()}.webp`);
 }
 
 /** A face-down card: the deck back for its suit. */
@@ -36,12 +44,13 @@ export function deckBack(suit: Suit): string {
   return art(`backs/${suit}.webp`);
 }
 
-export function workerArt(action: WorkerAction): string {
+/**
+ * The painting for one of the five DOOR actions. These were the Service cards'
+ * art and the files are unchanged; what they illustrate now is the action a
+ * colour's Notice Board grants and a meeple of that colour performs.
+ */
+export function doorArt(action: WorkerAction): string {
   return art(`workers/${action}.webp`);
-}
-
-export function workerArtZoom(action: WorkerAction): string {
-  return art(`workers/zoom/${action}.webp`);
 }
 
 export function islandTileArt(tile: string): string {

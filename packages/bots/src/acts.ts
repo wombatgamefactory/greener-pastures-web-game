@@ -2,23 +2,55 @@
  * What a move DOES, with the two spellings of the same act collapsed.
  *
  * The engine deliberately offers a Deliver twice - as the `deliver` MOVE and as
- * the `deliver` ANSWER to the Deliver Worker's task - because both go through
- * one enumerator (ticket 19). A scoring term that only knew about the move type
- * would value the Worker's delivery at zero, so every term reads an `Act`
+ * the `deliver` ANSWER to a door's Deliver task - because both go through one
+ * enumerator (ticket 19). A scoring term that only knew about the move type
+ * would value the door's delivery at zero, so every term reads an `Act`
  * instead: normalise once here, and "Deliver is absolute" holds wherever a
  * delivery appears.
+ *
+ * ⛔ FOUR ACTS LEFT WITH v31 (02/09/2026) AND ALL FOUR WERE BOUGHT WITH MONEY:
+ * `buy` (GBP 1 for a blind deck top into hand), `market` (GBP 3 for a deck top
+ * into the barn), `upgrade` (GBP 2 to flip a starter) and `workOwn` (activate
+ * your own Service, paid to the bank). The `worker` task answer went with the
+ * `chooseWorker` task, and `discard` went with the hand limit. Two arrive to
+ * replace them - `bonusDraw` and `spendMeeple` - and the visit changes shape.
+ *
+ * ⭐ THE VISIT CARRIES `self`, AND THAT FLAG IS RISK 2 OF THE WHOLE PASS. In
+ * v31 a seat may place its bonus card on its OWN Notice Board and take its own
+ * suit's action, so the same act, the same currency and the same slot buy
+ * either a cross-table visit or a solitaire one. Collapsing the two into one
+ * undifferentiated `visit` act would leave the bots unable to prefer either and
+ * the report unable to tell them apart - which is precisely the failure the
+ * plan warns about, "a healthy hook while the table plays solitaire". So the
+ * distinction is carried on the act, priced by two separate weights (`visit`
+ * and `selfVisit`), and read once off `host === seat` rather than re-derived at
+ * every call site.
  */
 
-import type { Suit, WorkerAction } from '@gp/data';
+import type { Suit } from '@gp/data';
 import type { CardId, Move, Seat, TaskAnswer } from '@gp/engine';
 
 type Spend = Partial<Record<Suit, number>>;
 
 export type Act =
+  /** The plain Draw action: `rules.turn.baseDraw`, see 2 keep 2 since v31. */
   | { a: 'draw' }
-  | { a: 'buy'; suit: Suit }
-  /** BUY AT MARKET (ticket 56): the bonus-slot coin sink. Top of `suit`'s deck into the BARN. */
-  | { a: 'market'; suit: Suit }
+  /**
+   * THE SOLITAIRE HALF OF THE BONUS SLOT: `rules.turn.bonusDraw` cards off the
+   * top of any one deck in play, free. It is the yardstick every door has to
+   * beat, and it is why the Orchard door prints Draw 3 rather than Draw 2.
+   */
+  | { a: 'bonusDraw' }
+  /**
+   * SPEND ONE MEEPLE: perform its colour's plain door action free, at the very
+   * start of your turn, after which the meeple LEAVES THE GAME.
+   *
+   * `colour` is the whole act. What it is WORTH is what that door does in this
+   * position, which is why it is on the probe path (`isProbed`) rather than
+   * carrying a flat weight; what it COSTS is a stored action that never comes
+   * back, which is `meepleSpend`.
+   */
+  | { a: 'spendMeeple'; colour: Suit }
   /**
    * `payment` is hand cards and `stacks` cards lifted off the seat's OWN
    * buildings (D7 The Versatile Shed). The engine holds
@@ -26,57 +58,59 @@ export type Act =
    * paying ONE price and a term reading only their sum can never tell them
    * apart - which is what ticket 47 found `buildSpend` doing.
    *
-   * `stacks` is a COUNT. The Dairy rebuild (2026-08-10) deleted the two legs
-   * this used to carry - `coinWild` (coins as cards) and `barn` (barn cards in
-   * the payment) - and replaced them with this one; unlike the barn leg, which
-   * ticket 51 measured as dead (0.2% of 896 build groups offered one and no
-   * chosen move ever spent one), a stack card is a REAL alternative to a hand
-   * card, so it is charged as one. See `handSpend`.
+   * `stacks` is a COUNT. Unlike the old barn leg, which ticket 51 measured as
+   * dead (0.2% of 896 build groups offered one and no chosen move ever spent
+   * one), a stack card is a REAL alternative to a hand card, so it is charged
+   * as one.
    */
   | { a: 'build'; card: CardId; payment: readonly CardId[]; stacks: number }
-  | { a: 'upgrade'; card: CardId }
   | { a: 'grow'; building: CardId; payment: CardId }
   | { a: 'harvest'; building: CardId }
   | { a: 'deliver'; tile: string; spend: Spend }
   | { a: 'balloon'; balloon: string; spend: Spend }
-  | {
-      a: 'visit';
-      host: Seat;
-      fee: readonly CardId[];
-      payoff: Extract<Move, { type: 'visit' }>['payoff'];
-    }
-  | { a: 'workOwn'; workerId: WorkerAction }
+  /**
+   * THE INTERACTION HALF OF THE BONUS SLOT: one card from hand onto a Notice
+   * Board, then that board's suit action. `self` is `host === seat` - see the
+   * file header; it is the flag the whole pass turns on.
+   */
+  | { a: 'visit'; host: Seat; fee: CardId; self: boolean }
   | { a: 'cardMove'; card: CardId; kind: string; payload: Record<string, unknown> }
   | { a: 'pass' }
   | { a: 'endTurn' }
   /** Task answers with no main-move twin. */
-  | { a: 'worker'; workerId: WorkerAction }
   | { a: 'deckPick'; suit: Suit }
   | { a: 'keep'; cards: readonly CardId[] }
   | { a: 'sow'; card: CardId; onto: CardId }
-  /** The Apiary Service: a deck top onto one of your buildings, never a hand card. */
+  /** Sow the top card of a DECK, never a hand card (A13, W7, a deck-sow door). */
   | { a: 'deckSow'; suit: Suit; onto: CardId }
   /**
    * GROW WITHOUT PLACING (A5 The Meadow Hive, A12 The Honey Hut): which of your
    * buildings to FIRE, with nothing paid and nothing placed.
    *
    * Its own act rather than `harvest`, even though the answer carries the same
-   * one field, because the two are opposites: a harvest empties a stack and this
-   * does not touch it. Priced by ROLLING IT OUT (`isProbed`), because the value
-   * of an activation is entirely the value of what it fires - a flat weight
-   * would have the bot either never taking A5 or always taking it.
+   * one field, because the two are opposites: a harvest empties a stack and
+   * this does not touch it. Priced by ROLLING IT OUT (`isProbed`), because the
+   * value of an activation is entirely the value of what it fires - a flat
+   * weight would have the bot either never taking A5 or always taking it.
    */
   | { a: 'activate'; building: CardId }
-  /** The Wheat and Vegetable Services' optional hand card into your own barn. */
+  /** An optional hand card into your own barn (the divert seam, W4's harvest). */
   | { a: 'handToBarn'; card: CardId }
+  /**
+   * The turn-boundary overflow: which cards go, when the hand is over
+   * `rules.turn.handLimit`. Back with the limit on 02/09/2026.
+   *
+   * ⚠️ There is NO choice about whether to discard, only about which cards - so
+   * this act must never be priced as a loss. `discardJunk` ranks the cards
+   * instead, and `handSpendCost` is where the "a card over the limit is free"
+   * ruling lives.
+   */
   | { a: 'discard'; cards: readonly CardId[] }
   | { a: 'skip' }
   | { a: 'cardTask'; payload: Record<string, unknown> };
 
 function actOfAnswer(answer: TaskAnswer): Act {
   switch (answer.kind) {
-    case 'worker':
-      return { a: 'worker', workerId: answer.workerId };
     case 'deck':
       return { a: 'deckPick', suit: answer.suit };
     case 'keep':
@@ -123,14 +157,12 @@ export function actOf(move: Move): Act {
       return { a: 'cardMove', card: move.card, kind: move.kind, payload: move.payload };
     case 'draw':
       return { a: 'draw' };
-    case 'buy':
-      return { a: 'buy', suit: move.suit };
-    case 'market':
-      return { a: 'market', suit: move.suit };
+    case 'bonusDraw':
+      return { a: 'bonusDraw' };
+    case 'spendMeeple':
+      return { a: 'spendMeeple', colour: move.colour };
     case 'build':
       return { a: 'build', card: move.card, payment: move.payment, stacks: 0 };
-    case 'upgrade':
-      return { a: 'upgrade', card: move.card };
     case 'grow':
       return { a: 'grow', building: move.building, payment: move.payment };
     case 'harvest':
@@ -140,9 +172,7 @@ export function actOf(move: Move): Act {
     case 'moveBalloon':
       return { a: 'balloon', balloon: move.balloon, spend: move.spend };
     case 'visit':
-      return { a: 'visit', host: move.host, fee: move.fee, payoff: move.payoff };
-    case 'workOwnWorker':
-      return { a: 'workOwn', workerId: move.workerId };
+      return { a: 'visit', host: move.host, fee: move.fee, self: move.host === move.seat };
     case 'pass':
       return { a: 'pass' };
     case 'endTurn':

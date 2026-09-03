@@ -51,9 +51,13 @@ interface Row {
   readonly pooled: Pooled;
 }
 
-export function runSweep(input: SweepInput): string {
+export async function runSweep(input: SweepInput): Promise<string> {
   const cells = cellsFromFile(input.path, input.baselineData);
-  const rows: Row[] = cells.map((cell) => {
+  // Sequential rather than `Promise.all`: each arm already saturates the worker
+  // pool, so racing the arms would only make them queue behind each other with
+  // a less readable progress line.
+  const rows: Row[] = [];
+  for (const cell of cells) {
     const data = loadGameData(cell.overlay);
     // PAIRED, as of 2026-08-08. Every cell and the baseline arm run on the SAME
     // seed, so they get the same cell plan, the same profile assignment per
@@ -66,9 +70,9 @@ export function runSweep(input: SweepInput): string {
     // to read it against either. Trajectories still diverge the moment the
     // changed rule bites, which is the point; what the shared seed removes is
     // the difference that was there before either arm made a move.
-    const result = runBalance(data, { ...input.opts, onGame: undefined });
-    return { label: cell.label, data, pooled: pool(result) };
-  });
+    const result = await runBalance(data, { ...input.opts, onGame: undefined });
+    rows.push({ label: cell.label, data, pooled: pool(result) });
+  }
 
   const out: string[] = [];
   out.push('='.repeat(96));

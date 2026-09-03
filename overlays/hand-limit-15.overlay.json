@@ -1,0 +1,8 @@
+{
+  "name": "hand-limit-15",
+  "description": "THE HAND LIMIT AT 15 (02/09/2026, RE-POINTED 03/09/2026). ⚠️ WRITTEN AGAINST A SHIPPED 12; the shipped limit is 7, so this is now the far loose end of the ladder rather than one rung above. The looser arm of the pair. It is the more interesting of the two, because it asks the question the reinstatement itself dodged: how much of the v31 no-limit disaster was the ABSENCE of a ceiling and how much was the ceiling being LOW? At 15 the rule is barely a design constraint - it is close to a pure safety rail on the legal-move enumerator - so if this arm plays the same as the shipped 12 on the bonus mix and the hook, then 12 is doing nothing a rail could not do and the honest thing is to say so rather than to keep a number that reads as tuned. If instead the visit share falls and the free Draw 1 rises at 15, that is the diminishing-return story confirmed and 12 is a real design value. READ: the bonus mix four ways with the visit counted separately from the self-visit; the median and maximum hand; the discard rate; and the WORST LEGAL-MOVE COUNT, which is the number the whole rule exists to bound - C(14,4) is 1001 payments for one buildable card against C(11,4)'s 330, so 15 is roughly three times the worst-case branching of 12 and a run at this value will be slower for that reason alone.",
+  "schemaVersion": 1,
+  "set": {
+    "rules.turn.handLimit": 15
+  }
+}

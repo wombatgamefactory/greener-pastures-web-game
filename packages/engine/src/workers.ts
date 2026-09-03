@@ -1,58 +1,75 @@
 /**
- * Suit Service mechanics: performing a Service's ENHANCED action.
+ * THE FIVE DOORS: performing a suit's action.
  *
- * What used to live here as well - the Working Week track's advance, wage and
- * expiry arithmetic - is gone with the Hiring Fair (2026-08-10). The wage is now
- * minted where the card is placed (doVisit), because the card landing on the
- * Service IS the use, and the Service's own threshold is the only brake.
+ * `workers.json` says what each suit's action IS, and since v31 exactly two
+ * things read it - a NOTICE BOARD grants that action to whoever places a card on
+ * it, and a MEEPLE of that colour performs the same action free when its owner
+ * spends it. Same five entries, same five actions, two ways in, so there is one
+ * dispatch here and both routes come through it.
  *
- * The rule that survived intact: the owner never earns from their own farm, so
- * every payment to an owner is gated on `actor !== owner` at its call site.
+ * ⛔ WHAT LEFT THIS FILE, IN THE ORDER IT LEFT. The Working Week track's advance,
+ * wage and expiry arithmetic went with the Hiring Fair (2026-08-10). The wage
+ * itself went with the currency (v31), and with it the standing law it enforced
+ * - that you never earn from your own farm - because in v31 the owner places a
+ * card on their own board exactly as a rival does and there is nothing to earn.
+ * `workWorker` and its `WorkOptions.progress` flag went at the same time:
+ * `progress: false` was the Herb Hive's off-the-books mode, where the action
+ * happened but no card was placed and no wage was minted, and neither half of
+ * that sentence describes anything that still exists.
+ *
+ * ⭐ THE DOORS ARE PLAIN, AND THAT IS THE v31 CHANGE. Every enhancement the
+ * roster used to carry - the relaxed harvest, the hand card into the barn before
+ * a delivery, the deck-sown card, the build at a discount with crop requirements
+ * waived - is gone, because the bonus slot itself became the enhancement: a door
+ * now buys a WHOLE CORE ACTION for one card, which is a far bigger prize than
+ * any rider was, and stacking a rider on top was pricing a sweetener into a deal
+ * that no longer needed one. The `draw` and `sow` blocks survive only because
+ * those two actions need a size.
  */
 
-import { withDrawModifier, workerData, workerState } from './query.js';
+import type { Suit } from '@gp/data';
+
+import { doorOf } from './query.js';
 import type { Fx } from './fx.js';
 import { fireHook } from './fx.js';
 import type { Seat } from './state.js';
 
-export interface WorkOptions {
-  /**
-   * false = the Herb Hive's free mode: the action happens but no card is placed
-   * on the Service, so its threshold does not move and no wage is minted.
-   */
-  progress: boolean;
-}
+/** What paid for this door action: a card on a Notice Board, or a meeple leaving the game. */
+export type DoorVia = 'visit' | 'meeple';
 
 /**
- * Perform a Service's action as `actor`. RULING (locked, carried over from the
- * Hired Workers): suit powers apply to actions performed by a Service - it is
- * your action, done on someone else's premises. That is why the Orchard draw
- * modifier and the Wheat relaxed-harvest gate compose below.
+ * Perform a suit's door action as `actor`.
  *
- * Every branch performs the ENHANCED action, never the plain one. The
- * enhancements are printed in workers.json and the sizing rule is there too:
- * a visitor pays a card, so an action that also spends cards has to over-deliver
- * or buying it is worse than doing it yourself.
+ * RULING (locked, carried over unchanged since v13): SUIT POWERS APPLY TO
+ * ACTIONS PERFORMED THROUGH A DOOR OR BY A MEEPLE. It is your action, whoever's
+ * premises it is taken on and whatever wooden thing paid for it. In v31 there
+ * are no Farmstead suit powers left for that ruling to reach, but it still
+ * governs anything a CARD grants, so the branches below push the same tasks the
+ * core actions push and nothing here is a second implementation of an action.
+ *
+ * ⚠️ THE ONE EXCEPTION IN THE SET IS THE ORCHARD DOOR AT DRAW 3, AND IT IS
+ * LOAD-BEARING. The self-cancellation law: a visitor pays 1 card to use a door,
+ * so a door whose action PRODUCES cards has to over-deliver or buying it is net
+ * zero. The bonus slot's other option is a free Draw 1, so a plain Draw 2 door
+ * would cost 1 card and return 2 - exactly what the free option gives for
+ * nothing - and would be STRICTLY WORSE than its own alternative. Draw 3 nets
+ * +2. Tidy it to 2 for consistency with the other four and the Orchard door dies
+ * overnight, and it will die silently: nothing errors, the traffic simply goes
+ * somewhere else.
+ *
+ * `colour` is looked up in `workers.roster` and never in `state.fair`, because a
+ * meeple of a suit NOBODY is farming still works.
  */
-export function workWorker(fx: Fx, actor: Seat, workerId: string, opts: WorkOptions): void {
-  const worker = workerData(fx.data, workerId);
-  const owner = workerState(fx.state, workerId).owner;
-  fx.emit({
-    e: 'workerWorked',
-    seat: actor,
-    workerId: worker.id,
-    owner,
-    free: !opts.progress,
-  });
+export function performDoorAction(fx: Fx, actor: Seat, colour: Suit, via: DoorVia): void {
+  const door = doorOf(fx.data, colour);
+  fx.emit({ e: 'doorUsed', seat: actor, colour, action: door.action, via });
 
-  switch (worker.action) {
+  switch (door.action) {
     case 'draw': {
-      // The load-bearing exception, older than the Services: Draw 3 keep 2,
-      // never a plain draw. A Service priced in cards must over-deliver cards or
-      // it is precisely worthless to buy - do not "tidy" it to the base draw.
-      // The Orchard Farmstead's modifier composes: (3,2) -> (4,2) base, (4,3)
-      // upgraded.
-      const spec = withDrawModifier(fx.data, fx.state, actor, worker.draw ?? { see: 1, keep: 1 });
+      // Draw 3, keep 3 - see the exception note above. No draw modifier is
+      // consulted: `withDrawModifier` went with the Orchard Farmstead (v31), so
+      // the printed numbers are the numbers.
+      const spec = door.draw ?? { see: 1, keep: 1 };
       fx.pushTask({
         t: 'draw',
         pid: actor,
@@ -64,62 +81,51 @@ export function workWorker(fx: Fx, actor: Seat, workerId: string, opts: WorkOpti
       break;
     }
     case 'harvest':
-      // 'harvestable' plus the door's own `relaxedMin`: "Harvest a building with
-      // 2 or more cards, even if not full" is printed on W3 the Notice Board, so
-      // it is THIS ACTION's relaxation and it travels with the action to
-      // whoever works the door. It used to be the Wheat Farmstead's suit power
-      // and composed here by a locked ruling; the sheet swapped W2 and W3 on
-      // 19/08/2026 and the two halves changed places.
-      //
-      // The hand-to-barn tail that used to be queued after the harvest has gone
-      // the other way: it is W2's printed power now.
+      // The PLAIN Harvest: full buildings only. The `relaxedMin` rider this used
+      // to pass ("2 or more cards, even if not full") was printed on the Wheat
+      // Notice Board and travelled with the action to whoever worked the door;
+      // v31's flat doors deleted it.
       fx.pushTask({
         t: 'chooseBuilding',
         pid: actor,
         src: null,
         filter: 'harvestable',
-        ...(worker.relaxedMin === undefined ? {} : { relaxedMin: worker.relaxedMin }),
         then: 'harvest',
       });
       break;
     case 'sow':
-      if (worker.sow?.from === 'deck') {
-        fx.pushTask({ t: 'sowFromDeck', pid: actor, src: null, remaining: worker.sow.amount });
+      // ⚠️ FROM THE HAND, AND THIS IS THE WEAKEST DOOR ON THE TABLE (Dean,
+      // 02/09/2026, ruled that way knowingly). A visitor pays 1 card onto the
+      // board and a SECOND card into the sow, for one threshold step on one of
+      // their own buildings: two cards out for one step in, which is the
+      // self-cancellation law biting on the one door where it was not paid off.
+      // The fix, if the Apiary board takes no traffic, is `from: 'deck'` in the
+      // data - not a cheaper door - and this branch already handles it.
+      if (door.sow?.from === 'deck') {
+        fx.pushTask({ t: 'sowFromDeck', pid: actor, src: null, remaining: door.sow.amount });
       } else {
-        fx.pushTask({ t: 'sow', pid: actor, src: null, remaining: worker.sow?.amount ?? 1 });
+        fx.pushTask({ t: 'sow', pid: actor, src: null, remaining: door.sow?.amount ?? 1 });
       }
       break;
     case 'build':
-      // The Dairy Service waives the crop requirements (`substitute`) and never
-      // the price. buildModsFor ORs in the actor's own Farmstead power on top, so
-      // a Dairy player buying it is not double-counted, just unaffected.
-      fx.pushTask({
-        t: 'build',
-        pid: actor,
-        src: null,
-        ...(worker.build ? { mods: { ...worker.build } } : {}),
-      });
+      // The PLAIN Build: full cost, crop requirements apply. The Builder's Yard
+      // used to waive the crops and take a card off the price; v31's flat doors
+      // deleted both, so a visitor buying a Build buys the action and nothing
+      // more.
+      fx.pushTask({ t: 'build', pid: actor, src: null });
       break;
     case 'deliver':
-      // The head, queued BEFORE the delivery: one hand card into the barn is
-      // exactly "you may pay up to 1 card of the cost from your hand", since the
-      // barn is where a delivery is paid from. One primitive, no second path.
-      pushHandToBarn(fx, actor, worker.handToBarn);
+      // The PLAIN Deliver, island or freight (a balloon move IS the Deliver
+      // action, DL-12). The hand-card-into-the-barn head this used to queue
+      // first was the door's rider and is gone.
       fx.pushTask({ t: 'deliver', pid: actor, src: null });
       break;
     default:
-      worker.action satisfies never;
+      door.action satisfies never;
   }
 
-  // Fires for every path - the bonus slot, a visit's payoff, a Helping Hand
-  // repeat, the Herb Hive's free work. A17 The Smoke Pot reads it owner-side,
-  // D17 The Strongbox actor-side.
-  if (owner !== null) {
-    fireHook(fx, 'afterWork', { actor, owner, workerId: worker.id, free: !opts.progress });
-  }
-}
-
-function pushHandToBarn(fx: Fx, actor: Seat, n: number | undefined): void {
-  if (!n || n <= 0) return;
-  fx.pushTask({ t: 'handToBarn', pid: actor, src: null, remaining: n, optional: true });
+  // Fires for both routes. It used to carry `owner` (who collected the wage) and
+  // `free` (the Herb Hive's off-the-books use); both described an economy that
+  // no longer exists, so the payload says what happened instead of who was paid.
+  fireHook(fx, 'afterWork', { actor, colour, action: door.action, via });
 }

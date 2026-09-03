@@ -1,0 +1,8 @@
+{
+  "name": "hand-limit-9",
+  "description": "THE HAND LIMIT AT 9, AGAINST THE SHIPPED 7 (03/09/2026). The loose arm of the pair that brackets 7, and it asks the question the 12 -> 7 move assumed the answer to: how much of the free-Draw dominance was the ceiling being ABSENT, and how much is it about where the ceiling sits? Nine is five above the 4-card opening hand - still a brake, but a seat can bank two turns of draws before it bites. If this arm plays the same as 7 on the bonus mix and on the hook, then 7 is doing nothing 9 could not do and the tighter number is costing the design a resource for no return; if instead the neighbour-visit share falls and the free Draw 1 rises at 9, the diminishing-return story is confirmed and 7 is a real design value rather than a convenient one. READ: the bonus mix with the visit counted separately from the self-visit; the median and maximum hand, because a maximum that never reaches 9 makes this arm measure nothing; the boundary discard rate; and the WORST LEGAL-MOVE COUNT, which is what the rule bounds - C(8,4) is 70 payments for one buildable card against C(6,4)'s 15, so 9 is roughly five times the worst-case branching of 7 and slower to run for that reason alone.",
+  "schemaVersion": 1,
+  "set": {
+    "rules.turn.handLimit": 9
+  }
+}
