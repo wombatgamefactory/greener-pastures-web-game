@@ -1748,9 +1748,47 @@ export function deliverOptions(data: GameData, state: GameState, seat: Seat): De
     const affordable = (Object.entries(demand.spend) as [Suit, number][]).every(
       ([s, n]) => (barn[s] ?? 0) >= n,
     );
+    // ⛔ THE FILLER IS DRAWN FROM EVERY SUIT, NOT ONLY THE SUITS IN PLAY, AND
+    // THAT IS A BUG FIX RATHER THAN A WIDENING (04/09/2026). `canPay` - the fast
+    // path behind `anyDeliverOption`, which GATES the green door - has always
+    // measured the surplus over the WHOLE tally, while this line could only
+    // spend it from `state.suitsInPlay`. The two agreed by accident for as long
+    // as the tally was the barn alone, because a barn card can only ever arrive
+    // from a deck in play.
+    //
+    // ⚠️ R15 ENDED THE ACCIDENT. The delivery tally now includes the MEEPLE
+    // SUPPLY, and every seat holds meeples in all five colours whether or not
+    // anybody farms them (R3), so a colour outside `suitsInPlay` reached the
+    // tally for the first time: the gate said "payable", this line offered
+    // nothing, `legalMoves` fell through to `pass` on an empty list and `apply`
+    // re-checked with the gate and threw. It cost 2 games in 4820 on the first
+    // meeple-as-card run.
+    //
+    // Widening THIS side rather than narrowing the gate is what keeps the rule
+    // true: a meeple IS a card of its colour (R15) and the island's own
+    // substitution takes "2 cards of any crops", so an unfarmed colour is a
+    // legal filler and refusing it would be a second rule nobody wrote. It
+    // cannot move the controls: with no meeples in the tally the surplus of an
+    // out-of-play suit is 0, `fillerSpends` caps every take at the surplus, and
+    // a capped-at-zero suit contributes one pass-through iteration and the same
+    // list in the same order.
+    // ⚠️ THE ORDER OF THIS LIST IS LOAD-BEARING, and getting it wrong moved
+    // the CONTROL arm without changing a rule - 17,715 positions became 17,878
+    // over 40 games when this passed `data.cards.suits` outright. `fillerSpends`
+    // recurses in the order it is handed, that order reaches the bots'
+    // tie-break, and `state.suitsInPlay` is NOT catalogue order (it is the
+    // players' suits, then the neutral decks). So the suits in play come FIRST,
+    // exactly as before, and the rest are APPENDED: their surplus is 0 in any
+    // game without meeples in the tally, a zero-capped suit is a single
+    // pass-through iteration, and the list that comes back is identical
+    // element for element.
+    const fillerSuits = [
+      ...state.suitsInPlay,
+      ...data.cards.suits.filter((x) => !state.suitsInPlay.includes(x)),
+    ];
     const spends = affordable
       ? [demand.spend]
-      : substitutedSpends(data, state.suitsInPlay, demand.spend, barn);
+      : substitutedSpends(data, fillerSuits, demand.spend, barn);
     for (const spend of spends) {
       const key = spendKey(demand.tile, spend);
       if (seen.has(key)) continue;

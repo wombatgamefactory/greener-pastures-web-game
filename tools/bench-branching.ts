@@ -29,6 +29,17 @@ import { dirname, join, resolve } from 'node:path';
 
 import type { GameData, Overlay, Suit } from '@gp/data';
 import { BASE_GAME_DATA, loadGameData, validateOverlay } from '@gp/data';
+import {
+  anyBalloonMoveOption,
+  anyBuildOption,
+  anyDeliverOption,
+  buildOptions,
+  balloonMoveOptions,
+  deliverOptions,
+  growOptions,
+  harvestOptions,
+} from '../packages/engine/src/actions.js';
+import { drawableSuits } from '../packages/engine/src/query.js';
 import { runGame } from '../packages/sim/src/driver.js';
 import { cellsFor } from '../packages/sim/src/reference.js';
 
@@ -51,6 +62,8 @@ const { data, name } = dataFor(flag(argv, 'overlay'));
 const games = Number(flag(argv, 'games') ?? 12);
 const seats = Number(flag(argv, 'seats') ?? 2);
 const seed = flag(argv, 'seed') ?? 'reference-v11';
+/** --audit walks the gate-versus-enumerator check. Slow; off by default. */
+const audit = argv.includes('--audit');
 
 // The same stratified cells the balance run uses, so the positions measured are
 // positions the suite will actually meet rather than a hand-picked table. Every
@@ -79,6 +92,13 @@ let worstBuild = 0;
 // without the hand moving is a change to the payment enumerator; one that moved
 // WITH the hand is a change to the game.
 let worstHand = 0;
+// ⚠️ THE GATE-VERSUS-ENUMERATOR AUDIT. `hasMainOption` answers "is any main
+// action legal" with the fast `any*` predicates, and `legalMoves` answers it by
+// enumerating; `pass` is offered when the enumeration is empty and `apply`
+// re-checks with the gate, so ONE disagreement is a crash. This walks every
+// position and names which of the six disagreed, which is the only way to turn
+// a 2-in-4820 crash into a fix.
+const disagreements = new Map<string, string>();
 const errors = new Map<string, string>();
 
 const started = process.hrtime.bigint();
@@ -97,6 +117,31 @@ for (let i = 0; i < games; i++) {
       positions += 1;
       totalMoves += n;
       counts.push(n);
+      if (audit) {
+        const st = d.pre;
+        const seat = d.seat;
+        const pairs: [string, boolean, boolean][] = [
+          ['draw', drawableSuits(data, st).length > 0, drawableSuits(data, st).length > 0],
+          ['build', anyBuildOption(data, st, seat), buildOptions(data, st, seat).length > 0],
+          ['grow', growOptions(data, st, seat).length > 0, growOptions(data, st, seat).length > 0],
+          [
+            'harvest',
+            harvestOptions(data, st, seat).length > 0,
+            harvestOptions(data, st, seat).length > 0,
+          ],
+          ['deliver', anyDeliverOption(data, st, seat), deliverOptions(data, st, seat).length > 0],
+          [
+            'balloon',
+            anyBalloonMoveOption(data, st, seat),
+            balloonMoveOptions(data, st, seat).length > 0,
+          ],
+        ];
+        for (const [name, gate, enumerated] of pairs) {
+          if (gate !== enumerated && !disagreements.has(name)) {
+            disagreements.set(name, `${gameSeed} turn ${st.turnPlayer} gate=${gate} enum=${enumerated}`);
+          }
+        }
+      }
       let turnMoves = 0;
       let builds = 0;
       for (const m of d.legal) {
@@ -137,6 +182,15 @@ process.stdout.write(
     `p95 legal moves:        ${at(0.95)}`,
     `p99 legal moves:        ${at(0.99)}`,
     `mean legal moves:       ${(totalMoves / Math.max(1, positions)).toFixed(1)}`,
+    ...(audit
+      ? [
+          `GATE vs ENUMERATOR:     ${
+            disagreements.size === 0
+              ? 'agree everywhere'
+              : [...disagreements].map(([k, v]) => `${k} DISAGREES (${v})`).join('; ')
+          }`,
+        ]
+      : []),
     `outcomes:               ${[...outcomes].map(([o, n]) => `${o} ${n}`).join(', ')}`,
     ...[...errors].map(([e, sd]) => `  ! ${e}   (${sd})`),
     `SECONDS PER GAME:       ${(elapsed / games).toFixed(3)}   (${elapsed.toFixed(1)}s total)`,
