@@ -18,7 +18,12 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { BASE_GAME_DATA as data } from '@gp/data';
+// ⛔ THE UI'S OWN DATA, NOT `BASE_GAME_DATA`, since 04/09/2026. The shipped
+// rules are the meeple loop and this package still draws the v31 card-fee game,
+// so `session/table.ts` pins itself to `overlays/v31-card-visit.overlay.json` -
+// see the docblock there for why, and for what the UI pass owes. A test that
+// reached past that pin would be measuring rules the interface does not draw.
+import { data } from '../session/table';
 import type { Move, PlayerView } from '@gp/engine';
 
 import type { Suit } from '@gp/data';

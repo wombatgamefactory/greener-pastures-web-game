@@ -18,11 +18,42 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
-import { BASE_GAME_DATA } from '@gp/data';
+import { BASE_GAME_DATA, loadGameData } from '@gp/data';
 import { replayFixture } from '@gp/engine';
 import type { Fixture } from '@gp/engine';
 
 const DIR = fileURLToPath(new URL('../fixtures', import.meta.url));
+
+/**
+ * ⭐ WHICH RULES A FIXTURE REPLAYS AGAINST IS READ OFF ITS FILENAME, and it is
+ * the only place in the project that does anything of the kind, so it is worth
+ * saying why rather than hiding it.
+ *
+ * A fixture is a seed and a move log and nothing else - the format is frozen and
+ * asserted below, key by key, precisely so that nothing private can ride into
+ * one - so it has no field in which to name the rules it was recorded under.
+ * Until 04/09/2026 that cost nothing: there was one game, and a log that stopped
+ * replaying was either a regression or a stale fixture to re-capture.
+ *
+ * Dean then ruled the meeple loop in and the v31 game did NOT go away: it is the
+ * control, one flag off, at `overlays/v31-card-visit.overlay.json`. So the three
+ * `-v31-` logs are not stale, they are logs of a game that is still runnable and
+ * still worth guarding, and re-capturing them on top of the new rules would have
+ * thrown away the only coverage the `'card'` branch has. They replay against the
+ * control; the `-meeple-loop-` logs replay against the shipped default.
+ *
+ * A new fixture belongs to the shipped game and needs no marker. Only a log
+ * deliberately captured under an arm carries one.
+ */
+const V31_CONTROL = loadGameData({
+  name: 'v31-card-visit',
+  schemaVersion: 1,
+  set: { 'rules.turn.visitCurrency': 'card' },
+});
+
+function dataFor(file: string) {
+  return file.includes('-v31-') ? V31_CONTROL : BASE_GAME_DATA;
+}
 
 function fixtures(): { file: string; fixture: Fixture }[] {
   return readdirSync(DIR)
@@ -55,7 +86,7 @@ describe('captured regression fixtures', () => {
   it.each(all.map(({ file, fixture }) => [file, fixture] as const))(
     '%s replays as recorded',
     (file, fixture) => {
-      const result = replayFixture(BASE_GAME_DATA, fixture);
+      const result = replayFixture(dataFor(file), fixture);
       const stale =
         result.fingerprintMatches === false
           ? `\n  NOTE: recorded against data ${fixture.dataFingerprint}, this build has ` +

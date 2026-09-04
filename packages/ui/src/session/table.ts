@@ -49,7 +49,39 @@ import type {
   Seat,
 } from '@gp/engine';
 
-export const data: GameData = loadGameData();
+/**
+ * ⛔⛔ THE BROWSER BUILD IS PINNED TO THE v31 CONTROL, AND IT IS THE ONE THING
+ * THE 04/09/2026 FLIP DID NOT CARRY (see `overlays/v31-card-visit.overlay.json`).
+ *
+ * Dean ruled the meeple loop in on 04/09/2026 and `rules.turn.visitCurrency` is
+ * `'meeple'` in the shipped data, so the engine, the bots and the simulator all
+ * play it. THE INTERFACE DOES NOT. It has no surface for any of it: the Notice
+ * Board is drawn as a building with a fill bar and a threshold, a visit is
+ * assembled by dragging a CARD onto a host, there is no way to pick a colour
+ * slot, no way to spend a wild pair, and Collect has a button but no board to
+ * sweep. `view/intent.ts` and `view/moveText.ts` both carry a
+ * `TODO(meeple-loop): owned by the ui pass` from the session that built the arm.
+ *
+ * ⭐ SO IT LOADS THE CONTROL DELIBERATELY, RATHER THAN LOADING THE SHIPPED RULES
+ * AND MISDRAWING THEM. The two failure modes are not equal. A UI one version
+ * behind, that says so in one place, is a known gap; a UI that renders a
+ * threshold on a card that can never take a card, offers a visit it cannot
+ * complete and hides half the bonus slot is a UI that LIES ABOUT THE RULES, and
+ * the whole point of `liveThreshold`'s seam (26/08/2026) is that the interface
+ * may lag the sheet but may never contradict the engine about what is legal.
+ *
+ * ⚠️ DELETE THIS OVERLAY WHEN THE UI PASS LANDS, AND NOT BEFORE. What it owes:
+ * five colour slots on the Notice Board with the meeples that sit in them, a
+ * visit assembled as (host, colour) with the wild pair as its second shape, a
+ * Collect that shows what is coming home, the supply drawn as one of each colour
+ * rather than as a pile, and the turn-start meeple phase deleted from the bar.
+ * Every UI test in this package is measuring the control until then.
+ */
+export const data: GameData = loadGameData({
+  name: 'v31-card-visit',
+  schemaVersion: 1,
+  set: { 'rules.turn.visitCurrency': 'card' },
+});
 
 /** The seat the human sits in. Always 0: the interface is written from one chair. */
 export const YOU: Seat = 0;

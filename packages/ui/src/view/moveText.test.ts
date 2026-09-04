@@ -22,7 +22,12 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { BASE_GAME_DATA as data } from '@gp/data';
+// ⛔ THE UI'S OWN DATA, NOT `BASE_GAME_DATA`, since 04/09/2026. The shipped
+// rules are the meeple loop and this package still draws the v31 card-fee game,
+// so `session/table.ts` pins itself to `overlays/v31-card-visit.overlay.json` -
+// see the docblock there for why, and for what the UI pass owes. A test that
+// reached past that pin would be measuring rules the interface does not draw.
+import { data } from '../session/table';
 import { answerTask, growBuilding, handlerFor, pendingAnswers, testkit, viewFor } from '@gp/engine';
 import type { Move, TaskAnswer } from '@gp/engine';
 

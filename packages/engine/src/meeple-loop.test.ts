@@ -27,11 +27,23 @@ import { buildFor, dealTo, deliveredAt, makeState } from './testkit.js';
 const WHEAT: Seat = 0;
 const ORCHARD: Seat = 1;
 
-/** The arm, as the overlay `overlays/meeple-loop-v1.overlay.json` sets it. */
+/**
+ * The arm - which since Dean ruled it in on 04/09/2026 is simply the shipped
+ * game. The overlay is kept and the tests still load through it because
+ * `overlays/meeple-loop-v1.overlay.json` is a no-op against the default and this
+ * file is what would notice if that ever stopped being true.
+ */
 const arm: GameData = loadGameData({
   name: 'meeple-loop-v1',
   schemaVersion: 1,
   set: { 'rules.turn.visitCurrency': 'meeple' },
+});
+
+/** The v31 card-fee game, as `overlays/v31-card-visit.overlay.json` sets it. */
+const control: GameData = loadGameData({
+  name: 'v31-card-visit',
+  schemaVersion: 1,
+  set: { 'rules.turn.visitCurrency': 'card' },
 });
 
 /**
@@ -381,24 +393,41 @@ describe('A Helping Hand under the arm (R11)', () => {
   });
 });
 
-describe('the control arm is untouched', () => {
-  it('carries no Notice Board slots and no starting meeples under the shipped rules', () => {
-    expect(BASE_GAME_DATA.rules.turn.visitCurrency).toBe('card');
-    const s = newGame(BASE_GAME_DATA, { seats: 2, seed: 'control' });
+/**
+ * ⭐ THE ARM AND THE DEFAULT SWAPPED PLACES ON 04/09/2026. Dean ruled the meeple
+ * loop in, so `BASE_GAME_DATA` IS the arm and the v31 card-fee game is the
+ * control behind `overlays/v31-card-visit.overlay.json`. This block asserted
+ * "the knob is off" of the base data; it now asserts the same claim from the
+ * other side, which is worth keeping for exactly the reason it was written -
+ * "the flag is where I think it is" is a claim worth failing on.
+ */
+describe('the shipped default is the arm, and the control still reproduces v31', () => {
+  it('the base data IS the meeple loop', () => {
+    expect(BASE_GAME_DATA.rules.turn.visitCurrency).toBe('meeple');
+    const s = newGame(BASE_GAME_DATA, { seats: 2, seed: 'shipped' });
+    for (const p of s.players) {
+      for (const colour of BASE_GAME_DATA.cards.suits) expect(p.meeples[colour]).toBe(1);
+    }
+    for (const tile of s.island.tiles) expect(tile.meeples).toHaveLength(1);
+  });
+
+  it('carries no Notice Board slots and no starting meeples under the v31 control', () => {
+    expect(control.rules.turn.visitCurrency).toBe('card');
+    const s = newGame(control, { seats: 2, seed: 'control' });
     for (const p of s.players) {
       expect(Object.hasOwn(p, 'noticeBoard')).toBe(false);
-      for (const colour of BASE_GAME_DATA.cards.suits) expect(p.meeples[colour]).toBe(0);
+      for (const colour of control.cards.suits) expect(p.meeples[colour]).toBe(0);
     }
     // Two meeples per tile, on both delivery spaces, exactly as v31 deals them.
     for (const tile of s.island.tiles) expect(tile.meeples).toHaveLength(2);
   });
 
   it('still offers the free Draw 1 and still prices a visit in cards', () => {
-    const s = makeState(BASE_GAME_DATA, ['wheat', 'orchard']);
+    const s = makeState(control, ['wheat', 'orchard']);
     s.turnPlayer = WHEAT;
     s.turn.actionSpent = true;
-    dealTo(BASE_GAME_DATA, s, WHEAT, 'W7');
-    const moves = legalMoves(BASE_GAME_DATA, s);
+    dealTo(control, s, WHEAT, 'W7');
+    const moves = legalMoves(control, s);
     expect(moves.some((m) => m.type === 'bonusDraw')).toBe(true);
     expect(moves.some((m) => m.type === 'collect')).toBe(false);
     expect(moves.some((m) => m.type === 'visit' && m.fee === 'W7')).toBe(true);
@@ -427,6 +456,12 @@ describe('whole games under the arm', () => {
     'cardMove',
     'pass',
     'endTurn',
+    // ⚠️ LAST, AND THE ORDER IS THE WHOLE OF IT. A balloon move IS the Deliver
+    // action but never an island delivery, so a greedy policy that prefers one
+    // spends the turn without moving the clock and the game never ends. It is
+    // in the list at all because a position can offer nothing else, which is
+    // what a bare `throw` here was mistaking for a stuck game.
+    'moveBalloon',
   ];
 
   function pick(rng: [number, number, number, number], moves: Move[]): Move {
@@ -434,7 +469,9 @@ describe('whole games under the arm', () => {
       const of = moves.filter((m) => m.type === type);
       if (of.length > 0) return of[rngInt(rng, of.length)] as Move;
     }
-    throw new Error('no move to pick');
+    // Naming the types is the whole value of the throw: a policy list that has
+    // fallen behind the move vocabulary looks exactly like a stuck game.
+    throw new Error(`no move to pick: ${[...new Set(moves.map((m) => m.type))].join(', ')}`);
   }
 
   it.each([
@@ -451,7 +488,34 @@ describe('whole games under the arm', () => {
       expect(moves.length).toBeLessThan(4000);
       state = apply(arm, state, pick(rng, moves)).state;
     }
-    expect(state.phase).toBe('ended');
+    /**
+     * ⚠️ ENDED, OR SUPPLY-LOCKED, AND THE SECOND IS A REAL TERMINAL STATE RATHER
+     * THAN A LOOSENED ASSERTION.
+     *
+     * This policy is greedy and stupid: it prefers `draw` over `visit`, over
+     * `collect` and over anything that ends a turn, so it empties all five decks
+     * and every discard into hands, plays those out, and can arrive at a table
+     * where nobody holds a card, no barn can pay a crate and every deck is dry.
+     * At that point every seat's only legal move is `pass`, forever, because
+     * this game's clock is a player action - the sixth island delivery - and
+     * there is no deck-out ending to catch it.
+     *
+     * It is legal and it is not new: the balance suite already counts these as
+     * UNFINISHED GAMES and reports the rate. What this block exists to catch is
+     * `legalMoves` returning EMPTY mid-game, which is asserted at every step
+     * above and is the failure that would show up in a run as a crash.
+     *
+     * 3p reaches the lock on this seed and 2p and 4p do not. It is worth knowing
+     * why the seed changed sides on 04/09/2026: W17 The Pie Shop was re-keyed
+     * onto the visit and now draws a card for its owner when a neighbour visits
+     * them, which moved this trajectory a few cards further into the deck.
+     * Nothing about the currency did it.
+     */
+    const dry =
+      arm.cards.suits.every((c) => state.decks[c].length === 0 && state.discards[c].length === 0) &&
+      state.players.every((p) => p.hand.length === 0);
+    expect(state.phase === 'ended' || dry, `${seed}: neither ended nor supply-locked`).toBe(true);
+
     // The loop really did loop: meeples came back off boards rather than only
     // being spent, and nothing left the game except through the cap.
     const held = state.players.reduce(

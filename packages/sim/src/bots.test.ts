@@ -540,10 +540,21 @@ describe('the archetypes', () => {
    * is the pure sample of risk 2's solitaire branch, which is a better control
    * than the old one rather than a weaker test.
    *
-   * So both halves are asserted. Not one neighbour visit anywhere is the veto
-   * (a08-the-hook has no control without it, and a run that "passes" the hook
-   * against a hermit mirror proves nothing). At least one self-visit is what
-   * makes the veto specific rather than the bot simply never reaching the slot.
+   * ⭐ RE-POINTED AGAIN 04/09/2026, AND THE SECOND HALF HAD TO CHANGE ITS
+   * SUBJECT. The meeple loop deletes the self-visit outright (X5: there is no
+   * self-visit under any flag), so "at least one self-visit" is no longer a
+   * thing any bot can do and would assert 0 against 0 for ever. The claim it was
+   * making is still the one worth making - THE HERMIT REACHES THE BONUS SLOT AND
+   * DECLINES THE HOOK, rather than never getting near the slot at all - and
+   * COLLECT is the solitaire half of the slot now, so that is what it is
+   * asserted on.
+   *
+   * So both halves are still asserted. Not one neighbour visit anywhere is the
+   * veto (a08-the-hook has no control without it, and a run that "passes" the
+   * hook against a hermit mirror proves nothing). At least one Collect is what
+   * makes the veto specific: a hermit that never spent a bonus slot would be
+   * controlling for two things at once, refusing the hook AND refusing a whole
+   * slot, and would be a weaker control rather than a stricter one.
    */
   // ⚠️ 60s, AND THE MISSING BUDGET WAS A REAL DEFECT RATHER THAN A SLOW
   // MACHINE. This test walks two whole games at maxMoves 1500 and takes about
@@ -556,7 +567,7 @@ describe('the archetypes', () => {
     'gives the hermit control real teeth: it never visits a NEIGHBOUR',
     { timeout: 60_000 },
     () => {
-      let selfVisits = 0;
+      let solitaireSlots = 0;
       for (const seats of [2, 3]) {
         const result = runGame(data, {
           seed: `hermit-${seats}`,
@@ -565,15 +576,15 @@ describe('the archetypes', () => {
           policies: mirror('hermit', seats),
           maxMoves: 1500,
         });
-        const visits = result.moves.filter((m) => m.type === 'visit');
+        // Every visit is a neighbour visit now, so this is the whole veto.
         expect(
-          visits.filter((m) => m.host !== m.seat),
+          result.moves.filter((m) => m.type === 'visit'),
           `${seats} seats`,
         ).toEqual([]);
-        selfVisits += visits.length;
+        solitaireSlots += result.moves.filter((m) => m.type === 'collect').length;
       }
       expect(
-        selfVisits,
+        solitaireSlots,
         'a hermit that never reaches the slot at all is not a control',
       ).toBeGreaterThan(0);
     },

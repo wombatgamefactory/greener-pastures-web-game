@@ -33,18 +33,26 @@ import { printedFace } from './printed';
  *
  * ⭐ THE DRIFT IT WAS BUILT FOR IS CLOSED (v31): the sheet prints 2 on all five
  * Notice Boards and `rules.economy.noticeBoardThreshold` is 2, so override and
- * print now agree and this function is currently the identity. It stays because
- * the knob stays - an overlay sweeping the threshold (2 versus 3 is a named arm
- * in the v31 plan) moves the engine, and this is what moves the interface with
- * it.
+ * print now agree. It stays because the knob stays - an overlay sweeping the
+ * threshold (2 versus 3 is a named arm in the v31 plan) moves the engine, and
+ * this is what moves the interface with it.
+ *
+ * ⭐ AND SINCE 04/09/2026 IT CARRIES A SECOND CASE, WHICH IS THE SAME RULE
+ * APPLIED HARDER. Under the shipped `rules.turn.visitCurrency: 'meeple'` the
+ * Notice Board is NOT A BUILDING AT ALL (R5): the engine's `thresholdOf` returns
+ * null for it, which makes `isFull` false, `canTakeCard` false and `roomOn` 0,
+ * and nothing may ever be placed on it. A fill bar reading "0 / 2" over a card
+ * that can never take a card is the 26/08/2026 bug in its other direction - the
+ * interface promising a placement the engine refuses - so the null travels here
+ * too. A null threshold draws no gauge.
  */
 export function liveThreshold(data: GameData, card: CardId, printed: number | null): number | null {
+  const isBoard = data.cards.catalogue.find((c) => c.id === card)?.slot === 'noticeboard';
+  if (isBoard && data.rules.turn.visitCurrency === 'meeple') return null;
   if (printed === null) return null;
   const override = data.rules.economy.noticeBoardThreshold;
   if (override === null) return printed;
-  return data.cards.catalogue.find((c) => c.id === card)?.slot === 'noticeboard'
-    ? override
-    : printed;
+  return isBoard ? override : printed;
 }
 
 export interface Farm {

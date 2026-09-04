@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { BASE_GAME_DATA as data } from '@gp/data';
+import { BASE_GAME_DATA as data, loadGameData } from '@gp/data';
 import type { Suit } from '@gp/data';
 import type { PlayerView } from '@gp/engine';
 
@@ -26,6 +26,17 @@ import {
   receiptTotal,
   seatSuits,
 } from './table';
+
+/**
+ * The v31 card-fee game, as `overlays/v31-card-visit.overlay.json` sets it.
+ * Since 04/09/2026 the Notice Board is not a building under the shipped rules,
+ * so anything asserting a threshold on one is asserting about the control.
+ */
+const control = loadGameData({
+  name: 'v31-card-visit',
+  schemaVersion: 1,
+  set: { 'rules.turn.visitCurrency': 'card' },
+});
 
 function table(): PlayerView {
   return dealTable({
@@ -108,17 +119,36 @@ describe('noticeBoardOf', () => {
    * payout and no two-card line: a card on a board buys that farm's suit action
    * and nothing else, so the board's only payoff field is the door.
    */
-  it('reads the fill, the threshold and the DOOR the board grants', () => {
+  it('reads the fill, the threshold and the DOOR the board grants, under the v31 control', () => {
+    const view = table();
+    for (const rival of view.rivals) {
+      const farm = farmOf(view, rival.seat);
+      const board = noticeBoardOf(control, farm);
+      expect(board).not.toBeNull();
+      expect(board!.threshold).toBeGreaterThan(0);
+      expect(board!.filled).toBe(board!.building.stack.length);
+      // The door is the HOST's suit's, never the visitor's.
+      expect(board!.action).toBe(doorOf(control, farm.suit).action);
+      expect(board!.actionText).toBe(doorOf(control, farm.suit).actionText);
+    }
+  });
+
+  /**
+   * ⭐ UNDER THE SHIPPED RULES THERE IS NO THRESHOLD TO READ (R5). The board is
+   * five colour slots and takes no cards at all, so a fill bar over it would be
+   * promising a placement the engine refuses - the 26/08/2026 seam bug in its
+   * other direction. The DOOR survives untouched, which is the half the rail
+   * actually needs: "who should I visit" is still answered off the host's suit.
+   */
+  it('reports no threshold at all under the shipped meeple loop, but still the door', () => {
     const view = table();
     for (const rival of view.rivals) {
       const farm = farmOf(view, rival.seat);
       const board = noticeBoardOf(data, farm);
       expect(board).not.toBeNull();
-      expect(board!.threshold).toBeGreaterThan(0);
-      expect(board!.filled).toBe(board!.building.stack.length);
-      // The door is the HOST's suit's, never the visitor's.
+      expect(board!.threshold).toBe(0);
+      expect(board!.full).toBe(false);
       expect(board!.action).toBe(doorOf(data, farm.suit).action);
-      expect(board!.actionText).toBe(doorOf(data, farm.suit).actionText);
     }
   });
 
@@ -209,14 +239,16 @@ describe('seatSuits and receiptTotal', () => {
  * for the wrong reason the moment an overlay moved it.
  */
 describe('liveThreshold', () => {
-  it('agrees with the engine on every building on the table', () => {
+  it('agrees with the engine on every building on the table, under both currencies', () => {
     const view = table();
-    for (const seat of [view.seat, ...view.rivals.map((r) => r.seat)]) {
-      for (const b of farmOf(view, seat).tableau) {
-        const printed = printedFace(data, b.card).threshold;
-        expect(liveThreshold(data, b.card, printed)).toBe(
-          thresholdOf(data, { card: b.card, stack: b.stack }),
-        );
+    for (const rules of [data, control]) {
+      for (const seat of [view.seat, ...view.rivals.map((r) => r.seat)]) {
+        for (const b of farmOf(view, seat).tableau) {
+          const printed = printedFace(rules, b.card).threshold;
+          expect(liveThreshold(rules, b.card, printed)).toBe(
+            thresholdOf(rules, { card: b.card, stack: b.stack }),
+          );
+        }
       }
     }
   });
@@ -225,12 +257,23 @@ describe('liveThreshold', () => {
     expect(liveThreshold(data, 'W1', null)).toBeNull();
   });
 
-  it('overrides the Notice Board and nothing else', () => {
-    const override = data.rules.economy.noticeBoardThreshold;
-    const boards = data.cards.catalogue.filter((c) => c.slot === 'noticeboard');
+  it('overrides the Notice Board and nothing else, under the v31 control', () => {
+    const override = control.rules.economy.noticeBoardThreshold;
+    const boards = control.cards.catalogue.filter((c) => c.slot === 'noticeboard');
     expect(boards.length).toBeGreaterThan(0);
     for (const card of boards) {
-      expect(liveThreshold(data, card.id, 99)).toBe(override ?? 99);
+      expect(liveThreshold(control, card.id, 99)).toBe(override ?? 99);
+    }
+    for (const card of control.cards.catalogue.filter((c) => c.slot !== 'noticeboard')) {
+      expect(liveThreshold(control, card.id, 99)).toBe(99);
+    }
+  });
+
+  // And under the shipped rules the override is not applied, it is overruled:
+  // the board has no threshold to override, whatever the knob says.
+  it('nulls the Notice Board outright under the shipped meeple loop', () => {
+    for (const card of data.cards.catalogue.filter((c) => c.slot === 'noticeboard')) {
+      expect(liveThreshold(data, card.id, 99)).toBeNull();
     }
     for (const card of data.cards.catalogue.filter((c) => c.slot !== 'noticeboard')) {
       expect(liveThreshold(data, card.id, 99)).toBe(99);
@@ -239,13 +282,19 @@ describe('liveThreshold', () => {
 
   it('is what the rail reports, so the fill bar cannot promise a blocked visit', () => {
     const view = table();
-    for (const rival of view.rivals) {
-      const board = noticeBoardOf(data, farmOf(view, rival.seat));
-      if (board === null) continue;
-      expect(board.threshold).toBe(
-        thresholdOf(data, { card: board.building.card, stack: board.building.stack }),
-      );
-      expect(board.full).toBe(board.filled >= board.threshold);
+    for (const rules of [data, control]) {
+      for (const rival of view.rivals) {
+        const board = noticeBoardOf(rules, farmOf(view, rival.seat));
+        if (board === null) continue;
+        // `noticeBoardOf` folds the engine's null into 0 so the bar has a number
+        // to draw with; 0 and null are the same claim - "this takes no cards".
+        const engine = thresholdOf(rules, {
+          card: board.building.card,
+          stack: board.building.stack,
+        });
+        expect(board.threshold).toBe(engine ?? 0);
+        expect(board.full).toBe(board.threshold > 0 && board.filled >= board.threshold);
+      }
     }
   });
 });

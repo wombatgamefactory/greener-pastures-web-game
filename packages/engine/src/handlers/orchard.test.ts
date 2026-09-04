@@ -29,9 +29,9 @@ import { describe, expect, it } from 'vitest';
 
 import { apply, legalMoves } from '../game.js';
 import { answerTask, gameEndScores, growBuilding, pendingAnswers } from '../runtime.js';
-import { buildingOf, player } from '../query.js';
+import { buildingOf, noticeBoardSlots, player } from '../query.js';
 import type { GameState, Move, Task, TaskAnswer } from '../state.js';
-import { buildFor, dealTo, loadStack, makeState } from '../testkit.js';
+import { buildFor, cardVisitGame, dealTo, loadStack, makeState, visitMove } from '../testkit.js';
 import { isOrchardCard } from './orchard.js';
 import { handlerFor } from './registry.js';
 
@@ -190,21 +190,37 @@ describe('the Orchard Farmstead (O2) - the own-crop end-game scorer', () => {
   });
 
   /**
-   * THE ORCHARD DOOR IS DRAW 3 AND IS THE ONE EXCEPTION IN AN OTHERWISE FLAT
-   * SET (workers.json, v31). It is defended by arithmetic: the bonus slot's
-   * other option is a free Draw 1, so a plain Draw 2 door would cost 1 card and
-   * return 2 - exactly what the free option gives for nothing - and would be
-   * strictly worse than its own alternative. Draw 3 nets +2.
+   * ⛔ THE ORCHARD EXCEPTION IS RETIRED (Dean, 04/09/2026). The door is a flat
+   * Draw 2 and the set has no exception left in it.
    *
-   * It used to compose with the Farmstead to (4,4). Nothing composes now, so
-   * this is the printed number and only the printed number, which is precisely
-   * the drift a "tidy it to 2 for consistency" edit would introduce silently.
+   * WHY THE EXCEPTION EXISTED AND WHY IT DIED, because the reasoning is the
+   * card-design law and not the number: a v31 visit cost the visitor a card and
+   * the bonus slot's other option was a free Draw 1, so a Draw 2 door returned
+   * 2 for 1 - exactly what the free option gave for nothing - and was strictly
+   * worse than its own alternative. Draw 3 netted +2 and bought the door back
+   * into contention. THE MEEPLE LOOP DISSOLVES BOTH HALVES: a visit costs no
+   * card, so there is nothing to cancel, and the standalone free Draw 1 is
+   * deleted, so there is no alternative to be worse than. Measured, the change
+   * is inert - Draw 3 against Draw 2 moved the hook not at all (0.37 both) and
+   * the door mix by one point - so it was taken for the flat rule rather than
+   * for the number. Nothing composes on top: this is the printed value and only
+   * the printed value, which is the drift a "tidy it up" edit would introduce.
    */
-  it('the Orchard door is a flat Draw 3, keep 3, with nothing composing on top', () => {
+  it('the Orchard door is a flat Draw 2, keep 2, with nothing composing on top', () => {
     const s = base();
-    dealTo(data, s, ORCHARD, 'O4');
+    s.turnPlayer = WHEAT; // the visitor, buying the ORCHARD seat's door
     s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
-    const visited = apply(data, s, { type: 'visit', seat: ORCHARD, host: ORCHARD, fee: 'O4' });
+    const visited = apply(data, s, visitMove(WHEAT, ORCHARD, 'orchard'));
+    expect(headDraw(visited.state)).toMatchObject({ see: 2, keep: 2 });
+  });
+
+  // The exception, still runnable on the arm it belonged to.
+  it('is Draw 3 under the v31 card-visit control', () => {
+    const control = cardVisitGame();
+    const s = makeState(control, ['orchard', 'wheat']);
+    dealTo(control, s, ORCHARD, 'O4');
+    s.turn.actionSpent = true;
+    const visited = apply(control, s, { type: 'visit', seat: ORCHARD, host: ORCHARD, fee: 'O4' });
     expect(headDraw(visited.state)).toMatchObject({ see: 3, keep: 3 });
   });
 
@@ -777,46 +793,57 @@ describe('the Tier 3 GROW buildings - O13, O14, O15', () => {
 });
 
 describe('O16 The Fruit Store - turned around to pay for GOING OUT', () => {
+  /**
+   * ⭐ THE CARD SURVIVES THE CURRENCY CHANGE UNTOUCHED, and that is the point of
+   * having kept the `visited` event's name and its `afterVisit` hook when the
+   * meeple loop replaced what a visit is PAID IN. The text still reads "whenever
+   * you VISIT a neighbour, Draw 1"; only the fee it no longer sees has moved.
+   */
   it('draws for the VISITOR, and never for the host', () => {
     const s = base();
     buildFor(data, s, ORCHARD, 'O16');
-    dealTo(data, s, ORCHARD, 'O4');
     // The Wheat door is a Harvest, so the visitor needs a full building of their
-    // own or the door is not offered at all (v31).
+    // own or the door is not offered at all (Dean's standing ruling, which
+    // survives the currency change).
     buildFor(data, s, ORCHARD, 'O9');
     loadStack(data, s, ORCHARD, 'O9', 2, 'apiary');
     s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
-    const applied = apply(data, s, { type: 'visit', seat: ORCHARD, host: WHEAT, fee: 'O4' });
-    // Fee spent, keeper card drawn back (a choiceless autoDraw, so it resolves
-    // inline and leaves no task), and the harvest the door bought still pending.
+    const applied = apply(data, s, visitMove(ORCHARD, WHEAT, 'wheat'));
+    // Keeper card drawn back (a choiceless autoDraw, so it resolves inline and
+    // leaves no task), and the harvest the door bought still pending. No card
+    // left the hand, because a meeple visit spends none.
     expect(player(applied.state, ORCHARD).hand).toHaveLength(1);
     expect(player(applied.state, WHEAT).hand).toHaveLength(0);
+    // The meeple is on the HOST's board, where the host will collect it.
+    expect(noticeBoardSlots(applied.state, WHEAT)['wheat']).toEqual(['wheat']);
   });
 
   it('does NOT fire when the owner is the one being visited', () => {
     const s = base();
     buildFor(data, s, ORCHARD, 'O16');
-    dealTo(data, s, WHEAT, 'W4');
     s.turnPlayer = WHEAT;
     s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
-    const applied = apply(data, s, { type: 'visit', seat: WHEAT, host: ORCHARD, fee: 'W4' });
+    const applied = apply(data, s, visitMove(WHEAT, ORCHARD, 'orchard'));
     expect(player(applied.state, ORCHARD).hand).toHaveLength(0);
   });
 
   /**
-   * ⭐ NEW IN v31, AND IT IS RISK 2 OF THE WHOLE PASS. A seat may place its
-   * bonus card on its OWN Notice Board, so "whenever you VISIT a NEIGHBOUR" is
-   * a condition this card has to enforce for the first time - before v31 a
-   * visitor and a host could never be the same seat, so the word did no work.
-   * Without the `event.self` guard this card would draw on every bonus slot its
-   * owner ever spends, with nobody else at the table involved at all.
+   * ⭐ THE SELF-VISIT GUARD, WHICH THE SHIPPED GAME MAKES UNREACHABLE AND THE
+   * CONTROL DOES NOT. v31 let a seat place its bonus card on its OWN Notice
+   * Board, so "whenever you VISIT a NEIGHBOUR" became a condition this card had
+   * to enforce for the first time; the meeple loop deletes the self-visit at the
+   * enumerator (X5, no self-visit under any flag), so the guard is now dead
+   * weight in the shipped game and load-bearing in
+   * overlays/v31-card-visit.overlay.json. It is tested where it can still fire:
+   * a guard nothing exercises is a guard somebody deletes as redundant.
    */
-  it('does NOT fire on a SELF-visit: a neighbour means a neighbour', () => {
-    const s = base();
-    buildFor(data, s, ORCHARD, 'O16');
-    dealTo(data, s, ORCHARD, 'O4');
+  it('does NOT fire on a SELF-visit under the v31 control: a neighbour means a neighbour', () => {
+    const control = cardVisitGame();
+    const s = makeState(control, ['orchard', 'wheat']);
+    buildFor(control, s, ORCHARD, 'O16');
+    dealTo(control, s, ORCHARD, 'O4');
     s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
-    const applied = apply(data, s, { type: 'visit', seat: ORCHARD, host: ORCHARD, fee: 'O4' });
+    const applied = apply(control, s, { type: 'visit', seat: ORCHARD, host: ORCHARD, fee: 'O4' });
     // The Orchard door's Draw 3 is queued and nothing has been drawn yet: the
     // hand is empty, where a keeper draw would have left one card in it.
     expect(player(applied.state, ORCHARD).hand).toHaveLength(0);

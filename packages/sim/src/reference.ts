@@ -572,8 +572,120 @@ export const REFERENCE_V11: ReferenceConfig = {
   seed: 'reference-v11',
 };
 
+/**
+ * `reference-v12` - the current instrument, cut 04/09/2026 for the meeple loop.
+ *
+ * ⛔⛔ **NO NUMBER IN ANY `reference-v11` OR EARLIER REPORT IS COMPARABLE.** Not
+ * a hook value, not a bonus-mix share, not a door mix, not a suit win rate, not
+ * a per-card economic, not a game length, not an assertion verdict. This is the
+ * second-largest re-baseline in the file's history, behind only v10's deletion
+ * of the currency, and like that one the reason is the GAME rather than the
+ * instrument.
+ *
+ * ## What moved, in one list, because "the visit changed" understates it
+ *
+ * Dean ruled the meeple loop in on 04/09/2026
+ * (`docs/meeple-loop-visit-handoff-2026-09-04-v1.md` is the design,
+ * `docs/meeple-loop-measurement-2026-09-04-v1.md` is what it measured), so
+ * `rules.turn.visitCurrency` is `'meeple'` in the shipped data. Seven rules go
+ * with that flag and every one of them moves numbers this file's readers quote:
+ *
+ *   1. **The visit is paid in MEEPLES, not cards.** One meeple from your supply
+ *      into the colour slot of a neighbour's Notice Board, and you take that
+ *      colour's plain action. No card leaves any hand, so about 29 fee cards a
+ *      game stop flowing into barns and the whole `handSpend` half of the bot's
+ *      visit arithmetic has no subject. Two meeples may be spent as one of any
+ *      colour, which is a move shape v11 had no vocabulary for.
+ *   2. **Self-visiting is IMPOSSIBLE**, by construction rather than by weight
+ *      (rule X5). It took 22.2% of turns under v11. The `self` line on
+ *      `a08-the-hook` should now read exactly 0, and that is a claim to assert
+ *      rather than an assumption to inherit.
+ *   3. **The Notice Board is not a building.** No threshold, no stack, nothing
+ *      may ever be placed on it, and it cannot clog or be harvested. It is five
+ *      colour-keyed slots, and what shuts a door is a meeple sitting in one
+ *      until its owner collects. The clog assertions lost their referent and
+ *      the blocked-want rate replaced them.
+ *   4. **The standalone free Draw 1 is gone.** `rules.turn.bonusDraw` survives
+ *      only as the draw attached to COLLECT, so the bonus slot is Visit or
+ *      Collect and never four options.
+ *   5. **The turn-start meeple spend is gone.** A meeple is spent in the bonus
+ *      slot and only there, one a turn, and a spent meeple is never removed
+ *      from the game: it moves to the neighbour's board and comes home on their
+ *      Collect. The faucet-and-drain economy became a loop, which is why
+ *      "meeples spent versus gained" is not a question any more.
+ *   6. **The Orchard door is Draw 2.** The one printed exception in the door set
+ *      is retired: it existed because a v31 visit cost a card and the slot's
+ *      other option was a free Draw 1, and neither half of that argument has a
+ *      subject now. Measured inert (hook 0.37 either way), so it was taken for
+ *      the flat rule rather than for the number.
+ *   7. **The island seeds ONE meeple per tile, on the 3 VP space.** Not two per
+ *      tile on both. The bag is drawn 6 / 9 / 12 deep instead of 12 / 18 / 24,
+ *      and the 6 VP first delivery pays VP alone. Every seat also STARTS holding
+ *      one meeple of each colour, from outside the bag.
+ *
+ * ## The one thing that did not change, again
+ *
+ * The sampling plan, exactly: the same mixed profile pool one per seat from the
+ * run seed, the same stratification through every legal (player suits + neutral
+ * deck) combination, the same 2/3/4 seat counts, the same rotation of suits
+ * around the table by game index that v9 introduced. Held still on purpose, for
+ * the same reason as every minting since: the sample is drawn the same way, so a
+ * v12 number is at least ASKING the same question of the same population. It is
+ * answering it about a different game.
+ *
+ * ## Two honesties this reference has to carry
+ *
+ * ⚠️ **IT WAS RULED IN ON A MEASUREMENT THAT WENT THE WRONG WAY ON ITS OWN
+ * HEADLINE.** Paired on v11 seeds, the hook FELL - 0.41 to 0.37 rival visits per
+ * player per turn, against a floor of 0.5 - and the game got 35-43% longer. What
+ * moved in its favour: the two dead meeple colours came back to life (Apiary and
+ * Dairy take 46% of door uses against 32%, and the door-mix assertion goes FAIL
+ * to PASS), self-visiting became impossible, and rival visits PER GAME rose 21%
+ * even as visits per turn fell. Whether the hook is a per-turn or a per-game
+ * quantity is a design decision nobody has made, and until somebody makes it,
+ * `a08-the-hook` is measuring a quantity that has not been defined.
+ *
+ * ⚠️ **THE BOTS WERE NOT RE-TUNED FOR ANY OF THIS.** `meepleGain` (2.5) and
+ * `MEEPLE_LATENT` (0.4) are still set by argument rather than measurement, and
+ * still not overlay-addressable. Under v10 and v11 they priced one faucet and
+ * one drain; they now price the visit, the Collect, the supply cap and the
+ * island, which is most of the bonus slot. Anything this instrument says about
+ * the meeple economy is partly a report of the bots' opinion of what a stored
+ * meeple is worth. `bonusAction: 2.4` and its deliberate double-count against
+ * `outcome` are inherited from v11 unchanged, and its control arm is still
+ * `bonusAction: 0`.
+ *
+ * The control is `overlays/v31-card-visit.overlay.json`, which reproduces the
+ * v11 RULES under the v12 bots and the v12 seeds. It is not a way to recover a
+ * v11 number - the evaluator and the sample both moved - it is the arm to run
+ * beside the default when a question needs the old game.
+ */
+export const REFERENCE_V12: ReferenceConfig = {
+  ...REFERENCE_V11,
+  id: 'reference-v12',
+  description:
+    'The meeple loop as the shipped game (Dean, 04/09/2026). Sampling plan identical to ' +
+    'reference-v9, v10 and v11 - mixed scored profiles one per seat from the run seed, suits ' +
+    'stratified through every legal (player suits + neutral deck) combination and rotated ' +
+    'around the table by game index, 2/3/4 seats. SEVEN RULES MOVED TOGETHER, all behind ' +
+    'rules.turn.visitCurrency "meeple": the visit is paid in MEEPLES rather than cards and no ' +
+    'card is ever placed on a board; SELF-VISITING IS IMPOSSIBLE by construction, where it took ' +
+    '22.2% of turns under v11; the Notice Board is NOT A BUILDING at all, so it has no ' +
+    'threshold, cannot clog and cannot be harvested; the standalone free Draw 1 is DELETED and ' +
+    'survives only as the draw attached to COLLECT; the turn-start meeple spend is DELETED, so ' +
+    'a meeple is spent once a turn in the bonus slot and moves to the neighbour rather than ' +
+    'leaving the game; the Orchard door is a plain DRAW 2 and the door set has no exception ' +
+    'left; and the island seeds ONE meeple per tile on the 3 VP space rather than one on each ' +
+    'of two, while every seat starts holding one of each colour from outside the bag. The bots ' +
+    'were NOT re-tuned: meepleGain and MEEPLE_LATENT are still set by argument and now price ' +
+    'most of the bonus slot. The v31 rules survive as overlays/v31-card-visit.overlay.json, ' +
+    'which is the control for every future comparison. ' +
+    'NO NUMBER IN ANY reference-v11 OR EARLIER REPORT IS COMPARABLE.',
+  seed: 'reference-v12',
+};
+
 /** The instrument every current number is defined against. */
-export const REFERENCE = REFERENCE_V11;
+export const REFERENCE = REFERENCE_V12;
 
 /**
  * The noise floor, measured once and quoted constantly.
@@ -619,18 +731,15 @@ export interface NoiseFloor {
  * one unit of whatever it counts.
  */
 /**
- * ⛔ NOT MEASURED FOR `reference-v10`, and deliberately left null rather than
- * carried over.
- *
- * The floor is a function of the instrument, and reference-v10 changes the
- * rules, the cards, the evaluator AND the metric set at once. Worse, three of
- * the eleven metrics it was recorded against no longer exist under their old
- * names - `end coins per player` is now `meeples held at game end`, and
- * `actions per turn`, `meeple spend rate` and `self-visit share of visits` are
- * new - so a carried-over table would silently quote a floor for a metric it
- * never saw while leaving the three newest numbers with none at all. A stale
- * floor is worse than an absent one, because it licenses a claim about a run it
- * did not watch.
+ * ⛔ NOT MEASURED FOR `reference-v10`, and deliberately left null at the time
+ * rather than carried over. Kept as a paragraph because the reasoning is the
+ * method and it applies at every boundary: the floor is a function of the
+ * INSTRUMENT, v10 changed the rules, the cards, the evaluator AND the metric set
+ * at once, and three of the eleven metrics it had been recorded against no
+ * longer existed under their old names. A carried-over table would have quoted a
+ * floor for a metric it never watched while leaving the newest numbers with none
+ * at all. A stale floor is worse than an absent one, because it licenses a claim
+ * about a run it did not see.
  *
  * The v9 values, for the record and NOT for use: end coins 0, barn at game end
  * 0, game length 1 round, visits per turn 0.003, unfinished games 0.005,
@@ -638,8 +747,8 @@ export interface NoiseFloor {
  * reshuffles 1, reshuffles per played crop 0, seat deviation 6.255 (measured
  * 2026-08-19 at n=500 per arm).
  *
- * Two readings that survive the boundary because they are about the METHOD
- * rather than about this game:
+ * Two readings survive every boundary because they are about the METHOD rather
+ * than about this game:
  *
  *   - **A movement of exactly 0 means "below this metric's own resolution",
  *     never "noiseless".** Most of these are medians over discrete quantities,
@@ -654,28 +763,62 @@ export interface NoiseFloor {
  * literal it prints back in here. A small run overstates the floor enormously
  * and is worse than not measuring it at all.
  */
+
+/**
+ * ⭐ MEASURED FOR `reference-v12` ON 04/09/2026, at the reference n of 500 games
+ * per seat count per arm (1,580 games each, 3,160 in total). The run took **69
+ * seconds** end to end, which is what a `--noise` costs now: it plays the whole
+ * plan twice.
+ *
+ * ⚠️ **DO NOT READ THESE AGAINST THE v11 TABLE.** Four things make the two
+ * incomparable and each is a fact rather than a caveat.
+ *
+ *   - `self-visit share of visits` reads **0.0% in both arms** and its movement
+ *     is **0** because the rule is gone (X5), not because the sample was quiet.
+ *     Anything that "moves" it is a bug in the counter.
+ *   - `meeple spend rate` reads **131.5% and 132.2%**, which is not a percentage
+ *     that has escaped: meeples RECIRCULATE now, so a seat can spend more of a
+ *     colour over a game than it ever gained. Over 100% is the loop turning.
+ *     Under v11 the same metric was a faucet-and-drain ratio capped at 100.
+ *   - `deck reshuffles per game` is **39.00 in both arms** against v11's floor
+ *     of 1. The game is 35-43% longer and no card is spent on a visit, so the
+ *     decks turn over far more often. The 0 movement is two arms landing on the
+ *     same integer, which is this table's usual "one unit" case.
+ *   - `seat deviation` reads **1.4 points** against v11's 10.358, and that is the
+ *     single most useful number in the table. It is still the WORST chair at any
+ *     seat count - a maximum over nine chairs, biased upward by construction -
+ *     and it has come down sevenfold. Chair by chair the movement was 7.8 at 2
+ *     seats, 4.3 / 3.7 / 0.6 at 3 and 3.9 / 0.7 / 1.9 / 6.5 at 4. So the +/-3
+ *     design band is now inside the instrument's reach at 3 and 4 seats and is
+ *     still not at 2, where one chair moved 7.8 points on seed alone.
+ *
+ * The two metrics that matter most to the design both sit very low: `visits per
+ * turn` moves **0.002** and `actions per turn` **0.005**, so the hook and the
+ * inflation reading can resolve differences an order of magnitude smaller than
+ * the deltas anybody is arguing about. A delta under the figure here is not a
+ * finding, whatever else the report says about it.
+ */
 export const NOISE_FLOOR: NoiseFloor | null = {
-  reference: 'reference-v11',
+  reference: 'reference-v12',
   games: 500,
-  measured: '2026-09-03',
+  measured: '2026-09-04',
   movement: {
     'meeples held at game end': 0,
     'barn at game end': 0,
-    'game length, rounds': 0,
-    'visits per turn': 0.01,
-    'actions per turn': 0.007,
-    'meeple spend rate': 0.004,
-    'self-visit share of visits': 0.01,
+    'game length, rounds': 1,
+    'visits per turn': 0.002,
+    'actions per turn': 0.005,
+    'meeple spend rate': 0.007,
+    'self-visit share of visits': 0,
     'unfinished games': 0.001,
     'winning score': 1,
-    'last as % of winner': 0.01,
-    'tied top score': 0.005,
-    'deck reshuffles per game': 1,
+    'last as % of winner': 0.006,
+    'tied top score': 0.006,
+    'deck reshuffles per game': 0,
     'reshuffles, played crop': 0,
-    'seat deviation': 10.358,
+    'seat deviation': 1.4,
   },
 };
-
 /**
  * One stratified cell: the suits at the table.
  *

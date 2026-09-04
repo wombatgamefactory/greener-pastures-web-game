@@ -275,13 +275,23 @@ describe('the meeples', () => {
     }
   });
 
-  // 12 / 18 / 24 against a bag of 25. The 4-seat board draws 24 of 25, which is
-  // why its colour mix is near-deterministic and the 2-seat one is not - see the
-  // note in island.json and overlays/meeple-pool-deep-v1.overlay.json.
+  /**
+   * 6 / 9 / 12 against a bag of 25, one per TILE rather than one per delivery
+   * space, because the meeple loop is the shipped game (Dean, 04/09/2026) and
+   * `island.meeples.seededSpaces` is `[1]`: the 3 VP second delivery carries the
+   * tile's only meeple and the 6 VP first pays VP alone. A spent meeple now
+   * moves onto a neighbour's board instead of leaving the game, so the island
+   * stopped having to be the whole supply.
+   *
+   * The v31 numbers were 12 / 18 / 24, and they are asserted below off the
+   * control overlay rather than deleted: the 4-seat board drew 24 of 25 there,
+   * which is why its colour mix was near-deterministic and the 2-seat one was
+   * not - see the note in island.json and overlays/meeple-pool-deep-v1.overlay.json.
+   */
   it('has a bag deep enough for the biggest board', () => {
-    expect(meeplesDealt(BASE_GAME_DATA, 2)).toBe(12);
-    expect(meeplesDealt(BASE_GAME_DATA, 3)).toBe(18);
-    expect(meeplesDealt(BASE_GAME_DATA, 4)).toBe(24);
+    expect(meeplesDealt(BASE_GAME_DATA, 2)).toBe(6);
+    expect(meeplesDealt(BASE_GAME_DATA, 3)).toBe(9);
+    expect(meeplesDealt(BASE_GAME_DATA, 4)).toBe(12);
     for (const seats of [2, 3, 4]) {
       expect(meeplesDealt(BASE_GAME_DATA, seats), `${seats} seats`).toBeLessThanOrEqual(
         BASE_GAME_DATA.island.meeples.poolSize,
@@ -289,8 +299,23 @@ describe('the meeples', () => {
     }
   });
 
+  // The control, and the reason `perDeliverySpace` is still a live key rather
+  // than a tombstone: overlays/v31-card-visit.overlay.json reads it.
+  it('deals both spaces under the v31 card-visit control', () => {
+    const control = loadGameData({
+      name: 'v31-card-visit',
+      schemaVersion: 1,
+      set: { 'rules.turn.visitCurrency': 'card' },
+    });
+    expect(meeplesDealt(control, 2)).toBe(12);
+    expect(meeplesDealt(control, 3)).toBe(18);
+    expect(meeplesDealt(control, 4)).toBe(24);
+    expect(meeplesDealt(control, 4)).toBeLessThanOrEqual(control.island.meeples.poolSize);
+  });
+
   it('seeds one meeple per delivery space, face up', () => {
     expect(BASE_GAME_DATA.island.meeples.perDeliverySpace).toBe(1);
+    expect(BASE_GAME_DATA.island.meeples.seededSpaces).toEqual([1]);
     expect(BASE_GAME_DATA.island.meeples.faceUpAtSetup).toBe(true);
   });
 });

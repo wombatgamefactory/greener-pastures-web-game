@@ -10,6 +10,7 @@
  */
 
 import type { BuildCost, GameData, Suit } from '@gp/data';
+import { isMeepleCurrency } from '@gp/data';
 import { revealedIn } from '@gp/engine';
 import type { CardId, Move, MoveType, PlayerView, Seat, Task, TaskAnswer } from '@gp/engine';
 
@@ -458,6 +459,7 @@ const FAMILIES: readonly {
     needsTarget: true,
     zone: 'meeple',
     onBoard: true,
+    inPlay: (data) => !isMeepleCurrency(data),
   },
   {
     key: 'bonusDraw',
@@ -466,6 +468,25 @@ const FAMILIES: readonly {
     hint: 'Bonus: the top card of any one deck. Free, and never dead.',
     needsTarget: false,
     zone: 'bonus',
+    inPlay: (data) => !isMeepleCurrency(data),
+  },
+  /*
+   * ⭐ COLLECT IS WHAT REPLACED THE FREE DRAW 1 (04/09/2026, R7), and the two
+   * are deliberately not the same button wearing a different label. Draw 1 was
+   * pure solitaire; Collect is the half of the design that PAYS THE HOST - it
+   * sweeps every meeple a neighbour left on your board back into your supply as
+   * stored actions, and draws a card on top. Collecting an empty board is legal
+   * and reads as a bare Draw 1, which is the solitaire line the bonus mix has to
+   * keep counting separately.
+   */
+  {
+    key: 'collect',
+    type: 'collect',
+    label: 'Collect',
+    hint: 'Bonus: take every meeple off your own Notice Board, then Draw 1',
+    needsTarget: false,
+    zone: 'bonus',
+    inPlay: isMeepleCurrency,
   },
   /*
    * ⭐ THE TWO HALVES OF THE VISIT, DRAWN AS TWO BUTTONS. One move type, one
@@ -480,7 +501,7 @@ const FAMILIES: readonly {
     key: 'visit',
     type: 'visit',
     label: 'Visit a neighbour',
-    hint: "Bonus: 1 card onto a neighbour's Notice Board, and you take their suit's action",
+    hint: "Bonus: onto a neighbour's Notice Board, and you take that colour's action",
     needsTarget: true,
     zone: 'bonus',
     match: (move, view) => move.type === 'visit' && move.host !== view.seat,
@@ -493,7 +514,10 @@ const FAMILIES: readonly {
     needsTarget: true,
     zone: 'bonus',
     match: (move, view) => move.type === 'visit' && move.host === view.seat,
-    inPlay: (data) => data.rules.turn.selfVisitAllowed,
+    // ⛔ AND THERE IS NO SELF-VISIT UNDER THE SHIPPED RULES (X5), at any setting
+    // of `selfVisitAllowed` - the meeple loop deletes it at the enumerator, so
+    // the flag is read only under the v31 card-visit control.
+    inPlay: (data) => !isMeepleCurrency(data) && data.rules.turn.selfVisitAllowed,
   },
   {
     key: 'draw',

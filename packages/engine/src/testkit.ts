@@ -7,6 +7,7 @@
  * decks, so a scenario can still assert that all 105 ids exist exactly once.
  */
 
+import { loadGameData } from '@gp/data';
 import type { GameData, Suit } from '@gp/data';
 
 import { seedRng } from './rng.js';
@@ -19,7 +20,7 @@ import {
   parkBalloons,
   startingMeeples,
 } from './setup.js';
-import type { CardId, GameState, Seat } from './state.js';
+import type { CardId, GameState, Move, Seat } from './state.js';
 
 /**
  * A playable state: starters built, decks full (catalogue order), fair unhired,
@@ -96,6 +97,46 @@ function pullFromDeck(data: GameData, state: GameState, card: CardId): CardId {
   if (i < 0) throw new Error(`${card} is not in the ${suit} deck`);
   deck.splice(i, 1);
   return card;
+}
+
+/**
+ * THE v31 CARD-VISIT CONTROL, as `overlays/v31-card-visit.overlay.json` sets it.
+ *
+ * The meeple loop is the shipped game since Dean ruled it in on 04/09/2026, so
+ * `BASE_GAME_DATA` is the meeple currency and the card-fee visit lives behind
+ * one flag. This is that flag, for the tests whose SUBJECT is the v31 game: the
+ * card fee on a Notice Board, the board as a building with a threshold of 2,
+ * self-visiting, the standalone free Draw 1, the turn-start meeple spend and the
+ * Orchard door at Draw 3. None of it is dead code - the overlay is a live arm
+ * and the control for every future comparison - so it has to stay covered.
+ *
+ * Memoised and lazy on purpose: `testkit` is reachable from the engine's public
+ * index, and a second `loadGameData` at module load would cost every consumer
+ * that never asks for it.
+ */
+let cardVisitCache: GameData | null = null;
+export function cardVisitGame(): GameData {
+  cardVisitCache ??= loadGameData({
+    name: 'v31-card-visit',
+    schemaVersion: 1,
+    set: { 'rules.turn.visitCurrency': 'card' },
+  });
+  return cardVisitCache;
+}
+
+/**
+ * A MEEPLE VISIT as a move, for the tests that only want to reach the far side
+ * of one (a door action, `afterVisit`, the `visited` event).
+ *
+ * The seat must actually hold a `colour` meeple, the host's slot of that colour
+ * must be free and the door's action must be legal for the visitor - "a door
+ * that can do nothing is not offered" is Dean's standing ruling and it survived
+ * the currency change - so this is a constructor and not a shortcut past the
+ * rules. Every seat starts holding one of each colour (R3), so in a fresh
+ * position the supply half is already true.
+ */
+export function visitMove(seat: Seat, host: Seat, colour: Suit): Move {
+  return { type: 'visit', seat, host, fee: null, meeples: [colour], colour };
 }
 
 /** Move a specific card from its deck into a hand. */

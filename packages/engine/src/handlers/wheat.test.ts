@@ -38,11 +38,12 @@
 import { BASE_GAME_DATA as data } from '@gp/data';
 import { describe, expect, it } from 'vitest';
 
+import { Fx, fireHook } from '../fx.js';
 import { apply, legalMoves } from '../game.js';
 import { answerTask, gameEndScores, growBuilding, pendingAnswers } from '../runtime.js';
 import { buildingOf, cardById, player, thresholdOf } from '../query.js';
 import type { GameState, Move, TaskAnswer } from '../state.js';
-import { buildFor, dealTo, loadStack, makeState } from '../testkit.js';
+import { buildFor, cardVisitGame, dealTo, loadStack, makeState, visitMove } from '../testkit.js';
 import { handlerFor } from './registry.js';
 
 const WHEAT = 0;
@@ -92,9 +93,9 @@ function own(...cards: string[]): { seat: number; card: string }[] {
 }
 
 /** Fill a building to its printed threshold from the apiary deck (keeps wheat ids free). */
-function fill(s: GameState, card: string): void {
-  const threshold = thresholdOf(data, buildingOf(s, WHEAT, card)) as number;
-  loadStack(data, s, WHEAT, card, threshold, 'apiary');
+function fill(s: GameState, card: string, seat: number = WHEAT): void {
+  const threshold = thresholdOf(data, buildingOf(s, seat, card)) as number;
+  loadStack(data, s, seat, card, threshold, 'apiary');
 }
 
 /**
@@ -170,11 +171,14 @@ describe('the Wheat Farmstead (W2) - the own-crop end-game scorer', () => {
    */
   it('the Wheat door harvests a FULL building and nothing else', () => {
     const s = base();
-    buildFor(data, s, WHEAT, 'W9'); // threshold 2
-    fill(s, 'W9');
-    dealTo(data, s, WHEAT, 'W20');
+    // The door harvests the VISITOR's own full building, not the host's, and
+    // there is no self-visit any more (X5) - so the Apiary seat is the one that
+    // buys the Wheat door, and W9 has to belong to it.
+    buildFor(data, s, APIARY, 'W9'); // threshold 2
+    fill(s, 'W9', APIARY);
+    s.turnPlayer = APIARY;
     s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
-    const applied = apply(data, s, { type: 'visit', seat: WHEAT, host: WHEAT, fee: 'W20' });
+    const applied = apply(data, s, visitMove(APIARY, WHEAT, 'wheat'));
     expect(pendingAnswers(data, applied.state)).toContainEqual({ kind: 'building', card: 'W9' });
   });
 
@@ -756,40 +760,90 @@ describe('the Power cards', () => {
   });
 
   /**
-   * ⛔ THE £1 IS A DRAW 1 (v31), and the visit that triggers it has changed
-   * shape underneath the test: one fee card rather than a list, and no payoff
-   * mode, because the board has exactly one payoff now.
+   * W17 THE PIE SHOP, RE-KEYED 04/09/2026 onto the `visited` event: "Whenever a
+   * neighbour visits you, Draw 1" (v33 sheet).
    *
-   * ⚠️ THE SELF-VISIT IS THE NEW CASE AND IT IS PINNED BELOW. v31 lets a seat
-   * place its bonus card on its OWN Notice Board, so "a neighbour" is a
-   * condition the card has to enforce for the first time. The guard is the one
-   * that was already there - `event.seat === self.seat` - which is why nothing
-   * in the handler had to change for it, and why a test is the only thing that
-   * would notice if somebody removed it as redundant.
+   * ⛔ THE OLD HANDLER WAS A DEAD CARD. It listened on `afterPlacement` for a
+   * rival placing a card on one of the owner's buildings, and the meeple loop
+   * places no card on any board at all - so the card printed text the engine
+   * could not deliver. It is the game's only host-side payment, which is half
+   * the thing the meeple-loop diagnosis said the v31 hook was missing.
+   *
+   * ⚠️ cards.json STILL CARRIES THE OLD WORDING; the divergence is deliberate
+   * and lives in the ledger, because the sheet is the source of truth for text.
    */
-  it('W17 The Pie Shop: Draw 1 whenever a NEIGHBOUR places on one of your buildings', () => {
+  it('W17 The Pie Shop: Draw 1 whenever a NEIGHBOUR visits you', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W17');
-    dealTo(data, s, APIARY, 'A6');
     // The door belongs to the HOST's suit, so an Apiary seat visiting a Wheat
-    // seat buys a Harvest - and a door with nothing legal to do is not offered
-    // (v31), so the visitor needs a full building of their own to harvest.
+    // seat buys a Harvest - and a door with nothing legal to do is not offered,
+    // so the visitor needs a full building of their own to harvest.
     buildFor(data, s, APIARY, 'A5'); // threshold 2
     loadStack(data, s, APIARY, 'A5', 2, 'orchard');
     s.turnPlayer = APIARY;
     s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
-    const applied = apply(data, s, { type: 'visit', seat: APIARY, host: WHEAT, fee: 'A6' });
+    const applied = apply(data, s, visitMove(APIARY, WHEAT, 'wheat'));
     expect(applied.state.tasks.some((t) => t.t === 'draw' && t.src === 'W17')).toBe(true);
     expect(applied.audit.crossSeat).toBe(true);
   });
 
-  it('W17 The Pie Shop: a SELF-visit is not a neighbour and pays nothing', () => {
+  /**
+   * ⭐ IT PAYS FOR BEING VISITED, NOT FOR VISITING, and that one-word guard
+   * (`event.host === self.seat`) is the whole of the retext. O16 The Fruit Store
+   * is the visitor-side card on the same hook; the two must never collapse into
+   * each other.
+   */
+  it('W17 The Pie Shop: pays nothing when its OWNER is the one going out', () => {
     const s = base();
-    buildFor(data, s, WHEAT, 'W17', 'W9');
-    fill(s, 'W9'); // so the Wheat door has something legal to do
-    dealTo(data, s, WHEAT, 'W20');
+    buildFor(data, s, WHEAT, 'W17');
     s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
-    const applied = apply(data, s, { type: 'visit', seat: WHEAT, host: WHEAT, fee: 'W20' });
+    // The slot bought is a COLOUR, not the host's suit: every board carries all
+    // five, so red is legal on an Apiary neighbour and Draw 2 is always live.
+    const applied = apply(data, s, visitMove(WHEAT, APIARY, 'orchard'));
+    expect(applied.state.tasks.some((t) => t.t === 'draw' && t.src === 'W17')).toBe(false);
+  });
+
+  /**
+   * THE ONCE-A-TURN GUARD (rule 12(c), 2026-08-11: no card's text fires twice in
+   * a turn), on the shared `turn.firedThisTurn` list. Nothing in the shipped
+   * turn can produce two visits - one bonus slot, and A Helping Hand grants one
+   * Visit AND one Collect rather than two of either - so this drives the hook
+   * directly to prove the guard rather than pretending a second visit is
+   * reachable.
+   */
+  it('W17 The Pie Shop: fires once a turn, however many visits land', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W17');
+    buildFor(data, s, APIARY, 'A5');
+    loadStack(data, s, APIARY, 'A5', 2, 'orchard');
+    s.turnPlayer = APIARY;
+    s.turn.actionSpent = true;
+    const once = apply(data, s, visitMove(APIARY, WHEAT, 'wheat'));
+    expect(once.state.turn.firedThisTurn).toContain('W17');
+    const again = { ...once.state, tasks: [] };
+    const fx = new Fx(data, again, APIARY);
+    fireHook(fx, 'afterVisit', { visitor: APIARY, host: WHEAT, self: false });
+    expect(fx.state.tasks.some((t) => t.t === 'draw' && t.src === 'W17')).toBe(false);
+  });
+
+  /**
+   * ⚠️ A SELF-VISIT IS NOT A NEIGHBOUR, and the guard is only reachable on the
+   * control: the shipped game deletes the self-visit at the enumerator (X5), so
+   * `event.self` is false by construction there. Under
+   * overlays/v31-card-visit.overlay.json it is live, and without the guard a
+   * seat would pay itself a card for every bonus slot it ever spent.
+   */
+  it('W17 The Pie Shop: a SELF-visit is not a neighbour, under the v31 control', () => {
+    const control = cardVisitGame();
+    const s = makeState(control, ['wheat', 'apiary']);
+    buildFor(control, s, WHEAT, 'W17', 'W9');
+    for (let i = 0; i < 2; i++) {
+      const top = s.decks.apiary.shift();
+      if (top) s.players[WHEAT]!.tableau.find((b) => b.card === 'W9')!.stack.push(top);
+    }
+    dealTo(control, s, WHEAT, 'W20');
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
+    const applied = apply(control, s, { type: 'visit', seat: WHEAT, host: WHEAT, fee: 'W20' });
     expect(applied.state.tasks.some((t) => t.t === 'draw' && t.src === 'W17')).toBe(false);
   });
 });

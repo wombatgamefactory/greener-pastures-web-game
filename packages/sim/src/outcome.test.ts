@@ -328,13 +328,25 @@ describe('a balloon move', () => {
    * it is a coin flip. Six full games across 2, 3 and 4 seats give 350 to 570
    * priced offers per balloon and cost about 25 seconds, which is affordable
    * again only because `rules.turn.handLimit` came back.
+   *
+   * ⭐ WIDENED AGAIN ON 04/09/2026, TO TWELVE GAMES, and for the same reason a
+   * second time. The meeple loop changed how often a balloon is on offer at all
+   * (the bonus slot no longer spends a card, the turn-start meeple phase is
+   * gone), and at six games the two claims below disagreed: the SPREAD was a
+   * healthy 0.787, comfortably over the floor, while the 95% intervals of the
+   * dearest and cheapest balloon overlapped by 0.04 - a sample too thin to
+   * separate them, not a pricer that had stopped preferring. Twelve games reads
+   * spread 1.499 and separates cleanly. NOTHING WAS LOOSENED: the floor is
+   * untouched at 0.35, the separation claim is untouched, and the sample it is
+   * asked of is bigger. Twelve games cost about 2 seconds here, which is what
+   * makes it the cheap answer rather than the thorough one.
    */
   function priceBalloons(weights = BALANCED): Map<string, number[]> {
     const outcome = TERMS.find((t) => t.name === 'outcome');
     if (!outcome) throw new Error('no `outcome` term');
     const seen = new Map<string, number[]>();
     for (const seats of [2, 3, 4]) {
-      for (const run of [0, 1]) {
+      for (const run of [0, 1, 2, 3]) {
         const seed = `balloon-${seats}-${run}`;
         // The Aerodrome is only in play with Vegetables at the table.
         const suits = SUITS.slice(1, 1 + seats);

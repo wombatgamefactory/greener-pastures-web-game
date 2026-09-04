@@ -141,11 +141,17 @@ export function meeplesDealt(data: GameData, seats: number): number {
  * Is the MEEPLE-LOOP ARM on? One predicate, so that "which game are we playing"
  * is asked in exactly one spelling across the engine, the bots and the sim.
  *
- * Everything the arm changes is gated on this: the visit's currency, the Notice
- * Board being a building at all, the bonus slot's second option, the turn-start
- * meeple spend, the supply cap and which island spaces carry a meeple. `'card'`
- * is the default and the control, so a `false` here must reach exactly the code
- * that ran on 03/09/2026.
+ * Everything it gates: the visit's currency, the Notice Board being a building
+ * at all, the bonus slot's second option, the turn-start meeple spend, the
+ * supply cap and which island spaces carry a meeple.
+ *
+ * ⭐ IT DEFAULTS TRUE SINCE 04/09/2026, WHEN DEAN RULED THE MEEPLE LOOP IN. It
+ * was written as an arm predicate with `'card'` as the shipped game; the two
+ * have swapped, so `'card'` is now the CONTROL at
+ * `overlays/v31-card-visit.overlay.json` and a `false` here must reach exactly
+ * the code that ran on 03/09/2026. That branch is not dead code and must not be
+ * tidied away: it is the baseline every future delta is read against, and the
+ * only thing exercising it at scale is that overlay.
  */
 export function isMeepleCurrency(data: GameData): boolean {
   return data.rules.turn.visitCurrency === 'meeple';
@@ -154,10 +160,13 @@ export function isMeepleCurrency(data: GameData): boolean {
 /**
  * How many meeples one tile is seeded with at setup.
  *
- * Under `'card'` that is every delivery space times `perDeliverySpace`, exactly
- * as it has been since v31. Under `'meeple'` it is the length of
- * `island.meeples.seededSpaces`, because the arm names WHICH spaces carry one
- * rather than how many each carries.
+ * Under the shipped `'meeple'` it is the length of `island.meeples.seededSpaces`
+ * - `[1]`, the 3 VP second delivery - because the rule names WHICH spaces carry
+ * one rather than how many each carries, and which is the whole of the design:
+ * being first to a tile is 6 VP flat, being second is 3 VP plus a stored action.
+ * Under the `'card'` control it is every delivery space times
+ * `perDeliverySpace`, exactly as v31 dealt them, which is twice as deep a draw
+ * from the same bag.
  */
 export function meeplesPerTile(data: GameData): number {
   if (isMeepleCurrency(data)) {

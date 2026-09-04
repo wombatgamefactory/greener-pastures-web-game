@@ -721,26 +721,61 @@ export const granary: CardHandler = {
   },
 };
 
-/** W17 The Pie Shop - "Whenever a neighbour places a card on one of your buildings, Draw 1." */
+/**
+ * W17 The Pie Shop - "Whenever a neighbour visits you, Draw 1." (v33 sheet,
+ * Dean, 04/09/2026.)
+ *
+ * ⭐ IT IS THE HOST-SIDE PAYMENT, AND IT IS THE ONLY ONE IN THE GAME. The
+ * meeple-loop diagnosis was that the v31 hook failed partly because being
+ * visited paid the host NOTHING; Collect answers that structurally (the meeples
+ * on your board come home as stored actions) and this card answers it in cards.
+ * It is the mirror of O16 The Fruit Store, which pays its owner for GOING OUT on
+ * the same hook.
+ */
 export const pieShop: CardHandler = {
   difficulty: {
     score: 2,
     verified: { prompts: false, crossPlayer: true, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
     notes:
-      'It pays for BEING VISITED, and since v31 it pays in cards (plan section 3.3). Every ' +
-      'rival placement counts, whatever building it lands on - a visit fee on the Notice ' +
-      'Board, a cross-table sow (A8) onto a FIELD - because the funnel is one and the card ' +
-      "names no target. crossPlayer: it fires for its owner mid a rival's turn. " +
-      '⚠️ THE SELF-VISIT (v31) DOES NOT FIRE IT, and the guard that stops it is the one ' +
-      'that was already there: `event.seat === self.seat`. The card says "a neighbour", and ' +
-      'a seat feeding its own Notice Board is not one. That guard used to be belt-and-braces ' +
-      'beside the target check; it is now load-bearing, because a visitor and a host can be ' +
-      'the same seat for the first time in this game.',
+      '⛔ RE-KEYED 04/09/2026, AND THE OLD HANDLER WAS A DEAD CARD. It used to listen on ' +
+      "`afterPlacement` for a rival placing a card on one of the owner's buildings, which " +
+      'was the v31 visit fee landing on the Notice Board plus the odd cross-table sow (A8). ' +
+      'The meeple loop places NO CARD ON ANY BOARD and the Notice Board is not a building at ' +
+      'all, so under the shipped rules that listener fired on essentially nothing: the card ' +
+      'was printing text the engine could not deliver. Dean retexted it on the v33 sheet to ' +
+      '"Whenever a neighbour visits you, Draw 1" and it now keys on `afterVisit`, which is ' +
+      'the event the currency change was deliberately built to leave alone. ' +
+      '⚠️ cards.json STILL CARRIES THE OLD WORDING. The sheet is the single source of truth ' +
+      'for text and cards.json is regenerated from it, not hand-edited, so the divergence is ' +
+      'recorded in to-do/sync-ledger.md rather than patched here. Read the behaviour off ' +
+      'this handler and the wording off the v33 sheet. ' +
+      "TWO GUARDS, and both are the card's own words. `event.host === self.seat` makes it " +
+      'HOST-side, which is the whole point of the retext - it pays for being visited, not ' +
+      'for visiting. `!event.self` makes it a NEIGHBOUR: under the shipped meeple currency ' +
+      'that is true by construction (X5, there is no self-visit under any flag) and the ' +
+      'guard costs nothing, but overlays/v31-card-visit.overlay.json puts self-visiting back ' +
+      'on the table and without it a seat would pay itself a card for every bonus slot it ' +
+      'ever spent, with nobody else at the table involved. ' +
+      "THE ONCE-A-TURN GUARD is the standing rule (12(c), 2026-08-11: no card's text fires " +
+      'twice in a turn), taken through the shared `turn.firedThisTurn` list via `markFired` ' +
+      'exactly as W16 The Granary does. Nothing in the shipped turn can produce two visits - ' +
+      'one bonus slot, and A Helping Hand grants one Visit AND one Collect rather than two ' +
+      'of either - so today it is belt-and-braces. It is written anyway because the rule is ' +
+      'general and the next card that widens the bonus slot should not have to remember this ' +
+      "one. crossPlayer: it fires for its owner in the middle of a rival's turn, which is " +
+      "also why the guard reads the visitor's `firedThisTurn` and not the owner's - there " +
+      'is one turn in progress and one list.',
   },
   on: {
-    afterPlacement(fx, event, self) {
-      if (event.seat === self.seat || event.onto.seat !== self.seat) return;
+    afterVisit(fx, event, self) {
+      if (event.host !== self.seat) return;
+      // "a NEIGHBOUR visits you" - your own visit to your own board is not one.
+      // False by construction under the meeple currency; live under the v31
+      // card-visit control overlay.
+      if (event.self) return;
+      if (fx.state.turn.firedThisTurn.includes(self.card)) return;
+      markFired(fx, self.card);
       drawN(fx, self.seat, self.card, 1);
     },
   },

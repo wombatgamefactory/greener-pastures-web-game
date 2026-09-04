@@ -40,7 +40,7 @@ import { apply, legalMoves } from '../game.js';
 import { answerTask, gameEndScores, growBuilding, pendingAnswers } from '../runtime.js';
 import { buildingOf, player } from '../query.js';
 import type { GameState, Move, Task, TaskAnswer } from '../state.js';
-import { buildFor, dealTo, loadStack, makeState } from '../testkit.js';
+import { buildFor, cardVisitGame, dealTo, loadStack, makeState, visitMove } from '../testkit.js';
 import { isHiveCard } from './apiary.js';
 import { handlerFor } from './registry.js';
 
@@ -770,33 +770,45 @@ describe("A16 The Beekeeper's Veil - stack position 2, unchanged by the rebuild"
     expect(headDraw(grown.state)).toMatchObject({ see: 1, keep: 1, src: 'A16' });
   });
 
-  it("fires on a visit fee landing on a neighbour's board at 2", () => {
-    const s = base();
-    buildFor(data, s, APIARY, 'A16');
-    dealTo(data, s, APIARY, 'A4');
-    loadStack(data, s, WHEAT, 'W3', 1, 'wheat');
+  /**
+   * ⛔ THIS ROUTE IS GONE FROM THE SHIPPED GAME AND IS TESTED ON THE CONTROL. A
+   * visit no longer places a card anywhere: it puts a meeple in a colour slot,
+   * and the Notice Board is not a building, so a visit can never bring one of
+   * the host's stacks to 2. The behaviour is unchanged where it can still
+   * happen, which is overlays/v31-card-visit.overlay.json.
+   */
+  it("fires on a visit fee landing on a neighbour's board at 2, under the v31 control", () => {
+    const control = cardVisitGame();
+    const s = makeState(control, ['apiary', 'wheat']);
+    buildFor(control, s, APIARY, 'A16');
+    dealTo(control, s, APIARY, 'A4');
+    loadStack(control, s, WHEAT, 'W3', 1, 'wheat');
     // The Wheat door is a Harvest, so the visitor needs a full building of their
-    // own or the door is not offered at all (v31).
-    buildFor(data, s, APIARY, 'A5');
-    loadStack(data, s, APIARY, 'A5', 2, 'orchard');
+    // own or the door is not offered at all.
+    buildFor(control, s, APIARY, 'A5');
+    loadStack(control, s, APIARY, 'A5', 2, 'orchard');
     s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
-    const applied = apply(data, s, { type: 'visit', seat: APIARY, host: WHEAT, fee: 'A4' });
+    const applied = apply(control, s, { type: 'visit', seat: APIARY, host: WHEAT, fee: 'A4' });
     expect(headDraw(applied.state)).toMatchObject({ see: 1, keep: 1, src: 'A16' });
   });
 
-  it('never fires when a RIVAL brings your building to 2', () => {
+  /**
+   * The rival route that DOES survive: the Apiary door sows from the visitor's
+   * hand onto one of the VISITOR's buildings, so a meeple visit to an Apiary
+   * seat is still a placement by somebody who is not A16's owner.
+   */
+  it('never fires when a RIVAL brings a building to 2', () => {
     const s = base();
     buildFor(data, s, APIARY, 'A16');
-    dealTo(data, s, WHEAT, 'W4');
     loadStack(data, s, APIARY, 'A3', 1, 'apiary');
-    // The Apiary door sows from the hand onto one of the VISITOR's buildings,
-    // so the wheat seat needs a second card and somewhere to put it.
     dealTo(data, s, WHEAT, 'W5');
     buildFor(data, s, WHEAT, 'W6');
+    loadStack(data, s, WHEAT, 'W6', 1, 'wheat'); // the sow takes it to 2
     s.turnPlayer = WHEAT;
     s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
-    const applied = apply(data, s, { type: 'visit', seat: WHEAT, host: APIARY, fee: 'W4' });
-    expect(drawsFrom(applied.state, 'A16')).toBe(0);
+    const applied = apply(data, s, visitMove(WHEAT, APIARY, 'apiary'));
+    const done = answerAll(applied.state);
+    expect(drawsFrom(done, 'A16')).toBe(0);
   });
 
   it('does not fire at stack position 3', () => {
@@ -828,18 +840,22 @@ describe("A16 The Beekeeper's Veil - stack position 2, unchanged by the rebuild"
  * repeat" (A Helping Hand is a bonus-slot modifier now and has no repeat).
  */
 describe('A17 The Smoke Pot - a free barn card for visiting a neighbour', () => {
-  /** A visit that is legal for the visitor: the Wheat door needs a full building. */
+  /**
+   * A visit that is legal for the visitor: the Wheat door needs a full building.
+   * Paid in a meeple since 04/09/2026, which is exactly what the card cannot
+   * see - it reads `afterVisit`, and the currency change was built to leave that
+   * hook alone.
+   */
   function visitTheWheatSeat(s: GameState) {
     buildFor(data, s, APIARY, 'A5');
     loadStack(data, s, APIARY, 'A5', 2, 'orchard');
     s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
-    return apply(data, s, { type: 'visit', seat: APIARY, host: WHEAT, fee: 'A4' });
+    return apply(data, s, visitMove(APIARY, WHEAT, 'wheat'));
   }
 
   it('adds the top card of a deck of your choice into your BARN, free', () => {
     const s = base();
     buildFor(data, s, APIARY, 'A17');
-    dealTo(data, s, APIARY, 'A4');
     const wheatTop = s.decks.wheat[0] as string;
 
     const applied = visitTheWheatSeat(s);
@@ -868,7 +884,6 @@ describe('A17 The Smoke Pot - a free barn card for visiting a neighbour', () => 
   it('offers no skip: the text says "add", not "you may"', () => {
     const s = base();
     buildFor(data, s, APIARY, 'A17');
-    dealTo(data, s, APIARY, 'A4');
     const applied = visitTheWheatSeat(s);
     expect(pendingAnswers(data, applied.state)).not.toContainEqual({ kind: 'skip' });
   });
@@ -879,30 +894,30 @@ describe('A17 The Smoke Pot - a free barn card for visiting a neighbour', () => 
    * the bonus slot - which is risk 2 of the whole pass - and would need nobody
    * else at the table.
    */
-  it('does NOT fire on a SELF-visit: a neighbour means a neighbour', () => {
-    const s = base();
-    buildFor(data, s, APIARY, 'A17', 'A11');
-    dealTo(data, s, APIARY, 'A4', 'A5'); // the Apiary door sows a second card
+  it('does NOT fire on a SELF-visit under the v31 control: a neighbour means a neighbour', () => {
+    const control = cardVisitGame();
+    const s = makeState(control, ['apiary', 'wheat']);
+    buildFor(control, s, APIARY, 'A17', 'A11');
+    dealTo(control, s, APIARY, 'A4', 'A5'); // the Apiary door sows a second card
     s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
-    const applied = apply(data, s, { type: 'visit', seat: APIARY, host: APIARY, fee: 'A4' });
+    const applied = apply(control, s, { type: 'visit', seat: APIARY, host: APIARY, fee: 'A4' });
     expect(tasksFrom(applied.state, 'A17')).toEqual([]);
   });
 
   it('never fires when the owner is the one being VISITED', () => {
     const s = base();
     buildFor(data, s, APIARY, 'A17');
-    dealTo(data, s, WHEAT, 'W4', 'W5');
+    dealTo(data, s, WHEAT, 'W5');
     buildFor(data, s, WHEAT, 'W6'); // somewhere for the Apiary door to sow
     s.turnPlayer = WHEAT;
     s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
-    const applied = apply(data, s, { type: 'visit', seat: WHEAT, host: APIARY, fee: 'W5' });
+    const applied = apply(data, s, visitMove(WHEAT, APIARY, 'apiary'));
     expect(tasksFrom(applied.state, 'A17')).toEqual([]);
   });
 
   it('adds nothing when every deck is dry, and leaves no dead prompt', () => {
     const s = base();
     buildFor(data, s, APIARY, 'A17');
-    dealTo(data, s, APIARY, 'A4');
     buildFor(data, s, APIARY, 'A5');
     loadStack(data, s, APIARY, 'A5', 2, 'orchard');
     for (const suit of data.cards.suits) {
@@ -910,7 +925,7 @@ describe('A17 The Smoke Pot - a free barn card for visiting a neighbour', () => 
       s.discards[suit] = [];
     }
     s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
-    const applied = apply(data, s, { type: 'visit', seat: APIARY, host: WHEAT, fee: 'A4' });
+    const applied = apply(data, s, visitMove(APIARY, WHEAT, 'wheat'));
     // The task is pushed unconditionally and gated in the ENUMERATOR: with no
     // live deck it has no legal answer, so the drain loop inside `apply` drops
     // it and no dead prompt ever reaches a player.
