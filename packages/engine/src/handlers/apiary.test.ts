@@ -590,13 +590,16 @@ describe("A13 The Queen's Hive - the swarm, straight into the barn", () => {
   /**
    * It is a GROW now, so the GROW runtime spends the action, not the handler.
    *
-   * ⚠️ THE ASSERTION HAD TO MOVE (v31) AND THE REASON IS A RULE, not a
-   * fixture detail. It read `turn.actionSpent === true` after the apply; the
-   * bonus slot is START-OF-TURN ONLY now (`rules.turn.bonusAtStartOnly`, Dean
-   * 19/08/2026), so spending the action shuts the bonus window as well, nothing
-   * is left to do, and `settleTurn` ENDS THE TURN inside the same call - which
-   * replaces the whole turn object and resets the flag it was reading. The turn
-   * passing to the next seat is the observable that the action was spent.
+   * ⚠️ THIS ASSERTION HAS NOW MOVED TWICE, BOTH TIMES FOR A RULE. It first read
+   * `turn.actionSpent === true` after the apply; under the 19/08/2026
+   * start-of-turn bonus slot, spending the action shut the bonus window too, so
+   * `settleTurn` ENDED THE TURN in the same call and replaced the very turn
+   * object being read - and the turn passing on became the observable instead.
+   *
+   * ⭐ Since 03/09/2026 (`rules.turn.bonusTiming: 'end'`) the action OPENS the
+   * bonus window rather than shutting it, so the turn no longer ends here and
+   * the flag survives the apply. The direct assertion is available again, and
+   * the turn STAYING is now the second half of the same observable.
    */
   it('is an ordinary GROW: wild activation, and the action is spent by the runtime', () => {
     const s = base();
@@ -604,7 +607,8 @@ describe("A13 The Queen's Hive - the swarm, straight into the barn", () => {
     dealTo(data, s, APIARY, 'W4'); // a WHEAT card: activationType is wild
     expect(growMoveFor(s, 'A13')).toBeDefined();
     const played = apply(data, s, { type: 'grow', seat: APIARY, building: 'A13', payment: 'W4' });
-    expect(played.state.turnPlayer).toBe(WHEAT);
+    expect(played.state.turn.actionSpent).toBe(true);
+    expect(played.state.turnPlayer).toBe(APIARY); // the bonus slot is now open
     expect(buildingOf(played.state, APIARY, 'A13').stack).toEqual(['W4']);
   });
 
@@ -775,6 +779,7 @@ describe("A16 The Beekeeper's Veil - stack position 2, unchanged by the rebuild"
     // own or the door is not offered at all (v31).
     buildFor(data, s, APIARY, 'A5');
     loadStack(data, s, APIARY, 'A5', 2, 'orchard');
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const applied = apply(data, s, { type: 'visit', seat: APIARY, host: WHEAT, fee: 'A4' });
     expect(headDraw(applied.state)).toMatchObject({ see: 1, keep: 1, src: 'A16' });
   });
@@ -789,6 +794,7 @@ describe("A16 The Beekeeper's Veil - stack position 2, unchanged by the rebuild"
     dealTo(data, s, WHEAT, 'W5');
     buildFor(data, s, WHEAT, 'W6');
     s.turnPlayer = WHEAT;
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const applied = apply(data, s, { type: 'visit', seat: WHEAT, host: APIARY, fee: 'W4' });
     expect(drawsFrom(applied.state, 'A16')).toBe(0);
   });
@@ -826,6 +832,7 @@ describe('A17 The Smoke Pot - a free barn card for visiting a neighbour', () => 
   function visitTheWheatSeat(s: GameState) {
     buildFor(data, s, APIARY, 'A5');
     loadStack(data, s, APIARY, 'A5', 2, 'orchard');
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     return apply(data, s, { type: 'visit', seat: APIARY, host: WHEAT, fee: 'A4' });
   }
 
@@ -876,6 +883,7 @@ describe('A17 The Smoke Pot - a free barn card for visiting a neighbour', () => 
     const s = base();
     buildFor(data, s, APIARY, 'A17', 'A11');
     dealTo(data, s, APIARY, 'A4', 'A5'); // the Apiary door sows a second card
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const applied = apply(data, s, { type: 'visit', seat: APIARY, host: APIARY, fee: 'A4' });
     expect(tasksFrom(applied.state, 'A17')).toEqual([]);
   });
@@ -886,6 +894,7 @@ describe('A17 The Smoke Pot - a free barn card for visiting a neighbour', () => 
     dealTo(data, s, WHEAT, 'W4', 'W5');
     buildFor(data, s, WHEAT, 'W6'); // somewhere for the Apiary door to sow
     s.turnPlayer = WHEAT;
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const applied = apply(data, s, { type: 'visit', seat: WHEAT, host: APIARY, fee: 'W5' });
     expect(tasksFrom(applied.state, 'A17')).toEqual([]);
   });
@@ -900,6 +909,7 @@ describe('A17 The Smoke Pot - a free barn card for visiting a neighbour', () => 
       s.decks[suit] = [];
       s.discards[suit] = [];
     }
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const applied = apply(data, s, { type: 'visit', seat: APIARY, host: WHEAT, fee: 'A4' });
     // The task is pushed unconditionally and gated in the ENUMERATOR: with no
     // live deck it has no legal answer, so the drain loop inside `apply` drops

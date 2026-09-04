@@ -1,0 +1,8 @@
+{
+  "name": "veg-hand-flight-free-v1",
+  "description": "NOT A BALLOON REWARD AT ALL, and that is the point: it changes WHO CAN AFFORD THE MODULE rather than what the module pays. `aerodrome.handMoveCost` 1 -> 0 makes the hand-paid flight free, and the hand-paid flight is the ONE part of the aerodrome that is exclusively Vegetable's (V4 and V8 print it and nothing else in the game may use it). It is currently firing 0.27 times a game, against 1.22 when it was last measured at cost 1 in August, so Vegetable's own privileged route has decayed to nothing. If the reward arms are flat and this one is not, the module's problem is access and never generosity.",
+  "schemaVersion": 1,
+  "set": {
+    "aerodrome.handMoveCost": 0
+  }
+}

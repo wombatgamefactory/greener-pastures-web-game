@@ -1,0 +1,8 @@
+{
+  "name": "bonus-both-v1",
+  "description": "EVERY SEAT PLAYS AS IF IT HELD A HELPING HAND (04/09/2026, Dean's visit question). Two bonus slots a turn, one of each option: the free Draw 1 AND a card on a Notice Board. The visit then costs the visitor nothing relative to the solitaire option (give one card, draw one back) instead of the two-card swing it costs today, and it is a strict superset of Draw 1 whenever any open door does anything. This is the cheapest test of 'fix the visit side' that exists as a knob. READ FIRST: the hook (rival visits per turn) and the self-visit share, because the bundle makes self-visiting free too and the clog is its only brake. Then action inflation and game length, then the door clog and denial at 2 seats. If rival visits climb and self-visits climb faster, the bundle needs 'a neighbour's board' written into it.",
+  "schemaVersion": 1,
+  "set": {
+    "rules.turn.bonusSlotsPerTurn": 2
+  }
+}

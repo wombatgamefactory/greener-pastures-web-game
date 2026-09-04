@@ -1,0 +1,10 @@
+{
+  "name": "sky-rich-v1",
+  "description": "THE CEILING ARM for balloon reward magnitude. Every sweepable balloon reward doubled from 4 to 8 (the magenta Harvest-any balloon has no amount, so this arm can only enrich three of the four - the same limitation sky-dull-v1 carries). Paired with sky-dull-v1 at 1, it brackets the whole usable range of the module's generosity. THE QUESTION IT ANSWERS IS NOT 'are balloons good' BUT 'can balloon rewards move the VEGETABLE suit at all' - the Vegetable seat takes only 0.39 of the table's balloon moves against an even share of 0.34, so the module is very nearly a communal trough and an enrichment may simply be a gift to the table.",
+  "schemaVersion": 1,
+  "set": {
+    "aerodrome.balloons.balloonDraw.reward.amount": 8,
+    "aerodrome.balloons.balloonBuild.reward.amount": 8,
+    "aerodrome.balloons.balloonSow.reward.amount": 8
+  }
+}

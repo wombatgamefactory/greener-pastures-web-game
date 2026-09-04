@@ -129,6 +129,30 @@ export function meanPrintedVp(data: GameData): number {
   return mean;
 }
 
+/**
+ * ⭐ THE BLIND PRIOR THAT A PROBED BUILD IS OWN-CROP, and therefore that the
+ * seat's Farmstead pays its 1 VP for it (Dean, 03/09/2026).
+ *
+ * The Farmstead's VP needs the built card's SUIT, and this pricer may never read
+ * card identity - it may be looking at a card drawn inside its own probe. So the
+ * VP is priced as a PROBABILITY instead, exactly as `meanPrintedVp` prices the
+ * card's printed VP as a catalogue mean: blind, one number, no identity read.
+ *
+ * ⚠️ UNLIKE `meanPrintedVp` THIS IS A BEHAVIOURAL PRIOR, NOT A DATA PROPERTY.
+ * 0.8 is the own-crop build share measured at 83.3% on reference-v10, and it is
+ * the one constant in this file that a rules change can invalidate without
+ * touching the catalogue. Risk 3 - the monoculture pull - is the reason it is so
+ * high, and if that share ever falls this number has to fall with it or the
+ * pricer starts paying for a Farmstead VP that is not arriving.
+ *
+ * What it fixes: before it, "a build reached through a door or a meeple is worth
+ * one VP less to the bot than it really is, always in the same direction". That
+ * bias fell hardest on the DAIRY DOOR, which IS a build, and which the v10 door
+ * mix found on 7% - the lowest of the five doors in the game, for the most
+ * powerful action any door grants.
+ */
+const OWN_CROP_BUILD_PRIOR = 0.8;
+
 function weight(w: WeightTable, name: string): number {
   return w[name] ?? 0;
 }
@@ -324,19 +348,24 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
       // table charges 2.5. Count only, so a barn card in the payment (D8) prices
       // as a hand card - blind, and the same direction.
       //
-      // ⚠️ THE FARMSTEAD'S 1 VP PER OWN-SUIT CARD IS NOT ADDED HERE, and it
-      // cannot be: reading it needs the built card's SUIT, which is card
-      // identity, which this pricer may never see. A build reached through a
-      // door or a meeple is therefore worth one VP less to the bot than it
-      // really is, always in the same direction, and only inside a rollout - a
-      // build taken as the seat's own move is priced correctly by the
-      // `farmsteadVp` move term. It is the one place the blindness rule and
-      // risk 3 disagree, and blindness wins, because the alternative is a bot
-      // that can see the deck.
+      // ⭐ THE FARMSTEAD'S 1 VP PER OWN-SUIT CARD IS NOW PRICED HERE, AS A
+      // PROBABILITY (Dean, 03/09/2026). It used to be omitted, with the note
+      // that reading it "needs the built card's SUIT, which is card identity,
+      // which this pricer may never see" - true, and the wrong conclusion. The
+      // blindness rule forbids reading the suit; it does not forbid pricing the
+      // EXPECTED VP the way `meanPrintedVp` already prices the expected printed
+      // one. The old omission left "a build reached through a door or a meeple
+      // worth one VP less to the bot than it really is, ALWAYS IN THE SAME
+      // DIRECTION", which is a bias and not a blindness.
+      //
+      // A build taken as the seat's own MOVE is still priced exactly by the
+      // `farmsteadVp` move term reading the real card. This line only closes the
+      // gap between that and the same build bought through a door or a meeple.
       if (event.seat !== me) return 0;
       return (
         weight(w, 'build') +
-        weight(w, 'buildVp') * meanPrintedVp(s.data) -
+        weight(w, 'buildVp') * meanPrintedVp(s.data) +
+        weight(w, 'farmsteadVp') * OWN_CROP_BUILD_PRIOR -
         weight(w, 'handSpend') * handSpendCost(s, event.payment.length)
       );
 

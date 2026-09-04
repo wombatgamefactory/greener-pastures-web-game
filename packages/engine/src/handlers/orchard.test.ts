@@ -203,6 +203,7 @@ describe('the Orchard Farmstead (O2) - the own-crop end-game scorer', () => {
   it('the Orchard door is a flat Draw 3, keep 3, with nothing composing on top', () => {
     const s = base();
     dealTo(data, s, ORCHARD, 'O4');
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const visited = apply(data, s, { type: 'visit', seat: ORCHARD, host: ORCHARD, fee: 'O4' });
     expect(headDraw(visited.state)).toMatchObject({ see: 3, keep: 3 });
   });
@@ -784,6 +785,7 @@ describe('O16 The Fruit Store - turned around to pay for GOING OUT', () => {
     // own or the door is not offered at all (v31).
     buildFor(data, s, ORCHARD, 'O9');
     loadStack(data, s, ORCHARD, 'O9', 2, 'apiary');
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const applied = apply(data, s, { type: 'visit', seat: ORCHARD, host: WHEAT, fee: 'O4' });
     // Fee spent, keeper card drawn back (a choiceless autoDraw, so it resolves
     // inline and leaves no task), and the harvest the door bought still pending.
@@ -796,6 +798,7 @@ describe('O16 The Fruit Store - turned around to pay for GOING OUT', () => {
     buildFor(data, s, ORCHARD, 'O16');
     dealTo(data, s, WHEAT, 'W4');
     s.turnPlayer = WHEAT;
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const applied = apply(data, s, { type: 'visit', seat: WHEAT, host: ORCHARD, fee: 'W4' });
     expect(player(applied.state, ORCHARD).hand).toHaveLength(0);
   });
@@ -812,6 +815,7 @@ describe('O16 The Fruit Store - turned around to pay for GOING OUT', () => {
     const s = base();
     buildFor(data, s, ORCHARD, 'O16');
     dealTo(data, s, ORCHARD, 'O4');
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const applied = apply(data, s, { type: 'visit', seat: ORCHARD, host: ORCHARD, fee: 'O4' });
     // The Orchard door's Draw 3 is queued and nothing has been drawn yet: the
     // hand is empty, where a keeper draw would have left one card in it.

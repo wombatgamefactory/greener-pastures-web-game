@@ -239,28 +239,59 @@ describe('main actions through apply', () => {
   });
 
   /**
-   * THE BONUS WINDOW (Dean, 19/08/2026, carried into v31): *"the bonus action
-   * can only be performed at the start of your turn."* One predicate,
-   * `bonusOpen`, and the whole of it is that the main action has not been taken.
+   * ⭐ THE BONUS WINDOW OPENS WHEN THE ACTION IS SPENT (Dean, 03/09/2026),
+   * reversing the 19/08/2026 rule this test used to assert. The turn is
+   * meeples, then the CORE ACTION, then the bonus - `rules.turn.bonusTiming`
+   * `'end'`. The old order survives as `'start'`, asserted below.
+   *
+   * Set here rather than reached through a real action because every main
+   * action pushes a task, and a pending task is the one thing that suppresses
+   * the whole move list.
    */
-  it('the bonus slot shuts the moment the main action is taken', () => {
-    const open = base();
-    dealTo(data, open, WHEAT, 'W4'); // a visit needs a fee card in hand
-    expect(legalMoves(data, open).some((m) => m.type === 'visit')).toBe(true);
-    expect(legalMoves(data, open).some((m) => m.type === 'bonusDraw')).toBe(true);
-
-    // `!actionSpent` IS "at the start of your turn" - there is no other thing a
-    // turn can have done, which is why the rule needed no new state. Set here
-    // rather than reached through a real action because every main action
-    // pushes a task, and a pending task is the one thing that suppresses the
-    // whole move list.
+  it('the bonus slot opens when the main action is taken, and not before', () => {
     const shut = base();
-    dealTo(data, shut, WHEAT, 'W4');
-    shut.turn.actionSpent = true;
-    expect(shut.turn.bonusUsed).toEqual([]); // unspent, and still unreachable
+    dealTo(data, shut, WHEAT, 'W4'); // a visit needs a fee card in hand
+    expect(shut.turn.bonusUsed).toEqual([]); // unspent, and not yet reachable
     expect(legalMoves(data, shut).some((m) => m.type === 'visit')).toBe(false);
     expect(legalMoves(data, shut).some((m) => m.type === 'bonusDraw')).toBe(false);
-    expect(legalMoves(data, shut).some((m) => m.type === 'spendMeeple')).toBe(false);
+    // The meeple phase is the one thing that IS open at the top of the turn.
+    expect(legalMoves(data, shut).every((m) => m.type !== 'spendMeeple')).toBe(true);
+
+    const open = base();
+    dealTo(data, open, WHEAT, 'W4');
+    open.turn.actionSpent = true;
+    expect(legalMoves(data, open).some((m) => m.type === 'visit')).toBe(true);
+    expect(legalMoves(data, open).some((m) => m.type === 'bonusDraw')).toBe(true);
+    // ⭐ AND THE MEEPLE PHASE HAS SHUT BEHIND IT. Meeples are spendable only
+    // before the action, so the two windows never overlap in either direction.
+    expect(legalMoves(data, open).some((m) => m.type === 'spendMeeple')).toBe(false);
+  });
+
+  /**
+   * THE PAIRED CONTROL, and the rule the engine carried from 19/08/2026 to
+   * 03/09/2026: `bonusTiming: 'start'` puts the bonus back before the action.
+   * `'any'` opens it in both positions. Asserted so that an arm switching the
+   * knob cannot silently stop switching the rule.
+   */
+  it('bonusTiming start and any are the paired controls', () => {
+    const startRules = {
+      ...data,
+      rules: { ...data.rules, turn: { ...data.rules.turn, bonusTiming: 'start' as const } },
+    };
+    const top = base();
+    dealTo(data, top, WHEAT, 'W4');
+    expect(legalMoves(startRules, top).some((m) => m.type === 'visit')).toBe(true);
+    const acted = base();
+    dealTo(data, acted, WHEAT, 'W4');
+    acted.turn.actionSpent = true;
+    expect(legalMoves(startRules, acted).some((m) => m.type === 'visit')).toBe(false);
+
+    const anyRules = {
+      ...data,
+      rules: { ...data.rules, turn: { ...data.rules.turn, bonusTiming: 'any' as const } },
+    };
+    expect(legalMoves(anyRules, top).some((m) => m.type === 'visit')).toBe(true);
+    expect(legalMoves(anyRules, acted).some((m) => m.type === 'visit')).toBe(true);
   });
 
   /**
@@ -579,6 +610,7 @@ describe('the bonus slot through apply', () => {
   it('a visit places the fee on the host board and runs that board suit action', () => {
     const state = base();
     dealTo(data, state, WHEAT, 'W4', 'W5');
+    state.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const applied = apply(data, state, {
       type: 'visit',
       seat: WHEAT,
@@ -609,6 +641,7 @@ describe('the bonus slot through apply', () => {
     const state = base();
     dealTo(data, state, ORCHARD, 'O4', 'O5', 'O6');
     state.turnPlayer = ORCHARD;
+    state.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const first = apply(data, state, { type: 'visit', seat: ORCHARD, host: ORCHARD, fee: 'O4' });
     expect(noticeBoard(first.state, ORCHARD).stack).toEqual(['O4']);
     expect(first.events).toContainEqual({
@@ -625,11 +658,13 @@ describe('the bonus slot through apply', () => {
     const s2 = first.state;
     s2.tasks = [];
     s2.turn = freshTurn();
+    s2.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     s2.turnPlayer = ORCHARD;
     const second = apply(data, s2, { type: 'visit', seat: ORCHARD, host: ORCHARD, fee: 'O5' });
     const s3 = second.state;
     s3.tasks = [];
     s3.turn = freshTurn();
+    s3.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     s3.turnPlayer = ORCHARD;
     expect(legalMoves(data, s3).some((m) => m.type === 'visit' && m.host === ORCHARD)).toBe(false);
     expect(() =>
@@ -640,6 +675,12 @@ describe('the bonus slot through apply', () => {
     // also the reason the Wheat door across the table has just become legal for
     // this seat when it was dead a moment ago. The brake and the unclog are the
     // same action.
+    //
+    // ⭐ Read on the UNSPENT action, because under `bonusTiming: 'end'` the two
+    // windows are mutually exclusive: the harvest is a MAIN action and the
+    // visits either side of it are bonus-slot moves, so no single state can
+    // offer both. That is the turn order, not a quirk of the fixture.
+    s3.turn.actionSpent = false;
     expect(legalMoves(data, s3).some((m) => m.type === 'harvest')).toBe(true);
   });
 
@@ -652,6 +693,7 @@ describe('the bonus slot through apply', () => {
     const s = makeState(noSelf, ['wheat', 'orchard']);
     dealTo(noSelf, s, ORCHARD, 'O4');
     s.turnPlayer = ORCHARD;
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     expect(legalMoves(noSelf, s).some((m) => m.type === 'visit' && m.host === ORCHARD)).toBe(false);
     expect(() =>
       apply(noSelf, s, { type: 'visit', seat: ORCHARD, host: ORCHARD, fee: 'O4' }),
@@ -668,6 +710,7 @@ describe('the bonus slot through apply', () => {
     const s = base();
     dealTo(data, s, ORCHARD, 'O4');
     s.turnPlayer = ORCHARD;
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     // Orchard has no full building, so the Wheat door (Harvest) is dead for it.
     expect(legalMoves(data, s).some((m) => m.type === 'visit' && m.host === WHEAT)).toBe(false);
     expect(() => apply(data, s, { type: 'visit', seat: ORCHARD, host: WHEAT, fee: 'O4' })).toThrow(
@@ -687,10 +730,14 @@ describe('the bonus slot through apply', () => {
    */
   it('the bonus Draw 1 is a real draw, spends the slot, and leaves the action alone', () => {
     const state = base();
+    state.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const applied = apply(data, state, { type: 'bonusDraw', seat: WHEAT });
     expect(applied.state.tasks[0]).toMatchObject({ t: 'draw', see: 1, keep: 1, pid: WHEAT });
     expect(applied.state.turn.bonusUsed).toEqual(['draw']);
-    expect(applied.state.turn.actionSpent).toBe(false);
+    // ⭐ The bonus is a SEPARATE slot from the action, which under 'end' shows
+    // as the turn not having ended: the action was spent before the slot opened
+    // and taking the slot does not end the turn by itself.
+    expect(applied.state.turn.ending).toBe(false);
     // One bonus a turn: the slot is genuinely gone, either half of it.
     let s = applied.state;
     while (s.tasks.length > 0) s = apply(data, s, legalMoves(data, s)[0] as Move).state;
@@ -702,6 +749,7 @@ describe('the bonus slot through apply', () => {
   it('one bonus a turn, whichever half was taken', () => {
     const state = base();
     dealTo(data, state, WHEAT, 'W4', 'W5');
+    state.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const after = apply(data, state, {
       type: 'visit',
       seat: WHEAT,
@@ -751,15 +799,37 @@ describe('the meeple phase', () => {
    * held back and spent reactively later, which is the whole difference between
    * a supply of stored actions and a hand of free ones.
    */
-  it('closes as soon as the bonus is taken', () => {
+  /**
+   * ⭐ UNDER THE SHIPPED `bonusTiming: 'end'` THE ACTION SHUTS THIS WINDOW
+   * BEFORE THE BONUS CAN, so the closure is asserted twice: once off the action,
+   * which is what a real turn does, and once off the bonus under `'any'`, the
+   * only timing where `bonusUsed.length === 0` is still the binding clause.
+   * `meepleOpen` keeps both clauses for exactly this reason - see the note there
+   * on not deleting a clause because the shipped knob makes it unreachable.
+   */
+  it('closes as soon as the turn moves on, by either clause', () => {
     const s = base();
     giveMeeples(s, WHEAT, 'orchard');
-    const after = apply(data, s, { type: 'bonusDraw', seat: WHEAT }).state;
+    s.turn.actionSpent = true;
+    expect(legalMoves(data, s).some((m) => m.type === 'spendMeeple')).toBe(false);
+    expect(() => apply(data, s, { type: 'spendMeeple', seat: WHEAT, colour: 'orchard' })).toThrow(
+      /start of your turn/,
+    );
+
+    // The second clause, on the one timing that can still reach it.
+    const anyRules = {
+      ...data,
+      rules: { ...data.rules, turn: { ...data.rules.turn, bonusTiming: 'any' as const } },
+    };
+    const t = base();
+    giveMeeples(t, WHEAT, 'orchard');
+    const after = apply(anyRules, t, { type: 'bonusDraw', seat: WHEAT }).state;
     after.tasks = [];
+    expect(after.turn.actionSpent).toBe(false); // only the bonus has been taken
     expect(after.players[WHEAT]!.meeples.orchard).toBe(1);
-    expect(legalMoves(data, after).some((m) => m.type === 'spendMeeple')).toBe(false);
+    expect(legalMoves(anyRules, after).some((m) => m.type === 'spendMeeple')).toBe(false);
     expect(() =>
-      apply(data, after, { type: 'spendMeeple', seat: WHEAT, colour: 'orchard' }),
+      apply(anyRules, after, { type: 'spendMeeple', seat: WHEAT, colour: 'orchard' }),
     ).toThrow(/start of your turn/);
   });
 
@@ -795,7 +865,15 @@ describe('the turn boundary', () => {
    * longer hold anything open: past the action there is nothing to wait for, so
    * the turn settles on its own and `endTurn` is not needed.
    */
-  it('ends the turn by itself once the action is done, because the slot is already shut', () => {
+  /**
+   * ⭐ REVERSED ON 03/09/2026, and it is the clearest single statement of the
+   * new turn order. This test used to assert that the turn ENDED itself once the
+   * action was done, "because the slot is already shut". Under
+   * `bonusTiming: 'end'` the action is exactly what OPENS the slot, so the turn
+   * must now stay with the seat - and the cards the draw just produced are
+   * available to pay for the visit, which is the point of the correction.
+   */
+  it('holds the turn open after the action, because the slot has just opened', () => {
     const state = base();
     const applied = apply(data, state, { type: 'draw', seat: WHEAT });
     // Resolve the draw: pick a deck twice, then keep both.
@@ -804,9 +882,14 @@ describe('the turn boundary', () => {
       const moves = legalMoves(data, s);
       s = apply(data, s, moves[0] as Move).state;
     }
-    // The kept cards WOULD have funded a visit. They cannot now: the action is
-    // spent, so the window is shut and the turn has already passed on.
-    expect(s.turnPlayer).toBe(ORCHARD);
+    // The kept cards fund the visit, and the seat still holds the turn.
+    expect(s.turnPlayer).toBe(WHEAT);
+    expect(s.turn.actionSpent).toBe(true);
+    expect(legalMoves(data, s).some((m) => m.type === 'bonusDraw')).toBe(true);
+    expect(legalMoves(data, s).some((m) => m.type === 'visit')).toBe(true);
+    // And it passes on once the slot is spent or declined.
+    const ended = apply(data, s, { type: 'endTurn', seat: WHEAT }).state;
+    expect(ended.turnPlayer).toBe(ORCHARD);
   });
 
   /**
@@ -871,6 +954,16 @@ describe('the turn boundary', () => {
     const limit = data.rules.turn.handLimit as number;
     dealTo(data, state, WHEAT, ...state.decks.wheat.slice(0, limit));
     let s = apply(data, state, { type: 'draw', seat: WHEAT }).state;
+    while (s.tasks.length > 0) {
+      const moves = legalMoves(data, s);
+      s = apply(data, s, moves[0] as Move).state;
+    }
+    // ⭐ The turn no longer settles by itself here: under `bonusTiming: 'end'`
+    // the action has just OPENED the bonus slot, so the boundary is reached by
+    // declining it. The rule under test is unchanged - the draw was allowed over
+    // the limit and the discard priced it at the boundary - but the boundary now
+    // has to be asked for.
+    s = apply(data, s, { type: 'endTurn', seat: WHEAT }).state;
     while (s.tasks.length > 0) {
       const moves = legalMoves(data, s);
       s = apply(data, s, moves[0] as Move).state;

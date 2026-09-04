@@ -875,6 +875,59 @@ export const TERMS: readonly Term[] = [
   },
   {
     /**
+     * ⭐ **THE DOOR IS A WHOLE EXTRA ACTION, AND UNTIL 03/09/2026 NOTHING PAID
+     * FOR THAT** (Dean). This term reverses half of ticket 40 on purpose, and
+     * the half it reverses is the half that was wrong.
+     *
+     * Ticket 40 ruled that "a visit is worth its payoff and nothing else" and
+     * set `visit` and `selfVisit` to 0, because a FLAT taste for spending the
+     * slot manufactured the very traffic `a08-the-hook` counts: at `visit: 2`
+     * the bots took visits they valued at exactly zero in 70.4% of cases. That
+     * finding stands and this term does not undo it.
+     *
+     * What ticket 40 got wrong is the arithmetic underneath. In the shipped
+     * table a card leaving hand costs `handSpend` 2.5 and the free Draw 1 pays
+     * `bonusDraw` 1.2, so a door had to roll out above **3.7** before a bot
+     * would take it over the solitaire option - and a one-ply rollout prices
+     * only the goods an action produces, never the fact that it IS an action.
+     * Dean, 03/09/2026: *"there has to be a value placed on having an extra
+     * action. This can be very powerful. Another way of looking at it is to see
+     * that the Draw 1 option is only worth half an action."*
+     *
+     * So the anchor is his: `drawAction` pays 1.2 a card for a Draw 2, which is
+     * **2.4 for one whole action**, and `bonusDraw` pays 1.2 for exactly half of
+     * one. The default weight here is that same 2.4.
+     *
+     * ⚠️ **IT FIRES ONLY ON A DOOR THAT ACTUALLY DOES SOMETHING** - a strictly
+     * positive rollout - which is the guard that keeps ticket 40's finding
+     * intact. A Harvest door with nothing full, a Deliver door with an empty
+     * barn and a Build door with nothing affordable all roll out at zero or
+     * less, earn nothing here, and stay untaken. The flat taste ticket 40 killed
+     * paid for those; this does not.
+     *
+     * ⚠️ **DELIBERATELY BLIND TO WHICH DOOR IT IS**, self or rival. Risk 2
+     * asks which of the two a table takes when both cost one card out of one
+     * slot, and that question only means anything if the instrument has no
+     * preference between them. `visit` and `selfVisit` both stay at 0 above; the
+     * whole difference the bots see is still the rules' - which door the board
+     * grants, and whether the card shuts a board they need.
+     *
+     * ⚠️ **IT DOUBLE-COUNTS BY CONSTRUCTION AND THAT IS THE OPEN QUESTION.**
+     * `outcome` already prices the door's goods; this pays the action premium on
+     * top. The claim being tested is that a greedy one-ply rollout underprices
+     * an action by about the value of an action, because it cannot see
+     * compounding. The claim could be wrong, or 2.4 could simply be too much -
+     * so the weight is a knob with a control arm at 0, which reproduces the
+     * pre-03/09/2026 bots exactly. Sweep it before believing any hook number
+     * that moves under it.
+     */
+    name: 'bonusAction',
+    claims: ['visit'],
+    feature: (act, _s, move, o) =>
+      act.a === 'visit' && isProbed(act) && o.value(move) > 0 ? 1 : 0,
+  },
+  {
+    /**
      * ⭐ **THE ONLY BRAKE ON SELF-VISITING** - your own fee counts toward your
      * own threshold of 2, so the second card you feed your own board shuts your
      * own door, locks every neighbour out of your suit's action, and costs you a

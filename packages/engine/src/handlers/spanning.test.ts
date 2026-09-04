@@ -235,6 +235,7 @@ describe('3. The Pie Shop (W17) - "Draw 1 when a neighbour places a card on one 
     buildFor(data, s, APIARY, 'A5');
     loadStack(data, s, APIARY, 'A5', 2, 'orchard');
     s.turnPlayer = APIARY;
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const applied = apply(data, s, { type: 'visit', seat: APIARY, host: WHEAT, fee: 'A6' });
     expect(applied.audit.crossSeat).toBe(true); // it fired for somebody else
     expect(applied.state.tasks.some((t) => t.t === 'draw' && t.src === 'W17')).toBe(true);
@@ -260,6 +261,7 @@ describe('3. The Pie Shop (W17) - "Draw 1 when a neighbour places a card on one 
     buildFor(data, s, WHEAT, 'W17', 'W9');
     loadStack(data, s, WHEAT, 'W9', 2, 'apiary'); // a full building for the door
     dealTo(data, s, WHEAT, 'W5');
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const applied = apply(data, s, { type: 'visit', seat: WHEAT, host: WHEAT, fee: 'W5' });
     expect(applied.state.tasks.some((t) => t.t === 'draw' && t.src === 'W17')).toBe(false);
   });
@@ -356,6 +358,7 @@ describe('5. A Helping Hand (W18) - the bonus-slot modifier', () => {
 
     // Without the card the slot holds one option; with it, both are still open
     // after the first has gone.
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const drawn = answerAll(apply(data, s, { type: 'bonusDraw', seat: WHEAT }).state);
     expect(drawn.turn.bonusUsed).toEqual(['draw']);
     const visits = legalMoves(data, drawn).filter((m) => m.type === 'visit');
@@ -365,6 +368,7 @@ describe('5. A Helping Hand (W18) - the bonus-slot modifier', () => {
   it('never grants two of the SAME option: the card says both, not twice', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W18');
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const drawn = answerAll(apply(data, s, { type: 'bonusDraw', seat: WHEAT }).state);
     expect(drawn.turn.bonusUsed).toEqual(['draw']);
     expect(legalMoves(data, drawn).some((m) => m.type === 'bonusDraw')).toBe(false);
@@ -381,12 +385,14 @@ describe('5. A Helping Hand (W18) - the bonus-slot modifier', () => {
   it('a second copy grants nothing: two built Helping Hands are still two options', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W18', 'A18'); // one from each suit, same card
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const drawn = answerAll(apply(data, s, { type: 'bonusDraw', seat: WHEAT }).state);
     expect(legalMoves(data, drawn).some((m) => m.type === 'bonusDraw')).toBe(false);
   });
 
   it('a seat with no copy built gets exactly one bonus option', () => {
     const s = base();
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const drawn = answerAll(apply(data, s, { type: 'bonusDraw', seat: WHEAT }).state);
     expect(drawn.turn.bonusUsed).toEqual(['draw']);
     expect(legalMoves(data, drawn).filter((m) => m.type === 'visit')).toEqual([]);
@@ -613,29 +619,33 @@ describe('the Dairy rebuild: rulings that live between two cards', () => {
     // Notice Board and counts toward your own threshold of 2, so feeding your
     // board shuts your own door rather than emptying a wallet.
     //
-    // The bonus slot goes first because it is start-of-turn only.
-    const bonus = visitWork(data, s, DAIRY, DAIRY, 'W8');
-    // The door's Build is a task, so the answer is chosen by hand: W6, paid with
-    // W7, which leaves W5 and W4 for the main action below. Letting the drain
-    // take `a[0]` spends whatever it likes and the main Build then throws.
-    const doorBuild = pendingAnswers(data, bonus.state).find(
-      (a) => a.kind === 'build' && a.card === 'W6' && a.payment.join() === 'W7',
-    );
-    expect(doorBuild).toBeDefined();
-    const first = drainCountingLedger(answerTask(data, bonus.state, doorBuild as TaskAnswer).state);
-    expect(first.draws).toBe(1);
-    // No mark: with the printed clause gone the handler stopped writing to the
-    // shared once-per-turn list at all.
-    expect(first.state.turn.firedThisTurn).not.toContain('D16');
-
-    // Then the main Build action, which pays again.
-    const built = apply(data, first.state, {
+    // ⭐ THE MAIN ACTION GOES FIRST since 03/09/2026: `bonusTiming: 'end'`
+    // means the bonus slot does not open until the action is spent. The test
+    // used to run these two the other way round, and which one is "first" has
+    // never been the point - the ruling is that BOTH Builds draw.
+    const built = apply(data, s, {
       type: 'build',
       seat: DAIRY,
       card: 'W5',
       payment: ['W4'],
     });
-    const second = drainCountingLedger(built.state);
+    const first = drainCountingLedger(built.state);
+    expect(first.draws).toBe(1);
+    // No mark: with the printed clause gone the handler stopped writing to the
+    // shared once-per-turn list at all.
+    expect(first.state.turn.firedThisTurn).not.toContain('D16');
+
+    // Then the bonus-slot Build, which pays again. Its Build is a task, so the
+    // answer is chosen by hand: W6 paid with W7. Letting the drain take `a[0]`
+    // spends whatever it likes and the assertion below stops meaning anything.
+    const bonus = visitWork(data, first.state, DAIRY, DAIRY, 'W8');
+    const doorBuild = pendingAnswers(data, bonus.state).find(
+      (a) => a.kind === 'build' && a.card === 'W6' && a.payment.join() === 'W7',
+    );
+    expect(doorBuild).toBeDefined();
+    const second = drainCountingLedger(
+      answerTask(data, bonus.state, doorBuild as TaskAnswer).state,
+    );
     // Two buildings really did land, and BOTH of them drew.
     expect(player(second.state, DAIRY).tableau.some((b) => b.card === 'W5')).toBe(true);
     expect(player(second.state, DAIRY).tableau.some((b) => b.card === 'W6')).toBe(true);
@@ -1056,6 +1066,7 @@ describe('the Apiary rebuild: rulings that live between two cards', () => {
     // their own or the door is not offered at all (v31).
     buildFor(data, s, SEAT, 'A5');
     loadStack(data, s, SEAT, 'A5', 2, 'orchard');
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const visited = apply(data, s, { type: 'visit', seat: SEAT, host: RIVAL, fee: 'A4' });
     expect(buildingOf(visited.state, RIVAL, 'W3').stack).toHaveLength(2);
     expect(visited.state.tasks.some((t) => t.t === 'draw' && t.src === 'A16')).toBe(false);
@@ -1236,20 +1247,17 @@ describe('the Wheat rebalance: rulings that live between two cards', () => {
    * 1. Once per turn." - the turn is the unit on the card) and it costs nothing
    * to teach.
    *
-   * ⚠️ THE SUBTLETY THIS COMMENT USED TO WARN ABOUT HAS BEEN CLOSED BY A RULE
-   * CHANGE RATHER THAN BY A FIX (19/08/2026, v30 §5). It used to read: "it makes
-   * the Service harvest worth strictly less AFTER a main harvest than before
-   * one, so the order a Wheat seat takes its two harvests in is silently free".
-   * The bonus slot is now START-OF-TURN ONLY (`rules.turn.bonusAtStartOnly`),
-   * open only while the main action is unspent, so THE PLAYER NO LONGER CHOOSES
-   * THE ORDER - the Service harvest must come first and the main harvest second.
-   * The free choice is gone, and with it the reason the ordering mattered.
+   * ⚠️ THE ORDER HAS NOW BEEN FIXED BY A RULE TWICE, IN OPPOSITE DIRECTIONS,
+   * and the ruling under test has survived both. The comment first warned that
+   * "the order a Wheat seat takes its two harvests in is silently free". The
+   * 19/08/2026 start-of-turn slot removed that freedom by forcing the DOOR
+   * harvest first. `bonusTiming: 'end'` (Dean, 03/09/2026) removes it again in
+   * the other direction: the MAIN harvest must now come first and the door
+   * harvest second.
    *
-   * The test is written in that order because the old order now THROWS ("the
-   * bonus slot is shut"), and that throw is a rules statement, not a bug. The
-   * ruling itself is untouched: one turn, one Granary draw, whichever harvest
-   * gets there first. If Dean rules the other way the fix is still a per-source
-   * guard and this test still flips.
+   * ⭐ So this test has flipped exactly as its old last line predicted it would.
+   * The ruling itself is still untouched: one turn, one Granary draw, whichever
+   * harvest gets there first. What changed is which harvest can get there.
    */
   it('W16 + the Wheat door: a door harvest is INSIDE the once-per-turn budget', () => {
     // On its own it is a harvest like any other, and it pays.
@@ -1257,35 +1265,35 @@ describe('the Wheat rebalance: rulings that live between two cards', () => {
     buildFor(data, alone, WHEAT, 'W16', 'W4');
     dealTo(data, alone, WHEAT, 'W20'); // the visit fee
     loadStack(data, alone, WHEAT, 'W4', 2, 'apiary');
+    alone.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const solo = drainCountingGranary(selfVisit(alone, 'W20').state);
     expect(solo.draws).toBe(1);
 
-    // The bonus slot first, then the main action - the only order the turn
-    // structure now allows. The door harvest pays; the main one does not.
+    // The main action first, then the bonus slot - the only order the turn
+    // structure now allows. The main harvest pays; the door one does not.
     const both = wheatState();
     buildFor(data, both, WHEAT, 'W16', 'W4', 'W5');
     dealTo(data, both, WHEAT, 'W20');
     loadStack(data, both, WHEAT, 'W4', 2, 'apiary');
     loadStack(data, both, WHEAT, 'W5', 2, 'apiary');
-    const door = drainCountingGranary(selfVisit(both, 'W20').state);
-    expect(door.draws).toBe(1);
     const main = drainCountingGranary(
-      apply(data, door.state, { type: 'harvest', seat: WHEAT, building: 'W5' }).state,
+      apply(data, both, { type: 'harvest', seat: WHEAT, building: 'W5' }).state,
     );
-    expect(main.draws).toBe(0);
-    // And the second harvest genuinely happened: W5 emptied and reseeded. The 0
-    // is the guard, not an action that found nothing to take.
-    expect(buildingOf(main.state, WHEAT, 'W5').stack).toHaveLength(1);
+    expect(main.draws).toBe(1);
+    const door = drainCountingGranary(selfVisit(main.state, 'W20').state);
+    expect(door.draws).toBe(0);
+    // And the second harvest genuinely happened: W4 emptied and reseeded with
+    // the fee. The 0 is the guard, not an action that found nothing to take.
+    expect(buildingOf(door.state, WHEAT, 'W4').stack).toHaveLength(0);
 
     // The old order is now illegal, and that is the rule rather than an
-    // accident: the bonus slot shuts the moment the main action is taken.
+    // accident: the bonus slot does not open until the main action is taken.
     const reversed = wheatState();
     buildFor(data, reversed, WHEAT, 'W16', 'W4', 'W5');
     dealTo(data, reversed, WHEAT, 'W20');
     loadStack(data, reversed, WHEAT, 'W4', 2, 'apiary');
     loadStack(data, reversed, WHEAT, 'W5', 2, 'apiary');
-    const first = apply(data, reversed, { type: 'harvest', seat: WHEAT, building: 'W4' });
-    expect(() => selfVisit(first.state, 'W20')).toThrow(/bonus slot is shut/);
+    expect(() => selfVisit(reversed, 'W20')).toThrow(/bonus slot is shut/);
   });
 
   /**
@@ -1317,6 +1325,7 @@ describe('the Wheat rebalance: rulings that live between two cards', () => {
     dealTo(data, s, WHEAT, 'W20'); // the visit fee
     loadStack(data, s, WHEAT, 'W7', 2, 'apiary'); // 2 of 3: relaxed only, so OUT
     loadStack(data, s, WHEAT, 'W9', 2, 'apiary'); // full, so IN
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const out = selfVisit(s, 'W20');
     const offered = pendingAnswers(data, out.state)
       .flatMap((a) => (a.kind === 'building' ? [a.card] : []))
@@ -1339,6 +1348,7 @@ describe('the Wheat rebalance: rulings that live between two cards', () => {
     buildFor(data, s, WHEAT, 'W7');
     dealTo(data, s, WHEAT, 'W20');
     loadStack(data, s, WHEAT, 'W7', 2, 'apiary'); // 2 of 3: nothing to harvest
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     expect(legalMoves(data, s).filter((m) => m.type === 'visit')).toEqual([]);
     expect(legalMoves(data, s).some((m) => m.type === 'bonusDraw')).toBe(true);
   });
@@ -1383,6 +1393,7 @@ describe('the Wheat rebalance: rulings that live between two cards', () => {
     buildFor(data, s, WHEAT, 'W9');
     loadStack(data, s, WHEAT, 'W9', 2, 'apiary');
 
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const visited = visitWork(data, s, APIARY, WHEAT, 'A4');
     expect(noticeBoardOf(data, visited.state, WHEAT).stack).toEqual(['A4']);
     const offered = pendingAnswers(data, visited.state)

@@ -32,6 +32,22 @@ import { SUITS } from './types.js';
  */
 const ACTIVATION_VALUES: ReadonlySet<string> = new Set<string>([...SUITS, 'wild']);
 
+/**
+ * The closed value set behind `bonusTiming`, kept here for the same reason as
+ * `ACTIVATION_VALUES`: a fourth timing must not pass validation on one side of
+ * the codebase and fail on the other.
+ */
+const BONUS_TIMING_VALUES: ReadonlySet<string> = new Set<string>(['start', 'any', 'end']);
+
+/** The closed value set behind `balloonReward`, kept here for the same reason. */
+const BALLOON_REWARD_VALUES: ReadonlySet<string> = new Set<string>([
+  'draw',
+  'buildDiscount',
+  'sowFromHand',
+  'harvestAny',
+  'meepleFromBag',
+]);
+
 /** Bumped when the meaning of a knob path changes, not when a knob is added. */
 export const OVERLAY_SCHEMA_VERSION = 1;
 
@@ -86,6 +102,10 @@ function typeMatches(type: KnobType, value: Leaf): boolean {
       return typeof value === 'boolean';
     case 'cropOrWild':
       return value === null || (typeof value === 'string' && ACTIVATION_VALUES.has(value));
+    case 'bonusTiming':
+      return typeof value === 'string' && BONUS_TIMING_VALUES.has(value);
+    case 'balloonReward':
+      return typeof value === 'string' && BALLOON_REWARD_VALUES.has(value);
   }
 }
 

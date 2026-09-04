@@ -50,7 +50,15 @@ import type { Leaf } from './paths.js';
  * because the sheet is the single source of truth for wording and that is what
  * stops the web game and the physical game drifting apart on rules text.
  */
-export type KnobType = 'int' | 'number' | 'intOrNull' | 'intArray' | 'boolean' | 'cropOrWild';
+export type KnobType =
+  | 'int'
+  | 'number'
+  | 'intOrNull'
+  | 'intArray'
+  | 'boolean'
+  | 'cropOrWild'
+  | 'bonusTiming'
+  | 'balloonReward';
 
 export interface KnobTemplate {
   /** Dotted path, `{}` for a wildcard segment. */
@@ -119,8 +127,8 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     template: 'rules.turn.handLimit',
     type: 'intOrNull',
     description:
-      '⭐ THE HAND LIMIT, BACK AT 12 AS ONE GLOBAL RULE (Dean, 02/09/2026, reversing one v31 ' +
-      'change on evidence). Cards you may still hold when your turn ENDS; you may exceed it ' +
+      '⭐ THE HAND LIMIT, ONE GLOBAL RULE AT 7 (Dean: reinstated at 12 on 02/09/2026, reversing one v31 ' +
+      'change on evidence, then cut to 7 the same day). Cards you may still hold when your turn ENDS; you may exceed it ' +
       'mid-turn and the overflow discards at the boundary. null restores v31 no-limit, which is ' +
       'the control arm and should not be run without reading what it measured: deleting the limit ' +
       'also deleted the only bound on the legal-move enumerator, and a 2-seat position reached ' +
@@ -143,14 +151,23 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'neighbour / visit yourself / slot unspent - and never let an assertion pool the two visits.',
   },
   {
-    template: 'rules.turn.bonusAtStartOnly',
-    type: 'boolean',
+    template: 'rules.turn.bonusTiming',
+    type: 'bonusTiming',
     description:
-      'True: the bonus option may be taken only at the START of your turn (Dean, 19/08/2026), ' +
-      'which in v31 puts it immediately after the meeple phase. False restores v14 "once per turn, ' +
-      'any point". Still the one turn-structure rule with no measurement behind it, and it still ' +
-      'points down: a bonus you must commit to before you act is a bonus that gets forgotten. The ' +
-      'number that reads it is SLOT UNSPENT, not the visit rate.',
+      '⭐ WHEN THE BONUS OPTION MAY BE TAKEN, and a CORRECTION rather than an experiment ' +
+      "(Dean, 03/09/2026). 'end' IS THE RULE: meeples, then your core action, then the bonus. " +
+      "The engine and both design docs carried 'start' from 19/08/2026 and were wrong about the " +
+      "game. 'start' is now the paired control (overlays/bonus-first.overlay.json) and 'any' is " +
+      "v14's once-per-turn-any-point (overlays/bonus-any-time.overlay.json). " +
+      '⚠️ THE THREE ARE NOT ORDERABLE BY POWER, so do not read this as a buff or a nerf. ' +
+      "Under 'start' a door can FUEL the action after it (Orchard door for Draw 3, then Build " +
+      "with the cards); under 'end' the action can SET THE DOOR UP (fill a building, then " +
+      'Harvest it through the Wheat door; harvest into the barn, then Deliver through the ' +
+      'Vegetable one). The doors whose value is conditional on the turn so far - Wheat and ' +
+      'Vegetable - gain most, and those are the two the door mix says are underused, so watch ' +
+      'the DOOR MIX and not only the visit rate. SLOT UNSPENT still reads the window, but its ' +
+      'absolute is a rational floor a bot cannot fail and only the delta between arms means ' +
+      'anything.',
   },
 
   // --- Economy -------------------------------------------------------------
@@ -290,6 +307,19 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     type: 'int',
     description:
       "Cards discarded from HAND by the alternative flight payment Vegetable's Depots print (V4, V8). The base barn cost is untouched and this is a second route in, not a discount. Its number was set when the game had a hand limit and a draw-and-discard, and v31 has neither, so the measurement behind it (flights 0.54 -> 1.22 at n=1580) was taken in a game where hand cards were dearer than they are now. Re-read before trusting it.",
+  },
+  {
+    template: 'aerodrome.balloons.{}.reward.type',
+    type: 'balloonReward',
+    description:
+      '\u2b50 WHAT A BALLOON PAYS, as a type rather than a size. Added 03/09/2026 so that a ' +
+      'reward can be REPLACED by an arm and not only resized, which is what the Vegetable question ' +
+      'needs: sweeping the amounts from 1 to 8 moved the Vegetable win rate by 0.7 of a point and ' +
+      'left its three intervals overlapping, so magnitude is measurably NOT the lever. ' +
+      "'meepleFromBag' is the one reward denominated in ACTIONS rather than cards. \u26a0\ufe0f Changing " +
+      'a type without changing `rewardText` leaves the printed card lying about itself, which ' +
+      'matters for a screenshot and not for a run - the engine reads the type, the card face reads ' +
+      'the text.',
   },
   {
     template: 'aerodrome.balloons.{}.reward.amount',

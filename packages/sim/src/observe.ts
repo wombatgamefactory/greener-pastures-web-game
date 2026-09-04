@@ -41,6 +41,7 @@ import type { CardId, GameEvent, GameState, Move, ScoreBreakdown, Seat, Task } f
 import {
   MOVE_TYPES,
   anyBuildOption,
+  bonusOpen,
   cardById,
   cropOf,
   faceOf,
@@ -561,6 +562,11 @@ export class Fold {
   private readonly data: GameData;
   private turnsEnded = 0;
   private sampledTurn = -1;
+  /**
+   * ⭐ The DENIAL probe samples in a different window from the build probe since
+   * 03/09/2026, so it needs its own once-a-turn latch. See `bonusWindow`.
+   */
+  private sampledBonusTurn = -1;
   private leader: Seat | null = null;
   private seeded = false;
   /**
@@ -766,6 +772,7 @@ export class Fold {
     this.deckTops(d);
     this.creamery(d);
     this.turnStart(d);
+    this.bonusWindow(d);
     this.move(d);
     this.mainAction(d);
     for (const e of d.events) this.event(d, e);
@@ -831,16 +838,30 @@ export class Fold {
    * rival's Notice Board is full. Only askable at a fresh turn - once the bonus
    * slot is spent `visitOptions` is empty for a reason that is not denial.
    *
-   * ✅ RE-READ ON 19/08/2026 against the start-of-turn rule and it is still
-   * correct - and it is now correct BY CONSTRUCTION rather than by luck. The
-   * guard below is `no pending task && !actionSpent && !bonusSpent`, and the
-   * last two are exactly the engine's new `bonusOpen(data, state)` predicate.
-   * So the sample is taken in the one window where a visit could legally
-   * happen, which is what the probe always meant: before, an unspent slot after
-   * a spent action was still a window this guard skipped, and the skip was
-   * defensible but arbitrary. It is neither now. Nothing to change; the
-   * denominator (`clogSampledBySeat`) counts the same turns it always did,
-   * because every turn passes through this window before anything else.
+   * ✅ RE-READ ON 19/08/2026 against the start-of-turn rule and it was still
+   * correct - and correct BY CONSTRUCTION, because `no pending task &&
+   * !actionSpent && !bonusSpent` was exactly the engine's `bonusOpen` predicate
+   * of the day.
+   *
+   * ⛔ AND THAT IS PRECISELY WHY IT BROKE ON 03/09/2026. `bonusTiming` became
+   * `'end'`, so `bonusOpen` now requires `actionSpent` to be TRUE - the exact
+   * negation of the guard that had been copied out of it. The denial probe went
+   * on sampling the top of the turn, which under the new order is the one window
+   * where a visit is never legal, and assertion 5 reported **2p 100.0% 3p 100.0%
+   * 4p 100.0%**: a perfect score for a question that was no longer being asked.
+   *
+   * ⚠️ THE LESSON IS THE ONE THE `turnflow` COMMENT ALREADY TEACHES, arriving
+   * from the other direction: a predicate COPIED out of the rules silently stops
+   * agreeing with them. The probe now CALLS `bonusOpen` instead of restating it,
+   * so a fourth timing cannot break it again.
+   *
+   * The two questions are sampled in two different windows because they belong
+   * to two different halves of the turn, and conflating them is what went wrong:
+   *
+   *   `turnStart`   the DAIRY no-build question. A main-action question, asked
+   *                 before the action, unchanged.
+   *   `bonusWindow` the DENIAL question. A bonus-slot question, asked wherever
+   *                 the bonus slot is actually open.
    */
   private turnStart(d: Decision): void {
     const s = d.pre;
@@ -848,12 +869,37 @@ export class Fold {
     if (s.tasks.length > 0 || s.turn.actionSpent || s.turn.bonusUsed.length > 0) return;
     this.sampledTurn = this.turnsEnded;
     const seat = s.turnPlayer;
-    // The Dairy rebuild's headline risk, asked FIRST: an empty hand is the
-    // sharpest case of "no build available", not a reason to skip the question.
+    // The Dairy rebuild's headline risk: an empty hand is the sharpest case of
+    // "no build available", not a reason to skip the question.
     this.m.buildSampledBySeat[seat] = (this.m.buildSampledBySeat[seat] ?? 0) + 1;
     if (!anyBuildOption(this.data, s, seat)) {
       this.m.noBuildTurnsBySeat[seat] = (this.m.noBuildTurnsBySeat[seat] ?? 0) + 1;
     }
+  }
+
+  /**
+   * ⭐ THE DENIAL PROBE, sampled once per turn in the window where the bonus
+   * slot is genuinely open - whichever end of the turn `rules.turn.bonusTiming`
+   * puts that window at.
+   *
+   * The question is unchanged and so is the denominator's meaning: of the turns
+   * where this seat reached its bonus slot holding at least one card, how many
+   * found no legal visit anywhere? What changed is only WHERE the question can
+   * honestly be asked.
+   *
+   * ⚠️ The denominator is no longer "every turn". A seat whose turn ends without
+   * the window ever opening is not sampled, which is correct - it was never
+   * offered the choice - but it does mean `clogSampledBySeat` and
+   * `buildSampledBySeat` can now differ, where under the old order they could
+   * not. Read the two as the different populations they are.
+   */
+  private bonusWindow(d: Decision): void {
+    const s = d.pre;
+    if (this.turnsEnded === this.sampledBonusTurn) return;
+    if (s.tasks.length > 0) return;
+    if (!bonusOpen(this.data, s)) return;
+    this.sampledBonusTurn = this.turnsEnded;
+    const seat = s.turnPlayer;
     if (player(s, seat).hand.length === 0) return;
     this.m.clogSampledBySeat[seat] = (this.m.clogSampledBySeat[seat] ?? 0) + 1;
     if (visitOptions(this.data, s, seat).length === 0) {

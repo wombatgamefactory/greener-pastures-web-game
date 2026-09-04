@@ -51,15 +51,17 @@ export function settleTurn(data: GameData, draft: GameState, fx: Fx): void {
     // ignored, because "empty by construction" is exactly the kind of claim that
     // silently stops being true.
     //
-    // An unspent BONUS SLOT holds the turn open, and under the SHIPPED rules
-    // this line is dead weight: the slot is start-of-turn only since
-    // 19/08/2026, so past the `!turn.actionSpent` guard above `bonusOpen` is
-    // already false and `hasBonusOption` is false with it.
+    // An unspent BONUS SLOT holds the turn open. ⭐ SINCE 03/09/2026 THIS LINE
+    // IS LOAD-BEARING UNDER THE SHIPPED RULES, not dead weight: `bonusTiming`
+    // is 'end', so the slot OPENS when the action is spent and this is the only
+    // thing standing between a seat and a turn that ends before its bonus is
+    // offered. Under the old 'start' rule it was unreachable, which is exactly
+    // the trap described below.
     //
-    // ⚠️ IT IS DEAD ONLY WHILE THE KNOB SAYS SO, WHICH IS WHY IT IS HERE.
+    // ⚠️ IT WAS DEAD ONLY WHILE THE KNOB SAID SO, WHICH IS WHY IT IS HERE.
     // It was deleted on 19/08/2026 as "unreachable, not merely redundant", and
-    // that reasoning is correct for `bonusAtStartOnly: true` and false for the
-    // control arm of that same knob. Under
+    // that reasoning is correct for `bonusTiming: 'start'` and false for both
+    // other states of that same knob - including the one now shipped. Under
     // `overlays/bonus-any-time.overlay.json` the slot reopens after the action,
     // `bonusOpen` returns true - and with no check here the turn settled anyway,
     // so the bonus was never offered and the overlay changed NOTHING. The arm
@@ -67,7 +69,8 @@ export function settleTurn(data: GameData, draft: GameState, fx: Fx): void {
     // metrics and all fourteen assertions, which is the signature of an inert
     // knob rather than of a rule that does not matter. A deletion justified by
     // the shipped value of a knob silently deletes that knob's control arm; if
-    // the start-of-turn rule is ever made a constant, delete this line THEN.
+    // the timing is ever made a constant, delete this line THEN - and note that
+    // the constant would now have to be 'end', under which it must NEVER go.
     if (bonusOpen(data, draft) && hasBonusOption(data, draft, draft.turnPlayer)) return;
     // The same knob reopens the meeple phase, because `meepleOpen` reads
     // `bonusUsed` and a late bonus leaves it empty. One line, same reasoning.

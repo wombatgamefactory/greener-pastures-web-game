@@ -43,6 +43,7 @@ import type {
   Seat,
   TaskAnswer,
 } from './state.js';
+import { rngInt } from './rng.js';
 import { performDoorAction } from './workers.js';
 
 /**
@@ -1631,6 +1632,33 @@ export function grantBalloonReward(fx: Fx, seat: Seat, balloonId: string): void 
       // "Sow 4 cards from your hand" reads as up-to: skippable, stops early.
       fx.pushTask({ t: 'sow', pid: seat, src: null, remaining: amount, optional: true });
       break;
+    case 'meepleFromBag':
+      // ⭐ DEAN'S BALLOON (03/09/2026): "draw a random meeple from a bag".
+      //
+      // The ONLY reward in the module denominated in actions rather than cards,
+      // which is the point of testing it: the other three hand over material,
+      // and material is what the Vegetable seat already has most of.
+      //
+      // ⚠️ RANDOM, AND THE RANDOMNESS IS NOT DECORATION. Two of the five colours
+      // are measured dead - Apiary and Dairy meeples are spent about 10% of the
+      // time against Wheat's 78% - because Harvest, Deliver and Draw GAIN you
+      // cards while Sow and Build SPEND them. So a random meeple is worth
+      // roughly three fifths of a chosen one, and this balloon is self-limiting
+      // in a way a chosen-colour version would not be. If it reads too weak, the
+      // first thing to try is letting the player choose, NOT raising `amount`.
+      //
+      // ⚠️ Drawn uniformly from the five colours and NOT from the island's bag
+      // of 25: that bag is 24/25 dealt at four seats, so drawing from it would
+      // make this balloon nearly dead at 4p and strong at 2p. See the note on
+      // `BalloonRewardType` for the component question that leaves open.
+      {
+        const colours = fx.data.island.meeples.colours;
+        for (let i = 0; i < amount; i++) {
+          const colour = colours[rngInt(fx.state.rng, colours.length)];
+          if (colour !== undefined) fx.gainMeeple(seat, colour, null, null);
+        }
+      }
+      break;
     case 'harvestAny':
       // ⭐ THE MAGENTA BALLOON, REPOINTED IN v31. It read "Gain £4" and was the
       // last coin faucet on the board; it now reads "Harvest any building, even
@@ -1762,37 +1790,50 @@ export function bonusSlotsFor(data: GameData, state: GameState, seat: Seat): num
 }
 
 /**
- * THE BONUS WINDOW: the start of your turn, after the meeple phase and before
- * the main action.
+ * THE BONUS WINDOW, three-state since 03/09/2026 (`rules.turn.bonusTiming`).
  *
- * Dean, 19/08/2026: *"the bonus action can only be performed at the start of
- * your turn."* `!actionSpent` IS "at the start of your turn" - there is no other
- * thing a turn can have done - so the rule needs one predicate and no new state.
+ * ⭐ Dean, 03/09/2026, correcting the engine and both design docs: **the turn
+ * is meeples, then your CORE ACTION, then the bonus.** `'end'` is the rule and
+ * the shipped default; `!actionSpent` had been the predicate since 19/08/2026
+ * and was measuring a game nobody was playing.
+ *
+ *   `'end'`    open once the action is spent. `pass` is in `MAIN_ACTIONS`, so a
+ *              seat with no legal action still opens its window and cannot be
+ *              stranded without a bonus.
+ *   `'start'`  the old rule, open only while `!actionSpent`. The paired control.
+ *   `'any'`    v14's "once per turn, at any point". Always open.
  *
  * With `option` given it also answers "is THIS half still available?", which is
  * what stops a seat holding a Helping Hand from taking Draw 1 twice: the card
  * grants both options, not two of either.
  *
- * What the window deliberately removes: you can no longer harvest, see what you
- * got, and then decide whether to visit. The gain is a legible turn and a
- * shorter teach - "start of turn: spend meeples, then one bonus. Then your
- * action." - and it kills a class of table confusion about when a passive fired.
+ * ⭐ WHAT THE CORRECTION CHANGES, and it is not a power level. Under `'start'`
+ * a door could FUEL the action after it (visit the Orchard door for Draw 3, then
+ * Build with those cards) and nothing could inform the door. Under `'end'` the
+ * action SETS THE DOOR UP: fill a building with a Grow, then Harvest it through
+ * the Wheat door; harvest into your barn, then Deliver through the Vegetable
+ * one. The doors whose worth is conditional on how the turn went are the ones
+ * that gain, and Wheat and Vegetable are exactly the two the v10 door mix found
+ * underused against Orchard's unconditional Draw 3.
  *
- * ⚠️ It also points the visit rate DOWN, because a bonus you must commit to
- * before you act is a bonus that gets forgotten. That is why the sim's tally has
- * a SLOT UNSPENT bucket: a rising unspent share is this restriction biting, and
- * it is a different disease from the visit being outcompeted.
+ * ⚠️ SLOT UNSPENT still reads this knob, and its absolute is still a rational
+ * floor rather than a prediction: a bot never forgets a window and a human does.
+ * Only the delta between the arms means anything.
  */
 export function bonusOpen(data: GameData, state: GameState, option?: BonusOption): boolean {
   const turn = state.turn;
   if (turn.bonusUsed.length >= bonusSlotsFor(data, state, state.turnPlayer)) return false;
   if (option !== undefined && turn.bonusUsed.includes(option)) return false;
-  // `bonusAtStartOnly: false` is v14's "any point in your turn", kept as the
-  // paired control (overlays/bonus-any-time.overlay.json). A knob and not a
-  // constant because this rule ships with others that all move the visit rate,
-  // and the diagnosis needs them separable.
-  if (!data.rules.turn.bonusAtStartOnly) return true;
-  return !turn.actionSpent;
+  // A knob and not a constant because this rule ships with others that all move
+  // the visit rate, and the diagnosis needs them separable.
+  switch (data.rules.turn.bonusTiming) {
+    case 'any':
+      return true;
+    case 'start':
+      return !turn.actionSpent;
+    case 'end':
+      return turn.actionSpent;
+  }
 }
 
 /**
@@ -1804,10 +1845,14 @@ export function bonusOpen(data: GameData, state: GameState, option?: BonusOption
  * held back and spent after the bonus, which is what would turn the supply into
  * a hand of free reactive actions rather than a decision taken up front.
  *
- * ⚠️ Under `bonusAtStartOnly: false` (the control arm) the bonus may be taken at
- * any point, so a seat that takes it late keeps the meeple phase open longer.
- * That is the arm behaving as an arm: the two rules interact, and a reading is
- * only meaningful against the shipped value of the knob.
+ * ⚠️ THE SHIPPED `bonusTiming: 'end'` MAKES THIS CLAUSE REDUNDANT AND IT STAYS
+ * ANYWAY. With the bonus after the action, `bonusUsed` is empty for as long as
+ * `!actionSpent` is true, so the second clause can never be the binding one.
+ * Under `'any'` it binds again - a seat that takes its bonus late would
+ * otherwise keep the meeple phase open behind it - and under `'start'` it is the
+ * original rule. Deleting a clause because the shipped knob value makes it
+ * unreachable is the exact mistake `turnflow.ts` documents at its own
+ * `bonusOpen` line, so it is not deleted here either.
  */
 export function meepleOpen(state: GameState): boolean {
   return !state.turn.actionSpent && state.turn.bonusUsed.length === 0;
@@ -1957,7 +2002,7 @@ export function doVisit(fx: Fx, visitor: Seat, host: Seat, fee: CardId): void {
     throw new Error('Self-visiting is switched off');
   }
   if (!bonusOpen(fx.data, state, 'visit')) {
-    throw new Error('The bonus slot is shut: spent, or the action is taken');
+    throw new Error('The bonus slot is shut: spent, or outside its window for this bonusTiming');
   }
   const target = visitTargetOf(fx.data, state, host);
   if (isFull(fx.data, target)) throw new Error(`${target.card} is full`);

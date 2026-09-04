@@ -249,6 +249,20 @@ export const BALANCED: WeightTable = {
   visit: 0,
   selfVisit: 0,
   /**
+   * ⭐ WHAT ONE WHOLE EXTRA ACTION IS WORTH (Dean, 03/09/2026), paid to a door
+   * that actually resolves one. PINNED to `drawAction`: that term pays 1.2 a
+   * card for a Draw 2, so one action is 2.4 and the free Draw 1 at `bonusDraw`
+   * 1.2 is - in Dean's words - "only worth half an action".
+   *
+   * ⚠️ This is the ONE weight in the table that deliberately double-counts:
+   * `outcome` prices what the door produces and this pays the action premium on
+   * top, on the claim that a one-ply rollout cannot see an action compounding.
+   * **0 is the control arm and reproduces the pre-03/09/2026 bots exactly.**
+   * Never quote a hook or door-mix number that moved under this weight without
+   * the 0 arm beside it.
+   */
+  bonusAction: 2.4,
+  /**
    * PINNED to `unclogBoard`, signed the other way by its feature. Shutting your
    * own door costs what reopening it pays, which is the only structural brake
    * v31 puts on self-visiting.

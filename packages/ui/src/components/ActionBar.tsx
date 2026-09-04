@@ -64,13 +64,22 @@ import { meepleWindowOpen } from './Supply';
  * asks the move list instead, which is the same answer arrived at from the side
  * the interface is allowed to see.
  *
- * `rules.turn.bonusAtStartOnly` is the paired control, so the interface honours
+ * `rules.turn.bonusTiming` carries the paired controls, so the interface honours
  * the knob rather than the rule: an arm that switches the rule back must switch
- * the interface back with it or it is measuring two different games.
+ * the interface back with it or it is measuring two different games. Since
+ * 03/09/2026 the shipped value is 'end' - meeples, core action, THEN the bonus -
+ * so the bar's two shapes now arrive in the opposite order to the one they were
+ * designed in.
  */
 function bonusWindowOpen(data: GameData, view: PlayerView): boolean {
-  if (!data.rules.turn.bonusAtStartOnly) return true;
-  return !view.turn.actionSpent;
+  switch (data.rules.turn.bonusTiming) {
+    case 'any':
+      return true;
+    case 'start':
+      return !view.turn.actionSpent;
+    case 'end':
+      return view.turn.actionSpent;
+  }
 }
 
 /** Which of the bar's two shapes is on screen. */

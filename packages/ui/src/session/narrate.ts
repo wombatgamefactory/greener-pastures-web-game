@@ -127,8 +127,12 @@ export function narrate(
     case 'doorUsed':
       return null;
     case 'meepleGained':
+      // A balloon meeple comes from a bag and from no tile, so the sentence has
+      // to work without one rather than printing "off island null".
       return line(
-        `${who(event.seat)} takes the ${SUIT_META[event.colour].label} meeple off island ${event.tile}`,
+        event.tile === null
+          ? `${who(event.seat)} draws the ${SUIT_META[event.colour].label} meeple out of the bag`
+          : `${who(event.seat)} takes the ${SUIT_META[event.colour].label} meeple off island ${event.tile}`,
         event.seat,
       );
     case 'meepleSpent':

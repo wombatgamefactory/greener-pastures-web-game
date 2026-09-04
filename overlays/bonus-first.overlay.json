@@ -1,0 +1,8 @@
+{
+  "name": "bonus-first",
+  "description": "THE PAIRED CONTROL for the 03/09/2026 turn-order correction. Restores the 19/08/2026 rule: the bonus option is taken at the START of your turn, before the core action. This is the order the engine and both design docs carried until Dean corrected them, so it is also the arm that says what that error was costing. Under it a door can FUEL the action after it (Orchard door for Draw 3, then Build) and nothing can inform the door. Read the DOOR MIX first, not the visit rate: the shipped 'end' rule is expected to help Wheat and Vegetable, whose doors are worth more once the turn has produced something, and to leave Orchard's unconditional Draw 3 where it is.",
+  "schemaVersion": 1,
+  "set": {
+    "rules.turn.bonusTiming": "start"
+  }
+}

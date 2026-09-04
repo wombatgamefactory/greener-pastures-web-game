@@ -83,7 +83,51 @@ function positionWith(what: string, wanted: (move: Move) => boolean) {
       if (snap.yours && snap.moves.some(wanted)) return snap;
     }
   }
+  // ⭐ NOTHING AT THE TOP OF A TURN OFFERS A BONUS-SLOT MOVE any more
+  // (`bonusTiming: 'end'`, 03/09/2026), so the search continues one main action
+  // in. Still searched rather than pinned, for the reason above: a fixed seed
+  // that happens to offer a Build today rots the first time the card data moves.
+  for (const seed of ['play-b', 'play-c', 'play-d', 'play-e', 'play-f']) {
+    for (const depth of [80, 160, 260]) {
+      const after = positionAfterAction(seed, depth);
+      if (after !== null && after.moves.some(wanted)) return after;
+    }
+  }
   throw new Error(`no warmed position offers ${what}`);
+}
+
+/**
+ * A warmed position with the core action already spent, so the bonus slot is
+ * open. Returns null when this seed and depth cannot get there - the caller is
+ * searching, and a dead cell is not an error.
+ */
+function positionAfterAction(seed: string, depth: number) {
+  const key = `${seed}:${depth}:acted`;
+  const hit = ACTED.get(key);
+  if (hit !== undefined) return hit;
+  const session = warmSession(seed, depth);
+  let snap = session.snapshot();
+  let out: typeof snap | null = null;
+  if (snap.yours && !snap.over) {
+    // The cheapest main action that is on offer, preferring `draw` because it
+    // needs nothing set up and leaves the hand larger for a visit fee.
+    const main = ['draw', 'harvest', 'grow', 'build', 'deliver', 'pass'];
+    const move = main.flatMap((t) => snap.moves.filter((m) => m.type === t))[0];
+    if (move) {
+      session.send(move);
+      snap = session.snapshot();
+      // Answer anything the action queued, taking the first legal answer.
+      for (let i = 0; i < 12 && snap.yours && !snap.over && snap.view.tasks.length > 0; i++) {
+        const answer = snap.moves[0];
+        if (!answer) break;
+        session.send(answer);
+        snap = session.snapshot();
+      }
+      if (snap.yours && !snap.over) out = snap;
+    }
+  }
+  ACTED.set(key, out);
+  return out;
 }
 
 /** A warmed position that leaves you holding a card. Searched, for the same reason. */
@@ -113,6 +157,7 @@ function positionWithHand() {
  * twice.
  */
 const WARMED = new Map<string, ReturnType<typeof warm>>();
+const ACTED = new Map<string, ReturnType<typeof warm> | null>();
 
 function position(seed: string, depth = 260) {
   const key = `${seed}:${depth}`;
@@ -125,6 +170,20 @@ function position(seed: string, depth = 260) {
 
 /** A warmed session sitting on your turn, with a hand and a developed board. */
 function warm(seed: string, depth: number) {
+  const session = warmSession(seed, depth);
+  return session.snapshot();
+}
+
+/**
+ * The same warm-up, keeping the SESSION rather than only the snapshot.
+ *
+ * ⭐ Needed since 03/09/2026: `rules.turn.bonusTiming` is `'end'`, so a position
+ * sitting at the top of your turn has NO bonus-slot move to find - the slot does
+ * not open until the core action is spent. A test after a visit or a bonus Draw
+ * has to play an action first, which means it needs the session and not a
+ * snapshot taken before it.
+ */
+function warmSession(seed: string, depth: number) {
   const session = new Session(data, {
     seats: 3,
     suits: ['wheat', 'vegetable', 'orchard'],
@@ -137,7 +196,7 @@ function warm(seed: string, depth: number) {
     session.stepBot();
     snap = session.snapshot();
   }
-  return snap;
+  return session;
 }
 
 function render(snap: ReturnType<typeof position>, intent: Intent): string {
@@ -380,6 +439,12 @@ describe('the turn bar is small enough, and still reaches everything', () => {
       for (const depth of [40, 80, 160, 260, 360]) {
         const snap = position(seed, depth);
         if (snap.yours && snap.moves.length > 0) out.push(snap);
+        // BOTH HALVES OF THE TURN, since 03/09/2026. `bonusTiming: 'end'` splits
+        // a turn into a main phase and then a bonus phase, and a corpus drawn
+        // only from the top of the turn would hold no bonus-slot move at all -
+        // which is the half these assertions are actually about.
+        const acted = positionAfterAction(seed, depth);
+        if (acted !== null && acted.moves.length > 0) out.push(acted);
       }
     }
     return out;

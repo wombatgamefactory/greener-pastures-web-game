@@ -1,0 +1,9 @@
+{
+  "name": "sky-meeple-draw-v1",
+  "description": "DEAN'S BALLOON, on the red Draw 4. The most-used reward becomes a random meeple - one stored action instead of four cards. Replacing THE DRAW balloon specifically is the sharpest version of the test: it swaps the module's most card-positive reward for its only action-positive one, so if a reward denominated in actions behaves differently from one denominated in cards, this arm is where it shows.",
+  "schemaVersion": 1,
+  "set": {
+    "aerodrome.balloons.balloonDraw.reward.type": "meepleFromBag",
+    "aerodrome.balloons.balloonDraw.reward.amount": 1
+  }
+}

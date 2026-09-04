@@ -67,7 +67,7 @@ export class Fx {
    * Claim the meeple off an island delivery space. Only `doDeliver` calls it,
    * and the space it names is the one the deliverer just took.
    */
-  gainMeeple(seat: Seat, colour: Suit, tile: string, space: number): void {
+  gainMeeple(seat: Seat, colour: Suit, tile: string | null, space: number | null): void {
     this.touch(seat);
     const p = player(this.state, seat);
     p.meeples[colour] += 1;

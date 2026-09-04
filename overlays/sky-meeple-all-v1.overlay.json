@@ -1,0 +1,14 @@
+{
+  "name": "sky-meeple-all-v1",
+  "description": "ALL FOUR balloons become random meeples. Not a shippable design - four identical balloons throw away the module's whole colour puzzle - but the arm that shows the effect at maximum size. If the Vegetable win rate does not move HERE, no partial version of the idea will move it either, and that is the question this arm exists to close. NOTE: the magenta balloon carries no `amount` in the data - 'harvest any building' is a permission and not a size - so there is no amount knob to set on it and the engine's `amount ?? 1` floor supplies the 1. That is why this arm sets a type and no number.",
+  "schemaVersion": 1,
+  "set": {
+    "aerodrome.balloons.balloonDraw.reward.type": "meepleFromBag",
+    "aerodrome.balloons.balloonDraw.reward.amount": 1,
+    "aerodrome.balloons.balloonBuild.reward.type": "meepleFromBag",
+    "aerodrome.balloons.balloonBuild.reward.amount": 1,
+    "aerodrome.balloons.balloonSow.reward.type": "meepleFromBag",
+    "aerodrome.balloons.balloonSow.reward.amount": 1,
+    "aerodrome.balloons.balloonCoins.reward.type": "meepleFromBag"
+  }
+}

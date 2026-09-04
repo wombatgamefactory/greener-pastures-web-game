@@ -481,8 +481,9 @@ export const REFERENCE_V10: ReferenceConfig = {
     'the card buy are all deleted, the island pays a meeple instead of a coin, the bonus slot ' +
     'offers a free Draw 1 or a card on any Notice Board including your own, and the bots price ' +
     'a meeple by the action it buys rather than a coin by what it can still be spent on. The ' +
-    'hand limit is a single global rules.turn.handLimit of 12, checked once at the turn ' +
-    'boundary, after v31 deleted the per-Barn one and the simulator measured what that cost. ' +
+    'hand limit is a single global rules.turn.handLimit, checked once at the turn ' +
+    'boundary, after v31 deleted the per-Barn one and the simulator measured what that cost - ' +
+    'reinstated at 12 on 02/09/2026 and cut to the shipped 7 the same day. ' +
     'NO NUMBER IN ANY EARLIER REPORT IS COMPARABLE.',
   seed: 'reference-v10',
 };
@@ -513,8 +514,66 @@ export const REFERENCE_V10: ReferenceConfig = {
  * project has already rejected.
  */
 
+/**
+ * `reference-v11` - the current instrument, cut 03/09/2026 for the turn-order
+ * correction and the bonus-slot repricing.
+ *
+ * ⭐ TWO THINGS MOVED AT ONCE AND BOTH MOVE THE SAME NUMBER, which is why this
+ * is a new reference rather than an arm. **No number in any reference-v10 report
+ * is comparable with a reference-v11 one.**
+ *
+ *   1. **THE RULE.** `rules.turn.bonusTiming` is `'end'`: the turn is meeples,
+ *      then the CORE ACTION, then the bonus. The engine and both design docs had
+ *      carried `'start'` since 19/08/2026 and were wrong about the game (Dean,
+ *      03/09/2026). This is a CORRECTION, not an experiment - v10 was measuring
+ *      a turn order nobody was playing. `'start'` survives as
+ *      `overlays/bonus-first.overlay.json`, which is the arm that says what the
+ *      error was worth.
+ *
+ *   2. **THE BOTS.** Two changes to how a door is priced, both aimed at the same
+ *      acknowledged bias:
+ *      - a probed build now carries the Farmstead's own-suit VP as a blind
+ *        probability (`OWN_CROP_BUILD_PRIOR`). It used to carry none, so "a
+ *        build reached through a door or a meeple was worth one VP less to the
+ *        bot than it really is, always in the same direction" - and the Dairy
+ *        door, which IS a build, sat at 7% of door traffic, the lowest of five.
+ *      - the new `bonusAction` term pays a door for BEING a whole extra action
+ *        and not only for the goods it produces (Dean: *"the Draw 1 option is
+ *        only worth half an action"*). Weight 2.4, pinned to `drawAction`'s 1.2
+ *        a card. **0 is the control arm and reproduces the v10 bots exactly.**
+ *
+ * ⚠️ THE SECOND ONE DELIBERATELY DOUBLE-COUNTS, and that is the open question
+ * this reference exists to answer: `outcome` already prices the door's goods.
+ * The claim is that a greedy one-ply rollout underprices an action by about the
+ * value of an action, because it cannot see compounding. It may be wrong, or
+ * 2.4 may simply be too much. Never quote a hook or door-mix number off this
+ * reference without the `bonusAction: 0` arm beside it.
+ *
+ * The sampling plan is, again, the one thing held still.
+ */
+export const REFERENCE_V11: ReferenceConfig = {
+  ...REFERENCE_V10,
+  id: 'reference-v11',
+  description:
+    'The turn-order correction and the bonus-slot repricing. Sampling plan identical to ' +
+    'reference-v9 and v10 - mixed scored profiles one per seat from the run seed, suits ' +
+    'stratified through every legal (player suits + neutral deck) combination and rotated ' +
+    'around the table by game index, 2/3/4 seats. TWO THINGS MOVED AT ONCE AND BOTH MOVE THE ' +
+    'BONUS SLOT. (1) THE RULE: rules.turn.bonusTiming is now "end" - meeples, then the CORE ' +
+    'ACTION, then the bonus - correcting a turn order the engine and both design docs had ' +
+    'carried wrongly since 19/08/2026. Under it a door can no longer fuel the action that ' +
+    'follows it, and the action can now set the door up, so the DOOR MIX is expected to move ' +
+    'and not only the visit rate. (2) THE BOTS: a probed build now carries the Farmstead ' +
+    'own-suit VP as a blind probability, closing a one-directional underpricing that fell ' +
+    'hardest on the Dairy door, and the new bonusAction term pays a door for being a whole ' +
+    'extra action rather than only for the goods it produces. The second deliberately ' +
+    'double-counts against outcome and its control arm is bonusAction 0. ' +
+    'NO NUMBER IN ANY reference-v10 REPORT IS COMPARABLE.',
+  seed: 'reference-v11',
+};
+
 /** The instrument every current number is defined against. */
-export const REFERENCE = REFERENCE_V10;
+export const REFERENCE = REFERENCE_V11;
 
 /**
  * The noise floor, measured once and quoted constantly.
@@ -595,7 +654,29 @@ export interface NoiseFloor {
  * literal it prints back in here. A small run overstates the floor enormously
  * and is worse than not measuring it at all.
  */
-export const NOISE_FLOOR: NoiseFloor | null = null; /**
+export const NOISE_FLOOR: NoiseFloor | null = {
+  reference: 'reference-v11',
+  games: 500,
+  measured: '2026-09-03',
+  movement: {
+    'meeples held at game end': 0,
+    'barn at game end': 0,
+    'game length, rounds': 0,
+    'visits per turn': 0.01,
+    'actions per turn': 0.007,
+    'meeple spend rate': 0.004,
+    'self-visit share of visits': 0.01,
+    'unfinished games': 0.001,
+    'winning score': 1,
+    'last as % of winner': 0.01,
+    'tied top score': 0.005,
+    'deck reshuffles per game': 1,
+    'reshuffles, played crop': 0,
+    'seat deviation': 10.358,
+  },
+};
+
+/**
  * One stratified cell: the suits at the table.
  *
  * Ticket 07 put exactly (seats + 1) decks in play with unchosen crops out of

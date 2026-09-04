@@ -1,0 +1,8 @@
+{
+  "name": "sky-meeple-magenta-v1",
+  "description": "DEAN'S BALLOON, on the magenta Harvest-any instead. The magenta balloon is the one v31 had to re-point when coins left, so it is the slot with the least history to disturb, and 'harvest any building even if it is not full' is the reward closest in kind to a free action already. Paired with sky-meeple-draw-v1, this says whether WHICH balloon carries the meeple matters at all. NOTE: the magenta balloon carries no `amount` in the data - 'harvest any building' is a permission and not a size - so there is no amount knob to set on it and the engine's `amount ?? 1` floor supplies the 1. That is why this arm sets a type and no number.",
+  "schemaVersion": 1,
+  "set": {
+    "aerodrome.balloons.balloonCoins.reward.type": "meepleFromBag"
+  }
+}

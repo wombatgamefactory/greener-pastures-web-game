@@ -40,6 +40,15 @@ export type CardType = 'starter' | 'tier1' | 'tier2' | 'tier3' | 'power' | 'endg
 export type StarterSlot = 'barn' | 'farmstead' | 'noticeboard';
 
 /**
+ * ⭐ WHEN THE BONUS OPTION MAY BE TAKEN. See `rules.turn.bonusTiming`.
+ *
+ * `'end'` is the rule (Dean, 03/09/2026): meeples, core action, then the bonus.
+ * `'start'` is the 19/08/2026 rule it corrects and the paired control. `'any'`
+ * is v14's "once per turn, at any point" and a superset of both.
+ */
+export type BonusTiming = 'start' | 'any' | 'end';
+
+/**
  * Trigger keywords detected in the printed text. This is keyword detection, not a
  * resolved ruling: `needsDesignReview` marks the cards where 0 or more than 1
  * matched and a human has to read the card.
@@ -285,7 +294,26 @@ export type HiredWorker = SuitDoor;
  * `harvestAny` replaced `gainCoins` on the magenta balloon (v31). It carries no
  * `amount`: "even if it is not full" is a permission, not a size.
  */
-export type BalloonRewardType = 'draw' | 'buildDiscount' | 'sowFromHand' | 'harvestAny';
+/**
+ * ⭐ `meepleFromBag` ADDED 03/09/2026 (Dean): *"what if one power let you draw a
+ * random meeple from a bag?"*
+ *
+ * It is the only balloon reward denominated in ACTIONS rather than in cards, and
+ * that is the whole reason to try it. Every other reward hands you material and
+ * the bots price material well; a meeple is a stored action, which is the thing
+ * the bonus slot and the doors are also selling, so it is the one reward that
+ * competes with them on their own terms.
+ *
+ * ⚠️ THE COMPONENT QUESTION IS NOT SETTLED. The island's bag of 25 is dealt out
+ * at setup - 24 of 25 at four seats - so there is no meaningful remainder to
+ * draw from at high seat counts, and drawing from it would make this balloon
+ * nearly dead at 4p and strong at 2p. The implementation therefore draws a
+ * uniform random colour from `island.meeples.colours`, which is a SEPARATE
+ * supply in physical terms and would need its own small bag on the table. That
+ * is a component addition and Dean's call.
+ */
+export type BalloonRewardType =
+  'draw' | 'buildDiscount' | 'sowFromHand' | 'harvestAny' | 'meepleFromBag';
 
 export interface Balloon {
   readonly id: string;
@@ -421,14 +449,29 @@ export interface RulesFile {
      */
     readonly selfVisitAllowed: boolean;
     /**
-     * THE BONUS WINDOW (Dean, 19/08/2026): true means the bonus option may be
-     * taken only at the START of your turn, and in v31 it sits immediately after
-     * the meeple phase. False is the v14 rule it replaced, "once per turn, any
-     * point". Still the one turn-structure rule with no measurement behind it,
-     * and it still points down: a bonus you must commit to before you act is a
-     * bonus that gets forgotten. Read SLOT UNSPENT, not the visit rate.
+     * ⭐ THE BONUS WINDOW, THREE-STATE SINCE 03/09/2026 (Dean). Replaces the
+     * `bonusAtStartOnly` boolean, which could not express the shipped rule.
+     *
+     *   - `'end'`   THE RULE. Meeples, then your core action, then the bonus.
+     *               The door cannot fuel your action; your action informs the
+     *               door. Ruled by Dean on 03/09/2026 as a CORRECTION - the
+     *               engine and both design docs had carried `'start'` since
+     *               19/08/2026 and were wrong about the game.
+     *   - `'start'` The old rule, kept as the paired control
+     *               (overlays/bonus-first.overlay.json). The bonus commits
+     *               before you act, so a door can fuel the action and nothing
+     *               can inform the door.
+     *   - `'any'`   v14's "once per turn, at any point", a superset of both
+     *               (overlays/bonus-any-time.overlay.json).
+     *
+     * The three are NOT orderable by power. `'start'` is the only one where a
+     * door can pay for the action that follows it (visit the Orchard door for
+     * Draw 3, then Build with the cards); `'end'` is the only one where the
+     * action can set the door up (fill a building, then Harvest it through the
+     * Wheat door; harvest into the barn, then Deliver through the Vegetable
+     * one). Expect the door mix to move, not just the visit rate.
      */
-    readonly bonusAtStartOnly: boolean;
+    readonly bonusTiming: BonusTiming;
   };
   readonly economy: {
     /**

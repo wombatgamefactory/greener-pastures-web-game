@@ -173,6 +173,7 @@ describe('the Wheat Farmstead (W2) - the own-crop end-game scorer', () => {
     buildFor(data, s, WHEAT, 'W9'); // threshold 2
     fill(s, 'W9');
     dealTo(data, s, WHEAT, 'W20');
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const applied = apply(data, s, { type: 'visit', seat: WHEAT, host: WHEAT, fee: 'W20' });
     expect(pendingAnswers(data, applied.state)).toContainEqual({ kind: 'building', card: 'W9' });
   });
@@ -776,6 +777,7 @@ describe('the Power cards', () => {
     buildFor(data, s, APIARY, 'A5'); // threshold 2
     loadStack(data, s, APIARY, 'A5', 2, 'orchard');
     s.turnPlayer = APIARY;
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const applied = apply(data, s, { type: 'visit', seat: APIARY, host: WHEAT, fee: 'A6' });
     expect(applied.state.tasks.some((t) => t.t === 'draw' && t.src === 'W17')).toBe(true);
     expect(applied.audit.crossSeat).toBe(true);
@@ -786,6 +788,7 @@ describe('the Power cards', () => {
     buildFor(data, s, WHEAT, 'W17', 'W9');
     fill(s, 'W9'); // so the Wheat door has something legal to do
     dealTo(data, s, WHEAT, 'W20');
+    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
     const applied = apply(data, s, { type: 'visit', seat: WHEAT, host: WHEAT, fee: 'W20' });
     expect(applied.state.tasks.some((t) => t.t === 'draw' && t.src === 'W17')).toBe(false);
   });

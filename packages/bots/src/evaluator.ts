@@ -32,7 +32,7 @@ const TIE_EPSILON = 1e-9;
  *     nor the action, so spending one leaves every other move on the menu. The
  *     moment the bot takes a bonus option or an action, `meepleOpen` goes false
  *     and the meeple is stranded until next turn.
- *   - The bonus slot (`bonusAtStartOnly`) is open only while `!actionSpent`, so
+ *   - The bonus slot (`bonusTiming`) is open only while `!actionSpent` under
  *     taking the main action throws it away.
  *
  * An argmax cannot see that. Measured on the first v31 build, before this
@@ -177,12 +177,24 @@ function windowedPick(
 ): Move | null {
   const meeple = bestOf(ctx, moves, totals, worthwhile(moves, totals, MEEPLE_WINDOW));
   if (meeple !== null) return meeple;
-  // Under `bonusAtStartOnly: false` - v14's "once per turn, at any point", kept
-  // as the paired control arm - the slot never closes, so there is no window to
-  // miss and the plain argmax is the correct behaviour. Reading the knob here
-  // rather than assuming is what keeps the two arms differing by the RULE and
-  // not by the bot.
-  if (!ctx.data.rules.turn.bonusAtStartOnly) return null;
+  // Reading the knob here rather than assuming is what keeps the arms differing
+  // by the RULE and not by the bot.
+  //
+  //   'any'   the slot never closes, so there is no window to miss and the
+  //           plain argmax is correct.
+  //   'start' the slot shuts the moment the action is spent - the window this
+  //           function was written for.
+  //   'end'   THE SHIPPED RULE (03/09/2026). The slot OPENS when the action is
+  //           spent and then stays open to the turn boundary, so again there is
+  //           no closing window to protect: `turnflow` holds the turn open for
+  //           an unspent bonus and the argmax gets its ordinary say.
+  //
+  // ⭐ The window exists to stop a big main action closing a slot on its way
+  // past. Under 'end' a main action OPENS the slot instead, so the whole failure
+  // mode this function was built for cannot occur - which is why 'end' returns
+  // null rather than getting a window of its own.
+  const timing = ctx.data.rules.turn.bonusTiming;
+  if (timing !== 'start') return null;
   if (ctx.view.turn.actionSpent) return null;
   return bestOf(ctx, moves, totals, worthwhile(moves, totals, BONUS_WINDOW));
 }

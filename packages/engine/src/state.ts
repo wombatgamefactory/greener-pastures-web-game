@@ -840,7 +840,14 @@ export type GameEvent =
    * supply. `space` is the index into the tile's `meeples`, so a UI can animate
    * the exact one and a metric can tell the 6 VP space from the 3 VP one.
    */
-  | { e: 'meepleGained'; seat: Seat; colour: Suit; tile: string; space: number }
+  /**
+   * ⚠️ `tile` and `space` ARE NULLABLE SINCE 03/09/2026. Until the
+   * `meepleFromBag` balloon there was exactly one way to gain a meeple - taking
+   * it off an island delivery space - and the event could name that space
+   * unconditionally. A balloon meeple comes from a bag and from no space, so the
+   * two fields say null rather than lying about a tile.
+   */
+  | { e: 'meepleGained'; seat: Seat; colour: Suit; tile: string | null; space: number | null }
   /**
    * A MEEPLE WAS SPENT and has LEFT THE GAME. It goes back to no pool - there is
    * no supply to return it to - so `meepleGained` minus `meepleSpent` over a
