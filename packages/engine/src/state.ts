@@ -49,6 +49,16 @@ export interface BuildingState {
   stack: CardId[];
 }
 
+/**
+ * A Notice Board under the meeple-loop arm: five colour-keyed slots and nothing
+ * else. Not a building - no threshold, no card stack, no sow onto it, no harvest
+ * of it (R5) - and every colour is always a key, including colours no seat is
+ * farming, because the five actions exist independently of who farms what.
+ */
+export interface NoticeBoardState {
+  slots: Record<Suit, Suit[]>;
+}
+
 export interface PlayerState {
   suit: Suit;
   hand: CardId[];
@@ -71,6 +81,24 @@ export interface PlayerState {
    * independently of who farms what.
    */
   meeples: Record<Suit, number>;
+  /**
+   * ⭐ THE FIVE COLOUR SLOTS OF THIS SEAT'S NOTICE BOARD - THE MEEPLE-LOOP ARM
+   * ONLY (`rules.turn.visitCurrency: 'meeple'`, Dean 04/09/2026, rules R5/R6).
+   *
+   * ⚠️ ABSENT UNDER THE SHIPPED `'card'` GAME, and the absence is deliberate
+   * rather than lazy typing. `'card'` is the control arm and has to stay
+   * bit-reproducible against 03/09/2026 - a key present-and-empty would change
+   * every serialised state, every capture and every replay comparison for a
+   * field that game has no concept of. `noticeBoardSlots` in query.ts is the one
+   * accessor and it throws if the arm is on and this is missing, so the
+   * optionality never reaches a rule.
+   *
+   * A LIST PER SLOT, not a count and not a single meeple, because the wild spend
+   * (R10) puts TWO meeples of other colours into the slot of the colour they
+   * bought. Blocked is `slots[colour].length > 0`; the host takes the whole
+   * slot back on their Collect, cap and all.
+   */
+  noticeBoard?: NoticeBoardState;
   tableau: BuildingState[];
   /**
    * VP taken from the island, in delivery order - one entry per delivery, so
@@ -168,12 +196,17 @@ export interface AerodromeState {
 }
 
 /**
- * The two halves of the bonus slot (v31). One per turn by the printed rule;
+ * The halves of the bonus slot. Two under the shipped `'card'` game (`draw` and
+ * `visit`) and two under the meeple-loop arm (`visit` and `collect`); `draw`
+ * never appears under the arm and `collect` never under the default, so the
+ * union is three values and a turn still spends one of them.
+ *
+ * One per turn by the printed rule;
  * `bonusUsed` records which have gone, so a card that grants a SECOND bonus
  * option (A Helping Hand: "you may take both") gives one of each rather than
  * two of the same.
  */
-export type BonusOption = 'draw' | 'visit';
+export type BonusOption = 'draw' | 'visit' | 'collect';
 
 /**
  * Everything scoped to the current turn. Turn end replaces the whole object,
@@ -768,8 +801,42 @@ export type Move =
       type: 'visit';
       seat: Seat;
       host: Seat;
-      fee: CardId;
+      /**
+       * The card placed on the host's board - the `'card'` game's whole
+       * currency, and NULL under the meeple-loop arm, where no card is ever
+       * placed on a board and none leaves the hand (R1).
+       */
+      fee: CardId | null;
+      /**
+       * MEEPLE ARM ONLY: the meeples leaving the visitor's supply. One for a
+       * plain visit; TWO for the wild spend (R10), which is why this is a list
+       * and not a colour. Both land in the slot of `colour`, and the host takes
+       * both back on their Collect.
+       */
+      meeples?: Suit[];
+      /**
+       * MEEPLE ARM ONLY: the SLOT bought, which is the door taken. Equal to the
+       * single meeple's colour for a plain visit and to something neither meeple
+       * is for a wild pair - under the cap you would never pay two for a colour
+       * you already hold.
+       */
+      colour?: Suit;
     }
+  /**
+   * COLLECT - the meeple-loop arm's other bonus option (R7), and the half of the
+   * design that pays the HOST for being visited.
+   *
+   * Take EVERY meeple off your own Notice Board into your supply (the R4 cap
+   * applies, and a duplicate is boxed), then Draw 1 - `rules.turn.bonusDraw`
+   * cards off the top of any one deck in play, so the deck pick is the draw
+   * task's own answer and nothing is named here.
+   *
+   * ⭐ COLLECTING AN EMPTY BOARD IS LEGAL and simply reads as Draw 1. That is
+   * deliberate: it is the solitaire line, and the bonus mix has to be able to
+   * count it separately from a collect that actually took meeples back, because
+   * it is the line the free Draw 1 used to be.
+   */
+  | { type: 'collect'; seat: Seat }
   /** Legal only when no main action is: spends the action, keeps the bonus slot. */
   | { type: 'pass'; seat: Seat }
   /** Decline whatever options are still live and end the turn. Legal once the action is spent. */
@@ -798,6 +865,7 @@ const MOVE_TYPE_KEYS = {
   deliver: true,
   moveBalloon: true,
   visit: true,
+  collect: true,
   pass: true,
   endTurn: true,
 } satisfies Record<MoveType, true>;
@@ -855,6 +923,33 @@ export type GameEvent =
    * which is the dead-component number the v31 plan asks the sim to watch.
    */
   | { e: 'meepleSpent'; seat: Seat; colour: Suit; action: WorkerAction }
+  /**
+   * ⭐ A MEEPLE WAS RETURNED TO THE BOX under the supply cap - the meeple-loop
+   * arm's only leak, and the number that says whether the cap is doing work or
+   * throwing the economy away (R4).
+   *
+   * Emitted INSTEAD of `meepleGained`, never beside it, so the two events
+   * partition every meeple that was offered to a supply. `source` says which
+   * faucet overflowed: `'collect'` is taking your own board back, `'island'` is
+   * a delivery, `'balloon'` is the magenta balloon's bag draw.
+   */
+  | {
+      e: 'meepleBoxed';
+      seat: Seat;
+      colour: Suit;
+      source: 'collect' | 'island' | 'balloon';
+    }
+  /**
+   * MEEPLES CAME OFF YOUR OWN NOTICE BOARD (the meeple arm's Collect, R7).
+   * `kept` are the ones that reached the supply and `boxed` the duplicates the
+   * cap refused - each of the latter also emits its own `meepleBoxed`, so this
+   * event is the per-turn summary and those are the per-meeple record.
+   *
+   * An EMPTY collect still emits it, with both lists empty: "the seat took the
+   * solitaire line" is a fact the bonus mix has to count, and inferring it from
+   * the absence of an event is exactly the kind of silence that hides a metric.
+   */
+  | { e: 'boardCollected'; seat: Seat; kept: Suit[]; boxed: Suit[] }
   | { e: 'reshuffled'; suit: Suit; count: number }
   | { e: 'built'; seat: Seat; card: CardId; payment: CardId[] }
   /**
@@ -943,7 +1038,31 @@ export type GameEvent =
    * a flag on the event rather than a `seat === host` check at every reader
    * precisely so that nobody can forget to make the distinction.
    */
-  | { e: 'visited'; seat: Seat; host: Seat; self: boolean; colour: Suit; action: WorkerAction }
+  /**
+   * ⭐ THE EVENT NAME SURVIVES THE MEEPLE-LOOP ARM, AND THAT IS ON PURPOSE. A17
+   * The Smoke Pot, O16 The Fruit Store and every future host-side or
+   * visitor-side reactor key on `afterVisit` / `visited`; the arm changes what a
+   * visit is PAID IN and never what it IS, so the name and the four shipped
+   * fields are unchanged and the two arm-only fields are additive.
+   *
+   * `wild` and `meeples` are ABSENT under the `'card'` game - it has no meeples
+   * to name and the control's event stream has to stay byte-identical. Under the
+   * arm `meeples` is what left the visitor's supply (two for a wild pair) and
+   * `colour` is the slot bought, which is the door taken. `self` is present
+   * under both and is FALSE by construction under the arm (X5: no self-visit
+   * under any flag), which is what `a08-the-hook` should assert rather than
+   * assume.
+   */
+  | {
+      e: 'visited';
+      seat: Seat;
+      host: Seat;
+      self: boolean;
+      colour: Suit;
+      action: WorkerAction;
+      wild?: boolean;
+      meeples?: Suit[];
+    }
   | { e: 'endTriggered'; seat: Seat }
   | { e: 'turnEnded'; seat: Seat; next: Seat }
   | { e: 'gameEnded' };

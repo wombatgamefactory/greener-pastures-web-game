@@ -13,10 +13,11 @@ import { seedRng } from './rng.js';
 import {
   buildIsland,
   demandPool,
-  emptyMeeples,
   freshTurn,
+  meepleLoopPlayerFields,
   meeplePool,
   parkBalloons,
+  startingMeeples,
 } from './setup.js';
 import type { CardId, GameState, Seat } from './state.js';
 
@@ -58,7 +59,12 @@ export function makeState(data: GameData, suits: Suit[]): GameState {
       suit,
       hand: [],
       barn: [],
-      meeples: emptyMeeples(data),
+      // Empty under the shipped game (`giveMeeples` seeds one); one of each
+      // colour under the meeple-loop arm, which is that arm's printed setup
+      // (R3) and not a convenience - a scenario that had to seed them by hand
+      // would be testing a position no real game reaches.
+      meeples: startingMeeples(data),
+      ...meepleLoopPlayerFields(data),
       tableau: data.cards.catalogue
         .filter((c) => c.suit === suit && c.type === 'starter')
         .map((c) => ({ card: c.id, stack: [] })),

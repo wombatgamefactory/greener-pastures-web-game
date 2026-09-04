@@ -36,7 +36,7 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import { deliveriesPerTile } from '@gp/data';
+import { deliveriesPerTile, isMeepleCurrency } from '@gp/data';
 import type { CardId, GameEvent, GameState, Move, ScoreBreakdown, Seat, Task } from '@gp/engine';
 import {
   MOVE_TYPES,
@@ -44,15 +44,19 @@ import {
   bonusOpen,
   cardById,
   cropOf,
+  doorOf,
   faceOf,
   gameEndScores,
   handlerFor,
   isFull,
   isOrchardCard,
+  meeplesHeld,
   player,
   score,
   noticeBoardOf,
-  visitOptions,
+  slotBlocked,
+  anyVisitOption,
+  workerActionLegal,
 } from '@gp/engine';
 import type { PolicyId } from '@gp/bots';
 
@@ -74,6 +78,14 @@ export const EVENT_KINDS = {
   doorUsed: true,
   meepleGained: true,
   meepleSpent: true,
+  // ⭐ THE MEEPLE-LOOP ARM'S TWO NEW EVENTS, both folded since 04/09/2026.
+  // `meepleBoxed` is the supply cap's only leak, counted by SOURCE (which
+  // faucet overflowed) and by COLOUR (which colour nobody can hold twice of);
+  // `boardCollected` is what separates a Collect that took meeples home from a
+  // Collect on an EMPTY board, which is the arm's solitaire line and the thing
+  // the free Draw 1 became.
+  meepleBoxed: true,
+  boardCollected: true,
   reshuffled: true,
   built: true,
   demolished: true,
@@ -92,6 +104,11 @@ export const EVENT_KINDS = {
 
 export const MOVE_KINDS = {
   task: true,
+  // The meeple-loop arm's other bonus option. Folded through the
+  // `boardCollected` event rather than through the move, because the move
+  // cannot say whether anything came home and the four-way bonus mix turns on
+  // exactly that distinction.
+  collect: true,
   cardMove: true,
   draw: true,
   bonusDraw: true,
@@ -154,6 +171,37 @@ export interface RivalFreight {
   /** Of those received, the ones the host later harvested into their own barn. */
   bankedBySeat: number[];
   /** Fees received while the host was the sole VP leader. */
+  toLeaderBySeat: number[];
+}
+
+/**
+ * ⭐ THE MEEPLE-LOOP ARM'S GENEROSITY, and the reason `RivalFreight` above could
+ * not simply be re-pointed at it: the two arms give different THINGS, and the
+ * things behave differently once given.
+ *
+ * A card fee lands on a rival's board and stays a card - it reaches their barn
+ * or it dies there, and that is the whole story. A meeple lands in a rival's
+ * SLOT and is a stored ACTION: it comes home to them on their next Collect, it
+ * shuts that colour of their farm to the whole table while it sits there, and it
+ * can be REFUSED at the door by the supply cap, in which case they got the
+ * denial and none of the payment. So the arithmetic parallel is exact and the
+ * meaning is not:
+ *
+ *   given     meeples placed on rivals' boards - the gift as it leaves
+ *   received  meeples that landed on this seat's own board
+ *   home      of those, the ones that survived the cap on the owner's Collect
+ *   toLeader  meeples given to the seat that was already the sole VP leader
+ *
+ * `received - home` is the cap eating the host's payment, which has no analogue
+ * in the card game at all and is the one number that could say the cap is set
+ * too tight. Under `visitCurrency: 'card'` every field here stays 0 and
+ * `RivalFreight` carries the transfer, so no report can pool the two by
+ * accident.
+ */
+export interface MeepleGift {
+  givenBySeat: number[];
+  receivedBySeat: number[];
+  homeBySeat: number[];
   toLeaderBySeat: number[];
 }
 
@@ -268,6 +316,17 @@ export interface GameMetrics {
    * whole game is exactly the meeples that died unspent in a supply, because a
    * spent meeple returns to no pool - which is the dead-component number the
    * v31 plan asks for.
+   *
+   * ⛔⛔ THAT SENTENCE IS TRUE ONLY UNDER THE SHIPPED `'card'` GAME, AND IT IS
+   * THE SINGLE EASIEST THING TO GET WRONG ABOUT THE MEEPLE-LOOP ARM. Under the
+   * arm a meeple RECIRCULATES: it is spent onto a rival's board, collected back
+   * into their supply, and spent again, so the same physical component is gained
+   * many times over and `gained - spent` is arithmetic about a population that
+   * does not exist. The counters are still fed - `spent` comes off the `visited`
+   * event's meeple list rather than off `meepleSpent`, which the arm deletes -
+   * because the COLOUR SPLIT is what the dead-colour line reads and it survives
+   * the change of route. The RATIO does not. Assertion 15 refuses to print it
+   * under the arm and reports spends per meeple-turn instead.
    */
   meeplesGainedBySeat: number[];
   meeplesSpentBySeat: number[];
@@ -332,6 +391,130 @@ export interface GameMetrics {
   /** ...by a meeple leaving the game. */
   meepleDoorByColour: Record<string, number>;
   freight: RivalFreight;
+
+  // --- The meeple-loop arm, 04/09/2026 -------------------------------------
+  //
+  // ⚠️ EVERY LINE IN THIS BLOCK IS ZERO UNDER THE SHIPPED `'card'` GAME, and
+  // that is the contract the whole arm is measured under: `'card'` is the
+  // experimental control and its numbers have to stay comparable with every
+  // report in `reports/`, so nothing here is allowed to move a counter the
+  // control already had. Read a zero as "the arm was off", never as a finding.
+  //
+  // ⚠️ AND NONE OF THEM HAS A NOISE FLOOR YET - run --noise before reading a
+  // movement in one as a result, exactly as the Vegetable and Dairy blocks
+  // above say of their own.
+
+  /**
+   * COLLECTS THAT TOOK MEEPLES HOME, against COLLECTS ON AN EMPTY BOARD.
+   *
+   * ⭐ THE SECOND OF THESE IS THE SOLITAIRE LINE, and it is what the free Draw 1
+   * became: R9 deletes the standalone bonus draw, and the only card the slot can
+   * still draw is the one attached to Collect. An empty-board Collect is
+   * therefore exactly a Draw 1 wearing a different name, and the four-way bonus
+   * mix has to be able to see it as one - which is why the engine emits
+   * `boardCollected` with both lists empty rather than staying silent.
+   *
+   * A collect that took meeples home is a different animal: it is the host
+   * being PAID for having been visited, which is the half of the design that
+   * v31 had nothing of at all.
+   */
+  collectsWithMeeplesBySeat: number[];
+  collectsEmptyBySeat: number[];
+  /**
+   * VISITS PAID WITH A WILD PAIR (R10), by seat. Two meeples spent as one of any
+   * colour, both landing in the slot bought.
+   *
+   * The design's own open question turns on this share (handoff section 8): the
+   * colour keying is doing work while the wild is rare, and if the wild takes
+   * over half of all spends the slots probably want to be five unkeyed spaces
+   * instead. a07 prints it as the wild share of all spends for that reason.
+   */
+  wildVisitsBySeat: number[];
+  /**
+   * MEEPLES RETURNED TO THE BOX under the supply cap (R4) - the arm's only leak.
+   *
+   * By SEAT, by SOURCE (`collect` is your own board coming home, `island` a
+   * delivery, `balloon` the magenta balloon's bag draw) and by COLOUR. The
+   * source split is the one that diagnoses: boxing on `collect` says the cap is
+   * refusing the host's own payment, boxing on `island` says it is refusing the
+   * island's, and those are two different arguments about whether 1 is the right
+   * cap.
+   */
+  meeplesBoxedBySeat: number[];
+  meeplesBoxedBySource: Record<string, number>;
+  meeplesBoxedByColour: Record<string, number>;
+  /**
+   * ⭐ THE BLOCKED-WANT RATE (assertion 5 under the arm): turns on which the
+   * seat reached its bonus slot holding a meeple whose door it could legally
+   * use, and found NO FREE SLOT for that colour anywhere on the table.
+   *
+   * "Anywhere" means on a RIVAL's board, because there is no self-visit under
+   * any flag (X5), so a seat's own free slot is not a place it can spend. At two
+   * players that leaves exactly one board, which is why the handoff asks for
+   * this number at 2p first and why it is the number that decides whether Dean's
+   * island alternative (X2) has to come back.
+   *
+   * ⚠️ IT DOES NOT MEAN THE SEAT COULD NOT VISIT AT ALL. A seat blocked on
+   * yellow and free on green is counted here and still had a visit to make. The
+   * question is "the meeple I wanted to spend had nowhere to go", not "I was
+   * shut out", and conflating the two would report a healthy table as a locked
+   * one and vice versa. The shut-out question is `clogTurnsBySeat`, which the
+   * probe beside this one still answers.
+   */
+  blockedWantTurnsBySeat: number[];
+  blockedWantSampledBySeat: number[];
+  /**
+   * ⭐ THE HOLD-OUT RATE: turns that a seat BEGAN with its own Notice Board
+   * still full - all five slots blocked - having had the chance to Collect and
+   * not taken it.
+   *
+   * The arm's answer to clog-as-denial, and it points the opposite way from
+   * v31's. A full board under the card game was a tax on the popular farm; a
+   * full board here is a seat sitting on five stored actions it has chosen not
+   * to bank, denying all five colours of its own farm to the table for as long
+   * as it holds out. X3 rules out any penalty for it, so this measures a
+   * behaviour that is entirely legal and entirely deliberate.
+   *
+   * ⚠️ IT IS NOT A SHARE OF ANYTHING THE BOTS WERE PRICED TO WANT. Collect is
+   * priced as a draw plus the meeples actually kept, so a bot holds out only
+   * when the cap would refuse what is on its board; a human might hold out to
+   * deny. Read a low reading as "the pricer never wanted to", not as "nobody
+   * would".
+   */
+  holdOutTurnsBySeat: number[];
+  holdOutSampledBySeat: number[];
+  /**
+   * TURNS BEGUN WITH EVERY BOARD ON THE TABLE FULL, and the turns sampled. Total
+   * gridlock of the visit economy: no colour is free at any seat, so the bonus
+   * slot has nothing but Collect in it for everybody at once. Counted once per
+   * turn for the table, not once per seat.
+   */
+  allBoardsFullTurns: number;
+  allBoardsFullSampled: number;
+  /**
+   * TURNS BEGUN HOLDING AT LEAST ONE MEEPLE, by seat - the denominator for
+   * "spends per meeple-turn" in assertion 15.
+   *
+   * ⭐ IT IS THE DENOMINATOR THAT REPLACES "GAINED", and the replacement is the
+   * whole point. Under v31 a meeple was spent once and left the game, so
+   * spent-over-gained was a real fraction of a real population. Under the arm a
+   * meeple recirculates - spent to a rival, collected back, spent again - so
+   * gained double-counts the same physical component and the ratio is
+   * arithmetic about nothing. A turn on which a spend was POSSIBLE is a
+   * population that does not move when the loop speeds up.
+   */
+  meepleTurnsBySeat: number[];
+  /**
+   * SLOT OCCUPANCY at turn boundaries: blocked slots against slots sampled, all
+   * seats, five per seat. The continuous reading that sits under the binary
+   * full-board rate in `doorClogTurnsBySeat` - a table at 20% occupancy and a
+   * table at 80% both report few completely full boards, and only this line
+   * tells them apart.
+   */
+  slotsBlockedAtBoundary: number;
+  slotsSampledAtBoundary: number;
+  /** The arm's generosity, in meeples. See `MeepleGift`. */
+  meepleGift: MeepleGift;
 
   // --- The Dairy rebuild, 2026-08-10 ---------------------------------------
   //
@@ -646,6 +829,27 @@ export class Fold {
         bankedBySeat: zeros(),
         toLeaderBySeat: zeros(),
       },
+      collectsWithMeeplesBySeat: zeros(),
+      collectsEmptyBySeat: zeros(),
+      wildVisitsBySeat: zeros(),
+      meeplesBoxedBySeat: zeros(),
+      meeplesBoxedBySource: { collect: 0, island: 0, balloon: 0 },
+      meeplesBoxedByColour: byColour(),
+      blockedWantTurnsBySeat: zeros(),
+      blockedWantSampledBySeat: zeros(),
+      holdOutTurnsBySeat: zeros(),
+      holdOutSampledBySeat: zeros(),
+      allBoardsFullTurns: 0,
+      allBoardsFullSampled: 0,
+      meepleTurnsBySeat: zeros(),
+      slotsBlockedAtBoundary: 0,
+      slotsSampledAtBoundary: 0,
+      meepleGift: {
+        givenBySeat: zeros(),
+        receivedBySeat: zeros(),
+        homeBySeat: zeros(),
+        toLeaderBySeat: zeros(),
+      },
       buildsBySeat: zeros(),
       noBuildTurnsBySeat: zeros(),
       buildSampledBySeat: zeros(),
@@ -875,6 +1079,45 @@ export class Fold {
     if (!anyBuildOption(this.data, s, seat)) {
       this.m.noBuildTurnsBySeat[seat] = (this.m.noBuildTurnsBySeat[seat] ?? 0) + 1;
     }
+    this.meepleTurnStart(s, seat);
+  }
+
+  /**
+   * THE ARM'S TURN-START PROBES (04/09/2026): the hold-out rate, the gridlock
+   * rate, and the meeple-turn denominator.
+   *
+   * All three are asked HERE rather than at a turn boundary because all three
+   * are about the seat whose turn it is and about what it walked into. "Still
+   * full at its owner's turn start" is the handoff's own wording, and a
+   * boundary sample would answer a different question - the state a board was
+   * left in by somebody else's turn, which nobody has to live with yet.
+   *
+   * Under the shipped `'card'` game this is one predicate and a return: there
+   * are no slots, `noticeBoardSlots` would throw, and the control's counters
+   * must not move.
+   */
+  private meepleTurnStart(s: GameState, seat: Seat): void {
+    if (!isMeepleCurrency(this.data)) return;
+    const m = this.m;
+    m.holdOutSampledBySeat[seat] = (m.holdOutSampledBySeat[seat] ?? 0) + 1;
+    if (this.boardFull(s, seat)) m.holdOutTurnsBySeat[seat] = (m.holdOutTurnsBySeat[seat] ?? 0) + 1;
+    m.allBoardsFullSampled += 1;
+    let everyBoard = true;
+    for (let other = 0; other < m.seats; other++) {
+      if (!this.boardFull(s, other)) {
+        everyBoard = false;
+        break;
+      }
+    }
+    if (everyBoard) m.allBoardsFullTurns += 1;
+    if (meeplesHeld(this.data, s, seat).length > 0) {
+      m.meepleTurnsBySeat[seat] = (m.meepleTurnsBySeat[seat] ?? 0) + 1;
+    }
+  }
+
+  /** All five colour slots blocked. The arm's "this farm is shut", and only ever asked under it. */
+  private boardFull(state: GameState, seat: Seat): boolean {
+    return this.data.cards.suits.every((colour) => slotBlocked(state, seat, colour));
   }
 
   /**
@@ -900,10 +1143,67 @@ export class Fold {
     if (!bonusOpen(this.data, s)) return;
     this.sampledBonusTurn = this.turnsEnded;
     const seat = s.turnPlayer;
-    if (player(s, seat).hand.length === 0) return;
+    // ⭐ THE CURRENCY DECIDES WHAT "HOLDING SOMETHING TO VISIT WITH" MEANS. Under
+    // the shipped game a visit costs a card, so an empty hand is a card problem
+    // and not a clog; under the meeple-loop arm a visit costs a MEEPLE and the
+    // hand is irrelevant to it, so an empty SUPPLY is the equivalent exclusion.
+    // Carrying the hand test across the arm would have sampled a population
+    // defined by the wrong resource - the exact shape of mistake the denial
+    // probe made on 03/09/2026 by copying a predicate instead of asking the
+    // rules.
+    const arm = isMeepleCurrency(this.data);
+    if (arm ? meeplesHeld(this.data, s, seat).length === 0 : player(s, seat).hand.length === 0) {
+      return;
+    }
     this.m.clogSampledBySeat[seat] = (this.m.clogSampledBySeat[seat] ?? 0) + 1;
-    if (visitOptions(this.data, s, seat).length === 0) {
+    // `anyVisitOption` IS `visitOptions(...).length > 0`, off the same walk -
+    // see the engine. The probe never wanted the moves, and building them was
+    // ~1.8% of a whole game under the shipped rules and more under the arm,
+    // where the list is (rival hosts x 5 colours x 10 wild pairs) long.
+    if (!anyVisitOption(this.data, s, seat)) {
       this.m.clogTurnsBySeat[seat] = (this.m.clogTurnsBySeat[seat] ?? 0) + 1;
+    }
+    if (arm) this.blockedWant(s, seat);
+  }
+
+  /**
+   * ⭐ THE BLOCKED-WANT PROBE (the arm, 04/09/2026), sampled in the same window
+   * as the denial probe above and answering the question that replaced it.
+   *
+   * For every colour this seat HOLDS: is that colour's door legal for this seat
+   * right now, and is there a free slot of that colour on ANY rival's board?
+   * A colour that is usable and has nowhere to go is a blocked want, and one is
+   * enough to count the turn.
+   *
+   * The two gates are deliberately separate and only one of them is a design
+   * fault. A colour whose door can do nothing for you (`workerActionLegal`
+   * false - the Wheat door with nothing full, the Vegetable door with an empty
+   * barn) is not blocked, it is simply not wanted this turn, and counting it
+   * would blame the slots for a card-supply problem. Dean's standing ruling that
+   * a door which can do nothing is not offered is what makes the distinction
+   * measurable at all.
+   *
+   * Rival boards only, because X5 rules out the self-visit under any flag, so a
+   * free slot on your own board is not a place a meeple can be spent.
+   */
+  private blockedWant(s: GameState, seat: Seat): void {
+    const m = this.m;
+    m.blockedWantSampledBySeat[seat] = (m.blockedWantSampledBySeat[seat] ?? 0) + 1;
+    for (const colour of meeplesHeld(this.data, s, seat)) {
+      // THE CHEAP GATE FIRST. Both tests have to pass for a colour to count, and
+      // they commute, but `slotBlocked` is a property read where
+      // `workerActionLegal` can reach `anyBuildOption` and `anyDeliverOption`.
+      // A colour with a free slot somewhere is not blocked whatever its door
+      // says, so asking the door about it is work with no reader.
+      let free = false;
+      for (let host = 0; host < m.seats && !free; host++) {
+        if (host === seat) continue;
+        if (!slotBlocked(s, host, colour)) free = true;
+      }
+      if (free) continue;
+      if (!workerActionLegal(this.data, s, seat, doorOf(this.data, colour).id)) continue;
+      m.blockedWantTurnsBySeat[seat] = (m.blockedWantTurnsBySeat[seat] ?? 0) + 1;
+      return;
     }
   }
 
@@ -919,7 +1219,23 @@ export class Fold {
         return;
       case 'visit':
         // ONE fee, not a list, since v31: no route places two cards on a board.
-        this.facts(move.fee).junked = true;
+        // ⭐ AND NULL UNDER THE MEEPLE-LOOP ARM (R1), where no card leaves the
+        // hand at all. That has a consequence the card funnel must not report as
+        // a change in the cards: about 29 fee cards a game stop being junked and
+        // stop reaching a rival's barn, so every card's junk rate and the whole
+        // barn-in-by-route table move under the arm for a reason that is not
+        // about any card. Read them as a delta and never as a card verdict.
+        if (move.fee !== null) this.facts(move.fee).junked = true;
+        return;
+      case 'collect':
+        // ⭐ COLLECT RESOLVES AN ACTION, counted here for the same reason
+        // `bonusDraw` is counted here in the shipped game: the draw it pushes is
+        // indistinguishable from a main action's, and there is no event saying
+        // the bonus slot was taken. The SPLIT - meeples home against an empty
+        // board - is folded off `boardCollected`, which is the only thing that
+        // knows. Keeping the action count on the move and the split on the event
+        // is what stops a collect being counted as an action twice.
+        this.m.actionsBySeat[move.seat] = (this.m.actionsBySeat[move.seat] ?? 0) + 1;
         return;
       case 'bonusDraw':
         // The bonus slot's solitaire half. One of the four columns, and the
@@ -1161,15 +1477,47 @@ export class Fold {
         }
         m.neighbourDoorByColour[e.colour] = (m.neighbourDoorByColour[e.colour] ?? 0) + 1;
         m.neighbourVisitRounds.push(this.round());
+        const leader = this.leaderOf(d);
+        if (leader === e.host) {
+          m.visitsToLeaderBySeat[e.seat] = (m.visitsToLeaderBySeat[e.seat] ?? 0) + 1;
+        }
+        // ⭐ THE TWO ARMS PAY THE HOST IN DIFFERENT THINGS, so the transfer is
+        // counted into two different structures and never into one pooled
+        // "generosity" number. `RivalFreight` is cards and `MeepleGift` is
+        // meeples; whichever arm is off contributes nothing to its own, which is
+        // what keeps the control's freight line byte-comparable with every
+        // report in `reports/`.
+        if (isMeepleCurrency(this.data)) {
+          // WHAT LEFT THE SUPPLY, not how many visits were made: a wild pair
+          // (R10) is one visit and TWO meeples, and the host collects both.
+          const paid = e.meeples ?? [];
+          if (e.wild === true) m.wildVisitsBySeat[e.seat] = (m.wildVisitsBySeat[e.seat] ?? 0) + 1;
+          m.meepleGift.givenBySeat[e.seat] = (m.meepleGift.givenBySeat[e.seat] ?? 0) + paid.length;
+          m.meepleGift.receivedBySeat[e.host] =
+            (m.meepleGift.receivedBySeat[e.host] ?? 0) + paid.length;
+          if (leader === e.host) {
+            m.meepleGift.toLeaderBySeat[e.host] =
+              (m.meepleGift.toLeaderBySeat[e.host] ?? 0) + paid.length;
+          }
+          // ⭐ THE SPEND COUNTERS ARE FED FROM HERE UNDER THE ARM, because there
+          // is no `meepleSpent` event any more: R8 deletes the turn-start spend
+          // that emitted it, and a meeple is now spent by MOVING to a rival's
+          // board. The colour split is what assertion 15's dead-colour line
+          // reads, so it has to survive the change of route.
+          for (const colour of paid) {
+            m.meeplesSpentBySeat[e.seat] = (m.meeplesSpentBySeat[e.seat] ?? 0) + 1;
+            m.meeplesSpentByColour[colour] = (m.meeplesSpentByColour[colour] ?? 0) + 1;
+          }
+          m.firstMeepleTurnBySeat[e.seat] ??= (m.turnsBySeat[e.seat] ?? 0) + 1;
+          return;
+        }
         // The fee has already landed by the time this event fires (doVisit
         // places it first), so the card on the host's board is the last one
         // placed by this move - which is exactly what the `cardPlaced` branch
         // recorded a moment ago.
         m.freight.paidBySeat[e.seat] = (m.freight.paidBySeat[e.seat] ?? 0) + 1;
         m.freight.receivedBySeat[e.host] = (m.freight.receivedBySeat[e.host] ?? 0) + 1;
-        const leader = this.leaderOf(d);
         if (leader === e.host) {
-          m.visitsToLeaderBySeat[e.seat] = (m.visitsToLeaderBySeat[e.seat] ?? 0) + 1;
           m.freight.toLeaderBySeat[e.host] = (m.freight.toLeaderBySeat[e.host] ?? 0) + 1;
         }
         return;
@@ -1187,7 +1535,15 @@ export class Fold {
         // `workOwnWorker`, `market` and a knob-gated `upgrade` alongside the
         // visit, because each was a bonus-slot spend that could land in the
         // same apply as the boundary. Two options remain and both are here.
-        const bonusMove = d.move.type === 'visit' || d.move.type === 'bonusDraw';
+        //
+        // ⭐ AND `collect` JOINS THE LIST FOR THE MEEPLE-LOOP ARM (04/09/2026).
+        // It is the arm's second bonus option and it can land in the same apply
+        // as the boundary exactly as the other two can, so leaving it off would
+        // under-report bonus turns and over-report SLOT UNSPENT - which is a
+        // column of assertion 17 and the one number in it that is derived rather
+        // than counted.
+        const bonusMove =
+          d.move.type === 'visit' || d.move.type === 'bonusDraw' || d.move.type === 'collect';
         if (d.pre.turn.bonusUsed.length > 0 || bonusMove) {
           m.bonusTurnsBySeat[seat] = (m.bonusTurnsBySeat[seat] ?? 0) + 1;
         }
@@ -1198,10 +1554,29 @@ export class Fold {
         // merge - the old one measured "half the farm is shut", this one
         // measures "the farm is shut" - and assertion 4's threshold moved with
         // it rather than being carried over.
+        //
+        // ⭐ AND THE MEEPLE-LOOP ARM RE-BASES IT A FOURTH TIME, again without
+        // touching the arithmetic. Under the arm the Notice Board is NOT A
+        // BUILDING (R5): it has no threshold, so `isFull` is false forever and
+        // this counter would read a flat 0% for a board that can be completely
+        // shut. "Clogged" becomes ALL FIVE COLOUR SLOTS BLOCKED, which is the
+        // same sentence about a different object - this farm is shut to the
+        // table - and it is a HARDER bar than the old threshold of 2, so the
+        // two numbers are not comparable in either direction. The continuous
+        // reading underneath it is `slotsBlockedAtBoundary`, and assertion 4
+        // prints both because a table at 20% occupancy and one at 80% can show
+        // the same near-zero full-board rate.
+        const arm = isMeepleCurrency(this.data);
         for (let s2 = 0; s2 < m.seats; s2++) {
           m.doorClogSampledBySeat[s2] = (m.doorClogSampledBySeat[s2] ?? 0) + 1;
-          if (isFull(this.data, noticeBoardOf(this.data, d.post, s2))) {
-            m.doorClogTurnsBySeat[s2] = (m.doorClogTurnsBySeat[s2] ?? 0) + 1;
+          const shut = arm
+            ? this.boardFull(d.post, s2)
+            : isFull(this.data, noticeBoardOf(this.data, d.post, s2));
+          if (shut) m.doorClogTurnsBySeat[s2] = (m.doorClogTurnsBySeat[s2] ?? 0) + 1;
+          if (!arm) continue;
+          for (const colour of this.data.cards.suits) {
+            m.slotsSampledAtBoundary += 1;
+            if (slotBlocked(d.post, s2, colour)) m.slotsBlockedAtBoundary += 1;
           }
         }
         this.turnsEnded += 1;
@@ -1241,6 +1616,30 @@ export class Fold {
         const board = noticeBoardOf(this.data, d.post, e.onto.seat);
         if (board.card !== e.onto.building) return;
         this.freightOnBoard[e.onto.seat]?.add(e.card);
+        return;
+      }
+      // ⭐ THE SUPPLY CAP'S LEAK (R4). Emitted INSTEAD of `meepleGained`, never
+      // beside it, so gained + boxed is every meeple ever offered to a supply
+      // and neither line has to be corrected by the other.
+      case 'meepleBoxed':
+        m.meeplesBoxedBySeat[e.seat] = (m.meeplesBoxedBySeat[e.seat] ?? 0) + 1;
+        m.meeplesBoxedBySource[e.source] = (m.meeplesBoxedBySource[e.source] ?? 0) + 1;
+        m.meeplesBoxedByColour[e.colour] = (m.meeplesBoxedByColour[e.colour] ?? 0) + 1;
+        return;
+      // ⭐ THE FOUR-WAY BONUS MIX'S SECOND AND THIRD COLUMNS, and the only place
+      // they can be told apart. `kept` plus `boxed` empty is a Collect on an
+      // EMPTY board, which is the arm's solitaire line; anything else is the
+      // host being paid for having been visited. `homeBySeat` takes `kept`
+      // alone, because a meeple the cap refused arrived and was never received -
+      // exactly the distinction `RivalFreight.banked` draws for a card that dies
+      // on a board nobody clears.
+      case 'boardCollected': {
+        const took = e.kept.length + e.boxed.length;
+        if (took === 0) m.collectsEmptyBySeat[e.seat] = (m.collectsEmptyBySeat[e.seat] ?? 0) + 1;
+        else {
+          m.collectsWithMeeplesBySeat[e.seat] = (m.collectsWithMeeplesBySeat[e.seat] ?? 0) + 1;
+        }
+        m.meepleGift.homeBySeat[e.seat] = (m.meepleGift.homeBySeat[e.seat] ?? 0) + e.kept.length;
         return;
       }
       // Claimed and uninteresting for balance: card movement between zones that

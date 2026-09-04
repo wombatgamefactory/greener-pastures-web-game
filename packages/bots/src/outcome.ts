@@ -378,9 +378,64 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
     case 'demandFaceDown':
       return 0;
 
+    /**
+     * ⭐ A MEEPLE RETURNED TO THE BOX BY THE SUPPLY CAP (the meeple-loop arm,
+     * R4) - and it is worth ZERO rather than negative, which is the opposite of
+     * what the name suggests and is the point.
+     *
+     * `meepleBoxed` is emitted INSTEAD of `meepleGained`, never beside it, so
+     * the two partition every meeple ever offered to a supply. The seat did not
+     * LOSE a meeple here: it was never handed one. Nothing left its stock,
+     * nothing left its board that it wanted, and the cap simply refused a
+     * duplicate it could not have held anyway. A negative price would charge the
+     * seat for the difference between the meeple it got and the meeple it might
+     * have got, which is a regret and not a resource - and would make an island
+     * delivery LOOK worse for paying a colour you already hold than for paying
+     * no meeple at all, which is false.
+     *
+     * ⭐ WHERE THE CAP IS ACTUALLY PRICED IS THE ABSENCE. A capped delivery
+     * simply earns no `meepleGain`, and a Collect is priced by `s.collectKeeps`,
+     * which counts only what survives. That is the honest reading of "worth
+     * exactly 0" from the handoff, and it is why nothing here needs a weight.
+     */
+    case 'meepleBoxed':
+      return 0;
+
+    /**
+     * THE COLLECT SUMMARY (the meeple-loop arm, R7), priced at 0 because every
+     * meeple it reports has ALREADY been priced one event earlier: each kept
+     * meeple fires its own `meepleGained` (paid above at `meepleGain`) and each
+     * refused one its own `meepleBoxed`. This event exists so the sim can count
+     * an empty-board Collect - the arm's solitaire line - without inferring it
+     * from a silence. Paying for it as well would double every Collect reached
+     * inside a rollout.
+     *
+     * ⚠️ A COLLECT TAKEN AS THE SEAT'S OWN MOVE is priced by the `meepleGain`
+     * and `bonusDraw` MOVE terms instead, and `collect` is deliberately NOT on
+     * `isProbed` - the same arrangement, and the same reason, as `deliver`.
+     */
+    case 'boardCollected':
+      return 0;
+
     // A door action's worth arrives as that action's own events, so scoring the
     // fact that a door ran would double count. Same for `visited`: the fee is
     // charged by `handSpend` and `visitFeeJunk`, the payoff is the door.
+    //
+    // ⚠️ UNDER THE MEEPLE-LOOP ARM `visited` CARRIES A REAL COST THAT IS PRICED
+    // ELSEWHERE, exactly as the card fee was: the meeple leaves the visitor's
+    // supply for the host's board, and the `meepleSpend` MOVE term charges it.
+    // That is safe only while the bonus visit is the ONLY thing that can move a
+    // meeple out of a supply, which it is - no card in the 105 touches the
+    // supply - and it is the same standing hole `meepleSpent` names above. A
+    // card that ever causes a visit inside a rollout makes this line a silent
+    // subsidy and the charge has to move here.
+    //
+    // ⭐ AND WHAT THE HOST GAINS IS STILL 0. A meeple handed to a rival is a
+    // stored action for them, but this pricer reads what the ACTING seat gains
+    // and never rival benefit or rival harm (see the header on `priceEvent`).
+    // The arm makes the visit generous in a way the card fee was not, and that
+    // generosity is deliberately invisible here: pricing it would make the bots
+    // altruistic, and `a02-generosity` measures what they give away instead.
     case 'doorUsed':
     case 'reshuffled':
     case 'cardsDiscarded':

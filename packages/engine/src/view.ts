@@ -19,6 +19,7 @@ import type {
   GameEvent,
   GameState,
   IslandState,
+  NoticeBoardState,
   Resume,
   Seat,
   Task,
@@ -47,6 +48,14 @@ export interface RivalView {
    * knowing what free action a rival is holding is part of reading the table.
    */
   meeples: Record<Suit, number>;
+  /**
+   * THE FIVE COLOUR SLOTS, meeple-loop arm only and FULLY PUBLIC. Meeples sit on
+   * a board in front of their host for everyone to read, and which colours of
+   * which neighbour are shut is the information the whole bonus decision is
+   * made on - a hidden slot would make the arm unplayable rather than merely
+   * unclear. Absent under the shipped `'card'` game, where there are no slots.
+   */
+  noticeBoard?: NoticeBoardState;
   handCount: number;
   barnCount: number;
   tableau: BuildingView[];
@@ -63,6 +72,8 @@ export interface PlayerView {
   you: {
     suit: Suit;
     meeples: Record<Suit, number>;
+    /** Your own five colour slots. Meeple-loop arm only - see `RivalView`. */
+    noticeBoard?: NoticeBoardState;
     hand: CardId[];
     barn: Partial<Record<Suit, number>>;
     tableau: BuildingView[];
@@ -139,6 +150,23 @@ export function redactTask(data: GameData, task: Task, seat: Seat): Task {
   return { ...task };
 }
 
+/**
+ * The colour slots, deep-copied - or nothing at all under the shipped game,
+ * where a `PlayerState` carries no board. A spread rather than an assignment so
+ * the key is ABSENT and not present-and-undefined, which is what keeps the
+ * control arm's views identical to 03/09/2026.
+ */
+function copyNoticeBoard(board: NoticeBoardState | undefined): { noticeBoard?: NoticeBoardState } {
+  if (!board) return {};
+  return {
+    noticeBoard: {
+      slots: Object.fromEntries(
+        Object.entries(board.slots).map(([colour, meeples]) => [colour, [...meeples]]),
+      ) as Record<Suit, Suit[]>,
+    },
+  };
+}
+
 function buildingView(data: GameData, b: { card: CardId; stack: CardId[] }): BuildingView {
   return { card: b.card, stack: b.stack.map((id) => cardById(data, id).suit) };
 }
@@ -163,6 +191,7 @@ export function viewFor(data: GameData, state: GameState, seat: Seat): PlayerVie
     you: {
       suit: you.suit,
       meeples: { ...you.meeples },
+      ...copyNoticeBoard(you.noticeBoard),
       hand: [...you.hand],
       barn,
       tableau: you.tableau.map((b) => buildingView(data, b)),
@@ -176,6 +205,7 @@ export function viewFor(data: GameData, state: GameState, seat: Seat): PlayerVie
               seat: s,
               suit: p.suit,
               meeples: { ...p.meeples },
+              ...copyNoticeBoard(p.noticeBoard),
               handCount: p.hand.length,
               barnCount: p.barn.length,
               tableau: p.tableau.map((b) => buildingView(data, b)),

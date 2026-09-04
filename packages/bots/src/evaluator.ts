@@ -69,7 +69,21 @@ const TIE_EPSILON = 1e-9;
  * not evidence that the restriction is harmless at a table.
  */
 const MEEPLE_WINDOW: readonly MoveType[] = ['spendMeeple'];
-const BONUS_WINDOW: readonly MoveType[] = ['visit', 'bonusDraw'];
+/**
+ * ⭐ `collect` JOINS THE BONUS WINDOW BECAUSE IT IS A BONUS OPTION, not because
+ * anything measured needs it today.
+ *
+ * The window only runs under `bonusTiming: 'start'`, and both the shipped game
+ * and the meeple-loop arm ship `'end'`, so this list is inert in every arm
+ * currently measured. It is completed anyway: the failure it guards against -
+ * a big main action closing the slot on its way past, so the report reads "the
+ * bonus slot is dead" when it is the bot that is - cost twelve whole games to
+ * find once, and a `'start'` sweep under the arm would have hit it again with
+ * Collect missing. `spendMeeple` never enumerates under the arm and `collect`
+ * never under the control, so each list entry is simply absent where it does not
+ * apply.
+ */
+const BONUS_WINDOW: readonly MoveType[] = ['visit', 'bonusDraw', 'collect'];
 
 /**
  * The scoring loop. One `Scratch` for the whole decision, one `Outcomes` (which

@@ -168,7 +168,11 @@ describe('a drag reaches what a click reaches', () => {
       for (const p of positions) {
         for (const move of p.moves) {
           if (move.type !== 'visit') continue;
+          // TODO(meeple-loop): owned by the ui pass. This whole drag test is
+          // about the CARD fee; a meeple visit places no card, so it has no
+          // drag source and is skipped rather than modelled here.
           const card = move.fee;
+          if (card === null) continue;
           const intent = held(card);
           const live = liveTargets(p.view, p.moves, intent);
           if (move.host !== move.seat) {

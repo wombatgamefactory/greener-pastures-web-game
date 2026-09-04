@@ -14,8 +14,9 @@
  */
 
 import type { GameData, Suit, WorkerAction } from '@gp/data';
+import { isMeepleCurrency } from '@gp/data';
 
-import { cardById, canTakeCard, drawableSuits, player } from './query.js';
+import { cardById, canTakeCard, drawableSuits, noticeBoardSlots, player } from './query.js';
 import { shuffle } from './rng.js';
 import type { CardId, GameEvent, GameState, IslandTileState, Seat, Task } from './state.js';
 
@@ -64,19 +65,100 @@ export class Fx {
   // setup from a bag of 25.
 
   /**
-   * Claim the meeple off an island delivery space. Only `doDeliver` calls it,
-   * and the space it names is the one the deliverer just took.
+   * Claim a meeple into a seat's supply: off an island delivery space
+   * (`doDeliver`), out of the magenta balloon's bag, or off your own Notice
+   * Board (`collectBoard` below routes through here).
+   *
+   * ⭐ THE SUPPLY CAP IS APPLIED HERE AND NOWHERE ELSE (R4, the meeple-loop
+   * arm). A meeple of a colour the seat is already at the cap on is RETURNED TO
+   * THE BOX and `meepleBoxed` is emitted INSTEAD of `meepleGained`, so the two
+   * events partition every meeple ever offered to a supply and the leak is
+   * countable by source. Returns true when the meeple was kept.
+   *
+   * ⚠️ THE CAP DOES NOT APPLY UNDER THE `'card'` GAME, whatever
+   * `meepleCapPerColour` says. That is not an oversight and not a knob bug: in
+   * v31 a spent meeple LEAVES the game, so the supply only ever shrinks and a
+   * ceiling would be a rule change to the control arm. The cap exists because
+   * the arm made meeples recirculate.
    */
-  gainMeeple(seat: Seat, colour: Suit, tile: string | null, space: number | null): void {
+  gainMeeple(
+    seat: Seat,
+    colour: Suit,
+    tile: string | null,
+    space: number | null,
+    source: 'island' | 'collect' | 'balloon' = 'island',
+  ): boolean {
     this.touch(seat);
     const p = player(this.state, seat);
+    if (isMeepleCurrency(this.data)) {
+      const cap = this.data.rules.turn.meepleCapPerColour;
+      if (p.meeples[colour] >= cap) {
+        this.emit({ e: 'meepleBoxed', seat, colour, source });
+        return false;
+      }
+    }
     p.meeples[colour] += 1;
     this.emit({ e: 'meepleGained', seat, colour, tile, space });
+    return true;
+  }
+
+  /**
+   * THE MEEPLE VISIT (R1, R10): move one meeple - or a wild PAIR - out of the
+   * visitor's supply and into the `colour` slot of the host's Notice Board.
+   *
+   * Both meeples of a pair land in the slot of the action bought, not in their
+   * own colours' slots, which is what makes the wild spend cost the host
+   * nothing extra to collect and keeps "a slot is blocked while a meeple sits in
+   * it" a single-slot rule. Nothing leaves the game: the host takes them back.
+   */
+  placeMeepleOnBoard(visitor: Seat, host: Seat, colour: Suit, meeples: readonly Suit[]): void {
+    this.touch(visitor);
+    this.touch(host);
+    const from = player(this.state, visitor);
+    const slots = noticeBoardSlots(this.state, host);
+    const slot = slots[colour];
+    if (!slot) throw new Error(`Seat ${host} has no ${colour} slot`);
+    for (const m of meeples) {
+      if (from.meeples[m] < 1) throw new Error(`Seat ${visitor} has no ${m} meeple`);
+      from.meeples[m] -= 1;
+      slot.push(m);
+    }
+  }
+
+  /**
+   * COLLECT (R7): every meeple off this seat's own Notice Board into their
+   * supply, through the cap.
+   *
+   * ⚠️ THE SLOTS ARE EMPTIED WHETHER OR NOT THE MEEPLE FITS. A boxed duplicate
+   * still comes off the board, because the rule is "take the meeples off", not
+   * "take the ones you can use" - leaving a refused meeple in the slot would
+   * keep the host's own door shut for a colour they can never clear.
+   */
+  collectBoard(seat: Seat): { kept: Suit[]; boxed: Suit[] } {
+    this.touch(seat);
+    const slots = noticeBoardSlots(this.state, seat);
+    const kept: Suit[] = [];
+    const boxed: Suit[] = [];
+    for (const colour of this.data.cards.suits) {
+      const slot = slots[colour];
+      if (!slot) continue;
+      for (const meeple of slot.splice(0)) {
+        if (this.gainMeeple(seat, meeple, null, null, 'collect')) kept.push(meeple);
+        else boxed.push(meeple);
+      }
+    }
+    this.emit({ e: 'boardCollected', seat, kept, boxed });
+    return { kept, boxed };
   }
 
   /**
    * Spend a meeple: it leaves the supply and LEAVES THE GAME. There is no pool
    * to return it to, deliberately - it is a stored action, used once.
+   *
+   * ⚠️ THE `'card'` GAME'S PRIMITIVE ONLY. Its one caller is `doSpendMeeple`,
+   * the turn-start spend, which the meeple-loop arm deletes outright (R8): under
+   * the arm a meeple is spent by MOVING to a neighbour's board and never by
+   * leaving the game, which is `placeMeepleOnBoard` above.
    *
    * The `meepleSpent` event is emitted by `doSpendMeeple` rather than here, so
    * that it carries the ACTION the colour bought alongside the colour itself.

@@ -20,10 +20,17 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import { deliveriesPerTile } from '@gp/data';
+import { isMeepleCurrency, meeplesPerTile } from '@gp/data';
 
 import { seedRng, shuffle } from './rng.js';
-import type { AerodromeState, CardId, GameState, IslandTileState, TurnState } from './state.js';
+import type {
+  AerodromeState,
+  CardId,
+  GameState,
+  IslandTileState,
+  NoticeBoardState,
+  TurnState,
+} from './state.js';
 
 export interface NewGameOptions {
   seats: number;
@@ -55,6 +62,49 @@ export function freshTurn(): TurnState {
 /** An empty meeple supply - all five colours present at zero, so nothing has to test for a missing key. */
 export function emptyMeeples(data: GameData): Record<Suit, number> {
   return Object.fromEntries(data.cards.suits.map((s) => [s, 0])) as Record<Suit, number>;
+}
+
+/**
+ * THE STARTING SUPPLY. Empty under the shipped `'card'` game - the island is its
+ * only source - and `rules.turn.startingMeeplesPerColour` of EACH colour under
+ * the meeple-loop arm (R3).
+ *
+ * ⚠️ THE ARM'S STARTING MEEPLES ARE NOT DRAWN FROM THE ISLAND BAG. They are new
+ * components, so the bag still seeds the island unchanged and `meeplePool` is
+ * untouched. Five per player plus one per tile is 32 at four seats against a bag
+ * of 25; whether the physical bag grows is a box question for Dean, not one the
+ * simulator can answer.
+ */
+export function startingMeeples(data: GameData): Record<Suit, number> {
+  const n = data.rules.turn.startingMeeplesPerColour;
+  if (!isMeepleCurrency(data) || n <= 0) return emptyMeeples(data);
+  return Object.fromEntries(data.cards.suits.map((s) => [s, n])) as Record<Suit, number>;
+}
+
+/**
+ * An empty Notice Board: five colour slots, all clear (R5). Only ever called
+ * under the meeple-loop arm - see the comment on `PlayerState.noticeBoard` for
+ * why the shipped game carries no such field at all.
+ */
+export function freshNoticeBoard(data: GameData): NoticeBoardState {
+  return {
+    slots: Object.fromEntries(data.cards.suits.map((s) => [s, [] as Suit[]])) as Record<
+      Suit,
+      Suit[]
+    >,
+  };
+}
+
+/**
+ * The player fields the meeple-loop arm adds, as a spread.
+ *
+ * ⭐ IT CONTRIBUTES NOTHING UNDER THE `'card'` GAME, and that is the point: the
+ * key is ABSENT rather than present-and-undefined, so a serialised state, a
+ * capture and a replay comparison are byte-identical to 03/09/2026. One function
+ * so `newGame` and the testkit cannot disagree about it.
+ */
+export function meepleLoopPlayerFields(data: GameData): { noticeBoard?: NoticeBoardState } {
+  return isMeepleCurrency(data) ? { noticeBoard: freshNoticeBoard(data) } : {};
 }
 
 /**
@@ -137,7 +187,12 @@ export function buildIsland(
   meeples: Suit[],
 ): IslandTileState[] {
   const crates = data.island.tileRule.crates;
-  const spaces = deliveriesPerTile(data) * data.island.meeples.perDeliverySpace;
+  // ⭐ HOW MANY MEEPLES A TILE IS SEEDED WITH IS DATA (R12). The shipped game
+  // seeds every delivery space; the meeple-loop arm seeds only the spaces named
+  // in `island.meeples.seededSpaces` - [1], the 3 VP second delivery - so a tile
+  // holds ONE meeple, stored densely, and `meepleIndexForSpace` is what maps a
+  // space back to it.
+  const spaces = meeplesPerTile(data);
   let next = 0;
   let nextMeeple = 0;
   return islandTilesInPlay(data, seats).map((tileId) => {
@@ -242,7 +297,8 @@ export function newGame(data: GameData, opts: NewGameOptions): GameState {
     // 0 since v31. `splice(0, 0)` is a deliberate no-op rather than a branch, so
     // the knob still works if a starting barn is ever wanted back.
     barn: decks[suit].splice(0, startingBarnCards),
-    meeples: emptyMeeples(data),
+    meeples: startingMeeples(data),
+    ...meepleLoopPlayerFields(data),
     tableau: data.cards.catalogue
       .filter((c) => c.suit === suit && c.type === 'starter' && c.enabled)
       .map((c) => ({ card: c.id, stack: [] as CardId[] })),

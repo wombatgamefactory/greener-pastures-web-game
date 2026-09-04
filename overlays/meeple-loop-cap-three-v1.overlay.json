@@ -1,0 +1,9 @@
+{
+  "name": "meeple-loop-cap-three-v1",
+  "description": "THE CAP SWEEP, THIRD RUNG, added 04/09/2026 because the second rung moved the headline number the wrong way for the design as ruled. At a cap of 1 the arm reads hook 0.37 and boxes 13.41 meeples a game; at 2 it reads 0.40 and boxes 7.67. So loosening the cap RAISED the visit rate and halved the waste, which falsifies the forcing story the cap was defended with (that use-them-or-lose-them is what keeps meeples circulating) and supports the anti-pile story only in the sense that there was no pile to prevent. This rung asks the obvious next question: is 2 the peak, or is the cap simply a tax whose removal is monotonically good? READ IN THIS ORDER: (1) the hook, against 0.37 at cap 1 and 0.40 at cap 2 - a further rise says the cap is pure friction and the rule should probably go; a fall says 2 is a real optimum and the cap is doing the job it was ruled for, one rung looser than ruled; (2) meeples boxed per game, which should keep falling and is the component-waste argument; (3) the empty-board collect share, the solitaire line, against 54.2% and 50.5%; (4) median supply in the last third, which is the hoarding check and the one number that could turn a rising hook into a bad result, because a seat sitting on a deep supply it never spends is the v31 failure returning in a new form. ⚠️ READ ALL OF IT AGAINST THE BOT DIAL, NOT AS A MECHANISM RESULT. meepleGain (2.5) and MEEPLE_LATENT (0.4) were set by argument rather than measurement, they are not overlay-addressable, and under this arm they price most of the bonus slot. A cap sweep is partly a sweep of the bots opinion of what a stored meeple is worth.",
+  "schemaVersion": 1,
+  "set": {
+    "rules.turn.visitCurrency": "meeple",
+    "rules.turn.meepleCapPerColour": 3
+  }
+}

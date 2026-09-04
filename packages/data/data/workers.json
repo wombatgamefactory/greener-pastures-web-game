@@ -14,6 +14,7 @@
       "A MEEPLE IS THE SAME ACTION WITHOUT THE CARD. It is drawn face up onto an island delivery space at setup, claimed with that delivery, spent one at a time at the start of a later turn, and then leaves the game for good. A meeple of a suit that is NOT at the table still works, which is why this file lists all five entries regardless of the seat count and why island.json deals its bag from all five colours: the five actions exist independently of who farms what. The colour-to-action map is therefore here and nowhere else, and island.json says so explicitly rather than copying it.",
       "RULING (carried over, unchanged since v13): suit powers apply to actions performed through a door or by a meeple. It is your action, whoever's premises it is taken on and whatever wooden thing paid for it.",
       "`name` IS FLAVOUR ONLY. These five names were printed on the Service cards that no longer exist, and nothing in v31 prints them - the door is printed on the Notice Board and the meeple is a colour. They are kept because the UI and the reports read better with a name than with an action id, and because renaming them is a design decision this file is not entitled to make on its own. Treat them as labels awaiting a ruling, not as card titles.",
+      "drawUnderMeepleCurrency IS THE ORCHARD DOOR'S SECOND PRINTED PAYLOAD, READ ONLY UNDER rules.turn.visitCurrency 'meeple' (Dean, 04/09/2026, rule R2). `draw` at 3/3 keeps driving the shipped 'card' game and MUST NOT be edited to move the arm, or the control moves with it. Under the arm the door is a plain Draw 2, and the whole of the reason for the exception has gone with the fee: Draw 3 existed because a visit cost a CARD, so a door that produced cards had to over-deliver against a free Draw 1 or buying it was net zero. A meeple visit costs no card and the free standalone Draw 1 does not exist, so the self-cancellation law has nothing left to bite on and every one of the five doors is the plain base action again. Sweep it back to 3/2 as a control if the Orchard slot takes an implausible share of visits.",
       "linkedSuit is ownership in the door sense: the seat playing that suit owns that Notice Board and nobody else does, so the table's menu of buyable actions is decided by which suits were chosen. It is NOT ownership in the meeple sense - anybody may hold and spend a meeple of any colour."
     ],
     "unresolved": [
@@ -47,6 +48,10 @@
       "draw": {
         "see": 3,
         "keep": 3
+      },
+      "drawUnderMeepleCurrency": {
+        "see": 2,
+        "keep": 2
       }
     },
     {

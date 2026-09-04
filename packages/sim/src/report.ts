@@ -14,6 +14,7 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
+import { isMeepleCurrency } from '@gp/data';
 import { ENGINE_VERSION, RULES_EDITION } from '@gp/engine';
 import { LADDER, POLICY_IDS } from '@gp/bots';
 
@@ -303,7 +304,8 @@ function mirrorLine(row: WatchlistRow, mirrorGames: number): string[] {
  * spending and shorter barns - which is survivorship bias landing on two of the
  * assertions.
  */
-function seriesSection({ pooled }: ReportInput): string[] {
+function seriesSection({ data, pooled }: ReportInput): string[] {
+  const arm = isMeepleCurrency(data);
   const out = [
     THIN,
     'THE SERIES  (ended games; the [all] column includes stalls, so the bias is visible)',
@@ -350,14 +352,38 @@ function seriesSection({ pooled }: ReportInput): string[] {
     const turns = sum(g.map((x) => sum(x.turnsBySeat)));
     return num(turns === 0 ? NaN : sum(g.map((x) => sum(x.actionsBySeat))) / turns, 2);
   });
-  line('meeples spent / gained', (g) => {
-    const got = sum(g.map((x) => sum(x.meeplesGainedBySeat)));
-    return pct(got === 0 ? NaN : sum(g.map((x) => sum(x.meeplesSpentBySeat))) / got, 0);
-  });
-  line('self-visit share of visits', (g) => {
-    const all = sum(g.map((x) => sum(x.visitsBySeat)));
-    return pct(all === 0 ? NaN : sum(g.map((x) => sum(x.selfVisitsBySeat))) / all, 0);
-  });
+  // ⭐ TWO OF THE THREE SWAP UNDER THE MEEPLE-LOOP ARM, because under it they
+  // would print numbers that mean nothing. "Spent / gained" is arithmetic about
+  // a population that does not exist once meeples recirculate (see
+  // a15-meeple-economy), and the self-visit share is 0 by construction (X5) and
+  // therefore a column of zeroes where a reader expects information. What
+  // replaces them are the two lines the handoff asks a scanner to read first.
+  if (arm) {
+    line('spends per meeple-turn', (g) => {
+      const held = sum(g.map((x) => sum(x.meepleTurnsBySeat)));
+      return num(held === 0 ? NaN : sum(g.map((x) => sum(x.meeplesSpentBySeat))) / held, 2);
+    });
+    line('wild share of spends', (g) => {
+      const visits = sum(g.map((x) => sum(x.visitsBySeat)));
+      return pct(visits === 0 ? NaN : sum(g.map((x) => sum(x.wildVisitsBySeat))) / visits, 0);
+    });
+    line('empty-board collects / turn', (g) => {
+      const turns = sum(g.map((x) => sum(x.turnsBySeat)));
+      return pct(turns === 0 ? NaN : sum(g.map((x) => sum(x.collectsEmptyBySeat))) / turns, 0);
+    });
+    line('meeples boxed per game', (g) =>
+      num(g.length === 0 ? NaN : sum(g.map((x) => sum(x.meeplesBoxedBySeat))) / g.length, 1),
+    );
+  } else {
+    line('meeples spent / gained', (g) => {
+      const got = sum(g.map((x) => sum(x.meeplesGainedBySeat)));
+      return pct(got === 0 ? NaN : sum(g.map((x) => sum(x.meeplesSpentBySeat))) / got, 0);
+    });
+    line('self-visit share of visits', (g) => {
+      const all = sum(g.map((x) => sum(x.visitsBySeat)));
+      return pct(all === 0 ? NaN : sum(g.map((x) => sum(x.selfVisitsBySeat))) / all, 0);
+    });
+  }
   line('lead changes (median)', (g) => num(median(g.map((x) => x.leadChanges)), 0));
   line('winning score (median)', (g) =>
     num(median(g.flatMap((x) => (x.winner === null ? [] : [x.scores[x.winner]?.total ?? NaN]))), 0),

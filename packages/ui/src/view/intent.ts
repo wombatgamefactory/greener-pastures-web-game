@@ -450,7 +450,9 @@ export function visitFeeOptions(
     if (host === null && self !== undefined && you !== undefined) {
       if (self !== (move.host === you)) continue;
     }
-    out.add(move.fee);
+    // TODO(meeple-loop): owned by the ui pass. Null under the meeple arm: a
+    // visit spends meeples, so no hand card is ever a live drag source for one.
+    if (move.fee !== null) out.add(move.fee);
   }
   return out;
 }
@@ -664,6 +666,10 @@ export const MOVE_ROUTES = {
   deliver: 'island-tile',
   moveBalloon: 'balloon',
   visit: 'visit-panel',
+  // TODO(meeple-loop): owned by the ui pass. Collect is a bonus-slot button
+  // beside Draw 1, so it routes where bonusDraw routes until that pass gives
+  // the Notice Board slots a surface of their own.
+  collect: 'action-bar',
   pass: 'action-bar',
   endTurn: 'action-bar',
 } satisfies Record<MoveType, string>;

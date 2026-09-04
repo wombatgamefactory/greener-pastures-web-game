@@ -101,8 +101,12 @@ function cardIdsIn(move: Move, catalogue: ReadonlySet<CardId>): CardId[] {
     case 'keep':
       return [...act.cards];
     case 'visit':
-      // ONE fee since v31: no route places two cards on a board.
-      return [act.fee];
+      // ONE fee since v31: no route places two cards on a board - and NONE at
+      // all under the meeple-loop arm, where a visit is paid in meeples and no
+      // card ever leaves the hand (R1). A null fee contributes no card id, so
+      // this leak check simply has nothing to follow on that route rather than
+      // having a hole in it.
+      return act.fee === null ? [] : [act.fee];
     case 'cardMove':
       return [act.card, ...fromPayload(act.payload)];
     case 'cardTask':

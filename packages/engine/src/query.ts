@@ -85,8 +85,30 @@ export function faceOf(data: GameData, building: BuildingState): Card {
   return cardById(data, building.card);
 }
 
+/**
+ * ⭐ THE ONE SEAM THAT TURNS THE NOTICE BOARD FROM A BUILDING INTO A CARD WITH
+ * FIVE SLOTS (the meeple-loop arm, R5).
+ *
+ * A null threshold IS "not a building" everywhere in this engine: `isFull` is
+ * false, `canTakeCard` is false and `roomOn` is 0, so the board falls out of the
+ * sow targets, the harvest targets, the Apiary door's legality check, `roomOn`'s
+ * callers and A21 The Wax Hall's "a building with a card on it" all at once,
+ * because every one of them reads through `thresholdOf`. Nothing may place a
+ * card on it under the arm, so its stack stays empty for the whole game and A21
+ * counts it at 0 without a special case.
+ *
+ * GROW and `activateOnly` exclude it by SLOT rather than by threshold and are
+ * untouched - they refused it before the arm and they refuse it after.
+ */
+function noticeBoardIsBuilding(data: GameData): boolean {
+  return data.rules.turn.visitCurrency !== 'meeple';
+}
+
 export function thresholdOf(data: GameData, building: BuildingState): number | null {
   const printed = faceOf(data, building).threshold;
+  if (!noticeBoardIsBuilding(data) && cardById(data, building.card).slot === 'noticeboard') {
+    return null;
+  }
   // ⭐ THE DOOR'S THRESHOLD IS AN OVERRIDE (ruled 2, 20/08/2026). Applied at
   // this one seam deliberately: `isFull`, `canTakeCard` and `roomOn` all read
   // through here, so the visit, the Helping Hand, the sow targets and the clog
@@ -206,6 +228,32 @@ export function doorOf(data: GameData, suit: Suit): SuitDoor {
   const door = data.workers.roster.find((w) => w.linkedSuit === suit);
   if (!door) throw new Error(`No door action for suit ${suit}`);
   return door;
+}
+
+/**
+ * THE FIVE COLOUR SLOTS of a seat's Notice Board, under the meeple-loop arm.
+ *
+ * Throws rather than returning a default, for the same reason `noticeBoardOf`
+ * does: a seat without slots while the arm is on is a setup that never ran, and
+ * a silent empty board would hand every rival a free visit and corrupt the hook
+ * metric invisibly. `PlayerState.noticeBoard` is absent under the `'card'` game
+ * by design - see its comment - so nothing on that path may call this.
+ */
+export function noticeBoardSlots(state: GameState, seat: Seat): Record<Suit, Suit[]> {
+  const board = player(state, seat).noticeBoard;
+  if (!board) throw new Error(`Seat ${seat} has no Notice Board slots`);
+  return board.slots;
+}
+
+/** A slot refuses its colour while any meeple sits in it (R6). */
+export function slotBlocked(state: GameState, seat: Seat, colour: Suit): boolean {
+  return (noticeBoardSlots(state, seat)[colour]?.length ?? 0) > 0;
+}
+
+/** Meeples of every colour a seat is holding, in colour order. Duplicates are impossible under the cap. */
+export function meeplesHeld(data: GameData, state: GameState, seat: Seat): Suit[] {
+  const held = player(state, seat).meeples;
+  return data.cards.suits.filter((colour) => (held[colour] ?? 0) > 0);
 }
 
 /**

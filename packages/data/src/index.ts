@@ -134,7 +134,53 @@ export function meeplesDealt(data: GameData, seats: number): number {
   const rows = data.island.slotsBySeats[String(seats)];
   if (!rows) return 0;
   const tiles = Object.values(rows).reduce((n, count) => n + count, 0);
-  return tiles * deliveriesPerTile(data) * data.island.meeples.perDeliverySpace;
+  return tiles * meeplesPerTile(data);
+}
+
+/**
+ * Is the MEEPLE-LOOP ARM on? One predicate, so that "which game are we playing"
+ * is asked in exactly one spelling across the engine, the bots and the sim.
+ *
+ * Everything the arm changes is gated on this: the visit's currency, the Notice
+ * Board being a building at all, the bonus slot's second option, the turn-start
+ * meeple spend, the supply cap and which island spaces carry a meeple. `'card'`
+ * is the default and the control, so a `false` here must reach exactly the code
+ * that ran on 03/09/2026.
+ */
+export function isMeepleCurrency(data: GameData): boolean {
+  return data.rules.turn.visitCurrency === 'meeple';
+}
+
+/**
+ * How many meeples one tile is seeded with at setup.
+ *
+ * Under `'card'` that is every delivery space times `perDeliverySpace`, exactly
+ * as it has been since v31. Under `'meeple'` it is the length of
+ * `island.meeples.seededSpaces`, because the arm names WHICH spaces carry one
+ * rather than how many each carries.
+ */
+export function meeplesPerTile(data: GameData): number {
+  if (isMeepleCurrency(data)) {
+    return data.island.meeples.seededSpaces.filter((i) => i >= 0 && i < deliveriesPerTile(data))
+      .length;
+  }
+  return deliveriesPerTile(data) * data.island.meeples.perDeliverySpace;
+}
+
+/**
+ * Which entry of a tile's `meeples` array belongs to delivery space `space`, or
+ * -1 for a space that carries no meeple.
+ *
+ * ⭐ THE ARRAY IS DENSE AND THE SPACES ARE NOT, which is the whole reason this
+ * function exists. Under `'card'` every space has a meeple and the mapping is
+ * the identity, so nothing changes for the control. Under `'meeple'` only the
+ * seeded spaces do, and a tile holding one meeple for space 1 stores it at index
+ * 0 - a sparse array would not survive a JSON round-trip through a capture, and
+ * a nullable one would push the hole into every reader.
+ */
+export function meepleIndexForSpace(data: GameData, space: number): number {
+  if (!isMeepleCurrency(data)) return space;
+  return data.island.meeples.seededSpaces.indexOf(space);
 }
 
 /** Cards actually in the game: the enable flag applied. */

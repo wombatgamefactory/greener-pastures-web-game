@@ -28,6 +28,7 @@
  */
 
 import type { Suit } from '@gp/data';
+import { isMeepleCurrency } from '@gp/data';
 
 import { doorOf } from './query.js';
 import type { Fx } from './fx.js';
@@ -69,7 +70,14 @@ export function performDoorAction(fx: Fx, actor: Seat, colour: Suit, via: DoorVi
       // Draw 3, keep 3 - see the exception note above. No draw modifier is
       // consulted: `withDrawModifier` went with the Orchard Farmstead (v31), so
       // the printed numbers are the numbers.
-      const spec = door.draw ?? { see: 1, keep: 1 };
+      // ⭐ THE ORCHARD EXCEPTION IS CURRENCY-DEPENDENT (the meeple-loop arm,
+      // R2). Draw 3 exists only because a card visit has to beat a free Draw 1;
+      // under the meeple currency a visit costs no card and there is no
+      // standalone free Draw, so the door is the plain Draw 2 the other four
+      // doors are equivalents of. A SECOND printed payload rather than an
+      // overwrite, so the shipped 3/3 cannot move when the arm does.
+      const spec = (isMeepleCurrency(fx.data) ? door.drawUnderMeepleCurrency : undefined) ??
+        door.draw ?? { see: 1, keep: 1 };
       fx.pushTask({
         t: 'draw',
         pid: actor,

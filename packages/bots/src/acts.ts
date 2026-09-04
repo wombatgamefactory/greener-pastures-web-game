@@ -25,6 +25,25 @@
  * distinction is carried on the act, priced by two separate weights (`visit`
  * and `selfVisit`), and read once off `host === seat` rather than re-derived at
  * every call site.
+ *
+ * ## ⭐ THE MEEPLE-LOOP ARM (04/09/2026) - one new act, and one changed one
+ *
+ * `rules.turn.visitCurrency: 'meeple'` re-cuts the bonus slot: the free Draw 1
+ * becomes COLLECT (a new act) and the visit stops costing a card and starts
+ * costing a MEEPLE, or two of them as a wild. So the visit act grows two shapes
+ * rather than splitting into two acts - `fee` goes nullable and `meeples`
+ * arrives - and that is deliberate. **Everything about a visit except what pays
+ * for it is unchanged**: the door still runs, `outcome` still prices it,
+ * `bonusAction` still pays the action premium, and `host === seat` still
+ * separates the interaction door from the solitaire one (it is simply always
+ * false under the arm, by rule X5). Splitting the act would have forced every
+ * one of those terms to learn about the arm to keep doing the thing it already
+ * does.
+ *
+ * ⚠️ THE `'card'` GAME IS THE CONTROL AND MUST NOT MOVE. Under it `fee` is a
+ * CardId and `meeples` is empty, so every arm-gated branch below reduces to the
+ * pre-04/09/2026 arithmetic exactly - which is the property `bots.test.ts` and
+ * the reference reports both depend on.
  */
 
 import type { Suit } from '@gp/data';
@@ -73,7 +92,26 @@ export type Act =
    * Board, then that board's suit action. `self` is `host === seat` - see the
    * file header; it is the flag the whole pass turns on.
    */
-  | { a: 'visit'; host: Seat; fee: CardId; self: boolean }
+  | { a: 'visit'; host: Seat; fee: CardId | null; self: boolean; meeples: readonly Suit[] }
+  /**
+   * THE OTHER HALF OF THE BONUS SLOT UNDER THE MEEPLE-LOOP ARM
+   * (`rules.turn.visitCurrency: 'meeple'`, Dean 04/09/2026): sweep every meeple
+   * off your OWN Notice Board back into your supply, then Draw 1.
+   *
+   * It carries no fields, and it does not need any: WHICH meeples come back is
+   * a fact about the seat's own board, not about the move, so the two halves of
+   * its price are read off `Scratch` (`collectKeeps`, the meeples the cap will
+   * actually let through) rather than off the act. There is exactly one Collect
+   * on offer at a time - `collectOptions` returns a singleton - so there is
+   * nothing here for a term to order either.
+   *
+   * ⭐ IT IS THE ARM'S SOLITAIRE LINE, and therefore the direct heir of
+   * `bonusDraw`: an empty-board Collect IS a free Draw 1, and the bonus mix
+   * counts it as such. What makes it more than that is the other half - the
+   * stored actions a busy board hands back - which is why it is priced by two
+   * terms and not one.
+   */
+  | { a: 'collect' }
   | { a: 'cardMove'; card: CardId; kind: string; payload: Record<string, unknown> }
   | { a: 'pass' }
   | { a: 'endTurn' }
@@ -172,7 +210,21 @@ export function actOf(move: Move): Act {
     case 'moveBalloon':
       return { a: 'balloon', balloon: move.balloon, spend: move.spend };
     case 'visit':
-      return { a: 'visit', host: move.host, fee: move.fee, self: move.host === move.seat };
+      // ⭐ `meeples` IS THE ARM'S CURRENCY MADE VISIBLE TO THE TERM TABLE, and
+      // the empty array is the `'card'` game. One meeple for a plain visit, TWO
+      // for a wild spend (R10) - and the COUNT is the whole reason it is carried
+      // here rather than derived: a wild buys the same door for twice the stock,
+      // so a term that could only see "a visit happened" would price the two
+      // identically and the bots would burn pairs they should have held.
+      return {
+        a: 'visit',
+        host: move.host,
+        fee: move.fee,
+        self: move.host === move.seat,
+        meeples: move.meeples ?? [],
+      };
+    case 'collect':
+      return { a: 'collect' };
     case 'pass':
       return { a: 'pass' };
     case 'endTurn':

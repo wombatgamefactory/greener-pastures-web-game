@@ -97,7 +97,9 @@ function cardIdsIn(move: Move): CardId[] {
     case 'harvest':
       return [move.building];
     case 'visit':
-      return [move.fee];
+      // Null under the meeple-loop arm: the visit names meeples, not a card, so
+      // there is no id in the move for a view to have to carry.
+      return move.fee === null ? [] : [move.fee];
     case 'cardMove':
       return [move.card, ...idsInPayload(move.payload)];
     case 'task': {

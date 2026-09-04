@@ -179,7 +179,7 @@ export function visitWork(
 ): Applied {
   const draft = cloneState(state);
   const fx = new Fx(data, draft, visitor);
-  doVisit(fx, visitor, host, fee);
+  doVisit(fx, visitor, host, { fee });
   drainTasks(data, draft);
   return { state: draft, events: fx.events, audit: fx.audit };
 }
@@ -196,7 +196,8 @@ export function standingMoves(data: GameData, state: GameState, seat: Seat): Car
 /** Apply a standing card move. Re-validates against the enumerator - apply accepts exactly what legalMoves offers. */
 export function applyCardMove(data: GameData, state: GameState, move: CardMove): Applied {
   const offered = standingMoves(data, state, move.seat);
-  if (!offered.some((m) => sameShape(m, move))) {
+  const key = shapeKey(move);
+  if (!offered.some((m) => shapeKey(m) === key)) {
     throw new Error(`Move not offered: ${move.card}/${move.kind}`);
   }
   const draft = cloneState(state);
@@ -213,7 +214,8 @@ export function answerTask(data: GameData, state: GameState, answer: TaskAnswer)
   const head = state.tasks[0];
   if (!head) throw new Error('No pending task');
   const legal = taskAnswers(data, state, head);
-  if (!legal.some((a) => sameShape(a, answer))) {
+  const key = shapeKey(answer);
+  if (!legal.some((a) => shapeKey(a) === key)) {
     throw new Error(`Illegal answer to ${head.t}: ${JSON.stringify(answer)}`);
   }
   const draft = cloneState(state);
@@ -334,7 +336,24 @@ export function score(data: GameData, state: GameState): GameScore {
 
 /** Structural equality for answers/moves; card-set fields compare as sets. */
 export function sameShape(a: unknown, b: unknown): boolean {
-  return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+  return shapeKey(a) === shapeKey(b);
+}
+
+/**
+ * The canonical form as a comparable string - `sameShape`'s two halves, split
+ * apart so a caller scanning a LIST can compute the needle once.
+ *
+ * ⭐ THAT SPLIT IS THE WHOLE REASON THIS IS EXPORTED (04/09/2026). Every
+ * re-validation in the engine reads `legal.some((x) => sameShape(x, answer))`,
+ * which canonicalises and stringifies `answer` again for every candidate it
+ * walks; a CPU profile put `sameShape` plus `canonical` at ~9% of a whole game,
+ * and the probe applies moves speculatively so it is paid on the bots' critical
+ * path as well. Hoisting the needle's key out of the loop is the same
+ * comparison, the same string on both sides, and the same verdict - it simply
+ * stops computing one of them N times.
+ */
+export function shapeKey(value: unknown): string {
+  return JSON.stringify(canonical(value));
 }
 
 const SET_KEYS = new Set(['cards', 'payment']);

@@ -17,11 +17,13 @@ import {
   doDraw,
   doMoveBalloon,
   doHarvestAction,
+  doCollect,
   doSpendMeeple,
   doVisit,
   growOptions,
   harvestOptions,
   hasMainOption,
+  collectOptions,
   meepleOptions,
   visitOptions,
 } from './actions.js';
@@ -29,7 +31,7 @@ import { Fx } from './fx.js';
 import { handlerFor } from './handlers/registry.js';
 import { drawableSuits } from './query.js';
 import type { Applied } from './runtime.js';
-import { cloneState, doGrow, sameShape, standingMoves } from './runtime.js';
+import { cloneState, doGrow, shapeKey, standingMoves } from './runtime.js';
 import type { GameState, Move, Resume, Task } from './state.js';
 import { drainTasks, popTask, resolveTask, taskAnswers } from './tasks.js';
 import { settleTurn } from './turnflow.js';
@@ -107,7 +109,11 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
   for (const colour of meepleOptions(data, state, seat)) {
     moves.push({ type: 'spendMeeple', seat, colour });
   }
+  // The bonus slot's solitaire half, under whichever currency is in play:
+  // `bonusDrawOpen` is false under the meeple arm and `collectOptions` is empty
+  // under the shipped game, so exactly one of the two lines can contribute.
   if (bonusDrawOpen(data, state)) moves.push({ type: 'bonusDraw', seat });
+  moves.push(...collectOptions(data, state, seat));
   moves.push(...visitOptions(data, state, seat));
   moves.push(...standingMoves(data, state, seat));
   if (turn.actionSpent) moves.push({ type: 'endTurn', seat });
@@ -142,7 +148,9 @@ const MAIN_ACTIONS = new Set<Move['type']>([
  * named stopped existing.)
  */
 function resumeFor(type: Move['type']): Resume {
-  return type === 'visit' || type === 'bonusDraw' || type === 'spendMeeple' ? 'bonus' : 'main';
+  return type === 'visit' || type === 'bonusDraw' || type === 'collect' || type === 'spendMeeple'
+    ? 'bonus'
+    : 'main';
 }
 
 /** Apply one move. Throws on anything legalMoves would not offer. */
@@ -155,7 +163,9 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
     if (!head) throw new Error('No pending task');
     if (move.seat !== head.pid) throw new Error(`Task belongs to seat ${head.pid}`);
     const legal = taskAnswers(data, draft, head);
-    if (!legal.some((a) => sameShape(a, move.answer))) {
+    // The needle's key is hoisted out of the scan deliberately - see `shapeKey`.
+    const answerKey = shapeKey(move.answer);
+    if (!legal.some((a) => shapeKey(a) === answerKey)) {
       throw new Error(`Illegal answer to ${head.t}: ${JSON.stringify(move.answer)}`);
     }
     const fx = new Fx(data, draft, head.pid);
@@ -221,7 +231,12 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
       }
       break;
     case 'visit':
-      doVisit(fx, move.seat, move.host, move.fee);
+      // The move IS the spend: `fee` under the card currency, `meeples` plus
+      // `colour` under the meeple one, and doVisit branches on the knob.
+      doVisit(fx, move.seat, move.host, move);
+      break;
+    case 'collect':
+      doCollect(fx, move.seat);
       break;
     case 'endTurn':
       if (!turn.actionSpent) throw new Error('End turn requires the action spent (or passed)');
@@ -229,7 +244,8 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
       break;
     case 'cardMove': {
       const offered = standingMoves(data, draft, move.seat);
-      if (!offered.some((m) => sameShape(m, move))) {
+      const moveKey = shapeKey(move);
+      if (!offered.some((m) => shapeKey(m) === moveKey)) {
         throw new Error(`Move not offered: ${move.card}/${move.kind}`);
       }
       const handler = handlerFor(move.card);

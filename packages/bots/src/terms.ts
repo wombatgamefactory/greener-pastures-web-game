@@ -40,6 +40,28 @@
  *     no arm can tell which one the table is taking.
  *   - **`clogOwnBoard`** - the only structural brake v31 puts on self-visiting.
  *   - **`bonusDraw`** - the slot's free Draw 1, the yardstick every door beats.
+ *
+ * ## ⭐ THE MEEPLE-LOOP ARM (04/09/2026) - NO NEW TERM AND NO NEW WEIGHT
+ *
+ * `rules.turn.visitCurrency: 'meeple'` re-cuts the bonus slot into VISIT (a
+ * meeple onto a neighbour's board, never your own) and COLLECT (your own board
+ * swept back into your supply, plus Draw 1). Five terms change what they read
+ * and **not one constant moves**, which is deliberate: the arm has to be
+ * readable as a delta against the control on identical seeds, and a repriced
+ * table would make every delta a mixture of the rule and the instrument.
+ *
+ *   - **`handSpend`** loses the visit - no card is spent (R1).
+ *   - **`visitFeeJunk` / `visitFeeOwnCrop`** lose their subject with it.
+ *   - **`meepleSpend`** gains it: a visit costs one meeple, or TWO as a wild
+ *     (R10), at the price a meeple has always carried.
+ *   - **`meepleGain`** gains Collect, priced by the meeples that survive the
+ *     one-per-colour cap and never by the meeples on the board.
+ *   - **`bonusDraw`** gains Collect's draw, at the same rate the free Draw 1 had.
+ *   - **`clogOwnBoard`** has no subject at all and is guarded off explicitly.
+ *
+ * `bonusAction` (the whole-extra-action premium), `visit` and `selfVisit` are
+ * untouched, and `outcome` prices the door exactly as before, because what a
+ * visit IS did not change - only what pays for it.
  */
 
 import type { GameData, Suit } from '@gp/data';
@@ -252,8 +274,13 @@ function cardsLeavingHand(act: Act): number {
       return act.payment.length;
     case 'grow':
       return 1;
+    // ⭐ A MEEPLE VISIT PAYS NO CARD (R1, the meeple-loop arm). The null fee is
+    // the rule itself, not a sentinel: nothing is ever placed on a Notice Board
+    // under the arm, so `handSpend` - the only price left in the v31 game -
+    // simply has no subject here. Gated on the ACT rather than on the knob so
+    // the two can never disagree.
     case 'visit':
-      return 1;
+      return act.fee === null ? 0 : 1;
     case 'sow':
       return 1;
     case 'cardMove':
@@ -405,10 +432,42 @@ export const TERMS: readonly Term[] = [
      *
      * Pinned to `meepleSpend` in `weights.ts`: one price for a meeple, whichever
      * direction it travels. If one moves, move both.
+     *
+     * ## ⭐ IT NOW ALSO PRICES **COLLECT** (the meeple-loop arm, R7)
+     *
+     * Collect is the arm's other bonus option and it pays in two currencies at
+     * once: a flat Draw 1, which `bonusDraw` prices at the same rate it always
+     * priced the free draw, and the meeples coming home off your own board,
+     * which are stored actions and belong here at the island's own meeple price.
+     * Nothing new is introduced for it - same weight, same `meepleWorth` scale -
+     * because a meeple arriving from your own Notice Board and a meeple arriving
+     * off a tile are the same object arriving in the same supply, and any
+     * daylight between the two prices would be the instrument inventing a
+     * preference between the arm's two faucets.
+     *
+     * ⭐ **THE CAP IS PRICED, AND IT IS THE SUBTLE HALF.** The feature reads
+     * `s.collectKeeps` - the meeples that would SURVIVE the one-per-colour cap -
+     * so a duplicate is worth exactly 0 and collecting a board full of colours
+     * you already hold is worth precisely the draw and nothing else. That is the
+     * whole shape of the cap as a rule, and a bot that counted meeples on the
+     * board instead would over-rate the one position the cap exists to punish.
+     *
+     * ⚠️ **COLLECT MUST STAY OFF `isProbed`**, for the reason `deliver` is off
+     * it: inside a rollout the same meeples arrive as `meepleGained` events and
+     * `priceEvent` charges this same weight for each. Probing a Collect would
+     * pay for it twice. No card in the 105 causes a Collect today, so the two
+     * paths cannot both fire - but that is a fact about the catalogue and it is
+     * written here because the next card to reach for one would break it
+     * silently.
      */
     name: 'meepleGain',
-    claims: ['deliver', ...ACTION_AND_TASK],
+    claims: ['deliver', 'collect', ...ACTION_AND_TASK],
     feature: (act, s) => {
+      if (act.a === 'collect') {
+        let worth = 0;
+        for (const colour of s.collectKeeps) worth += meepleWorth(s, colour);
+        return worth;
+      }
       if (act.a !== 'deliver') return 0;
       const colour = meepleAtTile(s, act.tile);
       return colour === null ? 0 : meepleWorth(s, colour);
@@ -462,10 +521,57 @@ export const TERMS: readonly Term[] = [
      *  2. **It cannot compare this turn with next turn.** The evaluator is
      *     myopic per decision, so "wait for a better moment" is expressed as a
      *     flat reserve price and nothing else.
+     *
+     * ## ⭐ IT NOW ALSO CHARGES THE **VISIT** (the meeple-loop arm, R1, R10)
+     *
+     * Under the arm a visit costs no card and one MEEPLE, so the term that
+     * charged the turn-start spend is the term that charges this: same
+     * `meepleWorth`, same pinned weight, one price for a meeple leaving a supply
+     * whichever door it leaves by. `handSpend` used to charge 2.5 for the visit's
+     * card and `meepleGain` prices a meeple at 2.5, which is not a coincidence -
+     * `weights.ts` pinned them deliberately, on the reading that *"the two routes
+     * to a door are a card and a meeple, so the bot should be roughly
+     * indifferent between them"*. The arm deletes one route and the price of the
+     * other is unchanged, so the bonus slot's whole arithmetic - a door's rollout
+     * plus `bonusAction` 2.4 against the solitaire line's `bonusDraw` 1.2 -
+     * survives the currency change intact.
+     *
+     * ⚠️ **A SPENT MEEPLE IS NOT DESTROYED UNDER THE ARM, AND IT IS STILL A FULL
+     * LOSS TO THIS SEAT.** It moves to the host's board and the HOST collects it.
+     * That is the loop, and it is the half of the design that pays for being
+     * visited - but this bot is self-regarding by standing rule (`outcome.ts`),
+     * so what the host gains prices at 0 here exactly as the card fee did. If
+     * that rule is ever relaxed, this is one of the two places it lands.
+     *
+     * ⭐ **THE WILD SPEND IS CHARGED BY THE COUNT** (R10): two meeples buy one
+     * door, so the sum runs over `act.meeples` and a wild costs twice what a
+     * plain visit costs. That is the only thing separating the two in the bots'
+     * eyes - the door bought is identical, the rollout is identical, the action
+     * premium is identical - which is exactly the shape the wild-share metric
+     * wants, because it makes a wild a move a bot takes when the door is worth
+     * two meeples and never a move it takes for free.
+     *
+     * ⚠️ **THE HANDOFF SAID "MINUS TWO LATENT MEEPLES" AND THIS CHARGES
+     * `meepleWorth` INSTEAD.** The two agree in the case the spec was describing
+     * - the pair you spend as a wild is usually two colours whose own doors are
+     * dead, which `meepleWorth` prices at `MEEPLE_LATENT` each - and they differ
+     * when a live-door meeple goes into the pair, where a flat latent charge
+     * would under-price a real loss. Charging the flat rate would also break the
+     * pin: a meeple would cost less leaving than it credited arriving, and a bot
+     * whose books do not balance on its second resource burns it. Sweeping the
+     * flat-0.4 variant is a one-line change here if the wild share reads high.
      */
     name: 'meepleSpend',
-    claims: ['spendMeeple'],
-    feature: (act, s) => (act.a === 'spendMeeple' ? -meepleWorth(s, act.colour) : 0),
+    claims: ['spendMeeple', 'visit'],
+    feature: (act, s) => {
+      if (act.a === 'spendMeeple') return -meepleWorth(s, act.colour);
+      // The meeple-loop arm's visit. Empty under the `'card'` game, where a
+      // visit is paid for by `handSpend` and this contributes exactly nothing.
+      if (act.a !== 'visit') return 0;
+      let cost = 0;
+      for (const colour of act.meeples) cost += meepleWorth(s, colour);
+      return -cost;
+    },
     cost: true,
   },
 
@@ -735,11 +841,37 @@ export const TERMS: readonly Term[] = [
      * may simply be left unspent at 0, so a full hand already declines this
      * option without being pushed - and a negative would push the bot towards
      * SLOT UNSPENT, which is one of the four numbers the watch-list reads.
+     *
+     * ## ⭐ IT IS ALSO **COLLECT's** DRAW (the meeple-loop arm, R7, R9)
+     *
+     * The arm deletes the standalone free Draw 1 and attaches the same
+     * `rules.turn.bonusDraw` cards to Collect instead, so the NUMBER survives
+     * the rule and this term follows it. That is the honest mapping and not a
+     * convenience: *"collect an empty board"* is Draw 1 wearing a different move
+     * type, and the arm's own bonus mix counts it as the solitaire line for
+     * exactly that reason. Pricing it at any other rate would put a thumb on the
+     * one comparison the whole arm exists to make.
+     *
+     * ⭐ **IT IS ONLY HALF OF A COLLECT'S PRICE.** The other half - the meeples
+     * coming home, after the cap - is `meepleGain`'s, and a Collect on a busy
+     * board therefore beats a Collect on an empty one by exactly the stored
+     * actions it recovers. The two terms together are what make "the host is
+     * paid for being visited" visible to a bot at all; either one alone reports
+     * the arm as half a design.
+     *
+     * ⚠️ THE HAND-ROOM CAP APPLIES TO BOTH AND IS THE ARM'S ONE ASYMMETRY: a
+     * Collect into a full hand is worth its meeples and no draw, where a Collect
+     * into an empty one is worth both. That is the right shape - the draw really
+     * is worthless at the limit - but it means the arm's solitaire line goes to
+     * zero at a full hand where the v31 free Draw 1 did too, so the two arms stay
+     * comparable on that axis.
      */
     name: 'bonusDraw',
-    claims: ['bonusDraw'],
+    claims: ['bonusDraw', 'collect'],
     feature: (act, s) =>
-      act.a === 'bonusDraw' ? Math.min(s.data.rules.turn.bonusDraw, s.handRoom) : 0,
+      act.a === 'bonusDraw' || act.a === 'collect'
+        ? Math.min(s.data.rules.turn.bonusDraw, s.handRoom)
+        : 0,
   },
   {
     name: 'deckOwnCrop',
@@ -871,6 +1003,13 @@ export const TERMS: readonly Term[] = [
      */
     name: 'selfVisit',
     claims: ['visit'],
+    // ⛔ ALWAYS ZERO UNDER THE MEEPLE-LOOP ARM, BY THE RULE AND NOT BY A GUARD.
+    // X5 removes the self-visit under any flag, so `act.self` is false for every
+    // visit the engine will ever enumerate there and this feature never fires.
+    // Left exactly as it is: the term is the CONTROL arm's instrument, and one
+    // of the arm's own claims is that this reads 0 - which `a08-the-hook` should
+    // assert rather than assume, and which a special case here would make
+    // unfalsifiable.
     feature: (act) => (act.a === 'visit' && act.self ? 1 : 0),
   },
   {
@@ -923,6 +1062,13 @@ export const TERMS: readonly Term[] = [
      */
     name: 'bonusAction',
     claims: ['visit'],
+    // ⭐ UNCHANGED BY THE MEEPLE-LOOP ARM, ON PURPOSE. A visit still buys a
+    // whole core action, whatever paid for it, so the premium still fires and
+    // still only on a door that resolves something. It does NOT fire on Collect:
+    // Collect buys a Draw 1, which is half an action by the same anchor Dean set
+    // this weight with, and `bonusDraw` already pays exactly that half. Paying
+    // an action premium on the arm's solitaire line would hand the bonus mix
+    // back the answer it was built to measure.
     feature: (act, _s, move, o) =>
       act.a === 'visit' && isProbed(act) && o.value(move) > 0 ? 1 : 0,
   },
@@ -954,6 +1100,16 @@ export const TERMS: readonly Term[] = [
     name: 'clogOwnBoard',
     claims: ['visit'],
     feature: (act, s) => {
+      // ⛔ NO SUBJECT UNDER THE MEEPLE-LOOP ARM, AND THE GUARD IS EXPLICIT
+      // RATHER THAN INCIDENTAL. Three separate things already make this dead
+      // under the arm - there is no self-visit at all (X5, so `act.self` is
+      // false by construction), no card is placed on a board, and the board is
+      // not a building so `thresholdOfView` returns null and `fillsBuilding` is
+      // false. Any ONE of them would be enough, which is exactly why the flag is
+      // read here: a term whose zero depends on three coincidences is a term
+      // that comes back to life the first time one of them is relaxed, and this
+      // one is pinned to `unclogBoard` at 6, the largest cost in the table.
+      if (s.meepleArm) return 0;
       if (act.a !== 'visit' || !act.self || s.noticeBoard === null) return 0;
       return fillsBuilding(s, s.noticeBoard.card) ? -1 : 0;
     },
@@ -965,7 +1121,14 @@ export const TERMS: readonly Term[] = [
     // nothing more - `handSpend` charges the card itself.
     name: 'visitFeeJunk',
     claims: ['visit'],
-    feature: (act, s) => (act.a === 'visit' ? -cardValue(s.data, act.fee) : 0),
+    // ⛔ NO FEE, NO ORDERING (the meeple-loop arm, R1). "Your junk is their
+    // treasure" was a statement about a CARD changing hands and the arm stops
+    // any card changing hands, so this term loses its subject outright rather
+    // than changing rate. What replaces it as the ordering between two otherwise
+    // equal visits is `meepleSpend`: of two doors worth the same, take the one
+    // that costs the meeple you can least use. That is the same idea in the new
+    // currency, and it needed no new term.
+    feature: (act, s) => (act.a === 'visit' && act.fee !== null ? -cardValue(s.data, act.fee) : 0),
     cost: true,
   },
   {
@@ -982,7 +1145,13 @@ export const TERMS: readonly Term[] = [
      */
     name: 'visitFeeOwnCrop',
     claims: ['visit'],
-    feature: (act, s) => (act.a === 'visit' ? countOwnCrop(s, [act.fee]) : 0),
+    // ⛔ Null fee under the meeple-loop arm, so the magpie's disposal lane is
+    // shut with the rest of the fee terms. ⚠️ THE MAGPIE IS THEREFORE A WEAKER
+    // CONTROL UNDER THE ARM than it is under the shipped game: it can still
+    // acquire a target crop and still refuses to build its own, but it has lost
+    // the one move that let it dump own-crop cards for value. Read a magpie
+    // number off the arm knowing that, or do not read one.
+    feature: (act, s) => (act.a === 'visit' && act.fee !== null ? countOwnCrop(s, [act.fee]) : 0),
   },
 
   // --- positional, and the turn boundary ------------------------------------

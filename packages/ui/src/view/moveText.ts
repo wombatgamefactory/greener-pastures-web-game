@@ -268,7 +268,8 @@ export function visitText(
 ): string {
   const colour = seatSuits(view)[move.host];
   const door = colour ? doorLabel(data, colour) : 'their';
-  const fee = cardName(data, move.fee);
+  // TODO(meeple-loop): owned by the ui pass. A meeple visit names no card.
+  const fee = move.fee === null ? 'a meeple' : cardName(data, move.fee);
   return move.host === move.seat
     ? `Your own door: ${fee} onto your own Notice Board, then ${door}. No neighbour involved, and it fills your own board.`
     : `Visit ${who(view, move.host)}: ${fee} onto their Notice Board, then ${door}.`;
@@ -308,6 +309,9 @@ export function describeMove(data: GameData, view: PlayerView, move: Move): stri
       return `Bring in the ${balloonWord(move.balloon)} balloon: ${spendText(move.spend)}`;
     case 'visit':
       return visitText(data, view, move);
+    // TODO(meeple-loop): owned by the ui pass.
+    case 'collect':
+      return 'Collect: take the meeples off your own Notice Board, then Draw 1.';
     case 'pass':
       return 'Pass';
     case 'endTurn':

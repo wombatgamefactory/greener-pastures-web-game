@@ -74,6 +74,14 @@ export function settleTurn(data: GameData, draft: GameState, fx: Fx): void {
     if (bonusOpen(data, draft) && hasBonusOption(data, draft, draft.turnPlayer)) return;
     // The same knob reopens the meeple phase, because `meepleOpen` reads
     // `bonusUsed` and a late bonus leaves it empty. One line, same reasoning.
+    //
+    // ⭐ UNDER THE MEEPLE-LOOP ARM THIS LINE IS INERT BY CONSTRUCTION, and it
+    // must be: the turn-start meeple spend is DELETED (R8), so `meepleOptions`
+    // returns [] the moment `rules.turn.visitCurrency` is 'meeple' and the turn
+    // is never held open for a phase that no longer exists. The gate is left in
+    // place rather than made conditional, on exactly the reasoning above it -
+    // deleting a line because the shipped knob value makes it unreachable is
+    // how the bonus check came to be deleted on 19/08/2026 and had to come back.
     if (meepleOptions(data, draft, draft.turnPlayer).length > 0) return;
     // ⛔ The free card BUY held the turn open here too, which is why a seat
     // holding coins used to end its turn by DECLINING rather than by running out

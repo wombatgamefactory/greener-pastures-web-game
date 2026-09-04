@@ -46,7 +46,7 @@
 
 import type { Card, GameData, Suit, WorkerAction } from '@gp/data';
 import type { BuildingView, CardId, PlayerView } from '@gp/engine';
-import { deliveriesPerTile, doorForSuit } from '@gp/data';
+import { deliveriesPerTile, doorForSuit, isMeepleCurrency } from '@gp/data';
 
 import { magpieTarget } from './magpie.js';
 
@@ -85,8 +85,31 @@ export function cardById(data: GameData, id: CardId): Card {
  * Starters are single-faced since v31, so the pick is a plain card lookup and
  * the CardFace type has left the data package entirely.
  */
+/**
+ * A building's threshold as the VIEW can see it - and, under the meeple-loop
+ * arm, the one place the bots learn that the NOTICE BOARD IS NO LONGER A
+ * BUILDING (R5).
+ *
+ * ⭐ IT MIRRORS THE ENGINE'S `thresholdOf` SEAM ON PURPOSE. The engine turns the
+ * board into a card with five slots by returning null here, which drops it out
+ * of `isFull`, `canTakeCard` and `roomOn` all at once; this file has its own
+ * copy of that read, so without the same null the bots would carry a model of
+ * the game the engine does not share. The one place it bites is `doorReady`'s
+ * SOW branch - an empty Notice Board with a printed threshold of 2 looks like a
+ * legal sow target to the view and is refused by the engine - which would
+ * over-value an orange meeple in exactly the positions where the Apiary door is
+ * dead, and `meepleWorth` is the hoarding dial's own input.
+ *
+ * ⚠️ It does NOT copy the engine's `economy.noticeBoardThreshold` override, and
+ * never has. Under the `'card'` game the override and the print both read 2 and
+ * the drift is closed, so the two agree; if that knob is ever moved off the
+ * printed value again, this is the line that will silently disagree with the
+ * engine and it should be fixed here rather than worked around at a call site.
+ */
 export function thresholdOfView(data: GameData, building: BuildingView): number | null {
-  return cardById(data, building.card).threshold;
+  const card = cardById(data, building.card);
+  if (isMeepleCurrency(data) && card.slot === 'noticeboard') return null;
+  return card.threshold;
 }
 
 /**
@@ -120,6 +143,22 @@ export interface Scratch {
   readonly data: GameData;
   readonly view: PlayerView;
   readonly mySuit: Suit;
+  /**
+   * ⭐ WHICH GAME IS THIS - the meeple-loop arm, or the shipped `'card'`
+   * control? (`rules.turn.visitCurrency`, Dean 04/09/2026.)
+   *
+   * Derived once and read by every arm-gated term, so that "am I under the arm"
+   * has exactly ONE spelling in this package. The alternative - each term
+   * asking the data itself - is how a gate gets missed, and a missed gate here
+   * does not throw or fail a type check: it silently moves the CONTROL, which is
+   * the one thing the whole paired-arm method depends on not happening.
+   *
+   * ⚠️ MOST TERMS SHOULD NOT READ IT. A term that can gate on the ACT (a null
+   * `fee`, an empty `meeples`, a `collect`) should, because that gate is the
+   * rule's own shape and cannot drift from it. This flag is for the terms whose
+   * subject disappears entirely under the arm rather than changing form.
+   */
+  readonly meepleArm: boolean;
   /**
    * The magpie's mark: the strongest SEATED crop that is not `mySuit` (see
    * `magpie.ts`). Derived for every profile because it costs one array scan,
@@ -199,6 +238,31 @@ export interface Scratch {
    * place.
    */
   readonly meepleWorth: ReadonlyMap<Suit, number>;
+  /**
+   * ⭐ THE MEEPLES A COLLECT WOULD ACTUALLY KEEP - the meeple-loop arm's other
+   * bonus option, priced after the supply cap has taken its cut (R4, R7).
+   *
+   * Empty under the `'card'` game, which has no Collect, and empty under the arm
+   * whenever the seat's own board is empty - which is the case that matters
+   * most, because an empty-board Collect IS the free Draw 1 and is the solitaire
+   * line the bonus mix is watching.
+   *
+   * ⭐ **THE CAP IS THE WHOLE SUBTLETY, AND IT IS WHY THIS IS A LIST AND NOT A
+   * COUNT.** You may never hold two meeples of a colour, so collecting a board
+   * holding a colour you already hold gains you *nothing but the draw*: that
+   * meeple goes to the box. A bot that priced a Collect by how many meeples sat
+   * on its board would over-rate exactly the position the cap exists to punish -
+   * a full board and a full supply - and would report the cap as harmless.
+   *
+   * It replays `Fx.collectBoard` rather than approximating it: colours in
+   * `data.cards.suits` order, running the supply up as it goes, so a wild pair
+   * of two DIFFERENT colours sitting in one slot is resolved the same way the
+   * engine resolves it. (Two meeples of the SAME colour in one slot cannot
+   * happen - a wild pair is two different colours by rule, and the cap keeps a
+   * supply from ever holding two - but the running count would handle it
+   * correctly if it ever did.)
+   */
+  readonly collectKeeps: readonly Suit[];
 }
 
 /**
@@ -394,6 +458,37 @@ function meepleWorthByColour(
   return out;
 }
 
+/**
+ * Replay the engine's `collectBoard` against the view: which of the meeples on
+ * this seat's OWN Notice Board would survive the supply cap, in the order the
+ * engine takes them.
+ *
+ * Nothing to do under the `'card'` game, where a seat has no slots at all - the
+ * empty array is returned before anything is read, so the control pays one
+ * boolean for the arm's existence and no more.
+ */
+const NO_MEEPLES: readonly Suit[] = [];
+
+function collectKeepsFor(data: GameData, view: PlayerView): readonly Suit[] {
+  if (!isMeepleCurrency(data)) return NO_MEEPLES;
+  const slots = view.you.noticeBoard?.slots;
+  if (!slots) return NO_MEEPLES;
+  const cap = data.rules.turn.meepleCapPerColour;
+  // A running copy of the supply, because the cap is applied meeple by meeple in
+  // the engine and the second of a pair has to see the first one land.
+  const held: Partial<Record<Suit, number>> = { ...view.you.meeples };
+  const kept: Suit[] = [];
+  for (const slot of data.cards.suits) {
+    for (const meeple of slots[slot] ?? []) {
+      const have = held[meeple] ?? 0;
+      if (have >= cap) continue;
+      held[meeple] = have + 1;
+      kept.push(meeple);
+    }
+  }
+  return kept;
+}
+
 export function makeScratch(data: GameData, view: PlayerView): Scratch {
   const you = view.you;
   const buildings = new Map<CardId, BuildingView>();
@@ -423,6 +518,7 @@ export function makeScratch(data: GameData, view: PlayerView): Scratch {
     data,
     view,
     mySuit: you.suit,
+    meepleArm: isMeepleCurrency(data),
     targetSuit: magpieTarget(you.suit, view.suitsInPlay),
     handLimit,
     handRoom:
@@ -432,5 +528,6 @@ export function makeScratch(data: GameData, view: PlayerView): Scratch {
     farmsteadCrop,
     demandSuits,
     meepleWorth: meepleWorthByColour(data, view, buildings),
+    collectKeeps: collectKeepsFor(data, view),
   };
 }

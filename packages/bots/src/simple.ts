@@ -94,6 +94,19 @@ export const GREEDY_PRIORITY: readonly MoveType[] = [
   'spendMeeple',
   'visit',
   'bonusDraw',
+  // ⭐ COLLECT SITS BELOW `visit` AND BESIDE `bonusDraw`, which is the same
+  // judgement in the meeple arm's currency: it is that arm's solitaire half, so
+  // greedy takes it only when no visit is legal. Under the arm `bonusDraw` never
+  // enumerates and under the shipped game `collect` never does, so exactly one
+  // of these two lines is live in any given run and their order relative to each
+  // other can never matter.
+  //
+  // ⚠️ The blind spot in the note above is SMALLER under the arm and not gone:
+  // there is no self-visit to confuse a rival visit with (X5), so a greedy visit
+  // is always cross-table - but the move type still cannot tell a wild spend from
+  // a plain one, so greedy will burn pairs at random. It is not in
+  // `BALANCE_PROFILES` and no arm is measured through it.
+  'collect',
   'moveBalloon',
   'harvest',
   'build',

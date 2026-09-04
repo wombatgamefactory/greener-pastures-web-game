@@ -16,7 +16,7 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import { deliveriesPerTile, deliveryVp } from '@gp/data';
+import { deliveriesPerTile, deliveryVp, isMeepleCurrency, meepleIndexForSpace } from '@gp/data';
 
 import type { Fx } from './fx.js';
 import { fireHook } from './fx.js';
@@ -27,8 +27,11 @@ import {
   faceOf,
   drawableSuits,
   isFull,
+  meeplesHeld,
   noticeBoardOf,
+  noticeBoardSlots,
   player,
+  slotBlocked,
   visitTargetOf,
   workerData,
 } from './query.js';
@@ -1046,40 +1049,105 @@ function tokenValue(tile: IslandTileState, crate: number): Suit | 'wild' | 'down
  */
 export function demandSwapOptions(data: GameData, state: GameState): [DemandRef, DemandRef][] {
   const open = state.island.tiles.filter((t) => tileHasRoom(data, t));
-  const refs: DemandRef[] = open.flatMap((t) =>
-    t.crates.map((_, i) => ({ tile: t.tile, crate: i })),
-  );
-  const byTile = new Map(open.map((t) => [t.tile, t]));
+  // ⭐ THE TOKEN VALUES ARE READ ONCE PER CRATE (04/09/2026), not once per pair.
+  // This enumerator is O(refs squared) - 24 refs at four seats is 276 pairs -
+  // and it runs inside `taskAnswers`, which `apply` calls to re-validate EVERY
+  // move, including the bots' speculative probe applies. A CPU profile put it
+  // and its key builder at ~15% of a whole game. Nothing below changes what is
+  // enumerated, what is de-duped or the order it comes out in: the same key
+  // strings are built, by a route that stops rebuilding the parts that did not
+  // move.
+  const values = open.map((t) => t.crates.map((_, i) => tokenValue(t, i)));
+  const refTile: number[] = [];
+  const refs: DemandRef[] = [];
+  for (let t = 0; t < open.length; t++) {
+    const tile = open[t] as IslandTileState;
+    for (let i = 0; i < tile.crates.length; i++) {
+      refTile.push(t);
+      refs.push({ tile: tile.tile, crate: i });
+    }
+  }
+  // WHAT A SWAP LEAVES BEHIND ON ONE TILE, as an integer.
+  //
+  // The de-dupe asks one question: would these two swaps leave the island in the
+  // same configuration? A configuration is the UNORDERED PAIR of (tile, that
+  // tile's tokens afterwards), which is exactly what the old key string spelled
+  // out, so any INJECTIVE naming of a (tile, tokens-afterwards) gives the same
+  // equivalence classes, the same survivors and the same order. Interning that
+  // name as an integer is what takes the string building out of a loop that is
+  // O(refs squared) - 24 refs at four seats is 276 pairs, every one of which was
+  // building three strings.
+  //
+  // The interner is per tile with one shared counter, so an id names the pair
+  // and not just the tokens: two tiles left holding the same tokens are two
+  // different configurations.
+  const ids: Map<string, number>[] = open.map(() => new Map<string, number>());
+  let nextId = 0;
+  const idFor = (t: number, tokens: string): number => {
+    const interner = ids[t] as Map<string, number>;
+    let id = interner.get(tokens);
+    if (id === undefined) {
+      id = nextId++;
+      interner.set(tokens, id);
+    }
+    return id;
+  };
+  // The state one tile is left in once one of its crates has been replaced,
+  // memoised per (tile, crate, replacement): a few dozen distinct triples across
+  // a whole pass, against several hundred pairs asking for them.
+  const afterCache = values.map((v) => v.map(() => new Map<string, number>()));
+  const afterOne = (t: number, crate: number, replacement: string): number => {
+    const cache = (afterCache[t] as Map<string, number>[])[crate] as Map<string, number>;
+    let hit = cache.get(replacement);
+    if (hit === undefined) {
+      const parts = (values[t] as string[]).slice();
+      parts[crate] = replacement;
+      hit = idFor(t, parts.sort().join(','));
+      cache.set(replacement, hit);
+    }
+    return hit;
+  };
   const out: [DemandRef, DemandRef][] = [];
-  const seen = new Set<string>();
+  // The unordered pair of ids, as a bucket per low id. Nested rather than
+  // arithmetic on one number, so nothing has to bound the id count to stay
+  // collision-free.
+  const seen = new Map<number, Set<number>>();
   for (let i = 0; i < refs.length; i++) {
+    const ti = refTile[i] as number;
+    const a = refs[i] as DemandRef;
+    const va = (values[ti] as string[])[a.crate] as string;
     for (let j = i + 1; j < refs.length; j++) {
-      const a = refs[i] as DemandRef;
+      const tj = refTile[j] as number;
       const b = refs[j] as DemandRef;
-      const ta = byTile.get(a.tile) as IslandTileState;
-      const tb = byTile.get(b.tile) as IslandTileState;
-      if (tokenValue(ta, a.crate) === tokenValue(tb, b.crate)) continue;
-      const key = swapKey(ta, a, tb, b);
-      if (seen.has(key)) continue;
-      seen.add(key);
+      const vb = (values[tj] as string[])[b.crate] as string;
+      if (va === vb) continue;
+      let sideA: number;
+      let sideB: number;
+      if (ti === tj) {
+        // Both crates are on ONE tile, so the swap rewrites two positions of the
+        // same token string and both sides of the pair read it.
+        const parts = (values[ti] as string[]).slice();
+        parts[a.crate] = vb;
+        parts[b.crate] = va;
+        sideA = idFor(ti, parts.sort().join(','));
+        sideB = sideA;
+      } else {
+        sideA = afterOne(ti, a.crate, vb);
+        sideB = afterOne(tj, b.crate, va);
+      }
+      const lo = sideA <= sideB ? sideA : sideB;
+      const hi = sideA <= sideB ? sideB : sideA;
+      let bucket = seen.get(lo);
+      if (bucket === undefined) {
+        bucket = new Set<number>();
+        seen.set(lo, bucket);
+      }
+      if (bucket.has(hi)) continue;
+      bucket.add(hi);
       out.push([a, b]);
     }
   }
   return out;
-}
-
-/** The island configuration a swap would leave behind, as a stable key. */
-function swapKey(ta: IslandTileState, a: DemandRef, tb: IslandTileState, b: DemandRef): string {
-  const after = (tile: IslandTileState): string =>
-    tile.crates
-      .map((_, i) => {
-        if (tile.tile === ta.tile && i === a.crate) return tokenValue(tb, b.crate);
-        if (tile.tile === tb.tile && i === b.crate) return tokenValue(ta, a.crate);
-        return tokenValue(tile, i);
-      })
-      .sort()
-      .join(',');
-  return [`${ta.tile}|${after(ta)}`, `${tb.tile}|${after(tb)}`].sort().join('||');
 }
 
 /**
@@ -1405,8 +1473,15 @@ export function doDeliver(
     player(state, seat).receipts.push(vp);
     tile.deliveredBy.push(seat);
     fx.emit({ e: 'delivered', seat, tile: tileId, vp, spend: i === 0 ? spend : {} });
-    const meeple = tile.meeples[space];
-    if (meeple !== undefined) fx.gainMeeple(seat, meeple, tileId, space);
+    // ⭐ WHICH SPACES CARRY A MEEPLE IS DATA, NOT ARITHMETIC (R12). Under the
+    // shipped game every space does and `meepleIndexForSpace` is the identity;
+    // under the meeple arm only `island.meeples.seededSpaces` do - [1], the 3 VP
+    // second delivery - and the tile stores its one meeple densely at index 0.
+    // A -1 is a space that was never seeded, which is a legal delivery paying VP
+    // alone. The gain goes through the supply cap and boxes a duplicate.
+    const slot = meepleIndexForSpace(fx.data, space);
+    const meeple = slot < 0 ? undefined : tile.meeples[slot];
+    if (meeple !== undefined) fx.gainMeeple(seat, meeple, tileId, space, 'island');
   }
   // ONE Deliver, so one afterDeliver: the rebuilt Farmstead puts one card in the
   // barn for a delivery, not one per receipt taken.
@@ -1655,7 +1730,10 @@ export function grantBalloonReward(fx: Fx, seat: Seat, balloonId: string): void 
         const colours = fx.data.island.meeples.colours;
         for (let i = 0; i < amount; i++) {
           const colour = colours[rngInt(fx.state.rng, colours.length)];
-          if (colour !== undefined) fx.gainMeeple(seat, colour, null, null);
+          // The supply cap (R4) applies to a balloon meeple exactly as it does
+          // to an island one, under the meeple arm only; `gainMeeple` boxes the
+          // duplicate and says which faucet overflowed.
+          if (colour !== undefined) fx.gainMeeple(seat, colour, null, null, 'balloon');
         }
       }
       break;
@@ -1870,6 +1948,16 @@ export function meepleOpen(state: GameState): boolean {
  * `meepleGained` minus `meepleSpent` is exactly that dead-component count.
  */
 export function meepleOptions(data: GameData, state: GameState, seat: Seat): Suit[] {
+  // ⛔ THE TURN-START MEEPLE SPEND IS DELETED BY THE MEEPLE-LOOP ARM (R8), and
+  // this empty list is the whole of the deletion. The bonus visit becomes the
+  // only way a meeple is ever spent, and a spent meeple moves to a neighbour's
+  // board rather than leaving the game.
+  //
+  // ⚠️ IT ALSO CLOSES THE TURNFLOW GATE. `settleTurn` holds a turn open while
+  // this is non-empty (turnflow.ts, the line after the bonus check); returning
+  // [] here is what stops the arm's turns hanging on a phase that no longer
+  // exists, so the two must never be reasoned about separately.
+  if (isMeepleCurrency(data)) return [];
   if (!meepleOpen(state)) return [];
   const held = player(state, seat).meeples;
   return data.cards.suits.filter(
@@ -1895,6 +1983,9 @@ export function meepleOptions(data: GameData, state: GameState, seat: Seat): Sui
  * never in `state.fair`.
  */
 export function doSpendMeeple(fx: Fx, seat: Seat, colour: Suit): void {
+  if (isMeepleCurrency(fx.data)) {
+    throw new Error('The turn-start meeple spend is deleted under the meeple visit currency');
+  }
   if (!meepleOpen(fx.state)) {
     throw new Error('Meeples are spent at the start of your turn, before your bonus and action');
   }
@@ -1918,6 +2009,11 @@ export function doSpendMeeple(fx: Fx, seat: Seat, colour: Suit): void {
  * were carefully NOT draws so that no draw modifier could reach them.
  */
 export function bonusDrawOpen(data: GameData, state: GameState): boolean {
+  // ⛔ CLOSED UNDER THE MEEPLE-LOOP ARM (R9): there is no standalone free Draw
+  // 1, and the only card the bonus slot can draw is the one attached to Collect.
+  // The NUMBER survives - `doCollect` draws `rules.turn.bonusDraw` - so the knob
+  // still prices the solitaire line, which is now "collect an empty board".
+  if (isMeepleCurrency(data)) return false;
   if (!bonusOpen(data, state, 'draw')) return false;
   if (data.rules.turn.bonusDraw <= 0) return false;
   return drawableSuits(data, state).length > 0;
@@ -1952,20 +2048,207 @@ export type VisitOption = Extract<Move, { type: 'visit' }>;
  * something.
  */
 export function visitOptions(data: GameData, state: GameState, seat: Seat): VisitOption[] {
-  if (!bonusOpen(data, state, 'visit')) return [];
   const out: VisitOption[] = [];
+  enumerateVisits(data, state, seat, out);
+  return out;
+}
+
+/**
+ * IS ANY VISIT ON OFFER? Exactly `visitOptions(...).length > 0`, and it is the
+ * same function saying so - `enumerateVisits` walks one list and stops at the
+ * first hit when nobody wants the moves themselves.
+ *
+ * It exists because two callers only ever asked the QUESTION. `hasBonusOption`
+ * (which `settleTurn` calls after every apply, the bots' speculative probe
+ * applies included) and the sim's denial probe both built the whole list to read
+ * `.length`, which under the meeple currency is up to (rival hosts x 5 colours x
+ * 10 wild pairs) move objects thrown away unread. A shared enumerator rather
+ * than a second predicate, deliberately: a predicate COPIED out of an enumerator
+ * silently stops agreeing with it, which is a mistake the sim's own bonus-window
+ * probe already made once.
+ */
+export function anyVisitOption(data: GameData, state: GameState, seat: Seat): boolean {
+  return enumerateVisits(data, state, seat, null);
+}
+
+/**
+ * The one walk behind both. `out === null` means "stop at the first legal
+ * visit"; anything else collects every one of them, in enumeration order.
+ */
+function enumerateVisits(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+  out: VisitOption[] | null,
+): boolean {
+  if (!bonusOpen(data, state, 'visit')) return false;
+  if (isMeepleCurrency(data)) return enumerateMeepleVisits(data, state, seat, out);
   const hand = player(state, seat).hand;
-  if (hand.length === 0) return out;
+  if (hand.length === 0) return false;
+  let any = false;
   for (let host = 0; host < state.players.length; host++) {
     if (host === seat && !data.rules.turn.selfVisitAllowed) continue;
     if (isFull(data, noticeBoardOf(data, state, host))) continue;
     const doorId = doorOf(data, player(state, host).suit).id;
+    // ONLY TWO OF THE FIVE DOORS READ THE HAND, so only two of them can give a
+    // different answer for a different fee. Sow needs a card to sow and Build
+    // needs cards to pay with; Draw, Harvest and Deliver ask about the decks,
+    // the tableau and the barn and never look at the hand at all - see
+    // `workerActionLegal`, where `hand` is touched in exactly those two
+    // branches. Asking once for those three is the same answer as asking it once
+    // per card in hand, minus a `withoutFirst` copy each time.
+    const action = workerData(data, doorId).action;
+    if (action !== 'sow' && action !== 'build') {
+      if (!workerActionLegal(data, state, seat, doorId)) continue;
+      if (out === null) return true;
+      for (const fee of hand) out.push({ type: 'visit', seat, host, fee });
+      any = true;
+      continue;
+    }
     for (const fee of hand) {
       if (!workerActionLegal(data, state, seat, doorId, { excludingHandCard: fee })) continue;
+      if (out === null) return true;
       out.push({ type: 'visit', seat, host, fee });
+      any = true;
     }
   }
-  return out;
+  return any;
+}
+
+/**
+ * EVERY MEEPLE VISIT ON OFFER, under the meeple-loop arm (R1, R7, R10, X5).
+ *
+ * One move per (rival host, colour) where the colour is one this seat HOLDS, the
+ * host's slot of that colour is free, and the colour's door has something legal
+ * for this seat to do. Plus the WILD SPEND: for a colour this seat does not
+ * hold, one move per unordered PAIR of held colours, on the same two gates. Both
+ * meeples of a pair land in the bought colour's slot.
+ *
+ * ⭐ NEVER YOUR OWN BOARD (X5), under any flag. `rules.turn.selfVisitAllowed` is
+ * not consulted here and must not be: the arm's whole reason for existing is
+ * that the solitaire option and the interaction option stopped competing in one
+ * slot, and the solitaire option is now Collect. A self-visit would put them
+ * back in the same slot at a lower price than the card fee ever charged.
+ *
+ * ⭐ THE DOOR IS THE SLOT'S COLOUR, NOT THE HOST'S SUIT. Every board has all
+ * five slots, so what a visit buys is decided by the meeple you spend and not by
+ * what your neighbour farms - which is the availability half of the fix. On more
+ * than half of v31's turns no rival door offered an action the visitor could
+ * use; here a host offers five, minus the ones already blocked.
+ *
+ * A DEAD DOOR IS STILL NOT OFFERED (`workerActionLegal`, Dean's standing ruling,
+ * unchanged by the currency): a visit that buys a no-op is a dominated move, and
+ * under the arm it would also strand a meeple on a rival's board for nothing.
+ * `excludingHandCard` is gone with the fee - no card leaves the hand (R1).
+ */
+function enumerateMeepleVisits(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+  out: VisitOption[] | null,
+): boolean {
+  const held = meeplesHeld(data, state, seat);
+  if (held.length === 0) return false;
+  // WHETHER A COLOUR'S DOOR HAS ANYTHING FOR THIS SEAT DOES NOT DEPEND ON THE
+  // HOST. The gate reads (data, state, seat, colour) and nothing else, so asking
+  // it inside the host loop put the same question to `anyBuildOption` and
+  // `anyDeliverOption` once per rival - three times over at four seats.
+  // Memoised per colour and computed lazily, so a colour whose slot is blocked
+  // at every host is still never asked about.
+  const doorLegal = new Map<Suit, boolean>();
+  const legalDoor = (colour: Suit): boolean => {
+    let hit = doorLegal.get(colour);
+    if (hit === undefined) {
+      hit = workerActionLegal(data, state, seat, doorOf(data, colour).id);
+      doorLegal.set(colour, hit);
+    }
+    return hit;
+  };
+  // The wild pair, and ONLY for a colour this seat does not hold: a colour you
+  // hold you would always spend singly, so enumerating a pair for it would be a
+  // strictly worse move wearing the same result. The pairs vary with neither the
+  // host nor the colour bought, so they are built once.
+  const pairs: [Suit, Suit][] = [];
+  for (let i = 0; i < held.length; i++) {
+    for (let j = i + 1; j < held.length; j++) {
+      const a = held[i];
+      const b = held[j];
+      if (a === undefined || b === undefined) continue;
+      pairs.push([a, b]);
+    }
+  }
+  let any = false;
+  for (let host = 0; host < state.players.length; host++) {
+    if (host === seat) continue;
+    for (const colour of data.cards.suits) {
+      if (slotBlocked(state, host, colour)) continue;
+      if (!legalDoor(colour)) continue;
+      if (held.includes(colour)) {
+        if (out === null) return true;
+        out.push({ type: 'visit', seat, host, fee: null, meeples: [colour], colour });
+        any = true;
+        continue;
+      }
+      if (pairs.length === 0) continue;
+      if (out === null) return true;
+      for (const pair of pairs) {
+        out.push({ type: 'visit', seat, host, fee: null, meeples: [pair[0], pair[1]], colour });
+      }
+      any = true;
+    }
+  }
+  return any;
+}
+
+export type CollectOption = Extract<Move, { type: 'collect' }>;
+
+/**
+ * COLLECT: the meeple-loop arm's other bonus option (R7) - take every meeple off
+ * your OWN Notice Board into your supply, then Draw 1.
+ *
+ * ⭐ IT IS THE HALF OF THE DESIGN THAT PAYS THE HOST. Being visited was worth
+ * nothing in v31 beyond a card you would eventually harvest; here it hands you
+ * back stored actions, so a busy door is an asset rather than a clog.
+ *
+ * ⭐ COLLECTING AN EMPTY BOARD IS LEGAL and reads as a plain Draw 1 (R7,
+ * explicitly). It is the solitaire line, and it is deliberately not priced out:
+ * the bonus slot must never be dead. The bonus mix has to count it apart from a
+ * collect that actually took meeples back, because it is what the free Draw 1
+ * became - see the `boardCollected` event, whose `kept` list is that
+ * distinction.
+ *
+ * ⛔ NO "DRAW 1 PER MEEPLE COLLECTED" (X6). Flat Draw 1, at
+ * `rules.turn.bonusDraw`, however many came back.
+ */
+export function collectOpen(data: GameData, state: GameState, seat: Seat): boolean {
+  if (!isMeepleCurrency(data)) return false;
+  if (!bonusOpen(data, state, 'collect')) return false;
+  const slots = noticeBoardSlots(state, seat);
+  const holdsMeeple = data.cards.suits.some((colour) => (slots[colour]?.length ?? 0) > 0);
+  // An empty board with every deck dry is the one case where Collect does
+  // nothing at all, and a move that does nothing is not offered.
+  return holdsMeeple || drawableSuits(data, state).length > 0;
+}
+
+export function collectOptions(data: GameData, state: GameState, seat: Seat): CollectOption[] {
+  return collectOpen(data, state, seat) ? [{ type: 'collect', seat }] : [];
+}
+
+/**
+ * Take the meeples back, then draw. The order is the printed order and it is
+ * observable: a `boardCollected` event before the draw task means a UI can
+ * animate the meeples home while the deck choice is still open.
+ */
+export function doCollect(fx: Fx, seat: Seat): void {
+  if (!collectOpen(fx.data, fx.state, seat)) {
+    throw new Error('Collect is shut: outside the bonus window, or nothing to take and no deck');
+  }
+  fx.collectBoard(seat);
+  fx.state.turn.bonusUsed.push('collect');
+  const n = fx.data.rules.turn.bonusDraw;
+  if (n > 0) {
+    fx.pushTask({ t: 'draw', pid: seat, src: null, see: n, keep: n, revealed: [] });
+  }
 }
 
 /**
@@ -1977,7 +2260,14 @@ export function visitOptions(data: GameData, state: GameState, seat: Seat): Visi
  * Read by `settleTurn` and by the UI's bonus phase.
  */
 export function hasBonusOption(data: GameData, state: GameState, seat: Seat): boolean {
-  return bonusDrawOpen(data, state) || visitOptions(data, state, seat).length > 0;
+  // Two options under either currency, and never four: `bonusDrawOpen` is false
+  // under the meeple arm and `collectOpen` is false under the card game, so the
+  // pair on offer is (Draw 1 | visit) or (Collect | visit).
+  return (
+    bonusDrawOpen(data, state) ||
+    collectOpen(data, state, seat) ||
+    anyVisitOption(data, state, seat)
+  );
 }
 
 /**
@@ -1996,8 +2286,22 @@ export function hasBonusOption(data: GameData, state: GameState, seat: Seat): bo
  * ACTION, and what the host gets is a card on their board that they will harvest
  * into their own barn. "Your junk is their treasure" survives the currency.
  */
-export function doVisit(fx: Fx, visitor: Seat, host: Seat, fee: CardId): void {
+/**
+ * What a visit is paid with. The `'card'` game fills `fee`; the meeple-loop arm
+ * fills `meeples` and `colour` and leaves `fee` null. One shape rather than two
+ * functions, because everything AFTER the payment - the host-side hook, the
+ * `visited` event, the door action - is identical and must stay identical.
+ */
+export type VisitSpend = Pick<VisitOption, 'fee' | 'meeples' | 'colour'>;
+
+export function doVisit(fx: Fx, visitor: Seat, host: Seat, spend: VisitSpend): void {
+  if (isMeepleCurrency(fx.data)) {
+    doMeepleVisit(fx, visitor, host, spend);
+    return;
+  }
   const state = fx.state;
+  const fee = spend.fee;
+  if (fee === null) throw new Error('A visit costs one card from your hand');
   if (visitor === host && !fx.data.rules.turn.selfVisitAllowed) {
     throw new Error('Self-visiting is switched off');
   }
@@ -2024,6 +2328,81 @@ export function doVisit(fx: Fx, visitor: Seat, host: Seat, fee: CardId): void {
     self: visitor === host,
     colour,
     action: door.action,
+  });
+  performDoorAction(fx, visitor, colour, 'visit');
+}
+
+/**
+ * THE MEEPLE VISIT (R1, R2, R10, X5): one meeple - or a wild pair - from your
+ * supply into the colour slot of a NEIGHBOUR's Notice Board, then that colour's
+ * action, taken by you.
+ *
+ * The order is the same as the card visit's and for the same reason: the
+ * payment LANDS first, then `afterVisit` fires host-side, then the action runs.
+ * A17 The Smoke Pot and O16 The Fruit Store both key on that hook and neither
+ * knows what paid.
+ *
+ * ⭐ NOTHING LEAVES THE GAME. The meeple sits in the host's slot until the host
+ * spends a bonus option collecting it, which is the loop: your spent action
+ * becomes their stored one. It is also the denial: while it sits there, that
+ * colour of that neighbour is shut to the whole table.
+ *
+ * Every predicate below is the enumerator's, re-checked - a re-validation must
+ * ask what the move NEEDS, never the window the caller has consumed.
+ */
+function doMeepleVisit(fx: Fx, visitor: Seat, host: Seat, spend: VisitSpend): void {
+  const state = fx.state;
+  if (visitor === host) {
+    throw new Error('There is no self-visit under the meeple visit currency');
+  }
+  if (!bonusOpen(fx.data, state, 'visit')) {
+    throw new Error('The bonus slot is shut: spent, or outside its window for this bonusTiming');
+  }
+  const colour = spend.colour;
+  const meeples = spend.meeples ?? [];
+  if (colour === undefined || meeples.length === 0) {
+    throw new Error('A meeple visit names the slot colour and the meeple(s) spent');
+  }
+  if (meeples.length > 2) throw new Error('A visit spends one meeple, or two as a wild');
+  const held = player(state, visitor).meeples;
+  if (meeples.length === 1) {
+    if (meeples[0] !== colour)
+      throw new Error(`A ${meeples[0]} meeple buys the ${meeples[0]} slot`);
+  } else {
+    const [a, b] = meeples;
+    if (a === undefined || b === undefined || a === b) {
+      throw new Error('A wild spend is two meeples of different colours');
+    }
+    // The enumerator offers a pair only for a colour the seat does not hold, so
+    // re-validating that keeps "apply accepts exactly what legalMoves offers".
+    if ((held[colour] ?? 0) > 0) {
+      throw new Error(`Seat ${visitor} holds a ${colour} meeple and must spend it singly`);
+    }
+  }
+  for (const m of meeples) {
+    if ((held[m] ?? 0) < 1) throw new Error(`Seat ${visitor} has no ${m} meeple`);
+  }
+  if (slotBlocked(state, host, colour)) {
+    throw new Error(`Seat ${host}'s ${colour} slot already holds a meeple`);
+  }
+  const door = doorOf(fx.data, colour);
+  if (!workerActionLegal(fx.data, state, visitor, door.id)) {
+    throw new Error(`The ${colour} door has nothing legal to do for seat ${visitor}`);
+  }
+
+  const wild = meeples.length > 1;
+  fx.placeMeepleOnBoard(visitor, host, colour, meeples);
+  state.turn.bonusUsed.push('visit');
+  fireHook(fx, 'afterVisit', { visitor, host, self: false });
+  fx.emit({
+    e: 'visited',
+    seat: visitor,
+    host,
+    self: false,
+    colour,
+    action: door.action,
+    wild,
+    meeples: [...meeples],
   });
   performDoorAction(fx, visitor, colour, 'visit');
 }

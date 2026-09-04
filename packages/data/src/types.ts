@@ -49,6 +49,22 @@ export type StarterSlot = 'barn' | 'farmstead' | 'noticeboard';
 export type BonusTiming = 'start' | 'any' | 'end';
 
 /**
+ * ⭐ WHAT A VISIT IS PAID IN. See `rules.turn.visitCurrency`.
+ *
+ * `'card'` is the shipped v31 game and the DEFAULT: one card from your hand onto
+ * any Notice Board, your own included, and that board is an ordinary building
+ * with a threshold. `'meeple'` is the meeple-loop arm (Dean, 04/09/2026): one
+ * meeple from your supply into the colour slot of a NEIGHBOUR's Notice Board,
+ * which is not a building at all, with COLLECT as the other bonus option.
+ *
+ * It is a PAIRED ARM, so the two are never both true and `'card'` must stay
+ * bit-reproducible. Under `'meeple'` the engine ignores `selfVisitAllowed` and
+ * `economy.noticeBoardThreshold`, and `bonusDraw` survives only as the number
+ * Collect draws.
+ */
+export type VisitCurrency = 'card' | 'meeple';
+
+/**
  * Trigger keywords detected in the printed text. This is keyword detection, not a
  * resolved ruling: `needsDesignReview` marks the cards where 0 or more than 1
  * matched and a human has to read the card.
@@ -185,6 +201,20 @@ export interface MeeplePool {
    */
   readonly poolSize: number;
   readonly perDeliverySpace: number;
+  /**
+   * WHICH delivery spaces carry a meeple, as indices into `vpByDeliveryOrder`.
+   * READ ONLY under `rules.turn.visitCurrency: 'meeple'`; the `'card'` game
+   * keeps using `perDeliverySpace` and is untouched by this key.
+   *
+   * `[1]` is the rule (R12): the 3 VP second delivery carries the tile's only
+   * meeple and the 6 VP first pays VP alone. `perDeliverySpace` could say how
+   * many but never WHICH, and which is the whole design - under the arm meeples
+   * recirculate (a spent one moves to a neighbour's board), so the island tops
+   * the loop up on the slower half of the race rather than paying both spaces.
+   * `[]` seeds none, which is the control for "does the island need to pay
+   * meeples at all now they come back".
+   */
+  readonly seededSpaces: readonly number[];
   readonly faceUpAtSetup: boolean;
 }
 
@@ -269,6 +299,18 @@ export interface SuitDoor {
    * consistency and the Orchard door dies silently.
    */
   readonly draw?: { readonly see: number; readonly keep: number };
+  /**
+   * THE SAME DOOR UNDER THE MEEPLE-LOOP ARM (`rules.turn.visitCurrency:
+   * 'meeple'`), and a SECOND printed payload rather than an edit to the first,
+   * so that the shipped game's Draw 3 cannot move when the arm does.
+   *
+   * 2 / 2 under the arm: the exception above exists only because a visit costs a
+   * CARD and the slot's alternative is a free Draw 1. A meeple visit costs no
+   * card and there is no standalone free Draw, so the self-cancellation law has
+   * nothing to bite on and the door is the plain base action like the other
+   * four. Absent on every other door, which simply keeps its one action.
+   */
+  readonly drawUnderMeepleCurrency?: { readonly see: number; readonly keep: number };
   /**
    * The Apiary door. `from: 'hand'` in v31 and RULED that way knowingly: it
    * makes this the weakest door on the table, because the visitor pays a card
@@ -472,6 +514,65 @@ export interface RulesFile {
      * one). Expect the door mix to move, not just the visit rate.
      */
     readonly bonusTiming: BonusTiming;
+    /**
+     * ⭐ THE MEEPLE-LOOP ARM, BEHIND ONE KNOB (Dean, 04/09/2026,
+     * docs/meeple-loop-visit-handoff-2026-09-04-v1.md). `'card'` is the shipped
+     * v31 game and the default; `'meeple'` is the whole redesign of the visit.
+     *
+     * ## What `'meeple'` changes
+     *
+     *   - **The currency.** A visit costs one MEEPLE from your supply, placed in
+     *     the colour slot of a NEIGHBOUR's Notice Board. No card is ever placed
+     *     on a board and no card leaves your hand (R1).
+     *   - **The board.** It is not a building: no threshold, no stack, no sow
+     *     onto it, no harvest of it, five colour-keyed slots and nothing else
+     *     (R5). A slot is blocked while a meeple sits in it (R6).
+     *   - **The other bonus option.** COLLECT: take every meeple off your own
+     *     board into your supply, then Draw 1 (R7). The standalone free Draw 1
+     *     is gone (R9); its number survives as what Collect draws.
+     *   - **The turn-start meeple spend is deleted** (R8), and a spent meeple is
+     *     never removed from the game - it moves to the host's board and comes
+     *     back to them on their Collect.
+     *   - **Two meeples may be spent as one of any colour** (R10, the wild
+     *     pair); both land in the slot of the action bought.
+     *   - **No self-visit under any flag** (X5), so `selfVisitAllowed` is
+     *     ignored, and `economy.noticeBoardThreshold` is ignored with it.
+     *
+     * ⚠️ `'card'` MUST STAY BIT-REPRODUCIBLE. It is the control every number
+     * from the arm is a delta against, on identical seeds, so nothing above may
+     * be "tidied" into the default path.
+     */
+    readonly visitCurrency: VisitCurrency;
+    /**
+     * Meeples of EACH colour a seat starts with (R3). Read only under
+     * `visitCurrency: 'meeple'`; the `'card'` game starts every supply empty and
+     * this key does not reach it.
+     *
+     * 1 primes the loop before anybody has delivered, so a visit is available on
+     * the first turn at every seat. These are NOT drawn from the island bag -
+     * five per player plus one per tile is 32 at four seats against a bag of 25,
+     * and whether the physical bag grows is a component question for Dean, not a
+     * simulation one. 0 is the control arm: it asks how much of the loop's
+     * traffic is the starting hand of meeples rather than the rule.
+     */
+    readonly startingMeeplesPerColour: number;
+    /**
+     * ⭐ THE SUPPLY CAP (R4), and the answer to piles. Read only under
+     * `visitCurrency: 'meeple'`.
+     *
+     * You may never HOLD more than this many meeples of one colour. A meeple you
+     * would gain of a colour you are already at the cap on is returned to the
+     * box - removed from the game - whether it came from collecting your own
+     * board or from an island delivery, and the engine emits `meepleBoxed`
+     * instead of `meepleGained` so the loss is countable by source.
+     *
+     * It exists because meeples now RECIRCULATE. In v31 a spent meeple left the
+     * game, so the supply could only shrink; under the arm it moves to a
+     * neighbour's board and returns on their Collect, and with no ceiling a seat
+     * could bank a wall of stored actions. Sweep 1 against 2 with the median
+     * supply held in the last third and the boxed-per-game count, never alone.
+     */
+    readonly meepleCapPerColour: number;
   };
   readonly economy: {
     /**

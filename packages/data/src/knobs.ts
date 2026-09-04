@@ -58,6 +58,7 @@ export type KnobType =
   | 'boolean'
   | 'cropOrWild'
   | 'bonusTiming'
+  | 'visitCurrency'
   | 'balloonReward';
 
 export interface KnobTemplate {
@@ -170,6 +171,51 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'anything.',
   },
 
+  {
+    template: 'rules.turn.visitCurrency',
+    type: 'visitCurrency',
+    description:
+      '⭐ THE MEEPLE-LOOP ARM, AND THE ONE KNOB THE WHOLE 04/09/2026 DESIGN HIDES BEHIND ' +
+      "(Dean, docs/meeple-loop-visit-handoff-2026-09-04-v1.md). 'card' is the shipped v31 game " +
+      'and the DEFAULT: a visit costs one card from your hand onto any Notice Board, your own ' +
+      "included, and the board is an ordinary building with a threshold. 'meeple' replaces all " +
+      'of that: a visit costs a MEEPLE placed in the colour slot of a NEIGHBOUR’s board, ' +
+      'the board is not a building at all, the other bonus option is COLLECT (take your ' +
+      'meeples back and Draw 1), the turn-start meeple spend and the standalone free Draw 1 ' +
+      'are both gone, and two meeples may be spent as one of any colour. ' +
+      'READ FIRST: the arm exists because the v31 hook fails on AVAILABILITY and on the HOST ' +
+      'SIDE, not on price - at n=1580 the shipped game reads a rival visit on 40.4% of turns ' +
+      'against a free Draw 1 on 67.8%, hook 0.41 against a floor of 0.5, and giving every seat ' +
+      'both options (bonus-both-v1) moved it only to 0.44. ' +
+      "⚠️ 'card' MUST STAY BIT-REPRODUCIBLE - it is the control every arm number is a " +
+      'delta against on identical seeds. Sweep it against nothing else in the same overlay, or ' +
+      'the delta stops being readable.',
+  },
+  {
+    template: 'rules.turn.startingMeeplesPerColour',
+    type: 'int',
+    description:
+      "Meeples of EACH colour a seat starts with under visitCurrency 'meeple' (rule R3); the " +
+      "'card' game never reads it and starts every supply empty. 1 primes the loop before " +
+      'anybody has delivered, so a visit is available on turn one at every seat. They are NOT ' +
+      'drawn from the island bag. 0 is the paired control and asks how much of the traffic is ' +
+      'the starting meeples rather than the rule; sweep it with meepleCapPerColour, never ' +
+      'against it.',
+  },
+  {
+    template: 'rules.turn.meepleCapPerColour',
+    type: 'int',
+    description:
+      "⭐ THE SUPPLY CAP AND THE ANSWER TO PILES (rule R4), read only under 'meeple'. You " +
+      'may never hold more than this many meeples of one colour; a gain over the cap is boxed - ' +
+      'removed from the game - and the engine emits meepleBoxed instead of meepleGained, with ' +
+      "the source ('collect' or 'island') on the event so the loss is countable. It exists " +
+      'because meeples RECIRCULATE under the arm: a spent one moves to the neighbour’s ' +
+      'board and comes back on their Collect, so the supply no longer only shrinks. Sweep 1 ' +
+      'against 2 and read it with the median supply held in the last third and the boxed count ' +
+      'per game.',
+  },
+
   // --- Economy -------------------------------------------------------------
   {
     template: 'rules.economy.noticeBoardThreshold',
@@ -216,6 +262,24 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'gives for nothing and would be strictly worse than its own alternative. Draw 3 nets +2, ' +
       'which is the whole margin the Orchard board has. overlays/orchard-door-draw-two-v1.overlay.json ' +
       'is the paired control that measures the door dying.',
+  },
+  {
+    template: 'workers.roster.{}.drawUnderMeepleCurrency.see',
+    type: 'int',
+    description:
+      'Cards the Orchard door looks at UNDER THE MEEPLE ARM only. A second printed payload ' +
+      'rather than an edit to `draw`, so the shipped Draw 3 cannot move when the arm does.',
+  },
+  {
+    template: 'workers.roster.{}.drawUnderMeepleCurrency.keep',
+    type: 'int',
+    description:
+      '⭐ THE EXCEPTION DISSOLVES UNDER THE MEEPLE ARM, AT 2. Draw 3 exists only because a ' +
+      'visit costs a CARD and the slot’s alternative is a free Draw 1, so a card-producing ' +
+      'door had to over-deliver or buying it was net zero. A meeple visit costs no card and ' +
+      'there is no standalone free Draw, so the self-cancellation law has nothing to bite on ' +
+      'and all five doors are the plain base action again. Set it back to 3 as a control if ' +
+      'the Orchard slot takes an implausible share of visits.',
   },
   {
     template: 'workers.roster.{}.sow.amount',
@@ -268,6 +332,18 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     type: 'int',
     description:
       'Meeples seeded onto each island delivery space at setup. At 1 the bag is drained to 12 / 18 / 24 by seat count; at 2 a 4-seat board would need 48 and the bag does not hold them, so raising this means raising the pool in the same overlay.',
+  },
+  {
+    template: 'island.meeples.seededSpaces',
+    type: 'intArray',
+    description:
+      'WHICH delivery spaces carry a meeple under the MEEPLE ARM, as indices into ' +
+      "vpByDeliveryOrder; the 'card' game keeps reading perDeliverySpace and is untouched. " +
+      '[1] is the rule (R12): the 3 VP second delivery carries the tile’s only meeple and the ' +
+      '6 VP first pays VP alone. A list rather than a count because perDeliverySpace could say ' +
+      'how many but never WHICH, and which is the design - meeples recirculate under the arm, ' +
+      'so the island tops the loop up on the slower half of the race. [] seeds none, which is ' +
+      'the control for whether the island still needs to pay meeples at all.',
   },
   {
     template: 'island.meeples.faceUpAtSetup',

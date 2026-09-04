@@ -25,6 +25,37 @@
  *
  * Everything else is carried across at the number it already had. These are a
  * starting position, not a tuned one.
+ *
+ * ## ⭐ THE MEEPLE-LOOP ARM (04/09/2026): NOT ONE NUMBER IN THIS FILE MOVES
+ *
+ * `rules.turn.visitCurrency: 'meeple'` re-cuts the bonus slot, and the pricing
+ * pass that followed it changed only what five terms READ. That is a decision,
+ * not an omission. The arm is a paired experiment against the shipped game on
+ * identical seeds, and a weight moved in the same pass would make every delta a
+ * mixture of the rule and the instrument - which is the failure `bonusAction`'s
+ * own entry already warns about ("never quote a hook or door-mix number that
+ * moved under this weight without the 0 arm beside it").
+ *
+ * What the arm does is REDISTRIBUTE the load across weights that already exist:
+ *
+ *   - `handSpend` 2.5 stops paying for a visit; `meepleGain` / `meepleSpend` 2.5
+ *     start paying for it, at the number they were already pinned to. That is
+ *     the pin doing exactly what its entry says it was set for - *"the two
+ *     routes to a door are a card and a meeple, so the bot should be roughly
+ *     indifferent between them"* - so the visit costs the same 2.5 under both
+ *     currencies and the bonus slot's arithmetic survives the change.
+ *   - `bonusDraw` 1.2 becomes Collect's draw, and `meepleGain` pays the rest of
+ *     a Collect.
+ *   - `clogOwnBoard` 6 and `visitFeeJunk` 0.3 lose their subjects entirely.
+ *
+ * ⚠️ **`meepleGain` AND `MEEPLE_LATENT` NOW CARRY FAR MORE THAN THEY WERE SET
+ * FOR, AND NEITHER WAS SET BY MEASUREMENT.** Under v31 they priced one faucet
+ * (the island) and one drain (the turn-start spend). Under the arm they price
+ * the visit, the Collect, the cap and the island at once - they are most of the
+ * bonus slot. They are still the hoarding dial, they are still a guess (see
+ * `MEEPLE_LATENT`'s own entry, "the least defensible number in this file"), and
+ * they are still deliberately unchanged. **Sweep them before drawing any
+ * mechanism conclusion from an arm result, and sweep them together.**
  */
 
 import { TERM_NAMES } from './terms.js';
@@ -95,12 +126,27 @@ export const BALANCED: WeightTable = {
    * count. If the arm reports meeples piling up unspent, sweep this before
    * concluding anything about the rule - and sweep `MEEPLE_LATENT` in
    * `scratch.ts` immediately after.
+   *
+   * ⭐ **UNDER THE MEEPLE-LOOP ARM IT IS ALSO WHAT A COLLECT PAYS**, per meeple
+   * that survives the one-per-colour cap - so this one number now sets how hard
+   * a bot works to get its own board swept, which is the host side of the
+   * design and the half v31 had nothing at all for. Unchanged at 2.5 on purpose:
+   * see the file header. **It is the first number to sweep on any arm result
+   * about the bonus mix, the hold-out rate or the supply held in the last
+   * third**, because all three read off it.
    */
   meepleGain: 2.5,
   /**
    * PINNED to `meepleGain`. One price for a meeple, whichever direction it
    * travels, which is what makes the spend decision turn entirely on whether the
    * rolled-out door action beats holding it. If one moves, move both.
+   *
+   * ⭐ **UNDER THE MEEPLE-LOOP ARM IT IS THE PRICE OF A VISIT** - one meeple, or
+   * two for a wild spend - which is the whole of what replaced `handSpend` 2.5
+   * on that move. The two are equal, so a visit costs the same under either
+   * currency and the arm's hook number is not a repricing artefact. A wild
+   * therefore costs twice a plain visit, which is the only thing separating them
+   * in the bots' eyes and is what makes the wild-share metric mean something.
    */
   meepleSpend: 2.5,
   /**
@@ -267,10 +313,16 @@ export const BALANCED: WeightTable = {
    * own door costs what reopening it pays, which is the only structural brake
    * v31 puts on self-visiting.
    */
+  // ⛔ INERT UNDER THE MEEPLE-LOOP ARM: there is no self-visit (X5), no card is
+  // placed on a board, and the board is not a building - so the term guards
+  // itself off and this 6 buys nothing. Left at 6 because the control still
+  // needs it and because a weight zeroed "for the arm" is a weight that has to
+  // be put back by hand before the control can be re-run.
   clogOwnBoard: 6,
   // "Your junk is their treasure" as a TIE-BREAK between otherwise equal visits.
   // It used to be the visit's whole cost, which is what let a worthless visit
-  // beat ending the turn by 0.05.
+  // beat ending the turn by 0.05. ⛔ Also inert under the meeple-loop arm, where
+  // no card is spent on a visit; `meepleSpend` becomes the tie-break instead.
   visitFeeJunk: 0.3,
   visitFeeOwnCrop: 0,
 

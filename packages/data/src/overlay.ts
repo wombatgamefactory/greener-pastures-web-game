@@ -39,6 +39,13 @@ const ACTIVATION_VALUES: ReadonlySet<string> = new Set<string>([...SUITS, 'wild'
  */
 const BONUS_TIMING_VALUES: ReadonlySet<string> = new Set<string>(['start', 'any', 'end']);
 
+/**
+ * The closed value set behind `visitCurrency`, kept here for the same reason as
+ * `BONUS_TIMING_VALUES`. Two values and no third: the meeple loop is a paired
+ * arm against the shipped game, not a ladder.
+ */
+const VISIT_CURRENCY_VALUES: ReadonlySet<string> = new Set<string>(['card', 'meeple']);
+
 /** The closed value set behind `balloonReward`, kept here for the same reason. */
 const BALLOON_REWARD_VALUES: ReadonlySet<string> = new Set<string>([
   'draw',
@@ -104,6 +111,8 @@ function typeMatches(type: KnobType, value: Leaf): boolean {
       return value === null || (typeof value === 'string' && ACTIVATION_VALUES.has(value));
     case 'bonusTiming':
       return typeof value === 'string' && BONUS_TIMING_VALUES.has(value);
+    case 'visitCurrency':
+      return typeof value === 'string' && VISIT_CURRENCY_VALUES.has(value);
     case 'balloonReward':
       return typeof value === 'string' && BALLOON_REWARD_VALUES.has(value);
   }
