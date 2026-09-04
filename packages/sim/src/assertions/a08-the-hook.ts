@@ -125,8 +125,30 @@ export const theHook: Assertion = {
         'climbs while the neighbour line falls, risk 2 has landed and the fix named in the ' +
         'design is rules.turn.selfVisitAllowed false or a sharper clog brake.';
 
+    // ⭐ RIVAL VISITS PER GAME, BESIDE THE PER-TURN RATE (ledger C52). The v1
+    // measurement found the two disagree and disagree in opposite directions:
+    // per turn the hook fell (0.41 to 0.37) while per game it rose 21% (28.7
+    // to 34.8), because the game also grew 35-43% longer over the same change.
+    // Nobody has ruled whether the hook is a per-turn or a per-game quantity,
+    // and the choice matters beyond bookkeeping: a longer game inflates the
+    // per-game number for free, so a per-game reading cannot be trusted on its
+    // own without game length beside it. Printed here rather than substituted
+    // for the per-turn value: the verdict above is unchanged and stays
+    // per-turn, this is additional evidence for the ruling neither number can
+    // make on its own.
+    const perGame = games.length === 0 ? NaN : neighbours / games.length;
+    const meanRounds =
+      games.length === 0 ? NaN : games.reduce((a, g) => a + g.rounds, 0) / games.length;
+
     const detail = [
       selfLine,
+      `⭐ RIVAL VISITS PER GAME (ledger C52, read beside the per-turn rate above): ` +
+        `${num(perGame, 2)} over a mean ${num(meanRounds, 1)} rounds (${neighbours} visits ` +
+        `over ${games.length} games). The two readings are NOT required to agree - a longer ` +
+        'game can raise this number while the per-turn rate falls, which is exactly what the ' +
+        'v1 measurement found (0.41 to 0.37 per turn, but 28.7 to 34.8 per game, a 21% rise, ' +
+        'over a game that also grew 35-43% longer). Neither reading settles which quantity the ' +
+        'design is FOR; both are printed so a future ruling has both in front of it.',
       `bonus slot used on ${pct(turns === 0 ? NaN : bonus / turns)} of turns`,
       // Per suit, because the table average cannot answer a per-suit question
       // and every suit change asks one: does this engine pull its player away

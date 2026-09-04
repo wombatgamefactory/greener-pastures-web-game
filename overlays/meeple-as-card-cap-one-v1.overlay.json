@@ -1,0 +1,11 @@
+{
+  "name": "meeple-as-card-cap-one-v1",
+  "description": "THE CAP SWEEP, LOW SIDE. Identical to overlays/meeple-as-card-v1.overlay.json - R15 live (meepleAsCard true) and the priced slot at n=1 (slotToll 1) - except meepleCapPerColour stays at the shipped v1 value of 1 rather than the handoff-v2 default of 2. This asks whether R15 and the priced slot want the wider cap to work at all, or whether a meeple that can now be spent as a card empties the supply fast enough on its own that the extra headroom does nothing. Section 3.4 of the handoff (docs/meeple-loop-visit-handoff-2026-09-04-v2.md) asks for the boxed-by-cap count specifically: if the cap at 1 boxes a meaningful number of meeples that R15 would otherwise have spent as cards, that is real value destroyed by a component decision, and it is the number that tells R4's amendment whether it is pulling its weight or whether meepleAsCard alone would have been enough. Read against overlays/meeple-as-card-v1.overlay.json (cap 2) and overlays/meeple-as-card-cap-three-v1.overlay.json (cap 3) as the three-point ladder; read meeples-spent-as-resources and meeples-boxed-by-source together, because a low cap that boxes resource-bound meeples is a different failure from one that boxes visit-bound ones. ⚠️ At this stage of the build the engine does not yet read meepleAsCard or slotToll, so this overlay currently behaves exactly like the shipped v1 loop at its own default cap - that is expected and is not a result.",
+  "schemaVersion": 1,
+  "set": {
+    "rules.turn.visitCurrency": "meeple",
+    "rules.turn.meepleAsCard": true,
+    "rules.turn.slotToll": 1,
+    "rules.turn.meepleCapPerColour": 1
+  }
+}

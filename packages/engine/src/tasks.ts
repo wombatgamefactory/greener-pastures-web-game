@@ -243,6 +243,8 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
             card: o.card,
             payment: o.payment,
             ...(o.stacks ? { stacks: o.stacks } : {}),
+            ...(o.meeples === undefined ? {} : { meeples: o.meeples }),
+            ...(o.wildPairs === undefined ? {} : { wildPairs: o.wildPairs }),
           }) as TaskAnswer,
       );
       if (task.optional === true && out.length > 0) out.push({ kind: 'skip' });
@@ -358,6 +360,8 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
           card: answer.card,
           payment: answer.payment,
           ...(answer.stacks ? { stacks: answer.stacks } : {}),
+          ...(answer.meeples === undefined ? {} : { meeples: answer.meeples }),
+          ...(answer.wildPairs === undefined ? {} : { wildPairs: answer.wildPairs }),
         },
         buildModsFor(fx.state, task),
         task.src,
@@ -368,7 +372,7 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
     case 'deliver': {
       if (answer.kind === 'skip' && task.optional === true) return true;
       if (answer.kind === 'deliver') {
-        doDeliver(fx, task.pid, answer.tile, answer.spend);
+        doDeliver(fx, task.pid, answer.tile, answer.spend, undefined, 1, answer.meeples);
         return true;
       }
       if (answer.kind === 'balloon') {

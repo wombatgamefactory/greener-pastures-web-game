@@ -62,6 +62,26 @@
  * `bonusAction` (the whole-extra-action premium), `visit` and `selfVisit` are
  * untouched, and `outcome` prices the door exactly as before, because what a
  * visit IS did not change - only what pays for it.
+ *
+ * ## ⭐ HANDOFF v2 (04/09/2026 evening) - AGAIN NO NEW TERM AND NO NEW WEIGHT
+ *
+ * R15 (`rules.turn.meepleAsCard`) makes a meeple a CARD of its colour, and the
+ * amended R6 (`rules.turn.slotToll`) prices an occupied slot rather than
+ * refusing it. Both default OFF, both are paired arms against the shipped loop,
+ * and the same discipline applies: **not one constant in `weights.ts` moves.**
+ * Four terms change what they READ and one constant in `scratch.ts` is new:
+ *
+ *   - **`meepleSpend`** gains three more exits - a meeple paid into a build, a
+ *     meeple paid into an island crate, and a meeple burned as a slot toll - at
+ *     the one price a meeple has always carried. It does NOT gain the GROW, and
+ *     that omission is load-bearing: see `meeplesLeavingSupply`.
+ *   - **`handSpend`** loses the GROW's card when a meeple pays for it.
+ *   - **`growSpend`** loses its subject in the same case.
+ *   - **`barnSpend`** stops charging the part of a delivery the SUPPLY paid.
+ *   - **`MEEPLE_AS_CARD_FLOOR`** (scratch.ts) is the only new number: a meeple
+ *     whose door is dead is now worth a CARD rather than 0.4 of a door, because
+ *     under R15 that is what it is. It is set by ARGUMENT, like `MEEPLE_LATENT`
+ *     and `meepleGain` before it, and it is not overlay-addressable.
  */
 
 import type { GameData, Suit } from '@gp/data';
@@ -258,8 +278,14 @@ function meepleAtTile(s: Scratch, tileId: string): Suit | null {
  */
 function barnCardsSpent(act: Act): number {
   switch (act.a) {
+    // ⭐ R15: `spend` IS WHAT THE ISLAND WAS PAID AND NOT WHAT THE BARN PAID.
+    // A meeple pays its share of a crate straight out of the supply, so the
+    // barn is short by exactly the meeples in the spend and charging the whole
+    // `spend` here would bill a meeple twice - once as freight and again as a
+    // meeple, at `meepleSpend`. Zero under both knob-off games, where
+    // `act.meeples` is always empty.
     case 'deliver':
-      return spendSize(act.spend);
+      return spendSize(act.spend) - act.meeples.length;
     case 'build':
       return act.stacks;
     default:
@@ -267,13 +293,53 @@ function barnCardsSpent(act: Act): number {
   }
 }
 
+const NO_MEEPLES: readonly Suit[] = [];
+
+/**
+ * ⭐ MEEPLES THIS ACT TAKES OUT OF THE SEAT'S SUPPLY, by whichever exit - the
+ * acting meeple of a visit (R1, R10), a meeple spent as a card of its colour
+ * (R15), or a meeple burned as a slot toll (R6). Every one of them is a full
+ * loss to this seat and every one of them is charged at the same price.
+ *
+ * ⚠️ **`grow` IS DELIBERATELY ABSENT AND THAT IS THE ONE THING TO GET RIGHT
+ * IN THIS FUNCTION.** A GROW is on `isProbed`, so its meeple arrives inside the
+ * rollout as a `meepleAsCard` event and `priceEvent` charges it there. Build and
+ * Deliver are NOT probed - they never were, for the reasons written at
+ * `isProbed` and at `meepleGain` - so their events never reach a pricer and
+ * their meeples have to be charged here. Charge a Grow here as well and it pays
+ * twice; charge a Build only in the pricer and it pays not at all. **The split
+ * is exactly the probed / unprobed line and nothing else.**
+ *
+ * Two things are NOT returned here and both are handled inline by `meepleSpend`:
+ * the v31 turn-start `spendMeeple`, whose single colour would cost an
+ * allocation a decision to wrap in a list, and the visit's `toll`, which is a
+ * second list on one act.
+ */
+function meeplesLeavingSupply(act: Act): readonly Suit[] {
+  switch (act.a) {
+    case 'visit':
+    case 'build':
+    case 'deliver':
+      return act.meeples;
+    default:
+      return NO_MEEPLES;
+  }
+}
+
 /** Cards this act takes OUT of the seat's hand. */
 function cardsLeavingHand(act: Act): number {
   switch (act.a) {
+    // The meeples are NOT here and must not be: `payment` is card ids only, and
+    // a meeple never came out of a hand (R15 - it is a card of its colour, but
+    // it was never in the hand and it never counts toward the hand limit).
     case 'build':
       return act.payment.length;
+    // ⭐ A MEEPLE-PAID GROW SPENDS NO CARD (R15). The null payment is the rule
+    // and not a sentinel - nothing is placed, so nothing left the hand - and it
+    // is gated on the ACT rather than on the knob, for the reason the `visit`
+    // case below states.
     case 'grow':
-      return 1;
+      return act.payment === null ? 0 : 1;
     // ⭐ A MEEPLE VISIT PAYS NO CARD (R1, the meeple-loop arm). The null fee is
     // the rule itself, not a sentinel: nothing is ever placed on a Notice Board
     // under the arm, so `handSpend` - the only price left in the v31 game -
@@ -560,16 +626,53 @@ export const TERMS: readonly Term[] = [
      * pin: a meeple would cost less leaving than it credited arriving, and a bot
      * whose books do not balance on its second resource burns it. Sweeping the
      * flat-0.4 variant is a one-line change here if the wild share reads high.
+     *
+     * ## ⭐ HANDOFF v2: IT NOW ALSO CHARGES A MEEPLE SPENT AS A **CARD** (R15)
+     * ## AND A MEEPLE BURNED AS A **TOLL** (R6 as amended)
+     *
+     * `rules.turn.meepleAsCard` lets a meeple pay a build cost, a Grow's
+     * activation and an island crate; `rules.turn.slotToll` prices an occupied
+     * slot in extra meeples instead of refusing it. **All four exits are one
+     * price**, on the standing rule this term was written under - one price for
+     * a meeple leaving a supply, whichever door it leaves by - and there is
+     * therefore no new weight for either rule. What DID move is the FEATURE the
+     * price multiplies: `meepleWorth`'s floor rises from `MEEPLE_LATENT` 0.4 to
+     * `MEEPLE_AS_CARD_FLOOR` 1 under R15, because a meeple whose door is dead is
+     * still a card. See `scratch.ts` for the argument and for what it costs.
+     *
+     * ⚠️ **A BOXED MEEPLE NEVER COMES BACK AND A VISITED ONE DOES, AND THIS
+     * TERM DOES NOT DISTINGUISH THEM.** The acting meeple of a visit moves to
+     * the host's board and the host collects it; a build payment and a toll go
+     * to the box (R16). To a SELF-REGARDING bot both are gone, so both are a
+     * full charge - the difference is entirely in what the RIVAL gets, which
+     * `outcome.ts` prices at 0 by standing rule. If that rule is ever relaxed,
+     * this is the term where the two stop being the same thing.
+     *
+     * ⚠️ **THE BUILD LEG IS DELIBERATELY NEUTRAL AGAINST A HAND CARD.** A
+     * dead-door meeple prices at 1 x 2.5 and a hand card at `handSpend` 2.5, so
+     * a bot paying a build is INDIFFERENT between them, and a live-door meeple
+     * prices at 1.6 x 2.5 so it prefers to keep that one and pay with the card.
+     * That ordering is the whole of the instrument's opinion about R15, and it
+     * was chosen because it does not manufacture the number the arm is being run
+     * to read: no taste for or against paying in meeples, only the door option
+     * the payment gives up.
+     *
+     * ⛔ **`grow` IS NOT CLAIMED AND MUST NOT BE.** A GROW is probed, so its
+     * meeple is charged by `priceEvent`'s `meepleAsCard` case inside the
+     * rollout. Adding it to `claims` would charge it twice. `meeplesLeavingSupply`
+     * carries the same warning at the other end.
      */
     name: 'meepleSpend',
-    claims: ['spendMeeple', 'visit'],
+    claims: ['spendMeeple', 'visit', 'build', 'deliver'],
     feature: (act, s) => {
       if (act.a === 'spendMeeple') return -meepleWorth(s, act.colour);
-      // The meeple-loop arm's visit. Empty under the `'card'` game, where a
-      // visit is paid for by `handSpend` and this contributes exactly nothing.
-      if (act.a !== 'visit') return 0;
+      // The meeple-loop arm's visit, R15's build and delivery payments, and the
+      // amended R6's toll. Every one of these lists is EMPTY under the `'card'`
+      // game and under `meepleAsCard: false` / `slotToll: null`, so the whole
+      // term collapses to the v1 arithmetic without reading a knob.
       let cost = 0;
-      for (const colour of act.meeples) cost += meepleWorth(s, colour);
+      for (const colour of meeplesLeavingSupply(act)) cost += meepleWorth(s, colour);
+      if (act.a === 'visit') for (const colour of act.toll) cost += meepleWorth(s, colour);
       return -cost;
     },
     cost: true,
@@ -614,7 +717,12 @@ export const TERMS: readonly Term[] = [
     // hand card, so no probe and no sight question.
     name: 'growSpend',
     claims: ['grow', ...ACTION_AND_TASK],
-    feature: (act, s) => (act.a === 'grow' ? -cardValue(s.data, act.payment) : 0),
+    // ⭐ A MEEPLE-PAID GROW HAS NO CARD TO RANK (R15), so this junk ordering has
+    // no subject and returns 0. What the meeple COSTS is charged inside the
+    // rollout by `priceEvent`'s `meepleAsCard` case, because a GROW is probed -
+    // see `meeplesLeavingSupply` for why that is the whole rule.
+    feature: (act, s) =>
+      act.a === 'grow' && act.payment !== null ? -cardValue(s.data, act.payment) : 0,
     cost: true,
   },
   {

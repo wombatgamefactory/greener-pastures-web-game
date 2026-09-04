@@ -31,7 +31,6 @@ import {
   noticeBoardOf,
   noticeBoardSlots,
   player,
-  slotBlocked,
   visitTargetOf,
   workerData,
 } from './query.js';
@@ -108,6 +107,126 @@ export function subsets<T>(items: readonly T[], k: number): T[][] {
   };
   walk(0, 0);
   return out;
+}
+
+// --- meeples as cards (R15, handoff v2) ------------------------------------
+
+/**
+ * ⭐ IS R15 LIVE? A meeple may be spent wherever a card of its colour would be
+ * spent - a build cost including its own-suit half, a Grow's activation
+ * payment, an island crate - and it goes STRAIGHT TO THE BOX rather than to the
+ * stack, the barn or the discard.
+ *
+ * Gated on the meeple currency as well as its own knob, because the `'card'`
+ * game has no recirculating supply to spend: under v31 a meeple is a scarce
+ * one-shot action bought only off the island, and letting it pay a build there
+ * would be a different rule change wearing this one's name.
+ */
+export function meepleAsCard(data: GameData): boolean {
+  return isMeepleCurrency(data) && data.rules.turn.meepleAsCard === true;
+}
+
+/**
+ * THE SLOT TOLL (R6 as amended). `null` is v1's rule - an occupied slot is
+ * BLOCKED and refuses that colour - and a number is v2's: the slot is never
+ * refused, it costs that many extra meeples per meeple already in it, and the
+ * extra meeples go to the box.
+ */
+export function slotTollOf(data: GameData): number | null {
+  if (!isMeepleCurrency(data)) return null;
+  return data.rules.turn.slotToll;
+}
+
+/**
+ * ONE WAY TO SPEND MEEPLES, as a COUNT PER COLOUR.
+ *
+ * ⛔ **THIS SHAPE IS THE PERFORMANCE RULE OF THE WHOLE CHANGE, AND IT IS NOT
+ * A STYLE PREFERENCE.** The hand limit was cut from 12 to 7 on 03/09/2026
+ * precisely because build payments are `C(hand, k)` and explode - a 12-card hand
+ * put the balance suite at twelve hours. R15 hands the enumerator up to ten more
+ * spendable tokens. If meeples were enumerated as INDIVIDUAL objects the way
+ * hand cards are, `subsets()` would be asked for every way of choosing two
+ * indistinguishable yellow meeples out of two, and the branching factor of the
+ * whole game would go with it.
+ *
+ * They are not individual objects. Two meeples of a colour differ in nothing a
+ * rule or a player can read - same colour, same door, same box - so a payment is
+ * decided by HOW MANY of each colour it spends and never by which. That is
+ * exactly the argument `stackGroupsOf` makes for a building's stack, applied to
+ * a resource that genuinely has no identity at all.
+ *
+ * What DOES vary and is enumerated in full: which COLOURS go, because a colour
+ * given up is a door you cannot buy next turn. That is the decision R15 exists
+ * to create and it is not canonicalised away.
+ */
+export interface MeepleFill {
+  counts: Partial<Record<Suit, number>>;
+  total: number;
+}
+
+const NO_MEEPLES: MeepleFill[] = [{ counts: {}, total: 0 }];
+
+/**
+ * Memoised on the supply vector alone. At `meepleCapPerColour` 2 there are at
+ * most 3^5 = 243 distinct supplies and 243 fills, so the cache is bounded by the
+ * rules rather than by the run, and every position that shares a supply shares
+ * one list.
+ */
+const FILL_CACHE = new Map<string, MeepleFill[]>();
+
+/**
+ * Every subset of a supply, as count vectors, in a FIXED order: suit order
+ * outermost, ascending count innermost.
+ *
+ * ⚠️ THE ORDER IS LOAD-BEARING, for the same reason `subsets()` says its
+ * own is. Enumeration order reaches the bots' tie-break and the metric fold's
+ * `legal` list, so a reordering here would move balance numbers without changing
+ * a rule. The zero vector is always FIRST, which is what makes the R15-off arm
+ * bit-identical to v1: with an empty supply the list is exactly `NO_MEEPLES` and
+ * every loop below runs once with nothing in it.
+ */
+export function meepleFills(
+  suits: readonly Suit[],
+  supply: Readonly<Record<Suit, number>>,
+): MeepleFill[] {
+  let key = '';
+  let held = 0;
+  for (const s of suits) {
+    const n = supply[s] ?? 0;
+    held += n;
+    key += `${n},`;
+  }
+  if (held === 0) return NO_MEEPLES;
+  const hit = FILL_CACHE.get(key);
+  if (hit) return hit;
+  let out: MeepleFill[] = NO_MEEPLES;
+  for (const suit of suits) {
+    const cap = supply[suit] ?? 0;
+    if (cap === 0) continue;
+    const next: MeepleFill[] = [];
+    for (const fill of out) {
+      next.push(fill);
+      for (let n = 1; n <= cap; n++) {
+        next.push({ counts: { ...fill.counts, [suit]: n }, total: fill.total + n });
+      }
+    }
+    out = next;
+  }
+  FILL_CACHE.set(key, out);
+  return out;
+}
+
+/** The fills this seat could pay a card cost with, or the zero fill when R15 is off. */
+function fillsFor(data: GameData, state: GameState, seat: Seat): MeepleFill[] {
+  if (!meepleAsCard(data)) return NO_MEEPLES;
+  return meepleFills(data.cards.suits, player(state, seat).meeples);
+}
+
+/** Total meeples in a count vector. */
+export function meepleCount(counts: Partial<Record<Suit, number>>): number {
+  let n = 0;
+  for (const v of Object.values(counts)) n += v ?? 0;
+  return n;
 }
 
 // --- shared queries --------------------------------------------------------
@@ -243,6 +362,21 @@ export interface BuildOption {
   card: CardId;
   payment: CardId[];
   stacks?: CardId[];
+  /**
+   * R15: meeples spent as cards of their colours, as a COUNT PER COLOUR. Kept
+   * apart from `payment` because they are not card ids and have no identity -
+   * see `MeepleFill`. Absent when none were spent, so an R15-off option is
+   * byte-identical to a v1 one.
+   */
+  meeples?: Partial<Record<Suit, number>>;
+  /**
+   * How many of those meeples are spent TWO-AS-ONE to fill the built card's
+   * own-suit half (R10). Always the minimum the cost needs: a pair buys one
+   * own-suit resource for two meeples where a single own-colour meeple buys it
+   * for one, so an unneeded pair is a strictly dominated payment and is never
+   * offered.
+   */
+  wildPairs?: number;
 }
 
 /**
@@ -416,6 +550,8 @@ function paymentsFor(
   hand: readonly CardId[],
   groups: readonly CardId[][],
   price: { cardsNeeded: number; ownSuitMin: number },
+  fills: readonly MeepleFill[] = NO_MEEPLES,
+  supply: Readonly<Record<Suit, number>> | null = null,
 ): BuildOption[] {
   const suit = cardById(data, card).suit;
   const out: BuildOption[] = [];
@@ -427,18 +563,66 @@ function paymentsFor(
   const maxStacks = groups.length === 0 ? 0 : Math.floor(price.cardsNeeded / STACK_WILD_VALUE);
   for (let n = 0; n <= maxStacks; n++) {
     for (const stacks of stackFills(groups, n)) {
-      for (const payment of subsets(hand, price.cardsNeeded - STACK_WILD_VALUE * n)) {
-        // RULED 19/08/2026 (Dean): "the card counts as ANY card - including
-        // wild". So a stack card is a true wildcard - its STACK_WILD_VALUE
-        // resources fill OWN-CROP slots exactly as readily as wild ones, and
-        // its printed suit is irrelevant. Hand cards still have to actually BE
-        // the crop; only the stack is wild.
-        // Counted rather than filtered: this runs once per enumerated payment,
-        // and `filter().length` allocated an array per option for a number.
-        let own = STACK_WILD_VALUE * stacks.length;
-        for (const c of payment) if (cardById(data, c).suit === suit) own += 1;
-        if (own < price.ownSuitMin) continue;
-        out.push(stacks.length > 0 ? { card, payment, stacks } : { card, payment });
+      const fromStacks = STACK_WILD_VALUE * n;
+      // ⭐ R15's LOOP, AND WHEN R15 IS OFF IT COSTS ONE ITERATION OF ONE
+      // ELEMENT. `fills` is `NO_MEEPLES` under v1 and under the `'card'` game,
+      // so `fill.total` is 0, `pairs` is 0, `k` is the count this line always
+      // asked for and the emitted ORDER is unchanged. That is what keeps the
+      // control arm bit-reproducible rather than merely equivalent.
+      for (const fill of fills) {
+        const ownMeeples = fill.counts[suit] ?? 0;
+        // A pair is two meeples spent as one card of ANY colour (R10), and it is
+        // only ever worth forming out of colours that are NOT the built suit: an
+        // own-colour meeple pays an own-suit slot singly, so pairing it would
+        // buy the same resource at twice the price.
+        const maxPairs = (fill.total - ownMeeples) >> 1;
+        for (let pairs = 0; pairs <= maxPairs; pairs++) {
+          // Every meeple spent pays one resource, except the paired ones, which
+          // pay one between two.
+          const k = price.cardsNeeded - fromStacks - (fill.total - pairs);
+          if (k < 0 || k > hand.length) continue;
+          for (const payment of subsets(hand, k)) {
+            // RULED 19/08/2026 (Dean): "the card counts as ANY card - including
+            // wild". So a stack card is a true wildcard - its STACK_WILD_VALUE
+            // resources fill OWN-CROP slots exactly as readily as wild ones, and
+            // its printed suit is irrelevant. Hand cards still have to actually
+            // BE the crop; only the stack is wild. ⭐ AND SO DOES A MEEPLE
+            // (R15): a yellow meeple is a WHEAT card and pays a Wheat
+            // requirement, not an any-colour one. The wild half of the rule is
+            // the PAIR, and it is counted separately below.
+            // Counted rather than filtered: this runs once per enumerated
+            // payment, and `filter().length` allocated an array per option for a
+            // number.
+            let own = fromStacks + ownMeeples + pairs;
+            for (const c of payment) if (cardById(data, c).suit === suit) own += 1;
+            if (own < price.ownSuitMin) continue;
+            // ⭐ A PAIR IS OFFERED ONLY WHERE THE COST NEEDS IT. Drop one and
+            // the own count falls by one while the payment gets one hand card
+            // CHEAPER - so a pair that was not required is a strictly dominated
+            // way to pay, and offering it would multiply the build list for a
+            // choice no player would make. Given `own >= ownSuitMin`, minimality
+            // is exactly `own === ownSuitMin`.
+            if (pairs > 0 && own > price.ownSuitMin) continue;
+            // ⭐ AND A PAIR IS THE LAST RESORT, on the same sentence
+            // `enumerateMeepleVisits` and `growOptions` use: SPEND THE EXACT
+            // COLOUR FIRST, pair only when you have run out of it. Without this
+            // line a seat holding a yellow meeple is offered every way of
+            // paying a Wheat slot with two OTHER meeples beside the obvious
+            // one, which multiplies the build list by the supply for a payment
+            // that costs two tokens to do one token's job. It is a real choice
+            // in the abstract - you may want to keep the yellow for a door -
+            // but it is not a choice worth the branching factor, and it is
+            // recorded as a deliberate reduction rather than an oversight.
+            if (pairs > 0 && supply !== null && ownMeeples < (supply[suit] ?? 0)) continue;
+            const option: BuildOption =
+              stacks.length > 0 ? { card, payment, stacks } : { card, payment };
+            if (fill.total > 0) {
+              option.meeples = fill.counts;
+              if (pairs > 0) option.wildPairs = pairs;
+            }
+            out.push(option);
+          }
+        }
       }
     }
   }
@@ -471,6 +655,9 @@ export function buildOptions(
   // flattening the tableau into a single pool: a payment may mix hand cards with
   // cards from at most one stack.
   const sources = mods.fromStacks === true ? stackSourcesFor(data, state, seat) : [[]];
+  // R15: the seat's meeple supply, as count vectors. `NO_MEEPLES` when the rule
+  // is off, which is one element and no behaviour change.
+  const fills = fillsFor(data, state, seat);
   const out: BuildOption[] = [];
   // ⭐ THE DEDUPE IS SKIPPED WHEN THERE IS NOTHING TO DEDUPE (03/09/2026). It
   // exists because a hand-only payment is reachable once per BUILDING, so the
@@ -488,7 +675,7 @@ export function buildOptions(
     // Hoisted: the hand-minus-this-card list was rebuilt once per SOURCE.
     const rest = cards.filter((h) => h !== id);
     for (const groups of sources) {
-      for (const option of paymentsFor(data, id, rest, groups, price)) {
+      for (const option of paymentsFor(data, id, rest, groups, price, fills, p.meeples)) {
         if (seen !== null) {
           // Sorted because two sources can reach the same multiset by different
           // orders.
@@ -496,6 +683,10 @@ export function buildOptions(
             option.card,
             [...option.payment].sort().join(','),
             [...(option.stacks ?? [])].sort().join(','),
+            // R15: two payments that spend the same cards but different meeples
+            // are different payments, so the meeple vector is part of the key.
+            data.cards.suits.map((x) => option.meeples?.[x] ?? 0).join(''),
+            option.wildPairs ?? 0,
           ].join('|');
           if (seen.has(key)) continue;
           seen.add(key);
@@ -518,12 +709,20 @@ export function paymentOptions(
   seat: Seat,
   card: CardId,
   mods: BuildMods = {},
-): { payment: CardId[] }[] {
+): { payment: CardId[]; meeples?: Partial<Record<Suit, number>>; wildPairs?: number }[] {
   const price = priceOf(data, card, mods);
   if (!price) return [];
-  return paymentsFor(data, card, player(state, seat).hand, [], price).map((o) => ({
-    payment: o.payment,
-  }));
+  // R15 reaches D10 too, because D10 is a BUILD and R15 says build costs. It
+  // is the cheapest case in the game - the discount waives the own-suit half -
+  // so in practice a meeple only ever pays the wild half here.
+  const p = player(state, seat);
+  return paymentsFor(data, card, p.hand, [], price, fillsFor(data, state, seat), p.meeples).map(
+    (o) => ({
+      payment: o.payment,
+      ...(o.meeples === undefined ? {} : { meeples: o.meeples }),
+      ...(o.wildPairs === undefined ? {} : { wildPairs: o.wildPairs }),
+    }),
+  );
 }
 
 /**
@@ -542,14 +741,54 @@ export function anyBuildOption(
 ): boolean {
   const p = player(state, seat);
   const cards = hand ?? p.hand;
+  const asCard = meepleAsCard(data);
   return cards.some((id) => {
     const price = priceOf(data, id, mods);
     if (!price) return false;
     const suit = cardById(data, id).suit;
     const others = cards.filter((h) => h !== id);
     const own = others.filter((c) => cardById(data, c).suit === suit).length;
-    return others.length >= price.cardsNeeded && own >= price.ownSuitMin;
+    if (others.length >= price.cardsNeeded && own >= price.ownSuitMin) return true;
+    if (!asCard) return false;
+    return payableWithMeeples(data, p.meeples, suit, price, others.length, own);
   });
+}
+
+/**
+ * The fast path's R15 half: could this seat pay `price` if meeples joined in?
+ *
+ * ⚠️ IT MUST AGREE WITH `paymentsFor` EXACTLY, in both directions, and
+ * that is not a style rule - `workerActionLegal`'s build branch calls this, and
+ * a gate that says yes where the enumerator offers nothing hands a visitor a
+ * door with no legal move behind it (the 19/08/2026 harvest bug, in a new
+ * costume). So it is written as the same arithmetic reduced to its greedy
+ * optimum rather than as a second, looser test.
+ *
+ * The greedy is exact because every route to one own-suit resource costs the
+ * same except a pair, which costs two: fill the own-suit minimum from hand
+ * cards first, then from own-colour meeples, and only then from pairs, and what
+ * is left over is the widest possible wild pool.
+ */
+function payableWithMeeples(
+  data: GameData,
+  supply: Readonly<Record<Suit, number>>,
+  suit: Suit,
+  price: { cardsNeeded: number; ownSuitMin: number },
+  handCount: number,
+  ownHand: number,
+): boolean {
+  const ownMeeples = supply[suit] ?? 0;
+  let otherMeeples = 0;
+  for (const s of data.cards.suits) if (s !== suit) otherMeeples += supply[s] ?? 0;
+  const fromHand = Math.min(ownHand, price.ownSuitMin);
+  const fromOwn = Math.min(ownMeeples, price.ownSuitMin - fromHand);
+  const pairs = price.ownSuitMin - fromHand - fromOwn;
+  if (2 * pairs > otherMeeples) return false;
+  const spentOnOwn = fromHand + fromOwn + pairs;
+  if (spentOnOwn > price.cardsNeeded) return false;
+  const wildAvailable =
+    handCount - fromHand + (ownMeeples - fromOwn) + (otherMeeples - 2 * pairs);
+  return wildAvailable >= price.cardsNeeded - spentOnOwn;
 }
 
 /**
@@ -582,23 +821,54 @@ export function doBuild(
   if (stacks.length > 0 && stackHomes(fx.state, seat, stacks).size > 1) {
     throw new Error('This Build may spend cards off only one of your buildings');
   }
+  // R15: meeples in the payment, re-validated against the supply and against
+  // the same arithmetic the enumerator used. `apply` must accept exactly what
+  // `legalMoves` offered and nothing wider.
+  const meeples = choice.meeples ?? {};
+  const meepleTotal = meepleCount(meeples);
+  const wildPairs = choice.wildPairs ?? 0;
+  if (meepleTotal > 0 && !meepleAsCard(fx.data)) {
+    throw new Error('A meeple pays for a build only under rules.turn.meepleAsCard');
+  }
+  for (const colour of fx.data.cards.suits) {
+    const want = meeples[colour] ?? 0;
+    if (want > 0 && p.meeples[colour] < want) {
+      throw new Error(`Seat ${seat} has ${p.meeples[colour]} ${colour} meeples, not ${want}`);
+    }
+  }
+  const ownMeeples = meeples[c.suit] ?? 0;
+  // A pair is formed out of colours that are NOT the built suit (see
+  // `paymentsFor`), so the meeples available to pair are the non-own ones.
+  if (2 * wildPairs > meepleTotal - ownMeeples) {
+    throw new Error(`${card} cannot form ${wildPairs} wild pairs from that payment`);
+  }
   // D7's rate: a card off a building is worth STACK_WILD_VALUE of the cost.
-  const paid = payment.length + STACK_WILD_VALUE * stacks.length;
+  // A meeple is worth one, except a pair, which is worth one between two.
+  const paid = payment.length + STACK_WILD_VALUE * stacks.length + (meepleTotal - wildPairs);
   if (paid !== price.cardsNeeded) {
     throw new Error(`${card} costs ${price.cardsNeeded} cards, got ${paid}`);
   }
   // ...and the own-crop minimum counts a stack card as WILD, at the same rate
-  // it pays the total (ruled 19/08/2026 - see STACK_WILD_VALUE). Mirrors
+  // it pays the total (ruled 19/08/2026 - see STACK_WILD_VALUE). A meeple of the
+  // built card's own colour counts as an own card, and a pair counts as one
+  // card of any colour and so fills an own slot too (R10, R15). Mirrors
   // `paymentsFor` exactly; apply must accept what the enumerator offers.
   const own =
     payment.filter((id) => cardById(fx.data, id).suit === c.suit).length +
-    STACK_WILD_VALUE * stacks.length;
+    STACK_WILD_VALUE * stacks.length +
+    ownMeeples +
+    wildPairs;
   if (own < price.ownSuitMin) {
     throw new Error(`${card} needs ${price.ownSuitMin} ${c.suit} cards in payment`);
   }
 
   fx.removeFromHand(seat, card);
   for (const id of payment) fx.removeFromHand(seat, id);
+  // ⭐ THE MEEPLES GO TO THE BOX AND NOWHERE ELSE (R15). They are taken out
+  // BEFORE `divertOrDiscard`, so nothing downstream can mistake one for a spent
+  // card: D5, D6, D11 and O17 all reach for the cards this build spent, and a
+  // meeple was never in the discard for them to find.
+  if (meepleTotal > 0) fx.payMeeplesAsCards(seat, meeples, 'build', { wildPairs });
   // SPENT, not harvested (D7's ruling): the cards come straight off the stack,
   // no afterHarvest fires, and they are not divertible.
   for (const id of stacks) fx.spendFromStack(seat, id);
@@ -735,7 +1005,21 @@ export function doDraw(fx: Fx, seat: Seat): void {
 
 export interface GrowOption {
   building: CardId;
-  payment: CardId;
+  /** Null when a meeple paid (R15): nothing is placed, so nothing is named. */
+  payment: CardId | null;
+  /**
+   * R15: the meeple that paid, or the two meeples spent as a wild pair (R10).
+   * It goes STRAIGHT TO THE BOX - never onto the stack, never toward the
+   * threshold - which is why `atThreshold` below can ever be true.
+   */
+  meeples?: Suit[];
+  /**
+   * True when the building was ALREADY AT ITS THRESHOLD and only a meeple could
+   * have activated it. Carried on the option rather than re-derived, because it
+   * is the measurement v2 section 3 asks for by name: the priced clog bypass,
+   * counted apart from every other meeple exit.
+   */
+  atThreshold?: boolean;
 }
 
 /**
@@ -787,17 +1071,81 @@ export function growOptions(
 ): GrowOption[] {
   const p = player(state, seat);
   const out: GrowOption[] = [];
+  const asCard = meepleAsCard(data);
   for (const b of p.tableau) {
-    if (!canTakeCard(data, b)) continue;
     if (cardById(data, b.card).slot === 'noticeboard') continue;
     if (state.turn.firedThisTurn.includes(b.card)) continue;
     if (mods.exclude?.includes(b.card)) continue;
     const type = faceOf(data, b).activationType;
     if (type === null) continue;
-    for (const card of p.hand) {
-      if (mods.anyCrop === true || type === 'wild' || cardById(data, card).suit === type) {
-        out.push({ building: b.card, payment: card });
+    // ⭐ THE FULL-BUILDING GATE MOVED OFF THE TOP OF THIS LOOP (R15). It used
+    // to be the first line, and it belonged there while every Grow placed a
+    // card. A meeple-paid Grow places NOTHING, so the only reason a full
+    // building cannot be grown does not apply to it, and Dean ruled the
+    // consequence in on 04/09/2026 evening: a meeple can activate a building
+    // already at its threshold, the ability fires, nothing is added, the
+    // building stays as it was. It is a PRICED CLOG BYPASS and it is deliberate.
+    const open = canTakeCard(data, b);
+    if (open) {
+      for (const card of p.hand) {
+        if (mods.anyCrop === true || type === 'wild' || cardById(data, card).suit === type) {
+          out.push({ building: b.card, payment: card });
+        }
       }
+    }
+    if (!asCard) continue;
+    const atThreshold = !open;
+    const anyColour = mods.anyCrop === true || type === 'wild';
+    if (anyColour) {
+      // Any meeple pays a wild activation, so a pair never helps and is never
+      // offered: two meeples for what one buys is a dominated payment.
+      for (const colour of data.cards.suits) {
+        if ((p.meeples[colour] ?? 0) < 1) continue;
+        out.push({ building: b.card, payment: null, meeples: [colour], atThreshold });
+      }
+      continue;
+    }
+    // `type` is a Suit here: `anyColour` above already took the 'wild' case.
+    const colour = type as Suit;
+    if ((p.meeples[colour] ?? 0) > 0) {
+      out.push({ building: b.card, payment: null, meeples: [colour], atThreshold });
+      continue;
+    }
+    // ⭐ THE PAIR IS THE LAST RESORT AND ONLY THE LAST RESORT, on exactly the
+    // rule `enumerateMeepleVisits` uses: a colour you hold you would always
+    // spend singly, so a pair is enumerated only for a colour you do not hold.
+    // Without that guard the option list carries every pair beside every single
+    // for every building on the table.
+    for (const pair of meeplePairs(data, p.meeples)) {
+      out.push({ building: b.card, payment: null, meeples: pair, atThreshold });
+    }
+  }
+  return out;
+}
+
+/**
+ * Unordered PAIRS out of a supply, as colour lists, including two of one colour
+ * where the cap allows it.
+ *
+ * A count vector would be the shape everywhere else in this file, but a pair is
+ * always exactly two meeples and never more, so the list is its own canonical
+ * form and short enough to read at a call site. Suit order, then ascending, so
+ * the enumeration order is fixed.
+ */
+export function meeplePairs(
+  data: GameData,
+  supply: Readonly<Record<Suit, number>>,
+): [Suit, Suit][] {
+  const out: [Suit, Suit][] = [];
+  const suits = data.cards.suits;
+  for (let i = 0; i < suits.length; i++) {
+    const a = suits[i];
+    if (a === undefined || (supply[a] ?? 0) < 1) continue;
+    if ((supply[a] ?? 0) >= 2) out.push([a, a]);
+    for (let j = i + 1; j < suits.length; j++) {
+      const b = suits[j];
+      if (b === undefined || (supply[b] ?? 0) < 1) continue;
+      out.push([a, b]);
     }
   }
   return out;
@@ -925,6 +1273,24 @@ export function doHarvestAction(fx: Fx, seat: Seat, building: CardId): void {
 export interface DeliverOption {
   tile: string;
   spend: Partial<Record<Suit, number>>;
+  /**
+   * R15: the part of `spend` paid out of the SUPPLY rather than the barn, per
+   * colour. Absent when the barn covered it all.
+   *
+   * ⭐ IT IS DERIVED, NOT ENUMERATED, AND THAT IS A DELIBERATE REDUCTION.
+   * The split is BARN FIRST: a meeple pays only what the barn cannot, colour by
+   * colour. The alternative - offering every way of splitting a crate between
+   * barn cards and meeples - multiplies the delivery list by a power of the
+   * supply for a choice that is dominated in one direction: a barn card is a
+   * DEAD END (it pays the island and nothing else, which is the barn glut), a
+   * meeple is a stored action, so spending the barn first is the better half of
+   * that trade every time bar the tie-break. It is the same argument
+   * `substitutedSpends` already makes when it offers only the MINIMUM number of
+   * substitutions. ⚠️ The cost of the reduction, stated so it is not
+   * forgotten: a seat can never choose to burn a meeple to KEEP a barn card for
+   * the tie-break.
+   */
+  meeples?: Partial<Record<Suit, number>>;
 }
 
 /**
@@ -1326,8 +1692,55 @@ function spendKey(tile: string, spend: Partial<Record<Suit, number>>): string {
  * de-duped: two different wild-crate fills collapse to the same spend once
  * enough of the tile is paid in filler.
  */
-export function deliverOptions(data: GameData, state: GameState, seat: Seat): DeliverOption[] {
+/**
+ * WHAT THIS SEAT CAN PAY THE ISLAND WITH: the barn, plus the meeple supply when
+ * R15 is live.
+ *
+ * ⚠️ EVERY ROUTE THAT ASKS "CAN THIS SEAT DELIVER" MUST ASK THIS ONE,
+ * not `barnTally`. `anyDeliverOption` gates the green door through
+ * `workerActionLegal`, `payableTileCount` prices it for the bots, and
+ * `deliverOptions` enumerates it; a tally that disagreed between them would
+ * offer a door with no legal move behind it.
+ */
+function deliverTally(data: GameData, state: GameState, seat: Seat): Partial<Record<Suit, number>> {
   const barn = barnTally(data, state, seat);
+  if (!meepleAsCard(data)) return barn;
+  const supply = player(state, seat).meeples;
+  const out: Partial<Record<Suit, number>> = { ...barn };
+  for (const suit of data.cards.suits) out[suit] = (out[suit] ?? 0) + (supply[suit] ?? 0);
+  return out;
+}
+
+/**
+ * Split one spend into the barn's share and the supply's, BARN FIRST (see
+ * `DeliverOption.meeples`). Returns null when the supply cannot cover what the
+ * barn is short of, which cannot happen for a spend derived from
+ * `deliverTally` but is re-checked because `doDeliver` accepts a spend it did
+ * not generate.
+ */
+function meepleShare(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+  spend: Partial<Record<Suit, number>>,
+): Partial<Record<Suit, number>> | null {
+  const barn = barnTally(data, state, seat);
+  const supply = player(state, seat).meeples;
+  const out: Partial<Record<Suit, number>> = {};
+  let any = false;
+  for (const [suit, want] of Object.entries(spend) as [Suit, number][]) {
+    const short = want - (barn[suit] ?? 0);
+    if (short <= 0) continue;
+    if (short > (supply[suit] ?? 0)) return null;
+    out[suit] = short;
+    any = true;
+  }
+  return any ? out : {};
+}
+
+export function deliverOptions(data: GameData, state: GameState, seat: Seat): DeliverOption[] {
+  const barn = deliverTally(data, state, seat);
+  const asCard = meepleAsCard(data);
   const demands = deliverDemands(data, state, seat);
   const out: DeliverOption[] = [];
   const seen = new Set<string>();
@@ -1342,7 +1755,17 @@ export function deliverOptions(data: GameData, state: GameState, seat: Seat): De
       const key = spendKey(demand.tile, spend);
       if (seen.has(key)) continue;
       seen.add(key);
-      out.push({ tile: demand.tile, spend });
+      if (!asCard) {
+        out.push({ tile: demand.tile, spend });
+        continue;
+      }
+      const meeples = meepleShare(data, state, seat, spend);
+      if (meeples === null) continue;
+      out.push(
+        meepleCount(meeples) === 0
+          ? { tile: demand.tile, spend }
+          : { tile: demand.tile, spend, meeples },
+      );
     }
   }
   return out;
@@ -1356,7 +1779,7 @@ export function deliverOptions(data: GameData, state: GameState, seat: Seat): De
  * barn is not a seat with no deliveries.
  */
 export function anyDeliverOption(data: GameData, state: GameState, seat: Seat): boolean {
-  const barn = barnTally(data, state, seat);
+  const barn = deliverTally(data, state, seat);
   return state.island.tiles.some((tile) => payableBy(data, state, tile, barn));
 }
 
@@ -1389,7 +1812,7 @@ function payableBy(
  * both already in it.
  */
 export function payableTileCount(data: GameData, state: GameState, seat: Seat): number {
-  const tally = barnTally(data, state, seat);
+  const tally = deliverTally(data, state, seat);
   return state.island.tiles.filter((tile) => payableBy(data, state, tile, tally)).length;
 }
 
@@ -1408,6 +1831,12 @@ export function doDeliver(
    * asserted twice.
    */
   receipts = 1,
+  /**
+   * R15: the part of `spend` paid out of the SUPPLY rather than the barn. Omit
+   * and it is derived barn-first, which is what every enumerated option does;
+   * pass it and it is validated against the same rule.
+   */
+  meepleSpend?: Partial<Record<Suit, number>>,
 ): void {
   const state = fx.state;
   const tile = state.island.tiles.find((t) => t.tile === tileId);
@@ -1452,7 +1881,34 @@ export function doDeliver(
     );
   }
 
-  const cards = fx.spendFromBarn(seat, spend);
+  // ⭐ R15: THE MEEPLE HALF OF THE PAYMENT COMES OUT FIRST AND GOES TO THE
+  // BOX. `spend` is what the ISLAND was paid, in suits; `meeples` is which of
+  // it came out of the supply, and the barn pays the rest. The split is derived
+  // barn-first (see `DeliverOption.meeples`), and a caller that names its own
+  // is held to the same arithmetic - it may never claim a meeple for a suit the
+  // barn could have covered, or the same delivery would be payable two ways and
+  // `apply` would accept a move `legalMoves` never offered.
+  const meeples = meepleSpend ?? meepleShare(fx.data, state, seat, spend) ?? {};
+  const meepleTotal = meepleCount(meeples);
+  if (meepleTotal > 0 && !meepleAsCard(fx.data)) {
+    throw new Error('A meeple pays an island crate only under rules.turn.meepleAsCard');
+  }
+  if (meepleTotal > 0) {
+    const derived = meepleShare(fx.data, state, seat, spend);
+    if (derived === null) throw new Error('That spend is not payable from barn and supply');
+    for (const suit of fx.data.cards.suits) {
+      if ((meeples[suit] ?? 0) !== (derived[suit] ?? 0)) {
+        throw new Error(`The ${suit} share of that delivery is not the barn-first split`);
+      }
+    }
+  }
+  const fromBarn: Partial<Record<Suit, number>> = { ...spend };
+  for (const [suit, n] of Object.entries(meeples) as [Suit, number][]) {
+    fromBarn[suit] = (fromBarn[suit] ?? 0) - n;
+    if ((fromBarn[suit] as number) <= 0) delete fromBarn[suit];
+  }
+  if (meepleTotal > 0) fx.payMeeplesAsCards(seat, meeples, 'delivery');
+  const cards = fx.spendFromBarn(seat, fromBarn);
   // Read each VP and each MEEPLE off the space BEFORE the delivery joins the
   // tile, or the first deliverer would be paid the second deliverer's rate and
   // handed the second deliverer's meeple. The tile's own fill order is the whole
@@ -1485,7 +1941,18 @@ export function doDeliver(
   }
   // ONE Deliver, so one afterDeliver: the rebuilt Farmstead puts one card in the
   // barn for a delivery, not one per receipt taken.
-  fireHook(fx, 'afterDeliver', { seat, island: true, tile: tileId, cards });
+  // ⭐ THE HOOK CARRIES THE MEEPLES TOO (v2 section 5, default: a meeple in a
+  // crate is a card of its colour in all ways). NO CARD IN THE CATALOGUE READS
+  // `afterDeliver` TODAY, so the field is a promise rather than a behaviour: the
+  // next card that fires on cards delivered has to decide, and this is where it
+  // will find them.
+  fireHook(fx, 'afterDeliver', {
+    seat,
+    island: true,
+    tile: tileId,
+    cards,
+    ...(meepleTotal > 0 ? { meeples } : {}),
+  });
   // The clock: one seat's Nth ISLAND delivery ends the game. Counted after every
   // push (RULING G, recommended: V14's two receipts are two deliveries toward
   // the trigger), and off the island rather than off `receipts`, because
@@ -1763,7 +2230,15 @@ export function grantBalloonReward(fx: Fx, seat: Seat, balloonId: string): void 
 export function deliverAnswers(data: GameData, state: GameState, seat: Seat): TaskAnswer[] {
   return [
     ...deliverOptions(data, state, seat).map(
-      (o) => ({ kind: 'deliver', tile: o.tile, spend: o.spend }) as TaskAnswer,
+      (o) =>
+        ({
+          kind: 'deliver',
+          tile: o.tile,
+          spend: o.spend,
+          // R15: the supply's share rides on the answer. The doc comment on the
+          // deleted `head` rider one screen up is about exactly this trap.
+          ...(o.meeples === undefined ? {} : { meeples: o.meeples }),
+        }) as TaskAnswer,
     ),
     ...balloonMoveOptions(data, state, seat).map(
       (o) => ({ kind: 'balloon', balloon: o.balloon, spend: o.spend }) as TaskAnswer,
@@ -2149,6 +2624,15 @@ function enumerateMeepleVisits(
 ): boolean {
   const held = meeplesHeld(data, state, seat);
   if (held.length === 0) return false;
+  const supply = player(state, seat).meeples;
+  // ⭐ R6 AS AMENDED (handoff v2): `toll` null is v1's rule - an occupied slot
+  // is BLOCKED and refuses that colour - and a number is v2's: the slot is never
+  // refused, it costs that many extra meeples per meeple already sitting in it,
+  // and the extras go to the BOX rather than into the slot. Dean's reason for it
+  // is a sink ("might be a good way of sinking surplus meeples"), and the design
+  // reason is the Feld line the handoff quotes: state may price an option but
+  // never remove it.
+  const toll = slotTollOf(data);
   // WHETHER A COLOUR'S DOOR HAS ANYTHING FOR THIS SEAT DOES NOT DEPEND ON THE
   // HOST. The gate reads (data, state, seat, colour) and nothing else, so asking
   // it inside the host loop put the same question to `anyBuildOption` and
@@ -2180,24 +2664,91 @@ function enumerateMeepleVisits(
   let any = false;
   for (let host = 0; host < state.players.length; host++) {
     if (host === seat) continue;
+    const slots = noticeBoardSlots(state, host);
     for (const colour of data.cards.suits) {
-      if (slotBlocked(state, host, colour)) continue;
+      const occupants = slots[colour]?.length ?? 0;
+      // Under v1 an occupied slot is simply not a target. Under v2 it is a
+      // target with a price, and `tollsFor` returns the ways to pay it.
+      if (occupants > 0 && toll === null) continue;
       if (!legalDoor(colour)) continue;
+      const owed = toll === null ? 0 : toll * occupants;
       if (held.includes(colour)) {
+        if (owed === 0) {
+          if (out === null) return true;
+          out.push({ type: 'visit', seat, host, fee: null, meeples: [colour], colour });
+          any = true;
+          continue;
+        }
+        const after = { ...supply, [colour]: (supply[colour] ?? 0) - 1 };
+        const ways = tollFills(data, after, owed);
+        if (ways.length === 0) continue;
         if (out === null) return true;
-        out.push({ type: 'visit', seat, host, fee: null, meeples: [colour], colour });
+        for (const paid of ways) {
+          out.push({ type: 'visit', seat, host, fee: null, meeples: [colour], colour, toll: paid });
+        }
         any = true;
         continue;
       }
       if (pairs.length === 0) continue;
-      if (out === null) return true;
       for (const pair of pairs) {
-        out.push({ type: 'visit', seat, host, fee: null, meeples: [pair[0], pair[1]], colour });
+        if (owed === 0) {
+          if (out === null) return true;
+          out.push({ type: 'visit', seat, host, fee: null, meeples: [pair[0], pair[1]], colour });
+          any = true;
+          continue;
+        }
+        const after = { ...supply };
+        after[pair[0]] = (after[pair[0]] ?? 0) - 1;
+        after[pair[1]] = (after[pair[1]] ?? 0) - 1;
+        const ways = tollFills(data, after, owed);
+        if (ways.length === 0) continue;
+        if (out === null) return true;
+        for (const paid of ways) {
+          out.push({
+            type: 'visit',
+            seat,
+            host,
+            fee: null,
+            meeples: [pair[0], pair[1]],
+            colour,
+            toll: paid,
+          });
+        }
+        any = true;
       }
-      any = true;
     }
   }
   return any;
+}
+
+/**
+ * The ways to pay a toll of `owed` meeples out of what is left of a supply,
+ * as SORTED COLOUR LISTS in a fixed order.
+ *
+ * ⚠️ THIS IS THE ONE PLACE THE v2 CHANGE CAN BLOW UP THE MOVE LIST, and
+ * it is bounded on purpose. A toll is a burn, so which colours go is a real
+ * decision and is enumerated in full - but only as a MULTISET over colours,
+ * never as a choice among identical tokens, exactly as `meepleFills` argues. At
+ * `slotToll` 1 and one occupant it is at most five options; the arithmetic is
+ * the same count-vector walk, reused, and the list is rebuilt as colours rather
+ * than counts because the move carries the toll as a list.
+ */
+function tollFills(
+  data: GameData,
+  supply: Readonly<Record<Suit, number>>,
+  owed: number,
+): Suit[][] {
+  if (owed <= 0) return [[]];
+  const out: Suit[][] = [];
+  for (const fill of meepleFills(data.cards.suits, supply)) {
+    if (fill.total !== owed) continue;
+    const paid: Suit[] = [];
+    for (const colour of data.cards.suits) {
+      for (let i = 0; i < (fill.counts[colour] ?? 0); i++) paid.push(colour);
+    }
+    out.push(paid);
+  }
+  return out;
 }
 
 export type CollectOption = Extract<Move, { type: 'collect' }>;
@@ -2292,7 +2843,7 @@ export function hasBonusOption(data: GameData, state: GameState, seat: Seat): bo
  * functions, because everything AFTER the payment - the host-side hook, the
  * `visited` event, the door action - is identical and must stay identical.
  */
-export type VisitSpend = Pick<VisitOption, 'fee' | 'meeples' | 'colour'>;
+export type VisitSpend = Pick<VisitOption, 'fee' | 'meeples' | 'colour' | 'toll'>;
 
 export function doVisit(fx: Fx, visitor: Seat, host: Seat, spend: VisitSpend): void {
   if (isMeepleCurrency(fx.data)) {
@@ -2379,11 +2930,27 @@ function doMeepleVisit(fx: Fx, visitor: Seat, host: Seat, spend: VisitSpend): vo
       throw new Error(`Seat ${visitor} holds a ${colour} meeple and must spend it singly`);
     }
   }
-  for (const m of meeples) {
-    if ((held[m] ?? 0) < 1) throw new Error(`Seat ${visitor} has no ${m} meeple`);
+  // The acting meeple(s) and the toll come out of one supply, so they are
+  // counted together before either is checked - two meeples of a colour cannot
+  // be one spend and one toll when the seat holds only one.
+  const toll = spend.toll ?? [];
+  const wanted: Partial<Record<Suit, number>> = {};
+  for (const m of [...meeples, ...toll]) wanted[m] = (wanted[m] ?? 0) + 1;
+  for (const [m, n] of Object.entries(wanted) as [Suit, number][]) {
+    if ((held[m] ?? 0) < n) throw new Error(`Seat ${visitor} has no ${m} meeple`);
   }
-  if (slotBlocked(state, host, colour)) {
+  // ⭐ R6 AS AMENDED: the slot is PRICED, not blocked. `slotToll` null keeps
+  // v1's refusal; a number charges that many meeples per occupant, and both the
+  // refusal and the price are re-validated here because `apply` must accept
+  // exactly what the enumerator offered.
+  const slotToll = slotTollOf(fx.data);
+  const occupants = noticeBoardSlots(state, host)[colour]?.length ?? 0;
+  if (occupants > 0 && slotToll === null) {
     throw new Error(`Seat ${host}'s ${colour} slot already holds a meeple`);
+  }
+  const owed = slotToll === null ? 0 : slotToll * occupants;
+  if (toll.length !== owed) {
+    throw new Error(`Seat ${host}'s ${colour} slot costs ${owed} extra meeples, got ${toll.length}`);
   }
   const door = doorOf(fx.data, colour);
   if (!workerActionLegal(fx.data, state, visitor, door.id)) {
@@ -2391,6 +2958,15 @@ function doMeepleVisit(fx: Fx, visitor: Seat, host: Seat, spend: VisitSpend): vo
   }
 
   const wild = meeples.length > 1;
+  // ⭐ THE TOLL IS BURNED BEFORE THE ACTING MEEPLE LANDS (R16). It goes to the
+  // BOX and never into the slot, so it is a SINK and not a loan: the host
+  // collects the acting meeple and nothing else, and the toll is the drain the
+  // v1 loop did not have. `pool by round` is the line that says whether the
+  // island can keep up with it.
+  if (toll.length > 0) {
+    for (const m of toll) fx.boxMeeple(visitor, m, 'toll');
+    fx.emit({ e: 'visitToll', seat: visitor, host, colour, paid: [...toll], occupants });
+  }
   fx.placeMeepleOnBoard(visitor, host, colour, meeples);
   state.turn.bonusUsed.push('visit');
   fireHook(fx, 'afterVisit', { visitor, host, self: false });

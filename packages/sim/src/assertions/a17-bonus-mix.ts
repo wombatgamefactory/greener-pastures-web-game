@@ -113,7 +113,9 @@ export const bonusMix: Assertion = {
     'The four-way tally as shares of every turn played. Under visitCurrency "card": Draw 1 / ' +
     'visit a rival / visit yourself / slot unspent, plus the self-visit share early against ' +
     'late. Under "meeple": visit a rival / collect with meeples / collect an EMPTY board / slot ' +
-    'unspent, plus the rival visit early against late.',
+    'unspent, plus the rival visit early against late. Re-cut for handoff v2 (04/09/2026) with ' +
+    'the toll line: the share of rival visits that paid a toll to enter an occupied slot (R6 ' +
+    'amended), the mean toll paid, and the most-visited seat\'s share of a game\'s rival visits.',
   threshold:
     'FAIL if the visit to a RIVAL is outnumbered by the largest single SOLITAIRE option. Under ' +
     '"card" that is Draw 1 or the self-visit; under "meeple" it is the empty-board collect, ' +
@@ -192,7 +194,7 @@ function cardGame({ pooled }: MeasureContext): Measurement {
 }
 
 /** The meeple-loop arm (04/09/2026). Same sentence, different menu. */
-function meepleArm({ pooled }: MeasureContext): Measurement {
+function meepleArm({ data, pooled }: MeasureContext): Measurement {
   const games = pooled.ended;
   const turns = totalTurns(games);
   const bonusTurns = totalBonusTurns(games);
@@ -203,6 +205,14 @@ function meepleArm({ pooled }: MeasureContext): Measurement {
   const empty = sum(games.map((g) => sum(g.collectsEmptyBySeat)));
   const unspent = Math.max(0, turns - bonusTurns);
   const wild = sum(games.map((g) => sum(g.wildVisitsBySeat)));
+  // ⭐ THE TOLL LINE (R6 amended, handoff v2 section 3.7): what share of every
+  // rival visit paid something to enter an already-occupied slot. Zero by
+  // construction whenever `rules.turn.slotToll` is null (the v1 default),
+  // because `visitToll` never fires there and an occupied slot still refuses
+  // the colour outright instead.
+  const tollVisits = sum(games.map((g) => sum(g.tollVisitsBySeat)));
+  const tollPaid = sum(games.map((g) => sum(g.tollMeeplesPaidBySeat)));
+  const toll = data.rules.turn.slotToll;
 
   if (turns === 0) {
     return { value: NaN, headline: 'not measured: no turns were played', verdict: 'OBSERVE' };
@@ -238,6 +248,19 @@ function meepleArm({ pooled }: MeasureContext): Measurement {
     `${wild} of ${rivals} visits were paid with a WILD PAIR ` +
       `(${pct(rivals === 0 ? NaN : wild / rivals)}); assertion 7 owns that number and the ` +
       'open question it decides - colour-keyed slots against five unkeyed spaces.',
+    toll === null
+      ? '⭐ TOLL VISITS (R6 amended, handoff v2 section 3.7): 0, by construction - ' +
+        '`rules.turn.slotToll` is null under this run, so an occupied slot still refuses that ' +
+        'colour outright (v1) rather than pricing it, and `visitToll` never fires.'
+      : `⭐ TOLL VISITS (R6 amended, handoff v2 section 3.7): ${tollVisits} of ${rivals} rival ` +
+        `visits paid a toll (${pct(rivals === 0 ? NaN : tollVisits / rivals)}), ${tollPaid} ` +
+        `toll meeples in all (mean ${num(tollVisits === 0 ? NaN : tollPaid / tollVisits, 2)} ` +
+        `per toll visit, against a printed rate of ${toll} extra meeple(s) per occupant). The ` +
+        'toll is a SINK, not a payment to the host - it goes to the box, never into the slot - ' +
+        "so a rising toll share is the amended R6 doing its job, not a second solitaire option. " +
+        'Assertion 15 carries the same meeples counted from the payer’s side and the pool line ' +
+        'they drain into.',
+    receivedSpreadLine(games, rivals),
     UNSPENT_CAVEAT,
     '⚠️ AND UNDER THIS ARM THE UNSPENT FLOOR IS STRUCTURALLY LOWER, which is not a result. ' +
       'Collect is legal on an empty board whenever any deck is alive, so the slot is almost ' +
@@ -276,6 +299,41 @@ function perGameLine(games: number, bonusTurns: number, turns: number): string {
   return (
     `mean bonus spends per game: ${num(games === 0 ? NaN : bonusTurns / games, 1)} ` +
     `of ${num(games === 0 ? NaN : turns / games, 1)} turns`
+  );
+}
+
+/**
+ * ⭐ THE SPREAD OF VISITS RECEIVED, BY SEAT (handoff v2 section 3.7: "does the
+ * popular farm change hands"). For each game, the MOST-visited seat's share of
+ * that game's rival visits, against an even share (1 / seat count). Pooled
+ * across games, mean and even-share side by side.
+ *
+ * ⚠️ THIS MEASURES CONCENTRATION, NOT ROTATION, and that limit is honest
+ * rather than hidden: a share sitting near even could still be the SAME seat
+ * being visited most every game (a stable favourite) or a DIFFERENT seat each
+ * game (a genuinely changing hand) - `visitsReceivedBySeat` alone cannot tell
+ * the two apart, and neither reading is invented here. A share sitting well
+ * ABOVE even is the one thing this line can say cleanly: some seat's board is
+ * a materially more popular target than the rest, whoever it is.
+ */
+function receivedSpreadLine(games: readonly GameMetrics[], rivals: number): string {
+  const shares: number[] = [];
+  const evenShares: number[] = [];
+  for (const g of games) {
+    const received = g.visitsReceivedBySeat.slice(0, g.seats);
+    const total = received.reduce((a, b) => a + b, 0);
+    if (total === 0 || g.seats === 0) continue;
+    shares.push(Math.max(...received) / total);
+    evenShares.push(1 / g.seats);
+  }
+  const meanShare = shares.length === 0 ? NaN : shares.reduce((a, b) => a + b, 0) / shares.length;
+  const meanEven =
+    evenShares.length === 0 ? NaN : evenShares.reduce((a, b) => a + b, 0) / evenShares.length;
+  return (
+    `the most-visited seat's share of its own game's rival visits, mean across ${shares.length} ` +
+    `games with at least one: ${pct(meanShare)} (an even share at this table size would be ` +
+    `${pct(meanEven)}, of ${rivals} rival visits pooled). Read as CONCENTRATION, not rotation - ` +
+    'see the field comment for the distinction this line cannot make on its own.'
   );
 }
 

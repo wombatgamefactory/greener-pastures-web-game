@@ -46,7 +46,7 @@
 
 import type { Card, GameData, Suit, WorkerAction } from '@gp/data';
 import type { BuildingView, CardId, PlayerView } from '@gp/engine';
-import { deliveriesPerTile, doorForSuit, isMeepleCurrency } from '@gp/data';
+import { deliveriesPerTile, doorForSuit, isMeepleAsCard, isMeepleCurrency } from '@gp/data';
 
 import { magpieTarget } from './magpie.js';
 
@@ -138,6 +138,98 @@ export function cropOfView(data: GameData, building: BuildingView): Suit | null 
  * now", and it is the first thing to sweep if the meeple assertion reads oddly.
  */
 export const MEEPLE_LATENT = 0.4;
+
+/**
+ * ⭐ **WHAT A MEEPLE IS WORTH UNDER R15 WHEN ITS DOOR CAN DO NOTHING: A CARD**,
+ * because under R15 that is literally what it is (`rules.turn.meepleAsCard`,
+ * Dean 04/09/2026 evening, handoff v2).
+ *
+ * `MEEPLE_LATENT` above prices a meeple as a STORED ACTION and nothing else,
+ * which is the whole of what a meeple was under v1 - and it is why Dean called
+ * it a coupon rather than a cost: a colour whose door was dead was worth 0.4 of
+ * an action and could be burnt for nothing. R15 gives that same meeple a second
+ * use that never goes dead: it pays a build cost, a Grow's activation and an
+ * island crate, as a card of its colour. So the FLOOR is no longer the discount
+ * on a door that might come back. It is a card.
+ *
+ * ⚠️ **1 IS "ONE CARD" ONLY BECAUSE `handSpend` AND `meepleGain` ARE BOTH 2.5,
+ * AND THAT IS A CALIBRATION, NOT AN IDENTITY.** These worths are in ACTION
+ * UNITS, converted to points by `meepleGain` / `meepleSpend`; a card is priced
+ * by `handSpend`. The two weights were pinned to each other on purpose (see
+ * `weights.ts`, *"the two routes to a door are a card and a meeple"*), so 1
+ * action unit and one card are the same 2.5 points today. **If either weight is
+ * ever swept, this number has to be re-derived as `handSpend / meepleGain` or
+ * the floor silently stops being a card.** It cannot be computed here: a
+ * `Scratch` is built without a weight table, deliberately, so that a feature
+ * can never read a weight.
+ *
+ * ⚠️ **SET BY ARGUMENT AND NOT BY MEASUREMENT**, exactly as `MEEPLE_LATENT`
+ * and `meepleGain` are, and NOT overlay-addressable - it is a constant in this
+ * file, so a sweep of it is an edit and a rebuild. It is the second number the
+ * R15 arm rests on, after `meepleGain` itself.
+ */
+export const MEEPLE_AS_CARD_FLOOR = 1;
+
+/**
+ * ⭐ **THE EXTRA A LIVE DOOR IS WORTH ON TOP OF THE CARD FLOOR, AND IT SHIPS AT
+ * ZERO. IT IS THE MOST CONSEQUENTIAL NUMBER THIS PACKAGE ADDED FOR R15 AND IT
+ * IS THE ONE DEAN MOST NEEDS TO SEE.**
+ *
+ * The question it answers: under R15 a meeple has TWO uses - a door through a
+ * neighbour's board, and a card of its colour - so what is one worth?
+ *
+ *   - **Zero premium (shipped).** A meeple can only be spent ONCE, so its worth
+ *     is the BETTER of its two uses and not their sum. The door use is 1 when
+ *     live and `MEEPLE_LATENT` when dead; the card use is `MEEPLE_AS_CARD_FLOOR`
+ *     and never goes dead. `max` of those is the floor in both cases, so every
+ *     meeple prices flat at one card.
+ *   - **The argued alternative, `1 - MEEPLE_LATENT` (0.6).** Holding a meeple
+ *     whose door is live gives you a CHOICE where a dead one gives you one
+ *     option, and optionality under uncertainty is worth something real. 0.6 is
+ *     the daylight v1 already had between a live door and a dead one, carried up
+ *     with the floor.
+ *
+ * ⭐ **ZERO WINS ON THE PAIRED-ARM RULE, NOT ON THE ECONOMICS, AND THE
+ * DISTINCTION MATTERS.** A plain visit always spends a meeple whose door is
+ * LEGAL - the engine refuses an illegal one - so this premium is a tax on every
+ * visit in the arm and on none in the control. At 0.6 the acting meeple prices
+ * at 1.6 rather than 1.0 and a visit's reserve price goes 2.5 to 4.0 points,
+ * which is a 60% repricing of the exact quantity the arm exists to read. The
+ * standing rule in `weights.ts` is that a weight moved in the same pass as a
+ * rule makes every delta a mixture of the two, and 0.6 would do precisely that.
+ * At 0, the visit costs the same 2.5 under the control and under the arm, and
+ * any hook movement is the RULE - meeples being eaten by builds, so fewer exist
+ * to visit with - rather than the instrument.
+ *
+ * ⚠️ **IT IS NOT A SMALL EFFECT AND IT IS MEASURED, NOT ASSUMED.** Paired on 12
+ * games (2/3/4 seats, `overlays/meeple-as-card-v1.overlay.json`, identical
+ * seeds), the ONLY change being this constant:
+ *
+ *     premium 0.6    45 visits   46 build / 138 activation / 28 delivery spends
+ *     premium 0     125 visits   62 build / 102 activation / 52 delivery spends
+ *
+ * **The instrument's opinion about a live meeple moves the arm's headline hook
+ * number by 2.8x.** Neither reading is measured truth: `meepleGain` 2.5 and
+ * `MEEPLE_LATENT` 0.4 were already set by argument, this is a third number of
+ * the same kind, and n=12 is a smoke sample rather than a result. **Sweep this
+ * beside `meepleGain` before quoting any hook number off the R15 arm.**
+ *
+ * ⚠️ What zero gives up, stated so it is not rediscovered as a bug: **the bots
+ * are colour-blind about which meeple to burn.** R15 asks a real question -
+ * which colour goes, because a colour given up is a door you cannot buy next
+ * turn - and at a flat worth the bot has no preference and will spend a live
+ * colour as readily as a dead one. If the arm's door mix looks like noise, this
+ * is why, and 0.6 is the arm that answers it.
+ *
+ * ⚠️ Set by ARGUMENT and not by measurement, and NOT overlay-addressable.
+ */
+export const MEEPLE_AS_CARD_DOOR_PREMIUM = 0;
+
+/**
+ * What a meeple whose door IS live is worth under R15. Derived, so the two
+ * arms above are one edit apart and can never drift out of step with each other.
+ */
+export const MEEPLE_AS_CARD_LIVE = MEEPLE_AS_CARD_FLOOR + MEEPLE_AS_CARD_DOOR_PREMIUM;
 
 export interface Scratch {
   readonly data: GameData;
@@ -280,6 +372,9 @@ export interface Scratch {
  * dump, and neither is hidden inside a term.
  */
 export function meepleWorth(s: Scratch, colour: Suit): number {
+  // The fallback is unreachable: the map is built over `data.cards.suits` and
+  // every colour in the game is one of them. It is deliberately NOT lifted to
+  // the R15 floor, because a colour that is not a suit is not a card either.
   return s.meepleWorth.get(colour) ?? MEEPLE_LATENT;
 }
 
@@ -446,14 +541,26 @@ function meepleWorthByColour(
   view: PlayerView,
   buildings: ReadonlyMap<CardId, BuildingView>,
 ): Map<Suit, number> {
+  // ⭐ R15's WHOLE FOOTPRINT ON THE HOLDING PRICE IS THESE TWO LINES. Under v1
+  // a meeple is a stored action and nothing else, so a dead door is worth
+  // `MEEPLE_LATENT`; under R15 it is also a card of its colour, so the floor is
+  // a card and the live door keeps its premium on top. Read off the knob once,
+  // here, rather than at each of the term call sites - the same reason
+  // `Scratch.meepleArm` exists.
+  const asCard = isMeepleAsCard(data);
+  const live = asCard ? MEEPLE_AS_CARD_LIVE : 1;
+  const dead = asCard ? MEEPLE_AS_CARD_FLOOR : MEEPLE_LATENT;
   const out = new Map<Suit, number>();
   for (const colour of data.cards.suits) {
     const door = doorForSuit(data, colour);
     if (!door) {
-      out.set(colour, 0);
+      // No door at all, which is unreachable in shipped data. Under R15 it is
+      // still a CARD of its colour, so the floor applies and only the door
+      // premium is lost; under v1 there is nothing left to be worth.
+      out.set(colour, asCard ? MEEPLE_AS_CARD_FLOOR : 0);
       continue;
     }
-    out.set(colour, doorReady(data, view, door.action, buildings) ? 1 : MEEPLE_LATENT);
+    out.set(colour, doorReady(data, view, door.action, buildings) ? live : dead);
   }
   return out;
 }

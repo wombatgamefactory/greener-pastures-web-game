@@ -56,6 +56,35 @@
  * `MEEPLE_LATENT`'s own entry, "the least defensible number in this file"), and
  * they are still deliberately unchanged. **Sweep them before drawing any
  * mechanism conclusion from an arm result, and sweep them together.**
+ *
+ * ## ⭐ HANDOFF v2 (04/09/2026 evening): AGAIN NOT ONE NUMBER IN THIS FILE MOVES
+ *
+ * R15 (`rules.turn.meepleAsCard`) makes a meeple a CARD of its colour, so it can
+ * pay a build, a Grow and an island crate; the amended R6
+ * (`rules.turn.slotToll`) prices an occupied slot in burned meeples instead of
+ * refusing it. Both are paired arms against the shipped loop, both default OFF,
+ * and the discipline is the one the section above set: a weight moved in the
+ * same pass would make every delta a mixture of the rule and the instrument.
+ *
+ * `meepleSpend` 2.5 absorbs all three new exits at the price it already carried
+ * - a meeple paid into a build, a meeple paid into a crate, a meeple burned as a
+ * toll - on the standing rule that a meeple costs one thing whichever door it
+ * leaves by. **What moved instead is a FEATURE, in `scratch.ts`:**
+ * `meepleWorth`'s floor rises from `MEEPLE_LATENT` 0.4 to
+ * `MEEPLE_AS_CARD_FLOOR` 1 under R15, because a meeple whose door is dead is
+ * still a card and a card never goes dead. A meeple therefore prices flat at one
+ * card under R15, which is exactly what R15 says it is.
+ *
+ * ⭐ **THE VISIT'S PRICE IS DELIBERATELY UNCHANGED BETWEEN THE ARMS**, and that
+ * is this pass's one real judgement call. A plain visit always spends a meeple
+ * whose door is LEGAL, so lifting the live-door worth would tax every visit in
+ * the arm and none in the control - the exact mixture of rule and instrument the
+ * paragraph above forbids. `MEEPLE_AS_CARD_DOOR_PREMIUM` therefore ships at 0,
+ * and the argued alternative (0.6, the daylight v1 had between a live door and a
+ * dead one) is one edit away. ⚠️ **It moves the arm's headline hook number by
+ * 2.8x on a 12-game smoke sample** - 45 visits against 125 - so sweep it beside
+ * `meepleGain` before quoting a hook figure off the R15 arm. Neither constant is
+ * overlay-addressable, so sweeping either is an edit and a rebuild.
  */
 
 import { TERM_NAMES } from './terms.js';

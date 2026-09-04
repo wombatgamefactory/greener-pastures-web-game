@@ -573,7 +573,16 @@ export const scoutsPost: CardHandler = {
         // unredacted move list. See REVEAL_RIDER in state.ts.
         revealed.forEach((card, pick) => {
           for (const pay of paymentOptions(data, state, task.pid, card, { discount: 2 })) {
-            out.push({ kind: 'card', payload: { pick, payment: pay.payment } });
+            out.push({
+              kind: 'card',
+              payload: {
+                pick,
+                payment: pay.payment,
+                // R15: the meeple half of the payment, as a count per colour.
+                ...(pay.meeples === undefined ? {} : { meeples: pay.meeples }),
+                ...(pay.wildPairs === undefined ? {} : { wildPairs: pay.wildPairs }),
+              },
+            });
           }
         });
         // "You may": declining is always available, and it is also what keeps
@@ -593,7 +602,16 @@ export const scoutsPost: CardHandler = {
           doBuild(
             fx,
             task.pid,
-            { card: chosen, payment: answer.payload.payment as CardId[] },
+            {
+              card: chosen,
+              payment: answer.payload.payment as CardId[],
+              ...(answer.payload.meeples === undefined
+                ? {}
+                : { meeples: answer.payload.meeples as Partial<Record<Suit, number>> }),
+              ...(answer.payload.wildPairs === undefined
+                ? {}
+                : { wildPairs: answer.payload.wildPairs as number }),
+            },
             { discount: 2 },
             task.src,
           );

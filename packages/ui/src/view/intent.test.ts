@@ -126,7 +126,9 @@ function reachable(position: Position, move: Move): boolean {
 
     case 'harvest':
     case 'grow': {
-      const held: Intent = move.type === 'grow' ? { k: 'hold', card: move.payment } : IDLE;
+      // A meeple-paid GROW (R15) holds no card, so it falls back to IDLE.
+      const held: Intent =
+        move.type === 'grow' && move.payment !== null ? { k: 'hold', card: move.payment } : IDLE;
       return has(clickBuilding(moves, held, move.type === 'grow' ? move.building : move.building));
     }
 

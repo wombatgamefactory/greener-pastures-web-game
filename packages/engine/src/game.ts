@@ -69,16 +69,35 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
   if (!turn.actionSpent) {
     if (drawableSuits(data, state).length > 0) moves.push({ type: 'draw', seat });
     for (const o of buildOptions(data, state, seat)) {
-      moves.push({ type: 'build', seat, card: o.card, payment: o.payment });
+      moves.push(
+        o.meeples === undefined
+          ? { type: 'build', seat, card: o.card, payment: o.payment }
+          : {
+              type: 'build',
+              seat,
+              card: o.card,
+              payment: o.payment,
+              meeples: o.meeples,
+              ...(o.wildPairs === undefined ? {} : { wildPairs: o.wildPairs }),
+            },
+      );
     }
     for (const o of growOptions(data, state, seat)) {
-      moves.push({ type: 'grow', seat, building: o.building, payment: o.payment });
+      moves.push(
+        o.meeples === undefined
+          ? { type: 'grow', seat, building: o.building, payment: o.payment }
+          : { type: 'grow', seat, building: o.building, payment: null, meeples: o.meeples },
+      );
     }
     for (const building of harvestOptions(data, state, seat)) {
       moves.push({ type: 'harvest', seat, building });
     }
     for (const o of deliverOptions(data, state, seat)) {
-      moves.push({ type: 'deliver', seat, tile: o.tile, spend: o.spend });
+      moves.push(
+        o.meeples === undefined
+          ? { type: 'deliver', seat, tile: o.tile, spend: o.spend }
+          : { type: 'deliver', seat, tile: o.tile, spend: o.spend, meeples: o.meeples },
+      );
     }
     // The Deliver action's freight branch (DL-12): balloon moves.
     for (const o of balloonMoveOptions(data, state, seat)) {
@@ -200,14 +219,19 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
     case 'build':
       // The plain printed rules: no mods. The Build ACTION carries no
       // substitution since 2026-08-10 - that is the Builder's Yard's to grant.
-      doBuild(fx, move.seat, { card: move.card, payment: move.payment });
+      doBuild(fx, move.seat, {
+        card: move.card,
+        payment: move.payment,
+        ...(move.meeples === undefined ? {} : { meeples: move.meeples }),
+        ...(move.wildPairs === undefined ? {} : { wildPairs: move.wildPairs }),
+      });
       break;
     case 'grow':
       // ⛔ `apiaryGrowBonus` was called here, on the GROW ACTION branch and
       // nowhere else, so that A5, A6 and A12 did not each trigger it. The card
       // is gone (v31); the rule that an action-scoped effect belongs on this
       // branch and never inside `doGrow` is not.
-      doGrow(fx, move.seat, move.building, move.payment);
+      doGrow(fx, move.seat, move.building, move.payment, {}, move.meeples ?? []);
       break;
     case 'harvest':
       // ⛔ The ActionAgain arming stood here ("Harvest is 2 buildings", the
@@ -216,7 +240,7 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
       doHarvestAction(fx, move.seat, move.building);
       break;
     case 'deliver':
-      doDeliver(fx, move.seat, move.tile, move.spend);
+      doDeliver(fx, move.seat, move.tile, move.spend, undefined, 1, move.meeples);
       break;
     case 'moveBalloon':
       doMoveBalloon(fx, move.seat, move.balloon, move.spend);

@@ -1,3 +1,4 @@
+import type { GameData } from '@gp/data';
 import { isMeepleCurrency } from '@gp/data';
 
 import type { GameMetrics } from '../observe.js';
@@ -120,7 +121,10 @@ export const meepleEconomy: Assertion = {
     'held at each round boundary with the final round printed apart, and the spend rate per ' +
     'colour. Under "meeple": spends per meeple-turn, median supply in the last third, meeples ' +
     'boxed per game by colour and by source, and the share of spends taken by the two ' +
-    'card-spending colours.',
+    'card-spending colours. Re-cut for handoff v2 (04/09/2026) with four more readings: meeples ' +
+    'spent as a resource (R15) by use, with the priced-clog-bypass activations counted apart; ' +
+    'every meeple exit by source including the two R15/R6 add; the meeple pool at the start, ' +
+    'midpoint and end of the game; and the share of resource spends in the final two rounds.',
   threshold:
     'Under "card": FAIL below half of all meeples gained ever being spent - a component with ' +
     'no reason to hold it and only one use should be spent nearly always. Under "meeple": ' +
@@ -143,6 +147,22 @@ export const meepleEconomy: Assertion = {
     return isMeepleCurrency(ctx.data) ? meepleArm(ctx) : cardGame(ctx);
   },
 };
+
+/**
+ * ⭐⭐ THE STALE-STRING BUG, AND WHY IT MATTERED (fixed 04/09/2026, recorded in
+ * `docs/meeple-loop-measurement-2026-09-04-v1.md` section 4). Before this fix,
+ * `meepleArm` below printed the literal sentence "the cap (R4) is ceiling 1 per
+ * colour" NO MATTER WHAT `rules.turn.meepleCapPerColour` actually was, so the
+ * cap-2 and cap-3 sweep reports both said 1. It is an instrument bug and not a
+ * cosmetic one: a reader comparing "5 is a full supply" against a run swept to
+ * cap 3 (where a full supply is 15) would misread every number under it. Read
+ * the actual knob here, once, and derive every sentence that depends on it from
+ * the same variable so the two can never drift apart again.
+ */
+function capLine(data: GameData): { cap: number; full: number } {
+  const cap = data.rules.turn.meepleCapPerColour;
+  return { cap, full: cap * 5 };
+}
 
 /** The shipped v31 game, unchanged since 02/09/2026 and deliberately not re-derived. */
 function cardGame({ pooled }: MeasureContext): Measurement {
@@ -191,16 +211,30 @@ function cardGame({ pooled }: MeasureContext): Measurement {
   };
 }
 
-/** The meeple-loop arm (04/09/2026). Four readings, no verdict - see the header. */
-function meepleArm({ pooled }: MeasureContext): Measurement {
+/**
+ * The meeple-loop arm (04/09/2026, re-cut for handoff v2 the same evening).
+ * Eight readings, no verdict - see the header. Readings 1-4 are v1's original
+ * four; 5-8 are R15 and the amended R6's (handoff v2 section 3, items 3, 4, 5
+ * and 6) and read a flat 0 wherever `meepleAsCard` is false and `slotToll` is
+ * null - the pool line (7) is the one exception, since the pool exists under
+ * the shipped v1 loop already; see `meeplePoolByRound`'s own comment.
+ */
+function meepleArm({ data, pooled }: MeasureContext): Measurement {
   const games = pooled.ended;
   if (games.length === 0) {
     return { value: NaN, headline: 'not measured: no games ended', verdict: 'OBSERVE' };
   }
+  const { cap, full } = capLine(data);
+  const asCard = data.rules.turn.meepleAsCard === true;
 
   // 1. SPENDS PER MEEPLE-TURN. Meeples out of a supply (a wild pair is two)
   //    over turns begun holding at least one, which is the population on which
-  //    a spend was possible at all.
+  //    a spend was possible at all. Unchanged in shape: a VISIT spend (R1/R7)
+  //    is the only thing this ratio has ever measured, because it is the one
+  //    exit that recirculates. A resource spend (R15) or a toll (R6 amended)
+  //    is a DIFFERENT kind of exit - the meeple never sat in a slot waiting to
+  //    be collected back - so folding either in here would inflate the
+  //    denominator's own justification. They get their own reading, 5 below.
   const spends = sum(games.map((g) => sum(g.meeplesSpentBySeat)));
   const meepleTurns = sum(games.map((g) => sum(g.meepleTurnsBySeat)));
   const turns = sum(games.map((g) => sum(g.turnsBySeat)));
@@ -211,7 +245,10 @@ function meepleArm({ pooled }: MeasureContext): Measurement {
   const firstThird = median(games.map((g) => thirdMedian(g.meeplesByRound, 'first')));
   const series = tailSeries(games, 5, (g) => g.meeplesByRound);
 
-  // 3. BOXED, by source and by colour.
+  // 3. BOXED BY THE CAP ALONE (v1-comparable: `meeplesBoxedBySeat` is filtered
+  //    to `collect` / `island` / `balloon` in observe.ts precisely so this
+  //    figure never moves for a reason that has nothing to do with the cap),
+  //    by source and by colour.
   const boxed = sum(games.map((g) => sum(g.meeplesBoxedBySeat)));
   const bySource = new Map<string, number>();
   const byColour = new Map<string, number>();
@@ -223,6 +260,12 @@ function meepleArm({ pooled }: MeasureContext): Measurement {
       byColour.set(colour, (byColour.get(colour) ?? 0) + n);
     }
   }
+  // ⭐ EVERY SOURCE, INCLUDING R15's THREE AND R6's ONE (handoff v2 section
+  // 3.4). Dean asked for the cap line specifically: if the cap boxes a
+  // meaningful share of this wider total, it is still doing design work under
+  // the new rules; if resource spends and tolls dominate, the cap has been
+  // sidelined by two new exits that were never measured against it.
+  const boxedAll = sum(games.map((g) => sum(g.meeplesBoxedAllSourcesBySeat)));
 
   // 4. THE DEAD-COLOUR LINE: orange and cream as a share of every meeple spent.
   const spentByColour = new Map<string, number>();
@@ -234,24 +277,69 @@ function meepleArm({ pooled }: MeasureContext): Measurement {
   const totalSpent = [...spentByColour.values()].reduce((a, b) => a + b, 0);
   const dead = DEAD_COLOURS.reduce((a, colour) => a + (spentByColour.get(colour) ?? 0), 0);
 
+  // 5. ⭐ MEEPLES SPENT AS A RESOURCE (R15, handoff v2 section 3.3) - the new
+  //    dial. `atThreshold` is the priced clog bypass: an activation a card
+  //    could never have made, counted apart and as a share of EVERY meeple
+  //    exit (`boxedAll`, every source pooled), which is the number the
+  //    handoff asks for by name.
+  const resourceSpends = sum(games.map((g) => sum(g.meepleResourceSpendsBySeat)));
+  const byUse = new Map<string, number>();
+  for (const g of games) {
+    for (const [use, n] of Object.entries(g.meepleResourceSpendsByUse)) {
+      byUse.set(use, (byUse.get(use) ?? 0) + n);
+    }
+  }
+  const atThreshold = sum(games.map((g) => g.meepleResourceAtThresholdSpends));
+  const wildResource = sum(games.map((g) => g.meepleResourceWildSpends));
+
+  // 6. TOLL MEEPLES PAID (R6 amended). The visit share and the "does the
+  //    popular farm change hands" reading belong to assertion 17; this is the
+  //    boxed-by-source count's counterpart from the payer's side.
+  const tollPaid = sum(games.map((g) => sum(g.tollMeeplesPaidBySeat)));
+  const tollVisits = sum(games.map((g) => sum(g.tollVisitsBySeat)));
+
+  // 7. ⭐ THE POOL, BY ROUND (handoff v2 section 3.5) - read directly off
+  //    state, see `meeplePoolByRound`'s own comment for why this is exact
+  //    rather than a running balance. Start / midpoint / end, and the round
+  //    the pool first read zero, if it ever did.
+  const poolStart = poolAt(games, () => 0);
+  const poolMid = poolAt(games, (len) => Math.floor(len / 2));
+  const poolEnd = poolAt(games, (len) => len - 1);
+  const emptiedGames = games.filter((g) => g.poolEmptyRound !== null);
+  const emptyRounds = emptiedGames.map((g) => g.poolEmptyRound as number);
+
+  // 8. THE HOARD-AND-DUMP LINE (handoff v2 section 3.6): median supply in the
+  //    last third is reading 2 above, reused; the second half is the share of
+  //    resource spends (R15) that land in the final two rounds, where "final
+  //    two" is relative to each game's own length so games of different
+  //    lengths pool honestly.
+  const finalTwoSpends = sum(
+    games.map((g) => g.meepleResourceSpendRounds.filter((r) => r >= g.rounds - 1).length),
+  );
+
   return {
     value,
     headline:
       `${num(value, 2)} meeples spent per meeple-turn (${spends} spends over ${meepleTurns} ` +
       `turns begun holding one, of ${turns} turns); median supply in the last third ` +
-      `${num(lastThird, 1)}; ${num(boxed / games.length, 2)} boxed per game`,
+      `${num(lastThird, 1)}; ${num(boxed / games.length, 2)} boxed by the cap per game` +
+      (asCard
+        ? `; ${num(resourceSpends / games.length, 2)} spent as a resource per game (R15)`
+        : ''),
     detail: [
       '⛔ SPENT-VERSUS-GAINED IS NOT PRINTED UNDER THIS ARM AND ITS ABSENCE IS THE POINT. A ' +
         'meeple recirculates here - spent onto a rival’s board, collected back by them, spent ' +
         'again - so one physical component is gained and spent many times and the ratio is ' +
-        'arithmetic about a population that does not exist. The four lines below replace it.',
+        'arithmetic about a population that does not exist. The lines below replace it.',
       `median supply held: ${num(firstThird, 1)} in the first third -> ${num(lastThird, 1)} in ` +
         `the last (round-boundary medians over the last five rounds: ${series
           .map((v) => num(v, 1))
-          .join(' -> ')}). The cap (R4) is ceiling 1 per colour, so 5 is a full supply and a ` +
-        'line that sits at the ceiling is a seat that cannot spend, not a seat that is rich.',
-      `meeples BOXED by the cap: ${num(boxed / games.length, 2)} a game, ${boxed} in all. ` +
-        `By source: ${[...bySource]
+          .join(' -> ')}). The cap (R4) is ceiling ${cap} per colour, so ${full} is a full ` +
+        'supply and a line that sits at the ceiling is a seat that cannot spend, not a seat ' +
+        'that is rich.',
+      `meeples boxed by the CAP ALONE (the v1-comparable figure): ${num(boxed / games.length, 2)} ` +
+        `a game, ${boxed} in all. By source: ${[...bySource]
+          .filter(([source]) => source === 'collect' || source === 'island' || source === 'balloon')
           .sort((a, b) => b[1] - a[1])
           .map(([source, n]) => `${source} ${n}`)
           .join('  ')}. By colour: ${[...byColour]
@@ -259,9 +347,18 @@ function meepleArm({ pooled }: MeasureContext): Measurement {
           .map(([colour, n]) => `${colour} ${n}`)
           .join('  ')}`,
       'Boxing on COLLECT is the cap refusing the host’s own payment for having been visited; ' +
-        'boxing on ISLAND is it refusing the island’s. Two different arguments about whether 1 ' +
-        'is the right cap, and pooling them loses both. A colour boxed far above the others is ' +
+        'boxing on ISLAND is it refusing the island’s. Two different arguments about whether the ' +
+        'cap is set right, and pooling them loses both. A colour boxed far above the others is ' +
         'a colour the table keeps sending to a seat that already has one.',
+      `⭐ EVERY SOURCE, R15 AND R6 AMENDED INCLUDED (handoff v2 section 3.4): ${num(boxedAll / games.length, 2)} ` +
+        `meeples a game leave the game by ANY route, ${boxedAll} in all - ${boxedAll - boxed} more ` +
+        `than the cap alone under this run. Full split: ${[...bySource]
+          .sort((a, b) => b[1] - a[1])
+          .map(([source, n]) => `${source} ${n} (${pct(boxedAll === 0 ? NaN : n / boxedAll)})`)
+          .join('  ')}. Boxing on BUILD / ACTIVATION / DELIVERY is R15 succeeding - the meeple ` +
+        'bought something and was spent exactly as a card would have been; boxing on TOLL is the ' +
+        'amended R6 succeeding as a sink. Neither is the cap doing work and neither should be ' +
+        'read as evidence about R4.',
       `⭐ THE DEAD-COLOUR LINE: ${DEAD_COLOURS.join(' and ')} take ` +
         `${pct(totalSpent === 0 ? NaN : dead / totalSpent)} of all ${totalSpent} meeples spent ` +
         `(an even share of five colours is 40%). Full split: ${[...spentByColour]
@@ -279,14 +376,73 @@ function meepleArm({ pooled }: MeasureContext): Measurement {
         'asymmetry is untouched here. What the arm adds is the wild spend (R10), which lets a ' +
         'dead colour buy half of a live action - a patch, not the answer, and the four options ' +
         'Dean declined in CLAUDE.md section 8 stay declined. This line measures the patch.',
+      asCard
+        ? `⭐ MEEPLES SPENT AS A RESOURCE (R15, handoff v2 section 3.3): ${resourceSpends} over ` +
+          `${games.length} games (${num(resourceSpends / games.length, 2)} a game). By use: ` +
+          `${[...byUse]
+            .sort((a, b) => b[1] - a[1])
+            .map(
+              ([use, n]) => `${use} ${n} (${pct(resourceSpends === 0 ? NaN : n / resourceSpends)})`,
+            )
+            .join('  ')}. Of those, ${atThreshold} ` +
+          `(${pct(resourceSpends === 0 ? NaN : atThreshold / resourceSpends)} of resource ` +
+          'spends) fired a building ALREADY AT ITS THRESHOLD - the priced clog bypass, and the ' +
+          `one exit a card could never have made. As a share of EVERY meeple that left the game ` +
+          `by any route: ${pct(boxedAll === 0 ? NaN : atThreshold / boxedAll)}. ` +
+          `${wildResource} of the ${resourceSpends} resource-spend meeples were half of a WILD ` +
+          `PAIR (${num(wildResource / 2, 1)} pairs, ` +
+          `${pct(resourceSpends === 0 ? NaN : wildResource / resourceSpends)}) - R10 reused ` +
+          'rather than re-rated: this is the same wild spend assertion 7 and 8 already count, ' +
+          'landing here because it paid a build, an activation or a crate instead of a door.'
+        : '⭐ MEEPLES SPENT AS A RESOURCE (R15): 0, by construction - `rules.turn.meepleAsCard` ' +
+          'is false under this run, so a meeple only ever buys its colour\'s action and every ' +
+          'number in this block is the shipped v1 loop unchanged.',
+      asCard
+        ? `⭐ TOLL MEEPLES PAID (R6 amended): ${tollPaid} over ${tollVisits} visits that paid a ` +
+          `nonzero toll (mean ${num(tollVisits === 0 ? NaN : tollPaid / tollVisits, 2)} per toll ` +
+          'visit). Assertion 17 owns the visit-share and the "does the popular farm change ' +
+          'hands" reading; this is the same meeples counted from the payer\'s side, and they ' +
+          'also appear above under `meeplesBoxedBySource.toll`.'
+        : '⭐ TOLL MEEPLES PAID (R6 amended): 0, by construction - `rules.turn.slotToll` is null ' +
+          'under this run, so an occupied slot still refuses that colour outright (v1) rather ' +
+          'than pricing it.',
+      `⭐ THE POOL, BY ROUND (handoff v2 section 3.5): every meeple in a supply, on a Notice ` +
+        `Board slot, or still on an undelivered island space, summed. ${num(poolStart, 1)} at ` +
+        `the start -> ${num(poolMid, 1)} at the midpoint -> ${num(poolEnd, 1)} at the end. ` +
+        `${emptiedGames.length} of ${games.length} games ` +
+        `(${pct(games.length === 0 ? NaN : emptiedGames.length / games.length)}) saw the pool ` +
+        'hit zero at least once' +
+        (emptyRounds.length > 0 ? `, at round ${num(median(emptyRounds), 1)} (median)` : '') +
+        '. A pool that empties by midgame is the coin drought again (v1 measurement doc section ' +
+        '4): R15 and the amended R6 open two new drains without adding a new faucet, so a ' +
+        'falling pool is the design working as intended and an EMPTIED one this early is the ' +
+        'drought repeating itself.',
+      `⭐ THE HOARD-AND-DUMP LINE (handoff v2 section 3.6): median supply in the last third is ` +
+        `the reading above (${num(lastThird, 1)}); of ${resourceSpends} meeple-as-resource ` +
+        `spends, ${finalTwoSpends} (${pct(resourceSpends === 0 ? NaN : finalTwoSpends / resourceSpends)}) ` +
+        'fell in the final two rounds of their own game. Dean: no limit until this says there ' +
+        'is a problem - an even higher-than-even share here is not itself a fault, only a ' +
+        'reading to watch if a cap or a limit is ever proposed against it.',
       '⛔ NO VERDICT UNDER THIS ARM, deliberately. The "half of all meeples gained" floor was a ' +
-        'floor on a ratio that no longer exists, the handoff names four things to report and a ' +
-        'number for none of them, and a threshold taken from this run would be a snapshot test. ' +
+        'floor on a ratio that no longer exists, the handoff names things to report and no ' +
+        'number for any of them, and a threshold taken from this run would be a snapshot test. ' +
         'It is not replaced until Dean answers how often a held meeple should be spent.',
       BOT_KNOBS,
     ],
     verdict: 'OBSERVE',
   };
+}
+
+/** The pool at a chosen position in each game's `meeplePoolByRound` series, median across games. */
+function poolAt(games: readonly GameMetrics[], at: (len: number) => number): number {
+  const vals: number[] = [];
+  for (const g of games) {
+    const series = g.meeplePoolByRound;
+    if (series.length === 0) continue;
+    const v = series[at(series.length)];
+    if (v !== undefined) vals.push(v);
+  }
+  return median(vals);
 }
 
 function spendRateByColour(games: readonly GameMetrics[]): string {

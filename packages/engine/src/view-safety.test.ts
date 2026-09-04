@@ -93,7 +93,8 @@ function cardIdsIn(move: Move): CardId[] {
     case 'build':
       return [move.card, ...move.payment];
     case 'grow':
-      return [move.building, move.payment];
+      // R15: `payment` is null when a meeple paid, and a meeple is not a card.
+      return move.payment === null ? [move.building] : [move.building, move.payment];
     case 'harvest':
       return [move.building];
     case 'visit':

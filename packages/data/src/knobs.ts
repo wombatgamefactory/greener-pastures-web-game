@@ -215,6 +215,36 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'against 2 and read it with the median supply held in the last third and the boxed count ' +
       'per game.',
   },
+  {
+    template: 'rules.turn.meepleAsCard',
+    type: 'boolean',
+    description:
+      "⭐ R15, THE MEEPLE-AS-CARD ARM (Dean, 04/09/2026 evening, handoff v2). Read only under " +
+      "visitCurrency 'meeple'. FALSE IS THE DEFAULT AND MUST STAY BIT-REPRODUCIBLE - it is the " +
+      "shipped v1 loop, where a meeple only ever buys its colour's action through a neighbour's " +
+      "board and is never a payment. TRUE lets a meeple of a colour pay wherever a card of that " +
+      'colour would: build costs (including n-of-suit and the 2-own-suit Power/Endgame cost), a ' +
+      "Grow's activation payment, and a delivery crate. A meeple spent this way goes straight to " +
+      'the box - never a hand, a barn, a stack or the hand limit - and two meeples still pay as ' +
+      "one card of any colour (R10's wild pair, reused). A meeple paid into a Grow never joins " +
+      'the stack or counts toward the threshold, so it can activate an already-full building. ' +
+      'The arm exists because a meeple with no competing use under v1 is a coupon, not a cost.',
+  },
+  {
+    template: 'rules.turn.slotToll',
+    type: 'intOrNull',
+    description:
+      '⭐ THE AMENDED R6, THE PRICED SLOT (Dean, 04/09/2026 evening, handoff v2). Read only under ' +
+      "visitCurrency 'meeple'. NULL IS THE DEFAULT AND MUST STAY BIT-REPRODUCIBLE - it is the " +
+      'shipped v1 rule: a slot holding any meeple is BLOCKED and refuses that colour until the ' +
+      'owner Collects. A number n turns the block into a price instead: nothing is ever refused, ' +
+      'but visiting a slot already holding k meeples costs n*k EXTRA meeples of any colours, on ' +
+      'top of the acting meeple, and the toll goes straight to the box, never to the host. A slot ' +
+      'holding two meeples under slotToll 1 costs three to visit: one into the slot, two boxed. A ' +
+      "wild pair in a slot counts as two occupants. Dean's framing: it \"might be a good way of " +
+      'sinking surplus meeples\" once the cap is loosened - sweep it with meepleCapPerColour, never ' +
+      'alone.',
+  },
 
   // --- Economy -------------------------------------------------------------
   {

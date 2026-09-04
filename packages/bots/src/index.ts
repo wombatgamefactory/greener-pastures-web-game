@@ -24,6 +24,9 @@ export { actOf, spendSize } from './acts.js';
 export { cardValue, lowestValueCard, totalValue } from './junk.js';
 export { SUIT_STRENGTH, magpieTarget } from './magpie.js';
 export {
+  MEEPLE_AS_CARD_DOOR_PREMIUM,
+  MEEPLE_AS_CARD_FLOOR,
+  MEEPLE_AS_CARD_LIVE,
   MEEPLE_LATENT,
   cropOfView,
   handSpendCost,

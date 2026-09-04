@@ -67,6 +67,7 @@
 import type { GameData, Suit } from '@gp/data';
 
 import { freeHandSpace, growOptions } from '../actions.js';
+import type { GrowOption } from '../actions.js';
 import type { Fx } from '../fx.js';
 import { buildingOf, canTakeCard, cardById, drawableSuits, player } from '../query.js';
 import { doGrow, markFired } from '../runtime.js';
@@ -520,7 +521,7 @@ function seedBankGrowOptions(
   state: GameState,
   seat: Seat,
   done: readonly CardId[],
-): { building: CardId; payment: CardId }[] {
+): GrowOption[] {
   return growOptions(data, state, seat).filter(
     (o) => isOrchardCard(data, o.building) && !done.includes(o.building),
   );
@@ -576,9 +577,19 @@ export const seedBank: CardHandler = {
     seedBankGrow: {
       answers(data, state, task) {
         const done = (task.riders.done as CardId[]) ?? [];
+        // R15: a step of the loop may be paid with a meeple, in which case
+        // `payment` is null and `meeples` carries it. Both ride in the payload
+        // so `resolve` can hand `doGrow` exactly what the enumerator offered.
         const out = seedBankGrowOptions(data, state, task.pid, done).map(
           (o) =>
-            ({ kind: 'card', payload: { building: o.building, payment: o.payment } }) as TaskAnswer,
+            ({
+              kind: 'card',
+              payload: {
+                building: o.building,
+                payment: o.payment,
+                ...(o.meeples === undefined ? {} : { meeples: o.meeples }),
+              },
+            }) as TaskAnswer,
         );
         if (out.length === 0) return [];
         out.push({ kind: 'skip' });
@@ -588,7 +599,14 @@ export const seedBank: CardHandler = {
         if (answer.kind === 'skip') return true;
         if (answer.kind !== 'card') throw new Error('seedBankGrow expects a card answer');
         const building = answer.payload.building as CardId;
-        doGrow(fx, task.pid, building, answer.payload.payment as CardId);
+        doGrow(
+          fx,
+          task.pid,
+          building,
+          answer.payload.payment as CardId | null,
+          {},
+          (answer.payload.meeples as Suit[] | undefined) ?? [],
+        );
         // Re-queued AFTER the activation's own tasks (pushTask appends), so the
         // cards a grow draws are in hand before the next one is chosen.
         fx.pushTask({

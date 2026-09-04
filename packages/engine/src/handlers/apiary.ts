@@ -296,14 +296,29 @@ export const gardenHive: CardHandler = {
           exclude: [task.src],
         }).map(
           (o) =>
-            ({ kind: 'card', payload: { building: o.building, payment: o.payment } }) as TaskAnswer,
+            ({
+              kind: 'card',
+              // R15: `payment` is null and `meeples` carries the payment when a
+              // meeple paid. Both ride, for the reason the build answer's own
+              // comment gives: an answer that drops them cannot pay.
+              payload: {
+                building: o.building,
+                payment: o.payment,
+                ...(o.meeples === undefined ? {} : { meeples: o.meeples }),
+              },
+            }) as TaskAnswer,
         );
       },
       resolve(fx, task, answer) {
         if (answer.kind !== 'card') throw new Error('growAny expects a card answer');
-        doGrow(fx, task.pid, answer.payload.building as CardId, answer.payload.payment as CardId, {
-          anyCrop: true,
-        });
+        doGrow(
+          fx,
+          task.pid,
+          answer.payload.building as CardId,
+          answer.payload.payment as CardId | null,
+          { anyCrop: true },
+          (answer.payload.meeples as Suit[] | undefined) ?? [],
+        );
         return true;
       },
     },

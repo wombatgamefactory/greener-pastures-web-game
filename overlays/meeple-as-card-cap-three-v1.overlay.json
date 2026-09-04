@@ -1,0 +1,11 @@
+{
+  "name": "meeple-as-card-cap-three-v1",
+  "description": "THE CAP SWEEP, HIGH SIDE. Identical to overlays/meeple-as-card-v1.overlay.json - R15 live (meepleAsCard true) and the priced slot at n=1 (slotToll 1) - except meepleCapPerColour rises to 3, one past the handoff-v2 default of 2. R4's amendment is explicitly a processing bound rather than a design rule (Dean: 'let's see if this is actually a problem before we try to fix it'), so this arm is the other half of finding out: if 2 already boxes almost nothing, 3 should read flat against it and say the cap has stopped doing design work at 2 - the mirror of what the v1 sweep found, where cap 2 and cap 3 read the same hook and the knee was at 2. If 3 still boxes a meaningful count, the knee has moved because R15 gives meeples a second exit (spent as a resource, not only boxed at the cap) and the old three-point reading under v1 does not carry over. Read against overlays/meeple-as-card-v1.overlay.json (cap 2) and overlays/meeple-as-card-cap-one-v1.overlay.json (cap 1); read the meeples-boxed-by-source line and the hoard-and-dump line (median supply in the last third) together, since a cap that never binds should also show a flat median rather than a rising one. ⚠️ At this stage of the build the engine does not yet read meepleAsCard or slotToll, so this overlay currently behaves exactly like the shipped v1 loop at meepleCapPerColour 3 - that is expected and is not a result.",
+  "schemaVersion": 1,
+  "set": {
+    "rules.turn.visitCurrency": "meeple",
+    "rules.turn.meepleAsCard": true,
+    "rules.turn.slotToll": 1,
+    "rules.turn.meepleCapPerColour": 3
+  }
+}

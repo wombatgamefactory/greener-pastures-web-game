@@ -158,6 +158,35 @@ export function isMeepleCurrency(data: GameData): boolean {
 }
 
 /**
+ * Is R15 live - a meeple spendable as a card of its colour? See
+ * `rules.turn.meepleAsCard`.
+ *
+ * ⭐ DEFAULTS FALSE. The knob is meaningless outside the meeple loop, but this
+ * does not gate on `isMeepleCurrency` itself - the data can never set
+ * `meepleAsCard` true while `visitCurrency` is `'card'` in practice, because
+ * only handoff-v2 overlays touch it and they all set `visitCurrency: 'meeple'`
+ * in the same breath. Callers that already know they are in the meeple arm may
+ * read this directly; callers that do not should check `isMeepleCurrency`
+ * first.
+ */
+export function isMeepleAsCard(data: GameData): boolean {
+  return data.rules.turn.meepleAsCard;
+}
+
+/**
+ * The amended R6 slot price, or null for the v1 block. See
+ * `rules.turn.slotToll`.
+ *
+ * null: a slot holding any meeple is BLOCKED and refuses that colour outright.
+ * A number n: nothing is ever refused, and visiting a slot already holding k
+ * meeples costs n * k extra meeples of any colours - the toll - on top of the
+ * acting meeple, boxed rather than handed to the host.
+ */
+export function slotTollOf(data: GameData): number | null {
+  return data.rules.turn.slotToll;
+}
+
+/**
  * How many meeples one tile is seeded with at setup.
  *
  * Under the shipped `'meeple'` it is the length of `island.meeples.seededSpaces`

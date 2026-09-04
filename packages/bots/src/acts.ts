@@ -44,6 +44,25 @@
  * CardId and `meeples` is empty, so every arm-gated branch below reduces to the
  * pre-04/09/2026 arithmetic exactly - which is the property `bots.test.ts` and
  * the reference reports both depend on.
+ *
+ * ## ⭐ HANDOFF v2 (04/09/2026 evening) - NO NEW ACT, FOUR NEW FIELDS
+ *
+ * R15 (`rules.turn.meepleAsCard`) makes a meeple a CARD of its colour, so it
+ * can pay a build cost, a Grow's activation and an island crate; the amended R6
+ * (`rules.turn.slotToll`) stops refusing an occupied slot and prices it in
+ * burned meeples instead. Neither is a new kind of thing a seat can DO - a
+ * build is still a build - so neither gets an act. What they add is a second
+ * currency to four acts that already existed:
+ *
+ *   - `build.meeples` and `deliver.meeples` - meeples spent as cards,
+ *   - `grow.meeples`, with `grow.payment` going NULLABLE beside it,
+ *   - `visit.toll` - meeples burned to enter an occupied slot.
+ *
+ * ⚠️ **BOTH KNOBS DEFAULT OFF AND EVERY ONE OF THOSE FIELDS IS EMPTY OR NULL
+ * UNTIL THEY ARE ON.** The engine cannot produce a meeple payment with
+ * `meepleAsCard` false, or a toll with `slotToll` null, so the gate is the
+ * ACT's own shape rather than a knob read - which is the rule `Scratch.meepleArm`
+ * states and the only gate that cannot drift from the rule it stands for.
  */
 
 import type { Suit } from '@gp/data';
@@ -82,17 +101,70 @@ export type Act =
    * one), a stack card is a REAL alternative to a hand card, so it is charged
    * as one.
    */
-  | { a: 'build'; card: CardId; payment: readonly CardId[]; stacks: number }
-  | { a: 'grow'; building: CardId; payment: CardId }
+  | {
+      a: 'build';
+      card: CardId;
+      payment: readonly CardId[];
+      stacks: number;
+      /**
+       * ⭐ R15: MEEPLES SPENT AS CARDS OF THEIR COLOURS, EXPANDED INTO A LIST
+       * OF COLOURS. The move carries a count vector, because the engine's
+       * enumerator must never treat two meeples of a colour as distinguishable;
+       * a term wants the same thing every other meeple term wants, which is
+       * something to sum `meepleWorth` over. Expanding is bounded by the cap
+       * (ten meeples at `meepleCapPerColour` 2) and costs nothing at all when
+       * R15 is off, where the shared `NO_MEEPLES` is returned unallocated.
+       *
+       * ⚠️ It does NOT include the hand `payment`, and the two are priced by
+       * different terms - `handSpend` for the cards, `meepleSpend` for these.
+       * A wild pair (R10) is simply two entries here, which is what makes a pair
+       * cost twice what a single meeple costs, exactly as it does on a visit.
+       */
+      meeples: readonly Suit[];
+    }
+  /**
+   * ⭐ `payment` IS NULL WHEN A MEEPLE PAID (R15), AND THAT IS NOT A SENTINEL -
+   * it is the rule. A meeple-paid GROW places nothing: the meeple goes straight
+   * to the box, never onto the stack, so there is no card to name, no
+   * `cardPlaced`, no threshold step, and a building ALREADY AT ITS THRESHOLD is
+   * a legal target. Every term that reads `payment` has to gate on the null,
+   * and the two that do are `handSpend` (no card leaves the hand) and
+   * `growSpend` (there is no card to junk-rank).
+   */
+  | { a: 'grow'; building: CardId; payment: CardId | null; meeples: readonly Suit[] }
   | { a: 'harvest'; building: CardId }
-  | { a: 'deliver'; tile: string; spend: Spend }
+  /**
+   * `spend` is what the ISLAND was paid, in suits, and `meeples` is the part of
+   * it that came out of the SUPPLY rather than the barn (R15). The two overlap
+   * by construction, so `barnSpend` must charge `spend` MINUS these or a
+   * meeple-paid crate is charged twice, once as freight and once as a meeple.
+   */
+  | { a: 'deliver'; tile: string; spend: Spend; meeples: readonly Suit[] }
   | { a: 'balloon'; balloon: string; spend: Spend }
   /**
    * THE INTERACTION HALF OF THE BONUS SLOT: one card from hand onto a Notice
    * Board, then that board's suit action. `self` is `host === seat` - see the
    * file header; it is the flag the whole pass turns on.
    */
-  | { a: 'visit'; host: Seat; fee: CardId | null; self: boolean; meeples: readonly Suit[] }
+  | {
+      a: 'visit';
+      host: Seat;
+      fee: CardId | null;
+      self: boolean;
+      meeples: readonly Suit[];
+      /**
+       * ⭐ THE SLOT TOLL (R6 as amended, `rules.turn.slotToll`): extra meeples
+       * burned to enter a slot that already holds some. Empty under v1, where an
+       * occupied slot is refused outright rather than priced.
+       *
+       * ⚠️ IT IS A SINK AND THE ACTING MEEPLE IS NOT. The acting `meeples` move
+       * to the host's board and the host collects them; these go to the BOX and
+       * never come back to anybody. Both are a full loss to THIS seat, which is
+       * why one term charges both - the difference is invisible to a
+       * self-regarding bot and is deliberately left that way.
+       */
+      toll: readonly Suit[];
+    }
   /**
    * THE OTHER HALF OF THE BONUS SLOT UNDER THE MEEPLE-LOOP ARM
    * (`rules.turn.visitCurrency: 'meeple'`, Dean 04/09/2026): sweep every meeple
@@ -147,6 +219,38 @@ export type Act =
   | { a: 'skip' }
   | { a: 'cardTask'; payload: Record<string, unknown> };
 
+/**
+ * The empty meeple list, shared. Every act carries one, and under the `'card'`
+ * game and under R15-off every act carries THIS one - so the arm's new fields
+ * cost the control a pointer copy and never an allocation.
+ */
+const NO_MEEPLES: readonly Suit[] = [];
+
+/**
+ * A count-per-colour vector, expanded into a colour list.
+ *
+ * The ORDER of the list is the object's own key order and nothing reads it:
+ * every consumer sums `meepleWorth` across the whole list, which is
+ * order-free. That is stated rather than assumed, because enumeration order IS
+ * load-bearing elsewhere in this package and a reader is right to check.
+ *
+ * ⚠️ The engine deliberately carries meeple payments as counts and never as
+ * lists, because two meeples of a colour are indistinguishable and enumerating
+ * them individually is what would blow up the build enumerator (see
+ * `meepleFills` in the engine's actions.ts). Nothing here re-introduces that:
+ * this is one deterministic expansion of an ALREADY CHOSEN payment, so it can
+ * never multiply the move list. It exists so that `meepleSpend` can sum
+ * `meepleWorth` over an act's meeples in one shape, whichever act it is.
+ */
+function meepleList(counts: Partial<Record<Suit, number>> | undefined): readonly Suit[] {
+  if (counts === undefined) return NO_MEEPLES;
+  const out: Suit[] = [];
+  for (const [suit, n] of Object.entries(counts) as [Suit, number][]) {
+    for (let i = 0; i < n; i++) out.push(suit);
+  }
+  return out.length === 0 ? NO_MEEPLES : out;
+}
+
 function actOfAnswer(answer: TaskAnswer): Act {
   switch (answer.kind) {
     case 'deck':
@@ -160,15 +264,22 @@ function actOfAnswer(answer: TaskAnswer): Act {
       return { a: 'activate', building: answer.card };
     case 'sow':
       return { a: 'sow', card: answer.card, onto: answer.onto };
+    // ⚠️ A TASK ANSWER CANNOT CARRY MEEPLES AND THAT IS THE ENGINE'S SHAPE, NOT
+    // AN OMISSION HERE. `TaskAnswer`'s build and deliver kinds have no meeple
+    // field, so a build bought through a door and a delivery made by a card
+    // effect are card-paid by construction, even under R15. If either answer
+    // ever grows one, these two lines are where it arrives - and `meepleSpend`
+    // already claims `task`, so the price would follow without a term change.
     case 'build':
       return {
         a: 'build',
         card: answer.card,
         payment: answer.payment,
         stacks: (answer.stacks ?? []).length,
+        meeples: NO_MEEPLES,
       };
     case 'deliver':
-      return { a: 'deliver', tile: answer.tile, spend: answer.spend };
+      return { a: 'deliver', tile: answer.tile, spend: answer.spend, meeples: NO_MEEPLES };
     case 'balloon':
       return { a: 'balloon', balloon: answer.balloon, spend: answer.spend };
     case 'deckSow':
@@ -200,13 +311,29 @@ export function actOf(move: Move): Act {
     case 'spendMeeple':
       return { a: 'spendMeeple', colour: move.colour };
     case 'build':
-      return { a: 'build', card: move.card, payment: move.payment, stacks: 0 };
+      return {
+        a: 'build',
+        card: move.card,
+        payment: move.payment,
+        stacks: 0,
+        meeples: meepleList(move.meeples),
+      };
     case 'grow':
-      return { a: 'grow', building: move.building, payment: move.payment };
+      return {
+        a: 'grow',
+        building: move.building,
+        payment: move.payment,
+        meeples: move.meeples ?? NO_MEEPLES,
+      };
     case 'harvest':
       return { a: 'harvest', building: move.building };
     case 'deliver':
-      return { a: 'deliver', tile: move.tile, spend: move.spend };
+      return {
+        a: 'deliver',
+        tile: move.tile,
+        spend: move.spend,
+        meeples: meepleList(move.meeples),
+      };
     case 'moveBalloon':
       return { a: 'balloon', balloon: move.balloon, spend: move.spend };
     case 'visit':
@@ -221,7 +348,11 @@ export function actOf(move: Move): Act {
         host: move.host,
         fee: move.fee,
         self: move.host === move.seat,
-        meeples: move.meeples ?? [],
+        meeples: move.meeples ?? NO_MEEPLES,
+        // R6 as amended: the meeples burned to enter an occupied slot. Absent
+        // under v1, where an occupied slot is refused and there is nothing to
+        // price.
+        toll: move.toll ?? NO_MEEPLES,
       };
     case 'collect':
       return { a: 'collect' };

@@ -1,0 +1,11 @@
+{
+  "name": "meeple-as-card-toll-two-v1",
+  "description": "THE TOLL SWEEP. Identical to overlays/meeple-as-card-v1.overlay.json - R15 live (meepleAsCard true) and the amended cap at 2 (meepleCapPerColour 2) - except slotToll doubles to 2, so visiting a slot already holding k meeples costs 2k extra meeples of any colours, boxed, on top of the acting one. A slot holding two meeples now costs five to visit under this arm against three under the handoff-v2 default: one into the slot, four boxed. THE QUESTION IS WHETHER THE TOLL IS DOING DESIGN WORK OR JUST SINKING MEEPLES THAT WOULD OTHERWISE HAVE BEEN SPENT PRODUCTIVELY. Dean's own framing of R6 amended is that the toll 'might be a good way of sinking surplus meeples' - which is a hope, not a measurement - so this arm asks what happens when the sink is deepened: does the pool-by-round line stay healthier for longer, or does the toll simply tax the popular farm until visitors stop bothering with an occupied slot and the slot-unspent share rises instead? Read toll visits (section 3.7 of the handoff, docs/meeple-loop-visit-handoff-2026-09-04-v2.md) against overlays/meeple-as-card-v1.overlay.json at toll 1: share of visits paying a toll, mean toll paid, and whether the popular farm still changes hands or a toll this steep freezes the current leader in place by making them too expensive to visit at all. Read alongside the hook and the bonus mix, because a toll steep enough to suppress visiting a stacked slot is a toll steep enough to move the hook the wrong way. ⚠️ At this stage of the build the engine does not yet read meepleAsCard or slotToll, so this overlay currently behaves exactly like the shipped v1 loop at meepleCapPerColour 2 - that is expected and is not a result.",
+  "schemaVersion": 1,
+  "set": {
+    "rules.turn.visitCurrency": "meeple",
+    "rules.turn.meepleAsCard": true,
+    "rules.turn.slotToll": 2,
+    "rules.turn.meepleCapPerColour": 2
+  }
+}

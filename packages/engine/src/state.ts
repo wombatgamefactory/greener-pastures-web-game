@@ -592,6 +592,16 @@ export type TaskAnswer =
       payment: CardId[];
       /** D7: cards lifted off the seat's OWN buildings to help pay, by id. */
       stacks?: CardId[];
+      /**
+       * ⚠️ R15: meeples in the payment, as a count per colour, AND THEY
+       * HAVE TO RIDE ON THE ANSWER. The same trap the deleted `head` rider
+       * carried: an answer that dropped them is an answer that cannot pay, and
+       * `doBuild` throws "costs N cards, got N-1" a long way from the seam that
+       * lost them. Every route into a build - the action, the cream door, D7,
+       * D10 - has to carry both fields or none.
+       */
+      meeples?: Partial<Record<Suit, number>>;
+      wildPairs?: number;
     }
   /**
    * ⛔ `head` / `deckHead` rode on both of these until v31 and are GONE with the
@@ -608,6 +618,8 @@ export type TaskAnswer =
       kind: 'deliver';
       tile: string;
       spend: Partial<Record<Suit, number>>;
+      /** R15: the part of `spend` paid out of the supply. Rides for the same reason. */
+      meeples?: Partial<Record<Suit, number>>;
     }
   | {
       kind: 'balloon';
@@ -751,16 +763,69 @@ export type Move =
    * thing stopping the supply from being a hand of free reactive actions.
    */
   | { type: 'spendMeeple'; seat: Seat; colour: Suit }
-  /** Build a card from hand. `payment` is the chosen card ids - since v31 a build costs cards and nothing else. */
-  | { type: 'build'; seat: Seat; card: CardId; payment: CardId[] }
-  | { type: 'grow'; seat: Seat; building: CardId; payment: CardId }
+  /**
+   * Build a card from hand. `payment` is the chosen card ids - since v31 a build
+   * costs cards and nothing else.
+   *
+   * ⭐ UNDER R15 (`rules.turn.meepleAsCard`) IT ALSO COSTS MEEPLES, and they
+   * ride in a SEPARATE field as a COUNT PER COLOUR rather than in `payment`.
+   * That separation is not tidiness, it is the performance rule the whole change
+   * is gated on: meeples of a colour are interchangeable, so a payment is
+   * decided by HOW MANY of each colour it spends and never by which, and putting
+   * them in `payment` would drag them into `subsets()` and multiply the build
+   * enumeration by every way of choosing identical tokens. See `meepleFills` in
+   * actions.ts.
+   *
+   * `wildPairs` is how many of those meeples are spent two-as-one to fill the
+   * built card's OWN-SUIT requirement (R10). It is a count and not a list for
+   * the same reason, and it is always the minimum the cost needs.
+   */
+  | {
+      type: 'build';
+      seat: Seat;
+      card: CardId;
+      payment: CardId[];
+      meeples?: Partial<Record<Suit, number>>;
+      wildPairs?: number;
+    }
+  /**
+   * GROW: activate one of your own buildings, paying one card that matches its
+   * activation cost into its stack.
+   *
+   * ⭐ UNDER R15 THE PAYMENT MAY BE A MEEPLE INSTEAD, AND THEN IT IS NOT A
+   * PLACEMENT AT ALL (Dean, 04/09/2026 evening). `payment` is null and `meeples`
+   * carries one meeple of the matching colour, or TWO of any colours spent as a
+   * wild pair (R10). The meeple goes straight to the box: it never joins the
+   * stack, never counts toward the threshold, and fires no `afterPlacement`.
+   *
+   * ⭐ SO A MEEPLE CAN ACTIVATE A BUILDING THAT IS ALREADY FULL. Nothing is
+   * being placed, so the only reason a full building cannot be grown does not
+   * apply. That is a PRICED CLOG BYPASS and it is deliberate. `atThreshold` on
+   * the `meepleAsCard` event is how often it happens.
+   */
+  | { type: 'grow'; seat: Seat; building: CardId; payment: CardId | null; meeples?: Suit[] }
   | { type: 'harvest'; seat: Seat; building: CardId }
-  /** Deliver from barn to an island tile. `spend` is a per-suit map - barn identity is inert. */
+  /**
+   * Deliver from barn to an island tile. `spend` is a per-suit map - barn
+   * identity is inert.
+   *
+   * ⭐ UNDER R15 `meeples` is the part of `spend` paid out of the SUPPLY
+   * rather than the barn, per colour, and it is a subset of `spend` colour by
+   * colour. It is boxed, never barned and never discarded.
+   *
+   * ⭐ NO WILD PAIR IS MODELLED HERE AND THAT IS NOT AN OMISSION. The island
+   * already carries its own substitution at exactly the same rate - "any single
+   * card it asks for may instead be paid with 2 cards of any crops" - so two
+   * meeples paying one named crop is already reachable through
+   * `cardsPerSubstitution`, and adding R10 beside it would be a second rate on
+   * the same payment.
+   */
   | {
       type: 'deliver';
       seat: Seat;
       tile: string;
       spend: Partial<Record<Suit, number>>;
+      meeples?: Partial<Record<Suit, number>>;
     }
   /**
    * The Deliver action's freight branch (reference DL-12): pay 2 differing
@@ -821,6 +886,14 @@ export type Move =
        * you already hold.
        */
       colour?: Suit;
+      /**
+       * ⭐ THE SLOT TOLL (R6 as amended, handoff v2). v1 REFUSED a slot that
+       * already held a meeple; v2 prices it at `rules.turn.slotToll` extra
+       * meeples per occupant and refuses nothing. These are the toll meeples -
+       * any colours, NOT the acting meeple - and they go to the BOX rather than
+       * into the slot. Absent or empty means the slot was free.
+       */
+      toll?: Suit[];
     }
   /**
    * COLLECT - the meeple-loop arm's other bonus option (R7), and the half of the
@@ -932,13 +1005,62 @@ export type GameEvent =
    * partition every meeple that was offered to a supply. `source` says which
    * faucet overflowed: `'collect'` is taking your own board back, `'island'` is
    * a delivery, `'balloon'` is the magenta balloon's bag draw.
+   *
+   * ⭐ HANDOFF v2 ADDS FOUR SOURCES AND THEY ARE NOT OVERFLOWS (R15, R16).
+   * `'build'`, `'activation'` and `'delivery'` are a meeple SPENT AS A CARD of
+   * its colour, and `'toll'` is a meeple burned to enter an occupied slot (R6).
+   * Those four are emitted on their own, with no `meepleGained` to partition
+   * against, because nothing was ever offered to a supply: the meeple left one.
+   * ⚠️ So `meepleBoxed` stops being "the cap's leak" and becomes "every
+   * meeple that left the game", and any reader that treated the event as a
+   * measure of the cap must now split it by source. The first three sources
+   * always arrive beside a `meepleAsCard` event, which carries the use and the
+   * threshold flag; `'toll'` arrives beside `visitToll`.
    */
   | {
       e: 'meepleBoxed';
       seat: Seat;
       colour: Suit;
-      source: 'collect' | 'island' | 'balloon';
+      source: 'collect' | 'island' | 'balloon' | 'build' | 'activation' | 'delivery' | 'toll';
     }
+  /**
+   * ⭐ A MEEPLE WAS SPENT AS A CARD OF ITS COLOUR (R15, handoff v2), which is
+   * the whole of that rule's measurement surface. One event per meeple, so a
+   * build paid with two meeples emits two, and each is followed by its own
+   * `meepleBoxed` with the matching source.
+   *
+   * `use` is which payment it made. `atThreshold` is the one that matters and it
+   * is only ever true on an `'activation'`: a meeple paid for a Grow goes
+   * STRAIGHT TO THE BOX rather than onto the stack, so it never touches the
+   * threshold, so it can activate a building that is ALREADY FULL. That is a
+   * priced clog bypass and it is deliberate (Dean, 04/09/2026 evening). It is
+   * counted apart from every other meeple exit because it is the one use a card
+   * could never have made.
+   *
+   * `wild` says the meeple was half of a pair spent as one card of any colour
+   * (R10), so two events with `wild` true are ONE resource, not two.
+   */
+  | {
+      e: 'meepleAsCard';
+      seat: Seat;
+      colour: Suit;
+      use: 'build' | 'activation' | 'delivery';
+      atThreshold: boolean;
+      wild: boolean;
+    }
+  /**
+   * ⭐ A TOLL WAS PAID TO ENTER AN OCCUPIED SLOT (R6 as amended, handoff v2).
+   *
+   * v1 REFUSED an occupied slot; v2 prices it at `rules.turn.slotToll` extra
+   * meeples per meeple already sitting there, and nothing is ever refused. The
+   * toll meeples are any colours, they are NOT the acting meeple, and they go to
+   * the box rather than into the slot - so a toll is a sink and the acting
+   * meeple is still a loan to the host.
+   *
+   * `paid` is the toll only. `occupants` is how many meeples were in the slot
+   * before this visit, which is what the toll was priced off.
+   */
+  | { e: 'visitToll'; seat: Seat; host: Seat; colour: Suit; paid: Suit[]; occupants: number }
   /**
    * MEEPLES CAME OFF YOUR OWN NOTICE BOARD (the meeple arm's Collect, R7).
    * `kept` are the ones that reached the supply and `boxed` the duplicates the

@@ -36,7 +36,7 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import { deliveriesPerTile, isMeepleCurrency } from '@gp/data';
+import { deliveriesPerTile, isMeepleCurrency, meepleIndexForSpace } from '@gp/data';
 import type { CardId, GameEvent, GameState, Move, ScoreBreakdown, Seat, Task } from '@gp/engine';
 import {
   MOVE_TYPES,
@@ -54,6 +54,7 @@ import {
   player,
   score,
   noticeBoardOf,
+  noticeBoardSlots,
   slotBlocked,
   anyVisitOption,
   workerActionLegal,
@@ -86,6 +87,17 @@ export const EVENT_KINDS = {
   // the free Draw 1 became.
   meepleBoxed: true,
   boardCollected: true,
+  // ⭐ THE MEEPLE-AS-CARD HANDOFF'S TWO NEW EVENTS (v2, 04/09/2026), both
+  // gated behind their own knobs (`rules.turn.meepleAsCard`,
+  // `rules.turn.slotToll`) and both silent under the shipped defaults.
+  // `meepleAsCard` is R15's whole measurement surface - a meeple spent as a
+  // card of its colour, one event per meeple; `visitToll` is the amended R6's
+  // - meeples burned to enter an occupied slot. `meepleBoxed`'s `source` union
+  // also grew four new members for the same change; see the field comments on
+  // `meeplesBoxedBySeat` and `meeplesBoxedAllSourcesBySeat` below for the trap
+  // that created and how it is avoided.
+  meepleAsCard: true,
+  visitToll: true,
   reshuffled: true,
   built: true,
   demolished: true,
@@ -312,6 +324,20 @@ export interface GameMetrics {
   /** Of those, the ones bought by a meeple leaving the game. */
   meepleActionsBySeat: number[];
   /**
+   * ⭐ THE TWO HALVES OF `actionsBySeat`, KEPT APART FOR a16's RE-CUT (Dean,
+   * 04/09/2026 evening, handoff v2 preamble): `mainActionsBySeat` is the ONE
+   * core action a turn takes by rule (draw/build/grow/harvest/deliver/
+   * moveBalloon); `boughtDoorActionsBySeat` is every `doorUsed` event
+   * regardless of what paid for it - a card fee under `'card'`, a meeple visit
+   * under `'meeple'`. Neither field is new counting: both are drawn from
+   * events `actionsBySeat` already folds in, split apart rather than pooled,
+   * so `actionsBySeat` itself is untouched and `report.ts`'s own reading of it
+   * cannot move. Collect and the free Draw 1 are deliberately absent from
+   * both - a16 puts them on their own line instead of inside the action count.
+   */
+  mainActionsBySeat: number[];
+  boughtDoorActionsBySeat: number[];
+  /**
    * MEEPLES GAINED AND SPENT, by seat and by colour. `gained - spent` over a
    * whole game is exactly the meeples that died unspent in a supply, because a
    * spent meeple returns to no pool - which is the dead-component number the
@@ -431,16 +457,42 @@ export interface GameMetrics {
    */
   wildVisitsBySeat: number[];
   /**
-   * MEEPLES RETURNED TO THE BOX under the supply cap (R4) - the arm's only leak.
+   * MEEPLES RETURNED TO THE BOX under the supply CAP (R4) ONLY - `'collect'`,
+   * `'island'` and `'balloon'`, the three sources v1 had and the only ones
+   * this field has ever counted.
+   *
+   * ⚠️ DELIBERATELY KEPT CAP-ONLY (handoff v2, 04/09/2026), AND THAT IS A FIX
+   * RATHER THAN THE ORIGINAL DESIGN. `meepleBoxed`'s `source` union grew four
+   * new members under R15 and the amended R6 - `'build'`, `'activation'`,
+   * `'delivery'`, `'toll'` - none of which the cap had anything to do with: a
+   * meeple spent as a resource or burned as a toll left the game on its own
+   * account, not because a supply overflowed. Before this fix the event
+   * handler folded every source into this one seat total without looking, so
+   * a report run under R15 would have quietly counted two unrelated things as
+   * one number and moved the v1-comparable figure (13.41 boxed a game) for a
+   * reason that had nothing to do with the cap. `meeplesBoxedAllSourcesBySeat`
+   * below is the new grand total across every source; read the two side by
+   * side and never let one stand in for the other.
    *
    * By SEAT, by SOURCE (`collect` is your own board coming home, `island` a
    * delivery, `balloon` the magenta balloon's bag draw) and by COLOUR. The
    * source split is the one that diagnoses: boxing on `collect` says the cap is
    * refusing the host's own payment, boxing on `island` says it is refusing the
-   * island's, and those are two different arguments about whether 1 is the right
-   * cap.
+   * island's, and those are two different arguments about whether the cap is
+   * set right.
    */
   meeplesBoxedBySeat: number[];
+  /**
+   * ⭐ EVERY SOURCE, INCLUDING THE FOUR R15/R6 ADD (handoff v2, 04/09/2026):
+   * `'build'`, `'activation'`, `'delivery'` (a meeple spent as a card - R15)
+   * and `'toll'` (a meeple burned to enter an occupied slot - R6 amended),
+   * beside the original `'collect'`, `'island'`, `'balloon'`. This is the
+   * figure the handoff calls "every meeple that left the game"; `meeplesBoxedBySeat`
+   * above is the CAP-ONLY subset of it, kept apart on purpose - see its own
+   * comment. `meeplesBoxedBySource` below carries the same total split by
+   * source name rather than by seat.
+   */
+  meeplesBoxedAllSourcesBySeat: number[];
   meeplesBoxedBySource: Record<string, number>;
   meeplesBoxedByColour: Record<string, number>;
   /**
@@ -515,6 +567,86 @@ export interface GameMetrics {
   slotsSampledAtBoundary: number;
   /** The arm's generosity, in meeples. See `MeepleGift`. */
   meepleGift: MeepleGift;
+
+  // --- R15 / R6 amended, the meeple-as-card handoff, 04/09/2026 -----------
+  //
+  // ⚠️ EVERY LINE IN THIS BLOCK IS ZERO WHEN `rules.turn.meepleAsCard` IS
+  // `false` AND `rules.turn.slotToll` IS `null` - the shipped defaults, and
+  // v1's own control. Neither `meepleAsCard` nor `visitToll` fires under those
+  // defaults and `meepleBoxed`'s `source` never carries a resource or toll
+  // value there, so nothing in this block can move under the control. Read a
+  // zero as "the arm was off", exactly the contract the v31-era block above
+  // states of itself. `meeplePoolByRound` and `poolEmptyRound` are the one
+  // exception: they read off `visitCurrency: 'meeple'` alone (not off R15 or
+  // the amended R6), because the pool exists the moment the shipped v1 loop
+  // does - see their own comments.
+
+  /**
+   * MEEPLES SPENT AS A CARD OF THEIR COLOUR (R15), one `meepleAsCard` event =
+   * one meeple. `meepleResourceSpendsByUse` splits the same total by what it
+   * paid; the two must sum to the same number across a run, and a
+   * disagreement between them is a fold bug, not a design reading.
+   */
+  meepleResourceSpendsBySeat: number[];
+  /** ...by USE: a build cost (including a Power/Endgame card's own-suit half), a Grow's activation payment, or an island crate. */
+  meepleResourceSpendsByUse: Record<'build' | 'activation' | 'delivery', number>;
+  /**
+   * Of `meepleResourceSpendsByUse.activation`, THE ONES THAT FIRED A BUILDING
+   * ALREADY AT ITS THRESHOLD - the priced clog bypass R15 deliberately allows
+   * (Dean, 04/09/2026 evening) and the number the handoff names as the new
+   * dial by name (section 3.3). A meeple paid into a Grow never joins the
+   * stack and never counts toward the threshold, so this is the one exit a
+   * card could never have made on its own. Report it apart from the
+   * `'activation'` total above AND as a share of every meeple that left the
+   * game by any route (`meeplesBoxedAllSourcesBySeat`, summed) - the handoff
+   * asks for both.
+   */
+  meepleResourceAtThresholdSpends: number;
+  /**
+   * Of every `meepleAsCard` event, the ones that were half of a WILD PAIR
+   * (R10) - two meeples of colours other than the built suit, spent as one
+   * card of any colour. Always an even number across a run; divide by two for
+   * the count of PAIRS, since two of these events are one resource paid.
+   */
+  meepleResourceWildSpends: number;
+  /** 1-based round of each `meepleAsCard` event - the numerator for the hoard-and-dump line's "spends in the final two rounds" share. */
+  meepleResourceSpendRounds: number[];
+
+  /** TOLL MEEPLES PAID (R6 amended) to enter an already-occupied slot, by the visitor who paid them. They go to the box, never to the host. */
+  tollMeeplesPaidBySeat: number[];
+  /** Visits that paid a NONZERO toll, by the visitor - the numerator for "share of visits that paid a toll" (handoff section 3.7). */
+  tollVisitsBySeat: number[];
+  /**
+   * VISITS RECEIVED, by host, self-visits excluded by construction (X5) - "does
+   * the popular farm change hands" (handoff section 3.7). A count of VISITS,
+   * not of meeples, on purpose: `meepleGift.receivedBySeat` already counts
+   * meeples received and a wild pair (two meeples, one visit) would silently
+   * double-weight a single visit if that field were reused for this question.
+   */
+  visitsReceivedBySeat: number[];
+
+  /**
+   * ⭐ THE MEEPLE POOL AT EVERY ROUND BOUNDARY (handoff v2 section 3.5): every
+   * meeple anywhere in the game at that instant - every seat's supply, every
+   * Notice Board slot on the table, and every meeple still sitting on an
+   * undelivered island space - summed once per round boundary.
+   *
+   * ⭐ READ DIRECTLY OFF STATE, NOT DERIVED FROM A RUNNING BALANCE. The fold's
+   * `roundBoundary` already holds the full post-turn `GameState` -
+   * `meeplesByRound` above reads every player's supply off that very state -
+   * so the pool is counted exactly, the same way, rather than reconstructed
+   * from `meepleGained` minus every drain. `observe.ts` sees round-boundary
+   * state and always has; there was no engine hook to add for this line.
+   *
+   * Zero-length under `visitCurrency: 'card'`, where there is no pool at all -
+   * no slots, no starting five, nothing to sum. Non-empty under the shipped
+   * `'meeple'` default even with R15 and the amended R6 both off, because the
+   * pool (supplies plus slots plus island) exists under v1 already; what R15
+   * and R6 change is only how fast it drains.
+   */
+  meeplePoolByRound: number[];
+  /** 1-based round the pool first read zero, or null if it never did in this game. */
+  poolEmptyRound: number | null;
 
   // --- The Dairy rebuild, 2026-08-10 ---------------------------------------
   //
@@ -808,6 +940,8 @@ export class Fold {
       foreignCropBuildsBySeat: zeros(),
       actionsBySeat: zeros(),
       meepleActionsBySeat: zeros(),
+      mainActionsBySeat: zeros(),
+      boughtDoorActionsBySeat: zeros(),
       meeplesGainedBySeat: zeros(),
       meeplesSpentBySeat: zeros(),
       meeplesGainedByColour: byColour(),
@@ -833,7 +967,16 @@ export class Fold {
       collectsEmptyBySeat: zeros(),
       wildVisitsBySeat: zeros(),
       meeplesBoxedBySeat: zeros(),
-      meeplesBoxedBySource: { collect: 0, island: 0, balloon: 0 },
+      meeplesBoxedAllSourcesBySeat: zeros(),
+      meeplesBoxedBySource: {
+        collect: 0,
+        island: 0,
+        balloon: 0,
+        build: 0,
+        activation: 0,
+        delivery: 0,
+        toll: 0,
+      },
       meeplesBoxedByColour: byColour(),
       blockedWantTurnsBySeat: zeros(),
       blockedWantSampledBySeat: zeros(),
@@ -850,6 +993,16 @@ export class Fold {
         homeBySeat: zeros(),
         toLeaderBySeat: zeros(),
       },
+      meepleResourceSpendsBySeat: zeros(),
+      meepleResourceSpendsByUse: { build: 0, activation: 0, delivery: 0 },
+      meepleResourceAtThresholdSpends: 0,
+      meepleResourceWildSpends: 0,
+      meepleResourceSpendRounds: [],
+      tollMeeplesPaidBySeat: zeros(),
+      tollVisitsBySeat: zeros(),
+      visitsReceivedBySeat: zeros(),
+      meeplePoolByRound: [],
+      poolEmptyRound: null,
       buildsBySeat: zeros(),
       noBuildTurnsBySeat: zeros(),
       buildSampledBySeat: zeros(),
@@ -1294,6 +1447,7 @@ export class Fold {
     ) {
       const seat = d.move.seat;
       this.m.actionsBySeat[seat] = (this.m.actionsBySeat[seat] ?? 0) + 1;
+      this.m.mainActionsBySeat[seat] = (this.m.mainActionsBySeat[seat] ?? 0) + 1;
     }
   }
 
@@ -1392,6 +1546,10 @@ export class Fold {
           m.meepleActionsBySeat[e.seat] = (m.meepleActionsBySeat[e.seat] ?? 0) + 1;
         }
         m.actionsBySeat[e.seat] = (m.actionsBySeat[e.seat] ?? 0) + 1;
+        // a16's "bought door" half (handoff v2 preamble): every door action,
+        // whichever route paid for it, so this line matches `doorUsesByColour`
+        // summed rather than either `via` branch alone.
+        m.boughtDoorActionsBySeat[e.seat] = (m.boughtDoorActionsBySeat[e.seat] ?? 0) + 1;
         return;
       }
       case 'meepleGained':
@@ -1477,6 +1635,11 @@ export class Fold {
         }
         m.neighbourDoorByColour[e.colour] = (m.neighbourDoorByColour[e.colour] ?? 0) + 1;
         m.neighbourVisitRounds.push(this.round());
+        // ⭐ VISITS RECEIVED, by HOST (handoff v2 section 3.7): "does the
+        // popular farm change hands". A visit count, not a meeple count - see
+        // the field's own comment for why `meepleGift.receivedBySeat` cannot
+        // answer this on its own (a wild pair would double it).
+        m.visitsReceivedBySeat[e.host] = (m.visitsReceivedBySeat[e.host] ?? 0) + 1;
         const leader = this.leaderOf(d);
         if (leader === e.host) {
           m.visitsToLeaderBySeat[e.seat] = (m.visitsToLeaderBySeat[e.seat] ?? 0) + 1;
@@ -1621,11 +1784,49 @@ export class Fold {
       // ⭐ THE SUPPLY CAP'S LEAK (R4). Emitted INSTEAD of `meepleGained`, never
       // beside it, so gained + boxed is every meeple ever offered to a supply
       // and neither line has to be corrected by the other.
-      case 'meepleBoxed':
-        m.meeplesBoxedBySeat[e.seat] = (m.meeplesBoxedBySeat[e.seat] ?? 0) + 1;
+      case 'meepleBoxed': {
+        // ⚠️ THE TRAP, AND THE FIX (handoff v2, 04/09/2026): `source` used to
+        // mean only "the cap refused this", so folding every source into one
+        // seat total was safe. It no longer does - `'build'`, `'activation'`,
+        // `'delivery'` and `'toll'` are a meeple leaving the game on its own
+        // account, nothing to do with the cap - so `meeplesBoxedBySeat` is now
+        // filtered to the three CAP sources only (kept v1-comparable) and
+        // `meeplesBoxedAllSourcesBySeat` takes every source. See both fields'
+        // own comments; under the shipped defaults no event ever carries a
+        // non-cap source, so this filter changes nothing for the control.
+        const capSource = e.source === 'collect' || e.source === 'island' || e.source === 'balloon';
+        if (capSource) m.meeplesBoxedBySeat[e.seat] = (m.meeplesBoxedBySeat[e.seat] ?? 0) + 1;
+        m.meeplesBoxedAllSourcesBySeat[e.seat] = (m.meeplesBoxedAllSourcesBySeat[e.seat] ?? 0) + 1;
         m.meeplesBoxedBySource[e.source] = (m.meeplesBoxedBySource[e.source] ?? 0) + 1;
         m.meeplesBoxedByColour[e.colour] = (m.meeplesBoxedByColour[e.colour] ?? 0) + 1;
         return;
+      }
+      // ⭐ R15'S WHOLE MEASUREMENT SURFACE (handoff v2, 04/09/2026): one event
+      // per meeple spent as a card of its colour. `use` says which payment it
+      // made; `atThreshold` (only ever true on an `'activation'`) is the
+      // priced clog bypass and the new dial the handoff names by name; `wild`
+      // says the meeple was half of a pair (R10) - two such events are ONE
+      // resource, not two, which is why `meepleResourceWildSpends` is reported
+      // as a raw count and the pair arithmetic is left to the reader.
+      case 'meepleAsCard': {
+        m.meepleResourceSpendsBySeat[e.seat] = (m.meepleResourceSpendsBySeat[e.seat] ?? 0) + 1;
+        m.meepleResourceSpendsByUse[e.use] = (m.meepleResourceSpendsByUse[e.use] ?? 0) + 1;
+        if (e.atThreshold) m.meepleResourceAtThresholdSpends += 1;
+        if (e.wild) m.meepleResourceWildSpends += 1;
+        m.meepleResourceSpendRounds.push(this.round());
+        return;
+      }
+      // ⭐ THE AMENDED R6'S WHOLE MEASUREMENT SURFACE (handoff v2): a toll paid
+      // to enter an already-occupied slot. `paid` is the toll only, never the
+      // acting meeple - see `visited`/`meepleGift` for that half of the spend.
+      // Each toll meeple also emits its own `meepleBoxed` with source `'toll'`,
+      // which is where the colour split lives; this event is the per-visit
+      // summary the way `boardCollected` is for a Collect.
+      case 'visitToll': {
+        m.tollMeeplesPaidBySeat[e.seat] = (m.tollMeeplesPaidBySeat[e.seat] ?? 0) + e.paid.length;
+        m.tollVisitsBySeat[e.seat] = (m.tollVisitsBySeat[e.seat] ?? 0) + 1;
+        return;
+      }
       // ⭐ THE FOUR-WAY BONUS MIX'S SECOND AND THIRD COLUMNS, and the only place
       // they can be told apart. `kept` plus `boxed` empty is a Collect on an
       // EMPTY board, which is the arm's solitaire line; anything else is the
@@ -1666,9 +1867,49 @@ export class Fold {
     m.rounds += 1;
     m.meeplesByRound.push(medianOf(state.players.map((p) => meepleCount(p.meeples))));
     m.barnByRound.push(medianOf(state.players.map((p) => p.barn.length)));
+    // ⭐ THE POOL (handoff v2 section 3.5), read directly off state - see the
+    // field's own comment for why this is exact rather than a running
+    // balance. Only under the meeple arm: under `'card'` there is no pool,
+    // and `noticeBoardSlots` would throw on a seat with no board.
+    if (isMeepleCurrency(this.data)) {
+      const pool = this.meeplePoolOf(state);
+      m.meeplePoolByRound.push(pool);
+      if (pool === 0 && m.poolEmptyRound === null) m.poolEmptyRound = m.rounds;
+    }
     const leader = this.soleLeader(state);
     if (leader !== null && this.leader !== null && leader !== this.leader) m.leadChanges += 1;
     if (leader !== null) this.leader = leader;
+  }
+
+  /**
+   * Every meeple in the game right now: every seat's supply, every Notice
+   * Board slot on the table, and every meeple still sitting on an undelivered
+   * island space.
+   *
+   * Island tiles store their meeple(s) DENSELY - `tile.meeples[i]` is the
+   * meeple for whichever printed space `meepleIndexForSpace` maps to `i`, not
+   * for space `i` itself (R12; see `doDeliver` and `setup.ts`). So a space
+   * counts only when it is BOTH un-delivered (`space >= tile.deliveredBy.length`)
+   * AND seeded (`meepleIndexForSpace` returns a real index): the shipped rules
+   * seed only the 3 VP second space, so a tile whose first delivery is still
+   * open correctly contributes nothing here - there is nothing sitting on
+   * that space to pool.
+   */
+  private meeplePoolOf(state: GameState): number {
+    let n = 0;
+    for (const p of state.players) n += meepleCount(p.meeples);
+    for (let seat = 0; seat < state.players.length; seat++) {
+      const slots = noticeBoardSlots(state, seat);
+      for (const colour of this.data.cards.suits) n += slots[colour]?.length ?? 0;
+    }
+    const per = deliveriesPerTile(this.data);
+    for (const tile of state.island.tiles) {
+      for (let space = tile.deliveredBy.length; space < per; space++) {
+        const idx = meepleIndexForSpace(this.data, space);
+        if (idx >= 0 && tile.meeples[idx] !== undefined) n += 1;
+      }
+    }
+    return n;
   }
 
   /**

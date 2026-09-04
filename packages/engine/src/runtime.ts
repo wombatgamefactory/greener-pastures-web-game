@@ -8,9 +8,9 @@
  * branches, not a second API.
  */
 
-import type { GameData } from '@gp/data';
+import type { GameData, Suit } from '@gp/data';
 
-import { doVisit } from './actions.js';
+import { doVisit, meepleAsCard } from './actions.js';
 import { clonePlain } from './clone.js';
 import { Fx } from './fx.js';
 import type { FxAudit } from './fx.js';
@@ -64,8 +64,13 @@ export function doGrow(
   fx: Fx,
   seat: Seat,
   building: CardId,
-  payment: CardId,
+  payment: CardId | null,
   mods: GrowMods = {},
+  /**
+   * R15: the meeple that paid instead of a card, or the two spent as a wild
+   * pair (R10). Mutually exclusive with `payment`.
+   */
+  meeples: readonly Suit[] = [],
 ): void {
   const p = player(fx.state, seat);
   const b = p.tableau.find((x) => x.card === building);
@@ -73,21 +78,58 @@ export function doGrow(
   if (cardById(fx.data, building).slot === 'noticeboard') {
     throw new Error('The Notice Board is never a Grow target');
   }
-  if (!canTakeCard(fx.data, b)) throw new Error(`${building} is full or has no stack`);
+  const byMeeple = meeples.length > 0;
+  if (byMeeple && payment !== null) {
+    throw new Error('A GROW is paid with one card or with meeples, never both');
+  }
+  if (!byMeeple && payment === null) throw new Error(`${building} was not paid for`);
+  if (byMeeple && !meepleAsCard(fx.data)) {
+    throw new Error('A meeple pays for a GROW only under rules.turn.meepleAsCard');
+  }
+  // ⭐ A FULL BUILDING IS A LEGAL MEEPLE-PAID GROW TARGET (R15, Dean
+  // 04/09/2026 evening). The gate exists because a card has to go somewhere;
+  // a meeple goes to the box, so nothing is placed, the threshold is never
+  // touched and the building is left exactly as it was. It is a priced clog
+  // bypass, on purpose.
+  const atThreshold = !canTakeCard(fx.data, b);
+  if (atThreshold && !byMeeple) throw new Error(`${building} is full or has no stack`);
   const activationType = faceOf(fx.data, b).activationType;
   if (activationType === null) throw new Error(`${building} has no activation type`);
   if (activationType !== 'wild' && mods.anyCrop !== true) {
-    const paidSuit = cardById(fx.data, payment).suit;
-    if (paidSuit !== activationType) {
-      throw new Error(`${building} needs a ${activationType} card, got ${paidSuit}`);
+    if (byMeeple) {
+      // One meeple must BE the colour; two are a wild pair and may be anything,
+      // including two of one colour where the cap allows it.
+      if (meeples.length === 1 && meeples[0] !== activationType) {
+        throw new Error(`${building} needs a ${activationType} meeple, got ${meeples[0]}`);
+      }
+    } else {
+      const paidSuit = cardById(fx.data, payment as CardId).suit;
+      if (paidSuit !== activationType) {
+        throw new Error(`${building} needs a ${activationType} card, got ${paidSuit}`);
+      }
     }
+  }
+  if (byMeeple) {
+    if (meeples.length > 2) throw new Error('A GROW is paid with one meeple, or two as a wild');
+    const counts: Partial<Record<Suit, number>> = {};
+    for (const m of meeples) counts[m] = (counts[m] ?? 0) + 1;
+    for (const [colour, n] of Object.entries(counts) as [Suit, number][]) {
+      if (p.meeples[colour] < n) throw new Error(`Seat ${seat} has no ${colour} meeple`);
+    }
+    fx.payMeeplesAsCards(seat, counts, 'activation', {
+      wildPairs: meeples.length === 2 ? 1 : 0,
+      atThreshold,
+    });
+    markFired(fx, building);
+    handlerFor(building)?.activate?.(fx, { seat, card: building });
+    return;
   }
   // The GBP 1 activation surcharge (A8 The Wild Hive) was checked here and paid
   // after the card landed, before the ability fired. It went with the currency
   // (v31) and no card in the catalogue carries the trigger; see the tombstone on
   // `activationSurchargeOf` in actions.ts for the pattern, which is the right
   // one if a toll ever returns priced in cards.
-  fx.placeOnBuilding(seat, { seat, card: building }, payment);
+  fx.placeOnBuilding(seat, { seat, card: building }, payment as CardId);
   markFired(fx, building);
   handlerFor(building)?.activate?.(fx, { seat, card: building });
 }

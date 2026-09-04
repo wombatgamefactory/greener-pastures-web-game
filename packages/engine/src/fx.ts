@@ -170,6 +170,68 @@ export class Fx {
     p.meeples[colour] -= 1;
   }
 
+  /**
+   * ⭐ BOX ONE MEEPLE (R15, R16, handoff v2): out of the supply and out of
+   * the game, for a reason that is NOT the cap.
+   *
+   * This is the second half of the meeple economy and the half v1 did not have.
+   * v1's loop was closed - a spent meeple moved to a neighbour and came back to
+   * them on their Collect - and the only leak was the cap. v2 opens it: a meeple
+   * spent as a card of its colour goes to the box wherever the card would have
+   * gone, and a meeple paid as a slot toll goes to the box too. The island is
+   * the faucet, this is the drain, and `pool by round` is the line that says
+   * whether the two balance.
+   *
+   * ⚠️ IT EMITS `meepleBoxed` WITH A NON-CAP SOURCE AND NO `meepleGained`
+   * BESIDE IT. Under v1 those two events partitioned every meeple offered to a
+   * supply; they no longer do, and a reader that counts `meepleBoxed` without
+   * splitting by source is now counting two different things at once.
+   */
+  boxMeeple(
+    seat: Seat,
+    colour: Suit,
+    source: 'build' | 'activation' | 'delivery' | 'toll',
+  ): void {
+    this.touch(seat);
+    const p = player(this.state, seat);
+    if (p.meeples[colour] < 1) throw new Error(`Seat ${seat} has no ${colour} meeple`);
+    p.meeples[colour] -= 1;
+    this.emit({ e: 'meepleBoxed', seat, colour, source });
+  }
+
+  /**
+   * A whole meeple payment, boxed, with the R15 measurement events beside it.
+   *
+   * `counts` is a per-colour count and not a list, which is the shape the
+   * enumerator uses all the way through. `wildPairs` is how many of those
+   * meeples were spent two-as-one (R10), reported on each event so that a reader
+   * can tell two meeples that bought two resources from two that bought one.
+   * `atThreshold` is only ever true for an activation that a card could not have
+   * made at all - a Grow on a building already at its threshold.
+   */
+  payMeeplesAsCards(
+    seat: Seat,
+    counts: Partial<Record<Suit, number>>,
+    use: 'build' | 'activation' | 'delivery',
+    opts: { wildPairs?: number; atThreshold?: boolean } = {},
+  ): void {
+    const atThreshold = opts.atThreshold === true;
+    // The pair flag is per MEEPLE, and a pair is two of them, so the first
+    // 2 * wildPairs meeples boxed carry it. Which colours they are is not a
+    // decision the enumerator made - it made a count vector - so this is a
+    // deterministic walk in suit order and nothing reads the pairing back.
+    let wildLeft = 2 * (opts.wildPairs ?? 0);
+    for (const colour of this.data.cards.suits) {
+      const n = counts[colour] ?? 0;
+      for (let i = 0; i < n; i++) {
+        const wild = wildLeft > 0;
+        if (wild) wildLeft -= 1;
+        this.emit({ e: 'meepleAsCard', seat, colour, use, atThreshold, wild });
+        this.boxMeeple(seat, colour, use);
+      }
+    }
+  }
+
   // --- decks and discards ------------------------------------------------
 
   /**
@@ -648,7 +710,14 @@ export interface HookEvents {
    * move), so the freight-refund family can reclaim one. Island-only cards
    * (V16) guard on `island`; the Vegetable Farmstead deliberately does not.
    */
-  afterDeliver: { seat: Seat; island: boolean; tile?: string; cards: CardId[] };
+  afterDeliver: {
+    seat: Seat;
+    island: boolean;
+    tile?: string;
+    cards: CardId[];
+    /** R15: meeples that paid part of the crate, per colour. Boxed, never barned. */
+    meeples?: Partial<Record<Suit, number>>;
+  };
   /** A balloon changed Aerodrome. `from` is where it left - V17 draws when that was its owner's port. */
   afterBalloonMove: { seat: Seat; balloon: string; from: Seat | 'centre' };
   /**

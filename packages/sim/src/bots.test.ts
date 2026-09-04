@@ -93,7 +93,8 @@ function cardIdsIn(move: Move, catalogue: ReadonlySet<CardId>): CardId[] {
     case 'build':
       return [act.card, ...act.payment];
     case 'grow':
-      return [act.building, act.payment];
+      // R15: a meeple-paid GROW names no card, and a meeple has no card id.
+      return act.payment === null ? [act.building] : [act.building, act.payment];
     case 'harvest':
       return [act.building];
     case 'sow':
@@ -641,10 +642,17 @@ describe('the archetypes', () => {
         // Replay so each GROW can be judged against the alternatives it had.
         let state = newGame(data, { seed, seats, suits: SUITS.slice(n, n + seats) });
         for (const move of result.moves) {
-          if (move.type === 'grow') {
+          if (move.type === 'grow' && move.payment !== null) {
+            // R15's meeple-paid GROW has no card to price, so it is out of this
+            // test's subject - "the bot pays a GROW with its junkiest CARD" -
+            // on both sides: skipped as a move above, and filtered out of the
+            // alternatives it is judged against here.
             const alternatives = legalMoves(data, state).filter(
-              (m): m is Extract<Move, { type: 'grow' }> =>
-                m.type === 'grow' && m.seat === move.seat && m.building === move.building,
+              (m): m is Extract<Move, { type: 'grow' }> & { payment: string } =>
+                m.type === 'grow' &&
+                m.seat === move.seat &&
+                m.building === move.building &&
+                m.payment !== null,
             );
             const cheapest = Math.min(...alternatives.map((m) => cardValue(data, m.payment)));
             const chosen = cardValue(data, move.payment);

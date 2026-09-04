@@ -573,6 +573,55 @@ export interface RulesFile {
      * supply held in the last third and the boxed-per-game count, never alone.
      */
     readonly meepleCapPerColour: number;
+    /**
+     * ⭐ R15, THE MEEPLE-AS-CARD ARM (Dean, 04/09/2026 evening,
+     * docs/meeple-loop-visit-handoff-2026-09-04-v2.md). Read only under
+     * `visitCurrency: 'meeple'`.
+     *
+     * `false` is the shipped v1 loop, unchanged: a meeple only ever performs
+     * its colour's action through a neighbour's board (R7) and is never a
+     * payment. **THIS IS THE DEFAULT, AND IT MUST STAY BIT-REPRODUCIBLE** -
+     * v1 is the control every handoff-v2 arm is a delta against.
+     *
+     * `true` lets a meeple of a colour stand in for a card of that colour
+     * anywhere a rule asks you to pay or spend one: build costs, including the
+     * n-of-suit requirements and the 'any' slots, the 2-own-suit cost on Power
+     * and Endgame cards, a Grow's activation payment, and a delivery crate. A
+     * meeple spent this way goes STRAIGHT TO THE BOX, wherever the card it
+     * stands in for would have gone - it never enters a hand, a barn, a
+     * discard pile or a building's stack, and it never counts toward
+     * `handLimit`. Two meeples of any colours still pay as one card of any
+     * colour: R10's wild pair is reused rather than re-rated. A meeple paid
+     * into a Grow does not join the stack and does not count toward the
+     * threshold, so it can activate a building that is already full.
+     *
+     * Why the arm exists: under v1 a meeple with no competing use is a coupon,
+     * not a cost, and spending one is not a decision. R15 gives it one.
+     */
+    readonly meepleAsCard: boolean;
+    /**
+     * ⭐ THE AMENDED R6, THE PRICED SLOT (Dean, 04/09/2026 evening,
+     * docs/meeple-loop-visit-handoff-2026-09-04-v2.md). Read only under
+     * `visitCurrency: 'meeple'`.
+     *
+     * `null` is the v1 rule, unchanged: a slot holding any meeple is BLOCKED
+     * and refuses that colour outright until the owner Collects. **THIS IS
+     * THE DEFAULT, AND IT MUST STAY BIT-REPRODUCIBLE** for the same reason as
+     * `meepleAsCard` above.
+     *
+     * A number `n` turns the block into a price. Nothing is ever refused:
+     * visiting a slot that already holds `k` meeples costs `n * k` EXTRA
+     * meeples of ANY colours, on top of the acting meeple, and every one of
+     * those extra meeples - the toll - goes STRAIGHT TO THE BOX, never to the
+     * host. A slot already holding two meeples under `slotToll: 1` costs
+     * three to visit: one joins the slot, two are boxed. A wild pair sitting
+     * in a slot counts as two occupants, not one.
+     *
+     * ⚠️ The toll is a SINK, not a payment to the host - Dean's framing is
+     * that it "might be a good way of sinking surplus meeples" once the cap
+     * is loosened, so read it beside `meepleCapPerColour` and never alone.
+     */
+    readonly slotToll: number | null;
   };
   readonly economy: {
     /**

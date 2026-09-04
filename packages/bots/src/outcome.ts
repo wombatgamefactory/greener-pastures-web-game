@@ -397,8 +397,86 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
      * simply earns no `meepleGain`, and a Collect is priced by `s.collectKeeps`,
      * which counts only what survives. That is the honest reading of "worth
      * exactly 0" from the handoff, and it is why nothing here needs a weight.
+     *
+     * ⚠️ **HANDOFF v2 GAVE THIS EVENT FOUR MORE SOURCES AND THEY ARE NOT THE
+     * CAP.** `'build'`, `'activation'` and `'delivery'` are a meeple SPENT as a
+     * card of its colour (R15) and `'toll'` is one burned to enter an occupied
+     * slot (R6); all four are a real resource leaving a real supply, which is
+     * exactly what the paragraph above says the cap's three are NOT. They still
+     * price at 0 HERE, and for the opposite reason: each of the four is already
+     * charged once, by `meepleAsCard` below for the first three and by the
+     * `meepleSpend` MOVE term for the toll. Splitting the case to charge them
+     * here as well would double every one of them. **The reader to warn is the
+     * one who deletes this case thinking it is only about the cap.**
      */
     case 'meepleBoxed':
+      return 0;
+
+    /**
+     * ⭐ **A MEEPLE WAS SPENT AS A CARD OF ITS COLOUR (R15, handoff v2)** - the
+     * new resource exit, and the half of this ticket that decides whether the
+     * arm can be believed.
+     *
+     * It is charged at `meepleSpend` against `meepleWorth`, which is the same
+     * price `meepleGain` credits when one arrives and the same price a visit
+     * pays when one leaves for a neighbour's board. One meeple, one price, every
+     * exit - the property the whole meeple economy in this package is built on,
+     * and the reason no new weight arrives with R15.
+     *
+     * ⚠️ **WHICH MOVES REACH THIS LINE, BECAUSE THE ANSWER IS NOT "ALL OF
+     * THEM".** Only acts on `isProbed` are rolled out, so a meeple charged here
+     * is either a GROW's (probed, and charged ONLY here) or one spent by a build
+     * or a delivery reached INSIDE a rollout - a Dairy door's Build, a Vegetable
+     * door's Deliver. A build or a delivery taken as the seat's OWN move is not
+     * probed at all, so its meeples never reach this pricer and are charged by
+     * the `meepleSpend` MOVE term instead. That split is the same one `deliver`
+     * and `collect` already live under, and `meeplesLeavingSupply` in `terms.ts`
+     * is the other end of it. **Get it wrong in either direction and the arm
+     * measures the instrument: charge a GROW in both places and meeple-paid
+     * activations vanish; charge a build in neither and they are free.**
+     *
+     * ⭐ **`use === 'delivery'` REFUNDS THE FREIGHT, AND IT IS NOT AN
+     * ADJUSTMENT FOR TASTE.** The `delivered` event carries the whole `spend` -
+     * what the ISLAND was paid - with no way to see which suits came out of the
+     * supply, so its own case has already charged `barnSpend` for a card the
+     * barn never held. This gives that back, once per meeple, so that a
+     * meeple-paid crate costs a meeple and not a meeple plus a phantom barn
+     * card. `terms.ts` does the identical subtraction for the unprobed move, in
+     * `barnCardsSpent`.
+     *
+     * `atThreshold` and `wild` are measurement fields and are deliberately NOT
+     * priced. `atThreshold` marks the priced clog bypass - a Grow on a building
+     * already full - whose VALUE arrives as the ability's own events one level
+     * deeper, exactly as every other activation's does; pricing the flag as well
+     * would be a taste for the bypass, and whether the bypass is worth its
+     * meeple is precisely what section 3 of the handoff asks the arm to measure.
+     * `wild` marks half of a pair (R10): two events with `wild` set are ONE
+     * resource bought for TWO meeples, and both are charged, which is what makes
+     * a pair cost twice - the same arithmetic the wild VISIT already used.
+     */
+    case 'meepleAsCard': {
+      if (event.seat !== me) return 0;
+      const refund = event.use === 'delivery' ? weight(w, 'barnSpend') : 0;
+      return refund - weight(w, 'meepleSpend') * meepleWorth(s, event.colour);
+    }
+
+    /**
+     * ⭐ A TOLL PAID TO ENTER AN OCCUPIED SLOT (R6 as amended), priced at ZERO
+     * here because the `meepleSpend` MOVE term charges it.
+     *
+     * This is the same arrangement, for the same reason, as `meepleSpent` and
+     * `visited` above: a visit is on `isProbed`, so charging the toll here as
+     * well as on the move would double it and the bots would refuse to pay one.
+     * The toll rides on the `visit` ACT (`act.toll`), which is where the move
+     * term reads it.
+     *
+     * ⚠️ It is safe only while the visit MOVE is the only thing that can pay a
+     * toll, which it is - no card in the 105 causes a visit - and it is the same
+     * standing hole `meepleSpent` names. A card that ever causes a visit inside
+     * a rollout makes this line a silent subsidy and the charge has to move
+     * here.
+     */
+    case 'visitToll':
       return 0;
 
     /**

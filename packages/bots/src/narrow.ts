@@ -253,8 +253,23 @@ export function narrowMoves(
   for (let i = 0; i < moves.length; i++) {
     const move = moves[i] as Move;
     if (move.type === 'build') {
+      // ⭐ R15: THE MEEPLE VECTOR JOINS THE KEY, VERBATIM, exactly as D7's stack
+      // selection does on the task branch below - and for the same reason. Two
+      // builds that spend the same cards but different MEEPLES are not
+      // rules-equivalent: they spend the same number of resources but give up
+      // different DOORS, which is the one decision R15 exists to create. Collapse
+      // them by crop alone and the arm would enumerate the colour choice and
+      // then throw all but one of them away before a bot ever scored it.
+      //
+      // ⚠️ The suffix is appended ONLY when a meeple actually paid, so under
+      // `meepleAsCard: false` every key is byte-identical to the one this line
+      // built before handoff v2 and the classes partition exactly as they did.
+      const meeples =
+        move.meeples === undefined
+          ? ''
+          : `|m${data.cards.suits.map((s) => move.meeples?.[s] ?? 0).join('')}.${move.wildPairs ?? 0}`;
       consider(
-        `b|${move.card}|${cropKey(data, move.payment)}`,
+        `b|${move.card}|${cropKey(data, move.payment)}${meeples}`,
         i,
         totalOf(data, move.payment),
         both,

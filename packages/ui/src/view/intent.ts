@@ -159,7 +159,17 @@ export function clickBuilding(moves: readonly Move[], intent: Intent, building: 
     if (move.type === 'harvest') {
       if (canHarvest && move.building === building) actions.push(move);
     } else if (move.type === 'grow') {
-      if (canGrow && move.building === building && (held === null || move.payment === held)) {
+      // ⚠️ R15's MEEPLE-PAID GROW HAS NO CARD TO DRAG, so it is not reachable
+      // from the hold-a-card-and-drop-it model at all and is filtered out here.
+      // The engine still offers it to `legalMoves`, which is what the simulator
+      // arm measures. Recorded rather than hidden: if v2 is ruled in, this line
+      // owes a UI design - a meeple has to become something a hand can pick up.
+      if (
+        canGrow &&
+        move.building === building &&
+        move.payment !== null &&
+        (held === null || move.payment === held)
+      ) {
         actions.push(move);
       }
     }

@@ -253,6 +253,27 @@ export function balloonWord(id: string): string {
 }
 
 /**
+ * "a yellow meeple", or "yellow and cream meeples as one wild" for a pair (R10).
+ * The UI has no meeple-drag affordance yet, so this text is the only place a
+ * meeple payment is legible to a human at all.
+ */
+function meepleWords(meeples: readonly Suit[]): string {
+  const labels = meeples.map((m) => SUIT_META[m].label);
+  const first = labels[0];
+  if (first === undefined) return 'no meeple';
+  if (labels.length === 1) return `${suitArticle(first)} ${first} meeple`;
+  return `${labels.join(' and ')} meeples as one wild`;
+}
+
+/** "2 yellow, 1 cream meeples" - a build or delivery payment, a count per colour. */
+function meepleTally(counts: Partial<Record<Suit, number>>): string {
+  const parts = (Object.entries(counts) as [Suit, number][])
+    .filter(([, n]) => n > 0)
+    .map(([suit, n]) => `${n} ${SUIT_META[suit].label}`);
+  return `${parts.join(', ')} ${parts.length === 1 ? 'meeple' : 'meeples'}`;
+}
+
+/**
  * ⭐ A SELF-VISIT AND A NEIGHBOUR VISIT NEVER SHARE A SENTENCE.
  *
  * They are the same move with a flag and they are opposite acts: one is the
@@ -299,9 +320,19 @@ export function describeMove(data: GameData, view: PlayerView, move: Move): stri
     case 'spendMeeple':
       return `Spend ${suitArticle(SUIT_META[move.colour].label)} ${SUIT_META[move.colour].label} meeple: ${doorLabel(data, move.colour)}. It leaves the game.`;
     case 'build':
-      return `Build ${cardName(data, move.card)}, paying ${cardList(data, move.payment)}`;
+      return move.meeples === undefined
+        ? `Build ${cardName(data, move.card)}, paying ${cardList(data, move.payment)}`
+        : `Build ${cardName(data, move.card)}, paying ${
+            move.payment.length > 0 ? `${cardList(data, move.payment)} and ` : ''
+          }${meepleTally(move.meeples)}`;
     case 'grow':
-      return `Grow ${cardName(data, move.building)}, paying ${cardName(data, move.payment)}`;
+      // R15: a meeple may pay instead of a card, and then nothing is placed -
+      // the meeple goes to the box and the building's stack is untouched, which
+      // is why a FULL building can be a target. Say both halves, because "grow a
+      // full building" reads as a bug until the sentence explains itself.
+      return move.payment === null
+        ? `Grow ${cardName(data, move.building)}, paying ${meepleWords(move.meeples ?? [])} to the box`
+        : `Grow ${cardName(data, move.building)}, paying ${cardName(data, move.payment)}`;
     case 'harvest':
       return `Harvest ${cardName(data, move.building)}`;
     case 'deliver':

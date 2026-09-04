@@ -206,7 +206,9 @@ describe('a drag reaches what a click reaches', () => {
       let checked = 0;
       for (const p of positions) {
         for (const move of p.moves) {
-          if (move.type !== 'grow') continue;
+          // R15's meeple-paid grow carries no card, so there is nothing to
+          // hold and nothing to drop: it is not part of this model.
+          if (move.type !== 'grow' || move.payment === null) continue;
           const intent = held(move.payment);
           const live = liveTargets(p.view, p.moves, intent);
           const target: DropTarget = { kind: 'building', id: move.building };
