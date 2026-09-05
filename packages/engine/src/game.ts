@@ -86,7 +86,15 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
       moves.push(
         o.meeples === undefined
           ? { type: 'grow', seat, building: o.building, payment: o.payment }
-          : { type: 'grow', seat, building: o.building, payment: null, meeples: o.meeples },
+          : {
+              type: 'grow',
+              seat,
+              building: o.building,
+              payment: null,
+              meeples: o.meeples,
+              ...(o.placements === undefined ? {} : { placements: o.placements }),
+              ...(o.paymentToll === undefined ? {} : { paymentToll: o.paymentToll }),
+            },
       );
     }
     for (const building of harvestOptions(data, state, seat)) {
@@ -96,7 +104,15 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
       moves.push(
         o.meeples === undefined
           ? { type: 'deliver', seat, tile: o.tile, spend: o.spend }
-          : { type: 'deliver', seat, tile: o.tile, spend: o.spend, meeples: o.meeples },
+          : {
+              type: 'deliver',
+              seat,
+              tile: o.tile,
+              spend: o.spend,
+              meeples: o.meeples,
+              ...(o.placements === undefined ? {} : { placements: o.placements }),
+              ...(o.paymentToll === undefined ? {} : { paymentToll: o.paymentToll }),
+            },
       );
     }
     // The Deliver action's freight branch (DL-12): balloon moves.
@@ -231,7 +247,10 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
       // nowhere else, so that A5, A6 and A12 did not each trigger it. The card
       // is gone (v31); the rule that an action-scoped effect belongs on this
       // branch and never inside `doGrow` is not.
-      doGrow(fx, move.seat, move.building, move.payment, {}, move.meeples ?? []);
+      doGrow(fx, move.seat, move.building, move.payment, {}, move.meeples ?? [], {
+        ...(move.placements === undefined ? {} : { placements: move.placements }),
+        ...(move.paymentToll === undefined ? {} : { paymentToll: move.paymentToll }),
+      });
       break;
     case 'harvest':
       // ⛔ The ActionAgain arming stood here ("Harvest is 2 buildings", the
@@ -240,7 +259,10 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
       doHarvestAction(fx, move.seat, move.building);
       break;
     case 'deliver':
-      doDeliver(fx, move.seat, move.tile, move.spend, undefined, 1, move.meeples);
+      doDeliver(fx, move.seat, move.tile, move.spend, undefined, 1, move.meeples, {
+        ...(move.placements === undefined ? {} : { placements: move.placements }),
+        ...(move.paymentToll === undefined ? {} : { paymentToll: move.paymentToll }),
+      });
       break;
     case 'moveBalloon':
       doMoveBalloon(fx, move.seat, move.balloon, move.spend);

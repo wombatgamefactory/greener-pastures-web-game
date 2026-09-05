@@ -410,7 +410,7 @@ function placementsFor(
  * that under-declares its toll is a free placement onto an occupied slot, and
  * nothing else in the engine would notice.
  */
-function assertPlacementMatches(
+export function assertPlacementMatches(
   data: GameData,
   state: GameState,
   seat: Seat,
@@ -909,6 +909,14 @@ export function buildOptions(
   seat: Seat,
   hand?: CardId[],
   mods: BuildMods = {},
+  /**
+   * ⭐ STOP AFTER THIS MANY OPTIONS. `anyBuildOption` passes 1, which is the
+   * whole reason this exists: under R17 the gate has to ask the enumerator
+   * (a payable cost is not necessarily a PLACEABLE one), and building the
+   * entire list to answer a yes/no put a 2-seat game from 0.056s to 0.171s.
+   * The same trick `enumerateVisits` already uses when `out` is null.
+   */
+  limit: number = Infinity,
 ): BuildOption[] {
   const p = player(state, seat);
   const cards = hand ?? p.hand;
@@ -946,7 +954,7 @@ export function buildOptions(
   // decision. Identical output either way; this only stops paying for the check
   // in the position where it cannot be needed.
   const seen = sources.length > 1 ? new Set<string>() : null;
-  for (const id of cards) {
+  cardLoop: for (const id of cards) {
     const price = priceOf(data, id, mods);
     if (!price) continue;
     // Hoisted: the hand-minus-this-card list was rebuilt once per SOURCE.
@@ -975,6 +983,7 @@ export function buildOptions(
           seen.add(key);
         }
         out.push(option);
+        if (out.length >= limit) break cardLoop;
       }
     }
   }
@@ -1033,8 +1042,56 @@ export function anyBuildOption(
     const own = others.filter((c) => cardById(data, c).suit === suit).length;
     if (others.length >= price.cardsNeeded && own >= price.ownSuitMin) return true;
     if (!asCard) return false;
-    return payableWithMeeples(data, p.meeples, suit, price, others.length, own);
+    if (!payableWithMeeples(data, p.meeples, suit, price, others.length, own)) return false;
+    // ⛔ R17 CAN MAKE A PAYABLE COST UNPLACEABLE, and the gate has to know.
+    // A meeple payment now has to LAND on a rival's board, and the toll for
+    // landing on an occupied slot comes out of the same supply - so a seat can
+    // afford a build in meeples and still have no legal way to put them down.
+    // `payableWithMeeples` is pure arithmetic on the supply and cannot see any
+    // of that.
+    //
+    // ⚠️ SO THE GATE ASKS THE ENUMERATOR, which is the rule this file already
+    // states: the enumerators are the single source of legality, and a gate
+    // that asks a wider question than its enumerator says yes where no move
+    // exists. That crashed 2 games in 4820 on 04/09/2026 through exactly this
+    // seam on the delivery side. It is only reached when the CARDS alone cannot
+    // pay, which is the rare half of the branch, so the fast path stays fast in
+    // the common case.
+    // ⚠️ AND ONLY UNDER R17. With the box as the destination the arithmetic
+    // above IS exact - nothing has to land anywhere - so the control arms must
+    // return here and never pay for the enumeration. Forgetting this guard cost
+    // the v2 box arm nothing in behaviour and about 4x in wall clock.
+    if (!meepleAsCardGoesToBoard(data)) return true;
+    // The arithmetic says the cost is affordable in meeples. Under R17 that is
+    // not the same as PAYABLE, so the answer comes from the enumerator itself.
+    return (
+      placementOpen(data, state, seat) &&
+      buildOptions(data, state, seat, hand, mods, 1).length > 0
+    );
   });
+}
+
+/**
+ * Is there anywhere at all to put a paid meeple right now? A cheap necessary
+ * condition for R17: at least one rival board must be able to receive a single
+ * meeple of some colour the seat holds, toll included.
+ *
+ * ⚠️ NECESSARY, NOT SUFFICIENT, and deliberately so. A payment of three meeples
+ * may still be unplaceable when a payment of one is fine, and the full check is
+ * `placementsFor`. This exists to keep the gate CONSERVATIVE in the right
+ * direction: it can only ever turn a yes into a no where nothing at all can be
+ * placed, and the enumerator is what decides the rest.
+ */
+function placementOpen(data: GameData, state: GameState, seat: Seat): boolean {
+  if (!meepleAsCardGoesToBoard(data)) return true;
+  const supply = player(state, seat).meeples;
+  for (const colour of data.cards.suits) {
+    if ((supply[colour] ?? 0) < 1) continue;
+    if (placementsFor(data, state, seat, { [colour]: 1 }, data.rules.turn.paymentSlotToll).length > 0) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -1316,6 +1373,9 @@ export interface GrowOption {
    * counted apart from every other meeple exit.
    */
   atThreshold?: boolean;
+  /** R17: where the paid meeple(s) land, by seat, and the toll they owed. */
+  placements?: Partial<Record<Suit, number>>[];
+  paymentToll?: Partial<Record<Suit, number>>;
 }
 
 /**
@@ -1368,6 +1428,8 @@ export function growOptions(
   const p = player(state, seat);
   const out: GrowOption[] = [];
   const asCard = meepleAsCard(data);
+  const onBoard = meepleAsCardGoesToBoard(data);
+  const rate = data.rules.turn.paymentSlotToll;
   for (const b of p.tableau) {
     if (cardById(data, b.card).slot === 'noticeboard') continue;
     if (state.turn.firedThisTurn.includes(b.card)) continue;
@@ -1392,19 +1454,40 @@ export function growOptions(
     if (!asCard) continue;
     const atThreshold = !open;
     const anyColour = mods.anyCrop === true || type === 'wild';
+    // ⭐ R17: a meeple paid for a Grow LANDS ON A NEIGHBOUR'S BOARD like any
+    // other payment. `emit` is the one seam: with R17 off it pushes the option
+    // as v2 had it, and with R17 on it pushes one option per legal placement.
+    const emit = (meeples: Suit[]): void => {
+      if (!onBoard) {
+        out.push({ building: b.card, payment: null, meeples, atThreshold });
+        return;
+      }
+      const counts: Partial<Record<Suit, number>> = {};
+      for (const m of meeples) counts[m] = (counts[m] ?? 0) + 1;
+      for (const spot of placementsFor(data, state, seat, counts, rate)) {
+        out.push({
+          building: b.card,
+          payment: null,
+          meeples,
+          atThreshold,
+          placements: spot.boards,
+          paymentToll: spot.toll,
+        });
+      }
+    };
     if (anyColour) {
       // Any meeple pays a wild activation, so a pair never helps and is never
       // offered: two meeples for what one buys is a dominated payment.
       for (const colour of data.cards.suits) {
         if ((p.meeples[colour] ?? 0) < 1) continue;
-        out.push({ building: b.card, payment: null, meeples: [colour], atThreshold });
+        emit([colour]);
       }
       continue;
     }
     // `type` is a Suit here: `anyColour` above already took the 'wild' case.
     const colour = type as Suit;
     if ((p.meeples[colour] ?? 0) > 0) {
-      out.push({ building: b.card, payment: null, meeples: [colour], atThreshold });
+      emit([colour]);
       continue;
     }
     // ⭐ THE PAIR IS THE LAST RESORT AND ONLY THE LAST RESORT, on exactly the
@@ -1413,7 +1496,7 @@ export function growOptions(
     // Without that guard the option list carries every pair beside every single
     // for every building on the table.
     for (const pair of meeplePairs(data, p.meeples)) {
-      out.push({ building: b.card, payment: null, meeples: pair, atThreshold });
+      emit([pair[0], pair[1]]);
     }
   }
   return out;
@@ -1587,6 +1670,9 @@ export interface DeliverOption {
    * the tie-break.
    */
   meeples?: Partial<Record<Suit, number>>;
+  /** R17: where the paid meeples land, by seat, and the toll they owed. */
+  placements?: Partial<Record<Suit, number>>[];
+  paymentToll?: Partial<Record<Suit, number>>;
 }
 
 /**
@@ -2034,13 +2120,21 @@ function meepleShare(
   return any ? out : {};
 }
 
-export function deliverOptions(data: GameData, state: GameState, seat: Seat): DeliverOption[] {
+export function deliverOptions(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+  /** Stop after this many. `anyDeliverOption` passes 1 - see `buildOptions`. */
+  limit: number = Infinity,
+): DeliverOption[] {
   const barn = deliverTally(data, state, seat);
   const asCard = meepleAsCard(data);
+  const onBoard = meepleAsCardGoesToBoard(data);
+  const rate = data.rules.turn.paymentSlotToll;
   const demands = deliverDemands(data, state, seat);
   const out: DeliverOption[] = [];
   const seen = new Set<string>();
-  for (const demand of demands) {
+  demandLoop: for (const demand of demands) {
     const affordable = (Object.entries(demand.spend) as [Suit, number][]).every(
       ([s, n]) => (barn[s] ?? 0) >= n,
     );
@@ -2091,15 +2185,33 @@ export function deliverOptions(data: GameData, state: GameState, seat: Seat): De
       seen.add(key);
       if (!asCard) {
         out.push({ tile: demand.tile, spend });
+        if (out.length >= limit) break demandLoop;
         continue;
       }
       const meeples = meepleShare(data, state, seat, spend);
       if (meeples === null) continue;
-      out.push(
-        meepleCount(meeples) === 0
-          ? { tile: demand.tile, spend }
-          : { tile: demand.tile, spend, meeples },
-      );
+      if (meepleCount(meeples) === 0) {
+        out.push({ tile: demand.tile, spend });
+        if (out.length >= limit) break demandLoop;
+        continue;
+      }
+      if (!onBoard) {
+        out.push({ tile: demand.tile, spend, meeples });
+        if (out.length >= limit) break demandLoop;
+        continue;
+      }
+      // ⭐ R17: the crate's meeple share lands on a neighbour's board rather
+      // than in the box, so one spend becomes one option per legal placement.
+      for (const spot of placementsFor(data, state, seat, meeples, rate)) {
+        out.push({
+          tile: demand.tile,
+          spend,
+          meeples,
+          placements: spot.boards,
+          paymentToll: spot.toll,
+        });
+        if (out.length >= limit) break demandLoop;
+      }
     }
   }
   return out;
@@ -2114,7 +2226,15 @@ export function deliverOptions(data: GameData, state: GameState, seat: Seat): De
  */
 export function anyDeliverOption(data: GameData, state: GameState, seat: Seat): boolean {
   const barn = deliverTally(data, state, seat);
-  return state.island.tiles.some((tile) => payableBy(data, state, tile, barn));
+  if (!state.island.tiles.some((tile) => payableBy(data, state, tile, barn))) return false;
+  if (!meepleAsCardGoesToBoard(data)) return true;
+  // ⛔ R17, same seam as `anyBuildOption`: the tally says the crate is payable,
+  // but the meeple half of the payment has to LAND somewhere and the toll comes
+  // out of the same supply. If the barn alone could pay there is nothing to
+  // place and the fast answer stands; otherwise the gate asks the enumerator,
+  // because a gate wider than its enumerator offers `pass` on an empty list and
+  // `apply` throws.
+  return deliverOptions(data, state, seat, 1).length > 0;
 }
 
 /** Could this barn pay this open tile, by any nomination of its wild crates? */
@@ -2171,6 +2291,11 @@ export function doDeliver(
    * pass it and it is validated against the same rule.
    */
   meepleSpend?: Partial<Record<Suit, number>>,
+  /** R17: where the crate's meeple share lands, and the toll it owed. */
+  placement?: {
+    placements?: Partial<Record<Suit, number>>[];
+    paymentToll?: Partial<Record<Suit, number>>;
+  },
 ): void {
   const state = fx.state;
   const tile = state.island.tiles.find((t) => t.tile === tileId);
@@ -2241,7 +2366,14 @@ export function doDeliver(
     fromBarn[suit] = (fromBarn[suit] ?? 0) - n;
     if ((fromBarn[suit] as number) <= 0) delete fromBarn[suit];
   }
-  if (meepleTotal > 0) fx.payMeeplesAsCards(seat, meeples, 'delivery');
+  if (meepleTotal > 0) {
+    if (placement?.placements === undefined) {
+      fx.payMeeplesAsCards(seat, meeples, 'delivery');
+    } else {
+      assertPlacementMatches(fx.data, state, seat, meeples, placement);
+      fx.placeMeeplesAsCards(seat, placement.placements, placement.paymentToll ?? {}, 'delivery');
+    }
+  }
   const cards = fx.spendFromBarn(seat, fromBarn);
   // Read each VP and each MEEPLE off the space BEFORE the delivery joins the
   // tile, or the first deliverer would be paid the second deliverer's rate and
@@ -2572,6 +2704,8 @@ export function deliverAnswers(data: GameData, state: GameState, seat: Seat): Ta
           // R15: the supply's share rides on the answer. The doc comment on the
           // deleted `head` rider one screen up is about exactly this trap.
           ...(o.meeples === undefined ? {} : { meeples: o.meeples }),
+          ...(o.placements === undefined ? {} : { placements: o.placements }),
+          ...(o.paymentToll === undefined ? {} : { paymentToll: o.paymentToll }),
         }) as TaskAnswer,
     ),
     ...balloonMoveOptions(data, state, seat).map(

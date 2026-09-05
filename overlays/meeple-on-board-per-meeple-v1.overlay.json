@@ -1,0 +1,14 @@
+{
+  "name": "meeple-on-board-per-meeple-v1",
+  "description": "R17 with a host chosen PER MEEPLE rather than per payment, so one payment may feed several neighbours. Identical to overlays/meeple-on-board-v1.overlay.json in every other respect. It is the rule Dean ruled first on 05/09/2026 and then ruled back on the branching factor, and it survives as the paired arm that says what the ruling cost in play: per meeple multiplies the build enumerator by roughly hosts^meeples and measured at 25,827 ways to buy one building at four seats against 4,063 per payment, with seconds per 4-seat game 0.277 against 0.152. Run it to find out whether the freedom bought anything at the table - the readings to compare are who receives placed meeples (the spread across seats) and the hook.",
+  "schemaVersion": 1,
+  "set": {
+    "rules.turn.visitCurrency": "meeple",
+    "rules.turn.meepleAsCard": true,
+    "rules.turn.meepleAsCardGoesTo": "board",
+    "rules.turn.paymentHostChoice": "perMeeple",
+    "rules.turn.paymentSlotToll": 1,
+    "rules.turn.slotToll": 1,
+    "rules.turn.meepleCapPerColour": 2
+  }
+}

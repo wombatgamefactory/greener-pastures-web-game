@@ -588,6 +588,11 @@ export const seedBank: CardHandler = {
                 building: o.building,
                 payment: o.payment,
                 ...(o.meeples === undefined ? {} : { meeples: o.meeples }),
+                // R17: where the paid meeple lands. Rides on the answer for the
+                // same reason the meeples themselves do - an answer that drops
+                // it is an answer that cannot pay.
+                ...(o.placements === undefined ? {} : { placements: o.placements }),
+                ...(o.paymentToll === undefined ? {} : { paymentToll: o.paymentToll }),
               },
             }) as TaskAnswer,
         );
@@ -606,6 +611,14 @@ export const seedBank: CardHandler = {
           answer.payload.payment as CardId | null,
           {},
           (answer.payload.meeples as Suit[] | undefined) ?? [],
+          {
+            ...(answer.payload.placements === undefined
+              ? {}
+              : { placements: answer.payload.placements as Partial<Record<Suit, number>>[] }),
+            ...(answer.payload.paymentToll === undefined
+              ? {}
+              : { paymentToll: answer.payload.paymentToll as Partial<Record<Suit, number>> }),
+          },
         );
         // Re-queued AFTER the activation's own tasks (pushTask appends), so the
         // cards a grow draws are in hand before the next one is chosen.

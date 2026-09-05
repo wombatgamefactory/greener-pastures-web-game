@@ -305,6 +305,11 @@ export const gardenHive: CardHandler = {
                 building: o.building,
                 payment: o.payment,
                 ...(o.meeples === undefined ? {} : { meeples: o.meeples }),
+                // R17: where the paid meeple lands. Rides on the answer for the
+                // same reason the meeples themselves do - an answer that drops
+                // it is an answer that cannot pay.
+                ...(o.placements === undefined ? {} : { placements: o.placements }),
+                ...(o.paymentToll === undefined ? {} : { paymentToll: o.paymentToll }),
               },
             }) as TaskAnswer,
         );
@@ -318,6 +323,14 @@ export const gardenHive: CardHandler = {
           answer.payload.payment as CardId | null,
           { anyCrop: true },
           (answer.payload.meeples as Suit[] | undefined) ?? [],
+          {
+            ...(answer.payload.placements === undefined
+              ? {}
+              : { placements: answer.payload.placements as Partial<Record<Suit, number>>[] }),
+            ...(answer.payload.paymentToll === undefined
+              ? {}
+              : { paymentToll: answer.payload.paymentToll as Partial<Record<Suit, number>> }),
+          },
         );
         return true;
       },

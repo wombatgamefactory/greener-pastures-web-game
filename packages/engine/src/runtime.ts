@@ -10,7 +10,7 @@
 
 import type { GameData, Suit } from '@gp/data';
 
-import { doVisit, meepleAsCard } from './actions.js';
+import { assertPlacementMatches, doVisit, meepleAsCard } from './actions.js';
 import { clonePlain } from './clone.js';
 import { Fx } from './fx.js';
 import type { FxAudit } from './fx.js';
@@ -71,6 +71,11 @@ export function doGrow(
    * pair (R10). Mutually exclusive with `payment`.
    */
   meeples: readonly Suit[] = [],
+  /** R17: where the paid meeple(s) land, by seat, and the toll they owed. */
+  placement: {
+    placements?: Partial<Record<Suit, number>>[];
+    paymentToll?: Partial<Record<Suit, number>>;
+  } = {},
 ): void {
   const p = player(fx.state, seat);
   const b = p.tableau.find((x) => x.card === building);
@@ -116,10 +121,19 @@ export function doGrow(
     for (const [colour, n] of Object.entries(counts) as [Suit, number][]) {
       if (p.meeples[colour] < n) throw new Error(`Seat ${seat} has no ${colour} meeple`);
     }
-    fx.payMeeplesAsCards(seat, counts, 'activation', {
-      wildPairs: meeples.length === 2 ? 1 : 0,
-      atThreshold,
-    });
+    const wildPairs = meeples.length === 2 ? 1 : 0;
+    if (placement.placements === undefined) {
+      fx.payMeeplesAsCards(seat, counts, 'activation', { wildPairs, atThreshold });
+    } else {
+      // R17: the same payment, landing on a neighbour's board instead of the
+      // box. `assertPlacementMatches` recomputes the toll off the live boards,
+      // so an under-declared toll is a free placement and is refused here.
+      assertPlacementMatches(fx.data, fx.state, seat, counts, placement);
+      fx.placeMeeplesAsCards(seat, placement.placements, placement.paymentToll ?? {}, 'activation', {
+        wildPairs,
+        atThreshold,
+      });
+    }
     markFired(fx, building);
     handlerFor(building)?.activate?.(fx, { seat, card: building });
     return;

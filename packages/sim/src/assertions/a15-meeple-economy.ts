@@ -235,6 +235,18 @@ function meepleArm({ data, pooled }: MeasureContext): Measurement {
   //    is a DIFFERENT kind of exit - the meeple never sat in a slot waiting to
   //    be collected back - so folding either in here would inflate the
   //    denominator's own justification. They get their own reading, 5 below.
+  // R17: meeples spent as a card that LANDED on a board, and how evenly the
+  // table received them.
+  const placed = sum(games.map((g) => sum(g.meeplesPlacedBySeat)));
+  const receivedTotals = games.length === 0 ? [] : games[0]?.meeplesPlacedReceivedBySeat.map(
+    (_, i) => sum(games.map((g) => g.meeplesPlacedReceivedBySeat[i] ?? 0)),
+  ) ?? [];
+  const receivedSpread =
+    placed === 0
+      ? 'n/a'
+      : receivedTotals.map((n) => `${Math.round((100 * n) / placed)}%`).join(' / ');
+  const visitsPerGame =
+    games.length === 0 ? 0 : sum(games.map((g) => sum(g.visitsBySeat))) / games.length;
   const spends = sum(games.map((g) => sum(g.meeplesSpentBySeat)));
   const meepleTurns = sum(games.map((g) => sum(g.meepleTurnsBySeat)));
   const turns = sum(games.map((g) => sum(g.turnsBySeat)));
@@ -406,6 +418,23 @@ function meepleArm({ data, pooled }: MeasureContext): Measurement {
         : '⭐ TOLL MEEPLES PAID (R6 amended): 0, by construction - `rules.turn.slotToll` is null ' +
           'under this run, so an occupied slot still refuses that colour outright (v1) rather ' +
           'than pricing it.',
+      // ⭐ R17's OWN LINE (Dean, 05/09/2026): a meeple spent as a card now LANDS
+      // on a neighbour's board instead of leaving the game. It is the whole of
+      // the change and it needs its own reading, because `meepleAsCard` counts
+      // the same meeples under v2's box rule and the two arms are otherwise
+      // indistinguishable in that field.
+      placed > 0
+        ? `⭐ MEEPLES PLACED AS PAYMENT (R17): ${placed} over ${games.length} games ` +
+          `(${num(placed / games.length, 2)} a game), against ${num(visitsPerGame, 2)} rival ` +
+          'visits a game. THIS IS THE RATIO THE CHANGE EXISTS TO MOVE: under v2 the same ' +
+          'meeples went to the box, so the resource use drained the pool instead of feeding ' +
+          'it. The receiving spread across seats is ' +
+          `${receivedSpread}, which says whether payments feed the table evenly or one farm. ` +
+          '⚠️ A PLACEMENT IS NOT A VISIT and is counted nowhere near the hook: it buys the ' +
+          'payer no door and spends no bonus slot.'
+        : '⭐ MEEPLES PLACED AS PAYMENT (R17): 0, by construction - ' +
+          "`rules.turn.meepleAsCardGoesTo` is 'box' under this run, so a meeple spent as a " +
+          'card leaves the game exactly as handoff v2 had it.',
       `⭐ THE POOL, BY ROUND (handoff v2 section 3.5): every meeple in a supply, on a Notice ` +
         `Board slot, or still on an undelivered island space, summed. ${num(poolStart, 1)} at ` +
         `the start -> ${num(poolMid, 1)} at the midpoint -> ${num(poolEnd, 1)} at the end. ` +

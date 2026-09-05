@@ -376,7 +376,10 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
     case 'deliver': {
       if (answer.kind === 'skip' && task.optional === true) return true;
       if (answer.kind === 'deliver') {
-        doDeliver(fx, task.pid, answer.tile, answer.spend, undefined, 1, answer.meeples);
+        doDeliver(fx, task.pid, answer.tile, answer.spend, undefined, 1, answer.meeples, {
+          ...(answer.placements === undefined ? {} : { placements: answer.placements }),
+          ...(answer.paymentToll === undefined ? {} : { paymentToll: answer.paymentToll }),
+        });
         return true;
       }
       if (answer.kind === 'balloon') {

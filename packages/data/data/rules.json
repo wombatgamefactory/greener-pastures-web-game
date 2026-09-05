@@ -57,7 +57,7 @@
     "slotToll": null,
     "meepleAsCardGoesTo": "box",
     "paymentSlotToll": 1,
-    "paymentHostChoice": "perMeeple"
+    "paymentHostChoice": "perPayment"
   },
   "economy": {
     "noticeBoardThreshold": 2

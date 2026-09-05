@@ -623,6 +623,9 @@ export type TaskAnswer =
       spend: Partial<Record<Suit, number>>;
       /** R15: the part of `spend` paid out of the supply. Rides for the same reason. */
       meeples?: Partial<Record<Suit, number>>;
+      /** R17: where that share lands, by seat, and the toll it owed. */
+      placements?: Partial<Record<Suit, number>>[];
+      paymentToll?: Partial<Record<Suit, number>>;
     }
   | {
       kind: 'balloon';
@@ -806,7 +809,16 @@ export type Move =
    * apply. That is a PRICED CLOG BYPASS and it is deliberate. `atThreshold` on
    * the `meepleAsCard` event is how often it happens.
    */
-  | { type: 'grow'; seat: Seat; building: CardId; payment: CardId | null; meeples?: Suit[] }
+  | {
+      type: 'grow';
+      seat: Seat;
+      building: CardId;
+      payment: CardId | null;
+      meeples?: Suit[];
+      /** R17: where the paid meeple(s) land, by seat, and the toll they owed. */
+      placements?: Partial<Record<Suit, number>>[];
+      paymentToll?: Partial<Record<Suit, number>>;
+    }
   | { type: 'harvest'; seat: Seat; building: CardId }
   /**
    * Deliver from barn to an island tile. `spend` is a per-suit map - barn
@@ -829,6 +841,9 @@ export type Move =
       tile: string;
       spend: Partial<Record<Suit, number>>;
       meeples?: Partial<Record<Suit, number>>;
+      /** R17: where the crate's meeple share lands, and the toll it owed. */
+      placements?: Partial<Record<Suit, number>>[];
+      paymentToll?: Partial<Record<Suit, number>>;
     }
   /**
    * The Deliver action's freight branch (reference DL-12): pay 2 differing
