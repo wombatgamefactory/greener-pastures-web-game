@@ -190,13 +190,79 @@ export class Fx {
   boxMeeple(
     seat: Seat,
     colour: Suit,
-    source: 'build' | 'activation' | 'delivery' | 'toll',
+    source: 'build' | 'activation' | 'delivery' | 'toll' | 'paymentToll',
   ): void {
     this.touch(seat);
     const p = player(this.state, seat);
     if (p.meeples[colour] < 1) throw new Error(`Seat ${seat} has no ${colour} meeple`);
     p.meeples[colour] -= 1;
     this.emit({ e: 'meepleBoxed', seat, colour, source });
+  }
+
+  /**
+   * ⭐ R17 (Dean, 05/09/2026): A WHOLE MEEPLE PAYMENT, PLACED ON THE TABLE
+   * RATHER THAN BOXED.
+   *
+   * The counterpart of `payMeeplesAsCards`, and the whole of the change. Under
+   * handoff v2 a meeple spent as a card LEFT THE GAME, and the measurement
+   * found that is what killed the loop: 18.27 meeples a game drained out
+   * against 9.44 visits and the median supply in the last third hit 0.0. Here
+   * the same meeple lands on ANOTHER player's Notice Board, in its own colour's
+   * slot, and the host takes it back on their Collect - so the resource use
+   * costs the payer a stored action and GIVES one to a neighbour, instead of
+   * costing the table a component.
+   *
+   * ⛔ IT IS NOT A VISIT AND IT BUYS NO DOOR. `afterVisit` does not fire, no
+   * `visited` event is emitted and the bonus slot is untouched (Dean,
+   * 05/09/2026). The only thing that reaches the host is the meeple.
+   *
+   * `toll` is the extra meeples the placement owed for landing on occupied
+   * slots. They are BOXED, and once resource spends stop being boxed they are
+   * the only drain left in the game bar the supply cap.
+   */
+  placeMeeplesAsCards(
+    seat: Seat,
+    placements: readonly Partial<Record<Suit, number>>[],
+    toll: Partial<Record<Suit, number>>,
+    use: 'build' | 'activation' | 'delivery',
+    opts: { wildPairs?: number; atThreshold?: boolean } = {},
+  ): void {
+    this.touch(seat);
+    const from = player(this.state, seat);
+    const atThreshold = opts.atThreshold === true;
+    let wildLeft = 2 * (opts.wildPairs ?? 0);
+    for (let host = 0; host < placements.length; host++) {
+      const counts = placements[host];
+      if (!counts) continue;
+      // The array is indexed by SEAT and every seat has an entry, so the payer's
+      // own is an EMPTY object rather than a hole. Emptiness has to be checked
+      // before ownership or a payer's own zero entry reads as an illegal
+      // self-placement.
+      let placed = 0;
+      for (const colour of this.data.cards.suits) placed += counts[colour] ?? 0;
+      if (placed === 0) continue;
+      if (host === seat) throw new Error('A paid meeple never lands on your own board');
+      const slots = noticeBoardSlots(this.state, host as Seat);
+      for (const colour of this.data.cards.suits) {
+        const n = counts[colour] ?? 0;
+        for (let i = 0; i < n; i++) {
+          if (from.meeples[colour] < 1) throw new Error(`Seat ${seat} has no ${colour} meeple`);
+          const slot = slots[colour];
+          if (!slot) throw new Error(`Seat ${host} has no ${colour} slot`);
+          from.meeples[colour] -= 1;
+          slot.push(colour);
+          this.touch(host as Seat);
+          const wild = wildLeft > 0;
+          if (wild) wildLeft -= 1;
+          this.emit({ e: 'meepleAsCard', seat, colour, use, atThreshold, wild });
+          this.emit({ e: 'meepleplaced', seat, host: host as Seat, colour, use });
+        }
+      }
+    }
+    for (const colour of this.data.cards.suits) {
+      const n = toll[colour] ?? 0;
+      for (let i = 0; i < n; i++) this.boxMeeple(seat, colour, 'paymentToll');
+    }
   }
 
   /**

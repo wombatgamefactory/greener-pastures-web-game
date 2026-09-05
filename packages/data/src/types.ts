@@ -622,6 +622,53 @@ export interface RulesFile {
      * is loosened, so read it beside `meepleCapPerColour` and never alone.
      */
     readonly slotToll: number | null;
+    /**
+     * ⭐ R17, WHERE A MEEPLE SPENT AS A CARD GOES (Dean, 05/09/2026). Read
+     * only under `meepleAsCard: true`.
+     *
+     * `'box'` is the handoff v2 arm and **it is the default, so it must stay
+     * bit-reproducible**: a meeple spent as a card leaves the game.
+     *
+     * `'board'` closes that drain. The meeple is PLACED ON ANOTHER PLAYER'S
+     * NOTICE BOARD, in its own colour's slot, exactly as a visit places one,
+     * and the host takes it back on their Collect. It buys the payer nothing
+     * beyond the thing it paid for: **no door action, and it is not a visit**,
+     * so the bonus slot is untouched and one payment may spend any number of
+     * meeples. The payer chooses a host PER MEEPLE (Dean, 05/09/2026), so one
+     * payment may feed several neighbours.
+     *
+     * ⚠️ WHY IT EXISTS, in one line: the v2 measurement found meeples
+     * leaving the game 18.27 times a game against 9.44 visits, the median
+     * supply in the last third at 0.0 and the hook at 0.09. The resource use
+     * was not competing with the loop, it was emptying it.
+     */
+    readonly meepleAsCardGoesTo: 'box' | 'board';
+    /**
+     * THE PAYMENT TOLL (Dean, 05/09/2026), read only under
+     * `meepleAsCardGoesTo: 'board'`. Placing a paid meeple onto a slot that
+     * already holds one costs this many extra meeples of any colour, boxed.
+     *
+     * ⚠️ IT IS FLAT, NOT PER OCCUPANT, and that is the one place it
+     * differs from `slotToll`. A slot holding three still costs one extra to
+     * place on. Dean ruled it flat so the rule is one sentence and a deep slot
+     * can never make a build unpayable.
+     */
+    readonly paymentSlotToll: number;
+    /**
+     * WHO RECEIVES A MEEPLE PAYMENT (R17), read only under
+     * `meepleAsCardGoesTo: 'board'`.
+     *
+     * `'perMeeple'` is Dean's ruling of 05/09/2026 and the default: a host is
+     * chosen for EACH meeple, so one payment may feed several neighbours.
+     *
+     * ⚠️ IT IS ALSO THE BRANCHING FACTOR OF THE WHOLE ARM. A host per
+     * meeple multiplies the build enumerator by roughly hosts^meeples: measured
+     * at 25,827 ways to pay for one building at four seats, against 841 with
+     * the box and 130 under the v1 loop. `'perPayment'` is the measured
+     * alternative - the whole payment lands on ONE chosen host, which keeps the
+     * decision of who to feed and collapses the factor to the host count.
+     */
+    readonly paymentHostChoice: 'perMeeple' | 'perPayment';
   };
   readonly economy: {
     /**

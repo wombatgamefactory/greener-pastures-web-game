@@ -187,6 +187,20 @@ export function slotTollOf(data: GameData): number | null {
 }
 
 /**
+ * ⭐ R17: does a meeple spent as a CARD land on a neighbour's board rather
+ * than in the box? Only ever true when `meepleAsCard` is on as well - there is
+ * nothing to place when a meeple cannot pay for anything.
+ */
+export function meepleAsCardGoesToBoard(data: GameData): boolean {
+  return data.rules.turn.meepleAsCard && data.rules.turn.meepleAsCardGoesTo === 'board';
+}
+
+/** The FLAT toll for placing a paid meeple onto an occupied slot (R17). */
+export function paymentSlotTollOf(data: GameData): number {
+  return data.rules.turn.paymentSlotToll;
+}
+
+/**
  * How many meeples one tile is seeded with at setup.
  *
  * Under the shipped `'meeple'` it is the length of `island.meeples.seededSpaces`

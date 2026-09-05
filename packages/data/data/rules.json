@@ -54,7 +54,10 @@
     "startingMeeplesPerColour": 1,
     "meepleCapPerColour": 1,
     "meepleAsCard": false,
-    "slotToll": null
+    "slotToll": null,
+    "meepleAsCardGoesTo": "box",
+    "paymentSlotToll": 1,
+    "paymentHostChoice": "perMeeple"
   },
   "economy": {
     "noticeBoardThreshold": 2

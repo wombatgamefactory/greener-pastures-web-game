@@ -59,6 +59,8 @@ export type KnobType =
   | 'cropOrWild'
   | 'bonusTiming'
   | 'visitCurrency'
+  | 'meepleDestination'
+  | 'paymentHostChoice'
   | 'balloonReward';
 
 export interface KnobTemplate {
@@ -229,6 +231,45 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       "one card of any colour (R10's wild pair, reused). A meeple paid into a Grow never joins " +
       'the stack or counts toward the threshold, so it can activate an already-full building. ' +
       'The arm exists because a meeple with no competing use under v1 is a coupon, not a cost.',
+  },
+  {
+    template: 'rules.turn.meepleAsCardGoesTo',
+    type: 'meepleDestination',
+    description:
+      "⭐ R17, WHERE A MEEPLE SPENT AS A CARD GOES (Dean, 05/09/2026). Read only under " +
+      "meepleAsCard true. 'box' IS THE DEFAULT AND MUST STAY BIT-REPRODUCIBLE - it is the handoff " +
+      "v2 arm, where a resource spend leaves the game and the pool drains. 'board' closes that " +
+      "drain: the meeple is placed on ANOTHER PLAYER's Notice Board, in its own colour's slot, " +
+      'exactly as a visit does, and the host collects it. It buys the payer NOTHING beyond what ' +
+      'it paid for - no door action, and it is not a visit - so the bonus slot is untouched. The ' +
+      'v2 measurement is the reason it exists: meeples left the game 18.27 times a game against ' +
+      '9.44 visits, median supply in the last third hit 0.0 and the hook collapsed to 0.09, so ' +
+      'the resource use was not competing with the loop, it was emptying it.',
+  },
+  {
+    template: 'rules.turn.paymentSlotToll',
+    type: 'int',
+    description:
+      "⭐ THE PAYMENT TOLL (Dean, 05/09/2026), read only under meepleAsCardGoesTo 'board'. " +
+      'Placing a paid meeple onto a slot that ALREADY HOLDS one costs this many extra meeples of ' +
+      'any colour, and the extras go to the BOX. ⚠️ IT IS FLAT, NOT PER OCCUPANT, and that ' +
+      'is the one place it differs from slotToll: a slot holding three still costs one extra to ' +
+      'place on. Dean ruled it flat so the rule is one sentence and a deep slot can never make a ' +
+      'build unpayable. The toll is the only drain left once resource spends stop being boxed, so ' +
+      'read it beside the pool-by-round line.',
+  },
+  {
+    template: 'rules.turn.paymentHostChoice',
+    type: 'paymentHostChoice',
+    description:
+      "⭐ WHO RECEIVES A MEEPLE PAYMENT (R17), read only under meepleAsCardGoesTo 'board'. " +
+      "'perMeeple' is Dean's ruling of 05/09/2026 and the DEFAULT: the payer picks a host for " +
+      'EACH meeple, so one payment may feed several neighbours. ⚠️ IT IS ALSO THE ' +
+      'BRANCHING FACTOR - it multiplies the build enumerator by roughly hosts^meeples, and ' +
+      'measured at 25,827 ways to pay for one building at four seats against 841 with the box. ' +
+      "'perPayment' is the measured alternative: the whole payment lands on ONE chosen host, " +
+      'which keeps the choice of who to feed (and how much) while collapsing the factor to the ' +
+      'number of hosts.',
   },
   {
     template: 'rules.turn.slotToll',

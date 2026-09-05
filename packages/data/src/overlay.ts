@@ -44,6 +44,12 @@ const BONUS_TIMING_VALUES: ReadonlySet<string> = new Set<string>(['start', 'any'
  * `BONUS_TIMING_VALUES`. Two values and no third: the meeple loop is a paired
  * arm against the shipped game, not a ladder.
  */
+/** Who receives a meeple payment (R17). */
+const PAYMENT_HOST_VALUES = new Set(['perMeeple', 'perPayment']);
+
+/** Where a meeple spent as a card ends up (R17). */
+const MEEPLE_DESTINATION_VALUES = new Set(['box', 'board']);
+
 const VISIT_CURRENCY_VALUES: ReadonlySet<string> = new Set<string>(['card', 'meeple']);
 
 /** The closed value set behind `balloonReward`, kept here for the same reason. */
@@ -113,6 +119,10 @@ function typeMatches(type: KnobType, value: Leaf): boolean {
       return typeof value === 'string' && BONUS_TIMING_VALUES.has(value);
     case 'visitCurrency':
       return typeof value === 'string' && VISIT_CURRENCY_VALUES.has(value);
+    case 'meepleDestination':
+      return typeof value === 'string' && MEEPLE_DESTINATION_VALUES.has(value);
+    case 'paymentHostChoice':
+      return typeof value === 'string' && PAYMENT_HOST_VALUES.has(value);
     case 'balloonReward':
       return typeof value === 'string' && BALLOON_REWARD_VALUES.has(value);
   }

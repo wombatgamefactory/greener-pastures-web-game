@@ -518,6 +518,15 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
     case 'reshuffled':
     case 'cardsDiscarded':
     case 'visited':
+    // ⭐ R17 (05/09/2026): a meeple spent as a card LANDING on a neighbour's
+    // board is priced at ZERO HERE, and deliberately, on exactly the reasoning
+    // `visitToll` already carries. The meeple leaving this seat's supply is
+    // charged once by the `meepleSpend` MOVE term, which claims 'build' and
+    // 'deliver'; charging it again on the event would double it. What the HOST
+    // gains is invisible on purpose - the bot is self-regarding, and pricing a
+    // rival's windfall is what would make it altruistic. a02-generosity
+    // measures the gift instead.
+    case 'meepleplaced':
     case 'endTriggered':
     case 'turnEnded':
     case 'gameEnded':

@@ -98,6 +98,11 @@ export const EVENT_KINDS = {
   // that created and how it is avoided.
   meepleAsCard: true,
   visitToll: true,
+  // ⭐ R17 (05/09/2026): a meeple spent as a card LANDING on a neighbour's board
+  // rather than going to the box. It rides beside `meepleAsCard`, which still
+  // carries the use and the threshold flag, so this one answers only "who got
+  // fed" - and that is the question R17 exists to create.
+  meepleplaced: true,
   reshuffled: true,
   built: true,
   demolished: true,
@@ -624,6 +629,18 @@ export interface GameMetrics {
    * double-weight a single visit if that field were reused for this question.
    */
   visitsReceivedBySeat: number[];
+  /**
+   * R17: meeples spent as a CARD that landed on somebody's board, counted from
+   * the payer's side and from the receiver's side.
+   *
+   * ⚠️ THESE ARE NOT VISITS AND MUST NEVER BE POOLED WITH THEM. A placement
+   * buys the payer no door and does not spend the bonus slot, so a08's hook
+   * counts none of it. What the pair is FOR is the question R17 creates: a
+   * resource spend now feeds a neighbour, so who gets fed, and how evenly, is
+   * the new decision on the table.
+   */
+  meeplesPlacedBySeat: number[];
+  meeplesPlacedReceivedBySeat: number[];
 
   /**
    * ⭐ THE MEEPLE POOL AT EVERY ROUND BOUNDARY (handoff v2 section 3.5): every
@@ -1001,6 +1018,8 @@ export class Fold {
       tollMeeplesPaidBySeat: zeros(),
       tollVisitsBySeat: zeros(),
       visitsReceivedBySeat: zeros(),
+      meeplesPlacedBySeat: zeros(),
+      meeplesPlacedReceivedBySeat: zeros(),
       meeplePoolByRound: [],
       poolEmptyRound: null,
       buildsBySeat: zeros(),
@@ -1815,6 +1834,19 @@ export class Fold {
         if (e.wild) m.meepleResourceWildSpends += 1;
         m.meepleResourceSpendRounds.push(this.round());
         return;
+      }
+      // ⭐ R17 (05/09/2026): a meeple spent as a CARD landed on a neighbour's
+      // board instead of the box. Counted from both sides, because "who got fed"
+      // is the decision R17 creates.
+      //
+      // ⚠️ IT IS NOT A VISIT. It buys the payer no door and spends no bonus
+      // slot, so a08's hook counts none of it, and the payer's own cost is
+      // already counted by `meepleAsCard` firing for the same meeple. Pooling
+      // the two would double the spend and inflate the hook with payments.
+      case 'meepleplaced': {
+        m.meeplesPlacedReceivedBySeat[e.host] = (m.meeplesPlacedReceivedBySeat[e.host] ?? 0) + 1;
+        m.meeplesPlacedBySeat[e.seat] = (m.meeplesPlacedBySeat[e.seat] ?? 0) + 1;
+        break;
       }
       // ⭐ THE AMENDED R6'S WHOLE MEASUREMENT SURFACE (handoff v2): a toll paid
       // to enter an already-occupied slot. `paid` is the toll only, never the

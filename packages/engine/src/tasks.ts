@@ -245,6 +245,8 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
             ...(o.stacks ? { stacks: o.stacks } : {}),
             ...(o.meeples === undefined ? {} : { meeples: o.meeples }),
             ...(o.wildPairs === undefined ? {} : { wildPairs: o.wildPairs }),
+            ...(o.placements === undefined ? {} : { placements: o.placements }),
+            ...(o.paymentToll === undefined ? {} : { paymentToll: o.paymentToll }),
           }) as TaskAnswer,
       );
       if (task.optional === true && out.length > 0) out.push({ kind: 'skip' });
@@ -362,6 +364,8 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
           ...(answer.stacks ? { stacks: answer.stacks } : {}),
           ...(answer.meeples === undefined ? {} : { meeples: answer.meeples }),
           ...(answer.wildPairs === undefined ? {} : { wildPairs: answer.wildPairs }),
+          ...(answer.placements === undefined ? {} : { placements: answer.placements }),
+          ...(answer.paymentToll === undefined ? {} : { paymentToll: answer.paymentToll }),
         },
         buildModsFor(fx.state, task),
         task.src,

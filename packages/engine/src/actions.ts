@@ -16,7 +16,13 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import { deliveriesPerTile, deliveryVp, isMeepleCurrency, meepleIndexForSpace } from '@gp/data';
+import {
+  deliveriesPerTile,
+  deliveryVp,
+  isMeepleCurrency,
+  meepleAsCardGoesToBoard,
+  meepleIndexForSpace,
+} from '@gp/data';
 
 import type { Fx } from './fx.js';
 import { fireHook } from './fx.js';
@@ -216,6 +222,238 @@ export function meepleFills(
   return out;
 }
 
+/**
+ * ⭐ R17: ONE WAY TO PLACE A MEEPLE PAYMENT ON THE TABLE (Dean, 05/09/2026).
+ *
+ * Under `meepleAsCardGoesTo: 'board'` a meeple spent as a card does not leave
+ * the game: it lands on ANOTHER player's Notice Board, in its own colour's
+ * slot, exactly as a visit places one, and the host takes it back on their
+ * Collect. It buys the payer nothing else - no door action, and it is not a
+ * visit - so the bonus slot is untouched.
+ *
+ * `boards` is indexed by SEAT and holds a colour count per board, which is the
+ * same count-vector discipline `MeepleFill` argues for: two meeples of a colour
+ * going to the same board differ in nothing anybody can read. What genuinely
+ * varies and IS enumerated in full is WHICH board each meeple goes to, because
+ * Dean ruled the payer chooses a host per meeple (05/09/2026), so one payment
+ * may feed several neighbours.
+ *
+ * `toll` is the extra meeples burned to place onto an occupied slot, by colour.
+ * They go to the BOX and are the only drain left once resource spends stop
+ * being boxed.
+ */
+export interface MeeplePlacement {
+  /** Indexed by SEAT. Entry i is the colour count landing on seat i's board. */
+  boards: Partial<Record<Suit, number>>[];
+  /** How many EXTRA meeples this spread costs, to be burned in any colours. */
+  tollOwed: number;
+}
+
+/**
+ * THE TOLL FOR ONE (host, colour) GROUP, and it is ORDER-INDEPENDENT on
+ * purpose.
+ *
+ * Dean ruled the toll FLAT - "1 extra meeple to place it on top", however deep
+ * the stack - so it is charged per MEEPLE placed on top of something, never per
+ * occupant. A slot that was already occupied charges for every meeple in the
+ * group; a slot that started empty gives the first one away and charges for the
+ * rest, because the second meeple of a group lands on the first.
+ *
+ * ⚠️ READING IT PER GROUP RATHER THAN PER PLACEMENT IS WHAT MAKES IT
+ * ORDER-INDEPENDENT, and that matters: a payment is a set of counts with no
+ * sequence, so a toll that depended on the order the meeples were laid down
+ * would not be a function of the move at all. It is the third small default of
+ * this pass and it is flagged in the report.
+ */
+function groupToll(occupied: boolean, count: number, rate: number): number {
+  if (count <= 0) return 0;
+  return rate * (occupied ? count : count - 1);
+}
+
+/** Ways to split `n` identical things across `k` ordered buckets. */
+function compositions(n: number, k: number): number[][] {
+  if (k <= 1) return [[n]];
+  const out: number[][] = [];
+  for (let take = n; take >= 0; take--) {
+    for (const tail of compositions(n - take, k - 1)) out.push([take, ...tail]);
+  }
+  return out;
+}
+
+/**
+ * Every way to spread a meeple payment across the RIVAL boards, with the toll
+ * each spread costs.
+ *
+ * ⛔ THIS IS THE BRANCHING RISK OF THE WHOLE R17 CHANGE, AND IT IS WHY THE
+ * PERFORMANCE GATE IS MEASURED BEFORE THE SUITE RUNS. A host choice per meeple
+ * multiplies the build enumerator by roughly hosts^meeples: at four seats a
+ * three-meeple payment is up to 18 spreads on top of the colour vector it
+ * already carries, and the build list was 4.6x the v1 arm under R15 alone.
+ * Nothing is canonicalised away here, because Dean ruled the per-meeple choice
+ * in on 05/09/2026; if it ever has to be bounded, this is the one function to
+ * bound.
+ */
+function meepleSpreads(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+  counts: Partial<Record<Suit, number>>,
+  rate: number,
+): MeeplePlacement[] {
+  const hosts: Seat[] = [];
+  for (let i = 0; i < state.players.length; i++) if (i !== seat) hosts.push(i as Seat);
+  // ⭐ NEVER YOUR OWN BOARD (X5's shape, applied to a payment): "you must
+  // place them on other players' Notice Boards". With no rival there is nowhere
+  // to put a paid meeple, so R17 simply offers no meeple payment.
+  if (hosts.length === 0) return [];
+  // Occupancy is read ONCE, at the start of the payment, and every group is
+  // priced against that snapshot - see `groupToll`.
+  const occupied = hosts.map((host) => {
+    const slots = noticeBoardSlots(state, host);
+    const by: Partial<Record<Suit, boolean>> = {};
+    for (const colour of data.cards.suits) by[colour] = (slots[colour]?.length ?? 0) > 0;
+    return by;
+  });
+  // ⭐ 'perPayment' IS THE BOUNDED ALTERNATIVE, and it is one loop rather than
+  // a canonicalisation: the whole payment lands on ONE host, so the decision
+  // "who do I feed, and how much" survives intact while the factor collapses
+  // from hosts^meeples to hosts.
+  if (data.rules.turn.paymentHostChoice === 'perPayment') {
+    const whole: MeeplePlacement[] = [];
+    for (let h = 0; h < hosts.length; h++) {
+      const host = hosts[h] as Seat;
+      const boards = state.players.map(() => ({}) as Partial<Record<Suit, number>>);
+      let owed = 0;
+      for (const colour of data.cards.suits) {
+        const n = counts[colour] ?? 0;
+        if (n === 0) continue;
+        boards[host] = { ...(boards[host] ?? {}), [colour]: n };
+        owed += groupToll(occupied[h]?.[colour] === true, n, rate);
+      }
+      whole.push({ boards, tollOwed: owed });
+    }
+    return whole;
+  }
+  let out: MeeplePlacement[] = [
+    { boards: state.players.map(() => ({}) as Partial<Record<Suit, number>>), tollOwed: 0 },
+  ];
+  for (const colour of data.cards.suits) {
+    const n = counts[colour] ?? 0;
+    if (n === 0) continue;
+    const next: MeeplePlacement[] = [];
+    for (const base of out) {
+      for (const split of compositions(n, hosts.length)) {
+        const boards = base.boards.map((b) => ({ ...b }));
+        let owed = base.tollOwed;
+        for (let h = 0; h < hosts.length; h++) {
+          const take = split[h] ?? 0;
+          if (take === 0) continue;
+          const host = hosts[h] as Seat;
+          boards[host] = { ...(boards[host] ?? {}), [colour]: take };
+          owed += groupToll(occupied[h]?.[colour] === true, take, rate);
+        }
+        next.push({ boards, tollOwed: owed });
+      }
+    }
+    out = next;
+  }
+  return out;
+}
+
+/** A spread with its toll resolved into actual colours. */
+export interface ResolvedPlacement {
+  boards: Partial<Record<Suit, number>>[];
+  toll: Partial<Record<Suit, number>>;
+}
+
+/**
+ * Every legal way to place `counts` on the rival boards AND pay whatever toll
+ * that spread owes, out of what is left of the supply.
+ *
+ * The toll colours are enumerated as a count vector over the REMAINING supply,
+ * the same machinery `meepleFills` uses everywhere else: which colour you burn
+ * is a real decision, two meeples of a colour are not.
+ */
+function placementsFor(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+  counts: Partial<Record<Suit, number>>,
+  rate: number,
+): ResolvedPlacement[] {
+  const supply = player(state, seat).meeples;
+  // What is left to pay a toll with, once the payment itself is committed.
+  const rest: Record<Suit, number> = { ...supply };
+  for (const colour of data.cards.suits) {
+    rest[colour] = (supply[colour] ?? 0) - (counts[colour] ?? 0);
+  }
+  const out: ResolvedPlacement[] = [];
+  for (const spread of meepleSpreads(data, state, seat, counts, rate)) {
+    if (spread.tollOwed === 0) {
+      out.push({ boards: spread.boards, toll: {} });
+      continue;
+    }
+    for (const fill of meepleFills(data.cards.suits, rest)) {
+      if (fill.total !== spread.tollOwed) continue;
+      out.push({ boards: spread.boards, toll: fill.counts });
+    }
+  }
+  return out;
+}
+
+/**
+ * R17's re-validation: the placement must spend exactly the meeples the payment
+ * named, land only on rivals, and carry exactly the toll its own spread owes.
+ *
+ * ⚠️ `apply` MUST ACCEPT EXACTLY WHAT `legalMoves` OFFERED, so the toll
+ * is RECOMPUTED here from the board rather than trusted from the move. A move
+ * that under-declares its toll is a free placement onto an occupied slot, and
+ * nothing else in the engine would notice.
+ */
+function assertPlacementMatches(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+  meeples: Partial<Record<Suit, number>>,
+  choice: { placements?: Partial<Record<Suit, number>>[]; paymentToll?: Partial<Record<Suit, number>> },
+): void {
+  const placements = choice.placements ?? [];
+  const rate = data.rules.turn.paymentSlotToll;
+  let owed = 0;
+  const spent: Partial<Record<Suit, number>> = {};
+  for (let host = 0; host < placements.length; host++) {
+    const counts = placements[host];
+    if (!counts) continue;
+    // Indexed by seat, so the payer's own entry exists and is empty - see the
+    // same guard in `Fx.placeMeeplesAsCards`.
+    if (meepleCount(counts) === 0) continue;
+    if (host === seat) throw new Error('A paid meeple never lands on your own board');
+    const slots = noticeBoardSlots(state, host as Seat);
+    for (const colour of data.cards.suits) {
+      const n = counts[colour] ?? 0;
+      if (n === 0) continue;
+      spent[colour] = (spent[colour] ?? 0) + n;
+      owed += groupToll((slots[colour]?.length ?? 0) > 0, n, rate);
+    }
+  }
+  for (const colour of data.cards.suits) {
+    if ((spent[colour] ?? 0) !== (meeples[colour] ?? 0)) {
+      throw new Error(`The ${colour} half of that payment was not placed`);
+    }
+  }
+  const toll = choice.paymentToll ?? {};
+  if (meepleCount(toll) !== owed) {
+    throw new Error(`That placement owes ${owed} toll meeples, got ${meepleCount(toll)}`);
+  }
+  const supply = player(state, seat).meeples;
+  for (const colour of data.cards.suits) {
+    const want = (meeples[colour] ?? 0) + (toll[colour] ?? 0);
+    if (want > (supply[colour] ?? 0)) {
+      throw new Error(`Seat ${seat} has ${supply[colour] ?? 0} ${colour} meeples, not ${want}`);
+    }
+  }
+}
+
 /** The fills this seat could pay a card cost with, or the zero fill when R15 is off. */
 function fillsFor(data: GameData, state: GameState, seat: Seat): MeepleFill[] {
   if (!meepleAsCard(data)) return NO_MEEPLES;
@@ -377,6 +615,14 @@ export interface BuildOption {
    * offered.
    */
   wildPairs?: number;
+  /**
+   * ⭐ R17: where those meeples LAND, indexed by seat. Absent under
+   * `meepleAsCardGoesTo: 'box'`, which is the handoff v2 arm and the default.
+   * Summed over seats it equals `meeples` colour for colour.
+   */
+  placements?: Partial<Record<Suit, number>>[];
+  /** R17: extra meeples burned to place onto occupied slots. Boxed, by colour. */
+  paymentToll?: Partial<Record<Suit, number>>;
 }
 
 /**
@@ -552,6 +798,7 @@ function paymentsFor(
   price: { cardsNeeded: number; ownSuitMin: number },
   fills: readonly MeepleFill[] = NO_MEEPLES,
   supply: Readonly<Record<Suit, number>> | null = null,
+  place: ((counts: Partial<Record<Suit, number>>) => ResolvedPlacement[]) | null = null,
 ): BuildOption[] {
   const suit = cardById(data, card).suit;
   const out: BuildOption[] = [];
@@ -614,13 +861,27 @@ function paymentsFor(
             // but it is not a choice worth the branching factor, and it is
             // recorded as a deliberate reduction rather than an oversight.
             if (pairs > 0 && supply !== null && ownMeeples < (supply[suit] ?? 0)) continue;
-            const option: BuildOption =
+            const base: BuildOption =
               stacks.length > 0 ? { card, payment, stacks } : { card, payment };
-            if (fill.total > 0) {
-              option.meeples = fill.counts;
-              if (pairs > 0) option.wildPairs = pairs;
+            if (fill.total === 0) {
+              out.push(base);
+              continue;
             }
-            out.push(option);
+            base.meeples = fill.counts;
+            if (pairs > 0) base.wildPairs = pairs;
+            if (place === null) {
+              out.push(base);
+              continue;
+            }
+            // ⭐ R17 EXPANDS ONE PAYMENT INTO ONE OPTION PER SPREAD. The
+            // meeples are the same; where they land is not, and Dean ruled the
+            // host is chosen per meeple. A spread that cannot pay its own toll
+            // out of what is left of the supply is simply not returned, which
+            // is how "you may not place on top without the extra meeple"
+            // becomes a legality rather than a check.
+            for (const spot of place(fill.counts)) {
+              out.push({ ...base, placements: spot.boards, paymentToll: spot.toll });
+            }
           }
         }
       }
@@ -658,6 +919,22 @@ export function buildOptions(
   // R15: the seat's meeple supply, as count vectors. `NO_MEEPLES` when the rule
   // is off, which is one element and no behaviour change.
   const fills = fillsFor(data, state, seat);
+  // R17's placer, memoised on the payment vector: the same colour counts recur
+  // across every buildable card in a position, and the spread does not depend
+  // on which card is being bought.
+  const rate = data.rules.turn.paymentSlotToll;
+  const spreadCache = new Map<string, ResolvedPlacement[]>();
+  const place = meepleAsCardGoesToBoard(data)
+    ? (counts: Partial<Record<Suit, number>>): ResolvedPlacement[] => {
+        const key = data.cards.suits.map((x) => counts[x] ?? 0).join(',');
+        let hit = spreadCache.get(key);
+        if (hit === undefined) {
+          hit = placementsFor(data, state, seat, counts, rate);
+          spreadCache.set(key, hit);
+        }
+        return hit;
+      }
+    : null;
   const out: BuildOption[] = [];
   // ⭐ THE DEDUPE IS SKIPPED WHEN THERE IS NOTHING TO DEDUPE (03/09/2026). It
   // exists because a hand-only payment is reachable once per BUILDING, so the
@@ -675,7 +952,7 @@ export function buildOptions(
     // Hoisted: the hand-minus-this-card list was rebuilt once per SOURCE.
     const rest = cards.filter((h) => h !== id);
     for (const groups of sources) {
-      for (const option of paymentsFor(data, id, rest, groups, price, fills, p.meeples)) {
+      for (const option of paymentsFor(data, id, rest, groups, price, fills, p.meeples, place)) {
         if (seen !== null) {
           // Sorted because two sources can reach the same multiset by different
           // orders.
@@ -687,6 +964,12 @@ export function buildOptions(
             // are different payments, so the meeple vector is part of the key.
             data.cards.suits.map((x) => option.meeples?.[x] ?? 0).join(''),
             option.wildPairs ?? 0,
+            // R17: two payments that spend the same meeples on different boards
+            // are different moves.
+            (option.placements ?? [])
+              .map((b) => data.cards.suits.map((x) => b[x] ?? 0).join(''))
+              .join('/'),
+            data.cards.suits.map((x) => option.paymentToll?.[x] ?? 0).join(''),
           ].join('|');
           if (seen.has(key)) continue;
           seen.add(key);
@@ -868,7 +1151,20 @@ export function doBuild(
   // BEFORE `divertOrDiscard`, so nothing downstream can mistake one for a spent
   // card: D5, D6, D11 and O17 all reach for the cards this build spent, and a
   // meeple was never in the discard for them to find.
-  if (meepleTotal > 0) fx.payMeeplesAsCards(seat, meeples, 'build', { wildPairs });
+  if (meepleTotal > 0) {
+    // R17: the same payment, landing on the table instead of leaving it. The
+    // enumerator decided where; this only re-checks that it decided legally.
+    const placements = choice.placements;
+    if (placements === undefined) {
+      fx.payMeeplesAsCards(seat, meeples, 'build', { wildPairs });
+    } else {
+      if (!meepleAsCardGoesToBoard(fx.data)) {
+        throw new Error('A paid meeple lands on a board only under meepleAsCardGoesTo "board"');
+      }
+      assertPlacementMatches(fx.data, fx.state, seat, meeples, choice);
+      fx.placeMeeplesAsCards(seat, placements, choice.paymentToll ?? {}, 'build', { wildPairs });
+    }
+  }
   // SPENT, not harvested (D7's ruling): the cards come straight off the stack,
   // no afterHarvest fires, and they are not divertible.
   for (const id of stacks) fx.spendFromStack(seat, id);

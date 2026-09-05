@@ -592,6 +592,9 @@ export type TaskAnswer =
       payment: CardId[];
       /** D7: cards lifted off the seat's OWN buildings to help pay, by id. */
       stacks?: CardId[];
+      /** R17: where the paid meeples land, by seat, and the toll they owed. */
+      placements?: Partial<Record<Suit, number>>[];
+      paymentToll?: Partial<Record<Suit, number>>;
       /**
        * ⚠️ R15: meeples in the payment, as a count per colour, AND THEY
        * HAVE TO RIDE ON THE ANSWER. The same trap the deleted `head` rider
@@ -1021,7 +1024,15 @@ export type GameEvent =
       e: 'meepleBoxed';
       seat: Seat;
       colour: Suit;
-      source: 'collect' | 'island' | 'balloon' | 'build' | 'activation' | 'delivery' | 'toll';
+      source:
+        | 'collect'
+        | 'island'
+        | 'balloon'
+        | 'build'
+        | 'activation'
+        | 'delivery'
+        | 'toll'
+        | 'paymentToll';
     }
   /**
    * ⭐ A MEEPLE WAS SPENT AS A CARD OF ITS COLOUR (R15, handoff v2), which is
@@ -1061,6 +1072,23 @@ export type GameEvent =
    * before this visit, which is what the toll was priced off.
    */
   | { e: 'visitToll'; seat: Seat; host: Seat; colour: Suit; paid: Suit[]; occupants: number }
+  /**
+   * ⭐ A MEEPLE SPENT AS A CARD LANDED ON A NEIGHBOUR'S BOARD (R17, Dean
+   * 05/09/2026) rather than going to the box.
+   *
+   * It rides BESIDE `meepleAsCard`, which still carries the use and the
+   * threshold flag, so a reader that wants "what did R15 pay for" reads that one
+   * and a reader that wants "who got fed" reads this one. There is deliberately
+   * no `visited` event and no `afterVisit` hook: this is a payment landing, not
+   * a visit, and it buys the payer no door.
+   */
+  | {
+      e: 'meepleplaced';
+      seat: Seat;
+      host: Seat;
+      colour: Suit;
+      use: 'build' | 'activation' | 'delivery';
+    }
   /**
    * MEEPLES CAME OFF YOUR OWN NOTICE BOARD (the meeple arm's Collect, R7).
    * `kept` are the ones that reached the supply and `boxed` the duplicates the
