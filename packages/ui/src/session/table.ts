@@ -80,7 +80,19 @@ import type {
 export const data: GameData = loadGameData({
   name: 'v31-card-visit',
   schemaVersion: 1,
-  set: { 'rules.turn.visitCurrency': 'card' },
+  // ⚠️ FOUR KNOBS, NOT ONE, SINCE 05/09/2026. Dean ruled the meeple ECONOMY in
+  // that day, so the shipped defaults are `meepleAsCard` true, a slot that is
+  // PRICED rather than blocked and a cap of two. `visitCurrency` alone would
+  // leave this pin holding the v31 visit on top of R15's payments - meeples
+  // paying for builds, Grows and crates in an interface with no surface for any
+  // of it - which is precisely the "UI that lies about the rules" this overlay
+  // exists to prevent. Pinning the whole set is what keeps the pin honest.
+  set: {
+    'rules.turn.visitCurrency': 'card',
+    'rules.turn.meepleAsCard': false,
+    'rules.turn.slotToll': null,
+    'rules.turn.meepleCapPerColour': 1,
+  },
 });
 
 /** The seat the human sits in. Always 0: the interface is written from one chair. */

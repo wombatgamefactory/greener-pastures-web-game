@@ -36,7 +36,7 @@ import { apply, legalMoves } from '../game.js';
 import { answerTask, gameEndScores, growBuilding, pendingAnswers } from '../runtime.js';
 import { cardById, buildingOf, player } from '../query.js';
 import type { CardId, GameState, Move, Seat, TaskAnswer } from '../state.js';
-import { buildFor, dealTo, deliveredAt, loadStack, makeState } from '../testkit.js';
+import { buildFor, dealTo, deliveredAt, loadStack, makeState, noMeeples } from '../testkit.js';
 import { registeredCards, handlerFor } from './registry.js';
 import { isDepotCard } from './vegetable.js';
 
@@ -197,6 +197,10 @@ describe('V2 Farmstead - the own-crop end-game scorer', () => {
    */
   it('a tile the barn cannot pay stays unpayable, whatever the hand holds', () => {
     const s = base();
+    // ⚠️ CARD-ONLY: since 05/09/2026 a meeple pays an island CRATE as well (R15),
+    // so the five a seat starts with would pay the tile this case says is
+    // unpayable. The claim under test is about the BARN and the hand.
+    noMeeples(s);
     barnTo(s, VEG, 'V4', 'V5', 'V6');
     dealTo(data, s, VEG, 'V9', 'V10');
     expect(deliversTo(s, VEG, 'A1')).toHaveLength(0);
@@ -418,6 +422,9 @@ describe('V6 The Trade Depot - turn a demand token FACE DOWN', () => {
 
   it('opens a half-run tile, and a face-down token then pays like a cornucopia', () => {
     const s = base();
+    // ⚠️ CARD-ONLY: the parity trap this case draws is a fact about BARN cards,
+    // and a meeple pays a crate since 05/09/2026 (R15).
+    noMeeples(s);
     buildFor(data, s, VEG, 'V6');
     deliveredAt(s, WHEAT, 'A5'); // A5 (2 wheat crates) has one receipt taken
     // A5 wants 4 wheat. Two wheat and two vegetables cannot pay it: the two

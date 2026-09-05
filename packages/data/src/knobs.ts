@@ -213,31 +213,40 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'removed from the game - and the engine emits meepleBoxed instead of meepleGained, with ' +
       "the source ('collect' or 'island') on the event so the loss is countable. It exists " +
       'because meeples RECIRCULATE under the arm: a spent one moves to the neighbour’s ' +
-      'board and comes back on their Collect, so the supply no longer only shrinks. Sweep 1 ' +
-      'against 2 and read it with the median supply held in the last third and the boxed count ' +
-      'per game.',
+      'board and comes back on their Collect, so the supply no longer only shrinks. ' +
+      "⚠️ IT SHIPS AT 2 SINCE 05/09/2026 AND IT GOT THERE AS A PASSENGER. Dean ruled the cap at 1 on " +
+      '04/09/2026 against its own sweep, on teach simplicity; the amended R4 (cap 2) was built into the ' +
+      'handoff v2 arm, carried into R17 and ruled in with it, so the teach argument was never ' +
+      're-answered. Under R17 the cap boxes 1.14 meeples a game against 13.45 under the v1 loop, so it ' +
+      'has largely stopped doing economic work and the case for 1 is now almost purely the teach case. ' +
+      'Sweep it with meeple-on-board-cap-one-v1 and meeple-on-board-cap-three-v1, and read it with ' +
+      'the median supply held in the last third and the boxed count per game.',
   },
   {
     template: 'rules.turn.meepleAsCard',
     type: 'boolean',
     description:
       "⭐ R15, THE MEEPLE-AS-CARD ARM (Dean, 04/09/2026 evening, handoff v2). Read only under " +
-      "visitCurrency 'meeple'. FALSE IS THE DEFAULT AND MUST STAY BIT-REPRODUCIBLE - it is the " +
-      "shipped v1 loop, where a meeple only ever buys its colour's action through a neighbour's " +
-      "board and is never a payment. TRUE lets a meeple of a colour pay wherever a card of that " +
+      "visitCurrency 'meeple'. ⭐ TRUE IS THE DEFAULT SINCE 05/09/2026, when Dean ruled R17 in and this " +
+      "knob shipped with it. FALSE is the v1 loop of 04/09/2026 and is one flag away at " +
+      "overlays/meeple-loop-v1.overlay.json - it is the loop where a meeple only ever buys " +
+      "its colour's action through a neighbour's board and is never a payment. " +
+      "TRUE lets a meeple of a colour pay wherever a card of that " +
       'colour would: build costs (including n-of-suit and the 2-own-suit Power/Endgame cost), a ' +
-      "Grow's activation payment, and a delivery crate. A meeple spent this way goes straight to " +
-      'the box - never a hand, a barn, a stack or the hand limit - and two meeples still pay as ' +
+      "Grow's activation payment, and a delivery crate. ⚠️ WHERE THAT MEEPLE ENDS UP IS " +
+      "meepleAsCardGoesTo, NOT THIS KNOB, and the shipped answer is a neighbour's board. Either way a " +
+      'meeple never touches a hand, a barn, a stack or the hand limit - and two meeples still pay as ' +
       "one card of any colour (R10's wild pair, reused). A meeple paid into a Grow never joins " +
       'the stack or counts toward the threshold, so it can activate an already-full building. ' +
-      'The arm exists because a meeple with no competing use under v1 is a coupon, not a cost.',
+      'It exists because a meeple with no competing use under v1 is a coupon, not a cost: with ' +
+      'nothing else to spend it on, spending one is not a decision.',
   },
   {
     template: 'rules.turn.meepleAsCardGoesTo',
     type: 'meepleDestination',
     description:
       "⭐ R17, WHERE A MEEPLE SPENT AS A CARD GOES (Dean, 05/09/2026). Read only under " +
-      "meepleAsCard true. 'box' IS THE DEFAULT AND MUST STAY BIT-REPRODUCIBLE - it is the handoff " +
+      "meepleAsCard true. ⭐ 'board' IS THE DEFAULT: it is the shipped game since 05/09/2026. 'box' is the handoff " +
       "v2 arm, where a resource spend leaves the game and the pool drains. 'board' closes that " +
       "drain: the meeple is placed on ANOTHER PLAYER's Notice Board, in its own colour's slot, " +
       'exactly as a visit does, and the host collects it. It buys the payer NOTHING beyond what ' +
@@ -263,11 +272,13 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     type: 'paymentHostChoice',
     description:
       "⭐ WHO RECEIVES A MEEPLE PAYMENT (R17), read only under meepleAsCardGoesTo 'board'. " +
-      "'perMeeple' is Dean's ruling of 05/09/2026 and the DEFAULT: the payer picks a host for " +
+      "⚠️ 'perPayment' IS THE DEFAULT AND THE SHIPPED RULE, and this description said the opposite " +
+      "until 05/09/2026. 'perMeeple' was Dean's first ruling that day and he ruled it back the same day on " +
+      "the branching factor: the payer picks a host for " +
       'EACH meeple, so one payment may feed several neighbours. ⚠️ IT IS ALSO THE ' +
       'BRANCHING FACTOR - it multiplies the build enumerator by roughly hosts^meeples, and ' +
       'measured at 25,827 ways to pay for one building at four seats against 841 with the box. ' +
-      "'perPayment' is the measured alternative: the whole payment lands on ONE chosen host, " +
+      "'perPayment', the shipped rule, is the measured alternative: the whole payment lands on ONE chosen host, " +
       'which keeps the choice of who to feed (and how much) while collapsing the factor to the ' +
       'number of hosts.',
   },
@@ -276,9 +287,11 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     type: 'intOrNull',
     description:
       '⭐ THE AMENDED R6, THE PRICED SLOT (Dean, 04/09/2026 evening, handoff v2). Read only under ' +
-      "visitCurrency 'meeple'. NULL IS THE DEFAULT AND MUST STAY BIT-REPRODUCIBLE - it is the " +
-      'shipped v1 rule: a slot holding any meeple is BLOCKED and refuses that colour until the ' +
-      'owner Collects. A number n turns the block into a price instead: nothing is ever refused, ' +
+      "visitCurrency 'meeple'. ⭐ IT SHIPS AT 1 SINCE 05/09/2026, ruled in with R17, so NOTHING IS EVER " +
+      "REFUSED and a slot is PRICED. NULL is the v1 rule and survives in " +
+      "overlays/meeple-loop-v1.overlay.json and in the v31 control - it is the rule as it stood on " +
+      '04/09/2026: a slot holding any meeple is BLOCKED and refuses that colour until the ' +
+      'owner Collects. The number n prices the block instead: nothing is ever refused, ' +
       'but visiting a slot already holding k meeples costs n*k EXTRA meeples of any colours, on ' +
       'top of the acting meeple, and the toll goes straight to the box, never to the host. A slot ' +
       'holding two meeples under slotToll 1 costs three to visit: one into the slot, two boxed. A ' +

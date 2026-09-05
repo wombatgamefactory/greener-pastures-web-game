@@ -14,7 +14,7 @@
  * a sink, not a loan).
  */
 
-import { loadGameData } from '@gp/data';
+import { BASE_GAME_DATA, loadGameData } from '@gp/data';
 import type { GameData } from '@gp/data';
 import { describe, expect, it } from 'vitest';
 
@@ -27,23 +27,39 @@ import { buildFor, dealTo, giveMeeples, loadStack, makeState } from './testkit.j
 const WHEAT: Seat = 0;
 const ORCHARD: Seat = 1;
 
-/** The arm as `overlays/meeple-as-card-v1.overlay.json` sets it. */
+/**
+ * The handoff v2 arm as `overlays/meeple-as-card-v1.overlay.json` sets it, and
+ * `meepleAsCardGoesTo` is PINNED because 'board' is the default now: Dean ruled
+ * R17 in on 05/09/2026, so a meeple spent as a card lands on a neighbour's board
+ * unless something says otherwise. This file's subject is R15 plus the box, and
+ * that pairing is what makes the arm the control for R17 rather than dead code.
+ */
 const arm: GameData = loadGameData({
   name: 'meeple-as-card-v1',
   schemaVersion: 1,
   set: {
     'rules.turn.visitCurrency': 'meeple',
     'rules.turn.meepleAsCard': true,
+    'rules.turn.meepleAsCardGoesTo': 'box',
     'rules.turn.slotToll': 1,
     'rules.turn.meepleCapPerColour': 2,
   },
 });
 
-/** The v1 loop, which is the shipped game and this arm's control. */
+/**
+ * The v1 loop, which was the shipped game when this file was written and is now
+ * one flag away: `overlays/meeple-loop-v1.overlay.json`. All four knobs are
+ * pinned, because none of them defaults to the loop any more.
+ */
 const v1: GameData = loadGameData({
   name: 'meeple-loop-v1',
   schemaVersion: 1,
-  set: { 'rules.turn.visitCurrency': 'meeple' },
+  set: {
+    'rules.turn.visitCurrency': 'meeple',
+    'rules.turn.meepleAsCard': false,
+    'rules.turn.slotToll': null,
+    'rules.turn.meepleCapPerColour': 1,
+  },
 });
 
 function table(data: GameData): GameState {
@@ -248,7 +264,7 @@ describe('R6 amended - the slot is priced, never blocked', () => {
   });
 });
 
-describe('the control - with the knobs off, nothing of v2 exists', () => {
+describe('the v1 loop - with the knobs off, nothing of v2 exists', () => {
   it('offers no meeple payment for a build under v1', () => {
     const s = table(v1);
     noMeeples(s, WHEAT);
@@ -265,7 +281,20 @@ describe('the control - with the knobs off, nothing of v2 exists', () => {
     expect(growOptions(v1, s, WHEAT).every((o) => o.meeples === undefined)).toBe(true);
   });
 
-  it('names the two knobs at their shipped defaults', () => {
+  /**
+   * ⭐ THE DEFAULTS MOVED ON 05/09/2026, when Dean ruled R17 in, and this case is
+   * the tripwire on that: the shipped game is now R15 plus R17 - a meeple pays,
+   * and it lands on a NEIGHBOUR'S BOARD - with a priced slot and a cap of two.
+   * If any of these four ever reads the other way again it is a flip nobody
+   * meant, and every arm in `overlays/` is measuring a different game than its
+   * description claims.
+   */
+  it('names the four knobs at their shipped defaults, and the v1 loop as one flag away', () => {
+    expect(BASE_GAME_DATA.rules.turn.meepleAsCard).toBe(true);
+    expect(BASE_GAME_DATA.rules.turn.meepleAsCardGoesTo).toBe('board');
+    expect(BASE_GAME_DATA.rules.turn.slotToll).toBe(1);
+    expect(BASE_GAME_DATA.rules.turn.meepleCapPerColour).toBe(2);
+
     expect(v1.rules.turn.meepleAsCard).toBe(false);
     expect(v1.rules.turn.slotToll).toBeNull();
     expect(v1.rules.turn.meepleCapPerColour).toBe(1);

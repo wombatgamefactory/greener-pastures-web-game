@@ -28,7 +28,7 @@ import { answerTask, gameEndScores, growBuilding, pendingAnswers } from '../runt
 import { buildingOf, player } from '../query.js';
 import { revealedIn } from '../state.js';
 import type { CardId, GameState, Task, TaskAnswer } from '../state.js';
-import { buildFor, dealTo, loadStack, makeState } from '../testkit.js';
+import { buildFor, dealTo, loadStack, makeState, noMeeples } from '../testkit.js';
 import { handlerFor } from './registry.js';
 
 const DAIRY = 0;
@@ -153,6 +153,10 @@ describe('registry completeness', () => {
 describe('the deleted Farmstead powers', () => {
   it('a Dairy seat has to match crops like everybody else', () => {
     const s = base();
+    // ⚠️ CARD-ONLY BY CONSTRUCTION. Since 05/09/2026 a meeple of a colour pays
+    // wherever a card of that colour would (R15), and every seat starts holding one
+    // of each, so the supply would answer the question this case asks.
+    noMeeples(s);
     // W9 costs 3 wheat. A Dairy seat holding three dairy cards used to be able
     // to pay for it and now cannot: that is buildSubstitutePower, deleted.
     dealTo(data, s, DAIRY, 'W9', 'D4', 'D5', 'D6');
@@ -235,6 +239,9 @@ describe('D2 The Farmstead - the own-crop end-game scorer', () => {
 describe('the build-modifier vocabulary', () => {
   it('D4 grants a flat discount of 1, whatever is on its stack', () => {
     const s = base();
+    // ⚠️ CARD-ONLY: the payment-length assertion below counts CARDS, and a meeple
+    // may stand in for one of them since 05/09/2026.
+    noMeeples(s);
     buildFor(data, s, DAIRY, 'D4');
     dealTo(data, s, DAIRY, 'D5', 'W9', 'W4', 'D6');
     const grown = growBuilding(data, s, DAIRY, 'D4', 'D5');

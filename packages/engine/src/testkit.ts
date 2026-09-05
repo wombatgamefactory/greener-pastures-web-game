@@ -191,6 +191,58 @@ export function giveMeeples(state: GameState, seat: Seat, colour: Suit, n = 1): 
   p.meeples[colour] += n;
 }
 
+/**
+ * THE v1 MEEPLE LOOP, as `overlays/meeple-loop-v1.overlay.json` sets it: the
+ * game as it stood from 04/09 to 05/09/2026, before a meeple could pay for
+ * anything.
+ *
+ * Dean ruled the meeple ECONOMY in on 05/09/2026, so `BASE_GAME_DATA` now
+ * carries R15 and R17 - a meeple pays wherever a card of its colour would, and
+ * a meeple spent that way lands on a neighbour's board - a PRICED slot rather
+ * than a blocked one, and a cap of two. This is the flag back to the loop
+ * before all of that, for the cases whose SUBJECT is one of those three rules
+ * in its old form: the slot that REFUSES, the cap that boxes at one, and the
+ * meeple that is only ever a visit.
+ *
+ * Memoised and lazy for the same reason as `cardVisitGame`.
+ */
+let meepleLoopCache: GameData | null = null;
+export function meepleLoopGame(): GameData {
+  meepleLoopCache ??= loadGameData({
+    name: 'meeple-loop-v1',
+    schemaVersion: 1,
+    set: {
+      'rules.turn.visitCurrency': 'meeple',
+      'rules.turn.meepleAsCard': false,
+      'rules.turn.slotToll': null,
+      'rules.turn.meepleCapPerColour': 1,
+    },
+  });
+  return meepleLoopCache;
+}
+
+/**
+ * EMPTY EVERY SEAT'S MEEPLE SUPPLY, for the cases that ask what a CARD can pay
+ * for.
+ *
+ * Since 05/09/2026 a seat starts holding one meeple of each colour and a meeple
+ * of a colour pays wherever a card of that colour would, so a case that deals a
+ * hand of the wrong crop and then asserts a GROW is illegal is no longer asking
+ * its own question: the orange meeple in the supply pays the apiary activation
+ * the hand could not. Draining the supply keeps the question the case was
+ * written to ask. ⚠️ Use it ONLY for that. A case about the shipped game's
+ * legality surface must run with the supply the shipped game deals, or it is
+ * measuring a position no real game reaches after turn one.
+ */
+export function noMeeples(state: GameState, ...seats: Seat[]): void {
+  const targets = seats.length > 0 ? seats : state.players.map((_, i) => i as Seat);
+  for (const seat of targets) {
+    const p = state.players[seat];
+    if (!p) throw new Error(`No player in seat ${seat}`);
+    for (const colour of Object.keys(p.meeples) as Suit[]) p.meeples[colour] = 0;
+  }
+}
+
 /** Fill a building's stack from its own suit's deck top (testing clogs and harvests). */
 export function loadStack(
   data: GameData,

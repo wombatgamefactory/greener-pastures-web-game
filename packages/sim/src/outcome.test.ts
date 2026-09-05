@@ -34,6 +34,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BALANCED,
+  MEEPLE_AS_CARD_DOOR_PREMIUM,
+  MEEPLE_AS_CARD_LIVE,
   MEEPLE_LATENT,
   actOf,
   makeOutcomes,
@@ -463,17 +465,60 @@ describe('what a meeple is worth', () => {
   const opening = (suits: Suit[]): GameState =>
     newGame(data, { seats: suits.length, suits, seed: 'meeple-worth' });
 
-  it('prices a colour this seat can use above one it cannot', () => {
+  /** The v1 loop, where a meeple is ONLY a visit. `overlays/meeple-loop-v1`. */
+  const v1 = loadGameData({
+    name: 'meeple-loop-v1',
+    schemaVersion: 1,
+    set: {
+      'rules.turn.visitCurrency': 'meeple',
+      'rules.turn.meepleAsCard': false,
+      'rules.turn.slotToll': null,
+      'rules.turn.meepleCapPerColour': 1,
+    },
+  });
+
+  it('prices a colour this seat can use above one it cannot, under the v1 loop', () => {
     // An opening seat has an empty barn and nothing full, so the Deliver and
     // Harvest doors can do nothing for it while the Draw door always can. That
     // is the whole of the claim: usable now beats usable later.
-    const state = opening(['wheat', 'orchard']);
-    const scratch = makeScratch(data, viewFor(data, state, 0));
+    //
+    // ⚠️ PINNED TO THE v1 LOOP ON 05/09/2026, because it stopped being true of
+    // the shipped game that day - see the case below, which is the same claim
+    // failing on purpose. The door-worth logic this pins is still live: it is
+    // what prices a meeple whenever `meepleAsCard` is off.
+    const state = newGame(v1, { seats: 2, suits: ['wheat', 'orchard'], seed: 'meeple-worth' });
+    const scratch = makeScratch(v1, viewFor(v1, state, 0));
     expect(meepleWorth(scratch, 'orchard')).toBeGreaterThan(meepleWorth(scratch, 'vegetable'));
     // ...and a latent colour is worth SOMETHING, not zero: a meeple is spent on
     // a future turn, and almost every dead door comes back within a turn or two.
     expect(meepleWorth(scratch, 'vegetable')).toBe(MEEPLE_LATENT);
     expect(MEEPLE_LATENT).toBeGreaterThan(0);
+  });
+
+  /**
+   * ⛔ THE SHIPPED GAME PRICES EVERY COLOUR THE SAME, AND THAT IS LEDGER C64
+   * RATHER THAN A BUG. Since 05/09/2026 a meeple pays wherever a card of its
+   * colour would, so `meepleWorth` leaves the door-worth branch entirely and
+   * returns the flat `MEEPLE_AS_CARD_LIVE`, which is `MEEPLE_AS_CARD_FLOOR`
+   * plus a `MEEPLE_AS_CARD_DOOR_PREMIUM` that ships at ZERO.
+   *
+   * The consequence, written here because a balance number will not show it:
+   * THE BOTS ARE COLOUR-BLIND ABOUT WHICH MEEPLE TO BURN. R15 asks a real
+   * question - a colour given up is a door you cannot buy next turn - and at a
+   * flat worth no bot has a preference. The premium was shipped at 0 on the
+   * paired-arm rule (a premium taxes every visit in the arm and none in the
+   * control, so the hook delta would become a mixture of the rule and the
+   * instrument), and a smoke sample at n=12 moved rival visits 125 to 45 at a
+   * premium of 0.6. This case exists so that raising it fails HERE, loudly,
+   * rather than surfacing as a door mix nobody can explain.
+   */
+  it('prices every colour the same under the shipped rules, which is C64', () => {
+    const state = opening(['wheat', 'orchard']);
+    const scratch = makeScratch(data, viewFor(data, state, 0));
+    expect(MEEPLE_AS_CARD_DOOR_PREMIUM).toBe(0);
+    const worths = SUITS.map((colour) => meepleWorth(scratch, colour));
+    expect(new Set(worths).size).toBe(1);
+    expect(worths[0]).toBe(MEEPLE_AS_CARD_LIVE);
   });
 
   it('prices a colour no seat is farming, because a meeple of it still works', () => {

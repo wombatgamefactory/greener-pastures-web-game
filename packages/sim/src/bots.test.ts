@@ -28,16 +28,33 @@ interface BuildAct {
   readonly payment: readonly CardId[];
   /** Cards taken off the seat's own buildings (D7). */
   readonly stacks: number;
+  /**
+   * ⭐ MEEPLES SPENT AS CARDS (R15), as a COUNT. Since 05/09/2026 a meeple of a
+   * colour pays wherever a card of that colour would, so it is a third payment
+   * source beside the hand and the stacks - and, like the stacks, it is part of
+   * HOW a build is being paid rather than of which cards it burns.
+   */
+  readonly meeples: number;
 }
 
 function buildAct(move: Move): BuildAct | null {
   const act = actOf(move);
-  return act.a === 'build' ? { card: act.card, payment: act.payment, stacks: act.stacks } : null;
+  return act.a === 'build'
+    ? { card: act.card, payment: act.payment, stacks: act.stacks, meeples: act.meeples.length }
+    : null;
 }
 
-/** Same card, and paid the same way - so only the cards themselves differ. */
+/**
+ * Same card, and paid the same way - so only the cards themselves differ.
+ *
+ * ⚠️ `meeples` JOINED THE KEY ON 05/09/2026 and it is the same argument the
+ * comment on the case below already makes about stacks: a meeple-paid build
+ * spends fewer hand cards by construction, so comparing across meeple counts
+ * would be pricing the METHOD rather than the choice of junk, and `meepleSpend`
+ * is what prices that trade.
+ */
 function sameMethod(a: BuildAct, b: BuildAct): boolean {
-  return a.card === b.card && a.stacks === b.stacks;
+  return a.card === b.card && a.stacks === b.stacks && a.meeples === b.meeples;
 }
 
 // --- view safety -----------------------------------------------------------
@@ -505,6 +522,22 @@ describe('the decision budget', () => {
        * same day, before it landed, read 21.2-36.1 on the identical seeds, so
        * that work bought roughly a tenth here rather than the factor the gate is
        * missing by. Do not read this gate as a verdict on it.
+       *
+       * ⛔ RED AGAIN SINCE 05/09/2026, AND LEFT RED ON PURPOSE. Dean ruled the
+       * meeple ECONOMY in that day (R15 plus R17: a meeple pays wherever a card
+       * of its colour would, and lands on a neighbour's board), which puts
+       * meeples into the payment enumerator and multiplies the ways to buy a
+       * building by the hosts who could receive them. The whole-game gate still
+       * PASSES; the per-decision ratio reads 10.3 against 10, and the balance
+       * suite reads 285s against 115s - the 2.6x that ledger C67 records as a
+       * breach of the standing 2x throughput gate, reported before the arm ran
+       * and accepted for that run only.
+       *
+       * ⚠️ IT IS NOT RE-CUT HERE, and that is a decision rather than an
+       * oversight. "Is a 2.6x suite acceptable?" is half of C67 and it is
+       * DEAN'S question, not this file's: raising 10 to 11 would answer it
+       * silently and delete the measurement that asks it. If he rules the cost
+       * acceptable, re-derive BOTH numbers from a clean run and say so here.
        *
        * ⭐ NEITHER GATE HAS BEEN RE-CUT, deliberately. A guard that is firing
        * correctly is not a stale constant, and moving 8,300 up to 21,000 and

@@ -5,6 +5,7 @@
   "set": {
     "rules.turn.visitCurrency": "meeple",
     "rules.turn.meepleAsCard": true,
+    "rules.turn.meepleAsCardGoesTo": "box",
     "rules.turn.slotToll": 1,
     "rules.turn.meepleCapPerColour": 3
   }

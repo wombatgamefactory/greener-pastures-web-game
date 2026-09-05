@@ -31,7 +31,15 @@ import { apply, legalMoves } from '../game.js';
 import { answerTask, gameEndScores, growBuilding, pendingAnswers } from '../runtime.js';
 import { buildingOf, noticeBoardSlots, player } from '../query.js';
 import type { GameState, Move, Task, TaskAnswer } from '../state.js';
-import { buildFor, cardVisitGame, dealTo, loadStack, makeState, visitMove } from '../testkit.js';
+import {
+  buildFor,
+  cardVisitGame,
+  dealTo,
+  loadStack,
+  makeState,
+  noMeeples,
+  visitMove,
+} from '../testkit.js';
 import { isOrchardCard } from './orchard.js';
 import { handlerFor } from './registry.js';
 
@@ -574,6 +582,10 @@ describe('the Tier 3 GROW buildings - O13, O14, O15', () => {
 
   it('a Tier 3 card is offered as a GROW, and that GROW spends the main action', () => {
     const s = base();
+    // ⚠️ CARD-ONLY: the count below is the number of ways to PAY, and since
+    // 05/09/2026 a meeple of any colour pays a wild activation too (R15), which
+    // turns one offer into six.
+    noMeeples(s);
     buildFor(data, s, ORCHARD, 'O14');
     dealTo(data, s, ORCHARD, 'W4'); // a wild activation takes any suit
     const offers = growMoves(s, 'O14');
@@ -616,6 +628,9 @@ describe('the Tier 3 GROW buildings - O13, O14, O15', () => {
    */
   it('O13 grows nothing, and asks nothing, when the hand cannot pay any ORCHARD', () => {
     const s = base();
+    // ⚠️ CARD-ONLY: an ORCHARD activation is payable by a red meeple since
+    // 05/09/2026, so O13's loop would find something to do.
+    noMeeples(s);
     buildFor(data, s, ORCHARD, 'O13', 'O4');
     // A hand of wheat cards cannot pay an `orchard` activation cost.
     dealTo(data, s, ORCHARD, 'W4', 'W5');

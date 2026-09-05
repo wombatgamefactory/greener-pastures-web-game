@@ -28,22 +28,38 @@ const WHEAT: Seat = 0;
 const ORCHARD: Seat = 1;
 
 /**
- * The arm - which since Dean ruled it in on 04/09/2026 is simply the shipped
- * game. The overlay is kept and the tests still load through it because
- * `overlays/meeple-loop-v1.overlay.json` is a no-op against the default and this
- * file is what would notice if that ever stopped being true.
+ * The v1 loop, as `overlays/meeple-loop-v1.overlay.json` sets it.
+ *
+ * ⚠️ IT STOPPED BEING THE SHIPPED GAME ON 05/09/2026, when Dean ruled the meeple
+ * ECONOMY in: a meeple now PAYS wherever a card of its colour would and lands on
+ * a neighbour's board (R15 and R17), a slot is PRICED rather than blocked, and
+ * the cap is two. So this file is about the loop as it was ruled on 04/09/2026,
+ * and all four knobs are pinned - one of them, `visitCurrency`, is still the
+ * default and the other three are not. What the file tests is unchanged and
+ * still load-bearing: the visit, the collect, the cap and the board that is not
+ * a building are the layer R15 and R17 were built ON TOP of.
  */
 const arm: GameData = loadGameData({
   name: 'meeple-loop-v1',
   schemaVersion: 1,
-  set: { 'rules.turn.visitCurrency': 'meeple' },
+  set: {
+    'rules.turn.visitCurrency': 'meeple',
+    'rules.turn.meepleAsCard': false,
+    'rules.turn.slotToll': null,
+    'rules.turn.meepleCapPerColour': 1,
+  },
 });
 
 /** The v31 card-fee game, as `overlays/v31-card-visit.overlay.json` sets it. */
 const control: GameData = loadGameData({
   name: 'v31-card-visit',
   schemaVersion: 1,
-  set: { 'rules.turn.visitCurrency': 'card' },
+  set: {
+    'rules.turn.visitCurrency': 'card',
+    'rules.turn.meepleAsCard': false,
+    'rules.turn.slotToll': null,
+    'rules.turn.meepleCapPerColour': 1,
+  },
 });
 
 /**
@@ -401,8 +417,16 @@ describe('A Helping Hand under the arm (R11)', () => {
  * other side, which is worth keeping for exactly the reason it was written -
  * "the flag is where I think it is" is a claim worth failing on.
  */
-describe('the shipped default is the arm, and the control still reproduces v31', () => {
-  it('the base data IS the meeple loop', () => {
+describe('the shipped default is still the meeple CURRENCY, and the control still reproduces v31', () => {
+  /**
+   * ⚠️ NARROWED ON 05/09/2026. This case used to say "the base data IS the arm",
+   * and it is not any more: the meeple ECONOMY was ruled in on top of the loop,
+   * so the base data carries R15 and R17 as well. What survives, and is what
+   * this case was really pinning, is that the CURRENCY, the starting five and
+   * the one meeple a tile are the shipped setup. The four economy knobs are
+   * asserted in `meeple-as-card.test.ts`, where their subject lives.
+   */
+  it('the base data IS the meeple currency, dealt as R3 deals it', () => {
     expect(BASE_GAME_DATA.rules.turn.visitCurrency).toBe('meeple');
     const s = newGame(BASE_GAME_DATA, { seats: 2, seed: 'shipped' });
     for (const p of s.players) {

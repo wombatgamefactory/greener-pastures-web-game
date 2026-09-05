@@ -181,6 +181,9 @@ export function viewFor(data: GameData, state: GameState, seat: Seat): PlayerVie
     barn[suit] = (barn[suit] ?? 0) + 1;
   }
 
+  // Every card face-up on the table, for the fire-once guard below.
+  const onTable = new Set<CardId>(state.players.flatMap((p) => p.tableau.map((b) => b.card)));
+
   return {
     seat,
     seats: state.seats,
@@ -238,6 +241,18 @@ export function viewFor(data: GameData, state: GameState, seat: Seat): PlayerVie
       ...state.turn,
       bonusUsed: [...state.turn.bonusUsed],
       onceUsed: [...state.turn.onceUsed],
+      // ⛔ FILTERED, NOT COPIED, and the reason is a card that leaves the table
+      // between firing and the view being built. `firedThisTurn` names the cards
+      // whose text has fired this turn; D14 liquidates itself, reaches the
+      // discard, and a reshuffle can put it back into a FACE-DOWN DECK inside
+      // the same turn - at which point the view is naming an id that lives in a
+      // deck, which is exactly what view-safety.test.ts exists to catch. It went
+      // unseen for as long as it did because no random walk had reached that
+      // sequence; the meeple-economy defaults of 05/09/2026 changed the walk and
+      // it fell out at once. Nothing outside the engine reads this list (the UI
+      // constructs an empty one), so filtering costs nothing, and a fired card
+      // still on the table is public information at a real table anyway.
+      firedThisTurn: state.turn.firedThisTurn.filter((id) => onTable.has(id)),
     },
     tasks: state.tasks.map((task) => redactTask(data, task, seat)),
     resume: state.resume,

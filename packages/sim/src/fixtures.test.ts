@@ -44,15 +44,43 @@ const DIR = fileURLToPath(new URL('../fixtures', import.meta.url));
  *
  * A new fixture belongs to the shipped game and needs no marker. Only a log
  * deliberately captured under an arm carries one.
+ *
+ * ⭐ IT HAPPENED A SECOND TIME ON 05/09/2026, which is what turns a special case
+ * into a convention. Dean ruled the meeple ECONOMY in - a meeple pays wherever a
+ * card of its colour would and lands on a neighbour's board - so the `-meeple-
+ * loop-` logs stopped being logs of the shipped game and became logs of an arm
+ * that is still runnable and still worth guarding, exactly as the `-v31-` ones
+ * did the day before. They now replay against `overlays/meeple-loop-v1`. ⚠️ THE
+ * SHIPPED RULES CURRENTLY HAVE NO FIXTURE OF THEIR OWN: the whole-game walks in
+ * `game.test.ts` and `meeple-loop.test.ts` and the `--audit` bench are what
+ * cover them, and a captured R17 game would be worth having.
  */
 const V31_CONTROL = loadGameData({
   name: 'v31-card-visit',
   schemaVersion: 1,
-  set: { 'rules.turn.visitCurrency': 'card' },
+  set: {
+    'rules.turn.visitCurrency': 'card',
+    'rules.turn.meepleAsCard': false,
+    'rules.turn.slotToll': null,
+    'rules.turn.meepleCapPerColour': 1,
+  },
+});
+
+const MEEPLE_LOOP_V1 = loadGameData({
+  name: 'meeple-loop-v1',
+  schemaVersion: 1,
+  set: {
+    'rules.turn.visitCurrency': 'meeple',
+    'rules.turn.meepleAsCard': false,
+    'rules.turn.slotToll': null,
+    'rules.turn.meepleCapPerColour': 1,
+  },
 });
 
 function dataFor(file: string) {
-  return file.includes('-v31-') ? V31_CONTROL : BASE_GAME_DATA;
+  if (file.includes('-v31-')) return V31_CONTROL;
+  if (file.includes('-meeple-loop-')) return MEEPLE_LOOP_V1;
+  return BASE_GAME_DATA;
 }
 
 function fixtures(): { file: string; fixture: Fixture }[] {

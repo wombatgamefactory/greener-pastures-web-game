@@ -19,7 +19,15 @@ import {
 import { growOptions } from '../actions.js';
 import { buildingOf, cardById, player, noticeBoardSlots, thresholdOf } from '../query.js';
 import type { GameState, Move, TaskAnswer } from '../state.js';
-import { buildFor, cardVisitGame, dealTo, loadStack, makeState, visitMove } from '../testkit.js';
+import {
+  buildFor,
+  cardVisitGame,
+  dealTo,
+  loadStack,
+  makeState,
+  noMeeples,
+  visitMove,
+} from '../testkit.js';
 import { handlerFor } from './registry.js';
 
 const WHEAT = 0;
@@ -79,6 +87,10 @@ describe('1. The Meadow Hive (A5) - an activation with no placement', () => {
 
   it('takes a FULL building, which is the whole point of placing nothing', () => {
     const s = base();
+    // ⚠️ CARD-ONLY: a meeple-paid GROW places nothing either (R15, 05/09/2026),
+    // so it takes a full building too and the contrast this case draws - A5's
+    // target set is WIDER than a GROW's - would stop being visible.
+    noMeeples(s);
     buildFor(data, s, APIARY, 'A5', 'A10');
     dealTo(data, s, APIARY, 'A6');
     loadStack(data, s, APIARY, 'A10', 2); // threshold 2: full and clogged
@@ -186,6 +198,9 @@ describe('2. The Bakery (W13) - a Tier 3 GROW whose ability is a whole-farm casc
     // Strip the hand and empty every deck so no action of any kind is legal.
     // Under the ACTION card this state still offered W13 and refused `pass`;
     // now W13 has nothing to pay its GROW with and `pass` is the only move.
+    // ⚠️ The supply is drained for the same reason as the hand: since 05/09/2026
+    // a meeple pays an activation, so "nothing to pay with" has to mean both.
+    noMeeples(s);
     player(s, WHEAT).hand = [];
     for (const suit of data.cards.suits) {
       s.decks[suit] = [];
@@ -750,6 +765,9 @@ describe('the Dairy rebuild: rulings that live between two cards', () => {
    */
   it('D7: no build in the game is payable off stacks alone, so a mixed payment is forced', () => {
     const s = dairyState();
+    // ⚠️ CARD-ONLY: the claim is that no build is payable off STACKS alone, and a
+    // meeple is a third payment source since 05/09/2026 (R15).
+    noMeeples(s);
     buildFor(data, s, DAIRY, 'D7', 'D4');
     // W9 Mill House costs 3, 2 of them wheat. One stack card covers 2 of that
     // and W4 covers the third; both are wheat, so the own-crop minimum is met.
@@ -955,6 +973,9 @@ describe('the Apiary rebuild: rulings that live between two cards', () => {
   /** The target set is WIDER than a GROW's: nothing is being placed, so a clog is irrelevant. */
   it('A12 fires a FULL building, and the stack does not grow', () => {
     const s = apiaryState();
+    // ⚠️ CARD-ONLY, as in the A5 case above: a meeple-paid GROW also ignores the
+    // clog, so the contrast needs the supply empty.
+    noMeeples(s);
     buildFor(data, s, SEAT, 'A12', 'A10', 'A11');
     dealTo(data, s, SEAT, 'A4');
     loadStack(data, s, SEAT, 'A10', 2); // threshold 2: full and clogged

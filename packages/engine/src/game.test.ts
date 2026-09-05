@@ -28,7 +28,15 @@ import { seedRng, rngInt } from './rng.js';
 import { score } from './runtime.js';
 import { freshTurn, islandTilesInPlay, meeplePool } from './setup.js';
 import type { GameEvent, GameState, Move } from './state.js';
-import { buildFor, cardVisitGame, dealTo, deliveredAt, giveMeeples, makeState } from './testkit.js';
+import {
+  buildFor,
+  cardVisitGame,
+  dealTo,
+  deliveredAt,
+  giveMeeples,
+  makeState,
+  noMeeples,
+} from './testkit.js';
 import { redactEvents, viewFor } from './view.js';
 
 const WHEAT = 0;
@@ -370,9 +378,13 @@ describe('main actions through apply', () => {
     const meeple = state.island.tiles.find((t) => t.tile === 'A1')!.meeples[0]!;
     deliveredAt(state, ORCHARD, 'A1'); // so WHEAT takes the second, seeded space
     stockBarn(state, WHEAT, 'wheat', 4);
-    expect(state.players[WHEAT]!.meeples[meeple]).toBe(1);
+    // ⚠️ THE CAP IS 2 SINCE 05/09/2026, ruled in with R17, so the seat has to be
+    // AT it before the island can be refused. It was 1 when this case was
+    // written and the starting five put every seat at the cap for free.
+    giveMeeples(state, WHEAT, meeple, 1);
+    expect(state.players[WHEAT]!.meeples[meeple]).toBe(2);
     const out = apply(data, state, deliverA1({ wheat: 4 }));
-    expect(out.state.players[WHEAT]!.meeples[meeple]).toBe(1); // still one, not two
+    expect(out.state.players[WHEAT]!.meeples[meeple]).toBe(2); // still at the cap, not three
     expect(out.events).toContainEqual({
       e: 'meepleBoxed',
       seat: WHEAT,
@@ -497,6 +509,9 @@ describe('main actions through apply', () => {
 
   it('offers substituted payments as real moves, deduped, and never over-substitutes', () => {
     const s = base();
+    // ⚠️ CARD-ONLY: a meeple pays an island crate since 05/09/2026 (R15), and the
+    // five a seat starts with would multiply the spends this case counts.
+    noMeeples(s);
     stockBarn(s, WHEAT, 'wheat', 3);
     stockBarn(s, WHEAT, 'apiary', 2);
     const spends = deliverOptions(data, s, WHEAT)
@@ -516,6 +531,9 @@ describe('main actions through apply', () => {
       set: { 'island.cardsPerSubstitution': null },
     });
     const s = makeState(strict, ['wheat', 'orchard']);
+    // ⚠️ CARD-ONLY, as above: the substitution is off in this arm, but a meeple
+    // is a payment in its own right and would pay the crate the barn cannot.
+    noMeeples(s);
     stockBarn(s, WHEAT, 'wheat', 3);
     stockBarn(s, WHEAT, 'apiary', 2);
     expect(anyDeliverOption(strict, s, WHEAT)).toBe(false);
@@ -1382,9 +1400,20 @@ describe('full games', () => {
     // Read the level off the island, not off the receipt values: a receipt is
     // now flat (6 first, 3 second) at every tile, so VP alone cannot tell a
     // Level 3 tile apart from any other.
+    //
+    // ⚠️ NARROWED 05/09/2026, and the narrowing is the honest half. This used to
+    // require the walk to have delivered to a LEVEL 3 tile, which was always
+    // incidental to the seed: the policy takes the cheapest tile it can pay,
+    // there is exactly ONE level 3 tile at two seats, and the meeple-economy
+    // defaults changed which tiles come up affordable, so this seeded game now
+    // ends with D1 untouched. The design claim underneath - a level is ART and
+    // never a gate - is not a claim about one walk, so it is pinned as "the
+    // island is climbed above its bottom row" here and as the flat 6/3 receipt
+    // everywhere else.
     expect(
-      state.island.tiles.some((t) => tileLevel(data, t.tile) === 3 && t.deliveredBy.length > 0),
+      state.island.tiles.some((t) => tileLevel(data, t.tile) > 1 && t.deliveredBy.length > 0),
     ).toBe(true);
+    expect(state.island.tiles.some((t) => tileLevel(data, t.tile) === 3)).toBe(true);
     expect(legalMoves(data, state)).toEqual([]);
     expect(score(data, state).ranking).toHaveLength(2);
   });

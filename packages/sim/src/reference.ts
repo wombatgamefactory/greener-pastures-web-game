@@ -684,8 +684,94 @@ export const REFERENCE_V12: ReferenceConfig = {
   seed: 'reference-v12',
 };
 
+/**
+ * `reference-v13` - the meeple ECONOMY as the shipped game (Dean, 05/09/2026).
+ *
+ * The rules moved, the sample did not. Sampling plan, bots, evaluator and
+ * stratification are `reference-v12`'s unchanged; four knobs in
+ * `rules.turn` flipped together and they are one design, R15 plus R17, ruled in
+ * as measured:
+ *
+ *  - `meepleAsCard` **true**: a meeple of a colour pays wherever a card of that
+ *    colour would - build costs including the n-of-suit requirements and the
+ *    2-own-suit Power/Endgame cost, a Grow's activation payment, a delivery
+ *    crate. Not a Sow, not a balloon move (C62).
+ *  - `meepleAsCardGoesTo` **'board'**: and this is the one that matters. The
+ *    meeple is PLACED on another player's Notice Board rather than boxed, and
+ *    the host collects it. It buys the payer nothing else.
+ *  - `slotToll` **1**: a slot is priced, not blocked.
+ *  - `meepleCapPerColour` **2**: and this one arrived as a passenger. Dean ruled
+ *    the cap at ONE on 04/09/2026 against its own sweep, on teach simplicity;
+ *    the amended R4 was built into the handoff v2 arm, carried into R17 and
+ *    ruled in with it. Nobody re-argued the teach cost.
+ *
+ * ⛔ **NO reference-v12 NUMBER SURVIVES THIS BOUNDARY**, and the reason is not
+ * the sample - it is that a meeple now has two uses and the pool recirculates,
+ * so half the metric set is measuring a different quantity under the same name.
+ * `meepleBoxed` in particular has seven sources and no longer means "the cap
+ * refused one".
+ *
+ * WHAT IT WAS RULED IN ON, stated with its costs, because a reference that
+ * flatters its own rules is worse than none. Measured at n=1580 per seat count
+ * with mirrors, 4820 games an arm, on pinned `reference-v11` seeds against both
+ * the v1 loop and the box arm: the bonus slot came level. The rival visit takes
+ * **30.9%** of turns and the largest solitaire line **31.9%**, a gap of ONE
+ * point where v31 read +27.0, the v1 loop +20.9 and the box arm +75.5. The hook
+ * recovered 0.09 to **0.31**, the door mix PASSED at its most even ever
+ * (29/29/23/12/8), and the game got SHORTER, 3p 35.4 to 26.5 rounds. ⚠️ Against
+ * that: 2-player blocked-want tripled to **7.7%** (C65, which reopens C57), the
+ * barn glut DOUBLED to **+1.0** and is the first movement in that number across
+ * four arms (C66), and the suite runs **2.6x slower**.
+ *
+ * ⚠️ **THE BOTS WERE NOT RE-TUNED, AGAIN, AND R17 ADDED A DECISION THEY CANNOT
+ * SEE.** `meepleGain` and `MEEPLE_LATENT` are still set by argument (C50), and
+ * on top of them `MEEPLE_AS_CARD_DOOR_PREMIUM` ships at 0, so a meeple whose
+ * door is live prices the same as one whose door is dead. Worse for R17
+ * specifically: a placement prices at ZERO to the receiver and the same to the
+ * payer whichever host gets it, so **no bot has ever chosen to feed the player
+ * who is behind, or refused to feed the leader** (C64). At a table that choice
+ * is the whole of R17's new decision, and this instrument is blind to it.
+ *
+ * The controls, and there are now three rather than one:
+ * `overlays/meeple-as-card-v1.overlay.json` is R17's own control (the same
+ * rules with the box as the destination), `overlays/meeple-loop-v1.overlay.json`
+ * is the loop before R15, and `overlays/v31-card-visit.overlay.json` is still
+ * the v31 game and now pins four knobs rather than one.
+ */
+export const REFERENCE_V13: ReferenceConfig = {
+  ...REFERENCE_V12,
+  id: 'reference-v13',
+  description:
+    'The meeple ECONOMY as the shipped game (Dean, 05/09/2026). Sampling plan identical to ' +
+    'reference-v9 through v12 - mixed scored profiles one per seat from the run seed, suits ' +
+    'stratified through every legal (player suits + neutral deck) combination and rotated ' +
+    'around the table by game index, 2/3/4 seats. FOUR KNOBS MOVED TOGETHER AS ONE DESIGN, ' +
+    'R15 plus R17: a meeple of a colour PAYS wherever a card of that colour would ' +
+    '(meepleAsCard true) - build costs, a Grow activation, a delivery crate, but never a Sow ' +
+    "and never a balloon move; a meeple spent that way is PLACED ON ANOTHER PLAYER'S NOTICE " +
+    'BOARD rather than boxed (meepleAsCardGoesTo board), in its own colour slot, and the host ' +
+    'collects it, and it buys the payer NOTHING else - no door, not a visit, the bonus slot ' +
+    'untouched; the whole payment goes to ONE chosen host and landing on an occupied slot costs ' +
+    'one FLAT extra meeple to the box; a Notice Board slot is PRICED rather than blocked ' +
+    '(slotToll 1); and the supply cap is TWO per colour (meepleCapPerColour 2), which arrived ' +
+    "as a passenger and overturned Dean's teach-simplicity ruling of 04/09/2026 without " +
+    'anybody re-arguing it. A meeple paid into a Grow places nothing, so it can activate a ' +
+    'building already at its threshold: a priced clog bypass, deliberate. WHAT IT WAS RULED IN ' +
+    'ON: the bonus slot came LEVEL, rival visit 30.9% of turns against the largest solitaire ' +
+    'line 31.9%, where every previous version sat 21 to 75 points apart; the hook recovered to ' +
+    '0.31; the door mix PASSED at 29/29/23/12/8; and the game got SHORTER. WHAT IT COST: ' +
+    '2-player blocked-want tripled to 7.7%, the barn glut doubled to +1.0, and the suite runs ' +
+    "2.6x slower. The bots were NOT re-tuned and are blind to R17's own new decision - who to " +
+    'feed - because a placement prices at zero to the receiver. Three controls: ' +
+    'overlays/meeple-as-card-v1.overlay.json (R17 with the box), ' +
+    'overlays/meeple-loop-v1.overlay.json (the loop before R15) and ' +
+    'overlays/v31-card-visit.overlay.json (the v31 game). ' +
+    'NO NUMBER IN ANY reference-v12 OR EARLIER REPORT IS COMPARABLE.',
+  seed: 'reference-v13',
+};
+
 /** The instrument every current number is defined against. */
-export const REFERENCE = REFERENCE_V12;
+export const REFERENCE = REFERENCE_V13;
 
 /**
  * The noise floor, measured once and quoted constantly.

@@ -40,7 +40,15 @@ import { apply, legalMoves } from '../game.js';
 import { answerTask, gameEndScores, growBuilding, pendingAnswers } from '../runtime.js';
 import { buildingOf, player } from '../query.js';
 import type { GameState, Move, Task, TaskAnswer } from '../state.js';
-import { buildFor, cardVisitGame, dealTo, loadStack, makeState, visitMove } from '../testkit.js';
+import {
+  buildFor,
+  cardVisitGame,
+  dealTo,
+  loadStack,
+  makeState,
+  noMeeples,
+  visitMove,
+} from '../testkit.js';
 import { isHiveCard } from './apiary.js';
 import { handlerFor } from './registry.js';
 
@@ -195,6 +203,10 @@ describe('A2 The Farmstead - the own-crop end-game scorer', () => {
    */
   it('a GROW still needs a matching crop: the suit-wide waiver is long gone', () => {
     const s = base();
+    // ⚠️ CARD-ONLY BY CONSTRUCTION. Since 05/09/2026 a meeple of a colour pays
+    // wherever a card of that colour would, and every seat starts holding one of
+    // each, so the supply would answer the question this case is asking.
+    noMeeples(s);
     buildFor(data, s, APIARY, 'A11'); // activationType 'apiary'
     dealTo(data, s, APIARY, 'W4'); // a wheat card, and nothing else
     expect(legalMoves(data, s).some((m) => m.type === 'grow' && m.building === 'A11')).toBe(false);
@@ -308,6 +320,9 @@ describe('A5 The Meadow Hive - the activation with no placement', () => {
   /** The target set is deliberately WIDER than a GROW's: nothing is being placed. */
   it('a FULL building is a legal target, where a GROW refuses it', () => {
     const s = base();
+    // ⚠️ CARD-ONLY: a meeple-paid GROW places nothing either, so it takes a full
+    // building too (R15) and the contrast this case draws would vanish.
+    noMeeples(s);
     buildFor(data, s, APIARY, 'A5', 'A10');
     dealTo(data, s, APIARY, 'A4');
     loadStack(data, s, APIARY, 'A10', 2); // threshold 2: full and clogged
@@ -356,6 +371,11 @@ describe('A6 The Garden Hive - the crop waiver, and the only place it survives',
 
   it('"another" excludes itself, and a full building drops out - this one places', () => {
     const s = base();
+    // ⚠️ CARD-ONLY, and the consequence is worth naming: A6's nested GROW reaches
+    // the same enumerator as any other, so under the shipped rules a MEEPLE pays
+    // it and the full A11 comes back onto the list - a card-of-any-crop GROW that
+    // places nothing. This case is about the card, so the supply is drained.
+    noMeeples(s);
     buildFor(data, s, APIARY, 'A6', 'A10', 'A11');
     dealTo(data, s, APIARY, 'A4', 'W4');
     loadStack(data, s, APIARY, 'A11', 2); // threshold 2: full
@@ -366,6 +386,10 @@ describe('A6 The Garden Hive - the crop waiver, and the only place it survives',
 
   it('the base Farmstead no longer waives the crop for the whole suit', () => {
     const s = base();
+    // ⚠️ CARD-ONLY BY CONSTRUCTION. Since 05/09/2026 a meeple of a colour pays
+    // wherever a card of that colour would, and every seat starts holding one of
+    // each, so the supply would answer the question this case is asking.
+    noMeeples(s);
     buildFor(data, s, APIARY, 'A10');
     dealTo(data, s, APIARY, 'W4');
     expect(legalMoves(data, s).some((m) => m.type === 'grow' && m.building === 'A10')).toBe(false);
