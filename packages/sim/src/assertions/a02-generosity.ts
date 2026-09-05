@@ -166,6 +166,16 @@ function meepleArm({ pooled }: MeasureContext): Measurement {
   const games = pooled.ended;
   const given = sum(games.map((g) => sum(g.meepleGift.givenBySeat)));
   const received = sum(games.map((g) => sum(g.meepleGift.receivedBySeat)));
+  // ⛔ R17 BROKE THIS RATIO AND THE FIRST RUN PRINTED 328.4%. `given` and
+  // `received` count meeples arriving by a VISIT; `home` counts every meeple
+  // that reached a supply off a board, and since 05/09/2026 a board also
+  // receives meeples spent as CARDS (R17). So the numerator gained a source the
+  // denominator never had. `placed` is that source, and adding it is what makes
+  // the line mean "of every meeple that landed on somebody's board, how many
+  // survived the cap" again - which is the question the assertion was always
+  // asking, now that a board has two inlets instead of one.
+  const placed = sum(games.map((g) => sum(g.meeplesPlacedBySeat)));
+  const landed = received + placed;
   const home = sum(games.map((g) => sum(g.meepleGift.homeBySeat)));
   const toLeader = sum(games.map((g) => sum(g.meepleGift.toLeaderBySeat)));
   // Two different fates for a meeple that never reached its host's supply, and
@@ -185,14 +195,16 @@ function meepleArm({ pooled }: MeasureContext): Measurement {
     value: perGame,
     headline:
       `${num(perGame, 2)} meeples a game are given to a rival's board, ` +
-      `${pct(received === 0 ? NaN : home / received)} of those received survive the cap and ` +
-      `reach the host's supply (${given} given, ${home} kept over ${games.length} games)`,
+      `${pct(landed === 0 ? NaN : home / landed)} of everything that lands on a board survives ` +
+      `the cap and reaches the host's supply (${given} given by visit, ${placed} placed as ` +
+      `payment under R17, ${home} kept over ${games.length} games)`,
     detail: [
       `${pct(given === 0 ? NaN : toLeader / given)} of meeples went to the seat that was ` +
         'already the sole VP leader at that moment',
       `${given} meeples over ${visits} visits, of which ${wild} were WILD PAIRS: a pair is one ` +
         'visit and two meeples, so this line is a component count and never a visit count.',
-      `of ${received} meeples received, ${home} were kept, ${boxedOnCollect} were BOXED by the ` +
+      `of ${landed} meeples landed on a board (${received} by visit, ${placed} as payment), ` +
+      `${home} were kept, ${boxedOnCollect} were BOXED by the ` +
         `supply cap at the moment of collecting, and ${stranded} were still sitting in a slot ` +
         'when the game stopped. The boxed ones are the arm’s sharpest number: the host got the ' +
         'denial - a shut colour - and none of the payment, which is the case that ' +
