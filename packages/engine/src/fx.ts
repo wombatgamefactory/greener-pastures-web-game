@@ -69,11 +69,16 @@ export class Fx {
    * (`doDeliver`), out of the magenta balloon's bag, or off your own Notice
    * Board (`collectBoard` below routes through here).
    *
-   * ⭐ THE SUPPLY CAP IS APPLIED HERE AND NOWHERE ELSE (R4, the meeple-loop
-   * arm). A meeple of a colour the seat is already at the cap on is RETURNED TO
-   * THE BOX and `meepleBoxed` is emitted INSTEAD of `meepleGained`, so the two
-   * events partition every meeple ever offered to a supply and the leak is
-   * countable by source. Returns true when the meeple was kept.
+   * ⭐ THE SUPPLY CAP IS APPLIED HERE AND NOWHERE ELSE (R4). A meeple of a
+   * colour the seat is already at the cap on is RETURNED TO THE BOX and
+   * `meepleBoxed` is emitted INSTEAD of `meepleGained`, so the two events
+   * partition every meeple ever offered to a supply and the leak is countable by
+   * source. Returns true when the meeple was kept.
+   *
+   * ⭐ **THE SHIPPED RULE IS `null`, NO CAP AT ALL (Dean, 05/09/2026)**, so in
+   * the shipped game this branch never fires and every meeple offered is kept.
+   * The code stays because the cap is still one flag away and both the v1 loop
+   * and the v31 control pin a number.
    *
    * ⚠️ THE CAP DOES NOT APPLY UNDER THE `'card'` GAME, whatever
    * `meepleCapPerColour` says. That is not an oversight and not a knob bug: in
@@ -92,7 +97,9 @@ export class Fx {
     const p = player(this.state, seat);
     if (isMeepleCurrency(this.data)) {
       const cap = this.data.rules.turn.meepleCapPerColour;
-      if (p.meeples[colour] >= cap) {
+      // `null` is NO CAP, shipped 05/09/2026: nothing a seat gains is ever
+      // refused, and `meepleBoxed` from this source stops existing.
+      if (cap !== null && p.meeples[colour] >= cap) {
         this.emit({ e: 'meepleBoxed', seat, colour, source });
         return false;
       }

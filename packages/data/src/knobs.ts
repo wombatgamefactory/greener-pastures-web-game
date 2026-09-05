@@ -206,21 +206,30 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
   },
   {
     template: 'rules.turn.meepleCapPerColour',
-    type: 'int',
+    type: 'intOrNull',
     description:
-      "⭐ THE SUPPLY CAP AND THE ANSWER TO PILES (rule R4), read only under 'meeple'. You " +
-      'may never hold more than this many meeples of one colour; a gain over the cap is boxed - ' +
-      'removed from the game - and the engine emits meepleBoxed instead of meepleGained, with ' +
-      "the source ('collect' or 'island') on the event so the loss is countable. It exists " +
-      'because meeples RECIRCULATE under the arm: a spent one moves to the neighbour’s ' +
-      'board and comes back on their Collect, so the supply no longer only shrinks. ' +
-      "⚠️ IT SHIPS AT 2 SINCE 05/09/2026 AND IT GOT THERE AS A PASSENGER. Dean ruled the cap at 1 on " +
-      '04/09/2026 against its own sweep, on teach simplicity; the amended R4 (cap 2) was built into the ' +
-      'handoff v2 arm, carried into R17 and ruled in with it, so the teach argument was never ' +
-      're-answered. Under R17 the cap boxes 1.14 meeples a game against 13.45 under the v1 loop, so it ' +
-      'has largely stopped doing economic work and the case for 1 is now almost purely the teach case. ' +
-      'Sweep it with meeple-on-board-cap-one-v1 and meeple-on-board-cap-three-v1, and read it with ' +
-      'the median supply held in the last third and the boxed count per game.',
+      "⭐ THE SUPPLY CAP (rule R4), read only under 'meeple'. ⭐ IT SHIPS AS null, WHICH IS NO " +
+      "CAP AT ALL (Dean, 05/09/2026: \"let's just remove the cap completely - there is no limit " +
+      'to how many or what colour meeple you can hold"). Nothing a seat gains is ever refused, ' +
+      'and the only things that remove a meeple from the game are the two tolls. A NUMBER is a ' +
+      'ceiling per colour, kept as a knob because both the v1 loop and the v31 control pin one ' +
+      'and because it is the only way to ask what a ceiling was doing. Under a NUMBER you may ' +
+      'never hold more than that many meeples of one colour; a gain over it is boxed - removed ' +
+      'from the game - and the engine emits meepleBoxed instead of meepleGained, with the source ' +
+      "('collect' or 'island') on the event so the loss is countable. " +
+      '⛔ THE HISTORY, BECAUSE IT IS THREE RULINGS IN TWO DAYS AND A FUTURE SESSION WILL ' +
+      'OTHERWISE RE-DERIVE HALF OF IT. 04/09/2026: Dean ruled the cap at ONE against its own ' +
+      'sweep, on teach simplicity. 04/09 evening: the amended R4 set it to 2 inside the handoff ' +
+      'v2 arm as a processing bound. 05/09: R17 was ruled in AS MEASURED and the 2 shipped with ' +
+      'it, as a passenger nobody argued for. 05/09, same day, once that was pointed out: Dean ' +
+      'removed the cap outright. ⭐ WHY IT COSTS ALMOST NOTHING TO REMOVE: under the meeple ' +
+      'economy a resource spend no longer leaves the game, so the cap of 2 was boxing only 1.14 ' +
+      'meeples a game against 13.45 under the v1 loop - it had already stopped doing economic ' +
+      'work, and what was left was a rule a player had to remember. ⚠️ WHAT TO WATCH INSTEAD, ' +
+      'because the anti-pile argument is now unguarded: the median supply held in the last ' +
+      'third, and the branching factor, since every extra meeple in a supply multiplies the ways ' +
+      'to pay for a build. Sweep it with meeple-on-board-cap-one-v1, -cap-two-v1 and ' +
+      '-cap-three-v1.',
   },
   {
     template: 'rules.turn.meepleAsCard',

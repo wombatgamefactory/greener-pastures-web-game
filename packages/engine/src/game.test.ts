@@ -373,23 +373,33 @@ describe('main actions through apply', () => {
    * arriving on Collect rather than here, but the island path has to obey the
    * same ceiling or the cap would be a rule about one source.
    */
-  it('boxes an island meeple of a colour the seat already holds (R4)', () => {
+  /**
+   * ⛔ INVERTED 05/09/2026, AND THE INVERSION IS THE POINT. This case used to
+   * pin the supply cap refusing an island meeple. **There is no cap any more**
+   * (Dean: *"let's just remove the cap completely - there is no limit to how
+   * many or what colour meeple you can hold"*), so the same position now has to
+   * assert the opposite: the meeple is KEPT and nothing is boxed.
+   *
+   * The cap's refusal path is not left uncovered - it is still a knob, both
+   * controls pin a number, and `meeple-loop.test.ts` exercises the boxing from
+   * the board and from the island under the v1 loop's cap of one.
+   */
+  it('keeps an island meeple of a colour the seat already holds: there is no cap (R4)', () => {
     const state = base();
     const meeple = state.island.tiles.find((t) => t.tile === 'A1')!.meeples[0]!;
     deliveredAt(state, ORCHARD, 'A1'); // so WHEAT takes the second, seeded space
     stockBarn(state, WHEAT, 'wheat', 4);
-    // ⚠️ THE CAP IS 2 SINCE 05/09/2026, ruled in with R17, so the seat has to be
-    // AT it before the island can be refused. It was 1 when this case was
-    // written and the starting five put every seat at the cap for free.
     giveMeeples(state, WHEAT, meeple, 1);
     expect(state.players[WHEAT]!.meeples[meeple]).toBe(2);
     const out = apply(data, state, deliverA1({ wheat: 4 }));
-    expect(out.state.players[WHEAT]!.meeples[meeple]).toBe(2); // still at the cap, not three
+    expect(out.state.players[WHEAT]!.meeples[meeple]).toBe(3); // a third, and a fourth would be fine
+    expect(out.events.some((e) => e.e === 'meepleBoxed')).toBe(false);
     expect(out.events).toContainEqual({
-      e: 'meepleBoxed',
+      e: 'meepleGained',
       seat: WHEAT,
       colour: meeple,
-      source: 'island',
+      tile: 'A1',
+      space: 1,
     });
   });
 

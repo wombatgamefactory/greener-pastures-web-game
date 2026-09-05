@@ -1,0 +1,8 @@
+{
+  "name": "meeple-on-board-cap-two-v1",
+  "description": "THE CAP AT TWO under the shipped rules, which is what shipped between the morning and the evening of 05/09/2026 and is the control for removing the cap outright. It arrived as a passenger inside R17's arm and was never argued on its merits; Dean removed the cap the same day once that was pointed out. Kept runnable because the reports taken that afternoon (reports/watchlist-2026-09-05T13-18-28-reference-v13.txt) were measured under it, and an arm that has vanished is worse than one that does nothing.",
+  "schemaVersion": 1,
+  "set": {
+    "rules.turn.meepleCapPerColour": 2
+  }
+}

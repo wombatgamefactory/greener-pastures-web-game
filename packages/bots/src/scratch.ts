@@ -582,13 +582,17 @@ function collectKeepsFor(data: GameData, view: PlayerView): readonly Suit[] {
   if (!slots) return NO_MEEPLES;
   const cap = data.rules.turn.meepleCapPerColour;
   // A running copy of the supply, because the cap is applied meeple by meeple in
-  // the engine and the second of a pair has to see the first one land.
+  // the engine and the second of a pair has to see the first one land. Under the
+  // shipped `null` (no cap) nothing is ever refused and this walk keeps
+  // everything, which is why the loop is not short-circuited: the ORDER it
+  // returns is what the caller prices, and that order must not change with the
+  // cap.
   const held: Partial<Record<Suit, number>> = { ...view.you.meeples };
   const kept: Suit[] = [];
   for (const slot of data.cards.suits) {
     for (const meeple of slots[slot] ?? []) {
       const have = held[meeple] ?? 0;
-      if (have >= cap) continue;
+      if (cap !== null && have >= cap) continue;
       held[meeple] = have + 1;
       kept.push(meeple);
     }

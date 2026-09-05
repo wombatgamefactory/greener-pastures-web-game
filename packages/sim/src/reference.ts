@@ -770,8 +770,84 @@ export const REFERENCE_V13: ReferenceConfig = {
   seed: 'reference-v13',
 };
 
+/**
+ * `reference-v14` - the meeple economy WITHOUT A SUPPLY CAP (Dean, 05/09/2026).
+ *
+ * One knob against `reference-v13`: `rules.turn.meepleCapPerColour` **2 to
+ * null**, which is no cap at all. *"Let's just remove the cap completely -
+ * there is no limit to how many or what colour meeple you can hold."*
+ *
+ * ⛔ **IT IS A RE-CUT AND NOT A SWEEP, because it is the shipped rule.** The
+ * cap moved three times in two days and the middle move was an accident: Dean
+ * ruled ONE on 04/09 on teach simplicity, the amended R4 put TWO inside the
+ * handoff v2 arm as a processing bound, R17 was ruled in as measured on 05/09
+ * and the two shipped as a passenger, and Dean removed the cap outright the same
+ * day once that was pointed out.
+ *
+ * WHAT IT MEASURED, paired at n=4820 against v13's own baseline
+ * (`reports/watchlist-2026-09-05T15-14-10-reference-v13-meeple-no-cap-v1.txt`):
+ *
+ *  - ⭐ **The bonus mix CROSSED THE LINE.** Rival visit **31.3%** of turns
+ *    against the empty-board Collect's **31.1%**, so assertion 17 goes FAIL to
+ *    PASS and the verdict reads **2 PASS / 3 FAIL / 8 OBSERVE**. ⚠️ **Read it
+ *    honestly: 0.2 points is not a win, it is level**, and v13 had no noise
+ *    floor to say otherwise. The design's own solitaire option is still taking
+ *    as many turns as its hook.
+ *  - **Everything else held**: hook 0.31, door mix PASS at 29/28/23/12/8, barn
+ *    glut +1.0 FAIL, actions per turn 1.31, game length unchanged.
+ *  - **The suite got FASTER**, 220.3s against 266.7s.
+ *  - ⭐ **THE ANTI-PILE FEAR IS DEAD, MEASURED.** With no cap at all the largest
+ *    supply any seat reached over twelve 4-seat games was NINE meeples in total,
+ *    never more than THREE of one colour, and the median supply in the last
+ *    third is still 1.0. **The cap of two was sitting just above what players
+ *    actually accumulate**, which is why removing it changed so little.
+ *
+ * ⚠️ **THE ONE COST, AND IT IS AN INSTRUMENT COST RATHER THAN A DESIGN ONE.**
+ * The worst single position at four seats went from 7,586 legal moves to
+ * **888,030**, and it is NOT the meeple payments: it is the end-of-turn hand
+ * limit. A seat reached 27 cards and the discard task enumerates C(27, 20).
+ * Meeples paying for builds means cards stop leaving the hand, so hands grow and
+ * `subsets(hand, excess)` in `tasks.ts` is where it lands. Median, p95 and p99
+ * branching are unchanged, so it is a rare and very expensive tail rather than a
+ * general slowdown - which is why the wall clock still fell. **If the suite ever
+ * needs speed again, that discard is the first place to look, and it is a
+ * pre-existing shape rather than anything the cap did.**
+ *
+ * ⛔ **NO NOISE FLOOR HAS BEEN MEASURED FOR v13 OR v14.** Until
+ * `npm run sim -- --noise --n=1580` has been run there is no published threshold
+ * below which a delta is not a result, and the 0.2-point bonus-mix gap above is
+ * exactly the size of reading that needs one.
+ */
+export const REFERENCE_V14: ReferenceConfig = {
+  ...REFERENCE_V13,
+  id: 'reference-v14',
+  description:
+    'The meeple economy with NO SUPPLY CAP (Dean, 05/09/2026). One knob against reference-v13: ' +
+    'rules.turn.meepleCapPerColour 2 to null, so a seat may hold any number of meeples of any ' +
+    'colour and nothing it gains is ever refused. The only things that remove a meeple from the ' +
+    'game are the two tolls. Everything else is reference-v13: a meeple of a colour pays wherever ' +
+    "a card of that colour would, a meeple spent that way is placed on ONE chosen neighbour's " +
+    'Notice Board rather than boxed, a slot is priced rather than blocked, and the bonus slot is ' +
+    'Visit or Collect. WHAT THE CAP REMOVAL MEASURED: the bonus mix CROSSED THE LINE (rival visit ' +
+    '31.3% of turns against the empty-board Collect 31.1%), so the verdict reads 2 PASS / 3 FAIL / ' +
+    '8 OBSERVE; the hook (0.31), the door mix (29/28/23/12/8), the barn glut (+1.0), actions per ' +
+    'turn (1.31) and game length all held; and the suite got FASTER on the same seeds, 220.3s ' +
+    'against 266.7s. ⚠️ This instrument own baseline reads 342.6s on its own seeds ' +
+    '(reports/watchlist-2026-09-05T15-25-25-reference-v14.txt), and the 1.56x between two runs of ' +
+    'the SAME rules is the machine rather than the game: quote the range, 3.7 to 5.7 minutes. ' +
+    '⚠️ 0.2 points is LEVEL, not a win, and there is no noise floor to say otherwise. ' +
+    '⭐ The anti-pile fear is dead: with no cap the largest supply any seat reached was nine ' +
+    'meeples in total and never more than three of one colour, so the cap of two sat just above ' +
+    'what players actually accumulate. ⚠️ The one cost is an instrument cost: the worst position ' +
+    'at four seats went 7,586 to 888,030 legal moves, and it is the END-OF-TURN DISCARD - a hand ' +
+    'of 27 choosing which 20 to throw - because meeples paying for builds stop cards leaving the ' +
+    'hand. Median, p95 and p99 branching are unchanged. ' +
+    'NO NUMBER IN ANY reference-v13 OR EARLIER REPORT IS COMPARABLE.',
+  seed: 'reference-v14',
+};
+
 /** The instrument every current number is defined against. */
-export const REFERENCE = REFERENCE_V13;
+export const REFERENCE = REFERENCE_V14;
 
 /**
  * The noise floor, measured once and quoted constantly.

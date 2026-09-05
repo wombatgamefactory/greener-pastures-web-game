@@ -159,9 +159,12 @@ export const meepleEconomy: Assertion = {
  * the actual knob here, once, and derive every sentence that depends on it from
  * the same variable so the two can never drift apart again.
  */
-function capLine(data: GameData): { cap: number; full: number } {
+function capLine(data: GameData): { cap: number | null; full: number | null } {
   const cap = data.rules.turn.meepleCapPerColour;
-  return { cap, full: cap * 5 };
+  // `null` is no cap (Dean, 05/09/2026), and there is then no such thing as a
+  // "full supply" to derive: every sentence built on `full` has to say so rather
+  // than print a number nobody can reach.
+  return { cap, full: cap === null ? null : cap * 5 };
 }
 
 /** The shipped v31 game, unchanged since 02/09/2026 and deliberately not re-derived. */
@@ -346,9 +349,14 @@ function meepleArm({ data, pooled }: MeasureContext): Measurement {
       `median supply held: ${num(firstThird, 1)} in the first third -> ${num(lastThird, 1)} in ` +
         `the last (round-boundary medians over the last five rounds: ${series
           .map((v) => num(v, 1))
-          .join(' -> ')}). The cap (R4) is ceiling ${cap} per colour, so ${full} is a full ` +
-        'supply and a line that sits at the ceiling is a seat that cannot spend, not a seat ' +
-        'that is rich.',
+          .join(' -> ')}). ${
+          cap === null
+            ? '⭐ THERE IS NO CAP (Dean, 05/09/2026): a seat may hold any number of any colour, ' +
+              'so there is no ceiling this line can be sitting at and a high figure is a seat ' +
+              'that is not spending rather than a seat that cannot.'
+            : `The cap (R4) is ceiling ${cap} per colour, so ${full} is a full supply and a line ` +
+              'that sits at the ceiling is a seat that cannot spend, not a seat that is rich.'
+        }`,
       `meeples boxed by the CAP ALONE (the v1-comparable figure): ${num(boxed / games.length, 2)} ` +
         `a game, ${boxed} in all. By source: ${[...bySource]
           .filter(([source]) => source === 'collect' || source === 'island' || source === 'balloon')

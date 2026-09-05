@@ -567,12 +567,17 @@ export interface RulesFile {
      * instead of `meepleGained` so the loss is countable by source.
      *
      * It exists because meeples now RECIRCULATE. In v31 a spent meeple left the
-     * game, so the supply could only shrink; under the arm it moves to a
-     * neighbour's board and returns on their Collect, and with no ceiling a seat
-     * could bank a wall of stored actions. Sweep 1 against 2 with the median
-     * supply held in the last third and the boxed-per-game count, never alone.
+     * game, so the supply could only shrink; under the meeple economy it moves to
+     * a neighbour's board and returns on their Collect.
+     *
+     * ⭐ **`null` IS THE SHIPPED RULE SINCE 05/09/2026 AND MEANS NO CAP AT ALL**
+     * (Dean: *"let's just remove the cap completely - there is no limit to how
+     * many or what colour meeple you can hold"*). A number is a ceiling per
+     * colour, kept as a knob because it is the only way to ask what the ceiling
+     * was doing. Read `null` beside the median supply held in the last third and
+     * the meeples-boxed count, which under no cap can only be tolls.
      */
-    readonly meepleCapPerColour: number;
+    readonly meepleCapPerColour: number | null;
     /**
      * ⭐ R15, THE MEEPLE-AS-CARD ARM (Dean, 04/09/2026 evening,
      * docs/meeple-loop-visit-handoff-2026-09-04-v2.md). Read only under

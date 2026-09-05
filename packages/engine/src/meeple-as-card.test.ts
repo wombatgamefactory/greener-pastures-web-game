@@ -293,7 +293,9 @@ describe('the v1 loop - with the knobs off, nothing of v2 exists', () => {
     expect(BASE_GAME_DATA.rules.turn.meepleAsCard).toBe(true);
     expect(BASE_GAME_DATA.rules.turn.meepleAsCardGoesTo).toBe('board');
     expect(BASE_GAME_DATA.rules.turn.slotToll).toBe(1);
-    expect(BASE_GAME_DATA.rules.turn.meepleCapPerColour).toBe(2);
+    // ⭐ null is NO CAP, ruled the same day the cap of two was noticed to have
+    // shipped by accident. A number here would be a ceiling nobody ruled.
+    expect(BASE_GAME_DATA.rules.turn.meepleCapPerColour).toBeNull();
 
     expect(v1.rules.turn.meepleAsCard).toBe(false);
     expect(v1.rules.turn.slotToll).toBeNull();
