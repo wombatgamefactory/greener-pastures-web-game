@@ -63,6 +63,35 @@
  * `meepleAsCard` false, or a toll with `slotToll` null, so the gate is the
  * ACT's own shape rather than a knob read - which is the rule `Scratch.meepleArm`
  * states and the only gate that cannot drift from the rule it stands for.
+ *
+ * ## ⭐ THE COMMONS (09/09/2026) - ONE NEW ACT, AND THE `grow` ANSWER ARRIVES
+ *
+ * `rules.turn.visitCurrency: 'commons'` is the SHIPPED DEFAULT since Dean ruled
+ * it in, and it empties the bonus slot of everything that was in it: no meeple
+ * spend, no Collect, no free Draw 1, no host. What is left is `commons` - play
+ * ONE card from your hand onto one of the five central Notice Boards and take
+ * that board's action (C3).
+ *
+ * ⭐ **IT IS ITS OWN ACT AND NOT A `visit` WITH A NULL HOST**, which is the one
+ * shape decision in this file's commons pass. A visit's whole vocabulary is
+ * about WHOSE board it is - `self`, the toll on an occupied slot, the host who
+ * collects - and none of those has a subject when the board belongs to nobody.
+ * Folding the two would have every visit term learn `host === null` to keep
+ * doing what it already does, and would leave `selfVisit` scoring a game that
+ * cannot self-visit. So the acts are separate and the TERMS claim both, which is
+ * the same trade the meeple arm made in the other direction (one act, two
+ * currencies) and for the same reason: keep the collapse where the arithmetic is
+ * shared and the split where it is not.
+ *
+ * `grow` needs no new act either - a Grow is still a Grow - but the ANSWER
+ * spelling of one is new (the Apiary board's door pushes a `grow` task, C3), so
+ * `actOfAnswer` gains the case that `build` and `deliver` have always had.
+ *
+ * ⚠️ **BOTH CONTROLS ARE UNTOUCHED BY EVERY LINE OF IT.** The engine cannot
+ * enumerate a `commons` move outside `'commons'` and cannot push a `grow` task
+ * outside it either, so the v31 card visit and the meeple economy reduce to
+ * exactly the pre-09/09/2026 arithmetic - which is what the sim's `-v31-` and
+ * `-meeple-` fixtures assert.
  */
 
 import type { Suit } from '@gp/data';
@@ -184,6 +213,26 @@ export type Act =
    * terms and not one.
    */
   | { a: 'collect' }
+  /**
+   * ⭐ **THE WHOLE OF THE BONUS SLOT UNDER THE COMMONS (C3, 09/09/2026):** one
+   * card from your hand onto one of the five central Notice Boards, then that
+   * board's action - wheat Harvest, vegetable Deliver, orchard Draw 2, apiary
+   * GROW, dairy Build. The fee is extra in every case (Dean, 09/09/2026).
+   *
+   * Two fields and no third. `board` is the COLOUR, which is the whole of what
+   * the play buys, and `fee` is the card it costs - never null, because a
+   * commons play with no card is not a move the engine can offer. There is no
+   * `self` and no `toll`: the boards belong to nobody, so there is no solitaire
+   * branch to separate and no occupied slot to price (C4, "never full, never
+   * clogged").
+   *
+   * ⭐ IT IS ON `isProbed`, for the reason every door is: a Harvest board, a
+   * Draw board and a Build board are three completely different moves wearing
+   * one label, and only a rollout can tell them apart. `handSpend` charges the
+   * fee, `visitFeeJunk` orders WHICH card pays it, and `bonusAction` pays the
+   * whole-extra-action premium when the board actually resolves something.
+   */
+  | { a: 'commons'; board: Suit; fee: CardId }
   | { a: 'cardMove'; card: CardId; kind: string; payload: Record<string, unknown> }
   | { a: 'pass' }
   | { a: 'endTurn' }
@@ -278,6 +327,26 @@ function actOfAnswer(answer: TaskAnswer): Act {
         stacks: (answer.stacks ?? []).length,
         meeples: NO_MEEPLES,
       };
+    // ⭐ THE COMMONS APIARY BOARD'S DOOR (C3, 09/09/2026), and the same
+    // collapse `build` and `deliver` above have always had: a Grow bought
+    // through a board is the same act as a Grow played as a move, so it gets the
+    // same shape and `grow`, `growCompletes` and `growSpend` price it without
+    // knowing where it came from.
+    //
+    // ⚠️ `payment` IS NEVER NULL HERE AND `meeples` IS ALWAYS EMPTY, and both
+    // are the engine's shape rather than an omission: the `grow` task takes
+    // card-paid options only (there are no meeples at all under the commons,
+    // C6), so R15's meeple-paid Grow - the priced clog bypass - cannot arrive
+    // down this line. If a mode ever pushes this task with `meepleAsCard` live,
+    // this is the line that has to learn about it, exactly as the `build` answer
+    // above says of its own riders.
+    case 'grow':
+      return {
+        a: 'grow',
+        building: answer.building,
+        payment: answer.payment,
+        meeples: NO_MEEPLES,
+      };
     case 'deliver':
       return { a: 'deliver', tile: answer.tile, spend: answer.spend, meeples: NO_MEEPLES };
     case 'balloon':
@@ -356,6 +425,11 @@ export function actOf(move: Move): Act {
       };
     case 'collect':
       return { a: 'collect' };
+    // ⭐ THE COMMONS PLAY (C3). Nothing is derived and nothing is normalised:
+    // the move already carries the only two things the play IS, and there is no
+    // `host === seat` to read off it because there is no host at all.
+    case 'commons':
+      return { a: 'commons', board: move.board, fee: move.fee };
     case 'pass':
       return { a: 'pass' };
     case 'endTurn':

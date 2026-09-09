@@ -200,6 +200,26 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
     case 'meepleSpent':
       return 0;
 
+    /**
+     * ⭐ **A HARVEST OF A CENTRAL PILE IS PRICED BY WHAT CAME OUT, WHICH IS WHAT
+     * THIS LINE ALREADY DID** (C5, 09/09/2026). `seat` is always the HARVESTER,
+     * whose barn the cards went into, and the price is the count of them - so a
+     * pile taken off the wheat board and a stack taken off a building in this
+     * seat's own tableau are worth the same per card, which is the ruling.
+     *
+     * ⚠️ **`owner` AND `source` ARE DELIBERATELY NOT READ.** `owner` is null for
+     * a central pile and this pricer has no term for whose stack it was: the bot
+     * values what it gains and never rival harm (the file header's standing
+     * rule), so "I took this off the centre" and "I took this off my own Shed"
+     * differ only in the number of cards, which `cards.length` already carries.
+     * The moment a term wants to prefer one source over the other, `source` is
+     * the field it reads and this is the line it changes.
+     *
+     * The unclog leg is the meeple game's and guards itself: `s.noticeBoard` is
+     * the seat's OWN board, which exists only under `'card'` and `'meeple'`
+     * (there is no such thing as your own board under the commons), so under the
+     * shipped default it is null and the term never fires.
+     */
     case 'harvested': {
       if (event.seat !== me) return 0;
       const board = s.noticeBoard;
@@ -495,6 +515,36 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
     case 'boardCollected':
       return 0;
 
+    /**
+     * ⭐ **THE COMMONS PLAY (C3, 09/09/2026), PRICED AT ZERO ON BOTH SIDES OF
+     * THE LEDGER, AND BOTH ZEROES ARE ARGUED.**
+     *
+     * **The fee leaving the hand** is charged exactly once, by the `handSpend`
+     * MOVE term, which claims `'commons'` for the purpose. A commons play is on
+     * `isProbed`, so it is rolled out - charging the card here as well would
+     * double it and the bots would leave the slot unspent, which is one of the
+     * two numbers the whole arm exists to read (Dean's 30-60% band). This is the
+     * same arrangement, for the same reason, that `visited` carries below for
+     * the v31 card fee.
+     *
+     * **The card sitting in the pile is worth 0 to the payer**, and that is a
+     * ruling rather than an oversight. It is not lost - somebody harvests that
+     * pile eventually (C5), and it may well be this seat on this same turn
+     * through the wheat board - but what it is worth THEN arrives as that
+     * harvest's own `harvested` event, priced by what came out. Pricing the card
+     * here as well would pay the seat twice for one card, and pricing it as a
+     * gift to whoever harvests it later would make the bot altruistic, which the
+     * header forbids.
+     *
+     * ⛔ **AND `card` IS NEVER READ.** The pricer reads no card identity, ever
+     * (the file's one rule), so `pileSize` and the board colour are all this
+     * case could legitimately look at, and neither buys anything the door's own
+     * events do not already say. WHICH card to pay is `visitFeeJunk`'s question
+     * and it is answered on the move, in the open, where a junk rank belongs.
+     */
+    case 'commonsPlayed':
+      return 0;
+
     // A door action's worth arrives as that action's own events, so scoring the
     // fact that a door ran would double count. Same for `visited`: the fee is
     // charged by `handSpend` and `visitFeeJunk`, the payoff is the door.
@@ -514,18 +564,21 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
     // The arm makes the visit generous in a way the card fee was not, and that
     // generosity is deliberately invisible here: pricing it would make the bots
     // altruistic, and `a02-generosity` measures what they give away instead.
+    //
+    // ⭐ `meepleplaced` - R17 (05/09/2026): a meeple spent as a card LANDING on
+    // a neighbour's board is priced at ZERO HERE, and deliberately, on exactly
+    // the reasoning `visitToll` already carries. The meeple leaving this seat's
+    // supply is charged once by the `meepleSpend` MOVE term, which claims
+    // 'build' and 'deliver'; charging it again on the event would double it.
+    // What the HOST gains is invisible on purpose - the bot is self-regarding,
+    // and pricing a rival's windfall is what would make it altruistic.
+    // a02-generosity measures the gift instead. (The note sits above the group
+    // rather than on its own case because eslint 10's `no-fallthrough` counts a
+    // comment between two cases as a statement.)
     case 'doorUsed':
     case 'reshuffled':
     case 'cardsDiscarded':
     case 'visited':
-    // ⭐ R17 (05/09/2026): a meeple spent as a card LANDING on a neighbour's
-    // board is priced at ZERO HERE, and deliberately, on exactly the reasoning
-    // `visitToll` already carries. The meeple leaving this seat's supply is
-    // charged once by the `meepleSpend` MOVE term, which claims 'build' and
-    // 'deliver'; charging it again on the event would double it. What the HOST
-    // gains is invisible on purpose - the bot is self-regarding, and pricing a
-    // rival's windfall is what would make it altruistic. a02-generosity
-    // measures the gift instead.
     case 'meepleplaced':
     case 'endTriggered':
     case 'turnEnded':

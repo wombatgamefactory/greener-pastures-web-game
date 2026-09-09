@@ -85,6 +85,40 @@
  * 2.8x on a 12-game smoke sample** - 45 visits against 125 - so sweep it beside
  * `meepleGain` before quoting a hook figure off the R15 arm. Neither constant is
  * overlay-addressable, so sweeping either is an edit and a rebuild.
+ *
+ * ## ⭐ THE COMMONS (09/09/2026): AND AGAIN NOT ONE NUMBER IN THIS FILE MOVES
+ *
+ * `rules.turn.visitCurrency: 'commons'` is the shipped default, so this is the
+ * first of these passes where the discipline is not about protecting an arm - it
+ * is about protecting the CONTROLS. The v31 card visit and the meeple economy
+ * are what every commons delta is read against, and a weight moved in the same
+ * pass would make every one of those deltas a mixture of the rule and the
+ * instrument. Nothing moves.
+ *
+ * What the commons does instead is hand three weights a new subject, at the
+ * number they already carried:
+ *
+ *   - `handSpend` 2.5 charges the fee, exactly as it charged a v31 visit's card.
+ *   - `visitFeeJunk` 0.3 orders which card pays it, which is the fee-suit mix
+ *     the pass asks about ("are players paying junk?").
+ *   - `bonusAction` 2.4 pays the whole-extra-action premium when a board
+ *     resolves something - and the fee is EXTRA in every case (C3), so a
+ *     commons play costs 2.5 and pays 2.4 plus whatever the board did.
+ *
+ * ⛔ **`visit` STAYS AT 0 AND IT IS A TASTE ZERO, NOT AN ABSENCE.** The arm
+ * measures the RULE: Dean's verdict band for the play rate is 30-60% of turns,
+ * and any positive taste here would manufacture traffic inside that band exactly
+ * as `visit: 2` did in ticket 40 (visits taken whose payoff the bot valued at
+ * zero, 70.4% of the time). `clogOwnBoard` 6 and `selfVisit` 0 lose their
+ * subjects entirely with the host and stay at their numbers for the controls.
+ *
+ * ⚠️ **THE TWO PROFILES THAT DO MOVE IT NOW POINT AT THE COMMONS**, because the
+ * `visit` term claims the commons play: `hermit` at -100 never plays a card onto
+ * a board at all, and `socialite` at 8 plays one whenever it can. Under the
+ * commons a hermit therefore leaves the bonus slot UNSPENT rather than taking a
+ * solitaire option with it - there is no solitaire option to take (C9) - which
+ * makes it a cleaner control than it has ever been and a more extreme one. Read
+ * a hermit's game length knowing it is playing a strictly smaller game.
  */
 
 import { TERM_NAMES } from './terms.js';
@@ -320,6 +354,16 @@ export const BALANCED: WeightTable = {
    * taste. What separates them in the bots' eyes is entirely rules-derived:
    * which door the host's suit grants (`outcome`) and whether the fee shuts a
    * board you needed (`clogOwnBoard`).
+   *
+   * ⭐ **AND IT IS THE COMMONS PLAY'S WEIGHT TOO SINCE 09/09/2026, STILL AT A
+   * TASTE ZERO, FOR THE SAME REASON ONE STEP SHARPER.** The pass's headline
+   * reading is the play rate against Dean's 30-60% band, and a band verdict is
+   * the one shape of result a manufactured taste can flip on its own. The arm
+   * measures the RULE: a board is worth what it does in this position
+   * (`outcome`), plus what a whole extra action is worth (`bonusAction`), minus
+   * the card it costs (`handSpend`). Nothing in the reference table likes
+   * playing onto a board for its own sake, and if the slot goes unspent that is
+   * the arithmetic saying so.
    */
   visit: 0,
   selfVisit: 0,
@@ -407,6 +451,16 @@ export const PROFILES: Readonly<Record<string, WeightTable>> = {
    * Hand's standing move WAS a second visit to a neighbour; the v31 card is a
    * bonus-slot modifier that grants Draw 1 AND a placement, and a hermit would
    * happily take it and spend the placement on itself.
+   *
+   * ⭐ **UNDER THE COMMONS THE VETO REACHES THE WHOLE BONUS SLOT AGAIN, AND THE
+   * NARROWING ABOVE HAS NOTHING LEFT TO NARROW** (09/09/2026). The `visit` term
+   * claims the commons play, so -100 refuses to put a card on a central board -
+   * and there is no second option in the slot to fall back on (C9), so a hermit
+   * simply leaves it unspent every turn. That is the cleanest control this
+   * profile has ever been (it is exactly "the game with the bonus slot deleted")
+   * and also the most extreme, because it gives up a whole action a turn rather
+   * than swapping one door for another. ⚠️ Read its game length and its score as
+   * a floor, never as a taste.
    */
   hermit: { visit: -100, visitFeeJunk: 0, visitFeeOwnCrop: 0 },
   /**
@@ -424,6 +478,15 @@ export const PROFILES: Readonly<Record<string, WeightTable>> = {
    * bot that loves its neighbours - and with self-visiting on the same slot,
    * those are no longer the same thing. -3 is a strong dislike rather than a
    * veto: this is a taste, and `hermit` is where the veto lives.
+   *
+   * ⭐ **UNDER THE COMMONS THE 8 POINTS AT A CENTRAL BOARD AND THE -3 HAS NO
+   * SUBJECT** (09/09/2026): there is no host, so there is no self-visit to
+   * dislike, and `selfVisit` never fires. What is left is a bot that pays a card
+   * onto a board whenever one is legal, which is the upper bound on the play
+   * rate the same way `hermit` is the lower - and the pair brackets Dean's
+   * 30-60% band from both sides. The -3 is kept rather than dropped, because the
+   * controls still need it and a weight zeroed "for the default" is a weight
+   * somebody has to put back by hand.
    */
   socialite: { visit: 8, selfVisit: -3 },
   /**

@@ -73,17 +73,30 @@ const MEEPLE_WINDOW: readonly MoveType[] = ['spendMeeple'];
  * ⭐ `collect` JOINS THE BONUS WINDOW BECAUSE IT IS A BONUS OPTION, not because
  * anything measured needs it today.
  *
- * The window only runs under `bonusTiming: 'start'`, and both the shipped game
- * and the meeple-loop arm ship `'end'`, so this list is inert in every arm
- * currently measured. It is completed anyway: the failure it guards against -
- * a big main action closing the slot on its way past, so the report reads "the
- * bonus slot is dead" when it is the bot that is - cost twelve whole games to
- * find once, and a `'start'` sweep under the arm would have hit it again with
- * Collect missing. `spendMeeple` never enumerates under the arm and `collect`
- * never under the control, so each list entry is simply absent where it does not
+ * The window only runs under `bonusTiming: 'start'`, and until 09/09/2026 every
+ * game this package shipped was `'end'`, so this list was inert in every arm
+ * being measured. It was completed anyway: the failure it guards against - a big
+ * main action closing the slot on its way past, so the report reads "the bonus
+ * slot is dead" when it is the bot that is - cost twelve whole games to find
+ * once. `spendMeeple` never enumerates outside the meeple game and `collect`
+ * never outside it either, so each list entry is simply absent where it does not
  * apply.
+ *
+ * ⭐ **AND SINCE THE COMMONS IT IS NOT INERT AT ALL: IT IS THE SHIPPED PATH**
+ * (C2, 09/09/2026). Dean flipped `bonusTiming` to `'start'` - the bonus comes
+ * FIRST, so a turn visibly ends on the main action - which reverses the ruling
+ * of 03/09/2026 and turns this window on by default for the first time. That
+ * makes the insurance load-bearing: under `'start'` the slot shuts the instant
+ * the action is spent, and a bot that took its Deliver first would leave a
+ * `commons` play on the table it had scored above zero. The play rate is the
+ * pass's headline reading against Dean's 30-60% band, so a slot missed by the
+ * bot would read as a rule that nobody wants.
+ *
+ * ⚠️ `commons-bonus-last.overlay.json` is the paired control at `'end'`, where
+ * `windowedPick` returns null and the ordinary argmax takes the bonus after the
+ * main action - the same path both meeple controls and the v31 control take.
  */
-const BONUS_WINDOW: readonly MoveType[] = ['visit', 'bonusDraw', 'collect'];
+const BONUS_WINDOW: readonly MoveType[] = ['visit', 'bonusDraw', 'collect', 'commons'];
 
 /**
  * The scoring loop. One `Scratch` for the whole decision, one `Outcomes` (which

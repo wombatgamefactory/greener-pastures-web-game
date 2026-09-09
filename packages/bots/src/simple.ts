@@ -93,6 +93,19 @@ export const GREEDY_PRIORITY: readonly MoveType[] = [
   'deliver',
   'spendMeeple',
   'visit',
+  // ⭐ THE COMMONS PLAY SITS WITH `visit`, WHICH IS WHAT IT IS (09/09/2026): the
+  // whole of the bonus slot under the shipped default, and the only bonus option
+  // there is (C9). It goes above `bonusDraw` and `collect` on the same judgement
+  // the note above records - a solitaire option must never displace the slot -
+  // though under the commons neither of those two ever enumerates, so the
+  // judgement costs nothing and is stated for the day one of them comes back.
+  //
+  // ⚠️ The move type cannot tell WHICH board a play buys, so greedy takes a
+  // uniform board and a uniform fee. That is a bigger blind spot here than the
+  // wild-spend one it replaces (five boards and a whole hand to choose between),
+  // and it is the same answer: greedy is the regression baseline, it is not in
+  // `BALANCE_PROFILES`, and no arm is measured through it.
+  'commons',
   'bonusDraw',
   // ⭐ COLLECT SITS BELOW `visit` AND BESIDE `bonusDraw`, which is the same
   // judgement in the meeple arm's currency: it is that arm's solitaire half, so
