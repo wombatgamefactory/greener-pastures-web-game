@@ -241,7 +241,15 @@ function commonsMode({ pooled }: MeasureContext): Measurement {
   }
 
   const share = (n: number) => pct(n / turns);
-  const value = plays / turns;
+  // THE VERDICT IS TAKEN ON TURNS THAT USED THE SLOT, not on plays per turn.
+  // Dean's band is "gives you a bonus action 30%-60% of the time", which is a
+  // share of TURNS. A Helping Hand grants a second play (C8), so plays per turn
+  // runs above it - 68.5% against 58.9% on the reference-v15 baseline of
+  // 09/09/2026 - and judging plays per turn would fail a table for owning a card.
+  // Both are printed; only the turn share carries the verdict (corrected
+  // 09/09/2026, after the first baseline was read on the wrong quantity).
+  const value = bonusTurns / turns;
+  const playsPerTurn = plays / turns;
 
   const rows = [...pooled.bySeats]
     .sort((a, b) => a.seats - b.seats)
@@ -252,7 +260,8 @@ function commonsMode({ pooled }: MeasureContext): Measurement {
       return {
         seats: slice.seats,
         turns: t,
-        rate: t === 0 ? NaN : p / t,
+        rate: t === 0 ? NaN : b / t,
+        playsPerTurn: t === 0 ? NaN : p / t,
         unspent: t === 0 ? NaN : Math.max(0, t - b) / t,
       };
     });
@@ -281,18 +290,19 @@ function commonsMode({ pooled }: MeasureContext): Measurement {
   return {
     value,
     headline:
-      `a card is played onto a central board on ${share(plays)} of ${turns} turns ` +
-      `(Dean's band ${pct(PLAY_FLOOR, 0)}-${pct(PLAY_CEILING, 0)}); SLOT UNSPENT ${share(unspent)}` +
+      `the bonus slot is used on ${pct(value)} of ${turns} turns ` +
+      `(Dean's band ${pct(PLAY_FLOOR, 0)}-${pct(PLAY_CEILING, 0)}); plays per turn ${pct(playsPerTurn)} ` +
+      `(A Helping Hand's second play is the difference); SLOT UNSPENT ${share(unspent)}` +
       (outOfBand.length === 0
         ? ''
         : `; OUT OF BAND at ${outOfBand.map((r) => `${r.seats}p ${pct(r.rate)}`).join(', ')}`),
     detail: [
-      `the two-column tally, as a share of every turn played: COMMONS PLAY ${share(plays)}, ` +
-        `SLOT UNSPENT ${share(unspent)}. There is no third column: the slot holds one option ` +
+      `the two-column tally, as a share of every turn played: SLOT USED ${pct(value)} ` +
+        `(${share(plays)} plays per turn), SLOT UNSPENT ${share(unspent)}. There is no third column: the slot holds one option ` +
         '(C9) - no free Draw 1, no Collect, no self-visit - so an unspent slot is a turn that ' +
         'chose not to pay a card, and nothing else.',
-      `by seat count, and THIS is the reading the verdict is taken on: ${rows
-        .map((r) => `${r.seats}p ${pct(r.rate)} of ${r.turns} turns`)
+      `by seat count, and THIS is the reading the verdict is taken on (slot used; plays per turn in brackets): ${rows
+        .map((r) => `${r.seats}p ${pct(r.rate)} (${pct(r.playsPerTurn)}) of ${r.turns} turns`)
         .join('   ')}. The handoff asks the question this way round because a hot 2-player ` +
         'table hides inside a healthy pool.',
       `slot unspent by seat count: ${rows.map((r) => `${r.seats}p ${pct(r.unspent)}`).join('  ')}`,
@@ -314,9 +324,11 @@ function commonsMode({ pooled }: MeasureContext): Measurement {
         'never plays a card a triumphant PASS. The early/late split goes with it for the same ' +
         'reason: it asked whether a solitaire alternative was an opening convenience.',
       '⚠️ A TURN CAN PLAY TWICE. A Helping Hand grants a second play onto a central board (C8), ' +
-        'so plays are counted per PLAY and the share above can exceed the share of turns that ' +
-        'used the slot at all. SLOT UNSPENT is one per turn. The two columns are shares of ' +
-        'TURNS, not slices of a pie, exactly as under the other two modes.',
+        'so PLAYS PER TURN runs above the share of turns that used the slot. The VERDICT is ' +
+        'taken on the turn share (slot used plus slot unspent is every turn); plays per turn ' +
+        'is printed beside it so a Helping Hand cannot fail the band on its own. Corrected ' +
+        '09/09/2026: the first reference-v15 baseline was judged on plays per turn (68.5%) ' +
+        'when the turn share read 58.9%.',
       UNSPENT_CAVEAT,
       '⚠️ AND UNDER THE COMMONS THE UNSPENT COLUMN MEANS SOMETHING SHARPER THAN UNDER EITHER ' +
         'CONTROL: a play COSTS A CARD, so an unspent slot is a seat that declined to pay rather ' +
