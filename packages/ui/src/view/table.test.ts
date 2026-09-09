@@ -29,13 +29,42 @@ import {
 
 /**
  * The v31 card-fee game, as `overlays/v31-card-visit.overlay.json` sets it.
- * Since 04/09/2026 the Notice Board is not a building under the shipped rules,
- * so anything asserting a threshold on one is asserting about the control.
+ * The Notice Board is a building only in this game, so anything asserting a
+ * threshold on one is asserting about the control.
  */
 const control = loadGameData({
   name: 'v31-card-visit',
   schemaVersion: 1,
   set: { 'rules.turn.visitCurrency': 'card' },
+});
+
+/**
+ * ⭐ THE MEEPLE GAME, NAMED RATHER THAN ASSUMED (09/09/2026).
+ *
+ * These assertions were written against `BASE_GAME_DATA` while the meeple loop
+ * WAS the shipped default. Dean ruled the COMMONS in on 09/09/2026
+ * (`docs/commons-handoff-2026-09-09-v1.md`), so the default moved out from under
+ * them and "under the shipped rules" stopped naming the game they are about.
+ * They are about the meeple loop, so they load it: this is
+ * `overlays/meeple-economy-v1.overlay.json`, the arm `reference-v14` was cut
+ * against and the game every UI test of this era was written for.
+ *
+ * ⚠️ ONLY THE LEAVES THAT DECIDE WHETHER A NOTICE BOARD IS A BUILDING ARE
+ * PINNED HERE, because that is all these three cases read. The overlay's other
+ * five leaves (the payment rules, the tolls, the cap) change nothing about a
+ * threshold, and pinning knobs a test does not read is how a control quietly
+ * becomes a different arm.
+ */
+const meeple = loadGameData({
+  name: 'meeple-economy-v1',
+  schemaVersion: 1,
+  set: {
+    'rules.turn.visitCurrency': 'meeple',
+    'rules.turn.meepleAsCard': true,
+    'rules.turn.meepleAsCardGoesTo': 'board',
+    'rules.turn.slotToll': 1,
+    'rules.turn.meepleCapPerColour': null,
+  },
 });
 
 function table(): PlayerView {
@@ -134,21 +163,21 @@ describe('noticeBoardOf', () => {
   });
 
   /**
-   * ⭐ UNDER THE SHIPPED RULES THERE IS NO THRESHOLD TO READ (R5). The board is
+   * ⭐ UNDER THE MEEPLE LOOP THERE IS NO THRESHOLD TO READ (R5). The board is
    * five colour slots and takes no cards at all, so a fill bar over it would be
    * promising a placement the engine refuses - the 26/08/2026 seam bug in its
    * other direction. The DOOR survives untouched, which is the half the rail
    * actually needs: "who should I visit" is still answered off the host's suit.
    */
-  it('reports no threshold at all under the shipped meeple loop, but still the door', () => {
+  it('reports no threshold at all under the meeple economy, but still the door', () => {
     const view = table();
     for (const rival of view.rivals) {
       const farm = farmOf(view, rival.seat);
-      const board = noticeBoardOf(data, farm);
+      const board = noticeBoardOf(meeple, farm);
       expect(board).not.toBeNull();
       expect(board!.threshold).toBe(0);
       expect(board!.full).toBe(false);
-      expect(board!.action).toBe(doorOf(data, farm.suit).action);
+      expect(board!.action).toBe(doorOf(meeple, farm.suit).action);
     }
   });
 
@@ -239,9 +268,17 @@ describe('seatSuits and receiptTotal', () => {
  * for the wrong reason the moment an overlay moved it.
  */
 describe('liveThreshold', () => {
-  it('agrees with the engine on every building on the table, under both currencies', () => {
+  /*
+   * ⭐ ALL THREE CURRENCIES, NAMED (09/09/2026). It used to read "both", meaning
+   * the shipped meeple game and the v31 control; the commons arrived as a third
+   * and `BASE_GAME_DATA` silently became it. The seam is the same claim in every
+   * one of them - the interface may never contradict the engine about what is
+   * legal - so the honest fix is to sweep all three rather than to re-point the
+   * loop at whichever game happens to be shipped.
+   */
+  it('agrees with the engine on every building on the table, under all three currencies', () => {
     const view = table();
-    for (const rules of [data, control]) {
+    for (const rules of [data, meeple, control]) {
       for (const seat of [view.seat, ...view.rivals.map((r) => r.seat)]) {
         for (const b of farmOf(view, seat).tableau) {
           const printed = printedFace(rules, b.card).threshold;
@@ -269,20 +306,24 @@ describe('liveThreshold', () => {
     }
   });
 
-  // And under the shipped rules the override is not applied, it is overruled:
-  // the board has no threshold to override, whatever the knob says.
-  it('nulls the Notice Board outright under the shipped meeple loop', () => {
-    for (const card of data.cards.catalogue.filter((c) => c.slot === 'noticeboard')) {
-      expect(liveThreshold(data, card.id, 99)).toBeNull();
-    }
-    for (const card of data.cards.catalogue.filter((c) => c.slot !== 'noticeboard')) {
-      expect(liveThreshold(data, card.id, 99)).toBe(99);
+  // And in a game where the board is not a building the override is not
+  // applied, it is overruled: there is no threshold to override, whatever the
+  // knob says. True of the meeple loop (R5) and of the commons (C4), and the
+  // commons is `BASE_GAME_DATA` since 09/09/2026 - so both are swept.
+  it('nulls the Notice Board outright under the meeple economy and the commons', () => {
+    for (const rules of [meeple, data]) {
+      for (const card of rules.cards.catalogue.filter((c) => c.slot === 'noticeboard')) {
+        expect(liveThreshold(rules, card.id, 99)).toBeNull();
+      }
+      for (const card of rules.cards.catalogue.filter((c) => c.slot !== 'noticeboard')) {
+        expect(liveThreshold(rules, card.id, 99)).toBe(99);
+      }
     }
   });
 
   it('is what the rail reports, so the fill bar cannot promise a blocked visit', () => {
     const view = table();
-    for (const rules of [data, control]) {
+    for (const rules of [data, meeple, control]) {
       for (const rival of view.rivals) {
         const board = noticeBoardOf(rules, farmOf(view, rival.seat));
         if (board === null) continue;

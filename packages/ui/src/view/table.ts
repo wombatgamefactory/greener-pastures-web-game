@@ -45,10 +45,20 @@ import { printedFace } from './printed';
  * that can never take a card is the 26/08/2026 bug in its other direction - the
  * interface promising a placement the engine refuses - so the null travels here
  * too. A null threshold draws no gauge.
+ *
+ * ⚠️ AND SINCE 09/09/2026 THE TEST IS "IS IT THE CARD GAME", NOT "IS IT THE
+ * MEEPLE GAME". Dean ruled the COMMONS in as the engine default that day, and
+ * under it the five Notice Boards sit in the centre with no threshold at all
+ * (C4) and in nobody's tableau - so the engine's `noticeBoardIsBuilding` reads
+ * `!isMeepleCurrency && !isCommons`, and a UI that had asked only about the
+ * meeple loop would have started drawing "0 / 2" over a central board the
+ * moment anything handed it commons data. `'card'` is the one currency where a
+ * Notice Board is a building, and `overlays/v31-card-visit` - which is what
+ * this package pins itself to - is what exercises it.
  */
 export function liveThreshold(data: GameData, card: CardId, printed: number | null): number | null {
   const isBoard = data.cards.catalogue.find((c) => c.id === card)?.slot === 'noticeboard';
-  if (isBoard && data.rules.turn.visitCurrency === 'meeple') return null;
+  if (isBoard && data.rules.turn.visitCurrency !== 'card') return null;
   if (printed === null) return null;
   const override = data.rules.economy.noticeBoardThreshold;
   if (override === null) return printed;

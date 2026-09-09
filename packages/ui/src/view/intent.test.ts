@@ -31,6 +31,8 @@ import { makePolicy, policyRng } from '@gp/bots';
 
 import {
   MOVE_ROUTES,
+  UNROUTED_MOVES,
+  UNROUTED_TASK_ANSWERS,
   buildCandidates,
   buildComplete,
   clickBalloon,
@@ -167,6 +169,19 @@ function reachable(position: Position, move: Move): boolean {
     // reached under `rules.turn.visitCurrency: 'meeple'`, which no UI position
     // in this suite is built with.
     case 'collect':
+      return false;
+
+    /*
+     * ⛔ THE COMMONS PLAY, ON `UNROUTED_MOVES` (ledger C59, 09/09/2026). There
+     * is no click path and this package does not draw the five central boards,
+     * so `false` is the honest answer.
+     *
+     * ⚠️ AND IT IS SELF-POLICING RATHER THAN A HOLE. If a commons move ever
+     * reaches this corpus - which it can only do if `session/table.ts` stops
+     * pinning the v31 control - the sweep reports it as unreachable and this
+     * file fails. The admission never turns into a hidden exemption.
+     */
+    case 'commons':
       return false;
 
     default:
@@ -342,6 +357,15 @@ function taskReachable(position: Position, move: Move): boolean {
     case 'card':
       // The prompt lists these explicitly; nothing to resolve.
       return moves.includes(move);
+    /*
+     * ⛔ THE COMMONS APIARY DOOR'S GROW, ON `UNROUTED_TASK_ANSWERS` (ledger C59,
+     * 09/09/2026). Two things at once - a building and the card that pays for
+     * it - and the prompt has no shape for that pair, so there is nothing to
+     * click. Self-policing in the same way as `commons` above: a Grow answer in
+     * this corpus fails the sweep rather than passing quietly.
+     */
+    case 'grow':
+      return false;
     default:
       return answer satisfies never;
   }
@@ -434,7 +458,7 @@ describe('every legal move is reachable through the interface', () => {
     expect(tasks.length).toBeGreaterThan(0);
   });
 
-  it('exercises every move type across the corpus, so the coverage means something', () => {
+  it('exercises every move type the interface ROUTES, so the coverage means something', () => {
     const seen = new Set<MoveType>();
     for (const { positions } of tables) {
       for (const position of positions) {
@@ -479,14 +503,71 @@ describe('every legal move is reachable through the interface', () => {
     // this exemption should go with it - an exemption is what hides a genuinely
     // unreachable rule.
     const UNREACHED: readonly MoveType[] = ['pass', 'endTurn', 'cardMove', 'collect'];
-    const missing = MOVE_TYPES.filter((t) => !seen.has(t) && !UNREACHED.includes(t));
+    /*
+     * ⭐ THE REQUIREMENT IS "EVERY MOVE TYPE THE UI ROUTES", NOT "EVERY MOVE
+     * TYPE THE ENGINE HAS" (09/09/2026). The commons became the engine default
+     * that day and this package still plays the v31 control, so a `commons`
+     * move cannot exist in this corpus and never could - asking the corpus for
+     * one would be asking the v31 game to produce a rule it does not have.
+     * `UNROUTED_MOVES` is the one place that admission is written down, and the
+     * drift test below is what stops it becoming a dumping ground.
+     */
+    const routable = MOVE_TYPES.filter((t) => !(UNROUTED_MOVES as readonly MoveType[]).includes(t));
+    const missing = routable.filter((t) => !seen.has(t) && !UNREACHED.includes(t));
     expect(missing).toEqual([]);
+    // The two lists answer different questions - "routed but not sampled" and
+    // "not routed at all" - and an entry on both would hide which one it is.
+    expect(UNREACHED.filter((t) => (UNROUTED_MOVES as readonly MoveType[]).includes(t))).toEqual(
+      [],
+    );
+  });
+
+  /**
+   * The other half of `UNROUTED_TASK_ANSWERS`: the kinds it names must be
+   * genuinely absent from the game this package plays. The day the corpus can
+   * produce one, the admission is wrong and has to be re-argued rather than
+   * quietly relied on.
+   */
+  it('never meets a task answer kind it has admitted it cannot resolve', () => {
+    const met = new Set<string>();
+    for (const { positions } of tables) {
+      for (const position of positions) {
+        for (const move of position.moves) {
+          if (move.type === 'task') met.add(move.answer.kind);
+        }
+      }
+    }
+    expect(UNROUTED_TASK_ANSWERS.filter((kind) => met.has(kind))).toEqual([]);
   });
 });
 
+/**
+ * ⭐ THE DRIFT TEST, AND ITS ALLOW-LIST (09/09/2026). It exists to catch exactly
+ * what happened on the commons flip: the engine grew a move type and the
+ * interface did not. It must not be weakened into "the routes are a subset", so
+ * the property asserted is a PARTITION - every engine move type is routed or
+ * admitted, never both, and nothing is admitted that the engine does not have.
+ * That last clause is what stops the list rotting: an admission for a move type
+ * that has since been deleted, or for one that has since been given a surface,
+ * fails here.
+ */
 describe('the route table cannot drift from the engine', () => {
-  it('routes every move type the engine can offer', () => {
-    expect(Object.keys(MOVE_ROUTES).sort()).toEqual([...MOVE_TYPES].sort());
+  it('routes every move type the engine can offer, or names it unroutable', () => {
+    const routed = Object.keys(MOVE_ROUTES) as MoveType[];
+    const admitted = UNROUTED_MOVES as readonly MoveType[];
+    expect([...routed, ...admitted].sort()).toEqual([...MOVE_TYPES].sort());
+  });
+
+  it('routes nothing it has admitted it cannot route, so the list cannot rot', () => {
+    const routed = new Set(Object.keys(MOVE_ROUTES));
+    for (const type of UNROUTED_MOVES) {
+      expect(routed.has(type)).toBe(false);
+      // And the admission has to name a move type the engine really offers.
+      expect(MOVE_TYPES).toContain(type);
+    }
+    // ⛔ THE ONE ADMISSION THE UI IS ALLOWED TODAY, ledger C59. If this list
+    // grows, the UI debt grew with it and the ledger row is owed an update.
+    expect([...UNROUTED_MOVES]).toEqual(['commons']);
   });
 });
 

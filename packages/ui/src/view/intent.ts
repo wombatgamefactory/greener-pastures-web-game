@@ -659,10 +659,61 @@ export function subsetAdditions(
 // --- anti-rot ---------------------------------------------------------------
 
 /**
+ * ⛔ THE MOVE TYPES THIS INTERFACE KNOWINGLY CANNOT ROUTE (ledger C59, the UI
+ * debt), 09/09/2026.
+ *
+ * `commons` is the whole of the bonus slot under `rules.turn.visitCurrency:
+ * 'commons'`, which Dean ruled in as the engine default on 09/09/2026
+ * (`docs/commons-handoff-2026-09-09-v1.md`, §2.9 leaves the UI out of scope).
+ * There are five central Notice Boards to drag a card onto and this package
+ * draws none of them - it is still pinned to the v31 card-visit control in
+ * `session/table.ts` - so there is no click path to claim and claiming one
+ * would be the lie the pin exists to prevent.
+ *
+ * ⚠️ THIS IS AN ADMISSION, NOT AN EXEMPTION, AND IT IS POLICED IN BOTH
+ * DIRECTIONS. `intent.test.ts` asserts that every engine move type is either in
+ * `MOVE_ROUTES` or on this list, AND that nothing on this list is also routed -
+ * so the list cannot rot into a place where a real route hides. Delete the
+ * entry the moment the commons gets a surface; do not add to it to quieten a
+ * failure.
+ */
+export const UNROUTED_MOVES = ['commons'] as const satisfies readonly MoveType[];
+
+/** A move type this interface admits it cannot offer. See `UNROUTED_MOVES`. */
+export type UnroutedMove = (typeof UNROUTED_MOVES)[number];
+
+/**
+ * ⛔ THE SAME ADMISSION, ONE LEVEL DOWN: TASK ANSWER KINDS THIS INTERFACE
+ * CANNOT RESOLVE (ledger C59), 09/09/2026.
+ *
+ * `grow` is a full Grow action taken mid-effect, and its only producer is the
+ * commons Apiary board's door (C3) - the `apiary` board buys a GROW rather than
+ * the Sow the meeple-era door bought, so `performDoorAction` grew a `grow`
+ * branch and the task chain grew an answer to match. It is unreachable in the
+ * v31 game this package plays, and there is no prompt for it: a Grow answer
+ * names a building AND the card out of hand that pays for it, which is two
+ * clicks the prompt has no shape for.
+ *
+ * ⚠️ POLICED THE SAME WAY. `intent.test.ts` asserts that no position in the
+ * UI's own corpus offers one, so the day this package's data can produce a Grow
+ * task the list fails rather than silently hiding an unclickable rule.
+ */
+export const UNROUTED_TASK_ANSWERS = ['grow'] as const satisfies readonly TaskAnswer['kind'][];
+
+/** A task answer kind this interface admits it cannot resolve. */
+export type UnroutedTaskAnswer = (typeof UNROUTED_TASK_ANSWERS)[number];
+
+/**
  * Where each move type is reached from. Not documentation: `intent.test.ts`
  * checks it against the engine's own `MOVE_TYPES`, so a rules change that adds
  * a move type fails the UI build until someone decides which surface offers it.
  * That is the same chain ticket 28 built for the bots' scoring terms.
+ *
+ * ⚠️ THE `satisfies` IS OVER `Exclude<MoveType, UnroutedMove>` SINCE
+ * 09/09/2026, so it is still exhaustive: a NEW engine move type is a missing
+ * property here and a compile error, exactly as before. The only thing the
+ * allow-list buys is that `commons` may be absent, and it has to be named in
+ * one place to be absent at all.
  */
 export const MOVE_ROUTES = {
   task: 'prompt',
@@ -682,4 +733,4 @@ export const MOVE_ROUTES = {
   collect: 'action-bar',
   pass: 'action-bar',
   endTurn: 'action-bar',
-} satisfies Record<MoveType, string>;
+} satisfies Record<Exclude<MoveType, UnroutedMove>, string>;

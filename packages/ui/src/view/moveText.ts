@@ -121,6 +121,13 @@ export function describeAnswer(data: GameData, answer: TaskAnswer, task?: CardTa
       return 'decline';
     case 'card':
       return describeCardPayload(data, answer.payload, task);
+    // ⛔ THE COMMONS APIARY DOOR'S GROW (C3, 09/09/2026), and this package does
+    // not draw the commons: it is pinned to the v31 card-visit control and the
+    // answer is on `UNROUTED_TASK_ANSWERS` (ledger C59, the UI debt). Spelled as
+    // its own case rather than folded into a `default`, so the next answer kind
+    // the engine adds is a compile error here and not a silent sentence.
+    case 'grow':
+      return `${cardName(data, answer.building)}, paying ${cardName(data, answer.payment)} (the commons Grow: unsupported in this interface, C59)`;
     default:
       return answer satisfies never;
   }
@@ -344,6 +351,20 @@ export function describeMove(data: GameData, view: PlayerView, move: Move): stri
     // TODO(meeple-loop): owned by the ui pass.
     case 'collect':
       return 'Collect: take the meeples off your own Notice Board, then Draw 1.';
+    /*
+     * ⛔ THE COMMONS PLAY (C3), AND THIS INTERFACE CANNOT OFFER ONE (ledger C59,
+     * 09/09/2026). Dean ruled the commons in as the engine default that day and
+     * §2.9 of the handoff leaves the UI out of scope, so `session/table.ts` is
+     * still pinned to the v31 card-visit control and there are no central boards
+     * on the table to drag a card onto. `commons` is on `UNROUTED_MOVES`.
+     *
+     * It still gets a SENTENCE rather than a throw: this function is what the
+     * event feed and the capture panel print, and a capture taken under the
+     * commons would white-screen a reader rather than telling them what it saw.
+     * Naming the board and the fee is honest; claiming a click path would not be.
+     */
+    case 'commons':
+      return `Play ${cardName(data, move.fee)} onto the central ${SUIT_META[move.board].label} board (the commons: unsupported in this interface, C59)`;
     case 'pass':
       return 'Pass';
     case 'endTurn':
@@ -388,6 +409,12 @@ export function describeTask(data: GameData, task: Task): string {
         : `${task.cards.length} card${task.cards.length === 1 ? '' : 's'} heading for the discard: put one in your barn, or let them go.`;
     case 'card':
       return `${cardName(data, task.src)}: choose.`;
+    // ⛔ The commons Apiary door's Grow (C3, 09/09/2026), unreachable in the v31
+    // game this package plays and unresolvable in its prompt - see
+    // `UNROUTED_TASK_ANSWERS` in `intent.ts` and ledger C59. An explicit case,
+    // so a genuinely new task kind still fails the build here.
+    case 'grow':
+      return 'GROW one of your buildings, paying a matching card (the commons Grow: unsupported in this interface, C59).';
     default:
       return task satisfies never;
   }

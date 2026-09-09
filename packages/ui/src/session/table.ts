@@ -70,6 +70,16 @@ import type {
  * the whole point of `liveThreshold`'s seam (26/08/2026) is that the interface
  * may lag the sheet but may never contradict the engine about what is legal.
  *
+ * ⚠️ 09/09/2026, AND THE DEBT IS NOW TWO VERSIONS DEEP. Dean ruled THE COMMONS
+ * in as the engine default (`docs/commons-handoff-2026-09-09-v1.md`, §2.9 leaves
+ * this package out of scope on purpose). So the shipped game is now five
+ * central Notice Boards that belong to nobody, no meeples at all, and a bonus
+ * slot that is one card onto one central pile - and this interface draws
+ * neither that game nor the meeple one. The pin stays; ledger C59 grows by a
+ * version. The encouraging half, recorded so the eventual pass knows it: the
+ * commons is a SIMPLER interface than either meeple version, five piles in the
+ * centre and a card dragged onto one.
+ *
  * ⚠️ DELETE THIS OVERLAY WHEN THE UI PASS LANDS, AND NOT BEFORE. What it owes:
  * five colour slots on the Notice Board with the meeples that sit in them, a
  * visit assembled as (host, colour) with the wild pair as its second shape, a
@@ -87,11 +97,30 @@ export const data: GameData = loadGameData({
   // paying for builds, Grows and crates in an interface with no surface for any
   // of it - which is precisely the "UI that lies about the rules" this overlay
   // exists to prevent. Pinning the whole set is what keeps the pin honest.
+  //
+  // ⚠️ SIX SINCE 09/09/2026, AND THE TWO NEW ONES ARE PASSENGERS OF THE COMMONS
+  // FLIP. That flip moved `bonusTiming` to `'start'` and
+  // `startingMeeplesPerColour` to 0 along with the currency, and
+  // `overlays/v31-card-visit.overlay.json` picked both up the same day. An
+  // unpinned passenger is how this project lost a ruling once already (the
+  // meeple cap, 05/09/2026): without them the browser build would draw a v31
+  // game whose bonus is in the wrong half of the turn and whose supply starts
+  // empty, while calling itself the v31 control.
+  //
+  // ⛔ ONE LEAF THE OVERLAY PINS AND THIS DOES NOT: the Orchard door's printed
+  // draw, which v31 ran at 3 and the shipped data now prints as "Draw 2." An
+  // overlay may never override card TEXT, so pinning 3 here would put a door
+  // that draws three cards under a card face that says two - and this package
+  // RENDERS that face. A rule and its own printed text disagreeing on screen is
+  // the failure mode this whole pin exists to avoid, so the door is left at the
+  // shipped 2 and the divergence is recorded here instead of drawn.
   set: {
     'rules.turn.visitCurrency': 'card',
     'rules.turn.meepleAsCard': false,
     'rules.turn.slotToll': null,
     'rules.turn.meepleCapPerColour': 1,
+    'rules.turn.bonusTiming': 'end',
+    'rules.turn.startingMeeplesPerColour': 1,
   },
 });
 
