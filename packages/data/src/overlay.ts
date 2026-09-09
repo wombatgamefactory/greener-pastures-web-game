@@ -39,18 +39,40 @@ const ACTIVATION_VALUES: ReadonlySet<string> = new Set<string>([...SUITS, 'wild'
  */
 const BONUS_TIMING_VALUES: ReadonlySet<string> = new Set<string>(['start', 'any', 'end']);
 
-/**
- * The closed value set behind `visitCurrency`, kept here for the same reason as
- * `BONUS_TIMING_VALUES`. Two values and no third: the meeple loop is a paired
- * arm against the shipped game, not a ladder.
- */
 /** Who receives a meeple payment (R17). */
 const PAYMENT_HOST_VALUES = new Set(['perMeeple', 'perPayment']);
 
 /** Where a meeple spent as a card ends up (R17). */
 const MEEPLE_DESTINATION_VALUES = new Set(['box', 'board']);
 
-const VISIT_CURRENCY_VALUES: ReadonlySet<string> = new Set<string>(['card', 'meeple']);
+/**
+ * The closed value set behind `visitCurrency`, kept here for the same reason as
+ * `BONUS_TIMING_VALUES`.
+ *
+ * ⭐ THREE VALUES SINCE 09/09/2026 AND IT IS NOT A LADDER: `'commons'` is the
+ * shipped game, `'card'` (v31) and `'meeple'` (the loop and the economy) are
+ * CONTROLS that must stay bit-reproducible. The comment this replaces said
+ * "two values and no third", which is how a closed set drifts - the set is the
+ * one place a fourth game has to be declared, and declaring it here is what
+ * stops it passing validation on one side of the codebase and failing on the
+ * other.
+ */
+const VISIT_CURRENCY_VALUES: ReadonlySet<string> = new Set<string>(['card', 'meeple', 'commons']);
+
+/**
+ * The closed value set behind `doorAction`: what a door may BUY. The five core
+ * actions plus `grow`, which is the commons Apiary board and the only door
+ * action that is not a `WorkerAction` (09/09/2026, C3). Kept here rather than
+ * derived from the type so the sixth value cannot arrive on one side alone.
+ */
+const DOOR_ACTION_VALUES: ReadonlySet<string> = new Set<string>([
+  'harvest',
+  'deliver',
+  'draw',
+  'sow',
+  'build',
+  'grow',
+]);
 
 /** The closed value set behind `balloonReward`, kept here for the same reason. */
 const BALLOON_REWARD_VALUES: ReadonlySet<string> = new Set<string>([
@@ -125,6 +147,8 @@ function typeMatches(type: KnobType, value: Leaf): boolean {
       return typeof value === 'string' && PAYMENT_HOST_VALUES.has(value);
     case 'balloonReward':
       return typeof value === 'string' && BALLOON_REWARD_VALUES.has(value);
+    case 'doorAction':
+      return typeof value === 'string' && DOOR_ACTION_VALUES.has(value);
   }
 }
 

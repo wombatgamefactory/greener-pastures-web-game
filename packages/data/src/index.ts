@@ -31,6 +31,7 @@ import type { Overlay } from './overlay.js';
 import type {
   AerodromeFile,
   CardsFile,
+  DoorAction,
   GameData,
   IslandFile,
   RulesFile,
@@ -125,6 +126,26 @@ export function meepleAction(data: GameData, colour: string) {
 }
 
 /**
+ * ⭐ WHAT A SUIT'S DOOR BUYS IN THE GAME CURRENTLY LOADED, which is not always
+ * `door.action` any more: under the commons the Apiary board buys a GROW
+ * (`workers.roster.sow.actionUnderCommons`, Dean 09/09/2026, C3) where the v31
+ * door and the meeple both bought a SOW.
+ *
+ * One function, so "which action is this door" is answered in one spelling
+ * across the engine, the bots and the sim, exactly as `meepleAction` did for the
+ * meeple. Anything that DISPATCHES on a door's action must come through here;
+ * anything that enumerates the five suit doors as a set may keep reading
+ * `door.action`, because the set is the same five boards either way.
+ *
+ * Undefined if that suit has no door, which cannot happen in the shipped data.
+ */
+export function doorActionForSuit(data: GameData, suit: string): DoorAction | undefined {
+  const door = doorForSuit(data, suit);
+  if (!door) return undefined;
+  return (isCommons(data) ? door.actionUnderCommons : undefined) ?? door.action;
+}
+
+/**
  * Meeples dealt onto the island at setup: one per delivery space, so tiles in
  * play times deliveries per tile times `perDeliverySpace`. Derived rather than
  * stored, because the bag has to be checked against it - at 4 seats this is 24
@@ -145,16 +166,34 @@ export function meeplesDealt(data: GameData, seats: number): number {
  * at all, the bonus slot's second option, the turn-start meeple spend, the
  * supply cap and which island spaces carry a meeple.
  *
- * ⭐ IT DEFAULTS TRUE SINCE 04/09/2026, WHEN DEAN RULED THE MEEPLE LOOP IN. It
- * was written as an arm predicate with `'card'` as the shipped game; the two
- * have swapped, so `'card'` is now the CONTROL at
- * `overlays/v31-card-visit.overlay.json` and a `false` here must reach exactly
- * the code that ran on 03/09/2026. That branch is not dead code and must not be
- * tidied away: it is the baseline every future delta is read against, and the
- * only thing exercising it at scale is that overlay.
+ * ⭐ IT DEFAULTS FALSE AGAIN SINCE 09/09/2026, WHEN DEAN RULED THE COMMONS IN.
+ * It was written as an arm predicate with `'card'` as the shipped game, was the
+ * shipped game itself from 04/09 to 09/09/2026, and is now one of TWO controls -
+ * `overlays/meeple-loop-v1.overlay.json` for the v1 loop and
+ * `overlays/meeple-economy-v1.overlay.json` for the reference-v14 game.
+ *
+ * ⛔ NEITHER THIS BRANCH NOR THE `'card'` ONE IS DEAD CODE, and neither may be
+ * tidied away: they are the baselines every future delta is read against, and
+ * the only things exercising them at scale are those overlays. ⚠️ AND A FALSE
+ * HERE NO LONGER MEANS "the v31 game" - it means "not the meeple game", which
+ * under the shipped default is the commons. Ask `isCommons` when the question is
+ * which game, and this only when the question is meeples.
  */
 export function isMeepleCurrency(data: GameData): boolean {
   return data.rules.turn.visitCurrency === 'meeple';
+}
+
+/**
+ * Is the COMMONS live - the bonus slot of 09/09/2026? Under `'commons'` the five
+ * Notice Boards sit ownerless in the centre of the table, the bonus (taken
+ * FIRST) is to play any one card from hand onto one of them and take that
+ * board's action, Harvest may take any non-empty central pile into the
+ * harvester's barn, and there are no meeples anywhere. The `'card'` (v31) and
+ * `'meeple'` (04-05/09/2026) branches are the controls and must not be tidied
+ * away. See `docs/commons-handoff-2026-09-09-v1.md`.
+ */
+export function isCommons(data: GameData): boolean {
+  return data.rules.turn.visitCurrency === 'commons';
 }
 
 /**
@@ -212,6 +251,14 @@ export function paymentSlotTollOf(data: GameData): number {
  * from the same bag.
  */
 export function meeplesPerTile(data: GameData): number {
+  // ⛔ THE COMMONS SEEDS NONE (09/09/2026, C6). There are no meeples in the game
+  // at all, so this is 0 rather than "the island happens to pay none": the whole
+  // `island.meeples` block is read only under the two controls, and returning 0
+  // here is the single seam that keeps it that way. Answered before the meeple
+  // branch on purpose - `'commons'` is not a meeple currency, but a future
+  // fourth value would fall through to the `'card'` arithmetic below and seed
+  // two a tile without a word of warning.
+  if (isCommons(data)) return 0;
   if (isMeepleCurrency(data)) {
     return data.island.meeples.seededSpaces.filter((i) => i >= 0 && i < deliveriesPerTile(data))
       .length;
@@ -231,6 +278,10 @@ export function meeplesPerTile(data: GameData): number {
  * a nullable one would push the hole into every reader.
  */
 export function meepleIndexForSpace(data: GameData, space: number): number {
+  // -1 everywhere under the commons: no space carries a meeple, which is what
+  // -1 already means to every caller. Without this the `'card'` identity below
+  // would answer "index 0" for a tile that holds nothing.
+  if (isCommons(data)) return -1;
   if (!isMeepleCurrency(data)) return space;
   return data.island.meeples.seededSpaces.indexOf(space);
 }

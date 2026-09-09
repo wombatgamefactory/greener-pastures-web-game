@@ -21,9 +21,12 @@ import {
   deliveriesPerTile,
   deliveryCost,
   deliveryVp,
+  doorActionForSuit,
   doorForSuit,
   expandSweep,
   flatten,
+  isCommons,
+  isMeepleCurrency,
   listKnobs,
   loadGameData,
   meepleAction,
@@ -201,6 +204,92 @@ describe('the turn', () => {
   });
 });
 
+/**
+ * ⭐ THE COMMONS IS THE SHIPPED GAME (Dean, 09/09/2026,
+ * docs/commons-handoff-2026-09-09-v1.md, C1-C10).
+ *
+ * These assertions are the passenger guard. The flip moved four leaves at once -
+ * the currency, the bonus window, the starting meeples and the Orchard door -
+ * and the 05/09/2026 lesson is that an arm which does not PIN what the default
+ * moved silently stops being the arm it is called. So each control is loaded
+ * here as the overlay file loads it and asked which game it is.
+ */
+describe('the commons', () => {
+  it('ships as the default game, with every meeple leaf at its no-subject value', () => {
+    expect(BASE_GAME_DATA.rules.turn.visitCurrency).toBe('commons');
+    expect(isCommons(BASE_GAME_DATA)).toBe(true);
+    expect(isMeepleCurrency(BASE_GAME_DATA)).toBe(false);
+    // C2: the bonus is taken FIRST, reversing the 03/09/2026 ruling.
+    expect(BASE_GAME_DATA.rules.turn.bonusTiming).toBe('start');
+    // C6: no meeples anywhere.
+    expect(BASE_GAME_DATA.rules.turn.startingMeeplesPerColour).toBe(0);
+    expect(BASE_GAME_DATA.rules.turn.meepleAsCard).toBe(false);
+    expect(BASE_GAME_DATA.rules.turn.slotToll).toBeNull();
+    expect(BASE_GAME_DATA.rules.turn.meepleCapPerColour).toBeNull();
+    // C7: the limit stays 7, and it is the simulator's bound rather than a rule.
+    expect(BASE_GAME_DATA.rules.turn.handLimit).toBe(7);
+  });
+
+  // C10. Both off, so the shipped bonus refuses nothing and matches no colour.
+  // They exist so that a bonus reading AUTOMATIC at the table is one number away
+  // rather than a design pass away - which is exactly how the meeple visit died.
+  it('ships both fallback knobs off, and offers both as knobs', () => {
+    expect(BASE_GAME_DATA.rules.economy.commonsThreshold).toBeNull();
+    expect(BASE_GAME_DATA.rules.economy.commonsColourMatch).toBe(false);
+
+    const knobs = listKnobs(BASE_GAME_DATA).map((k) => k.path);
+    expect(knobs).toContain('rules.economy.commonsThreshold');
+    expect(knobs).toContain('rules.economy.commonsColourMatch');
+
+    const capped = loadGameData(overlay({ 'rules.economy.commonsThreshold': 2 }));
+    expect(capped.rules.economy.commonsThreshold).toBe(2);
+    const matched = loadGameData(overlay({ 'rules.economy.commonsColourMatch': true }));
+    expect(matched.rules.economy.commonsColourMatch).toBe(true);
+  });
+
+  // ⚠️ THE CONTROLS ARE THE POINT OF THE FLIP. Neither the v31 nor the meeple
+  // branch may become unreachable, and neither may quietly become the commons.
+  it('leaves both controls reachable, and neither of them is the commons', () => {
+    const v31 = loadGameData(overlay({ 'rules.turn.visitCurrency': 'card' }, 'v31-card-visit'));
+    expect(isCommons(v31)).toBe(false);
+    expect(isMeepleCurrency(v31)).toBe(false);
+
+    const loop = loadGameData(overlay({ 'rules.turn.visitCurrency': 'meeple' }, 'meeple-loop-v1'));
+    expect(isCommons(loop)).toBe(false);
+    expect(isMeepleCurrency(loop)).toBe(true);
+  });
+
+  // C3. The one door whose ACTION the commons changed, carried as a second
+  // printed payload beside `action` so the controls keep their Sow without
+  // pinning a leaf - `action` is not in the registry and could not be pinned.
+  it('buys a GROW at the Apiary board, and a SOW under the controls', () => {
+    expect(doorActionForSuit(BASE_GAME_DATA, 'apiary')).toBe('grow');
+    const loop = loadGameData(overlay({ 'rules.turn.visitCurrency': 'meeple' }, 'meeple-loop-v1'));
+    expect(doorActionForSuit(loop, 'apiary')).toBe('sow');
+    // The other four are the same action in every game.
+    for (const suit of ['wheat', 'vegetable', 'orchard', 'dairy']) {
+      expect(doorActionForSuit(BASE_GAME_DATA, suit), suit).toBe(
+        doorForSuit(BASE_GAME_DATA, suit)?.action,
+      );
+    }
+  });
+
+  it('offers the Apiary door action as a knob, so a Sow arm is one overlay', () => {
+    expect(listKnobs(BASE_GAME_DATA).map((k) => k.path)).toContain(
+      'workers.roster.sow.actionUnderCommons',
+    );
+    const sown = loadGameData(overlay({ 'workers.roster.sow.actionUnderCommons': 'sow' }));
+    expect(doorActionForSuit(sown, 'apiary')).toBe('sow');
+    // A closed set: a door may never buy a word nothing dispatches on.
+    expect(() =>
+      validateOverlay(
+        overlay({ 'workers.roster.sow.actionUnderCommons': 'plough' }),
+        BASE_GAME_DATA,
+      ),
+    ).toThrow(/doorAction/);
+  });
+});
+
 describe('the island', () => {
   // The flat island (2026-08-09): every tile is 2 crates of 2 cards. The
   // RATE-not-total reading of the sheet's quantity label survives from ticket
@@ -276,25 +365,32 @@ describe('the meeples', () => {
   });
 
   /**
-   * 6 / 9 / 12 against a bag of 25, one per TILE rather than one per delivery
-   * space, because the meeple loop is the shipped game (Dean, 04/09/2026) and
-   * `island.meeples.seededSpaces` is `[1]`: the 3 VP second delivery carries the
-   * tile's only meeple and the 6 VP first pays VP alone. A spent meeple now
-   * moves onto a neighbour's board instead of leaving the game, so the island
-   * stopped having to be the whole supply.
+   * ⭐ ZERO UNDER THE SHIPPED COMMONS (Dean, 09/09/2026, C6). There are no
+   * meeples in the game at all - not a bag that pays none, no component - so the
+   * island seeds nothing and the whole `island.meeples` block is read only by
+   * the two controls. This assertion is the seam: if a future edit lets the
+   * commons fall through to either meeple arithmetic it deals meeples onto a
+   * board that has nowhere to put them, and nothing else would notice.
    *
-   * The v31 numbers were 12 / 18 / 24, and they are asserted below off the
-   * control overlay rather than deleted: the 4-seat board drew 24 of 25 there,
-   * which is why its colour mix was near-deterministic and the 2-seat one was
-   * not - see the note in island.json and overlays/meeple-pool-deep-v1.overlay.json.
+   * The two control numbers are asserted below rather than deleted: 6 / 9 / 12
+   * under the meeple loop (one per TILE, on the 3 VP second space) and
+   * 12 / 18 / 24 under v31 (one per delivery SPACE).
    */
-  it('has a bag deep enough for the biggest board', () => {
-    expect(meeplesDealt(BASE_GAME_DATA, 2)).toBe(6);
-    expect(meeplesDealt(BASE_GAME_DATA, 3)).toBe(9);
-    expect(meeplesDealt(BASE_GAME_DATA, 4)).toBe(12);
+  it('seeds no meeple at all under the shipped commons', () => {
+    expect(meeplesDealt(BASE_GAME_DATA, 2)).toBe(0);
+    expect(meeplesDealt(BASE_GAME_DATA, 3)).toBe(0);
+    expect(meeplesDealt(BASE_GAME_DATA, 4)).toBe(0);
+    expect(BASE_GAME_DATA.rules.turn.startingMeeplesPerColour).toBe(0);
+  });
+
+  it('has a bag deep enough for the biggest board under the meeple controls', () => {
+    const loop = loadGameData(overlay({ 'rules.turn.visitCurrency': 'meeple' }, 'meeple-loop'));
+    expect(meeplesDealt(loop, 2)).toBe(6);
+    expect(meeplesDealt(loop, 3)).toBe(9);
+    expect(meeplesDealt(loop, 4)).toBe(12);
     for (const seats of [2, 3, 4]) {
-      expect(meeplesDealt(BASE_GAME_DATA, seats), `${seats} seats`).toBeLessThanOrEqual(
-        BASE_GAME_DATA.island.meeples.poolSize,
+      expect(meeplesDealt(loop, seats), `${seats} seats`).toBeLessThanOrEqual(
+        loop.island.meeples.poolSize,
       );
     }
   });
@@ -354,17 +450,39 @@ describe('the five doors', () => {
     }
   });
 
-  // ⭐ THE ONE EXCEPTION, AND THE REASON IT EXISTS. A visitor pays 1 card, and
-  // the bonus slot's other option is a free Draw of `bonusDraw`. A door that
-  // nets no more than the free option is strictly worse than its own
-  // alternative and takes no traffic. Draw 3 nets +2 against the free +1.
-  it('keeps the Orchard door card-POSITIVE against the free bonus draw', () => {
+  // ⭐ DRAW 2 SINCE 09/09/2026, AND IT IS DEAN'S CHOICE RATHER THAN A
+  // CONSEQUENCE (C3). The commons has no free draw for the door to beat, so the
+  // self-cancellation law has no subject - but a play still costs a CARD, so
+  // Draw 2 nets +1 where every other board hands back a whole action. That is
+  // the thinnest return in the set and it is the one contested door number in
+  // the game; overlays/commons-draw-three.overlay.json is the arm.
+  it('ships the Orchard door as a plain Draw 2', () => {
     const door = BASE_GAME_DATA.workers.roster.find((w) => w.id === 'draw');
-    const fee = 1;
-    const net = (door?.draw?.keep ?? 0) - fee;
-    expect(net).toBeGreaterThan(BASE_GAME_DATA.rules.turn.bonusDraw);
+    expect(door?.draw).toEqual({ see: 2, keep: 2 });
     // See can equal keep (a plain draw); it may never be less.
     expect(door?.draw?.see ?? 0).toBeGreaterThanOrEqual(door?.draw?.keep ?? 0);
+  });
+
+  // The old exception, asserted off the control that still needs it. A v31
+  // visitor pays 1 card and the bonus slot's other option is a free Draw of
+  // `bonusDraw`, so a door netting no more than the free option is strictly
+  // worse than its own alternative and takes no traffic: Draw 3 nets +2 against
+  // the free +1. If the v31 control ever stops pinning this, the Orchard board
+  // dies inside the control and nothing errors.
+  it('keeps the Orchard door card-POSITIVE under the v31 control', () => {
+    const v31 = loadGameData(
+      overlay(
+        {
+          'rules.turn.visitCurrency': 'card',
+          'workers.roster.draw.draw.see': 3,
+          'workers.roster.draw.draw.keep': 3,
+        },
+        'v31-card-visit',
+      ),
+    );
+    const door = v31.workers.roster.find((w) => w.id === 'draw');
+    const fee = 1;
+    expect((door?.draw?.keep ?? 0) - fee).toBeGreaterThan(v31.rules.turn.bonusDraw);
   });
 
   // The other four doors are PLAIN. Every enhancement went in v31, because the

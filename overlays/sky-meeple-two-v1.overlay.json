@@ -1,6 +1,6 @@
 {
   "name": "sky-meeple-two-v1",
-  "description": "The size bracket for Dean's balloon: TWO random meeples on the red balloon rather than one. Two stored actions for a flight is deliberately generous - a flight costs 2 barn cards, so this pays one action per card - and it exists to say whether the idea is weak or merely small.",
+  "description": "⛔ 09/09/2026: NO SUBJECT UNDER THE SHIPPED GAME - 'meepleFromBag' pays a meeple and the commons has none (C6). Pin a meeple control beside it to ask the question. The size bracket for Dean's balloon: TWO random meeples on the red balloon rather than one. Two stored actions for a flight is deliberately generous - a flight costs 2 barn cards, so this pays one action per card - and it exists to say whether the idea is weak or merely small.",
   "schemaVersion": 1,
   "set": {
     "aerodrome.balloons.balloonDraw.reward.type": "meepleFromBag",

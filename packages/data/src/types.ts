@@ -49,20 +49,36 @@ export type StarterSlot = 'barn' | 'farmstead' | 'noticeboard';
 export type BonusTiming = 'start' | 'any' | 'end';
 
 /**
- * ⭐ WHAT A VISIT IS PAID IN. See `rules.turn.visitCurrency`.
+ * ⭐ WHAT A VISIT IS PAID IN, AND WHOSE BOARD IT LANDS ON. See
+ * `rules.turn.visitCurrency`.
  *
- * `'card'` is the shipped v31 game and the DEFAULT: one card from your hand onto
- * any Notice Board, your own included, and that board is an ordinary building
- * with a threshold. `'meeple'` is the meeple-loop arm (Dean, 04/09/2026): one
- * meeple from your supply into the colour slot of a NEIGHBOUR's Notice Board,
- * which is not a building at all, with COLLECT as the other bonus option.
+ * ⭐ `'commons'` IS THE SHIPPED GAME SINCE 09/09/2026 (Dean,
+ * `docs/commons-handoff-2026-09-09-v1.md`). The five Notice Boards sit
+ * OWNERLESS IN THE CENTRE of the table, all five whatever suits are in play, and
+ * the bonus is to play any ONE card from your hand onto one of them and take
+ * that board's action. No colour matching, no threshold, no slots, no meeples
+ * anywhere, and the bonus is taken FIRST (`bonusTiming: 'start'`).
  *
- * It is a PAIRED ARM, so the two are never both true and `'card'` must stay
- * bit-reproducible. Under `'meeple'` the engine ignores `selfVisitAllowed` and
- * `economy.noticeBoardThreshold`, and `bonusDraw` survives only as the number
- * Collect draws.
+ * The other two are the CONTROLS and their branches are not dead code:
+ *
+ *   - `'card'` is the v31 game of 02-04/09/2026: one card from your hand onto
+ *     any Notice Board, your own included, and that board is an ordinary
+ *     building with a threshold
+ *     (`overlays/v31-card-visit.overlay.json`).
+ *   - `'meeple'` is the meeple loop of 04-05/09/2026: one meeple from your
+ *     supply into the colour slot of a NEIGHBOUR's board, which is not a
+ *     building at all, with COLLECT as the other bonus option
+ *     (`overlays/meeple-loop-v1.overlay.json` for the v1 loop,
+ *     `overlays/meeple-economy-v1.overlay.json` for the reference-v14 game).
+ *
+ * All three must stay bit-reproducible: every delta this project has ever
+ * measured is read against one of them on identical seeds. Under `'meeple'` the
+ * engine ignores `selfVisitAllowed` and `economy.noticeBoardThreshold`, and
+ * `bonusDraw` survives only as the number Collect draws; under `'commons'` all
+ * three of those are subjectless, because the slot holds exactly one option and
+ * nobody owns a board.
  */
-export type VisitCurrency = 'card' | 'meeple';
+export type VisitCurrency = 'card' | 'meeple' | 'commons';
 
 /**
  * Trigger keywords detected in the printed text. This is keyword detection, not a
@@ -267,6 +283,20 @@ export interface IslandFile {
 export type WorkerAction = 'harvest' | 'deliver' | 'draw' | 'sow' | 'build';
 
 /**
+ * ⭐ WHAT A DOOR CAN BUY, WHICH IS ONE WIDER THAN THE FIVE CORE ACTIONS SINCE
+ * 09/09/2026: the commons Apiary board buys a GROW, and GROW is not a
+ * `WorkerAction` because no meeple and no v31 door ever bought one.
+ *
+ * It is a SEPARATE type rather than a sixth member of `WorkerAction` on purpose.
+ * `WorkerAction` is the five-door set that the UI's `ACTION_LABEL`, `doorArt`
+ * and `DOOR_ORDER` are exhaustive over, and widening it would silently oblige
+ * every one of those to grow a sixth case for a door that only exists under one
+ * currency. Anything that dispatches on what a door BUYS reads this; anything
+ * that enumerates the five suit doors keeps reading `WorkerAction`.
+ */
+export type DoorAction = WorkerAction | 'grow';
+
+/**
  * One suit's DOOR: the action its Notice Board grants to whoever places a card
  * on it, and the action a meeple of that colour performs when spent. `id` is the
  * action, so every existing "which worker" reference keeps working.
@@ -287,16 +317,51 @@ export interface SuitDoor {
    */
   readonly name: string;
   readonly action: WorkerAction;
+  /**
+   * ⭐ THE SAME DOOR UNDER THE COMMONS (`rules.turn.visitCurrency: 'commons'`),
+   * and a SECOND printed payload rather than an edit to `action` above, exactly
+   * as `drawUnderMeepleCurrency` sits beside `draw`. Absent on four of the five
+   * doors, which keep the one action they have always had.
+   *
+   * Present on the APIARY door alone, at `'grow'` (Dean, 09/09/2026, C3 of
+   * `docs/commons-handoff-2026-09-09-v1.md`): the central Apiary board buys a
+   * plain GROW - pay the building's activation card into its stack, gain the
+   * ability - where the v31 door and the meeple bought a SOW. The board's fee is
+   * extra, and there is no clog bypass, which was the meeple-paid Grow of R15
+   * and went with the meeples.
+   *
+   * ⚠️ IT IS A SECOND PAYLOAD SO THAT THE CONTROLS NEED NO PIN. `action` is not
+   * in the knob registry, so `overlays/v31-card-visit.overlay.json` and
+   * `overlays/meeple-loop-v1.overlay.json` could not pin a Sow back if the
+   * commons had simply overwritten it - the 05/09/2026 passenger lesson arriving
+   * one level down. This key IS a knob
+   * (`workers.roster.{}.actionUnderCommons`), so a "Sow, not Grow" arm under the
+   * commons is one overlay.
+   */
+  readonly actionUnderCommons?: DoorAction;
   readonly actionText: string;
   /** Ownership of the BOARD, not of the meeple: the seat playing this suit owns this door. */
   readonly linkedSuit: Suit;
   /**
-   * ⭐ THE ONE EXCEPTION IN THE SET, AND IT IS LOAD-BEARING. Draw 3, where a
-   * plain door would be Draw 2. A visitor pays 1 card, and the bonus slot's
-   * other option is a free Draw 1 (`rules.turn.bonusDraw`), so a Draw 2 door
-   * nets +1 - exactly what the free option gives for nothing - and would be
-   * strictly worse than its own alternative. Draw 3 nets +2. Tidy it to 2 for
-   * consistency and the Orchard door dies silently.
+   * The Orchard door's size, and the one number in the door set that has ever
+   * been argued over.
+   *
+   * ⭐ 2 / 2 SINCE 09/09/2026 (Dean chose 2 over 3, C3): under the commons the
+   * door is plain like the other four, and Draw 3 is the paired arm at
+   * `overlays/commons-draw-three.overlay.json`. ⚠️ THE ARGUMENT IS NOT SETTLED
+   * BY THAT CHOICE, because the commons puts a FEE back on the bonus: a play
+   * costs one card, so Draw 2 returns 2 for 1 and nets +1 where every other
+   * board hands back a whole action for the same card. That is the thinnest
+   * return in the set, and whether it leaves the Orchard board dead is the
+   * reading `commons-draw-three` exists to take.
+   *
+   * ⛔ 3 / 3 IS THE v31 RULE AND THE CONTROL PINS IT, so this doc keeps the
+   * argument that made it: a visitor paid 1 card, and the bonus slot's other
+   * option was a free Draw 1 (`rules.turn.bonusDraw`), so a Draw 2 door netted
+   * +1 - exactly what the free option gave for nothing - and was strictly worse
+   * than its own alternative. Draw 3 netted +2. That is the self-cancellation
+   * law, and it has no subject in a game with no free draw; if a card price ever
+   * comes back beside a free option, it does.
    */
   readonly draw?: { readonly see: number; readonly keep: number };
   /**
@@ -413,9 +478,28 @@ export interface RulesFile {
      * place - and it is the yardstick every door has to beat. Raising it is the
      * cheapest way to kill all five doors at once, which is why the Orchard door
      * is Draw 3 rather than Draw 2.
+     *
+     * ⛔ IT HAS NO SUBJECT IN THE SHIPPED GAME AND HAS NOT HAD ONE SINCE
+     * 04/09/2026. Under `'meeple'` the standalone free Draw 1 was deleted and
+     * this number survived as what COLLECT draws; under `'commons'`
+     * (09/09/2026) there is no Collect either, so the bonus slot holds exactly
+     * one option and it costs a card (C9). The value stays at 1 because the two
+     * controls read it, not because anything in the shipped game does.
      */
     readonly bonusDraw: number;
     /**
+     * ⭐ 7 IS THE SIMULATOR'S BOUND AND NOT A GAME RULE (Dean, 09/09/2026, C7).
+     * READ THIS BEFORE QUOTING ANY HAND NUMBER MEASURED HERE.
+     *
+     * The table plays with NO hand limit and Dean found that positive. The
+     * engine keeps 7 because the legal-move enumerator cannot cost an
+     * end-of-turn discard without a ceiling - the history below is what happened
+     * the one time it tried - so EVERY REPORT HEADER MUST SAY the limit is the
+     * instrument's and not the game's. Nothing measured under it describes the
+     * hand Dean is playing with. What a future session needs before it can
+     * measure the table's hand is a bot-side discard heuristic in place of the
+     * rule, and nobody has designed one.
+     *
      * ⭐ THE HAND LIMIT, BACK AT A FLAT 12 AND AS ONE GLOBAL RULE (Dean,
      * 02/09/2026, reversing one v31 change on evidence).
      *
@@ -488,9 +572,30 @@ export interface RulesFile {
      * feeding your board clogs it in two turns and shuts your own door.
      * `a08-the-hook` must count self-visits SEPARATELY or it will report a
      * healthy hook while the table plays solitaire. False is the paired control.
+     *
+     * ⛔ DEAD SINCE 04/09/2026 AND NOW DEAD TWICE OVER. The meeple loop made a
+     * self-visit impossible by construction (X5); under the commons NOBODY OWNS
+     * A BOARD, so there is no such thing as visiting yourself and nothing for
+     * the flag to permit. It stays `true` in the data and is read only by the
+     * v31 control, which is the only arm where it means anything.
      */
     readonly selfVisitAllowed: boolean;
     /**
+     * ⭐ 'start' AGAIN SINCE 09/09/2026 (Dean, C2), AND THAT IS A REVERSAL OF
+     * THE 03/09/2026 RULING BELOW, ON HIS OWN CALL. The bonus is taken FIRST
+     * and the turn visibly ends on the main action, which is his reason in full.
+     * `'end'` - the correction described below - is now the paired control at
+     * `overlays/commons-bonus-last.overlay.json`, and
+     * `overlays/bonus-first.overlay.json` became a no-op on the flip and is
+     * retired.
+     *
+     * ⚠️ QUOTE THE TWO RULINGS TOGETHER OR NEITHER. This is a reversal, not a
+     * drift, and the 03/09 reasoning is kept in full below because it is the
+     * argument the control runs on: under `'end'` the action can set the door up
+     * (fill a building, then Harvest it through the Wheat board), which is
+     * exactly the thing `'start'` gives up. Whether that mattered is a
+     * measurement nobody has taken under the commons.
+     *
      * ⭐ THE BONUS WINDOW, THREE-STATE SINCE 03/09/2026 (Dean). Replaces the
      * `bonusAtStartOnly` boolean, which could not express the shipped rule.
      *
@@ -515,6 +620,38 @@ export interface RulesFile {
      */
     readonly bonusTiming: BonusTiming;
     /**
+     * ⭐ WHICH OF THREE GAMES THIS IS. `'commons'` is the shipped game since
+     * 09/09/2026; `'card'` (v31) and `'meeple'` (the loop and the economy) are
+     * the controls. See `VisitCurrency` above for the whole of it.
+     *
+     * ## What `'commons'` changes (Dean, 09/09/2026, C1-C10)
+     *
+     *   - **The boards.** All five Notice Boards are dealt to the CENTRE at
+     *     setup, whatever suits are in play, and nobody owns one. No player has
+     *     a Notice Board: a farm is a Farmstead and a Barn.
+     *   - **The bonus.** Play any ONE card from your hand onto one central board
+     *     and take that board's action. Any card, no colour matching, and the
+     *     fee is EXTRA in every case. Taken FIRST (`bonusTiming: 'start'`).
+     *   - **The Apiary board buys a GROW**, not a Sow
+     *     (`workers.roster.sow.actionUnderCommons`), and the Orchard board is a
+     *     plain Draw 2.
+     *   - **No threshold anywhere in the centre.** A pile takes any number of
+     *     cards, is never full and never clogs; nothing in the game refuses a
+     *     play. The two fallback knobs that could change that -
+     *     `economy.commonsThreshold` and `economy.commonsColourMatch` - both
+     *     ship off.
+     *   - **Harvest reaches the centre.** One of your full buildings OR the
+     *     whole pile from any central board holding at least one card, into your
+     *     barn, including a board you played on this turn (C5).
+     *   - **No meeples anywhere** (C6), so `startingMeeplesPerColour` is 0,
+     *     `meepleAsCard` false, `slotToll` null, `meepleCapPerColour` null and
+     *     the island seeds none.
+     *   - **The slot holds one option** (C9): no free Draw 1, no Collect, no
+     *     self-visit. An unspent slot is a turn that chose not to pay.
+     *
+     * ⭐ WHY: the meeple visit failed at the table. Dean, 09/09/2026 - *"with a
+     * meeple always available the bonus was basically free"*.
+     *
      * ⭐ THE MEEPLE-LOOP ARM, BEHIND ONE KNOB (Dean, 04/09/2026,
      * docs/meeple-loop-visit-handoff-2026-09-04-v1.md). `'card'` is the shipped
      * v31 game and the default; `'meeple'` is the whole redesign of the visit.
@@ -548,6 +685,11 @@ export interface RulesFile {
      * `visitCurrency: 'meeple'`; the `'card'` game starts every supply empty and
      * this key does not reach it.
      *
+     * ⭐ 0 SINCE 09/09/2026, because there are no meeples in the shipped game at
+     * all (C6) - not a supply of none, no component. The meeple controls pin 1,
+     * and they have to: 1 is the loop's ignition and the arm with none reads a
+     * hook of 0.09 against 0.37.
+     *
      * 1 primes the loop before anybody has delivered, so a visit is available on
      * the first turn at every seat. These are NOT drawn from the island bag -
      * five per player plus one per tile is 32 at four seats against a bag of 25,
@@ -558,7 +700,10 @@ export interface RulesFile {
     readonly startingMeeplesPerColour: number;
     /**
      * ⭐ THE SUPPLY CAP (R4), and the answer to piles. Read only under
-     * `visitCurrency: 'meeple'`.
+     * `visitCurrency: 'meeple'`, so SUBJECTLESS in the shipped commons game -
+     * `null` there means "there is nothing to cap", not "the cap was removed".
+     * The two readings arrive at the same value from opposite directions and a
+     * report must say which it means.
      *
      * You may never HOLD more than this many meeples of one colour. A meeple you
      * would gain of a colour you are already at the cap on is returned to the
@@ -583,10 +728,15 @@ export interface RulesFile {
      * docs/meeple-loop-visit-handoff-2026-09-04-v2.md). Read only under
      * `visitCurrency: 'meeple'`.
      *
-     * `false` is the shipped v1 loop, unchanged: a meeple only ever performs
-     * its colour's action through a neighbour's board (R7) and is never a
-     * payment. **THIS IS THE DEFAULT, AND IT MUST STAY BIT-REPRODUCIBLE** -
-     * v1 is the control every handoff-v2 arm is a delta against.
+     * ⚠️ SUBJECTLESS SINCE 09/09/2026 and shipped `false`, because there are no
+     * meeples in the commons. It was `true` and the shipped rule from
+     * 05/09/2026 to 09/09/2026; `overlays/meeple-economy-v1.overlay.json` is
+     * that game and turns it back on.
+     *
+     * `false` is the v1 loop: a meeple only ever performs its colour's action
+     * through a neighbour's board (R7) and is never a payment. **IT MUST STAY
+     * BIT-REPRODUCIBLE** - v1 is the control every handoff-v2 arm is a delta
+     * against.
      *
      * `true` lets a meeple of a colour stand in for a card of that colour
      * anywhere a rule asks you to pay or spend one: build costs, including the
@@ -609,10 +759,13 @@ export interface RulesFile {
      * docs/meeple-loop-visit-handoff-2026-09-04-v2.md). Read only under
      * `visitCurrency: 'meeple'`.
      *
-     * `null` is the v1 rule, unchanged: a slot holding any meeple is BLOCKED
-     * and refuses that colour outright until the owner Collects. **THIS IS
-     * THE DEFAULT, AND IT MUST STAY BIT-REPRODUCIBLE** for the same reason as
-     * `meepleAsCard` above.
+     * ⚠️ SUBJECTLESS SINCE 09/09/2026 and shipped `null`: a central board has no
+     * slots, so nothing in the commons is ever priced or refused (C4). It was 1
+     * and the shipped rule from 05/09/2026 to 09/09/2026.
+     *
+     * `null` is the v1 rule: a slot holding any meeple is BLOCKED and refuses
+     * that colour outright until the owner Collects. **IT MUST STAY
+     * BIT-REPRODUCIBLE** for the same reason as `meepleAsCard` above.
      *
      * A number `n` turns the block into a price. Nothing is ever refused:
      * visiting a slot that already holds `k` meeples costs `n * k` EXTRA
@@ -631,8 +784,15 @@ export interface RulesFile {
      * ⭐ R17, WHERE A MEEPLE SPENT AS A CARD GOES (Dean, 05/09/2026). Read
      * only under `meepleAsCard: true`.
      *
-     * `'box'` is the handoff v2 arm and **it is the default, so it must stay
-     * bit-reproducible**: a meeple spent as a card leaves the game.
+     * ⚠️ SUBJECTLESS SINCE 09/09/2026, and left at `'board'` rather than reset:
+     * with `meepleAsCard` false nothing reads it, and leaving it means
+     * `overlays/meeple-economy-v1.overlay.json` reproduces the reference-v14
+     * game without having to pin it. `'board'` has been the ruled answer since
+     * 05/09/2026 (R17) and this doc's claim that `'box'` is the default is kept
+     * below only as the record of the arm it was written for.
+     *
+     * `'box'` is the handoff v2 arm and **must stay bit-reproducible**: a meeple
+     * spent as a card leaves the game.
      *
      * `'board'` closes that drain. The meeple is PLACED ON ANOTHER PLAYER'S
      * NOTICE BOARD, in its own colour's slot, exactly as a visit places one,
@@ -663,8 +823,13 @@ export interface RulesFile {
      * WHO RECEIVES A MEEPLE PAYMENT (R17), read only under
      * `meepleAsCardGoesTo: 'board'`.
      *
-     * `'perMeeple'` is Dean's ruling of 05/09/2026 and the default: a host is
-     * chosen for EACH meeple, so one payment may feed several neighbours.
+     * ⚠️ SUBJECTLESS SINCE 09/09/2026, and left at `'perPayment'` for the same
+     * reason as `meepleAsCardGoesTo` above: it is the ruled answer of
+     * 05/09/2026, so the meeple-economy control needs no pin for it.
+     *
+     * `'perMeeple'` was Dean's first ruling of 05/09/2026 and he ruled it back
+     * the same day on the branching factor: a host is chosen for EACH meeple, so
+     * one payment may feed several neighbours.
      *
      * ⚠️ IT IS ALSO THE BRANCHING FACTOR OF THE WHOLE ARM. A host per
      * meeple multiplies the build enumerator by roughly hosts^meeples: measured
@@ -693,8 +858,57 @@ export interface RulesFile {
      * turn boundaries, t=3 5%, t=2 11%, with the spread most even at 2. In v31
      * it throttles self-visit traffic as well, so 2 is doing more work than any
      * arm has yet measured. Never raise it without re-running the suite.
+     *
+     * ⛔ READ ONLY BY THE v31 CONTROL SINCE 04/09/2026. Under `'meeple'` the
+     * Notice Board is not a building; under `'commons'` a central board has no
+     * threshold at all (C4). Clog as a denial tool has had no subject in the
+     * shipped game for two versions running.
      */
     readonly noticeBoardThreshold: number | null;
+    /**
+     * ⭐ THE FIRST FALLBACK KNOB OF THE COMMONS (Dean, 09/09/2026, C10). Read
+     * only under `visitCurrency: 'commons'`.
+     *
+     * `null` IS THE SHIPPED RULE AND MEANS NO CAP: a central pile takes any
+     * number of cards, is never full and never clogs, and NOTHING IN THE GAME
+     * REFUSES A PLAY. A number `n` refuses a play onto a board already holding
+     * `n` cards, which makes this the only rule in the commons that can refuse
+     * anything - so turning it on is a real change to C4 and not a tuning.
+     *
+     * WHY IT EXISTS UNRUN. The failure mode the commons is most likely to have
+     * is the one the meeple visit died of: the bonus reading AUTOMATIC. A meeple
+     * visit at least needed a meeple; a card play needs a card, and a hand
+     * almost always has one. Dean's band is that the bonus should be played on
+     * 30% to 60% of turns, so if `a17` reads above 60% - at two players first -
+     * this is the number that answers it without redesigning the slot.
+     * `overlays/commons-threshold-2.overlay.json` is the arm.
+     *
+     * ⚠️ IT IS NOT THE v31 CLOG COMING BACK. A full central board shuts one of
+     * five boards to EVERYBODY including the player who filled it, and any
+     * player may empty it with a Harvest, which is the opposite of a board its
+     * owner sat on to deny the table.
+     */
+    readonly commonsThreshold: number | null;
+    /**
+     * ⭐ THE SECOND FALLBACK KNOB OF THE COMMONS (Dean, 09/09/2026, C10). Read
+     * only under `visitCurrency: 'commons'`.
+     *
+     * `false` IS THE SHIPPED RULE: any card from your hand pays for any board.
+     * `true` demands the card MATCH the board's suit, with two cards of any
+     * suits standing in for one of the board's colour - the island's wild
+     * substitution rate, reused rather than re-rated (D5).
+     *
+     * It is the other half of the same worry as `commonsThreshold`, and it
+     * prices the bonus differently: a threshold rations HOW OFTEN the centre can
+     * be used, colour matching rations WHICH BOARD a given hand can afford. That
+     * makes it the one to reach for if the bonus rate is fine but the DOOR MIX
+     * is not - a hand of Wheat can buy any board today, so the mix is a taste
+     * rather than a constraint. ⚠️ It also pushes hard against the monoculture
+     * finding (v31 risk 3): under matching, an own-suit hand can only ever
+     * afford its own board. `overlays/commons-colour-match-v1.overlay.json` is
+     * the arm.
+     */
+    readonly commonsColourMatch: boolean;
   };
   readonly endGame: {
     /**
