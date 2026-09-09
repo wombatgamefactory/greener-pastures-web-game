@@ -14,7 +14,7 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import { isMeepleCurrency } from '@gp/data';
+import { isCommons, isMeepleCurrency } from '@gp/data';
 import { ENGINE_VERSION, RULES_EDITION } from '@gp/engine';
 import { LADDER, POLICY_IDS } from '@gp/bots';
 
@@ -60,6 +60,36 @@ export function renderReport(input: ReportInput): string {
   return `${out.join('\n')}\n`;
 }
 
+/**
+ * ⭐ THE HAND-LIMIT SENTENCE, PRINTED IN EVERY HEADER SINCE 09/09/2026 (C7).
+ *
+ * **The table plays with NO hand limit and found that positive.** The engine
+ * keeps 7 anyway, because the simulator cannot enumerate an unbounded hand: the
+ * end-of-turn discard is `subsets(hand, excess)`, and `reference-v14` measured a
+ * single 4-seat position at **888,030 legal moves** on a hand of 27 choosing
+ * which 20 to throw. So the number is an INSTRUMENT BOUND and not a rule of the
+ * game, and it goes in the header rather than in a footnote because a reader who
+ * takes a hand-size reading off this report and quotes it at a table is quoting
+ * the simulator's constraint back at the design.
+ *
+ * ⚠️ It prints under every mode, not only the commons, and it names the
+ * value it actually finds rather than a hard-coded 7 - the hand-limit overlays
+ * (`overlays/hand-limit-*.overlay.json`) are still meaningful and still run.
+ * `null` is the no-limit tree, which is the table's own rule and is unrunnable at
+ * reference scale; the header says so rather than printing a blank.
+ */
+function handLimitNote(limit: number | null): string {
+  return limit === null
+    ? 'hand limit  NONE - the no-limit tree, which is the rule the TABLE plays by. It is ' +
+        'unrunnable at reference\n            scale (see rules.turn.handLimit and the 888,030-move ' +
+        'position reference-v14 measured).'
+    : `hand limit  ${limit}, AND IT IS THE SIMULATOR'S BOUND RATHER THAN A RULE OF THE GAME ` +
+        `(C7, 09/09/2026).\n            The table plays with NO hand limit and found that ` +
+        `positive; the engine keeps ${limit} only because an\n            unbounded hand cannot be ` +
+        `enumerated. ANY READING ABOUT HAND SIZE BELOW IS A READING\n            ABOUT THE ` +
+        `INSTRUMENT, not about the design.`;
+}
+
 function header({ result, pooled, overlayName, mirrorGames }: ReportInput): string[] {
   const { reference, plan, games, wallMs } = result;
   const perSeat = pooled.bySeats
@@ -81,6 +111,7 @@ function header({ result, pooled, overlayName, mirrorGames }: ReportInput): stri
       `${result.workers === 1 ? '1 thread, inline' : `${result.workers} threads`})`,
     ...costNote(games.length / (wallMs / 1000), mirrorGames, result.workers),
     `engine      ${ENGINE_VERSION}, rules ${RULES_EDITION}, ${result.data.cards.catalogue.length} cards, ${POLICY_IDS.length} bots`,
+    handLimitNote(result.data.rules.turn.handLimit),
     '',
     'Every number below is defined against this reference and is meaningless without it.',
     ...boundaryBanner(reference.id),
@@ -95,10 +126,15 @@ function header({ result, pooled, overlayName, mirrorGames }: ReportInput): stri
  * reader opening this file beside an older one and diffing two numbers that
  * were never measuring the same game.
  *
- * It fires on reference-v10 and only on v10. When v11 is cut, this block moves
- * with it or goes: a permanent banner is a banner nobody reads.
+ * ⭐ IT MOVED TO reference-v15 ON 09/09/2026, and the file's own instruction is
+ * why: "it fires on reference-v10 and only on v10 - when v11 is cut, this block
+ * moves with it or goes, because a permanent banner is a banner nobody reads."
+ * It was left pointing at v10 through v11, v12, v13 and v14, which meant four
+ * re-cuts shipped with no banner at all. It fires on the CURRENT reference and
+ * on nothing else; when v16 is cut it moves again or it goes.
  */
 function boundaryBanner(id: string): string[] {
+  if (id === 'reference-v15') return commonsBanner();
   if (id !== 'reference-v10') return [];
   return [
     '',
@@ -127,6 +163,40 @@ function boundaryBanner(id: string): string[] {
     '    THE NOISE FLOOR HAS NOT BEEN RE-MEASURED FOR THIS INSTRUMENT unless the footer below',
     '    says otherwise, and the v9 floor was NOT carried over - three of its eleven metrics no',
     '    longer exist under their old names.',
+  ];
+}
+
+/** The commons boundary (09/09/2026), and it is the largest one since v31. */
+function commonsBanner(): string[] {
+  return [
+    '',
+    '*** reference-v15: NO NUMBER IN ANY reference-v14 OR EARLIER REPORT IS COMPARABLE. ***',
+    '',
+    '    THE COMMONS (Dean, 09/09/2026). The five Notice Boards stand OWNERLESS in the CENTRE of',
+    '    the table, all five whatever suits are in play, each with a public face-up pile. No',
+    '    player has a Notice Board; a farm is a Farmstead and a Barn.',
+    '',
+    '    The bonus slot holds ONE option and it comes FIRST, before the main action: play one',
+    '    card from your hand onto one central board and take that board action - wheat Harvest,',
+    '    vegetable Deliver, orchard Draw 2, apiary GROW, dairy Build. Any card, no colour',
+    '    matching, fee extra. A central board has no threshold and can never clog, so NOTHING IN',
+    '    THE GAME REFUSES A PLAY. A Harvest may take the whole pile off any central board,',
+    '    including one you fed this very turn.',
+    '',
+    '    THERE ARE NO MEEPLES AT ALL: no starting five, no island seed, no spend, no Collect and',
+    '    no supply. THE BONUS COMES FIRST, which REVERSES the ruling of 03/09/2026 on Dean own',
+    '    call - so reference-v11, which was cut FOR that ruling, and this one are each correct',
+    '    about their own game and neither may be quoted at the other.',
+    '',
+    '    WHAT MOVED IN THE SUITE, so a reader knows why a familiar line is missing: a08-the-hook',
+    '    has NO SUBJECT (there is no neighbour to visit), the new a18-commons-traffic carries the',
+    '    interaction readings with no fail condition in this pass, a17-bonus-mix carries DEAN',
+    '    BAND of 30%-60% instead of the solitaire law, and a02, a04, a05 and a15 report no',
+    '    subject. a07 and a16 count a play as a bought door and their arithmetic is untouched.',
+    '',
+    '    NO NOISE FLOOR EXISTS FOR THIS INSTRUMENT. None has existed since reference-v12 and a',
+    '    floor does not carry across a re-cut, so until npm run sim -- --noise --n=1580 has been',
+    '    run there is NO threshold below which a delta is not a result.',
   ];
 }
 
@@ -306,6 +376,7 @@ function mirrorLine(row: WatchlistRow, mirrorGames: number): string[] {
  */
 function seriesSection({ data, pooled }: ReportInput): string[] {
   const arm = isMeepleCurrency(data);
+  const commons = isCommons(data);
   const out = [
     THIN,
     'THE SERIES  (ended games; the [all] column includes stalls, so the bias is visible)',
@@ -334,9 +405,19 @@ function seriesSection({ data, pooled }: ReportInput): string[] {
   // only one.
   out.push(pad('end reasons', 34) + 'below the table');
   line('game length, rounds (median)', (g) => num(median(g.map((x) => x.rounds)), 0));
-  line('meeples held at game end (median)', (g) =>
-    num(median(g.flatMap((x) => x.meeplesByRound.slice(-1))), 1),
-  );
+  // ⭐ THE COMMONS SWAPS THIS LINE RATHER THAN PRINTING A COLUMN OF ZEROES.
+  // There are no meeples at all (C6), so "meeples held at game end" is a name
+  // for nothing; what stands in the same place - a shared stock the table both
+  // feeds and draws on - is the CENTRE, so that is what the scanner sees.
+  if (commons) {
+    line('cards in the centre at game end (median)', (g) =>
+      num(median(g.flatMap((x) => x.commonsPileSizeByRound.slice(-1))), 1),
+    );
+  } else {
+    line('meeples held at game end (median)', (g) =>
+      num(median(g.flatMap((x) => x.meeplesByRound.slice(-1))), 1),
+    );
+  }
   line('barn at game end (median)', (g) =>
     num(median(g.flatMap((x) => x.barnByRound.slice(-1))), 0),
   );
@@ -358,7 +439,26 @@ function seriesSection({ data, pooled }: ReportInput): string[] {
   // a15-meeple-economy), and the self-visit share is 0 by construction (X5) and
   // therefore a column of zeroes where a reader expects information. What
   // replaces them are the two lines the handoff asks a scanner to read first.
-  if (arm) {
+  // ⭐ AND THE COMMONS SWAPS THE OTHER TWO FOR THE SAME REASON, plus the two
+  // readings the pass exists to take: the PLAY RATE (Dean's 30%-60% band, a17)
+  // and the FARM BYPASS (a18). They are in the SERIES table as well as in their
+  // own assertions because this table is what a reader scans first and what a
+  // paired arm is diffed on.
+  if (commons) {
+    line('commons plays / turn', (g) => {
+      const turns = sum(g.map((x) => sum(x.turnsBySeat)));
+      return pct(turns === 0 ? NaN : sum(g.map((x) => sum(x.commonsPlaysBySeat))) / turns, 0);
+    });
+    line('central harvests / player / game', (g) => {
+      const seats = sum(g.map((x) => x.seats));
+      return num(seats === 0 ? NaN : sum(g.map((x) => sum(x.commonsHarvestsBySeat))) / seats, 2);
+    });
+    line('barn cards from the CENTRE', (g) => {
+      const centre = sum(g.map((x) => sum(x.barnFromCommonsBySeat)));
+      const own = sum(g.map((x) => sum(x.barnFromOwnBySeat)));
+      return pct(centre + own === 0 ? NaN : centre / (centre + own), 0);
+    });
+  } else if (arm) {
     line('spends per meeple-turn', (g) => {
       const held = sum(g.map((x) => sum(x.meepleTurnsBySeat)));
       return num(held === 0 ? NaN : sum(g.map((x) => sum(x.meeplesSpentBySeat))) / held, 2);

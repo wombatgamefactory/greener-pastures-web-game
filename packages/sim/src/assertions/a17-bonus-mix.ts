@@ -1,4 +1,4 @@
-import { isMeepleCurrency } from '@gp/data';
+import { isCommons, isMeepleCurrency } from '@gp/data';
 
 import type { GameMetrics } from '../observe.js';
 import type { Assertion, Measurement, MeasureContext } from './types.js';
@@ -85,6 +85,53 @@ import { num, pct, sum } from '../stats.js';
  * nothing to spend it on at all. Expect unspent to fall between the arms for
  * that reason alone, and do not read the fall as engagement.
  *
+ * ## ⭐⭐ THE COMMONS (09/09/2026): TWO COLUMNS, AND A BAND INSTEAD OF THE LAW
+ *
+ * Under `rules.turn.visitCurrency: 'commons'` the slot holds exactly ONE option
+ * (C9): play a card onto a central board and take that board's action. There is
+ * no free Draw 1, no Collect and no self-visit, so the tally is
+ *
+ *   COMMONS PLAY  a card onto one of the five central boards - by board, since
+ *                 the board IS the action bought
+ *   SLOT UNSPENT  turns minus bonus turns, derived where it is read, as always
+ *
+ * ⛔ **AND THE SOLITAIRE LAW HAS NO SUBJECT.** Every verdict this assertion has
+ * ever carried was "the visit must not be outnumbered by the largest single
+ * SOLITAIRE option", and under the commons there is no other option in the slot
+ * at all - nothing to be outnumbered BY. Ratio, largest-solitaire and the
+ * early/late split all go with it. Keeping the law here and reading it against
+ * zero would return a triumphant PASS on a table that never plays a card, which
+ * is the exact failure mode the law itself was written to stop.
+ *
+ * ⭐ **WHAT REPLACES IT IS DEAN'S BAND, AND IT IS A NUMBER HE SET RATHER THAN
+ * ONE TAKEN FROM OUR OWN OUTPUT** - which is the bar ticket 11 section 2 sets,
+ * and the first time this assertion has had a threshold that clears it cleanly.
+ * Dean, 09/09/2026, on how often the bonus should be taken: *"30%-60% of the
+ * time... earned, not automatic."* Both ends are live and they fail for
+ * opposite reasons:
+ *
+ *   BELOW 30%  the fee is too dear, or the boards buy too little, and the
+ *              commons is decoration. A card for an action is a trade nobody is
+ *              making.
+ *   ABOVE 60%  the bonus is AUTOMATIC. Dean's own word: a slot taken on three
+ *              turns in five is a choice, one taken on four is a phase of the
+ *              turn wearing a choice's clothes, and `rules.economy.
+ *              commonsThreshold` is the one number that pulls it back (C10).
+ *
+ * ⚠️ **THE BAND IS READ PER SEAT COUNT AS WELL AS POOLED, AND THE PER-SEAT
+ * READING IS THE ONE THAT CARRIES THE VERDICT.** The handoff's measurement plan
+ * asks the question that way round - "above 60% at two players means the
+ * threshold knob is the next run" - because the pool is dominated by whichever
+ * seat count happens to have the most turns in it, and a 2-player game running
+ * hot could hide inside a healthy pooled number. Any seat count outside the
+ * band fails the assertion; the pooled figure is the headline.
+ *
+ * ⚠️ AND THE UNSPENT CAVEAT BELOW APPLIES WITH MORE FORCE, NOT LESS. Under the
+ * commons a play COSTS A CARD, so an unspent slot is a seat that declined to pay
+ * rather than one that had nothing to spend (C9's own wording). It is still the
+ * rational floor and still not a prediction: a bot never forgets the slot and
+ * never mis-prices a card it will want next turn.
+ *
  * ## The early/late split
  *
  * Kept from assertion 14 because the lesson it encodes was expensive: a CAPPED
@@ -96,6 +143,16 @@ import { num, pct, sum } from '../stats.js';
  * front-loaded (everybody starts holding five meeples, R3, so the opening is
  * artificially rich) or sustained once the loop has to feed itself.
  */
+/**
+ * ⭐ DEAN'S BAND, 09/09/2026, and the only threshold in this file that was set
+ * by the designer rather than restated from a design sentence: *"30%-60% of the
+ * time... earned, not automatic."* Both ends fail, for opposite reasons - see
+ * the header. Named as constants so the report prints the same two numbers the
+ * verdict is taken against.
+ */
+const PLAY_FLOOR = 0.3;
+const PLAY_CEILING = 0.6;
+
 export const bonusMix: Assertion = {
   id: 17,
   title: 'The bonus mix, four ways',
@@ -105,18 +162,32 @@ export const bonusMix: Assertion = {
     'restriction biting, and it is a different disease: the visit is not being outcompeted, it ' +
     'is being missed. [04/09/2026, the meeple loop] Re-cut four ways: visit a rival / collect ' +
     'with meeples / collect an empty board / slot unspent. The empty-board collect is the ' +
-    'solitaire line to watch.',
+    'solitaire line to watch. [09/09/2026, the commons, Dean] The bonus should be taken ' +
+    '"30%-60% of the time... earned, not automatic."',
   source:
     'docs/design-changes-v31-2026-09-02-v1.md part 4 (the suite) and part 1.1; CLAUDE.md ' +
-    'watch-list item 0; docs/meeple-loop-visit-handoff-2026-09-04-v1.md sections 4 and 5',
+    'watch-list item 0; docs/meeple-loop-visit-handoff-2026-09-04-v1.md sections 4 and 5; ' +
+    'docs/commons-handoff-2026-09-09-v1.md section 2.7 and the measurement plan (section 3), ' +
+    'carrying Dean’s band of 09/09/2026',
   shape:
     'The four-way tally as shares of every turn played. Under visitCurrency "card": Draw 1 / ' +
     'visit a rival / visit yourself / slot unspent, plus the self-visit share early against ' +
     'late. Under "meeple": visit a rival / collect with meeples / collect an EMPTY board / slot ' +
     'unspent, plus the rival visit early against late. Re-cut for handoff v2 (04/09/2026) with ' +
     'the toll line: the share of rival visits that paid a toll to enter an occupied slot (R6 ' +
-    'amended), the mean toll paid, and the most-visited seat\'s share of a game\'s rival visits.',
+    'amended), the mean toll paid, and the most-visited seat’s share of a game’s rival visits. ' +
+    'Under "commons" it is TWO columns - commons play / slot unspent - as shares of every turn ' +
+    'played, split by BOARD (the board is the action bought) and reported per seat count as ' +
+    'well as pooled.',
   threshold:
+    `Under "commons": FAIL if the PLAY RATE - the share of turns that play a card onto a ` +
+    `central board - falls outside ${pct(PLAY_FLOOR, 0)} to ${pct(PLAY_CEILING, 0)} at ANY ` +
+    'seat count or pooled. Dean set that band on 09/09/2026 ("30%-60% of the time... earned, ' +
+    'not automatic"): below it the fee is too dear and the commons is decoration, above it the ' +
+    'bonus is automatic and rules.economy.commonsThreshold is the number that pulls it back. ' +
+    'The solitaire law has NO SUBJECT under the commons - the slot holds one option (C9), so ' +
+    'there is nothing for the play to be outnumbered by, and reading the law against zero ' +
+    'would return a PASS on a table that never played a card. ' +
     'FAIL if the visit to a RIVAL is outnumbered by the largest single SOLITAIRE option. Under ' +
     '"card" that is Draw 1 or the self-visit; under "meeple" it is the empty-board collect, ' +
     'which is what the free Draw 1 became (R9 deletes the standalone draw, R7 keeps the one ' +
@@ -134,11 +205,133 @@ export const bonusMix: Assertion = {
     'and the dials are rules.turn.bonusDraw (the draw attached to Collect - the same knob, now ' +
     'pricing the same solitaire line under a new name) and rules.turn.startingMeeplesPerColour ' +
     '(overlays/meeple-loop-no-starting-meeples-v1.overlay.json). A high UNSPENT share under ' +
-    'either is the bonus window, whose control is overlays/bonus-any-time.overlay.json.',
+    'either is the bonus window, whose control is overlays/bonus-any-time.overlay.json. ' +
+    'Under "commons" the band has a knob at each end. ABOVE 60%: ' +
+    'npm run sim -- --watchlist --overlay=overlays/commons-threshold-2.overlay.json   ' +
+    '(rules.economy.commonsThreshold 2, which refuses a play onto a pile already that deep - ' +
+    'C10, built for exactly this reading). BELOW 30%: the fee is buying too little, and the ' +
+    'arm is overlays/commons-draw-three.overlay.json (the one contested door choice, Draw 3 ' +
+    'against the shipped Draw 2); the turn-order control beside it is ' +
+    'overlays/commons-bonus-last.overlay.json, because a bonus taken BEFORE the main action ' +
+    'is a different offer from one taken after (C2).',
   measure(ctx) {
+    if (isCommons(ctx.data)) return commonsMode(ctx);
     return isMeepleCurrency(ctx.data) ? meepleArm(ctx) : cardGame(ctx);
   },
 };
+
+/**
+ * ⭐ THE COMMONS (C1-C10, 09/09/2026): two columns and Dean's band.
+ *
+ * The per-seat-count rows are computed first and the pooled figure second, and
+ * the verdict reads BOTH: any seat count outside the band fails, because the
+ * handoff's own measurement plan asks the question per seat count ("above 60% at
+ * two players means the threshold knob is the next run") and a pooled number
+ * hides a hot 2-player table inside a healthy average.
+ */
+function commonsMode({ pooled }: MeasureContext): Measurement {
+  const games = pooled.ended;
+  const turns = totalTurns(games);
+  const bonusTurns = totalBonusTurns(games);
+  const plays = sum(games.map((g) => sum(g.commonsPlaysBySeat)));
+  const unspent = Math.max(0, turns - bonusTurns);
+
+  if (turns === 0) {
+    return { value: NaN, headline: 'not measured: no turns were played', verdict: 'OBSERVE' };
+  }
+
+  const share = (n: number) => pct(n / turns);
+  const value = plays / turns;
+
+  const rows = [...pooled.bySeats]
+    .sort((a, b) => a.seats - b.seats)
+    .map((slice) => {
+      const t = totalTurns(slice.ended);
+      const p = sum(slice.ended.map((g) => sum(g.commonsPlaysBySeat)));
+      const b = totalBonusTurns(slice.ended);
+      return {
+        seats: slice.seats,
+        turns: t,
+        rate: t === 0 ? NaN : p / t,
+        unspent: t === 0 ? NaN : Math.max(0, t - b) / t,
+      };
+    });
+
+  // By BOARD, which under the commons is by ACTION: the board decides what the
+  // play buys (C3), so this row is the door mix asked of the plays rather than
+  // of the door uses. a07 owns the door mix itself and reads a different table.
+  const byBoard = new Map<string, number>();
+  for (const g of games) {
+    for (const [board, n] of Object.entries(g.commonsPlaysByBoard)) {
+      byBoard.set(board, (byBoard.get(board) ?? 0) + n);
+    }
+  }
+  const boardLine = [...byBoard.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([board, n]) => `${board} ${pct(plays === 0 ? NaN : n / plays, 0)}`)
+    .join('  ');
+
+  const outOfBand = rows.filter((r) => Number.isFinite(r.rate) && outside(r.rate));
+  const verdict: Measurement['verdict'] = !Number.isFinite(value)
+    ? 'OBSERVE'
+    : outside(value) || outOfBand.length > 0
+      ? 'FAIL'
+      : 'PASS';
+
+  return {
+    value,
+    headline:
+      `a card is played onto a central board on ${share(plays)} of ${turns} turns ` +
+      `(Dean's band ${pct(PLAY_FLOOR, 0)}-${pct(PLAY_CEILING, 0)}); SLOT UNSPENT ${share(unspent)}` +
+      (outOfBand.length === 0
+        ? ''
+        : `; OUT OF BAND at ${outOfBand.map((r) => `${r.seats}p ${pct(r.rate)}`).join(', ')}`),
+    detail: [
+      `the two-column tally, as a share of every turn played: COMMONS PLAY ${share(plays)}, ` +
+        `SLOT UNSPENT ${share(unspent)}. There is no third column: the slot holds one option ` +
+        '(C9) - no free Draw 1, no Collect, no self-visit - so an unspent slot is a turn that ' +
+        'chose not to pay a card, and nothing else.',
+      `by seat count, and THIS is the reading the verdict is taken on: ${rows
+        .map((r) => `${r.seats}p ${pct(r.rate)} of ${r.turns} turns`)
+        .join('   ')}. The handoff asks the question this way round because a hot 2-player ` +
+        'table hides inside a healthy pool.',
+      `slot unspent by seat count: ${rows.map((r) => `${r.seats}p ${pct(r.unspent)}`).join('  ')}`,
+      `by BOARD, which is by ACTION (C3): ${boardLine || 'no plays'}. ` +
+        `${plays} plays over ${games.length} games, ` +
+        `${num(games.length === 0 ? NaN : plays / games.length, 1)} a game. Watch Deliver ` +
+        '(vegetable took 8% of door uses under the meeples) and whether Draw 2 (orchard) is ' +
+        'dead now that the fee is a card and the board hands back two.',
+      `⭐ DEAN'S BAND, 09/09/2026, AND IT IS HIS NUMBER RATHER THAN ONE READ OFF OUR OWN ` +
+        `OUTPUT: the bonus should be taken "${pct(PLAY_FLOOR, 0)}-${pct(PLAY_CEILING, 0)} of ` +
+        'the time... earned, not automatic". BELOW the floor the fee is too dear or the boards ' +
+        'buy too little and the commons is decoration; ABOVE the ceiling the bonus is a phase ' +
+        'of the turn rather than a choice, and rules.economy.commonsThreshold (C10) is the one ' +
+        'number that pulls it back.',
+      '⛔ THE SOLITAIRE LAW HAS NO SUBJECT HERE, and that is why this arm reports a BAND rather ' +
+        'than a ratio. Every previous verdict in this file was "the visit must not be ' +
+        'outnumbered by the largest single SOLITAIRE option"; the commons slot has no second ' +
+        'option to be outnumbered by, so the law would read against zero and hand a table that ' +
+        'never plays a card a triumphant PASS. The early/late split goes with it for the same ' +
+        'reason: it asked whether a solitaire alternative was an opening convenience.',
+      '⚠️ A TURN CAN PLAY TWICE. A Helping Hand grants a second play onto a central board (C8), ' +
+        'so plays are counted per PLAY and the share above can exceed the share of turns that ' +
+        'used the slot at all. SLOT UNSPENT is one per turn. The two columns are shares of ' +
+        'TURNS, not slices of a pie, exactly as under the other two modes.',
+      UNSPENT_CAVEAT,
+      '⚠️ AND UNDER THE COMMONS THE UNSPENT COLUMN MEANS SOMETHING SHARPER THAN UNDER EITHER ' +
+        'CONTROL: a play COSTS A CARD, so an unspent slot is a seat that declined to pay rather ' +
+        'than one that had nothing to spend. It is still the rational floor - a bot never ' +
+        'forgets a slot and never mis-prices a card it will want next turn - so read it as the ' +
+        'cheapest the restriction can possibly be, never as what a table will do.',
+      perGameLine(games.length, bonusTurns, turns),
+    ],
+    verdict,
+  };
+}
+
+function outside(rate: number): boolean {
+  return rate < PLAY_FLOOR || rate > PLAY_CEILING;
+}
 
 /** The shipped v31 game, unchanged since 02/09/2026 and deliberately not re-derived. */
 function cardGame({ pooled }: MeasureContext): Measurement {
@@ -257,7 +450,7 @@ function meepleArm({ data, pooled }: MeasureContext): Measurement {
         `toll meeples in all (mean ${num(tollVisits === 0 ? NaN : tollPaid / tollVisits, 2)} ` +
         `per toll visit, against a printed rate of ${toll} extra meeple(s) per occupant). The ` +
         'toll is a SINK, not a payment to the host - it goes to the box, never into the slot - ' +
-        "so a rising toll share is the amended R6 doing its job, not a second solitaire option. " +
+        'so a rising toll share is the amended R6 doing its job, not a second solitaire option. ' +
         'Assertion 15 carries the same meeples counted from the payer’s side and the pool line ' +
         'they drain into.',
     receivedSpreadLine(games, rivals),

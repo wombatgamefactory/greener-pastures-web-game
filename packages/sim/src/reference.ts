@@ -526,9 +526,17 @@ export const REFERENCE_V10: ReferenceConfig = {
  *      then the CORE ACTION, then the bonus. The engine and both design docs had
  *      carried `'start'` since 19/08/2026 and were wrong about the game (Dean,
  *      03/09/2026). This is a CORRECTION, not an experiment - v10 was measuring
- *      a turn order nobody was playing. `'start'` survives as
- *      `overlays/bonus-first.overlay.json`, which is the arm that says what the
+ *      a turn order nobody was playing. `'start'` survived at the time as
+ *      `overlays/bonus-first.overlay.json`, which was the arm that said what the
  *      error was worth.
+ *
+ *      ⛔ **THAT FILE IS IN `overlays/retired/` SINCE 09/09/2026 AND IS NOT
+ *      RUNNABLE**, because `'start'` became the DEFAULT with the commons (C2,
+ *      and Dean's reversal of the 03/09/2026 ruling) - an overlay whose one
+ *      number is the shipped value is not an arm. The paired control now points
+ *      the other way and is `overlays/commons-bonus-last.overlay.json`
+ *      (`bonusTiming: 'end'`). Read `overlays/retired/README.md` before moving
+ *      anything back out of that folder.
  *
  *   2. **THE BOTS.** Two changes to how a door is priced, both aimed at the same
  *      acknowledged bias:
@@ -846,8 +854,127 @@ export const REFERENCE_V14: ReferenceConfig = {
   seed: 'reference-v14',
 };
 
+/**
+ * `reference-v15` - **THE COMMONS** (Dean, 09/09/2026), and the largest re-cut
+ * since v31 deleted the currency.
+ *
+ * ⛔ **NO NUMBER IN ANY `reference-v14` OR EARLIER REPORT IS COMPARABLE WITH A
+ * `reference-v15` ONE.** Not the hook, not the bonus mix, not the door mix, not
+ * the barn glut, not a suit win rate, not a per-card economic. This is not a
+ * sampling change and not an evaluator change: the RULES moved, the bonus slot
+ * moved, a whole component left the game and two watch-list assertions changed
+ * what they are counting. The sampling plan is, as always, the one thing held
+ * still.
+ *
+ * ## What the game is now (C1-C10 of the handoff, all ruled by Dean on 09/09/2026)
+ *
+ *  - **C1. Five central Notice Boards.** W3, V3, O3, A3 and D3 stand in the
+ *    CENTRE of the table, all five regardless of which suits are in play, each
+ *    with a face-up public pile. **No player has a Notice Board**: a farm is a
+ *    Farmstead and a Barn.
+ *  - **C2. Bonus FIRST, then the main action.** `rules.turn.bonusTiming` is
+ *    `'start'`. ⚠️ **THIS REVERSES THE RULING OF 03/09/2026** - "the bonus comes
+ *    last, and that is a correction" - on Dean's own call, and his reason is that
+ *    a turn visibly ends on its main action. `'end'` is the paired control at
+ *    `overlays/commons-bonus-last.overlay.json`. Do not quote the 03/09 ruling
+ *    forward: `reference-v11` was cut FOR it and `reference-v15` is cut against
+ *    it, and both are correct about their own game.
+ *  - **C3. The bonus is one card onto one central board**, and you take that
+ *    board's action: wheat Harvest, vegetable Deliver, orchard **Draw 2** (Dean
+ *    chose 2 over 3; `overlays/commons-draw-three.overlay.json` is the arm),
+ *    apiary **GROW**, dairy Build. Any card, no colour matching, and the fee is
+ *    extra in every case.
+ *  - **C4. A central board has no threshold.** Any number of cards, never full,
+ *    never clogged. **Nothing in the game refuses a play**, which is what takes
+ *    the subject away from a04 and a05.
+ *  - **C5. Harvest takes one of your full buildings OR the whole pile from any
+ *    central board**, into your barn - main action or bought through W3,
+ *    including a board you fed this very turn.
+ *  - **C6. No meeples anywhere.** No starting meeples, no meeple on the island's
+ *    3 VP space, no spend, no Collect, no supply. a15 has no subject.
+ *  - **C7. Hand limit 7, as an INSTRUMENT BOUND AND NOT A RULE.** ⭐ The table
+ *    plays with NO hand limit and found that positive; the simulator cannot
+ *    enumerate an unbounded hand (see CLAUDE.md section 2.3, and the 888,030-move
+ *    position `reference-v14` measured), so the engine keeps 7 and **every report
+ *    header says it is the simulator's bound**. Any reading about hand size under
+ *    this instrument is a reading about the instrument.
+ *  - **C8. The four visit-keyed cards.** O16 and A17 fire on a central play;
+ *    W17 The Pie Shop has no host and is DEAD in this game; A Helping Hand
+ *    becomes a second play; A16 does not fire (a play is not a placement on a
+ *    building); A21 counts the tableau only.
+ *  - **C9. The slot holds ONE option.** No free Draw 1, no Collect, no
+ *    self-visit. An unspent slot is a turn that chose not to pay.
+ *  - **C10. Two fallback knobs, both OFF**: `rules.economy.commonsThreshold`
+ *    (null) and `rules.economy.commonsColourMatch` (false), so that if the bonus
+ *    reads automatic the cap is one number away.
+ *
+ * ## What moved in the instrument, and it is why this is a re-cut
+ *
+ *  - **a08-the-hook has NO SUBJECT.** The boards are ownerless, so there is no
+ *    neighbour to visit and the quantity the assertion counts cannot occur.
+ *  - **a18-commons-traffic is NEW** and carries the interaction readings, with no
+ *    fail condition in this pass.
+ *  - **a17-bonus-mix carries a BAND rather than the solitaire law**: Dean's
+ *    30%-60% play rate, "earned, not automatic". It is the first threshold in the
+ *    suite set by the designer rather than restated from a design sentence.
+ *  - **a04, a05, a15 and a02 report NO SUBJECT.** a07 and a16 count a play as a
+ *    bought door (D4) and their arithmetic is untouched.
+ *
+ * ⛔ **NO NOISE FLOOR EXISTS FOR THIS INSTRUMENT.** None has existed since
+ * `reference-v12`, and the floor is a function of the instrument, so nothing
+ * carries across. `npm run sim -- --noise --n=1580` is step 6 of the handoff's
+ * own measurement plan and has NOT been run. Until it has, **no delta under this
+ * reference is formally readable** - which matters here more than usual, because
+ * the pass's headline reading is a play rate against a 30-point band and its
+ * second reading is a barn-source share, and both are the size of thing a floor
+ * exists to adjudicate.
+ *
+ * The three controls, each pinning its own knobs so that ruling this arm in did
+ * not rule its passengers in with it (the 05/09/2026 lesson):
+ * `overlays/v31-card-visit.overlay.json` (the v31 card game),
+ * `overlays/meeple-loop-v1.overlay.json` (the loop of 04/09/2026) and
+ * `overlays/meeple-economy-v1.overlay.json` (the `reference-v14` game, new on
+ * 09/09/2026 because the shipped default is no longer that game).
+ */
+export const REFERENCE_V15: ReferenceConfig = {
+  ...REFERENCE_V14,
+  id: 'reference-v15',
+  description:
+    'THE COMMONS (Dean, 09/09/2026). The five Notice Boards stand OWNERLESS in the centre of ' +
+    'the table, all five whatever suits are in play, each with a public face-up pile (C1); no ' +
+    'player has a board. The bonus slot holds ONE option (C9) and it comes FIRST, before the ' +
+    'main action (C2, which REVERSES the ruling of 03/09/2026 on Dean’s own call): play one ' +
+    'card from your hand onto one central board and take that board’s action - wheat ' +
+    'Harvest, vegetable Deliver, orchard Draw 2, apiary GROW, dairy Build - any card, no ' +
+    'colour matching, fee extra (C3). A central board has NO THRESHOLD and can never clog, so ' +
+    'nothing in the game refuses a play (C4). A Harvest takes one of your full buildings OR the ' +
+    'whole pile from any central board into your barn, including a board you fed this turn ' +
+    '(C5). THERE ARE NO MEEPLES AT ALL: no starting five, no island seed, no spend, no Collect, ' +
+    'no supply (C6). O16 and A17 fire on a play, W17 has no host and is dead, A Helping Hand is ' +
+    'a second play, A16 does not fire and A21 counts the tableau only (C8). Two fallback knobs ' +
+    'ship OFF, rules.economy.commonsThreshold (null) and rules.economy.commonsColourMatch ' +
+    '(false), so the cap is one number away if the bonus reads automatic (C10). ' +
+    '\u26a0\ufe0f THE HAND LIMIT OF 7 IS THE SIMULATOR’S BOUND AND NOT A RULE OF THE GAME (C7): ' +
+    'the table plays with no hand limit and found that positive, and the engine keeps 7 only ' +
+    'because an unbounded hand cannot be enumerated. Any reading about hand size under this ' +
+    'instrument is a reading about the instrument. ' +
+    'WHAT MOVED IN THE SUITE: a08-the-hook has NO SUBJECT (there is no neighbour), the new ' +
+    'a18-commons-traffic carries the interaction readings with no fail condition in this pass, ' +
+    'a17-bonus-mix carries DEAN’S BAND instead of the solitaire law (a play rate of 30%-60% ' +
+    'of turns, "earned, not automatic"), a04, a05, a15 and a02 report no subject, and a07 and ' +
+    'a16 count a play as a bought door (D4) with their arithmetic untouched. ' +
+    'The controls each pin their own knobs: overlays/v31-card-visit.overlay.json, ' +
+    'overlays/meeple-loop-v1.overlay.json and overlays/meeple-economy-v1.overlay.json (new, ' +
+    'the reference-v14 game). ' +
+    '\u26d4 NO NOISE FLOOR EXISTS FOR reference-v15 - none has existed since reference-v12 and a ' +
+    'floor does not carry across a re-cut; npm run sim -- --noise --n=1580 is a later step, and ' +
+    'until it runs no delta under this reference is formally readable. ' +
+    'NO NUMBER IN ANY reference-v14 OR EARLIER REPORT IS COMPARABLE.',
+  seed: 'reference-v15',
+};
+
 /** The instrument every current number is defined against. */
-export const REFERENCE = REFERENCE_V14;
+export const REFERENCE = REFERENCE_V15;
 
 /**
  * The noise floor, measured once and quoted constantly.

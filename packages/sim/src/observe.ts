@@ -36,13 +36,14 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import { deliveriesPerTile, isMeepleCurrency, meepleIndexForSpace } from '@gp/data';
+import { deliveriesPerTile, isCommons, isMeepleCurrency, meepleIndexForSpace } from '@gp/data';
 import type { CardId, GameEvent, GameState, Move, ScoreBreakdown, Seat, Task } from '@gp/engine';
 import {
   MOVE_TYPES,
   anyBuildOption,
   bonusOpen,
   cardById,
+  commonsBoards,
   cropOf,
   doorOf,
   faceOf,
@@ -103,6 +104,13 @@ export const EVENT_KINDS = {
   // carries the use and the threshold flag, so this one answers only "who got
   // fed" - and that is the question R17 exists to create.
   meepleplaced: true,
+  // ⭐ THE COMMONS' ONE NEW EVENT (C3, 09/09/2026): a card played from a hand
+  // onto one of the five central Notice Boards. It is the whole of the bonus
+  // slot under `visitCurrency: 'commons'` and the only place the fee-suit mix
+  // and the pile depth can be read - `doorUsed` fires beside it and says what
+  // the play BOUGHT, which is a different question and a different counter
+  // (D4). Silent under both controls, where there is no commons at all.
+  commonsPlayed: true,
   reshuffled: true,
   built: true,
   demolished: true,
@@ -126,6 +134,11 @@ export const MOVE_KINDS = {
   // cannot say whether anything came home and the four-way bonus mix turns on
   // exactly that distinction.
   collect: true,
+  // ⭐ THE COMMONS' BONUS OPTION (C3). Folded through BOTH the move and the
+  // `commonsPlayed` event, and the split is the same one `visit` already draws:
+  // the MOVE knows which card left the hand (so the funnel can junk it), and
+  // only the EVENT knows how deep the pile it landed on was.
+  commons: true,
   cardMove: true,
   draw: true,
   bonusDraw: true,
@@ -270,6 +283,17 @@ export interface GameMetrics {
    *   visit rival   `visitsBySeat - selfVisitsBySeat`, derived
    *   visit SELF    `selfVisitsBySeat`     - your own board, your own action
    *   SLOT UNSPENT  `turnsBySeat - bonusTurnsBySeat`, derived, never stored
+   *
+   * ⭐ AND UNDER THE COMMONS (09/09/2026) THERE ARE **TWO** COLUMNS, NOT FOUR,
+   * because the slot holds exactly one option (C9): there is no free Draw 1, no
+   * Collect and no self-visit, so the tally is
+   *
+   *   COMMONS PLAY  `commonsPlaysBySeat` - a card onto a central board
+   *   SLOT UNSPENT  `turnsBySeat - bonusTurnsBySeat`, derived as always
+   *
+   * and the verdict on it is a BAND rather than the solitaire law, because there
+   * is no solitaire option left in the slot to lose to. Dean, 09/09/2026:
+   * "30%-60% of the time... earned, not automatic." a17 owns that number.
    *
    * ⛔ THE FIVE-WAY COIN TALLY IT REPLACES IS GONE, and with it every column
    * that named a currency: visit-coin and visit-power (there is one visit and
@@ -665,6 +689,94 @@ export interface GameMetrics {
   /** 1-based round the pool first read zero, or null if it never did in this game. */
   poolEmptyRound: number | null;
 
+  // --- THE COMMONS, 09/09/2026 ---------------------------------------------
+  //
+  // ⚠️ EVERY LINE IN THIS BLOCK IS ZERO OR EMPTY UNDER BOTH CONTROLS
+  // (`visitCurrency: 'card'` and `'meeple'`), and that is the same contract the
+  // two blocks above state of themselves: the v31 card visit and the meeple loop
+  // are now the controls, their numbers have to stay comparable with the reports
+  // that measured them, and nothing here is allowed to move a counter either of
+  // them already had. Read a zero as "the commons was off", never as a finding.
+  //
+  // ⚠️ AND NONE OF THEM HAS A NOISE FLOOR. `reference-v15` has not had
+  // `--noise` run against it, so a movement in any of these is not yet a result.
+
+  /**
+   * ⭐ CARDS PLAYED ONTO A CENTRAL BOARD (C3), by the seat that played them.
+   * The commons' whole bonus slot, and the numerator of the ONE number a17
+   * carries a verdict on under this mode: the share of turns that pay a card
+   * for an action. One event per play, so A Helping Hand's second play (C8)
+   * counts twice and a turn can therefore contribute two plays.
+   */
+  commonsPlaysBySeat: number[];
+  /**
+   * ...by the BOARD played on, which is the colour and therefore the ACTION
+   * bought (wheat Harvest, vegetable Deliver, orchard Draw 2, apiary Grow,
+   * dairy Build). It is deliberately not the same table as `doorUsesByColour`:
+   * that one counts every door use by every route and is what a07 reads, this
+   * one counts the PLAYS and is what a17's by-board breakdown reads. Under the
+   * commons the two happen to agree, and a disagreement between them would be a
+   * fold bug rather than a design reading.
+   */
+  commonsPlaysByBoard: Record<string, number>;
+  /**
+   * ...by the SUIT OF THE FEE CARD. Any card may pay for any board (C3), so
+   * what the table actually burns is a free choice and L5's question - are
+   * players paying junk? - is asked of exactly this table.
+   *
+   * ⭐ IT READS CARD IDENTITY, AND THAT IS ALLOWED HERE AND NOWHERE ELSE. The
+   * bots' pricer rule is "never read card identity"; the fold is not a pricer,
+   * it holds the whole `GameData`, and the catalogue is what says which suit a
+   * fee belonged to. `doorUsesByColour` cannot answer this: it names the board,
+   * which is the action bought, not the card spent.
+   */
+  commonsPlaysByFeeSuit: Record<string, number>;
+  /**
+   * Of those, the plays whose FEE was not the payer's own crop. The off-crop
+   * share is L5's reading in one number: a farm feeding the centre with its own
+   * suit is burning its engine, a farm feeding it with somebody else's is
+   * clearing junk, and the two are opposite verdicts on the same rule.
+   */
+  commonsPlaysOffCrop: number;
+  /**
+   * ⭐ HARVESTS OF A CENTRAL PILE (C5), by the harvester. Main action or bought
+   * through W3 - the two are the same event and are deliberately not split,
+   * because C5 rules both legal in the same sentence and the question a18 asks
+   * is how often the centre is emptied at all.
+   */
+  commonsHarvestsBySeat: number[];
+  /** How many cards each of those harvests took. The median and p90 are a18's. */
+  commonsPileSizeAtHarvest: number[];
+  /**
+   * TOTAL CARDS STANDING IN THE CENTRE, all five piles, sampled at every round
+   * boundary exactly as `barnByRound` samples a barn. Read directly off state
+   * for the reason `meeplePoolByRound` states of itself: the fold holds the
+   * post-turn `GameState`, so the pile is counted rather than reconstructed.
+   */
+  commonsPileSizeByRound: number[];
+  /**
+   * The same series as THREE numbers - the median centre size in this game's
+   * first, middle and last third - computed once in `finish` so that games of
+   * different lengths pool. Empty when the game was too short to have thirds.
+   */
+  commonsPileSizeByRoundThird: number[];
+  /**
+   * ⭐ THE FARM-BYPASS READING (a18, and the one the handoff names as the
+   * question this mode creates): barn cards that came out of the CENTRE against
+   * barn cards that came off the seat's OWN buildings, split off the
+   * `harvested` event's `source`.
+   *
+   * ⚠️ BOTH ARE FED UNDER BOTH CONTROLS TOO, and `barnFromCommonsBySeat` is
+   * simply 0 there: the engine carries `source: 'tableau'` on every harvest
+   * under `'card'` and `'meeple'` rather than making the field optional, so the
+   * own-buildings column is a real reading under all three modes and only the
+   * centre column has no subject. They are a SUBSET of `barnInBySeat`, which
+   * pools every route into a barn including the deck, hand, stack and discard
+   * shortcuts - so the two do not sum to it and are not meant to.
+   */
+  barnFromCommonsBySeat: number[];
+  barnFromOwnBySeat: number[];
+
   // --- The Dairy rebuild, 2026-08-10 ---------------------------------------
   //
   // Four lines its pass conditions need and no previous run recorded. They
@@ -1022,6 +1134,16 @@ export class Fold {
       meeplesPlacedReceivedBySeat: zeros(),
       meeplePoolByRound: [],
       poolEmptyRound: null,
+      commonsPlaysBySeat: zeros(),
+      commonsPlaysByBoard: byColour(),
+      commonsPlaysByFeeSuit: byColour(),
+      commonsPlaysOffCrop: 0,
+      commonsHarvestsBySeat: zeros(),
+      commonsPileSizeAtHarvest: [],
+      commonsPileSizeByRound: [],
+      commonsPileSizeByRoundThird: [],
+      barnFromCommonsBySeat: zeros(),
+      barnFromOwnBySeat: zeros(),
       buildsBySeat: zeros(),
       noBuildTurnsBySeat: zeros(),
       buildSampledBySeat: zeros(),
@@ -1315,6 +1437,15 @@ export class Fold {
     if (!bonusOpen(this.data, s)) return;
     this.sampledBonusTurn = this.turnsEnded;
     const seat = s.turnPlayer;
+    // ⛔ THE DENIAL QUESTION HAS NO SUBJECT UNDER THE COMMONS (C4, 09/09/2026).
+    // Nothing in the game refuses a play: the central boards have no threshold,
+    // hold any number of cards and never clog, so "no visit is legal anywhere"
+    // can only ever mean "no board's ACTION was legal for me", which is a
+    // different question from the one a05 was written to ask and would be
+    // reported under its name. NOT SAMPLED rather than sampled at zero, for the
+    // reason the turn-boundary guard states: an empty denominator reads as "not
+    // measured", a zero numerator over a real one reads as a finding.
+    if (isCommons(this.data)) return;
     // ⭐ THE CURRENCY DECIDES WHAT "HOLDING SOMETHING TO VISIT WITH" MEANS. Under
     // the shipped game a visit costs a card, so an empty hand is a card problem
     // and not a clog; under the meeple-loop arm a visit costs a MEEPLE and the
@@ -1398,6 +1529,19 @@ export class Fold {
         // barn-in-by-route table move under the arm for a reason that is not
         // about any card. Read them as a delta and never as a card verdict.
         if (move.fee !== null) this.facts(move.fee).junked = true;
+        return;
+      // ⭐ THE COMMONS PLAY (C3), counted here for its CARD and off
+      // `commonsPlayed` for everything else. The fee is junked exactly as a v31
+      // visit fee is - it leaves the hand and buys an action - and the funnel
+      // must see it, or every card's junk rate moves for a reason that is not
+      // about any card. The action it bought is a `doorUsed` event and is
+      // counted there, so nothing is added to `actionsBySeat` here.
+      //
+      // ⚠️ THE FEE IS NOT LOST THE WAY A v31 FEE COULD BE. It sits in a public
+      // pile until somebody harvests it (C5), so `junked` here means "spent",
+      // never "destroyed" - a18's barn-source line is where it reappears.
+      case 'commons':
+        this.facts(move.fee).junked = true;
         return;
       case 'collect':
         // ⭐ COLLECT RESOLVES AN ACTION, counted here for the same reason
@@ -1606,9 +1750,38 @@ export class Fold {
         }
         return;
       }
+      // ⭐ THE COMMONS' WHOLE MEASUREMENT SURFACE (C3, 09/09/2026): one event
+      // per card played onto a central board. Three tables come off it and they
+      // answer three different questions - WHICH BOARD (the action bought, a17's
+      // by-board breakdown), WHICH SUIT THE FEE WAS (L5: is the table paying
+      // junk?), and HOW DEEP THE PILE GOT (a18, read against the harvests).
+      //
+      // The off-crop test uses the PAYER's suit off the post-state, which is
+      // fixed for the whole game, so pre or post makes no difference and post is
+      // what every other branch here uses.
+      case 'commonsPlayed': {
+        m.commonsPlaysBySeat[e.seat] = (m.commonsPlaysBySeat[e.seat] ?? 0) + 1;
+        m.commonsPlaysByBoard[e.board] = (m.commonsPlaysByBoard[e.board] ?? 0) + 1;
+        const feeSuit = cardById(this.data, e.card).suit;
+        m.commonsPlaysByFeeSuit[feeSuit] = (m.commonsPlaysByFeeSuit[feeSuit] ?? 0) + 1;
+        if (feeSuit !== player(d.post, e.seat).suit) m.commonsPlaysOffCrop += 1;
+        return;
+      }
       case 'harvested': {
         m.barnInByRoute.harvest = (m.barnInByRoute.harvest ?? 0) + e.cards.length;
         m.barnInBySeat[e.seat] = (m.barnInBySeat[e.seat] ?? 0) + e.cards.length;
+        // ⭐ THE FARM-BYPASS SPLIT (C5, and D3: a central pile only ever leaves
+        // by harvest). `source` is carried on every harvest under every mode -
+        // 'tableau' by construction under both controls - so the own-buildings
+        // column is a real reading in all three and only the centre column has
+        // no subject under the controls. See the fields' own comment.
+        if (e.source === 'commons') {
+          m.commonsHarvestsBySeat[e.seat] = (m.commonsHarvestsBySeat[e.seat] ?? 0) + 1;
+          m.commonsPileSizeAtHarvest.push(e.cards.length);
+          m.barnFromCommonsBySeat[e.seat] = (m.barnFromCommonsBySeat[e.seat] ?? 0) + e.cards.length;
+        } else {
+          m.barnFromOwnBySeat[e.seat] = (m.barnFromOwnBySeat[e.seat] ?? 0) + e.cards.length;
+        }
         // A HARVEST OF THE OWN NOTICE BOARD BANKS THE RIVAL FEES sitting on it
         // (assertion 2). Counted here rather than at the moment the fee lands,
         // because a gift that dies on a board nobody clears was never received.
@@ -1724,8 +1897,18 @@ export class Fold {
         // under-report bonus turns and over-report SLOT UNSPENT - which is a
         // column of assertion 17 and the one number in it that is derived rather
         // than counted.
+        //
+        // ⭐ AND `commons` JOINS IT FOR THE COMMONS (09/09/2026), for the
+        // identical reason: it is the mode's ONLY bonus option (C9), and a play
+        // that lands in the same apply as the turn boundary would otherwise be
+        // missed - which would under-report bonus turns and over-report SLOT
+        // UNSPENT, and slot unspent is one of a17's two columns under this mode
+        // and the only one that is derived rather than counted.
         const bonusMove =
-          d.move.type === 'visit' || d.move.type === 'bonusDraw' || d.move.type === 'collect';
+          d.move.type === 'visit' ||
+          d.move.type === 'bonusDraw' ||
+          d.move.type === 'collect' ||
+          d.move.type === 'commons';
         if (d.pre.turn.bonusUsed.length > 0 || bonusMove) {
           m.bonusTurnsBySeat[seat] = (m.bonusTurnsBySeat[seat] ?? 0) + 1;
         }
@@ -1748,8 +1931,19 @@ export class Fold {
         // reading underneath it is `slotsBlockedAtBoundary`, and assertion 4
         // prints both because a table at 20% occupancy and one at 80% can show
         // the same near-zero full-board rate.
+        //
+        // ⛔ AND UNDER THE COMMONS THE QUESTION HAS NO OBJECT AT ALL (C1,
+        // 09/09/2026). No player has a Notice Board: the five boards stand
+        // ownerless in the centre, they have no threshold (C4) and nothing can
+        // refuse a play. `noticeBoardOf` THROWS on a seat with no board, so this
+        // is a guard against a crash as well as against a meaningless number -
+        // and NOT SAMPLING is deliberate rather than sampling a zero. A zero
+        // denominator reads as "not measured" wherever a05 and a04 print it; a
+        // zero numerator over a real denominator would read as "never clogged",
+        // which is a finding about a thing that does not exist.
+        const commons = isCommons(this.data);
         const arm = isMeepleCurrency(this.data);
-        for (let s2 = 0; s2 < m.seats; s2++) {
+        for (let s2 = 0; s2 < m.seats && !commons; s2++) {
           m.doorClogSampledBySeat[s2] = (m.doorClogSampledBySeat[s2] ?? 0) + 1;
           const shut = arm
             ? this.boardFull(d.post, s2)
@@ -1795,6 +1989,13 @@ export class Fold {
       // still claimed and uninteresting.
       case 'cardPlaced': {
         if (e.seat === e.onto.seat) return;
+        // ⛔ NO SEAT HAS A NOTICE BOARD UNDER THE COMMONS (C1), and
+        // `noticeBoardOf` throws rather than answering null - so this is a crash
+        // guard first and a meaning guard second. A cross-table SOW still fires
+        // this event under the commons, and the card it places lands on a rival
+        // BUILDING, which was never freight. The commons' own transfer is a
+        // `commonsPlayed` into a public pile and is counted there; a18 owns it.
+        if (isCommons(this.data)) return;
         const board = noticeBoardOf(this.data, d.post, e.onto.seat);
         if (board.card !== e.onto.building) return;
         this.freightOnBoard[e.onto.seat]?.add(e.card);
@@ -1908,6 +2109,17 @@ export class Fold {
       m.meeplePoolByRound.push(pool);
       if (pool === 0 && m.poolEmptyRound === null) m.poolEmptyRound = m.rounds;
     }
+    // ⭐ THE CENTRE, sampled the way the barn beside it is sampled: every card
+    // standing on all five central piles at this instant, read off state rather
+    // than kept as a running balance, for the reason `meeplePoolOf` states of
+    // its own. Only under the commons - `commonsBoards` throws where there is no
+    // commons zone, which is the seam doing its job.
+    if (isCommons(this.data)) {
+      const boards = commonsBoards(state);
+      let cards = 0;
+      for (const colour of this.data.cards.suits) cards += boards[colour]?.length ?? 0;
+      m.commonsPileSizeByRound.push(cards);
+    }
     const leader = this.soleLeader(state);
     if (leader !== null && this.leader !== null && leader !== this.leader) m.leadChanges += 1;
     if (leader !== null) this.leader = leader;
@@ -1987,6 +2199,21 @@ export class Fold {
     if (this.creameryRun !== null) {
       m.creameryRuns.push(this.creameryRun);
       this.creameryRun = null;
+    }
+
+    // ⭐ THE CENTRE BY THIRD (a18). Computed per GAME and once, so that games of
+    // different lengths pool: a reader wants "the median centre size in the last
+    // third", and a pooled series aligned on round 1 would compare a 25-round
+    // game's endgame with a 40-round game's midgame. Empty below three samples,
+    // because a third of a two-round series is not a third of anything.
+    if (m.commonsPileSizeByRound.length >= 3) {
+      const series = m.commonsPileSizeByRound;
+      const cut = series.length / 3;
+      m.commonsPileSizeByRoundThird = [
+        medianOf(series.slice(0, Math.ceil(cut))),
+        medianOf(series.slice(Math.ceil(cut), Math.ceil(2 * cut))),
+        medianOf(series.slice(Math.ceil(2 * cut))),
+      ];
     }
 
     const capacity = state.island.tiles.length * deliveriesPerTile(this.data);

@@ -17,8 +17,12 @@
  *    2.5 this ticket replaced could never say that.
  */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { loadGameData } from '@gp/data';
-import type { Suit } from '@gp/data';
+import type { Overlay, Suit } from '@gp/data';
 import type { GameState, Move } from '@gp/engine';
 import {
   apply,
@@ -50,6 +54,23 @@ import { assignProfiles, runGame } from './driver.js';
 import { meanInterval, separated } from './stats.js';
 
 const data = loadGameData();
+
+const OVERLAY_DIR = fileURLToPath(new URL('../../../overlays', import.meta.url));
+
+/**
+ * ⭐ A CONTROL, READ FROM ITS COMMITTED OVERLAY (09/09/2026).
+ *
+ * Two cases in this file are about games that are no longer the default - the
+ * v31 card visit and the meeple economy - and both are still live, pinned arms.
+ * They are loaded from disk rather than restated inline for the reason
+ * `fixtures.test.ts` records at length: **a copy of a pin stops being a pin the
+ * moment the default moves under it**, and the commons flip of 09/09/2026 moved
+ * four leaves at once. The overlays are what the passenger audit maintains and
+ * what `overlays.test.ts` validates.
+ */
+function control(file: string) {
+  return loadGameData(JSON.parse(readFileSync(join(OVERLAY_DIR, file), 'utf8')) as Overlay);
+}
 const SUITS: Suit[] = ['wheat', 'vegetable', 'orchard', 'apiary', 'dairy'];
 
 /** Value every probe-worthy move at a position, keyed so two states compare. */
@@ -227,6 +248,29 @@ describe('the probe answers NOW', () => {
  * to check - and the check is a rules question, not a bot one.
  */
 describe('a pending draw', () => {
+  /**
+   * ⭐ PINNED TO THE v31 CONTROL ON 09/09/2026, and it is a move rather than a
+   * loosening. The case needs three things that are all gone from the shipped
+   * game: a Notice Board a rival OWNS, a `visit` move to price, and an Orchard
+   * door printing **Draw 3**. Under the commons the boards are ownerless (C1),
+   * there is no visit at all (C9), and Dean chose Draw 2 for the Orchard board
+   * (C3) - so on the default it failed as "no seat was ever offered a rival
+   * Draw 3 door", which is true and says nothing about the claim.
+   *
+   * ⛔ THE CLAIM IS NOT RETIRED WITH THE DEFAULT. It is ticket 50's: a rollout
+   * whose depth limit cannot see past a multi-card draw prices the biggest draw
+   * in the game at exactly zero, and it was 82.2% zero before that fix. The
+   * `'card'` game is a live control (`overlays/v31-card-visit.overlay.json`, and
+   * it is that file that still pins `workers.roster.draw.draw` at 3/3), so the
+   * case runs there and goes on guarding the same regression.
+   *
+   * ⚠️ AND IT IS NOT THE ONLY PLACE THE TRAP CAN BE SET. The commons Orchard
+   * board is Draw 2 today and `overlays/commons-draw-three.overlay.json` is the
+   * arm that puts it back to 3; if that arm is ever ruled in, this case wants a
+   * commons twin rather than a re-point, for the same reason a08 kept its id.
+   */
+  const v31 = control('v31-card-visit.overlay.json');
+
   it('prices a visit to the Draw 3 door as the cards it will keep, not as zero', () => {
     const zeroes: number[] = [];
     const values: number[] = [];
@@ -252,17 +296,17 @@ describe('a pending draw', () => {
           (_, i) => SUITS[(n + i) % SUITS.length] as Suit,
         );
         if (!suits.includes('orchard')) continue;
-        const result = runGame(data, {
+        const result = runGame(v31, {
           seed,
           seats,
           suits,
           policies: assignProfiles(seed, seats),
           maxMoves: 600,
         });
-        let state = newGame(data, { seed, seats, suits });
+        let state = newGame(v31, { seed, seats, suits });
         for (const move of result.moves) {
           const seat = state.turnPlayer;
-          const offered = legalMoves(data, state).filter((m) => {
+          const offered = legalMoves(v31, state).filter((m) => {
             const act = actOf(m);
             return (
               m.seat === seat &&
@@ -281,14 +325,14 @@ describe('a pending draw', () => {
             ),
           );
           if (offered.length > 0 && !hostHasKeeper) {
-            const scratch = makeScratch(data, viewFor(data, state, seat));
-            const prober = makeProber(data, state, seat);
+            const scratch = makeScratch(v31, viewFor(v31, state, seat));
+            const prober = makeProber(v31, state, seat);
             const outcomes = makeOutcomes(scratch, BALANCED, prober);
             const value = outcomes.value(offered[0] as Move);
             values.push(value);
             if (value === 0) zeroes.push(value);
           }
-          state = apply(data, state, move).state;
+          state = apply(v31, state, move).state;
         }
       }
     }
@@ -461,21 +505,39 @@ describe('a balloon move', () => {
   });
 });
 
+/**
+ * ⭐ THE WHOLE BLOCK IS PINNED TO A CONTROL SINCE 09/09/2026, and the pin is the
+ * finding rather than a repair.
+ *
+ * Every case below asks what a MEEPLE is worth. The shipped game has no meeples
+ * at all (C6: no starting five, no island seed, no spend, no Collect, no
+ * supply), so on the default these cases price a component that is not in the
+ * game - which is not a failure of `meepleWorth`, it is a question with no
+ * subject, exactly as a15 reports.
+ *
+ * ⛔ THE MEEPLE PRICER IS NOT DEAD CODE AND MUST NOT BE DELETED. Two live
+ * controls run it: `overlays/meeple-loop-v1.overlay.json` (a meeple is only a
+ * visit) and `overlays/meeple-economy-v1.overlay.json` (the `reference-v14`
+ * game, where a meeple is a card of its colour). The project's standing rule is
+ * that a branch whose only producer is a knob at its shipped value is not
+ * deleted; these cases are what would notice if that branch broke while nobody
+ * was running an arm.
+ *
+ * ⚠️ BOTH DATAS ARE READ FROM THEIR COMMITTED OVERLAYS rather than restated
+ * inline. The `v1` one WAS restated inline, and it survived the commons flip
+ * only by luck: it happened to name `visitCurrency` explicitly. The economy
+ * control pins eleven leaves and could not have been restated safely - see
+ * `fixtures.test.ts`, where six inline copies of a pin all broke at once on
+ * 09/09/2026.
+ */
 describe('what a meeple is worth', () => {
-  const opening = (suits: Suit[]): GameState =>
-    newGame(data, { seats: suits.length, suits, seed: 'meeple-worth' });
-
   /** The v1 loop, where a meeple is ONLY a visit. `overlays/meeple-loop-v1`. */
-  const v1 = loadGameData({
-    name: 'meeple-loop-v1',
-    schemaVersion: 1,
-    set: {
-      'rules.turn.visitCurrency': 'meeple',
-      'rules.turn.meepleAsCard': false,
-      'rules.turn.slotToll': null,
-      'rules.turn.meepleCapPerColour': 1,
-    },
-  });
+  const v1 = control('meeple-loop-v1.overlay.json');
+  /** The meeple ECONOMY: R15 and R17 together, which is the reference-v14 game. */
+  const economy = control('meeple-economy-v1.overlay.json');
+
+  const opening = (suits: Suit[]): GameState =>
+    newGame(economy, { seats: suits.length, suits, seed: 'meeple-worth' });
 
   it('prices a colour this seat can use above one it cannot, under the v1 loop', () => {
     // An opening seat has an empty barn and nothing full, so the Deliver and
@@ -512,9 +574,9 @@ describe('what a meeple is worth', () => {
    * premium of 0.6. This case exists so that raising it fails HERE, loudly,
    * rather than surfacing as a door mix nobody can explain.
    */
-  it('prices every colour the same under the shipped rules, which is C64', () => {
+  it('prices every colour the same under the meeple economy, which is C64', () => {
     const state = opening(['wheat', 'orchard']);
-    const scratch = makeScratch(data, viewFor(data, state, 0));
+    const scratch = makeScratch(economy, viewFor(economy, state, 0));
     expect(MEEPLE_AS_CARD_DOOR_PREMIUM).toBe(0);
     const worths = SUITS.map((colour) => meepleWorth(scratch, colour));
     expect(new Set(worths).size).toBe(1);
@@ -526,7 +588,7 @@ describe('what a meeple is worth', () => {
     // out of the game is looked up in `workers.roster` and priced normally.
     // This is the half a `state.fair` lookup would have got wrong.
     const state = opening(['wheat', 'orchard']);
-    const scratch = makeScratch(data, viewFor(data, state, 0));
+    const scratch = makeScratch(economy, viewFor(economy, state, 0));
     for (const colour of SUITS) expect(meepleWorth(scratch, colour)).toBeGreaterThan(0);
   });
 

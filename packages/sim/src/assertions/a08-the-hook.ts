@@ -1,6 +1,6 @@
-import { isMeepleCurrency } from '@gp/data';
+import { isCommons, isMeepleCurrency } from '@gp/data';
 
-import type { Assertion } from './types.js';
+import type { Assertion, Measurement } from './types.js';
 import { NO_REMEDY } from './types.js';
 import { totalBonusTurns, totalTurns, visitsPerTurnBySuit } from './lib.js';
 import { num, pct, sum } from '../stats.js';
@@ -61,6 +61,39 @@ import { num, pct, sum } from '../stats.js';
  * pass or a fail beside assertion 15's spends per meeple-turn, which is the
  * number that says whether the supply could have funded more.
  *
+ * ## ⛔⛔ AND UNDER THE COMMONS THERE IS NO NEIGHBOUR AT ALL (C1, 09/09/2026)
+ *
+ * The five Notice Boards stand OWNERLESS in the centre of the table. Nobody has
+ * a board, so a play has no host: `visited` never fires, `visitsBySeat` is a
+ * structural zero, and "NEIGHBOUR visits per player per turn" is a rate over an
+ * event that cannot happen. **This assertion therefore reports NO SUBJECT under
+ * the commons and carries no verdict.**
+ *
+ * ⚠️ **THAT IS A STATEMENT ABOUT THE INSTRUMENT AND NOT ABOUT THE DESIGN, AND
+ * THE DIFFERENCE MATTERS MORE HERE THAN ANYWHERE ELSE IN THIS SUITE.** The hook
+ * has not been abandoned - the commons is an attempt at the same hook by a
+ * different route, a shared pile everybody feeds and everybody may harvest - and
+ * a zero on this line is not evidence the table plays solitaire. What it means
+ * is that the QUANTITY this assertion was built to count (a visit to a named
+ * rival's farm) no longer exists, and a floor of 0.5 read against a structural
+ * zero would print a FAIL every run for ever, which measures nothing and would
+ * train a reader to ignore the most important line in the report.
+ *
+ * ⭐ **`a18-commons-traffic` CARRIES THE INTERACTION READINGS INSTEAD**, and it
+ * ships as OBSERVE in this pass because the design names no number for any of
+ * them: plays per player per turn, central harvests per player per game, the
+ * pile depth at harvest, and the share of barn cards sourced from the centre
+ * rather than from a seat's own buildings. Read a18 wherever this line would
+ * have been read. Neither this assertion nor that one may borrow the other's
+ * threshold: 0.5 was derived from a spare card funding one visit a turn, and
+ * there is nothing in the commons for it to be a floor ON.
+ *
+ * ⛔ **DO NOT DELETE THIS ASSERTION OR ITS COUNTERS.** Both controls still
+ * exercise every branch above - `overlays/v31-card-visit.overlay.json` runs the
+ * card game and `overlays/meeple-loop-v1.overlay.json` the meeple loop - and
+ * the self-visit invariant under the meeple arm is the only thing in the project
+ * that would notice X5 breaking.
+ *
  * Ticket 10's control applies here and must be read as intended: a HERMIT
  * MIRROR SHOULD FAIL THIS. Four bots with prohibitive visit weight visit nobody
  * and the run correctly reports solitaire. That is the proof the assertion has
@@ -75,18 +108,26 @@ export const theHook: Assertion = {
     'door bought with the same currency as the interaction door. a08-the-hook must count ' +
     'self-visits separately, or the assertion will report a healthy hook while the table plays ' +
     'solitaire. [04/09/2026, the meeple loop] Neighbour visits per player per turn, floor 0.5 ' +
-    'unchanged. Keep the self-visit counter and assert it is 0 by construction.',
+    'unchanged. Keep the self-visit counter and assert it is 0 by construction. [09/09/2026, ' +
+    'the commons] a08-the-hook: no neighbour exists. Under commons it reports "no subject" and ' +
+    'a new a18-commons-traffic carries the interaction readings.',
   source:
     'CLAUDE.md (the hook, and the clock); docs/design-changes-v31-2026-09-02-v1.md part 4, ' +
-    'risk 2; docs/meeple-loop-visit-handoff-2026-09-04-v1.md sections 4 and 5',
+    'risk 2; docs/meeple-loop-visit-handoff-2026-09-04-v1.md sections 4 and 5; ' +
+    'docs/commons-handoff-2026-09-09-v1.md section 2.7',
   shape:
     'NEIGHBOUR visits per player per turn - self-visits excluded from the value and printed ' +
-    'beside it; share of turns using the bonus slot; own-crop against foreign-crop builds.',
+    'beside it; share of turns using the bonus slot; own-crop against foreign-crop builds. ' +
+    'Under "commons": nothing. The boards are ownerless, so there is no neighbour to visit ' +
+    'and a18 owns the interaction readings.',
   threshold:
     "FAIL if NEIGHBOUR visits per turn fall below 0.5 - half the design's own stated rate of " +
     'one. A self-visit never counts toward it. Under visitCurrency "meeple" the assertion ALSO ' +
     'fails on any self-visit at all, because X5 rules the self-visit out under every flag and a ' +
-    'non-zero count is an engine bug rather than a design reading.',
+    'non-zero count is an engine bug rather than a design reading. Under "commons" there is NO ' +
+    'SUBJECT and no verdict: the five boards are ownerless (C1), so a play has no host, a ' +
+    'visit to a neighbour cannot happen, and a floor read against a structural zero would FAIL ' +
+    'every run for ever. a18-commons-traffic carries the interaction readings instead.',
   taste: true,
   remedy:
     `${NO_REMEDY} - this one is the design. Under visitCurrency "card" the nearest thing to a ` +
@@ -98,6 +139,7 @@ export const theHook: Assertion = {
     "and Dean's unbuilt island alternative for a blocked meeple (X2).",
   measure({ data, pooled }) {
     const games = pooled.ended;
+    if (isCommons(data)) return noSubject(pooled.ended.length);
     const arm = isMeepleCurrency(data);
     const turns = totalTurns(games);
     const all = sum(games.map((g) => sum(g.visitsBySeat)));
@@ -195,3 +237,41 @@ export const theHook: Assertion = {
     };
   },
 };
+
+/**
+ * ⭐ THE "NO SUBJECT" MEASUREMENT (the commons, 09/09/2026), and the pattern this
+ * suite uses wherever a mode leaves a reading with nothing to measure.
+ *
+ * It is NOT an unmeasured value dressed up. `unmeasured()` in `types.ts` says
+ * "we tried and could not"; this says "the event this counts cannot occur under
+ * these rules", which is a different fact and needs a different sentence in the
+ * report. Value NaN, verdict OBSERVE, and a pointer at the assertion that owns
+ * the question now - because a reader who scans the suite for the hook must be
+ * sent somewhere rather than left with a blank.
+ */
+function noSubject(games: number): Measurement {
+  return {
+    value: NaN,
+    headline:
+      'NO SUBJECT UNDER THE COMMONS: the five Notice Boards are ownerless (C1), so a play has ' +
+      'no host and a visit to a NEIGHBOUR cannot happen. See a18-commons-traffic.',
+    detail: [
+      `⛔ THE QUANTITY IS GONE, NOT THE DESIGN. Over ${games} ended games nothing here was ` +
+        'measured, and that is a structural zero rather than a solitaire table: there is no ' +
+        'neighbour to visit, so a floor of 0.5 read against it would FAIL every run for ever ' +
+        'and train a reader to skip the most important line in the report.',
+      '⭐ a18-commons-traffic CARRIES THE INTERACTION READINGS: plays per player per turn, ' +
+        'central harvests per player per game, the pile depth at harvest, and the share of ' +
+        'barn cards sourced from the CENTRE against a seat’s own buildings. It ships as ' +
+        'OBSERVE, because the design names no number for any of them in this pass.',
+      '⚠️ NEITHER ASSERTION MAY BORROW THE OTHER’S THRESHOLD. The 0.5 floor was derived from a ' +
+        'spare card funding one visit a turn; there is nothing in the commons for it to be a ' +
+        'floor ON, and a number taken from the first commons run would be a snapshot test.',
+      'The branches above are alive and are exercised by both controls: ' +
+        'overlays/v31-card-visit.overlay.json runs the card game and ' +
+        'overlays/meeple-loop-v1.overlay.json the meeple loop, where the self-visit invariant ' +
+        '(X5) is still the only thing in the project that would notice it breaking.',
+    ],
+    verdict: 'OBSERVE',
+  };
+}

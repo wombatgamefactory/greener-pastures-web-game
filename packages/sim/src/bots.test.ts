@@ -6,8 +6,12 @@
  * in it can reach one.
  */
 
-import { BASE_GAME_DATA as data } from '@gp/data';
-import type { Suit } from '@gp/data';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { BASE_GAME_DATA as data, isCommons, loadGameData } from '@gp/data';
+import type { Overlay, Suit } from '@gp/data';
 import type { CardId, GameState, Move, PlayerView, Seat } from '@gp/engine';
 import { apply, legalMoves, makeProber, newGame, tileLevel, viewFor } from '@gp/engine';
 import type { PolicyId } from '@gp/bots';
@@ -21,6 +25,35 @@ const SUITS: Suit[] = ['wheat', 'vegetable', 'orchard', 'apiary', 'dairy'];
 function mirror(id: PolicyId, seats: number) {
   return Array.from({ length: seats }, () => id);
 }
+
+const OVERLAY_DIR = fileURLToPath(new URL('../../../overlays', import.meta.url));
+
+/**
+ * ⭐ A CONTROL, READ FROM ITS COMMITTED OVERLAY (09/09/2026).
+ *
+ * Several cases below are claims about a game that is no longer the default -
+ * the v31 card visit, the meeple loop - and both are live pinned arms rather
+ * than history. They are loaded from disk rather than restated inline for the
+ * reason `fixtures.test.ts` records at length: a copy of a pin stops being a pin
+ * the moment the default moves under it, and the commons flip moved four leaves
+ * at once. `overlays.test.ts` validates that every path in them still addresses
+ * a real knob.
+ */
+function control(file: string) {
+  return loadGameData(JSON.parse(readFileSync(join(OVERLAY_DIR, file), 'utf8')) as Overlay);
+}
+
+/**
+ * ⭐ THE BONUS-SLOT MOVE THIS MODE USES, named once (09/09/2026).
+ *
+ * The archetype cases below are all about the same behaviour - does this bot
+ * reach the bonus slot and does it spend it on the table or on itself - and that
+ * behaviour has had three spellings in a week: a `visit` card fee (v31), a
+ * `visit` meeple onto a rival's slot (the loop), and a `commons` play onto a
+ * central board. The CLAIM is mode-independent, so the cases assert it against
+ * whichever move type the mode has rather than being duplicated per mode.
+ */
+const TABLE_MOVE: Move['type'] = isCommons(data) ? 'commons' : 'visit';
 
 /** A build in either spelling: the main move or its task-answer twin. */
 interface BuildAct {
@@ -134,6 +167,20 @@ function cardIdsIn(move: Move, catalogue: ReadonlySet<CardId>): CardId[] {
   }
 }
 
+/**
+ * The five central board CARDS (W3/V3/O3/A3/D3), derived from the catalogue
+ * rather than listed, so a renumbered starter cannot desync this test from the
+ * engine. Empty under the two controls, where every Notice Board sits in a
+ * tableau and is already knowable through it.
+ */
+const COMMONS_BOARD_IDS: Record<string, CardId> = isCommons(data)
+  ? Object.fromEntries(
+      data.cards.catalogue
+        .filter((c) => c.slot === 'noticeboard')
+        .map((c) => [c.suit, c.id] as const),
+    )
+  : {};
+
 /** Everything the acting seat is entitled to name: its own, or public. */
 function knowableIds(view: PlayerView): Set<CardId> {
   const ok = new Set<CardId>(view.you.hand);
@@ -142,6 +189,19 @@ function knowableIds(view: PlayerView): Set<CardId> {
     for (const b of rival.tableau) ok.add(b.card);
   }
   for (const pile of Object.values(view.discards)) for (const id of pile) ok.add(id);
+  // ⭐ THE FIVE CENTRAL PILES ARE FULLY PUBLIC (C1, 09/09/2026): "each central
+  // board's pile is face up and public", so every card in one is knowable by
+  // every seat, and so is the board CARD itself - which is what a harvest of the
+  // centre names (C5). Without this the walk failed on
+  // `{type:'harvest',building:'O3'}`, a seat correctly offered the orchard
+  // board it can see sitting in the middle of the table.
+  //
+  // ⚠️ IT IS ADDED HERE RATHER THAN LOOSENING THE CHECK. `view.commons` is
+  // present only under the commons, and the ids it adds are exactly the ones the
+  // rules make public - so the guard is as tight under this mode as under the
+  // other two.
+  for (const pile of Object.values(view.commons?.boards ?? {})) for (const id of pile) ok.add(id);
+  for (const id of Object.values(COMMONS_BOARD_IDS)) ok.add(id);
   // Your own in-flight draw: you have seen these, and `keep` answers name them.
   // Same for your own divert - cards in limbo on their way to a discard, off
   // your own reveal or out of your own hand, which its answers name.
@@ -587,7 +647,10 @@ describe('the decision budget', () => {
       const GAME_SHIPPED = 10_500;
       const DECISION_SHIPPED = 13.6;
 
-      if (gameInApplies > GAME_SHIPPED * WARN_AT || decisionInApplies > DECISION_SHIPPED * WARN_AT) {
+      if (
+        gameInApplies > GAME_SHIPPED * WARN_AT ||
+        decisionInApplies > DECISION_SHIPPED * WARN_AT
+      ) {
         console.warn(
           `⚠️ throughput is well above the 05/09/2026 shipped readings: ` +
             `whole game ${gameInApplies.toFixed(0)} against ${GAME_SHIPPED}, ` +
@@ -597,6 +660,35 @@ describe('the decision budget', () => {
         );
       }
 
+      /**
+       * ⭐ RE-READ ON 09/09/2026 AGAINST THE COMMONS, AND DELIBERATELY NOT
+       * RE-CUT.
+       *
+       * The two constants are Dean's ten-minute stop line expressed in the two
+       * things this test can measure, and **his sentence is about a wall clock,
+       * not about a rule set** - "anything less than 5 or 6 [minutes] is ok, but
+       * over ten, we should stop". So the stop numbers are mode-independent by
+       * construction and stay put across the flip.
+       *
+       * ⚠️ WHAT IS STALE IS THE WARNING BAND'S BASELINE, AND IT IS STALE IN
+       * THE SAFE DIRECTION. `GAME_SHIPPED` and `DECISION_SHIPPED` are the
+       * 05/09/2026 readings of the MEEPLE ECONOMY, and the commons is expected
+       * to be CHEAPER: it removes the meeple visit enumeration (rival hosts x 5
+       * colours x wild pairs) and adds at most five boards x hand size in the
+       * bonus slot, so the handoff's own instruction is that branching should
+       * FALL and that a rise of more than 2x is a stop-and-look. A baseline
+       * that is too HIGH makes the warning quieter, never louder, so it cannot
+       * hide a regression behind a false alarm - it can only fail to shout as
+       * early as it might.
+       *
+       * ⛔ THEY ARE NOT RE-CUT FROM THIS RUN. A baseline taken from the first
+       * commons run is a snapshot of one machine on one afternoon, and this
+       * file's own history is emphatic that a guard which is firing correctly is
+       * not a stale constant. The number to re-cut them against is the SUITE
+       * wall clock on `reference-v15` plus `tools/bench-branching.ts`, both of
+       * which are steps 1 and 8 of the handoff's measurement plan and neither of
+       * which has been run.
+       */
       expect.soft(gameInApplies, `whole game, in applies`).toBeLessThan(GAME_STOP);
       expect
         .soft(
@@ -648,29 +740,73 @@ describe('the archetypes', () => {
   // been renamed minutes earlier and the batch matched the OLD title, which is
   // exactly the kind of silent miss a string substitution makes.
   it(
-    'gives the hermit control real teeth: it never visits a NEIGHBOUR',
+    'gives the hermit control real teeth: it never reaches across the table',
     { timeout: 60_000 },
     () => {
+      /**
+       * ⭐ RE-POINTED A THIRD TIME (09/09/2026), AND THE SECOND HALF LOST ITS
+       * SUBJECT AGAIN - which is now a pattern rather than an accident.
+       *
+       * The claim has never changed: **the hermit reaches the bonus slot and
+       * declines to use it on the table.** Both halves have to hold, and each
+       * has been spelled differently three times:
+       *
+       *   v31         no visit to a NEIGHBOUR / at least one SELF-visit
+       *   the loop    no visit at all (X5 deletes the self-visit) / one COLLECT
+       *   the commons no commons PLAY at all / ...and there is nothing else
+       *
+       * ⛔ THE SECOND HALF CANNOT BE ASSERTED UNDER THE COMMONS, and it is worth
+       * writing down why rather than quietly dropping it. The slot holds exactly
+       * ONE option (C9): no free Draw 1, no Collect, no self-visit. So "reaches
+       * the slot and declines the hook" and "never spends the slot" are the same
+       * event here, and a hermit at `visit: -100` correctly does neither. What
+       * stands in for it is the OFFER: the slot must have been open and legal
+       * for this seat at least once, or the veto is being proved by a bot that
+       * never got the choice - which is the exact weakness the second half
+       * exists to rule out.
+       */
       let solitaireSlots = 0;
+      let offered = 0;
       for (const seats of [2, 3]) {
+        const suits = ['wheat', 'orchard', 'apiary'].slice(0, seats) as Suit[];
         const result = runGame(data, {
           seed: `hermit-${seats}`,
           seats,
-          suits: ['wheat', 'orchard', 'apiary'].slice(0, seats) as Suit[],
+          suits,
           policies: mirror('hermit', seats),
           maxMoves: 1500,
         });
-        // Every visit is a neighbour visit now, so this is the whole veto.
+        // The veto, in whichever spelling this mode uses. Every visit is a
+        // neighbour visit since the loop, and every commons play is a play onto
+        // a shared pile, so in both cases this is the whole of it.
         expect(
-          result.moves.filter((m) => m.type === 'visit'),
+          result.moves.filter((m) => m.type === TABLE_MOVE),
           `${seats} seats`,
         ).toEqual([]);
         solitaireSlots += result.moves.filter((m) => m.type === 'collect').length;
+
+        if (isCommons(data)) {
+          // Replay and count the decisions at which the slot was actually on
+          // offer. A veto nobody was ever asked to exercise is not a control.
+          let state = newGame(data, { seed: `hermit-${seats}`, seats, suits });
+          for (const move of result.moves) {
+            if (legalMoves(data, state).some((m) => m.type === 'commons')) offered += 1;
+            state = apply(data, state, move).state;
+          }
+        }
       }
-      expect(
-        solitaireSlots,
-        'a hermit that never reaches the slot at all is not a control',
-      ).toBeGreaterThan(0);
+      if (isCommons(data)) {
+        expect(
+          offered,
+          'a hermit that was never OFFERED the slot is not a control (C9: the slot holds one ' +
+            'option, so there is no solitaire half to assert instead)',
+        ).toBeGreaterThan(0);
+      } else {
+        expect(
+          solitaireSlots,
+          'a hermit that never reaches the slot at all is not a control',
+        ).toBeGreaterThan(0);
+      }
     },
   );
 
@@ -869,8 +1005,22 @@ describe('the archetypes', () => {
     expect(seen).toBeGreaterThan(500);
   });
 
-  it('makes the socialite visit far more than the balanced reference', { timeout: 180_000 }, () => {
-    const visits = (id: PolicyId) => {
+  /**
+   * ⭐ THE SAME CLAIM IN WHICHEVER SPELLING THE MODE USES (re-pointed
+   * 09/09/2026). The socialite's whole identity is that it reaches across the
+   * table more than the reference does; what "across the table" IS has changed
+   * three times, and the taste has not. Under the commons it is a card played
+   * onto a central board - `weights.ts` maps the `visit` profile weight onto the
+   * commons move for exactly this reason - so the case reads `TABLE_MOVE` rather
+   * than being duplicated per mode.
+   *
+   * ⚠️ It is a SHARE of all moves, not a count, so a mode that resolves more
+   * decisions per turn cannot inflate it. And it is deliberately a strict
+   * inequality with no margin: the margin would be a number taken from our own
+   * output, and what is being asserted is that the profile has an effect at all.
+   */
+  it('makes the socialite reach across the table more than balanced', { timeout: 180_000 }, () => {
+    const reach = (id: PolicyId) => {
       const result = runGame(data, {
         seed: `taste-${id}`,
         seats: 3,
@@ -878,20 +1028,58 @@ describe('the archetypes', () => {
         policies: mirror(id, 3),
         maxMoves: 1500,
       });
-      return result.moves.filter((m) => m.type === 'visit').length / result.moves.length;
+      return result.moves.filter((m) => m.type === TABLE_MOVE).length / result.moves.length;
     };
-    expect(visits('socialite')).toBeGreaterThan(visits('balanced'));
+    expect(reach('socialite')).toBeGreaterThan(reach('balanced'));
+  });
+
+  /**
+   * ⭐ AND THE TWO CONTROLS KEEP THE OLD SPELLING ALIVE (09/09/2026), because
+   * deleting a case when its rule became an arm would leave the arm untested.
+   * The same taste, asserted on the `visit` move, under the two overlays that
+   * still produce one. It is a shorter walk than the case above: what is being
+   * guarded is that the profile weight still reaches the visit at all under each
+   * control, not the size of the effect.
+   */
+  it('keeps the socialite taste on the visit under both controls', { timeout: 300_000 }, () => {
+    for (const file of ['v31-card-visit.overlay.json', 'meeple-loop-v1.overlay.json']) {
+      const pinned = control(file);
+      const visits = (id: PolicyId) => {
+        const result = runGame(pinned, {
+          seed: `taste-${file}-${id}`,
+          seats: 3,
+          suits: SUITS.slice(0, 3),
+          policies: mirror(id, 3),
+          maxMoves: 1500,
+        });
+        return result.moves.filter((m) => m.type === 'visit').length / result.moves.length;
+      };
+      expect(visits('socialite'), file).toBeGreaterThan(visits('balanced'));
+    }
   });
 });
 
 // --- explain ---------------------------------------------------------------
 
 /**
- * The bonus slot's two options. Named here rather than imported, so that this
- * file states the contract it is testing instead of borrowing the evaluator's
- * own list and agreeing with it by construction.
+ * The bonus slot's options, in every spelling the three modes have. Named here
+ * rather than imported, so that this file states the contract it is testing
+ * instead of borrowing the evaluator's own list and agreeing with it by
+ * construction.
+ *
+ * ⭐ `commons` JOINED ON 09/09/2026 and it is the whole slot under the shipped
+ * game (C9). Without it the explain case below failed as "commons scored 1.94
+ * against a best of 2.4" - which is the windowed pick working exactly as
+ * designed, taking a closing slot over a bigger action that will still be there
+ * afterwards, and being reported as a violation because the list this test
+ * checks against had not been told the slot had a new name.
+ *
+ * ⚠️ `collect` IS ON THE LIST TOO, for the meeple controls. The list is every
+ * mode's slot pooled, deliberately: a move type that is not legal under the
+ * current rules simply never appears, and pooling is what lets one contract
+ * sentence cover all three.
  */
-const WINDOW_MOVES: readonly string[] = ['visit', 'bonusDraw'];
+const WINDOW_MOVES: readonly string[] = ['visit', 'bonusDraw', 'collect', 'commons'];
 
 describe('explain', () => {
   it('breaks a decision down into terms that sum to its total', () => {

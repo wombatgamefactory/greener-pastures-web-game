@@ -14,7 +14,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { BASE_GAME_DATA } from '@gp/data';
+import { BASE_GAME_DATA, isCommons, isMeepleCurrency } from '@gp/data';
 import { MOVE_TYPES } from '@gp/engine';
 
 import { RETIRED, WATCHLIST } from './assertions/index.js';
@@ -166,17 +166,56 @@ describe('the metric fold', () => {
     const games = result.games;
     expect(games.length).toBeGreaterThan(0);
     expect(games.some((g) => g.rounds > 0)).toBe(true);
-    expect(games.some((g) => g.meeplesByRound.length > 0)).toBe(true);
     expect(games.some((g) => g.barnByRound.length > 0)).toBe(true);
     expect(games.some((g) => g.turnsBySeat.some((t) => t > 0))).toBe(true);
-    expect(games.some((g) => g.visitsBySeat.some((v) => v > 0))).toBe(true);
-    expect(games.some((g) => g.doorClogSampledBySeat.some((n: number) => n > 0))).toBe(true);
-    // The three v31 quantities, each the subject of a new assertion. A zero
-    // across a whole smoke run means the fold never saw the mechanism at all,
-    // which is a different failure from a bad number and worth catching here.
+    // Quantities every mode has. `actionsBySeat` and the door mix are the two
+    // that would say the fold had gone blind whatever the rules are.
     expect(games.some((g) => g.actionsBySeat.some((n) => n > 0))).toBe(true);
-    expect(games.some((g) => g.meeplesGainedBySeat.some((n) => n > 0))).toBe(true);
     expect(games.some((g) => Object.values(g.doorUsesByColour).some((n) => n > 0))).toBe(true);
+
+    /**
+     * ⭐ AND THEN THE PER-MODE HALF (09/09/2026), because three of the
+     * quantities this test used to demand are STRUCTURAL ZEROES under the
+     * commons and demanding them would fail the smoke test on a correct engine.
+     *
+     * The point of the check is unchanged and is worth restating: a zero across
+     * a whole smoke run means the fold never saw the mechanism at all, which is
+     * a different failure from a bad number. So each mode names the mechanisms
+     * it actually HAS, and a mode that stops producing its own is caught exactly
+     * as before. What must never happen is a blanket softening to whatever all
+     * three modes share - that would be getting green by asking less.
+     */
+    if (isCommons(data)) {
+      // No visit, no Notice Board, no meeple: C1, C4 and C6. What the commons
+      // has instead is the play, the pile and the harvest of it.
+      expect(
+        games.some((g) => g.commonsPlaysBySeat.some((n) => n > 0)),
+        'no seat ever played a card onto a central board',
+      ).toBe(true);
+      expect(
+        games.some((g) => g.commonsPileSizeByRound.some((n) => n > 0)),
+        'the centre was never sampled with a card in it',
+      ).toBe(true);
+      expect(
+        games.some((g) => Object.values(g.commonsPlaysByFeeSuit).some((n) => n > 0)),
+        'the fee-suit mix was never fed',
+      ).toBe(true);
+      // Barn cards off a seat's own buildings exist under every mode; the
+      // centre column is the one the commons adds, and a18 reads their ratio.
+      expect(
+        games.some((g) => g.barnFromOwnBySeat.some((n) => n > 0)),
+        'nobody ever harvested one of their own buildings',
+      ).toBe(true);
+    } else {
+      expect(games.some((g) => g.visitsBySeat.some((v) => v > 0))).toBe(true);
+      expect(games.some((g) => g.doorClogSampledBySeat.some((n: number) => n > 0))).toBe(true);
+      expect(games.some((g) => g.meeplesByRound.length > 0)).toBe(true);
+      if (isMeepleCurrency(data)) {
+        expect(games.some((g) => g.meeplePoolByRound.some((n) => n > 0))).toBe(true);
+      } else {
+        expect(games.some((g) => g.meeplesGainedBySeat.some((n) => n > 0))).toBe(true);
+      }
+    }
   });
 
   it('counts a reshuffle for every crop in play and none for a crop that is not', () => {
@@ -267,8 +306,14 @@ describe('the watch-list suite', () => {
    * claimed by a tombstone and no tombstone may collide with a live assertion.
    */
   it('is numbered without reuse, and every gap has a tombstone', () => {
+    // ⭐ 18 JOINED ON 09/09/2026 with the commons: a08-the-hook lost its subject
+    // (the boards are ownerless, so there is no neighbour to visit) and
+    // a18-commons-traffic carries the interaction readings instead. A NEW id
+    // rather than a re-point of 8, for the reason this test guards: 8 still
+    // measures its own thing under both controls, and re-pointing it would
+    // silently change what every archived report that names it was saying.
     const live = rows.map((r) => r.assertion.id);
-    expect(live).toEqual([2, 4, 5, 6, 7, 8, 9, 11, 12, 13, 15, 16, 17]);
+    expect(live).toEqual([2, 4, 5, 6, 7, 8, 9, 11, 12, 13, 15, 16, 17, 18]);
     expect(new Set(live).size, 'a duplicate id').toBe(live.length);
 
     const buried = RETIRED.map((t) => t.id);
@@ -315,15 +360,23 @@ describe('the watch-list suite', () => {
     }
   });
 
-  it('marks exactly the six taste-sensitive assertions', () => {
+  it('marks exactly the seven taste-sensitive assertions', () => {
     // Taste-sensitive means "one archetype could produce this number on its
-    // own", and the mirrors re-measure it. It was four; v31 makes it six, and
-    // all three new assertions are on the list for the same reason: a hermit
-    // never visits, so it spends its bonus slot on Draw 1 by construction (17),
-    // which changes what it does with its meeples (15) and how many actions it
-    // resolves a turn (16). 14 left the set with the market.
+    // own", and the mirrors re-measure it. It was four; v31 made it six, and
+    // all three of that pass's new assertions are on the list for the same
+    // reason: a hermit never visits, so it spends its bonus slot on Draw 1 by
+    // construction (17), which changes what it does with its meeples (15) and
+    // how many actions it resolves a turn (16). 14 left the set with the market.
+    //
+    // ⭐ 18 JOINS THEM (09/09/2026) AND IT IS THE MOST TASTE-SENSITIVE OF THE
+    // SET. Every line in it is a share of what the table chose to do with its
+    // hand: a hermit plays no card onto a shared pile it does not want a rival
+    // to harvest, and a socialite plays one whenever the slot is open. Without
+    // the mirror spread beside it, a18's plays-per-turn is a number one
+    // archetype could be producing on its own - which is precisely what this
+    // flag is for.
     expect(rows.filter((r) => r.assertion.taste).map((r) => r.assertion.id)).toEqual([
-      2, 8, 11, 15, 16, 17,
+      2, 8, 11, 15, 16, 17, 18,
     ]);
   });
 

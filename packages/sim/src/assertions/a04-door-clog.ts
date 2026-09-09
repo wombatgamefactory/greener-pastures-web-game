@@ -1,4 +1,4 @@
-import { isMeepleCurrency } from '@gp/data';
+import { isCommons, isMeepleCurrency } from '@gp/data';
 
 import type { Assertion, Measurement, MeasureContext } from './types.js';
 import { num, pct } from '../stats.js';
@@ -115,17 +115,19 @@ export const doorClog: Assertion = {
     'traffic on 02/09/2026 (rules.json, noticeBoardThreshold), and re-cut onto the five colour ' +
     'slots by docs/meeple-loop-visit-handoff-2026-09-04-v1.md sections 4 and 5',
   shape:
-    'Under visitCurrency "card": share of turn boundaries at which a seat\'s own Notice Board ' +
-    'stands clogged. Under "meeple": share of turn boundaries at which all five of a seat\'s ' +
+    'Under visitCurrency "card": share of turn boundaries at which a seat’s own Notice Board ' +
+    'stands clogged. Under "meeple": share of turn boundaries at which all five of a seat’s ' +
     'colour slots are blocked, with slot occupancy printed under it and both split by seat ' +
-    'count, 2p first.',
+    'count, 2p first. Under "commons": nothing - no player has a board and a central board has ' +
+    'no threshold, so there is no door to clog.',
   threshold:
     `Under "card": FAIL below ${pct(BRAKE_FLOOR)}; above ${pct(FEEL_WATCH)} reports as a table ` +
     'question. Under "meeple": OBSERVE. The floor was a floor on a BRAKE, and the arm has no ' +
     'brake to lose - the board has no threshold (R5), a full board is a seat holding out rather ' +
     'than a farm being taxed, and X3 rules out any penalty for it. Neither the design nor the ' +
     "handoff names a number, and one taken from this run's own output would be a snapshot test, " +
-    'so the floor is deliberately not replaced.',
+    'so the floor is deliberately not replaced. Under "commons": NO SUBJECT - a central board ' +
+    'has no threshold (C4), nobody owns one (C1), and nothing in the game refuses a play.',
   taste: false,
   remedy:
     'npm run sim -- --watchlist --overlay=overlays/noticeboard-threshold-3.overlay.json   ' +
@@ -135,11 +137,61 @@ export const doorClog: Assertion = {
     'UNDER THE MEEPLE-LOOP ARM, which ignores noticeBoardThreshold outright. The arm has no ' +
     'lever on this line at all: X1 rules out clearing a full board automatically and X3 rules ' +
     "out penalising the owner, so a bad reading is an argument for Dean's island alternative " +
-    '(X2), which is not built and must not be.',
+    '(X2), which is not built and must not be. ⛔ AND IT DOES NOTHING UNDER THE COMMONS ' +
+    'EITHER, which has no noticeBoardThreshold to set. The knob that stands where the brake ' +
+    'used to is rules.economy.commonsThreshold (C10), shipped null, armed by ' +
+    'overlays/commons-threshold-2.overlay.json.',
   measure(ctx) {
+    if (isCommons(ctx.data)) return noSubject();
     return isMeepleCurrency(ctx.data) ? meepleArm(ctx) : cardGame(ctx);
   },
 };
+
+/**
+ * ⛔ NO SUBJECT UNDER THE COMMONS (C1 and C4, 09/09/2026), and it is the fifth
+ * re-base of this assertion arriving as a deletion rather than as a re-point.
+ *
+ * There is no door to clog. No player has a Notice Board - the five stand
+ * ownerless in the centre - and a central board has NO THRESHOLD at all (C4):
+ * any number of cards, never full, never clogged, and nothing in the game
+ * refuses a play. So both readings this assertion has ever carried lose their
+ * object at once: there is no "this farm is shut" (no farm has a door) and no
+ * slot occupancy (there are no slots).
+ *
+ * ⚠️ THE COUNTERS ARE NOT SAMPLED UNDER THE COMMONS AT ALL, which is a stronger
+ * statement than "they read zero" and is the honest one. `observe.ts` skips the
+ * turn-boundary probe outright, because `noticeBoardOf` THROWS on a seat with no
+ * board - so the guard is a crash guard as well as a meaning guard - and because
+ * a zero numerator over a real denominator would read as "never clogged", which
+ * is a finding about a thing that is not in the game.
+ *
+ * ⛔ NOTHING HERE IS DELETED. Both controls exercise both branches:
+ * `overlays/v31-card-visit.overlay.json` runs the threshold and
+ * `overlays/meeple-loop-v1.overlay.json` the five slots.
+ */
+function noSubject(): Measurement {
+  return {
+    value: NaN,
+    headline:
+      'NO SUBJECT UNDER THE COMMONS: no player has a Notice Board (C1) and a central board has ' +
+      'no threshold (C4), so there is no door to clog and nothing in the game refuses a play.',
+    detail: [
+      'The turn-boundary probe is not sampled under this mode rather than sampled at zero. A ' +
+        'zero numerator over a real denominator would read as "never clogged", which is a ' +
+        'finding about a thing that does not exist; an empty denominator reads as "not ' +
+        'measured", which is the truth.',
+      'Both branches are alive and both controls run them: ' +
+        'overlays/v31-card-visit.overlay.json is the Notice Board threshold and ' +
+        'overlays/meeple-loop-v1.overlay.json the five colour slots.',
+      'What replaced the brake under the commons is a knob rather than a rule: ' +
+        'rules.economy.commonsThreshold (C10), shipped null - no cap - with ' +
+        'overlays/commons-threshold-2.overlay.json as the arm that turns it on. If a17 ever ' +
+        "reads above Dean's 60% ceiling on the play rate, that is the number to run, and this " +
+        'assertion is where a clog would then reappear.',
+    ],
+    verdict: 'OBSERVE',
+  };
+}
 
 /** The shipped v31 game, unchanged since 02/09/2026. */
 function cardGame({ pooled }: MeasureContext): Measurement {

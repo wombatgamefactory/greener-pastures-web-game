@@ -15,11 +15,27 @@
  * measured) and `a17-bonus-mix` (the four-way tally, with self-visits counted
  * apart).
  *
- * Ids are never reused, so the suite is 2, 4-9, 11-13, 15-17 and the gaps are
- * the tombstones. Six carry a threshold and can FAIL; six are OBSERVE, because
+ * ⭐ ONE MORE IS NEW ON 09/09/2026 WITH THE COMMONS: `a18-commons-traffic`. It
+ * is not a re-point and not a replacement - `a08-the-hook` keeps every branch it
+ * has, because both controls still exercise them - but under
+ * `visitCurrency: 'commons'` the boards are ownerless (C1), a08 has no
+ * neighbour to count, and the interaction readings have to live somewhere. a18
+ * is where, and it ships with NO FAIL CONDITION: the design names no number for
+ * any of its lines, and one taken off the first commons run would be a snapshot
+ * test.
+ *
+ * Ids are never reused, so the suite is 2, 4-9, 11-13, 15-18 and the gaps are
+ * the tombstones. Six carry a threshold and can FAIL; seven are OBSERVE, because
  * the design names no number for them and a snapshot of our own first run is
  * not a threshold. That split is not a gap in the work - it is ticket 11
  * section 2 doing its job.
+ *
+ * ⚠️ TWO OF THE FOURTEEN NOW REPORT "NO SUBJECT" UNDER WHICHEVER MODE THEY WERE
+ * NOT WRITTEN FOR, and the pattern is deliberate rather than a special case:
+ * a08 says so under the commons, a18 says so under both controls, and a04, a05
+ * and a15 say so under the commons. A branch is never deleted while a control
+ * still exercises it; a mode where a reading has nothing to measure says NO
+ * SUBJECT and points at whatever owns the question there.
  */
 
 import { generosity } from './a02-generosity.js';
@@ -35,6 +51,7 @@ import { supplyLock } from './a13-supply-lock.js';
 import { meepleEconomy } from './a15-meeple-economy.js';
 import { actionInflation } from './a16-action-inflation.js';
 import { bonusMix } from './a17-bonus-mix.js';
+import { commonsTraffic } from './a18-commons-traffic.js';
 import type { Assertion } from './types.js';
 
 export const WATCHLIST: readonly Assertion[] = [
@@ -51,6 +68,7 @@ export const WATCHLIST: readonly Assertion[] = [
   meepleEconomy,
   actionInflation,
   bonusMix,
+  commonsTraffic,
 ];
 
 export type { Assertion, MeasureContext, Measurement, Verdict } from './types.js';

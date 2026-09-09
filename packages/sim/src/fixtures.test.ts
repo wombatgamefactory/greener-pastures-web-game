@@ -19,10 +19,12 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 import { BASE_GAME_DATA, loadGameData } from '@gp/data';
+import type { Overlay } from '@gp/data';
 import { replayFixture } from '@gp/engine';
 import type { Fixture } from '@gp/engine';
 
 const DIR = fileURLToPath(new URL('../fixtures', import.meta.url));
+const OVERLAY_DIR = fileURLToPath(new URL('../../../overlays', import.meta.url));
 
 /**
  * ⭐ WHICH RULES A FIXTURE REPLAYS AGAINST IS READ OFF ITS FILENAME, and it is
@@ -50,33 +52,69 @@ const DIR = fileURLToPath(new URL('../fixtures', import.meta.url));
  * card of its colour would and lands on a neighbour's board - so the `-meeple-
  * loop-` logs stopped being logs of the shipped game and became logs of an arm
  * that is still runnable and still worth guarding, exactly as the `-v31-` ones
- * did the day before. They now replay against `overlays/meeple-loop-v1`. ⚠️ THE
- * SHIPPED RULES CURRENTLY HAVE NO FIXTURE OF THEIR OWN: the whole-game walks in
- * `game.test.ts` and `meeple-loop.test.ts` and the `--audit` bench are what
- * cover them, and a captured R17 game would be worth having.
+ * did the day before. They now replay against `overlays/meeple-loop-v1`.
+ *
+ * ## ⭐⭐ IT HAPPENED A THIRD TIME ON 09/09/2026, AND THIS TIME IT BROKE THE TEST
+ *
+ * Dean ruled THE COMMONS in as the default. Both controls survive, so both sets
+ * of logs are still logs of runnable games - but the flip moved FOUR leaves at
+ * once (`visitCurrency` to `'commons'`, `bonusTiming` to `'start'`,
+ * `startingMeeplesPerColour` to 0, and the Orchard door's printed draw to 2/2),
+ * and the two control datas below were built INLINE from a hand-written `set`
+ * that named only the knobs the 04/09 and 05/09 flips had moved.
+ *
+ * ⛔ **SO THE FIXTURES REPLAYED UNDER BONUS-FIRST AND ALL SIX THREW AT MOVE 4**
+ * ("It is seat 1's turn"), which is what a turn-order change looks like from
+ * inside a move log: the log's fourth move belongs to a turn that, under the new
+ * order, had already ended. Nothing was wrong with the fixtures and nothing was
+ * wrong with the engine. **The inline `set` was a COPY of an overlay, and a copy
+ * of a pin stops being a pin the moment the default moves under it** - which is
+ * the same lesson, arriving from a third direction, that
+ * `overlays/retired/README.md` records about passengers and that the denial
+ * probe in `observe.ts` records about copying a predicate out of the rules.
+ *
+ * ⭐ **THE FIX IS TO STOP DUPLICATING AND START READING.** Both controls are
+ * committed, validated by `overlays.test.ts`, and already pin every leaf the flip
+ * moved - that is what the passenger audit of 09/09/2026 was for. So this file
+ * loads them FROM DISK by path. The next flip pins its passengers in one place
+ * and this test follows for free; a fixture that then fails is a real
+ * regression, which is the only thing it was ever supposed to say.
+ *
+ * ⚠️ **THE SHIPPED RULES STILL HAVE NO FIXTURE OF THEIR OWN, and now there are
+ * two versions of that debt.** No `-meeple-economy-` log was ever recorded for
+ * the `reference-v14` game, and no `-commons-` log exists for this one.
+ * Recording the commons openings needs the bots to enumerate the new move type,
+ * so it belongs to the integration step rather than here. The command, for
+ * whoever takes it:
+ *
+ *     npm run sim -- --replay=<capture> --fixture="a whole {2,3,4}p commons opening"
+ *
+ * and the file must be named `{2,3,4}p-commons-opening.json` so that `dataFor`
+ * below leaves it on `BASE_GAME_DATA`, which IS the commons. Until then the
+ * commons is covered by `packages/engine/src/commons.test.ts`, the whole-game
+ * walks in `game.test.ts` and the `--audit` bench.
  */
-const V31_CONTROL = loadGameData({
-  name: 'v31-card-visit',
-  schemaVersion: 1,
-  set: {
-    'rules.turn.visitCurrency': 'card',
-    'rules.turn.meepleAsCard': false,
-    'rules.turn.slotToll': null,
-    'rules.turn.meepleCapPerColour': 1,
-  },
-});
+function overlayData(file: string) {
+  const overlay = JSON.parse(readFileSync(join(OVERLAY_DIR, file), 'utf8')) as Overlay;
+  return loadGameData(overlay);
+}
 
-const MEEPLE_LOOP_V1 = loadGameData({
-  name: 'meeple-loop-v1',
-  schemaVersion: 1,
-  set: {
-    'rules.turn.visitCurrency': 'meeple',
-    'rules.turn.meepleAsCard': false,
-    'rules.turn.slotToll': null,
-    'rules.turn.meepleCapPerColour': 1,
-  },
-});
+/**
+ * ⭐ READ FROM THE COMMITTED OVERLAY, NEVER RESTATED HERE. See the note above:
+ * an inline copy of a pin stops being a pin the moment the default moves under
+ * it, and on 09/09/2026 that cost all six fixtures at once. These two files are
+ * the controls the passenger audit maintains, and `overlays.test.ts` validates
+ * that every path in them still addresses a real knob.
+ */
+const V31_CONTROL = overlayData('v31-card-visit.overlay.json');
+const MEEPLE_LOOP_V1 = overlayData('meeple-loop-v1.overlay.json');
 
+/**
+ * ⚠️ A FILE WITH NO MARKER REPLAYS AGAINST THE SHIPPED DEFAULT, whatever the
+ * shipped default currently is. That is the convention and it is deliberate: a
+ * fixture belongs to the game of the day it was captured, and a marker is added
+ * only when that game becomes an arm. There are no unmarked fixtures today.
+ */
 function dataFor(file: string) {
   if (file.includes('-v31-')) return V31_CONTROL;
   if (file.includes('-meeple-loop-')) return MEEPLE_LOOP_V1;

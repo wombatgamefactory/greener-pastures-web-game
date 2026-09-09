@@ -1,5 +1,5 @@
 import type { GameData } from '@gp/data';
-import { isMeepleCurrency } from '@gp/data';
+import { isCommons, isMeepleCurrency } from '@gp/data';
 
 import type { GameMetrics } from '../observe.js';
 import type { Assertion, Measurement, MeasureContext } from './types.js';
@@ -124,14 +124,18 @@ export const meepleEconomy: Assertion = {
     'card-spending colours. Re-cut for handoff v2 (04/09/2026) with four more readings: meeples ' +
     'spent as a resource (R15) by use, with the priced-clog-bypass activations counted apart; ' +
     'every meeple exit by source including the two R15/R6 add; the meeple pool at the start, ' +
-    'midpoint and end of the game; and the share of resource spends in the final two rounds.',
+    'midpoint and end of the game; and the share of resource spends in the final two rounds. ' +
+    'Under "commons": nothing. There are no meeples in the game at all (C6).',
   threshold:
     'Under "card": FAIL below half of all meeples gained ever being spent - a component with ' +
     'no reason to hold it and only one use should be spent nearly always. Under "meeple": ' +
     'OBSERVE, and deliberately so. A meeple recirculates, so the ratio that floor stood on does ' +
     'not exist; the handoff names four things to report and no number for any of them, and a ' +
     "threshold taken from this run's own output is a snapshot test that can never fail. The " +
-    'floor is not replaced until Dean answers "how often should a held meeple be spent".',
+    'floor is not replaced until Dean answers "how often should a held meeple be spent". ' +
+    'Under "commons": NO SUBJECT. C6 removes the meeple from the game entirely - no starting ' +
+    'meeples, no island seed, no spend, no supply - so every counter this assertion reads is a ' +
+    'structural zero.',
   taste: true,
   remedy:
     `${NO_REMEDY} for the rule. Under either arm the two things that move this are an ` +
@@ -140,13 +144,63 @@ export const meepleEconomy: Assertion = {
     'decides how many turns a seat has left to spend in (overlays/end-trigger-8.overlay.json). ' +
     'Under "card", overlays/meeple-pool-deep-v1.overlay.json varies the colours dealt and this ' +
     'assertion must NOT move under it - if it does, that arm changed how attractive deliveries ' +
-    'are and its comparison is contaminated. Under "meeple" the two arms to sweep are ' +
-    'overlays/meeple-loop-cap-two-v1.overlay.json (the cap at 2) and ' +
-    'overlays/meeple-loop-no-starting-meeples-v1.overlay.json (no starting five).',
+    'are and its comparison is contaminated. Under "meeple" the arm to sweep is ' +
+    'overlays/meeple-loop-no-starting-meeples-v1.overlay.json (no starting five). ' +
+    '⚠️ THE CAP CELLS ARE RETIRED (09/09/2026): meeple-loop-cap-two-v1 and its ' +
+    'siblings moved to overlays/retired/ with the commons flip and are NOT runnable, because a ' +
+    'supply cap has no subject in a game with no meeples. Read overlays/retired/README.md ' +
+    'before moving one back out; overlays/meeple-loop-v1.overlay.json is the live control and ' +
+    'pins the whole loop rather than one knob of it. Under "commons" there is nothing here to ' +
+    'move: there are no meeples at all (C6).',
   measure(ctx) {
+    if (isCommons(ctx.data)) return noSubject();
     return isMeepleCurrency(ctx.data) ? meepleArm(ctx) : cardGame(ctx);
   },
 };
+
+/**
+ * ⛔ NO SUBJECT UNDER THE COMMONS (C6, 09/09/2026): THERE ARE NO MEEPLES.
+ *
+ * Not "no cap" and not "no loop" - none of the component at all. C6 is
+ * categorical: no starting meeples, no meeple on the island's 3 VP space, no
+ * spend, no Collect, no supply. `startingMeeplesPerColour` is 0 and
+ * `meeplesPerTile()` returns 0, so every counter this assertion reads - gained,
+ * spent, boxed, the pool, the supply by third - is a structural zero.
+ *
+ * ⚠️ AND A STRUCTURAL ZERO IS EXACTLY WHAT THIS ASSERTION IS WRITTEN TO CALL A
+ * FAILURE. Its "card" branch FAILS below half of all meeples gained ever being
+ * spent, and 0 gained would divide to NaN while 0 spent of any gained would read
+ * as the deadest component the suite can describe. That is why it says NO
+ * SUBJECT rather than falling through to either arm.
+ *
+ * ⛔ THE MEEPLE CODE STAYS, and so does every branch below. The project's
+ * standing rule is that a branch whose only producer is a knob at its shipped
+ * value is not deleted, and both meeple branches have a live control:
+ * `overlays/meeple-loop-v1.overlay.json` (the loop before R15) and
+ * `overlays/meeple-economy-v1.overlay.json` (the reference-v14 game, R15 and
+ * R17 together).
+ */
+function noSubject(): Measurement {
+  return {
+    value: NaN,
+    headline:
+      'NO SUBJECT UNDER THE COMMONS: there are no meeples in this game at all (C6) - no ' +
+      'starting five, no island seed, no spend, no Collect and no supply.',
+    detail: [
+      'Every counter this assertion reads is a structural zero, which is precisely the reading ' +
+        'its own threshold calls a dead component - so it reports no subject rather than ' +
+        'failing on the absence of the thing it measures.',
+      'The meeple branches are alive and are exercised by two controls: ' +
+        'overlays/meeple-loop-v1.overlay.json is the loop of 04/09/2026 and ' +
+        'overlays/meeple-economy-v1.overlay.json reproduces the reference-v14 game, where a ' +
+        'meeple is a card of its colour and is placed on a neighbour’s board.',
+      'What the commons put in the meeple’s place is a CARD, and the readings that used to be ' +
+        'about a circulating currency are now about a circulating card: a18-commons-traffic ' +
+        'carries the fee-suit mix, the pile depth and the barn-source split.',
+    ],
+    verdict: 'OBSERVE',
+  };
+}
 
 /**
  * ⭐⭐ THE STALE-STRING BUG, AND WHY IT MATTERED (fixed 04/09/2026, recorded in
@@ -241,9 +295,12 @@ function meepleArm({ data, pooled }: MeasureContext): Measurement {
   // R17: meeples spent as a card that LANDED on a board, and how evenly the
   // table received them.
   const placed = sum(games.map((g) => sum(g.meeplesPlacedBySeat)));
-  const receivedTotals = games.length === 0 ? [] : games[0]?.meeplesPlacedReceivedBySeat.map(
-    (_, i) => sum(games.map((g) => g.meeplesPlacedReceivedBySeat[i] ?? 0)),
-  ) ?? [];
+  const receivedTotals =
+    games.length === 0
+      ? []
+      : (games[0]?.meeplesPlacedReceivedBySeat.map((_, i) =>
+          sum(games.map((g) => g.meeplesPlacedReceivedBySeat[i] ?? 0)),
+        ) ?? []);
   const receivedSpread =
     placed === 0
       ? 'n/a'
@@ -415,13 +472,13 @@ function meepleArm({ data, pooled }: MeasureContext): Measurement {
           'rather than re-rated: this is the same wild spend assertion 7 and 8 already count, ' +
           'landing here because it paid a build, an activation or a crate instead of a door.'
         : '⭐ MEEPLES SPENT AS A RESOURCE (R15): 0, by construction - `rules.turn.meepleAsCard` ' +
-          'is false under this run, so a meeple only ever buys its colour\'s action and every ' +
+          'is false under this run, so a meeple only ever buys its colour’s action and every ' +
           'number in this block is the shipped v1 loop unchanged.',
       asCard
         ? `⭐ TOLL MEEPLES PAID (R6 amended): ${tollPaid} over ${tollVisits} visits that paid a ` +
           `nonzero toll (mean ${num(tollVisits === 0 ? NaN : tollPaid / tollVisits, 2)} per toll ` +
           'visit). Assertion 17 owns the visit-share and the "does the popular farm change ' +
-          'hands" reading; this is the same meeples counted from the payer\'s side, and they ' +
+          'hands" reading; this is the same meeples counted from the payer’s side, and they ' +
           'also appear above under `meeplesBoxedBySource.toll`.'
         : '⭐ TOLL MEEPLES PAID (R6 amended): 0, by construction - `rules.turn.slotToll` is null ' +
           'under this run, so an occupied slot still refuses that colour outright (v1) rather ' +
