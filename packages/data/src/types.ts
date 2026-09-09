@@ -909,6 +909,59 @@ export interface RulesFile {
      * the arm.
      */
     readonly commonsColourMatch: boolean;
+    /**
+     * ⭐ DEAN'S QUESTION OF 09/09/2026, HALF ONE: THE BUILDING SEMANTIC OF A
+     * CENTRAL PILE. Read only under `visitCurrency: 'commons'`.
+     *
+     * *"I'm interested to see if we place a threshold on the centre cards if it
+     * will reduce the number of cards going from the centre to the barns - my
+     * target is about 30-40% of barn cards should come from the middle."*
+     *
+     * `null` IS THE SHIPPED RULE (C5): any central pile holding at least one
+     * card may be harvested, by anybody, whole. A number `n` makes a pile
+     * harvestable ONLY at `n` cards or more - a pile is "full" at `n`, exactly
+     * as a building is full at its threshold, and nothing may take it before
+     * then.
+     *
+     * ⚠️ IT IS NOT `commonsThreshold`, AND THE PAIR IS EASY TO CONFUSE.
+     * `commonsThreshold` caps the INFLOW (a pile at its cap refuses a play);
+     * this gates the OUTFLOW (a pile below `n` refuses a harvest). The inflow
+     * cap measured NO change in the centre's share of barn cards at 2 - 63.1%
+     * against 63.0% - because a central harvest already takes a median of two
+     * cards and because every card played into the centre reaches a barn
+     * eventually anyway.
+     *
+     * ⛔ D6 STOPS HOLDING UNDER THIS KNOB, and it is the one behaviour change
+     * worth naming before a run. D6 is "the wheat board can never be dead": the
+     * fee lands on the pile before the action runs, so the fee is itself
+     * harvestable and the floor of the bonus slot is "one card from hand into
+     * your barn". Under `commonsHarvestMin` that only holds if the pile the fee
+     * lands on REACHES `n`, so at `n = 3` a play onto an empty wheat board buys
+     * a Harvest of nothing and the wheat board is simply not offered unless some
+     * pile is already deep enough or the seat has a full building.
+     */
+    readonly commonsHarvestMin: number | null;
+    /**
+     * ⭐ DEAN'S QUESTION OF 09/09/2026, HALF TWO, AND THE ONLY ONE OF THE THREE
+     * THAT CAN REDUCE THE CENTRE'S OUTFLOW WITHOUT REDUCING PLAYS. Read only
+     * under `visitCurrency: 'commons'`.
+     *
+     * `null` IS THE SHIPPED RULE (C5): a central harvest takes the WHOLE pile.
+     * A number `n` takes at most the most recently played `n` cards - the top of
+     * the pile - and leaves the rest standing in the centre. A pile holding
+     * fewer than `n` gives up all of it, so the rule is "at most `n`" and never
+     * a minimum.
+     *
+     * ⭐ WHY IT IS THE ONE THAT CAN WORK. The centre is a closed system: cards
+     * only enter by a play (C3) and only leave by a harvest (D3), so
+     * plays = harvested out + stranded at game end. A cap on plays
+     * (`commonsThreshold`) or a gate on when a pile may be taken
+     * (`commonsHarvestMin`) changes WHEN cards leave, not how many; leaving
+     * cards behind is the only rule that changes the ratio itself, because the
+     * remainder stays in the centre where it can still be taken later or stranded
+     * at the end. Read it against a18's conservation line.
+     */
+    readonly commonsHarvestTake: number | null;
   };
   readonly endGame: {
     /**

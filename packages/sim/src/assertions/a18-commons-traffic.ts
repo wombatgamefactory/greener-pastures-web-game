@@ -3,7 +3,7 @@ import { isCommons } from '@gp/data';
 import type { Assertion, Measurement } from './types.js';
 import { NO_REMEDY } from './types.js';
 import { totalTurns } from './lib.js';
-import { median, num, pct, sum } from '../stats.js';
+import { mean, median, num, pct, sum } from '../stats.js';
 
 /**
  * NEW ON 09/09/2026 WITH THE COMMONS, and it exists because `a08-the-hook` lost
@@ -61,6 +61,39 @@ import { median, num, pct, sum } from '../stats.js';
  * do is put it beside the pile depth and the harvest rate so the shape is
  * visible.
  *
+ * ## ⭐⭐ DEAN'S QUESTION OF 09/09/2026, AND THE FOUR READINGS ADDED FOR IT
+ *
+ * *"Can we measure how many cards are taken when the Harvest is done against the
+ * centre cards? I'm interested to see if we place a threshold on the centre
+ * cards if it will reduce the number of cards going from the centre to the barns
+ * - my target is about 30-40% of barn cards should come from the middle."*
+ *
+ * The share read **63.1%** on the shipped rules, and the first answer -
+ * `commonsThreshold`, a cap on the INFLOW - measured nothing at all at 2 (63.1%
+ * against 63.0%). The reason is in two of the numbers below, which is why they
+ * are now printed rather than derivable:
+ *
+ *   - **THE DISTRIBUTION OF CARDS TAKEN.** A central harvest already takes a
+ *     MEDIAN OF TWO cards, so a cap of two caps almost nothing. The histogram
+ *     (1 / 2 / 3 / 4 / 5+) says how much of the outflow a given cap could ever
+ *     have reached, and it is the reading that would have predicted the null
+ *     result before the run rather than after it.
+ *   - **THE CONSERVATION LINE.** The centre is CLOSED: cards enter only by a
+ *     play (C3) and leave only by a harvest (D3), so `plays = harvested out +
+ *     stranded at game end`, exactly, in every game. All three are printed so a
+ *     reader can check the arithmetic. ⭐ **It is also the answer to why an
+ *     inflow cap cannot move the share**: every card played into the centre
+ *     reaches somebody's barn unless the game ends first, so capping plays
+ *     changes WHEN cards leave and not how many. The only rule that can change
+ *     the ratio without changing the play rate is one that leaves cards behind -
+ *     `commonsHarvestTake` - and the stranded column is where its cost shows up.
+ *
+ * ⚠️ **THE TARGET IS PRINTED AND CARRIES NO VERDICT.** 30-40% is Dean's aim
+ * and not a design threshold expressed as shape, and this assertion cannot fail
+ * (see the section above). The share is reported pooled AND by seat count,
+ * because a share that sits inside the band at four seats and far outside it at
+ * two is a different finding from one that misses everywhere.
+ *
  * ## The fee-suit mix (L5)
  *
  * Any card pays for any board (C3), so which card a seat burns is a free choice
@@ -99,17 +132,24 @@ export const commonsTraffic: Assertion = {
     'docs/commons-handoff-2026-09-09-v1.md section 2.7 and the measurement plan (section 3), ' +
     'readings 3, 4 and 7; C1, C3 and C5 of section 1',
   shape:
-    'Plays per player per turn and per game; central harvests per player per game; the median ' +
-    'and p90 pile size at harvest; barn cards from the CENTRE against barn cards off a seat’s ' +
-    'own buildings; the fee-suit mix with the off-crop share; and the median size of the whole ' +
-    'centre by game third. No subject under visitCurrency "card" or "meeple".',
+    'Plays per player per turn and per game; central harvests per player per game, split by ' +
+    'whether they were the MAIN Harvest or one BOUGHT through the wheat board; the mean, ' +
+    'median, p90, max and full 1/2/3/4/5+ distribution of cards taken per central harvest; the ' +
+    'conservation line (plays into the centre = cards harvested out + cards stranded at game ' +
+    'end); barn cards from the CENTRE against barn cards off a seat’s own buildings, pooled ' +
+    "AND by seat count, with Dean's 30-40% target printed beside it; the fee-suit mix with the " +
+    'off-crop share; and the median size of the whole centre by game third. No subject under ' +
+    'visitCurrency "card" or "meeple".',
   threshold:
     'OBSERVE, and there is NO FAIL CONDITION in this pass. The design names no number for any ' +
     'of these readings, the handoff names none, and one taken from the first commons run would ' +
     'be a snapshot test that can never fail (ticket 11 section 2). The one number Dean did set ' +
     'is the PLAY RATE band of 30%-60%, and that belongs to a17: it is repeated in the first ' +
     'line here as context and deliberately carries no verdict, because two assertions failing ' +
-    'on one number would report a single finding twice.',
+    'on one number would report a single finding twice. ⭐ DEAN’S 30-40% TARGET FOR THE ' +
+    "CENTRE'S SHARE OF BARN CARDS (09/09/2026) IS PRINTED AND ALSO CARRIES NO VERDICT: it is an " +
+    'aim he stated while asking for a measurement, not a threshold expressed as shape, and ' +
+    'turning an aim into a fail condition on the run that first measures it is the same trap.',
   taste: true,
   remedy:
     `${NO_REMEDY} in this pass - nothing here can fail, so nothing here prescribes. The two ` +
@@ -118,7 +158,14 @@ export const commonsTraffic: Assertion = {
     'how fat a pile may get and therefore how big a harvest of the centre can be) and ' +
     'overlays/commons-colour-match-v1.overlay.json (rules.economy.commonsColourMatch true, ' +
     'which stops any card paying for any board and would change the fee-suit mix directly). ' +
-    'Both are C10 fallbacks, built and shipped OFF so that the cap is one number away.',
+    'Both are C10 fallbacks, built and shipped OFF so that the cap is one number away. ' +
+    '⭐ AND SINCE 09/09/2026 THERE ARE TWO MORE, BUILT FOR DEAN’S 30-40% TARGET, because the ' +
+    'first one measured nothing: rules.economy.commonsHarvestMin (overlays/commons-harvest-min-2, ' +
+    '-3, -4) gates the OUTFLOW - a pile may not be harvested below n, the building semantic - and ' +
+    'rules.economy.commonsHarvestTake (overlays/commons-take-1, -2) caps how many cards come out ' +
+    'and leaves the rest standing, which is the ONLY one of the three that can reduce the ' +
+    "centre's outflow without reducing plays. Sweep them one at a time and read each against the " +
+    'conservation line.',
   measure({ data, pooled }) {
     if (!isCommons(data)) return noSubject();
     const games = pooled.ended;
@@ -126,13 +173,37 @@ export const commonsTraffic: Assertion = {
     const plays = sum(games.map((g) => sum(g.commonsPlaysBySeat)));
     const seatGames = sum(games.map((g) => g.seats));
     const harvests = sum(games.map((g) => sum(g.commonsHarvestsBySeat)));
+    const bought = sum(games.map((g) => sum(g.commonsHarvestsBoughtBySeat)));
     const fromCentre = sum(games.map((g) => sum(g.barnFromCommonsBySeat)));
     const fromOwn = sum(games.map((g) => sum(g.barnFromOwnBySeat)));
     const intoBarn = fromCentre + fromOwn;
+    const stranded = sum(games.map((g) => g.commonsStrandedAtEnd));
 
     const piles = games.flatMap((g) => g.commonsPileSizeAtHarvest);
     const value = turns === 0 ? NaN : plays / turns;
     const centreShare = intoBarn === 0 ? NaN : fromCentre / intoBarn;
+
+    // Dean's histogram: how many cards a central harvest actually takes. The
+    // 5+ bucket is open because the tail is the whole question a cap asks - a
+    // cap of 2 can only ever reach what sits above 2.
+    const buckets = [1, 2, 3, 4].map((n) => piles.filter((x) => x === n).length);
+    const big = piles.filter((x) => x >= 5).length;
+    const histogram = [...buckets.map((c, i) => [`${i + 1}`, c] as const), ['5+', big] as const]
+      .map(
+        ([label, count]) =>
+          `${label}: ${count} ${pct(piles.length === 0 ? NaN : count / piles.length, 0)}`,
+      )
+      .join('   ');
+
+    // The centre's share of harvested barn cards BY SEAT COUNT, beside the
+    // pooled figure, because a share inside Dean's band at four seats and far
+    // outside it at two is a different finding from one that misses everywhere.
+    const shareBySeats = pooled.bySeats.map((slice) => {
+      const centre = sum(slice.ended.map((g) => sum(g.barnFromCommonsBySeat)));
+      const own = sum(slice.ended.map((g) => sum(g.barnFromOwnBySeat)));
+      const total = centre + own;
+      return `${slice.seats}p ${pct(total === 0 ? NaN : centre / total)}`;
+    });
 
     const feeTotal = sum(games.map((g) => sum(Object.values(g.commonsPlaysByFeeSuit))));
     const feeMix = new Map<string, number>();
@@ -173,11 +244,41 @@ export const commonsTraffic: Assertion = {
           'per player per game.',
         `CENTRAL HARVESTS: ${harvests} in all, ` +
           `${num(seatGames === 0 ? NaN : harvests / seatGames, 2)} per player per game, taking ` +
-          `a median of ${num(median(piles), 1)} cards (p90 ${num(percentile(piles, 0.9), 1)}, ` +
+          `a mean of ${num(mean(piles), 2)} and a median of ${num(median(piles), 1)} cards ` +
+          `(p90 ${num(percentile(piles, 0.9), 1)}, ` +
           `max ${piles.length === 0 ? 'n/a' : piles.reduce((a, b) => (b > a ? b : a), 0)}). A pile only ever leaves by ` +
           'harvest (D3), so this is the whole of the centre’s outflow.',
+        `⭐ CARDS TAKEN PER CENTRAL HARVEST, the distribution (Dean, 09/09/2026): ${histogram}. ` +
+          '⚠️ THIS IS WHY A CAP ON THE INFLOW DID NOTHING. rules.economy.commonsThreshold at 2 ' +
+          'moved the centre share by 0.1 points (63.1% to 63.0%) because a central harvest was ' +
+          'already taking a median of two cards, so the cap could only ever reach the tail above ' +
+          'it. Read the 3 / 4 / 5+ buckets as the whole of what any cap has to work with.',
+        `⭐⭐ THE CONSERVATION LINE, per game: ${num(games.length === 0 ? NaN : plays / games.length, 1)} ` +
+          `cards played INTO the centre = ${num(games.length === 0 ? NaN : fromCentre / games.length, 1)} ` +
+          `harvested OUT + ${num(games.length === 0 ? NaN : stranded / games.length, 1)} STRANDED ` +
+          `at game end (${plays} = ${fromCentre} + ${stranded} over ${games.length} ended games; ` +
+          `stranded is ${pct(plays === 0 ? NaN : stranded / plays)} of plays). The centre is a ` +
+          'CLOSED system - in by a play (C3), out by a harvest (D3) - so the three columns must ' +
+          'balance exactly and a disagreement is a fold bug, not a reading. ⭐ IT IS ALSO THE ' +
+          'ANSWER TO WHY AN INFLOW CAP CANNOT MOVE THE SHARE: every card played into the centre ' +
+          'reaches somebody’s barn unless the game ends first, so capping plays changes WHEN ' +
+          'cards leave and not how many. rules.economy.commonsHarvestTake is the only one of the ' +
+          'three knobs that leaves cards behind, and its cost shows up in the stranded column.',
+        `THE ROUTE INTO THE CENTRE'S OUTFLOW: ${bought} of ${harvests} central harvests ` +
+          `(${pct(harvests === 0 ? NaN : bought / harvests)}) were BOUGHT through the wheat ` +
+          `board, ${harvests - bought} were the MAIN Harvest action. The bought half is D6 - the ` +
+          'fee lands before the action runs, so a play onto the wheat board is always a legal ' +
+          'Harvest of at least that card - and it is the half rules.economy.commonsHarvestMin ' +
+          'would take away, since a pile below the minimum refuses a harvest whether or not the ' +
+          'fee just landed on it. ⚠️ THE SPLIT IS ATTRIBUTED, NOT CARRIED ON THE EVENT: a ' +
+          'bought Harvest resolves through a task in a later decision, so the fold latches the ' +
+          'seat on the doorUsed that paid and spends the latch on that seat’s next harvest.',
         `⭐⭐ THE FARM BYPASS: ${fromCentre} barn cards came out of the CENTRE against ` +
           `${fromOwn} off a seat's OWN buildings (${pct(centreShare)} centre). ` +
+          `BY SEAT COUNT: ${shareBySeats.join('   ')}. ` +
+          "⭐ DEAN'S TARGET IS 30-40% FROM THE MIDDLE (09/09/2026), printed here as an OBSERVE " +
+          'line and carrying NO verdict: it is an aim rather than a design threshold expressed ' +
+          'as shape, and nothing on this page can fail. ' +
           '**IF THE CENTRE OUT-SUPPLIES THE FARM, THE BUILDING ENGINE IS DECORATION.** The ' +
           'design wants sow -> grow -> clog -> harvest -> deliver; a fat public pile is a barn ' +
           'faucet nobody had to grow anything to fill.',

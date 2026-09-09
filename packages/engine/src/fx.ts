@@ -20,6 +20,7 @@ import {
   cardById,
   canTakeCard,
   commonsBoardSuit,
+  commonsHarvestTake,
   commonsBoards,
   drawableSuits,
   noticeBoardSlots,
@@ -788,7 +789,22 @@ export class Fx {
     const board = commonsBoardSuit(this.data, buildingCard);
     if (board !== null) {
       const pile = commonsBoards(this.state)[board];
-      const cards = pile.splice(0);
+      // ⭐ HOW MANY COME OUT IS `commonsHarvestTake` (Dean, 09/09/2026). null
+      // is the shipped C5 rule and takes the whole pile; a number n takes at
+      // most the most recently played n - the TOP of the pile, which is its END
+      // because `playOnCommons` pushes - and LEAVES THE REST STANDING. A pile
+      // shallower than n gives up all of it: n caps the take and never demands
+      // a depth, which is `commonsHarvestMin`'s job.
+      //
+      // ⭐ IT IS THE ONLY ONE OF THE THREE COMMONS KNOBS THAT CAN REDUCE THE
+      // CENTRE'S OUTFLOW WITHOUT REDUCING PLAYS, because the remainder stays in
+      // the centre rather than never arriving. The centre is closed - in by a
+      // play, out by a harvest (D3) - so a18's conservation line is the reading
+      // that says whether a share moved by leaving cards behind or by stranding
+      // them at the end.
+      const take = commonsHarvestTake(this.data);
+      const cards =
+        take === null || take >= pile.length ? pile.splice(0) : pile.splice(pile.length - take);
       player(this.state, seat).barn.push(...cards);
       this.emit({
         e: 'harvested',
@@ -797,6 +813,7 @@ export class Fx {
         cards,
         source: 'commons',
         owner: null,
+        left: pile.length,
       });
       fireHook(this, 'afterHarvest', { seat, building: buildingCard, cards });
       return;

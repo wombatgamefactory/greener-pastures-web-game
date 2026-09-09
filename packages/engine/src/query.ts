@@ -317,6 +317,41 @@ export function commonsBoardSuit(data: GameData, id: CardId): Suit | null {
   return null;
 }
 
+/**
+ * ⭐ HOW DEEP A CENTRAL PILE HAS TO BE BEFORE ANYBODY MAY HARVEST IT
+ * (`rules.economy.commonsHarvestMin`, Dean 09/09/2026). 1 is the shipped C5
+ * rule - any non-empty pile - and a number above it is the BUILDING semantic: a
+ * pile is "full" at n and refuses a harvest below it.
+ *
+ * Answers 1 outside the commons, so a caller may compare against it unguarded;
+ * no control has a central pile to gate.
+ */
+export function commonsHarvestMin(data: GameData): number {
+  if (!isCommons(data)) return 1;
+  const n = data.rules.economy.commonsHarvestMin;
+  return n === null || n < 1 ? 1 : n;
+}
+
+/**
+ * ⭐ HOW MANY CARDS A CENTRAL HARVEST TAKES
+ * (`rules.economy.commonsHarvestTake`, Dean 09/09/2026). null is the shipped C5
+ * rule - the whole pile - and a number n takes at most the most recently played
+ * n, the TOP of the pile, leaving the rest standing.
+ *
+ * "At most" is the whole of the rule for a short pile: a pile of one under
+ * n = 2 gives up its one card, because n caps the take and never demands a
+ * depth. `commonsHarvestMin` is the knob that demands a depth, and the two are
+ * deliberately independent so that "may only be taken at 3, and then only 1
+ * comes" is expressible.
+ *
+ * Answers null outside the commons for the same reason as `commonsHarvestMin`.
+ */
+export function commonsHarvestTake(data: GameData): number | null {
+  if (!isCommons(data)) return null;
+  const n = data.rules.economy.commonsHarvestTake;
+  return n === null || n < 1 ? null : n;
+}
+
 /** Meeples of every colour a seat is holding, in colour order. Duplicates are impossible under the cap. */
 export function meeplesHeld(data: GameData, state: GameState, seat: Seat): Suit[] {
   const held = player(state, seat).meeples;

@@ -32,6 +32,7 @@ import {
   cardById,
   commonsBoardCard,
   commonsBoards,
+  commonsHarvestMin,
   doorOf,
   faceOf,
   drawableSuits,
@@ -1632,9 +1633,18 @@ export function harvestOptions(
   const own = player(state, seat)
     .tableau.filter((b) => isFull(data, b) || b.stack.length >= relaxedMin)
     .map((b) => b.card);
-  // ⭐ AND, UNDER THE COMMONS, EVERY NON-EMPTY CENTRAL PILE (C5). Not your
-  // buildings and not anybody's: a pile with a card on it is harvestable by
-  // whoever's turn it is, into THEIR barn, and the whole pile comes.
+  // ⭐ AND, UNDER THE COMMONS, EVERY CENTRAL PILE DEEP ENOUGH TO TAKE (C5).
+  // Not your buildings and not anybody's: a pile with a card on it is
+  // harvestable by whoever's turn it is, into THEIR barn, and the whole pile
+  // comes.
+  //
+  // ⭐ "DEEP ENOUGH" IS ONE CARD UNLESS `commonsHarvestMin` SAYS OTHERWISE
+  // (Dean, 09/09/2026). At null - the shipped rule - the gate is >= 1 and this
+  // is byte-identical to the rule as ruled; a number n imports the BUILDING
+  // semantic into the centre, so a pile is "full" at n and refuses a harvest
+  // below it. `commonsHarvestTake` is the other half of the same question and
+  // lives in `fx.harvest`, because it changes what comes out rather than
+  // whether anything may.
   //
   // ⭐ INCLUDING THE PILE YOU JUST FED THIS TURN, which is Dean's ruling and
   // not an accident of ordering: the commons play lands the fee BEFORE the
@@ -1649,8 +1659,9 @@ export function harvestOptions(
   // the two gates still differ for BUILDINGS.
   if (!isCommons(data)) return own;
   const boards = commonsBoards(state);
+  const min = commonsHarvestMin(data);
   const central = data.cards.suits
-    .filter((colour) => (boards[colour]?.length ?? 0) > 0)
+    .filter((colour) => (boards[colour]?.length ?? 0) >= min)
     .map((colour) => commonsBoardCard(data, colour));
   return [...own, ...central];
 }
@@ -3396,12 +3407,13 @@ export function doCollect(fx: Fx, seat: Seat): void {
  * refuses further plays. `commonsColourMatch` (boolean): the fee must be a card
  * of the board's own colour.
  *
- * ⚠️ READ OFF THE LEAF RATHER THAN THE TYPE, deliberately and temporarily. The
- * data pass of 09/09/2026 owns `rules.economy.commonsThreshold` and
- * `rules.economy.commonsColourMatch`; this engine pass landed beside it, so the
- * two leaves are read structurally and default to OFF when they are absent.
- * When both packages are in, this can become two field reads and nothing else
- * in the file changes.
+ * ⭐ THE OTHER TWO COMMONS KNOBS ARE NOT HERE, AND THAT IS THE SEAM RATHER
+ * THAN AN OVERSIGHT. `commonsHarvestMin` and `commonsHarvestTake` (Dean,
+ * 09/09/2026) ration the HARVEST rather than the play, so they are read where a
+ * harvest is decided - `harvestOptions` and `fx.harvest` - through
+ * `query.ts`'s two helpers. The only place all four meet is
+ * `commonsActionLegal`, because the wheat board buys a Harvest and a board
+ * whose action can do nothing is not offered.
  */
 interface CommonsKnobs {
   threshold: number | null;
@@ -3409,13 +3421,8 @@ interface CommonsKnobs {
 }
 
 function commonsKnobs(data: GameData): CommonsKnobs {
-  const economy = data.rules.economy as Readonly<Record<string, unknown>>;
-  const threshold = economy['commonsThreshold'];
-  const colourMatch = economy['commonsColourMatch'];
-  return {
-    threshold: typeof threshold === 'number' ? threshold : null,
-    colourMatch: colourMatch === true,
-  };
+  const { commonsThreshold, commonsColourMatch } = data.rules.economy;
+  return { threshold: commonsThreshold, colourMatch: commonsColourMatch };
 }
 
 export type CommonsOption = Extract<Move, { type: 'commons' }>;
@@ -3434,13 +3441,24 @@ export type CommonsOption = Extract<Move, { type: 'commons' }>;
  *  - the hand-reading actions (Build and GROW, plus Sow if a roster ever prints
  *    one here) are asked WITHOUT the fee, so a hand of one card can pay the
  *    board or pay the build, never both;
- *  - ⭐ THE WHEAT BOARD CAN NEVER BE DEAD. Its action is Harvest and every
- *    non-empty central pile is a target (C5), so the fee that buys the Harvest
- *    is itself a legal thing to harvest. A seat with no full building can still
- *    play a card onto the wheat board and take it, and anything under it,
- *    straight into their barn. That is Dean's "a good turn, not a loop" read
- *    literally, and it makes the floor of the bonus slot "one card from hand to
- *    barn" rather than "nothing".
+ *  - ⭐ THE WHEAT BOARD CAN NEVER BE DEAD, WHICH IS D6 - AND `commonsHarvestMin`
+ *    IS THE ONE KNOB THAT TAKES IT AWAY. Its action is Harvest and every
+ *    central pile deep enough to take is a target (C5), so under the shipped
+ *    rules the fee that buys the Harvest is itself a legal thing to harvest: a
+ *    seat with no full building can still play a card onto the wheat board and
+ *    take it, and anything under it, straight into their barn. That is Dean's
+ *    "a good turn, not a loop" read literally, and it makes the floor of the
+ *    bonus slot "one card from hand to barn" rather than "nothing".
+ *
+ * ⛔ UNDER `commonsHarvestMin` (Dean, 09/09/2026) THE WHEAT BOARD IS AN
+ * ORDINARY BOARD AGAIN. A pile below the minimum refuses a harvest, so the fee
+ * only makes its OWN pile harvestable if that pile REACHES the minimum once the
+ * fee has landed - which is why the probe below counts the fee onto the board
+ * being played and asks the rest of the position as it stands. At n = 3 a play
+ * onto an empty wheat board buys a Harvest of nothing, so the board is not
+ * offered at all unless some other pile is already deep enough or the seat has
+ * a full building of its own. That is a real change of rule, not a tuning, and
+ * it is named on the knob's own description.
  */
 function commonsActionLegal(
   data: GameData,
@@ -3450,8 +3468,34 @@ function commonsActionLegal(
   fee: CardId,
 ): boolean {
   const action = doorActionOf(data, board);
-  if (action === 'harvest') return true;
+  if (action === 'harvest') return commonsHarvestLegalAfterFee(data, state, seat, board);
   return doorActionLegal(data, state, seat, action, { excludingHandCard: fee });
+}
+
+/**
+ * Would a Harvest have a target, in the position the fee makes?
+ *
+ * The one gate in the file that has to look at the position AFTER a card it has
+ * not yet played, and it exists because `harvestOptions` cannot be asked the
+ * question: the fee is still in the hand when the enumerator runs, and the
+ * board being played on is one card shallower than it will be. Counting the fee
+ * here rather than mutating a copy of the state keeps the probe cheap enough to
+ * run five times per card in hand.
+ */
+function commonsHarvestLegalAfterFee(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+  board: Suit,
+): boolean {
+  if (player(state, seat).tableau.some((b) => isFull(data, b))) return true;
+  const min = commonsHarvestMin(data);
+  const boards = commonsBoards(state);
+  for (const colour of data.cards.suits) {
+    const depth = (boards[colour]?.length ?? 0) + (colour === board ? 1 : 0);
+    if (depth >= min) return true;
+  }
+  return false;
 }
 
 /**

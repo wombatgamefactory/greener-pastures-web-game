@@ -458,6 +458,113 @@ describe('the two fallback knobs (C10)', () => {
   });
 });
 
+/**
+ * ⭐ DEAN'S QUESTION OF 09/09/2026: "Can we measure how many cards are taken
+ * when the Harvest is done against the centre cards? I'm interested to see if we
+ * place a threshold on the centre cards if it will reduce the number of cards
+ * going from the centre to the barns - my target is about 30-40% of barn cards
+ * should come from the middle."
+ *
+ * `commonsThreshold` was the first answer and it measured nothing at 2 (63.1%
+ * against 63.0%), so the other two threshold SEMANTICS are knobs too: a minimum
+ * depth before a pile may be taken at all (the building semantic), and a cap on
+ * how many come out (the only one that can leave cards in the centre).
+ *
+ * ⚠️ BOTH SHIP null, AND THE SHIPPED BEHAVIOUR IS ASSERTED BY EVERY CASE
+ * ABOVE, not by a case of its own: the Harvest block runs on `BASE_GAME_DATA`
+ * and would fail if either knob's null path were not the C5 rule exactly.
+ */
+describe('the two harvest knobs (Dean, 09/09/2026)', () => {
+  const min3: GameData = loadGameData({
+    name: 'commons-harvest-min-3',
+    schemaVersion: 1,
+    set: { 'rules.economy.commonsHarvestMin': 3 },
+  });
+
+  const take2: GameData = loadGameData({
+    name: 'commons-take-2',
+    schemaVersion: 1,
+    set: { 'rules.economy.commonsHarvestTake': 2 },
+  });
+
+  it('refuses a pile below the minimum and accepts it at the minimum', () => {
+    const s = makeState(min3, ['wheat', 'orchard']);
+    s.turnPlayer = WHEAT;
+    const board = commonsBoardCard(min3, 'dairy');
+    seedPile(s, 'dairy', 'D4', 'D5');
+    expect(harvestOptions(min3, s, WHEAT)).not.toContain(board);
+    expect(() => apply(min3, s, { type: 'harvest', seat: WHEAT, building: board })).toThrow();
+    seedPile(s, 'dairy', 'D6');
+    expect(harvestOptions(min3, s, WHEAT)).toContain(board);
+    const out = apply(min3, s, { type: 'harvest', seat: WHEAT, building: board });
+    expect(player(out.state, WHEAT).barn).toEqual(['D4', 'D5', 'D6']);
+  });
+
+  it('takes the most recent N and leaves the rest standing', () => {
+    const s = makeState(take2, ['wheat', 'orchard']);
+    s.turnPlayer = WHEAT;
+    const board = commonsBoardCard(take2, 'dairy');
+    seedPile(s, 'dairy', 'D4', 'D5', 'D6', 'D7');
+    const out = apply(take2, s, { type: 'harvest', seat: WHEAT, building: board });
+    // The top of the pile is its end, because a play pushes.
+    expect(player(out.state, WHEAT).barn).toEqual(['D6', 'D7']);
+    expect(commonsBoards(out.state)['dairy']).toEqual(['D4', 'D5']);
+    const harvested = out.events.find((e) => e.e === 'harvested');
+    expect(harvested?.e === 'harvested' ? harvested.cards : []).toEqual(['D6', 'D7']);
+    expect(harvested?.e === 'harvested' ? harvested.left : null).toBe(2);
+  });
+
+  /**
+   * The decision the brief did not settle, recorded as a case rather than as a
+   * sentence: n CAPS the take and never demands a depth, so a pile shallower
+   * than n gives up all of it. `commonsHarvestMin` is the knob that demands a
+   * depth, and the two are independent on purpose.
+   */
+  it('takes the whole of a pile shallower than N', () => {
+    const s = makeState(take2, ['wheat', 'orchard']);
+    s.turnPlayer = WHEAT;
+    const board = commonsBoardCard(take2, 'dairy');
+    seedPile(s, 'dairy', 'D4');
+    const out = apply(take2, s, { type: 'harvest', seat: WHEAT, building: board });
+    expect(player(out.state, WHEAT).barn).toEqual(['D4']);
+    expect(commonsBoards(out.state)['dairy']).toEqual([]);
+  });
+
+  /**
+   * ⛔ D6 STOPS HOLDING, which is the one behaviour change the minimum makes
+   * that nothing else in the game makes. The wheat board is offered only when
+   * the fee lands on a pile that REACHES the minimum, or some other pile
+   * already has, or the seat has a full building of its own.
+   */
+  it('stops offering the wheat board when no pile can reach the minimum', () => {
+    const s = makeState(min3, ['wheat', 'orchard']);
+    s.turnPlayer = WHEAT;
+    dealTo(min3, s, WHEAT, 'W7');
+    expect(commonsOptions(min3, s, WHEAT).some((m) => m.board === 'wheat')).toBe(false);
+    // Two already on the wheat pile: the fee makes it three, so the board is
+    // offered again. The fee counts onto the pile it is played on and no other.
+    seedPile(s, 'wheat', 'W9', 'W10');
+    expect(commonsOptions(min3, s, WHEAT).some((m) => m.board === 'wheat')).toBe(true);
+  });
+
+  it('offers the wheat board when some OTHER pile is already deep enough', () => {
+    const s = makeState(min3, ['wheat', 'orchard']);
+    s.turnPlayer = WHEAT;
+    seedPile(s, 'dairy', 'D4', 'D5', 'D6');
+    dealTo(min3, s, WHEAT, 'W7');
+    expect(commonsOptions(min3, s, WHEAT).some((m) => m.board === 'wheat')).toBe(true);
+  });
+
+  it('offers the wheat board on a full building of your own, whatever the centre holds', () => {
+    const s = makeState(min3, ['wheat', 'orchard']);
+    s.turnPlayer = WHEAT;
+    buildFor(min3, s, WHEAT, 'W4');
+    loadStack(min3, s, WHEAT, 'W4', 2);
+    dealTo(min3, s, WHEAT, 'W7');
+    expect(commonsOptions(min3, s, WHEAT).some((m) => m.board === 'wheat')).toBe(true);
+  });
+});
+
 describe('whole games under the commons', () => {
   /**
    * ⭐ THE POINT IS THE WEDGE, NOT THE OUTCOME, exactly as it is for the meeple

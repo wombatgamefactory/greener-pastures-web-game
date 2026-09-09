@@ -1106,6 +1106,22 @@ export type GameEvent =
       cards: CardId[];
       source: 'tableau' | 'commons';
       owner: Seat | null;
+      /**
+       * ⭐ CARDS LEFT BEHIND, PRESENT ONLY ON A CENTRAL HARVEST (Dean,
+       * 09/09/2026). `rules.economy.commonsHarvestTake` caps a central harvest
+       * at the most recently played n cards, so a pile can survive being
+       * harvested; this is what was still standing when it did.
+       *
+       * ⚠️ OPTIONAL ON PURPOSE, AND ABSENT UNDER BOTH CONTROLS. `source` and
+       * `owner` were made required in the commons pass because the sim
+       * partitions EVERY harvest by them; this one has no meaning for a
+       * tableau harvest (a building always gives up its whole stack) and
+       * carrying a 0 there would invite a reader to compare it with a real
+       * remainder. It is 0 whenever `commonsHarvestTake` is null, which is the
+       * shipped rule, so the field is a knob's readout and not a new fact
+       * about the shipped game.
+       */
+      left?: number;
     }
   /**
    * ⭐ A CARD WAS PLAYED ONTO A CENTRAL NOTICE BOARD (C3). The bonus slot's one

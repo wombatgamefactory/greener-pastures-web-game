@@ -745,8 +745,28 @@ export interface GameMetrics {
    * is how often the centre is emptied at all.
    */
   commonsHarvestsBySeat: number[];
-  /** How many cards each of those harvests took. The median and p90 are a18's. */
+  /** How many cards each of those harvests took. The median, p90 and the histogram are a18's. */
   commonsPileSizeAtHarvest: number[];
+  /**
+   * ⭐ OF THOSE, THE ONES BOUGHT THROUGH THE WHEAT BOARD (Dean's question,
+   * 09/09/2026): a central harvest reached either by the MAIN Harvest action or
+   * by playing a card onto W3 and taking the Harvest it buys. The second is the
+   * one D6 makes free, so the split says how much of the centre's outflow is the
+   * bonus slot eating itself and how much is a seat spending its whole turn on
+   * the middle of the table.
+   *
+   * ⚠️ IT IS ATTRIBUTED, NOT CARRIED ON THE EVENT, and the heuristic is
+   * worth knowing before quoting it. A bought Harvest resolves through a
+   * `chooseBuilding` task, so the `harvested` event arrives in a LATER decision
+   * than the `doorUsed` that paid for it and carries no route of its own. The
+   * fold latches the seat on `doorUsed { action: 'harvest', via: 'commons' }`
+   * and spends the latch on that seat's next harvest of any kind - so a bought
+   * Harvest that chose a BUILDING correctly consumes the latch and is counted
+   * nowhere here, and a latch can only ever be spent by the same seat inside the
+   * same turn, because the door's task must be answered before the turn can
+   * move on.
+   */
+  commonsHarvestsBoughtBySeat: number[];
   /**
    * TOTAL CARDS STANDING IN THE CENTRE, all five piles, sampled at every round
    * boundary exactly as `barnByRound` samples a barn. Read directly off state
@@ -776,6 +796,19 @@ export interface GameMetrics {
    */
   barnFromCommonsBySeat: number[];
   barnFromOwnBySeat: number[];
+  /**
+   * ⭐ CARDS STILL STANDING IN THE CENTRE WHEN THE GAME ENDED (Dean's
+   * question, 09/09/2026), summed across all five piles off the final state.
+   *
+   * ⭐ IT IS THE THIRD TERM OF THE CONSERVATION LINE, and that line is why it
+   * exists: the centre is a closed system - cards enter only by a play (C3) and
+   * leave only by a harvest (D3) - so PLAYS = HARVESTED OUT + STRANDED, exactly,
+   * in every game. a18 prints all three so a reader can check the arithmetic
+   * rather than trust it, and so that a knob which moves the centre's share of
+   * barn cards by STRANDING cards is legible as such rather than reading as a
+   * change in how the centre feeds a barn during play.
+   */
+  commonsStrandedAtEnd: number;
 
   // --- The Dairy rebuild, 2026-08-10 ---------------------------------------
   //
@@ -1030,6 +1063,12 @@ export class Fold {
   private leaderCache: { d: Decision; v: Seat | null } | null = null;
   /** Buildings taken by the Grand Creamery run in progress, or null between runs. */
   private creameryRun: number | null = null;
+  /**
+   * Seats whose next harvest was BOUGHT through the wheat board, latched on the
+   * `doorUsed` that paid for it. See `commonsHarvestsBoughtBySeat` for why the
+   * route cannot simply be read off the `harvested` event.
+   */
+  private boughtHarvestPending = new Set<Seat>();
 
   constructor(data: GameData, spec: FoldSpec, seats: number) {
     this.data = data;
@@ -1140,10 +1179,12 @@ export class Fold {
       commonsPlaysOffCrop: 0,
       commonsHarvestsBySeat: zeros(),
       commonsPileSizeAtHarvest: [],
+      commonsHarvestsBoughtBySeat: zeros(),
       commonsPileSizeByRound: [],
       commonsPileSizeByRoundThird: [],
       barnFromCommonsBySeat: zeros(),
       barnFromOwnBySeat: zeros(),
+      commonsStrandedAtEnd: 0,
       buildsBySeat: zeros(),
       noBuildTurnsBySeat: zeros(),
       buildSampledBySeat: zeros(),
@@ -1713,6 +1754,10 @@ export class Fold {
         // whichever route paid for it, so this line matches `doorUsesByColour`
         // summed rather than either `via` branch alone.
         m.boughtDoorActionsBySeat[e.seat] = (m.boughtDoorActionsBySeat[e.seat] ?? 0) + 1;
+        // Dean's question of 09/09/2026, the main-versus-bought split: the
+        // wheat board's Harvest resolves through a task in a LATER decision, so
+        // the route is latched here and spent on the next harvest by this seat.
+        if (e.action === 'harvest' && e.via === 'commons') this.boughtHarvestPending.add(e.seat);
         return;
       }
       case 'meepleGained':
@@ -1775,10 +1820,15 @@ export class Fold {
         // 'tableau' by construction under both controls - so the own-buildings
         // column is a real reading in all three and only the centre column has
         // no subject under the controls. See the fields' own comment.
+        const bought = this.boughtHarvestPending.delete(e.seat);
         if (e.source === 'commons') {
           m.commonsHarvestsBySeat[e.seat] = (m.commonsHarvestsBySeat[e.seat] ?? 0) + 1;
           m.commonsPileSizeAtHarvest.push(e.cards.length);
           m.barnFromCommonsBySeat[e.seat] = (m.barnFromCommonsBySeat[e.seat] ?? 0) + e.cards.length;
+          if (bought) {
+            m.commonsHarvestsBoughtBySeat[e.seat] =
+              (m.commonsHarvestsBoughtBySeat[e.seat] ?? 0) + 1;
+          }
         } else {
           m.barnFromOwnBySeat[e.seat] = (m.barnFromOwnBySeat[e.seat] ?? 0) + e.cards.length;
         }
@@ -2206,6 +2256,18 @@ export class Fold {
     // third", and a pooled series aligned on round 1 would compare a 25-round
     // game's endgame with a 40-round game's midgame. Empty below three samples,
     // because a third of a two-round series is not a third of anything.
+    // ⭐ THE CENTRE'S REMAINDER (Dean's question, 09/09/2026), read off the
+    // FINAL state rather than off the last round-boundary sample, because the
+    // end-game trigger fires mid-round and the last sample can be a whole
+    // rotation short of the end. It is the third term of a18's conservation
+    // line: plays into the centre = cards harvested out + these.
+    if (isCommons(this.data)) {
+      const boards = commonsBoards(state);
+      let left = 0;
+      for (const colour of this.data.cards.suits) left += boards[colour]?.length ?? 0;
+      m.commonsStrandedAtEnd = left;
+    }
+
     if (m.commonsPileSizeByRound.length >= 3) {
       const series = m.commonsPileSizeByRound;
       const cut = series.length / 3;

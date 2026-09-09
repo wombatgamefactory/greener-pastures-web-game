@@ -31,11 +31,14 @@
  * nothing. What the deletion measured is on the template below, and it is the
  * most useful paragraph in this file to read before touching a draw knob.
  *
- * ⭐ THE COMMONS (09/09/2026) ADDED THREE TEMPLATES AND DELETED NONE, WHICH IS
+ * ⭐ THE COMMONS (09/09/2026) ADDED FIVE TEMPLATES AND DELETED NONE, WHICH IS
  * THE SHAPE THIS REGISTRY IS SUPPOSED TO HAVE. `rules.economy.commonsThreshold`
  * and `rules.economy.commonsColourMatch` are the two fallback knobs the new
- * bonus ships OFF (C10), and `workers.roster.{}.actionUnderCommons` is the
- * Apiary board's Grow. Every meeple template stays, at a value that is now
+ * bonus ships OFF (C10), `workers.roster.{}.actionUnderCommons` is the
+ * Apiary board's Grow, and `rules.economy.commonsHarvestMin` and
+ * `rules.economy.commonsHarvestTake` are the two harvest knobs Dean asked for
+ * later the same day - the three commons knobs now ration three different
+ * things, and the descriptions say which is which so nobody sweeps two at once. Every meeple template stays, at a value that is now
  * subjectless, because the standing rule of this project is that A BRANCH WHOSE
  * ONLY PRODUCER IS A KNOB AT ITS SHIPPED VALUE IS NOT DELETED: the meeple loop
  * and the meeple economy are controls, and the knobs are how they are reached.
@@ -504,6 +507,58 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'own-suit hand can only ever afford its own board, so an own-crop build share already at ' +
       '83% would be the first thing to re-read. overlays/commons-colour-match-v1.overlay.json is ' +
       'the arm.',
+  },
+  {
+    template: 'rules.economy.commonsHarvestMin',
+    type: 'intOrNull',
+    description:
+      "⭐ DEAN'S QUESTION OF 09/09/2026, HALF ONE, AND THE BUILDING SEMANTIC OF A CENTRAL PILE. " +
+      "Read only under visitCurrency 'commons' and SHIPPED OFF at null. His words: \"Can we " +
+      'measure how many cards are taken when the Harvest is done against the centre cards? ' +
+      "I'm interested to see if we place a threshold on the centre cards if it will reduce the " +
+      'number of cards going from the centre to the barns - my target is about 30-40% of barn ' +
+      'cards should come from the middle." The centre share reads 63.1% on the shipped rules. ' +
+      'null IS THE SHIPPED RULE (C5): any central pile holding at least one card may be ' +
+      'harvested, whole, by whoever is playing. A number n makes a pile harvestable ONLY at n ' +
+      'cards or more - a pile is "full" at n exactly as a building is full at its threshold, and ' +
+      'nothing may take it before then. ' +
+      '⚠️ IT IS NOT commonsThreshold AND THE TWO ARE EASY TO CONFUSE: that knob caps the ' +
+      'INFLOW (a pile at its cap refuses a play), this one gates the OUTFLOW (a pile below n ' +
+      'refuses a harvest). The inflow cap MEASURED NO CHANGE at 2 - a centre share of 63.1% ' +
+      'against 63.0% - because a central harvest already takes a median of two cards, and ' +
+      'because every card played into the centre reaches a barn eventually anyway. ' +
+      '⛔ D6 STOPS HOLDING UNDER THIS KNOB, which is the one behaviour change to name before a ' +
+      'run. D6 is "the wheat board can never be dead": the fee lands on the pile before the ' +
+      'action runs, so the fee is itself harvestable and the floor of the bonus slot is one card ' +
+      'from hand into barn. Under commonsHarvestMin that holds only if the pile the fee lands on ' +
+      'REACHES n, so at 3 a play onto an empty wheat board would buy a Harvest of nothing and ' +
+      'the board is simply not offered unless some pile is already deep enough or the seat has a ' +
+      'full building. overlays/commons-harvest-min-2, -3 and -4 are the arms.',
+  },
+  {
+    template: 'rules.economy.commonsHarvestTake',
+    type: 'intOrNull',
+    description:
+      "⭐ DEAN'S QUESTION OF 09/09/2026, HALF TWO, AND THE ONLY ONE OF THE THREE COMMONS KNOBS " +
+      "THAT CAN REDUCE THE CENTRE'S OUTFLOW WITHOUT REDUCING PLAYS. Read only under " +
+      "visitCurrency 'commons' and SHIPPED OFF at null. The target it is aimed at is Dean's, " +
+      '09/09/2026: "my target is about 30-40% of barn cards should come from the middle", ' +
+      'against a shipped 63.1%. ' +
+      'null IS THE SHIPPED RULE (C5): a central harvest takes the WHOLE pile. A number n takes ' +
+      'at most the most recently played n cards - the TOP of the pile - and leaves the rest ' +
+      'standing in the centre. A pile holding fewer than n gives up all of it, so the rule is ' +
+      '"at most n" and never a minimum. ' +
+      '⭐ WHY THIS IS THE ONE THAT CAN WORK. The centre is a closed system: cards enter only by ' +
+      'a play (C3) and leave only by a harvest (D3), so plays into the centre = cards harvested ' +
+      'out + cards stranded at game end. Capping the plays (commonsThreshold) or gating when a ' +
+      'pile may be taken (commonsHarvestMin) changes WHEN cards leave, not how many; leaving ' +
+      'cards behind is the only rule that moves the ratio itself, because the remainder stays in ' +
+      'the centre where it can be taken later or stranded at the end. ' +
+      '⚠️ SO READ IT AGAINST THE CONSERVATION LINE a18 PRINTS and not off the share alone: a knob ' +
+      'that hits the target by STRANDING cards has changed where the cards end up rather than ' +
+      'how the centre feeds a barn, and at n=1 the centre also becomes a slower faucet for ' +
+      'everybody rather than a fat prize for whoever harvests first, which is a different game ' +
+      'and not only a different number. overlays/commons-take-1 and -2 are the arms.',
   },
   {
     template: 'rules.endGame.furtherTurnsEach',

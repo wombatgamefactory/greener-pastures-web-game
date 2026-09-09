@@ -247,6 +247,24 @@ describe('the commons', () => {
     expect(matched.rules.economy.commonsColourMatch).toBe(true);
   });
 
+  // Dean's question of 09/09/2026: does a threshold on the centre reduce the
+  // cards going from the centre to the barns, target 30-40%? commonsThreshold
+  // measured no change at 2, so the other two semantics are knobs too. Both
+  // ship off, so the shipped harvest is C5 exactly: any non-empty pile, whole.
+  it('ships both harvest knobs off, and offers both as knobs', () => {
+    expect(BASE_GAME_DATA.rules.economy.commonsHarvestMin).toBeNull();
+    expect(BASE_GAME_DATA.rules.economy.commonsHarvestTake).toBeNull();
+
+    const knobs = listKnobs(BASE_GAME_DATA).map((k) => k.path);
+    expect(knobs).toContain('rules.economy.commonsHarvestMin');
+    expect(knobs).toContain('rules.economy.commonsHarvestTake');
+
+    const gated = loadGameData(overlay({ 'rules.economy.commonsHarvestMin': 3 }));
+    expect(gated.rules.economy.commonsHarvestMin).toBe(3);
+    const capped = loadGameData(overlay({ 'rules.economy.commonsHarvestTake': 1 }));
+    expect(capped.rules.economy.commonsHarvestTake).toBe(1);
+  });
+
   // ⚠️ THE CONTROLS ARE THE POINT OF THE FLIP. Neither the v31 nor the meeple
   // branch may become unreachable, and neither may quietly become the commons.
   it('leaves both controls reachable, and neither of them is the commons', () => {
