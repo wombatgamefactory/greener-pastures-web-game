@@ -422,6 +422,19 @@ export function describeTask(data: GameData, task: Task): string {
     // so a genuinely new task kind still fails the build here.
     case 'grow':
       return 'GROW one of your buildings, paying a matching card (the commons Grow: unsupported in this interface, C59).';
+    /*
+     * ⭐ DEAN'S 'spend' VARIANT'S THREE TASKS (09/09/2026,
+     * `rules.turn.commonsTake: 'spend'`), unreachable in the v31 game this
+     * package plays - the same admission as `grow` above and for the same
+     * reason (C59): explicit cases so a genuinely new task kind still fails
+     * the build here.
+     */
+    case 'commonsSpendBuild':
+      return 'Build a card, paid from the central pile (the commons: unsupported in this interface, C59).';
+    case 'commonsSpendDeliver':
+      return 'Deliver a crate, paid from the central pile (the commons: unsupported in this interface, C59).';
+    case 'commonsSpendSow':
+      return `Sow ${task.cards.length} card${task.cards.length === 1 ? '' : 's'} from the central pile onto your buildings (the commons: unsupported in this interface, C59).`;
     default:
       return task satisfies never;
   }

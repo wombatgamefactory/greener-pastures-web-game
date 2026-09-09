@@ -161,10 +161,12 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
   // so under the commons' own `bonusTiming: 'start'` these moves are on offer
   // exactly while the action is unspent, which is C2.
   moves.push(...commonsOptions(data, state, seat));
-  // ⭐ DEAN'S VARIANT (09/09/2026, `rules.turn.commonsTake: 'bonus'`): the
-  // slot's OTHER free option under that knob, empty under the shipped
-  // `'harvest'` rule and under both controls - `commonsTakeOptions` fails
-  // closed on the same checks `commonsOptions` does.
+  // ⭐ DEAN'S VARIANTS (09/09/2026, `rules.turn.commonsTake: 'bonus'` OR
+  // `'spend'`): the slot's OTHER free option under either knob value, empty
+  // under the shipped `'harvest'` rule and under both controls -
+  // `commonsTakeOptions` fails closed on the same checks `commonsOptions`
+  // does, and dispatches its own resolution by board under `'spend'`
+  // (`doCommonsTake`).
   moves.push(...commonsTakeOptions(data, state, seat));
   moves.push(...standingMoves(data, state, seat));
   if (turn.actionSpent) moves.push({ type: 'endTurn', seat });

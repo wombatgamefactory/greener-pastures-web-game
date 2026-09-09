@@ -36,6 +36,7 @@
  */
 
 import type { GameData } from '@gp/data';
+import { isCommonsTakeToSpend } from '@gp/data';
 import type { GameEvent, Move, Prober, Seat } from '@gp/engine';
 
 import type { Act } from './acts.js';
@@ -546,16 +547,45 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
       return 0;
 
     /**
-     * ⭐ DEAN'S VARIANT (09/09/2026, commonsTake: 'bonus'): a whole central pile
-     * moved to `seat`'s hand, priced at ZERO HERE and deliberately. `takeCommons`
-     * pushes the cards through `fx.cardsToHand`, which emits its own
-     * `cardsToHand` event beside this one, and THAT is what prices the gain -
-     * the blind draw rate, exactly as a real draw pays. Pricing it again here
-     * would double it, on the same arrangement `commonsPlayed` carries above for
-     * the fee. This case exists only so the event reaches the pricer as a card
-     * it must not read twice.
+     * ⭐ DEAN'S VARIANTS (09/09/2026, commonsTake: 'bonus' OR 'spend'): a whole
+     * central pile moved out of the centre. Under `'bonus'`, and under
+     * `'spend'`'s ORCHARD leg, it lands in `seat`'s hand - `takeCommons` pushes
+     * the cards through `fx.cardsToHand`, which emits its own `cardsToHand`
+     * event beside this one, and THAT prices the gain (the blind draw rate,
+     * exactly as a real draw pays), so pricing it again here would double it,
+     * on the same arrangement `commonsPlayed` carries above for the fee.
+     *
+     * ⭐ UNDER `'spend'`'s WHEAT LEG THE DESTINATION IS THE BARN INSTEAD
+     * (`takeCommonsToBarn`), and nothing else emits an event for that gain -
+     * there is no `cardsToHand` twin and no `harvested` (Harvest never reaches
+     * the centre under either variant, D-S4). Left at 0 the barn gain would be
+     * INVISIBLE to every bot, which is worse than the approximate pricing this
+     * file otherwise tolerates: a option that is not merely under-priced but
+     * worth exactly nothing on paper is one no rollout will ever choose. So
+     * THIS is where it is charged, at the same `harvest` rate every other
+     * barn arrival is priced at (`deckToBarn`/`handToBarn`/`discardToBarn`
+     * above, and a central Harvest's own case below).
+     *
+     * The dairy, vegetable and apiary legs never reach this case at all - they
+     * resolve through a task and are priced through the `built` / `delivered`
+     * / `cardPlaced` events that task's answer emits, exactly as a plain
+     * build/deliver/sow is. `commonsSpent`, their own summary event, is priced
+     * at 0 below for the same reason `commonsPlayed` is: it exists for the sim
+     * to count, not for the pricer to read twice.
      */
     case 'commonsTaken':
+      if (isCommonsTakeToSpend(s.data) && event.board === 'wheat') {
+        return event.seat === me ? weight(w, 'harvest') * event.cards.length : 0;
+      }
+      return 0;
+
+    /**
+     * ⭐ DEAN'S 'spend' VARIANT'S SUMMARY EVENT (09/09/2026): pure accounting,
+     * priced at 0 for the same reason `commonsPlayed` and `commonsTaken` are -
+     * whatever it reports already arrived, priced, through another event (or
+     * through `commonsTaken`'s wheat case just above).
+     */
+    case 'commonsSpent':
       return 0;
 
     // A door action's worth arrives as that action's own events, so scoring the

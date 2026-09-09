@@ -21,6 +21,7 @@ import {
   deliveryVp,
   isCommons,
   isCommonsTakeToHand,
+  isCommonsTakeToSpend,
   isMeepleCurrency,
   meepleAsCardGoesToBoard,
   meepleIndexForSpace,
@@ -1659,12 +1660,14 @@ export function harvestOptions(
   // action see exactly the same central targets, and the union above is where
   // the two gates still differ for BUILDINGS.
   if (!isCommons(data)) return own;
-  // ⭐ DEAN'S VARIANT (09/09/2026, commonsTake: 'bonus'): HARVEST NEVER REACHES
-  // THE CENTRE AT ALL. A central pile is taken by the new `commonsTake` bonus
-  // move instead, straight to hand, so the Harvest action stops at own full
-  // buildings under this knob - commonsHarvestMin and commonsHarvestTake have
-  // no subject, which is why this returns before either is read.
-  if (isCommonsTakeToHand(data)) return own;
+  // ⭐ DEAN'S VARIANTS (09/09/2026, commonsTake: 'bonus' OR 'spend'): HARVEST
+  // NEVER REACHES THE CENTRE AT ALL (D-S4 under 'spend', the same rule
+  // 'bonus' states). A central pile is taken by the `commonsTake` bonus move
+  // instead - to hand under 'bonus', per-board under 'spend' (wheat to barn,
+  // the rest elsewhere) - so the Harvest action stops at own full buildings
+  // under either knob value. commonsHarvestMin and commonsHarvestTake have no
+  // subject, which is why this returns before either is read.
+  if (isCommonsTakeToHand(data) || isCommonsTakeToSpend(data)) return own;
   const boards = commonsBoards(state);
   const min = commonsHarvestMin(data);
   const central = data.cards.suits
@@ -2433,20 +2436,44 @@ export function doDeliver(
     }
   }
   const cards = fx.spendFromBarn(seat, fromBarn);
-  // Read each VP and each MEEPLE off the space BEFORE the delivery joins the
-  // tile, or the first deliverer would be paid the second deliverer's rate and
-  // handed the second deliverer's meeple. The tile's own fill order is the whole
-  // gradient: 6 for being first here, 3 for being second - so V14's "both
-  // receipts" is 6 + 3 = 9 plus BOTH meeples, with no scoring rule of its own.
-  //
-  // ⭐ THE MEEPLE REPLACED THE COIN (v31). Every delivery used to also mint a
-  // flat GBP 1 (`island.tileRule.coinsPerDelivery`, pinned at 0 as a tombstone
-  // now). Both spaces on every tile carry one, and both are claimed - the 3 VP
-  // space is not a consolation, it is 3 VP AND a free action.
-  //
-  // One `delivered` event per receipt, so nothing counting deliveries has to
-  // learn that one of them can be double; only the first carries the spend,
-  // because only one payment was made.
+  finishDelivery(fx, seat, tile, tileId, spend, cards, receipts, meepleTotal, meeples);
+}
+
+/**
+ * THE RECEIPT/SCORE/HOOK/CLOCK TAIL EVERY DELIVERY SHARES, whatever paid for
+ * the crate. Extracted 09/09/2026 so Dean's 'spend' variant's vegetable leg
+ * (`doCommonsSpendDeliver`, paid from a central pile rather than a barn) can
+ * score "exactly as a barn delivery" - the brief's own words - by calling the
+ * SAME tail rather than a second copy of it. `doDeliver` is a pure extraction
+ * around this call and its behaviour is unchanged.
+ *
+ * Read each VP and each MEEPLE off the space BEFORE the delivery joins the
+ * tile, or the first deliverer would be paid the second deliverer's rate and
+ * handed the second deliverer's meeple. The tile's own fill order is the whole
+ * gradient: 6 for being first here, 3 for being second - so V14's "both
+ * receipts" is 6 + 3 = 9 plus BOTH meeples, with no scoring rule of its own.
+ *
+ * ⭐ THE MEEPLE REPLACED THE COIN (v31). Every delivery used to also mint a
+ * flat GBP 1 (`island.tileRule.coinsPerDelivery`, pinned at 0 as a tombstone
+ * now). Both spaces on every tile carry one, and both are claimed - the 3 VP
+ * space is not a consolation, it is 3 VP AND a free action.
+ *
+ * One `delivered` event per receipt, so nothing counting deliveries has to
+ * learn that one of them can be double; only the first carries the spend,
+ * because only one payment was made.
+ */
+function finishDelivery(
+  fx: Fx,
+  seat: Seat,
+  tile: IslandTileState,
+  tileId: string,
+  spend: Partial<Record<Suit, number>>,
+  cards: CardId[],
+  receipts: number,
+  meepleTotal = 0,
+  meeples: Partial<Record<Suit, number>> = {},
+): void {
+  const state = fx.state;
   for (let i = 0; i < receipts; i++) {
     const space = tile.deliveredBy.length;
     const vp = deliveryVp(fx.data, space);
@@ -3508,12 +3535,13 @@ function commonsHarvestLegalAfterFee(
   board: Suit,
 ): boolean {
   if (player(state, seat).tableau.some((b) => isFull(data, b))) return true;
-  // ⭐ UNDER commonsTake: 'bonus' THE WHEAT BOARD IS AN ORDINARY BOARD AGAIN,
-  // exactly as under commonsHarvestMin (D6 stops holding): Harvest never
-  // reaches the centre, so the fee just played can never be what makes this
-  // Harvest legal. Without a full building of their own, this seat has
-  // nothing for the wheat board's action to do.
-  if (isCommonsTakeToHand(data)) return false;
+  // ⭐ UNDER commonsTake: 'bonus' OR 'spend' THE WHEAT BOARD IS AN ORDINARY
+  // BOARD AGAIN, exactly as under commonsHarvestMin (D6 stops holding):
+  // Harvest never reaches the centre under either knob value (D-S4), so the
+  // fee just played can never be what makes this Harvest legal. Without a
+  // full building of their own, this seat has nothing for the wheat board's
+  // action to do.
+  if (isCommonsTakeToHand(data) || isCommonsTakeToSpend(data)) return false;
   const min = commonsHarvestMin(data);
   const boards = commonsBoards(state);
   for (const colour of data.cards.suits) {
@@ -3647,12 +3675,15 @@ export function doCommons(fx: Fx, seat: Seat, board: Suit, fee: CardId): void {
 export type CommonsTakeOption = Extract<Move, { type: 'commonsTake' }>;
 
 /**
- * ⭐ DEAN'S VARIANT'S OTHER HALF (09/09/2026, `rules.turn.commonsTake:
- * 'bonus'`): every legal `commonsTake` move, one per non-empty central pile.
+ * ⭐ DEAN'S VARIANTS' SHARED MOVE (09/09/2026, `rules.turn.commonsTake:
+ * 'bonus'` OR `'spend'`): every legal `commonsTake` move, one per central pile
+ * this seat may legally take right now.
  *
  * Never producible under the shipped `'harvest'` rule - `enumerateCommonsTake`
  * checks the knob first, exactly as `enumerateCommons` checks `isCommons`
- * first, so the two enumerators fail closed the same way.
+ * first, so the two enumerators fail closed the same way. Under `'bonus'`
+ * every non-empty pile qualifies; under `'spend'` a board also has to have
+ * something for its action to do (D-S3), which is `commonsSpendTakeLegal`.
  */
 export function commonsTakeOptions(
   data: GameData,
@@ -3679,12 +3710,15 @@ function enumerateCommonsTake(
   seat: Seat,
   out: CommonsTakeOption[] | null,
 ): boolean {
-  if (!isCommons(data) || !isCommonsTakeToHand(data)) return false;
+  const toHand = isCommonsTakeToHand(data);
+  const toSpend = isCommonsTakeToSpend(data);
+  if (!isCommons(data) || (!toHand && !toSpend)) return false;
   if (!bonusOpen(data, state, 'commonsTake')) return false;
   const boards = commonsBoards(state);
   let any = false;
   for (const board of data.cards.suits) {
     if ((boards[board]?.length ?? 0) === 0) continue;
+    if (toSpend && !commonsSpendTakeLegal(data, state, seat, board)) continue;
     if (out === null) return true;
     out.push({ type: 'commonsTake', seat, board });
     any = true;
@@ -3693,17 +3727,43 @@ function enumerateCommonsTake(
 }
 
 /**
- * ⭐ DEAN'S VARIANT'S TAKE (09/09/2026): take the whole of one central pile
- * straight to hand. No fee, no action - see `Fx.takeCommons` for the shape and
- * the reasoning.
+ * ⭐ DEAN'S 'spend' VARIANT'S LEGALITY (D-S3, 09/09/2026): "a door that can do
+ * nothing is not offered", the standing ruling, read per board. Orchard and
+ * wheat are the uncomplicated whole-pile legs and are legal whenever their
+ * pile is non-empty (already checked by the caller); dairy, vegetable and
+ * apiary each ask whether their action has anything to do.
+ */
+function commonsSpendTakeLegal(data: GameData, state: GameState, seat: Seat, board: Suit): boolean {
+  switch (board) {
+    case 'orchard':
+    case 'wheat':
+      return true;
+    case 'dairy':
+      return anyCommonsSpendBuildOption(data, state, seat, board);
+    case 'vegetable':
+      return anyCommonsSpendDeliverOption(data, state, seat, board);
+    case 'apiary':
+      return player(state, seat).tableau.some((b) => canTakeCard(data, b));
+    default:
+      return board satisfies never;
+  }
+}
+
+/**
+ * ⭐ DEAN'S VARIANTS' TAKE, DISPATCHED BY commonsTake (09/09/2026): take the
+ * whole of one central pile. Under `'bonus'` it always goes straight to hand
+ * (`Fx.takeCommons`); under `'spend'` its fate depends on `board` -
+ * `doCommonsSpendTake` is where the five legs live.
  *
  * Every predicate the enumerator checked is re-checked here, on the same
  * discipline `doCommons` follows.
  */
 export function doCommonsTake(fx: Fx, seat: Seat, board: Suit): void {
   const { data, state } = fx;
-  if (!isCommons(data) || !isCommonsTakeToHand(data)) {
-    throw new Error("commonsTake is legal only under rules.turn.commonsTake: 'bonus'");
+  const toHand = isCommonsTakeToHand(data);
+  const toSpend = isCommonsTakeToSpend(data);
+  if (!isCommons(data) || (!toHand && !toSpend)) {
+    throw new Error("commonsTake is legal only under rules.turn.commonsTake: 'bonus' or 'spend'");
   }
   if (!bonusOpen(data, state, 'commonsTake')) {
     throw new Error('The bonus slot is shut: spent, or outside its window for this bonusTiming');
@@ -3712,8 +3772,315 @@ export function doCommonsTake(fx: Fx, seat: Seat, board: Suit): void {
   if (pile === undefined) throw new Error(`There is no ${board} board in the commons`);
   if (pile.length === 0) throw new Error(`The ${board} board is empty`);
 
+  if (toSpend) {
+    if (!commonsSpendTakeLegal(data, state, seat, board)) {
+      throw new Error(`The ${board} board has nothing legal to take right now`);
+    }
+    // Marked BEFORE the resolution, exactly as `doCommons` marks `'commons'`
+    // before `performDoorAction` pushes its task: the slot is spent the
+    // moment the board is chosen, not when its (possibly multi-step)
+    // resolution finishes.
+    state.turn.bonusUsed.push('commonsTake');
+    doCommonsSpendTake(fx, seat, board);
+    return;
+  }
+
   fx.takeCommons(seat, board);
   state.turn.bonusUsed.push('commonsTake');
+}
+
+// --- Dean's 'spend' variant (09/09/2026, commonsTake: 'spend') -------------
+//
+// One pile, five fates, dispatched by board (C3's door table): orchard to
+// hand, wheat to barn (both uncomplicated whole-pile moves, resolved inline),
+// dairy/vegetable/apiary each a multi-step choice resolved through its own
+// task. See `CommonsTake` in @gp/data for Dean's words and the four builder
+// defaults D-S1 to D-S4.
+
+/** How many cards of each suit sit on a central pile - the payment pool for the dairy and vegetable legs. */
+function pileTally(data: GameData, pile: readonly CardId[]): Partial<Record<Suit, number>> {
+  const tally: Partial<Record<Suit, number>> = {};
+  for (const id of pile) {
+    const suit = cardById(data, id).suit;
+    tally[suit] = (tally[suit] ?? 0) + 1;
+  }
+  return tally;
+}
+
+function doCommonsSpendTake(fx: Fx, seat: Seat, board: Suit): void {
+  switch (board) {
+    case 'orchard': {
+      const taken = commonsBoards(fx.state)[board]?.length ?? 0;
+      fx.takeCommons(seat, board);
+      fx.emit({
+        e: 'commonsSpent',
+        seat,
+        board,
+        taken,
+        used: taken,
+        discarded: 0,
+        deliveredFromCentre: false,
+      });
+      return;
+    }
+    case 'wheat': {
+      const taken = commonsBoards(fx.state)[board]?.length ?? 0;
+      fx.takeCommonsToBarn(seat, board);
+      fx.emit({
+        e: 'commonsSpent',
+        seat,
+        board,
+        taken,
+        used: taken,
+        discarded: 0,
+        deliveredFromCentre: false,
+      });
+      return;
+    }
+    case 'dairy':
+      fx.pushTask({ t: 'commonsSpendBuild', pid: seat, src: null, board });
+      return;
+    case 'vegetable':
+      fx.pushTask({ t: 'commonsSpendDeliver', pid: seat, src: null, board });
+      return;
+    case 'apiary': {
+      const cards = fx.clearCommonsPile(board);
+      fx.pushTask({
+        t: 'commonsSpendSow',
+        pid: seat,
+        src: null,
+        board,
+        cards,
+        taken: cards.length,
+        used: 0,
+        discarded: 0,
+      });
+      return;
+    }
+    default:
+      board satisfies never;
+  }
+}
+
+/**
+ * ⭐ THE DAIRY LEG'S PAYMENTS (D-S1): every (hand card, pile payment) pair,
+ * reusing `paymentsFor` exactly as `paymentOptions` does for D10's revealed
+ * deck top - the built card is priced against the pile as its payment pool
+ * instead of the hand, with no stacks and no meeples (there are none under
+ * the commons, C6), so the default `fills`/`supply`/`place` arguments already
+ * say the right thing.
+ */
+export function commonsSpendBuildOptions(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+  board: Suit,
+): { card: CardId; payment: CardId[] }[] {
+  const pile = commonsBoards(state)[board];
+  if (pile === undefined || pile.length === 0) return [];
+  const hand = player(state, seat).hand;
+  const out: { card: CardId; payment: CardId[] }[] = [];
+  for (const id of hand) {
+    const price = priceOf(data, id, {});
+    if (!price) continue;
+    for (const option of paymentsFor(data, id, pile, [], price)) {
+      out.push({ card: option.card, payment: option.payment });
+    }
+  }
+  return out;
+}
+
+export function anyCommonsSpendBuildOption(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+  board: Suit,
+): boolean {
+  const pile = commonsBoards(state)[board];
+  if (pile === undefined || pile.length === 0) return false;
+  const hand = player(state, seat).hand;
+  return hand.some((id) => {
+    const price = priceOf(data, id, {});
+    if (!price) return false;
+    return paymentsFor(data, id, pile, [], price).length > 0;
+  });
+}
+
+/**
+ * ⭐ THE DAIRY LEG'S RESOLUTION: build ONE card from hand, paid FROM THE PILE
+ * ONLY. `payment` is validated against `board`'s pile exactly as `doBuild`
+ * validates a hand payment - same cost arithmetic, same own-suit minimum -
+ * and then taken out of the pile rather than the hand. Whatever the pile does
+ * not use is discarded (D-S2), the payment itself included, on the SAME
+ * divert seam a normal build payment uses (so O17's "put a spent card in your
+ * barn instead" still fires here).
+ */
+export function doCommonsSpendBuild(
+  fx: Fx,
+  seat: Seat,
+  board: Suit,
+  card: CardId,
+  payment: readonly CardId[],
+): void {
+  const { data, state } = fx;
+  const p = player(state, seat);
+  if (!p.hand.includes(card)) throw new Error(`${card} is not in seat ${seat}'s hand`);
+  const price = priceOf(data, card, {});
+  if (!price) throw new Error(`${card} has no build cost`);
+  const pile = commonsBoards(state)[board];
+  if (pile === undefined) throw new Error(`There is no ${board} board in the commons`);
+  if (payment.includes(card)) throw new Error(`${card} cannot pay for itself`);
+  if (new Set(payment).size !== payment.length) throw new Error('Duplicate payment card');
+  for (const id of payment) {
+    if (!pile.includes(id)) throw new Error(`${id} is not on the ${board} pile`);
+  }
+  if (payment.length !== price.cardsNeeded) {
+    throw new Error(`${card} costs ${price.cardsNeeded} cards, got ${payment.length}`);
+  }
+  const suit = cardById(data, card).suit;
+  const own = payment.filter((id) => cardById(data, id).suit === suit).length;
+  if (own < price.ownSuitMin) {
+    throw new Error(`${card} needs ${price.ownSuitMin} ${suit} cards in payment`);
+  }
+
+  fx.removeFromHand(seat, card);
+  fx.takeFromCommonsPile(board, payment);
+  divertOrDiscard(fx, seat, [...payment]);
+  const leftover = fx.clearCommonsPile(board);
+  fx.discard(leftover);
+  placeBuilt(fx, seat, card, [...payment], null);
+  fx.emit({
+    e: 'commonsSpent',
+    seat,
+    board,
+    taken: payment.length + leftover.length,
+    used: payment.length,
+    discarded: leftover.length,
+    deliveredFromCentre: false,
+  });
+}
+
+/**
+ * ⭐ THE VEGETABLE LEG'S CRATES (D-S1): every (tile, spend) pair payable out
+ * of `board`'s pile, read as a tally exactly as a barn would be - the wild
+ * substitution (`substitutedSpends`) and the demand machinery
+ * (`deliverDemands`/`namedDemand`) neither know nor care which pool they are
+ * reading. There are no meeples under the commons (C6), so this is the plain
+ * card arithmetic `deliverOptions` runs before R15 ever joins it.
+ */
+export function commonsSpendDeliverOptions(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+  board: Suit,
+  /** Stop after this many. `anyCommonsSpendDeliverOption` passes 1. */
+  limit: number = Infinity,
+): { tile: string; spend: Partial<Record<Suit, number>> }[] {
+  const pile = commonsBoards(state)[board];
+  if (pile === undefined || pile.length === 0) return [];
+  const tally = pileTally(data, pile);
+  const demands = deliverDemands(data, state, seat);
+  const fillerSuits = [
+    ...state.suitsInPlay,
+    ...data.cards.suits.filter((x) => !state.suitsInPlay.includes(x)),
+  ];
+  const out: { tile: string; spend: Partial<Record<Suit, number>> }[] = [];
+  const seen = new Set<string>();
+  demandLoop: for (const demand of demands) {
+    const affordable = (Object.entries(demand.spend) as [Suit, number][]).every(
+      ([s, n]) => (tally[s] ?? 0) >= n,
+    );
+    const spends = affordable
+      ? [demand.spend]
+      : substitutedSpends(data, fillerSuits, demand.spend, tally);
+    for (const spend of spends) {
+      const key = spendKey(demand.tile, spend);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ tile: demand.tile, spend });
+      if (out.length >= limit) break demandLoop;
+    }
+  }
+  return out;
+}
+
+export function anyCommonsSpendDeliverOption(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+  board: Suit,
+): boolean {
+  return commonsSpendDeliverOptions(data, state, seat, board, 1).length > 0;
+}
+
+/**
+ * ⭐ THE VEGETABLE LEG'S RESOLUTION: deliver ONE crate to `tileId`, paid FROM
+ * THE PILE ONLY. Validated against the same wild-substitution arithmetic
+ * `doDeliver` uses; the specific cards are then picked off the pile (deepest
+ * first is not a rule - any matching cards will do, since barn identity is
+ * inert the same way `spendFromBarn`'s is) and discarded, exactly what a barn
+ * payment's cards would have done. Scores through the shared `finishDelivery`
+ * tail, so a pile-paid crate reads on the board exactly as a barn-paid one
+ * does. Unused pile cards are discarded (D-S2); nothing reaches the barn.
+ */
+export function doCommonsSpendDeliver(
+  fx: Fx,
+  seat: Seat,
+  board: Suit,
+  tileId: string,
+  spend: Partial<Record<Suit, number>>,
+): void {
+  const { data, state } = fx;
+  const pile = commonsBoards(state)[board];
+  if (pile === undefined) throw new Error(`There is no ${board} board in the commons`);
+  const tile = state.island.tiles.find((t) => t.tile === tileId);
+  if (!tile) throw new Error(`Tile ${tileId} is not in play`);
+  if (!tileHasRoom(data, tile)) throw new Error(`Tile ${tileId} has no delivery slots left`);
+
+  const { base, wilds, cardsPerCrate } = namedDemand(data, tile);
+  const rate = data.island.cardsPerSubstitution;
+  const paid = tallyTotal(spend);
+  const legal = wildFills(data.cards.suits, wilds).some((fill) => {
+    const need: Partial<Record<Suit, number>> = { ...base };
+    for (const s of fill) need[s] = (need[s] ?? 0) + cardsPerCrate;
+    const matched = matchedAgainst(need, spend);
+    const substituted = tallyTotal(need) - matched;
+    if (substituted === 0) return paid === matched;
+    if (rate === null) return false;
+    return paid - matched === rate * substituted;
+  });
+  if (!legal) {
+    throw new Error(
+      rate === null
+        ? `Spend does not pay ${tileId}: a crate is ${cardsPerCrate} cards of ONE suit`
+        : `Spend does not pay ${tileId}: unmatched cards cost ${rate} of any crop each`,
+    );
+  }
+
+  const used: CardId[] = [];
+  for (const [suit, count] of Object.entries(spend) as [Suit, number][]) {
+    let taken = 0;
+    for (let i = pile.length - 1; i >= 0 && taken < count; i--) {
+      if (cardById(data, pile[i] as CardId).suit === suit) {
+        used.push(...pile.splice(i, 1));
+        taken += 1;
+      }
+    }
+    if (taken < count) throw new Error(`The ${board} pile has no ${suit} card left to spend`);
+  }
+  const leftover = fx.clearCommonsPile(board);
+  fx.discard(used);
+  finishDelivery(fx, seat, tile, tileId, spend, used, 1);
+  fx.discard(leftover);
+  fx.emit({
+    e: 'commonsSpent',
+    seat,
+    board,
+    taken: used.length + leftover.length,
+    used: used.length,
+    discarded: leftover.length,
+    deliveredFromCentre: true,
+  });
 }
 
 /**

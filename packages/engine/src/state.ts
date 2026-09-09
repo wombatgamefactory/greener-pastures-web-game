@@ -631,6 +631,66 @@ export type Task =
       src: CardId;
       kind: string;
       riders: Record<string, unknown>;
+    }
+  | {
+      /**
+       * ⭐ DEAN'S 'spend' VARIANT (09/09/2026, `rules.turn.commonsTake:
+       * 'spend'`): the DAIRY board's take - build ONE card from hand, paid
+       * FROM THE PILE ONLY (D-S1). Its own task rather than the plain `build`
+       * task above, because that one's enumerator reads the hand for payment
+       * and this one must read `board`'s central pile instead - the built
+       * card is the only thing still drawn from the hand.
+       *
+       * Answers reuse the plain `build` TaskAnswer kind (card + payment): the
+       * SHAPE of a payment is the same whichever pool it came out of, only the
+       * SOURCE differs, and `resolveTask` is what knows to spend the pile
+       * rather than the hand. Whatever the payment does not use is discarded
+       * (D-S2) when the task resolves.
+       */
+      t: 'commonsSpendBuild';
+      pid: Seat;
+      src: CardId | null;
+      board: Suit;
+    }
+  | {
+      /**
+       * ⭐ DEAN'S 'spend' VARIANT: the VEGETABLE board's take - deliver ONE
+       * crate to a tile with a free space, paid FROM THE PILE ONLY (D-S1; the
+       * wild substitution applies within the pile). Answers reuse the plain
+       * `deliver` TaskAnswer kind's `{ tile, spend }` shape - never `balloon`,
+       * which this task's own enumerator never offers - and the delivery
+       * scores exactly as a barn delivery once resolved. Unused pile cards are
+       * discarded (D-S2); nothing reaches the barn.
+       */
+      t: 'commonsSpendDeliver';
+      pid: Seat;
+      src: CardId | null;
+      board: Suit;
+    }
+  | {
+      /**
+       * ⭐ DEAN'S 'spend' VARIANT: the APIARY board's take - every card in the
+       * pile SOWN, one at a time in PILE ORDER, onto one of the taker's own
+       * non-full buildings; a card with no legal building is discarded. The
+       * whole pile is taken out of the centre and held here in LIMBO at push
+       * time - `cards`, oldest (pile-order) first - following the `divert`
+       * task's precedent for a card that is out of any zone while a
+       * multi-step choice resolves. `taken` is the pile's original size;
+       * `used` and `discarded` accumulate as each card is resolved, so the one
+       * `commonsSpent` event can be emitted once, when the task finishes.
+       *
+       * Answers reuse the plain `sow` TaskAnswer kind, restricted to the
+       * task's own HEAD card (`cards[0]`) and the taker's own tableau - never
+       * a neighbour's, and never `ontoSeat`.
+       */
+      t: 'commonsSpendSow';
+      pid: Seat;
+      src: CardId | null;
+      board: Suit;
+      cards: CardId[];
+      taken: number;
+      used: number;
+      discarded: number;
     };
 
 /**
@@ -1172,8 +1232,41 @@ export type GameEvent =
    *
    * Never emitted under `commonsTake: 'harvest'`, the shipped rule, where a
    * central pile is reached only through `harvested` with `source: 'commons'`.
+   *
+   * ⭐ ALSO FIRES UNDER `commonsTake: 'spend'` (09/09/2026), for the orchard and
+   * wheat legs ONLY, where a take is still an uncomplicated whole-pile move: to
+   * `seat`'s HAND for orchard (exactly as under `'bonus'`) or to `seat`'s BARN
+   * for wheat (`fx.takeCommonsToBarn`). The two are told apart by `board`,
+   * which is fixed by the door table (C3) - a caller that knows the mode
+   * already knows which destination a given board means. The dairy, vegetable
+   * and apiary legs never emit this: they resolve through a task and their own
+   * `commonsSpent` event carries their accounting instead.
    */
   | { e: 'commonsTaken'; seat: Seat; board: Suit; cards: CardId[] }
+  /**
+   * ⭐ DEAN'S 'spend' VARIANT'S SUMMARY (09/09/2026, `rules.turn.commonsTake:
+   * 'spend'`): fires once, for EVERY board, when that board's take finishes
+   * resolving - immediately for orchard and wheat (alongside `commonsTaken`),
+   * or when the pushed task completes for dairy, vegetable and apiary. `taken`
+   * is the pile's size when the take began; `used` is how much of it the
+   * chosen action actually spent (a build's payment, a delivery's crate, cards
+   * sown before a target ran out); `discarded` is `taken - used`, the cards no
+   * action wanted (D-S2) - for orchard and wheat, `used` is always `taken` and
+   * `discarded` is always 0, since nothing is left over. `deliveredFromCentre`
+   * is true only for a vegetable take that completed a delivery, which is the
+   * a18 farm-bypass reading's new subject on the vegetable side.
+   *
+   * Never emitted under `commonsTake: 'harvest'` or `'bonus'`.
+   */
+  | {
+      e: 'commonsSpent';
+      seat: Seat;
+      board: Suit;
+      taken: number;
+      used: number;
+      discarded: number;
+      deliveredFromCentre: boolean;
+    }
   /**
    * A DOOR ACTION RAN. `colour` is whose door it is (which is also what a meeple
    * of that colour does), `action` is what it did, and `via` is what paid for

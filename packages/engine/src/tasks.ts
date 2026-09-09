@@ -18,8 +18,12 @@ import type { GameData } from '@gp/data';
 
 import {
   buildOptions,
+  commonsSpendBuildOptions,
+  commonsSpendDeliverOptions,
   deliverAnswers,
   doBuild,
+  doCommonsSpendBuild,
+  doCommonsSpendDeliver,
   doDeliver,
   doMoveBalloon,
   growOptions,
@@ -268,6 +272,42 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
       return out;
     }
 
+    // ⭐ DEAN'S 'spend' VARIANT'S DAIRY LEG (09/09/2026, commonsTake: 'spend'):
+    // the same `build` TaskAnswer kind the plain `build` task uses above - a
+    // payment's SHAPE does not change, only its SOURCE, and `resolveTask` is
+    // what knows to spend `task.board`'s pile rather than the hand. Never
+    // optional: `commonsSpendTakeLegal` (D-S3) guarantees at least one answer
+    // exists before this task is ever pushed.
+    case 'commonsSpendBuild': {
+      return commonsSpendBuildOptions(data, state, task.pid, task.board).map(
+        (o) => ({ kind: 'build', card: o.card, payment: o.payment }) as TaskAnswer,
+      );
+    }
+
+    // ⭐ DEAN'S 'spend' VARIANT'S VEGETABLE LEG: the same `deliver` TaskAnswer
+    // kind's `{ tile, spend }` shape, read against the pile rather than the
+    // barn. Never `balloon` - a pile pays only island crates (D-S1) - and
+    // never optional, for the same reason as the dairy leg above.
+    case 'commonsSpendDeliver': {
+      return commonsSpendDeliverOptions(data, state, task.pid, task.board).map(
+        (o) => ({ kind: 'deliver', tile: o.tile, spend: o.spend }) as TaskAnswer,
+      );
+    }
+
+    // ⭐ DEAN'S 'spend' VARIANT'S APIARY LEG: the same `sow` TaskAnswer kind,
+    // restricted to the task's own HEAD card (pile order, D-S) and the
+    // taker's own non-full buildings - never a neighbour's. The invariant
+    // that keeps this from ever needing a `skip`: `resolveTask`'s
+    // `commonsSpendSow` case auto-discards every remaining card the moment
+    // no building can take another, so a live task always has somewhere for
+    // its head card to go.
+    case 'commonsSpendSow': {
+      const head = task.cards[0];
+      if (head === undefined) return [];
+      const targets = player(state, task.pid).tableau.filter((b) => canTakeCard(data, b));
+      return targets.map((b) => ({ kind: 'sow', card: head, onto: b.card }) as TaskAnswer);
+    }
+
     case 'sowFromDeck': {
       // A fixed deck (A13's "the top card of EACH deck") still has to be
       // drawable: a suit whose deck and discard are both empty offers nothing
@@ -408,6 +448,66 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
         return true;
       }
       throw new Error('deliver expects a deliver or balloon answer');
+    }
+
+    // ⭐ DEAN'S 'spend' VARIANT'S DAIRY LEG (09/09/2026): a build paid from
+    // `task.board`'s pile rather than the hand. Never optional.
+    case 'commonsSpendBuild': {
+      if (answer.kind !== 'build') throw new Error('commonsSpendBuild expects a build answer');
+      doCommonsSpendBuild(fx, task.pid, task.board, answer.card, answer.payment);
+      return true;
+    }
+
+    // ⭐ DEAN'S 'spend' VARIANT'S VEGETABLE LEG: a delivery paid from
+    // `task.board`'s pile rather than the barn. Never `balloon`, never
+    // optional.
+    case 'commonsSpendDeliver': {
+      if (answer.kind !== 'deliver') {
+        throw new Error('commonsSpendDeliver expects a deliver answer');
+      }
+      doCommonsSpendDeliver(fx, task.pid, task.board, answer.tile, answer.spend);
+      return true;
+    }
+
+    // ⭐ DEAN'S 'spend' VARIANT'S APIARY LEG: sow the task's HEAD card onto one
+    // of the taker's own buildings, off the SAME `placeHeldCard` landing tail
+    // `placeOnBuilding` uses (so `afterPlacement` fires exactly as a real
+    // sow's does) but with no hand to remove the card from - it is already
+    // held by the task, out of the pile since the task was pushed.
+    //
+    // ⭐ THE AUTO-DISCARD (D-S2): once every one of the taker's buildings is
+    // full, NO remaining card in `task.cards` has anywhere to go - sow never
+    // un-fulls a building, so that condition, once true, stays true for the
+    // rest of this resolution. Rather than surface a hollow "nothing to pick"
+    // step per card, the whole remainder is discarded in one go, right here,
+    // the moment it is discovered - which is also the only way the invariant
+    // `taskAnswers`'s `commonsSpendSow` case relies on (a live task's head
+    // card always has a legal target) stays true between one answer and the
+    // next.
+    case 'commonsSpendSow': {
+      if (answer.kind !== 'sow') throw new Error('commonsSpendSow expects a sow answer');
+      fx.placeHeldCard(task.pid, { seat: task.pid, card: answer.onto }, answer.card);
+      task.cards = task.cards.filter((c) => c !== answer.card);
+      task.used += 1;
+      const stillOpen = player(fx.state, task.pid).tableau.some((b) => canTakeCard(fx.data, b));
+      if (!stillOpen && task.cards.length > 0) {
+        fx.discard([...task.cards]);
+        task.discarded += task.cards.length;
+        task.cards = [];
+      }
+      if (task.cards.length === 0) {
+        fx.emit({
+          e: 'commonsSpent',
+          seat: task.pid,
+          board: task.board,
+          taken: task.taken,
+          used: task.used,
+          discarded: task.discarded,
+          deliveredFromCentre: false,
+        });
+        return true;
+      }
+      return false;
     }
 
     case 'sowFromDeck': {

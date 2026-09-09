@@ -93,13 +93,53 @@ export type VisitCurrency = 'card' | 'meeple' | 'commons';
  *
  * `'harvest'` is the shipped rule (C5): a central pile is reached only by
  * Harvest, whole pile to the harvester's BARN, and `commonsHarvestMin` /
- * `commonsHarvestTake` ration it. `'bonus'` is Dean's variant: Harvest never
- * reaches the centre at all - the wheat board buys a Harvest of an own full
- * building only - and the bonus slot's second option becomes `commonsTake`, a
- * free draw of one whole pile straight into the taker's HAND. Read only under
- * `visitCurrency: 'commons'`; subjectless under `'card'` and `'meeple'`.
+ * `commonsHarvestTake` ration it. `'bonus'` is Dean's take-to-hand variant:
+ * Harvest never reaches the centre at all - the wheat board buys a Harvest of
+ * an own full building only - and the bonus slot's second option becomes
+ * `commonsTake`, a free draw of one whole pile straight into the taker's HAND.
+ *
+ * ⭐ `'spend'` IS THE THIRD VALUE (Dean, 09/09/2026), following exactly the
+ * pattern `'bonus'` was added by. It reuses the SAME `commonsTake` move - no
+ * fee, no card played - but the resolution now depends on WHICH BOARD is
+ * taken, because Dean's own words describe five different fates, not one:
+ * *"You can play a card to a centre card to do the bonus action. OR, you can
+ * take all the cards from a central pile and then use those cards to pay for
+ * a bonus action of the matching type. So, if you take all the cards from the
+ * Draw card, they go into your hand. All the cards on the Harvest go into
+ * your barn. All the cards on the Build action can be spent to do a Build.
+ * All the cards on the Deliver action can immediately be used to deliver
+ * (this is one to watch, this could be crazy). All the cards on the Grow
+ * action are used to SOW (not grow, that would be crazy). Any cards that
+ * cannot be used are discarded. So, if there are 3 cards on the build action
+ * and you build a card that costs 1, the excess are discarded - they don't go
+ * into your hand."*
+ *
+ * Orchard (Draw) to HAND, exactly as `'bonus'`. Wheat (Harvest) to BARN
+ * instead of hand - Harvest still never reaches the centre (D-S4), this is
+ * the take's own destination. Dairy (Build): ONE card from hand, paid FROM
+ * THE PILE ONLY (D-S1: no top-up from hand). Vegetable (Deliver): ONE crate
+ * to a tile with room, paid FROM THE PILE ONLY (D-S1 again; the wild
+ * substitution applies within the pile). Apiary (Sow): every pile card sown,
+ * one at a time in pile order, onto the taker's own non-full buildings: a
+ * card with no legal building is discarded. Every card the chosen action does
+ * not use - the whole pile under Draw/Harvest, whatever a build or delivery
+ * payment leaves over, a sow with no building left to take it - is DISCARDED
+ * to its own suit's discard pile (D-S2), never kept, never boxed.
+ *
+ * The builder's four defaults, none of them Dean's ruling: **D-S1** a
+ * dairy/vegetable spend never tops up from hand or barn, pile only; **D-S2**
+ * every unusable card is discarded, per its own suit; **D-S3** a board is
+ * offered only if it can do something (the standing "a door that can do
+ * nothing is not offered" ruling): orchard and wheat whenever their pile is
+ * non-empty, dairy only if some hand card is payable from the pile, vegetable
+ * only if the pile can pay a crate for a tile with a free space, apiary only
+ * if the taker has a non-full building; **D-S4** Harvest, main or bought,
+ * never reaches the centre under `'spend'`, exactly as under `'bonus'`.
+ *
+ * Read only under `visitCurrency: 'commons'`; subjectless under `'card'` and
+ * `'meeple'`.
  */
-export type CommonsTake = 'harvest' | 'bonus';
+export type CommonsTake = 'harvest' | 'bonus' | 'spend';
 
 /**
  * Trigger keywords detected in the printed text. This is keyword detection, not a
@@ -891,6 +931,15 @@ export interface RulesFile {
      * rather than the top of a random deck, and it competes with the paid
      * play on the same "is the free option crowding out the paid one" law
      * this project has measured under every currency it has shipped.
+     *
+     * `'spend'` is the third value (Dean, 09/09/2026), unrun before this pass
+     * (`overlays/commons-take-to-spend-v1.overlay.json`). The SAME free
+     * `commonsTake` move as `'bonus'`, but its resolution now depends on WHICH
+     * BOARD is taken - orchard to hand, wheat to barn (still no Harvest, D-S4),
+     * dairy a build paid from the pile alone, vegetable a delivery paid from
+     * the pile alone, apiary the whole pile sown one card at a time - rather
+     * than always landing in the hand. See `CommonsTake` for the ruling in
+     * full and the four builder defaults D-S1 to D-S4.
      */
     readonly commonsTake: CommonsTake;
   };

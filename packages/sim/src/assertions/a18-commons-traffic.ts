@@ -1,4 +1,4 @@
-import { isCommons, isCommonsTakeToHand } from '@gp/data';
+import { isCommons, isCommonsTakeToHand, isCommonsTakeToSpend } from '@gp/data';
 
 import type { Assertion, Measurement } from './types.js';
 import { NO_REMEDY } from './types.js';
@@ -146,7 +146,13 @@ export const commonsTraffic: Assertion = {
     'that knob - and are printed instead as central TAKES per player per game, the take-size ' +
     'distribution, the conservation line re-derived as plays = taken out + stranded, and the ' +
     'farm bypass moved from the barn to the HAND (cards taken to hand from the centre, against ' +
-    'deck draws where that count exists).',
+    "deck draws where that count exists). ⭐ UNDER commonsTake: 'spend' (09/09/2026) THE " +
+    'HARVEST-SIDE READINGS ARE ALSO REPLACED, but five ways rather than one free draw: takes per ' +
+    'player per game by BOARD; cards taken/used/discarded per game, with the discard named as ' +
+    'the first SINK the commons line has had; deliveries paid straight from the vegetable pile, ' +
+    'against every delivery in the game; the conservation line re-derived as plays = to hand + ' +
+    'to barn + spent + discarded + stranded; and the farm bypass moved to the WHEAT leg alone ' +
+    '(barn cards from a wheat take against a seat’s own buildings), beside the same 30-40% target.',
   threshold:
     'OBSERVE, and there is NO FAIL CONDITION in this pass. The design names no number for any ' +
     'of these readings, the handoff names none, and one taken from the first commons run would ' +
@@ -299,6 +305,135 @@ export const commonsTraffic: Assertion = {
             "SEAT'S DECK DRAWS, THE SAME QUESTION APPLIES UNDER A NEW NAME: is the hand being " +
             "filled by the table's own discipline (grow, harvest, deliver) or by a free lucky " +
             'dip into whichever pile got fat?**',
+          ...feeSuitLines,
+        ],
+        verdict: 'OBSERVE',
+      };
+    }
+
+    // ⭐ DEAN'S 'spend' VARIANT (09/09/2026, `rules.turn.commonsTake: 'spend'`):
+    // Harvest never reaches the centre under this knob either (D-S4), so the
+    // harvest-side readings below still have no subject - but unlike 'bonus'
+    // the take's fate now depends on WHICH BOARD, so the replacement reading
+    // is five-way rather than one free draw. Off `commonsSpent` (taken / used
+    // / discarded per board) and `commonsSpendTakesByBoard` (how often each
+    // board was chosen).
+    if (isCommonsTakeToSpend(data)) {
+      const takenByBoard = new Map<string, number>();
+      const usedByBoard = new Map<string, number>();
+      const discardedByBoard = new Map<string, number>();
+      const takesByBoard = new Map<string, number>();
+      for (const g of games) {
+        for (const [board, n] of Object.entries(g.commonsSpendTakenByBoard)) {
+          takenByBoard.set(board, (takenByBoard.get(board) ?? 0) + n);
+        }
+        for (const [board, n] of Object.entries(g.commonsSpendUsedByBoard)) {
+          usedByBoard.set(board, (usedByBoard.get(board) ?? 0) + n);
+        }
+        for (const [board, n] of Object.entries(g.commonsSpendDiscardedByBoard)) {
+          discardedByBoard.set(board, (discardedByBoard.get(board) ?? 0) + n);
+        }
+        for (const [board, n] of Object.entries(g.commonsSpendTakesByBoard)) {
+          takesByBoard.set(board, (takesByBoard.get(board) ?? 0) + n);
+        }
+      }
+      const takes = sum([...takesByBoard.values()]);
+      const takenTotal = sum([...takenByBoard.values()]);
+      const usedTotal = sum([...usedByBoard.values()]);
+      const discardedTotal = sum([...discardedByBoard.values()]);
+      const stranded = sum(games.map((g) => g.commonsStrandedAtEnd));
+      const toHand = takenByBoard.get('orchard') ?? 0;
+      const toBarn = usedByBoard.get('wheat') ?? 0;
+      const spent = usedTotal - toHand - toBarn;
+      const deliveriesFromCentre = sum(games.map((g) => g.commonsSpendDeliveriesFromCentre));
+      const deliveriesTotal = sum(games.map((g) => sum(g.deliveriesBySeat)));
+      const barnFromWheatSpend = sum(games.map((g) => sum(g.commonsSpendBarnBySeat)));
+      const barnFromOwn = sum(games.map((g) => sum(g.barnFromOwnBySeat)));
+      const barnTotal = barnFromWheatSpend + barnFromOwn;
+      const barnShare = barnTotal === 0 ? NaN : barnFromWheatSpend / barnTotal;
+      const value = turns === 0 ? NaN : plays / turns;
+
+      const takesLine = [...takesByBoard.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(
+          ([board, n]) => `${board} ${num(seatGames === 0 ? NaN : n / seatGames, 2)}/player/game`,
+        )
+        .join('  ');
+      const takenUsedDiscardedLine = ['orchard', 'wheat', 'dairy', 'vegetable', 'apiary']
+        .map((board) => {
+          const t = takenByBoard.get(board) ?? 0;
+          const u = usedByBoard.get(board) ?? 0;
+          const dcd = discardedByBoard.get(board) ?? 0;
+          return `${board} taken ${t} used ${u} discarded ${dcd}`;
+        })
+        .join('   ');
+
+      const barnShareBySeats = pooled.bySeats.map((slice) => {
+        const wheatCentre = sum(slice.ended.map((g) => sum(g.commonsSpendBarnBySeat)));
+        const own = sum(slice.ended.map((g) => sum(g.barnFromOwnBySeat)));
+        const total = wheatCentre + own;
+        return `${slice.seats}p ${pct(total === 0 ? NaN : wheatCentre / total)}`;
+      });
+
+      return {
+        value,
+        headline:
+          `${num(value, 2)} plays per player per turn (${plays} plays over ${turns} turns); ` +
+          `${num(seatGames === 0 ? NaN : takes / seatGames, 2)} central takes per player per ` +
+          `game across all five boards; central harvests read 0 by construction under ` +
+          `commonsTake: 'spend'`,
+        detail: [
+          `⭐ DEAN'S 'spend' VARIANT (rules.turn.commonsTake: 'spend', 09/09/2026): CENTRAL ` +
+            "HARVESTS READ 0 BY CONSTRUCTION, exactly as under 'bonus' (D-S4) - the wheat " +
+            "board's take goes straight to the taker's BARN instead, which is reported below.",
+          `⚠️ THE PLAY RATE IS a17'S NUMBER AND ITS VERDICT IS a17'S: ` +
+            `${pct(value)} of turns play a card, against Dean's band of 30%-60% ("earned, not ` +
+            'automatic", 09/09/2026). It is repeated here because everything else on this page ' +
+            'is read against it, and it deliberately carries no verdict here.',
+          `plays per game: ${num(games.length === 0 ? NaN : plays / games.length, 1)} across ` +
+            `${games.length} ended games, ${num(seatGames === 0 ? NaN : plays / seatGames, 1)} ` +
+            'per player per game.',
+          `⭐ TAKES PER PLAYER PER GAME, BY BOARD: ${takesLine || 'no takes'}. ${takes} takes in ` +
+            `all over ${games.length} games. Orchard and wheat are the uncomplicated whole-pile ` +
+            "legs; dairy, vegetable and apiary each spend the pile on that board's own action.",
+          `⭐⭐ CARDS TAKEN / USED / DISCARDED, BY BOARD: ${takenUsedDiscardedLine}. Orchard and ` +
+            'wheat always read used = taken, discarded 0 - nothing is left over from a plain ' +
+            'draw or a plain barn move. ⭐ THE DISCARD IS THE FIRST SINK IN THE COMMONS LINE: ' +
+            `${discardedTotal} of ${takenTotal} cards taken (${pct(takenTotal === 0 ? NaN : discardedTotal / takenTotal)}) ` +
+            'never reached a hand, a barn or an action - a build payment or a crate the pile ' +
+            'could not exactly fill, or a card with nowhere left to sow (D-S2). It is a genuine ' +
+            "exit from the game (to a suit's discard pile), the first this design has had since " +
+            'the two tolls left with the meeple economy, and it is worth watching beside the ' +
+            'barn glut: a pile that discards heavily is feeding the discard rather than either ' +
+            'store.',
+          `⭐⭐ DELIVERIES STRAIGHT FROM THE CENTRE: ${deliveriesFromCentre} of ${deliveriesTotal} ` +
+            `deliveries (${pct(deliveriesTotal === 0 ? NaN : deliveriesFromCentre / deliveriesTotal)}) ` +
+            "paid their crate from the vegetable pile rather than the barn - Dean's own " +
+            '"this is one to watch, this could be crazy" line about this leg specifically. A high ' +
+            'share here is a delivery pipeline that skips the barn (and therefore the building ' +
+            'layer) altogether.',
+          `⭐⭐ THE CONSERVATION LINE, per game, RE-DERIVED FOR THE VARIANT: ` +
+            `${num(games.length === 0 ? NaN : plays / games.length, 1)} cards played INTO the ` +
+            `centre = ${num(games.length === 0 ? NaN : toHand / games.length, 1)} TO HAND (orchard) ` +
+            `+ ${num(games.length === 0 ? NaN : toBarn / games.length, 1)} TO BARN (wheat) ` +
+            `+ ${num(games.length === 0 ? NaN : spent / games.length, 1)} SPENT (dairy/vegetable/apiary) ` +
+            `+ ${num(games.length === 0 ? NaN : discardedTotal / games.length, 1)} DISCARDED ` +
+            `+ ${num(games.length === 0 ? NaN : stranded / games.length, 1)} STRANDED at game end ` +
+            `(${plays} = ${toHand} + ${toBarn} + ${spent} + ${discardedTotal} + ${stranded} over ` +
+            `${games.length} ended games). The shipped line reads plays = harvested out + ` +
+            'stranded; this variant has no single "out", so the line splits into every fate a ' +
+            'card can meet.',
+          `⭐⭐ THE FARM BYPASS, MOVED TO THE WHEAT LEG: ${barnFromWheatSpend} barn cards came ` +
+            `from a wheat TAKE against ${barnFromOwn} off a seat's OWN buildings ` +
+            `(${pct(barnShare)} centre). BY SEAT COUNT: ${barnShareBySeats.join('   ')}. ` +
+            "⭐ DEAN'S TARGET IS 30-40% FROM THE MIDDLE (09/09/2026), printed here as an OBSERVE " +
+            'line and carrying NO verdict, exactly as under the shipped rule. **IF THE CENTRE ' +
+            'OUT-SUPPLIES THE FARM, THE BUILDING ENGINE IS DECORATION.**',
+          '⚠️ AND THE ORCHARD/DAIRY/APIARY LEGS ARE NOT IN THAT RATIO AT ALL: a hand card (orchard), ' +
+            'a build (dairy) or a sow (apiary) reaches its own event stream - cardsToHand, built, ' +
+            'cardPlaced - and is priced and counted there, exactly as a plain draw, build or sow ' +
+            'would be. Only the wheat leg bypasses a building with no Harvest at all, which is ' +
+            "why it alone is the farm-bypass reading's subject.",
           ...feeSuitLines,
         ],
         verdict: 'OBSERVE',

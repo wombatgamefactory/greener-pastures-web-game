@@ -1,4 +1,4 @@
-import { isCommons, isCommonsTakeToHand, isMeepleCurrency } from '@gp/data';
+import { isCommons, isCommonsTakeToHand, isCommonsTakeToSpend, isMeepleCurrency } from '@gp/data';
 
 import type { GameMetrics } from '../observe.js';
 import type { Assertion, Measurement, MeasureContext } from './types.js';
@@ -221,10 +221,10 @@ export const bonusMix: Assertion = {
 };
 
 /**
- * ⭐ DEAN'S VARIANT'S OTHER FREE OPTION (09/09/2026, `commonsTake: 'bonus'`):
- * how much of the SLOT'S ACTUAL USE was the free take rather than the paid
- * play. Not part of the verdict - see `commonsMode`'s own comment on why -
- * printed as the line that watches the solitaire law under a new name.
+ * ⭐ DEAN'S VARIANTS' OTHER FREE OPTION (09/09/2026, `commonsTake: 'bonus'` OR
+ * `'spend'`): how much of the SLOT'S ACTUAL USE was the free take rather than
+ * the paid play. Not part of the verdict - see `commonsMode`'s own comment on
+ * why - printed as the line that watches the solitaire law under a new name.
  */
 function freeShareLine(plays: number, takes: number): string {
   const used = plays + takes;
@@ -233,10 +233,10 @@ function freeShareLine(plays: number, takes: number): string {
     `(${takes} takes of ${used} used slots, plays and takes together). This is the solitaire ` +
     'law arriving under a new name: every currency this project has shipped has watched whether ' +
     'a free option sharing the bonus slot with a paid one crowds it out (Draw 1 against the ' +
-    "card visit, the empty-board Collect against the meeple visit), and commonsTake: 'bonus' " +
-    'puts a free option back in the slot beside the paid commons play for the first time since ' +
-    "the commons shipped. ⚠️ OBSERVE, NOT FAIL: Dean set a band for the slot's OVERALL use rate " +
-    '(play or take together), not for the split between the two, so a high free share is a ' +
+    "card visit, the empty-board Collect against the meeple visit), and commonsTake: 'bonus' or " +
+    "'spend' puts a free option back in the slot beside the paid commons play for the first time " +
+    "since the commons shipped. ⚠️ OBSERVE, NOT FAIL: Dean set a band for the slot's OVERALL use " +
+    'rate (play or take together), not for the split between the two, so a high free share is a ' +
     'reading to watch rather than a threshold this assertion can fail on.'
   );
 }
@@ -252,14 +252,28 @@ function freeShareLine(plays: number, takes: number): string {
  */
 function commonsMode({ data, pooled }: MeasureContext): Measurement {
   const takeToHand = isCommonsTakeToHand(data);
+  const takeToSpend = isCommonsTakeToSpend(data);
+  // ⭐ BOTH VARIANTS PRINT THE SAME THREE-COLUMN SHAPE (Dean, 09/09/2026): a
+  // free `commonsTake` sharing the slot with the paid `commons` play. They
+  // differ only in what a take's cards then DO, which a17 does not need to
+  // know - see a18 for that.
+  const threeColumn = takeToHand || takeToSpend;
   const games = pooled.ended;
   const turns = totalTurns(games);
   const bonusTurns = totalBonusTurns(games);
   const plays = sum(games.map((g) => sum(g.commonsPlaysBySeat)));
-  // ⭐ DEAN'S VARIANT (09/09/2026, `rules.turn.commonsTake: 'bonus'`): the
-  // free half of the slot. 0 by construction under the shipped `'harvest'`
-  // rule, where `commonsTake` moves are never enumerated.
-  const takes = takeToHand ? sum(games.map((g) => sum(g.commonsTakesBySeat))) : 0;
+  // ⭐ THE FREE HALF OF THE SLOT. 0 by construction under the shipped
+  // `'harvest'` rule, where `commonsTake` moves are never enumerated. Under
+  // `'bonus'` every take lands in a hand and `commonsTakesBySeat` (off
+  // `commonsTaken`) counts all five boards; under `'spend'` that same counter
+  // sees ONLY the orchard and wheat legs (the two `commonsTaken`-emitting
+  // ones), so the total has to come off `commonsSpendTakesByBoard` instead -
+  // a MOVE-level count that sees all five boards a take can choose.
+  const takes = takeToHand
+    ? sum(games.map((g) => sum(g.commonsTakesBySeat)))
+    : takeToSpend
+      ? sum(games.map((g) => sum(Object.values(g.commonsSpendTakesByBoard))))
+      : 0;
   const unspent = Math.max(0, turns - bonusTurns);
 
   if (turns === 0) {
@@ -288,7 +302,11 @@ function commonsMode({ data, pooled }: MeasureContext): Measurement {
     .map((slice) => {
       const t = totalTurns(slice.ended);
       const p = sum(slice.ended.map((g) => sum(g.commonsPlaysBySeat)));
-      const k = takeToHand ? sum(slice.ended.map((g) => sum(g.commonsTakesBySeat))) : 0;
+      const k = takeToHand
+        ? sum(slice.ended.map((g) => sum(g.commonsTakesBySeat)))
+        : takeToSpend
+          ? sum(slice.ended.map((g) => sum(Object.values(g.commonsSpendTakesByBoard))))
+          : 0;
       const b = totalBonusTurns(slice.ended);
       return {
         seats: slice.seats,
@@ -323,7 +341,7 @@ function commonsMode({ data, pooled }: MeasureContext): Measurement {
       ? 'FAIL'
       : 'PASS';
 
-  const headline = takeToHand
+  const headline = threeColumn
     ? `the bonus slot is used on ${pct(value)} of ${turns} turns ` +
       `(Dean's band ${pct(PLAY_FLOOR, 0)}-${pct(PLAY_CEILING, 0)}); ` +
       `PLAY ${share(plays)}, TAKE ${share(takes)}, SLOT UNSPENT ${share(unspent)}` +
@@ -337,13 +355,31 @@ function commonsMode({ data, pooled }: MeasureContext): Measurement {
         ? ''
         : `; OUT OF BAND at ${outOfBand.map((r) => `${r.seats}p ${pct(r.rate)}`).join(', ')}`);
 
-  const detail = takeToHand
+  // ⭐ DEAN'S 'spend' VARIANT'S OWN LINE (09/09/2026): takes by board, off
+  // `commonsSpendTakesByBoard` - the only counter that sees all five boards a
+  // `commonsTake` move can choose under this knob, where `commonsTaken` (and
+  // so the "by BOARD PLAYED" line's sibling) only ever fires for orchard and
+  // wheat. a18 carries what each board's take then DID with its pile.
+  const spendTakesByBoard = new Map<string, number>();
+  if (takeToSpend) {
+    for (const g of games) {
+      for (const [board, n] of Object.entries(g.commonsSpendTakesByBoard)) {
+        spendTakesByBoard.set(board, (spendTakesByBoard.get(board) ?? 0) + n);
+      }
+    }
+  }
+  const spendTakesByBoardLine = [...spendTakesByBoard.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([board, n]) => `${board} ${pct(takes === 0 ? NaN : n / takes, 0)}`)
+    .join('  ');
+
+  const detail = threeColumn
     ? [
-        `⭐ DEAN'S VARIANT (rules.turn.commonsTake: 'bonus', 09/09/2026): THREE columns rather ` +
-          'than two, as a share of every turn played: PLAY ' +
+        `⭐ DEAN'S VARIANT (rules.turn.commonsTake: '${takeToHand ? 'bonus' : 'spend'}', ` +
+          '09/09/2026): THREE columns rather than two, as a share of every turn played: PLAY ' +
           `${share(plays)} (a card paid, a board's action bought), TAKE ${share(takes)} (a whole ` +
-          'central pile taken free to hand - no card, no fee, no action), SLOT UNSPENT ' +
-          `${share(unspent)}.`,
+          `central pile taken free${takeToHand ? ' to hand' : ", one board's action bought from what it holds"} - no card, no fee), ` +
+          `SLOT UNSPENT ${share(unspent)}.`,
         `by seat count, and THIS is the reading the verdict is taken on (slot used = play or ` +
           `take; play/take per turn in brackets): ${rows
             .map(
@@ -355,8 +391,22 @@ function commonsMode({ data, pooled }: MeasureContext): Measurement {
         `slot unspent by seat count: ${rows.map((r) => `${r.seats}p ${pct(r.unspent)}`).join('  ')}`,
         `by BOARD PLAYED (the PAID half only, C3): ${boardLine || 'no plays'}. ${plays} plays ` +
           `over ${games.length} games, ${num(games.length === 0 ? NaN : plays / games.length, 1)} ` +
-          'a game. A take buys no action, so it has no board mix of its own - a18 carries the ' +
-          'take-size distribution instead.',
+          'a game.' +
+          (takeToHand
+            ? ' A take buys no action, so it has no board mix of its own - a18 carries the ' +
+              'take-size distribution instead.'
+            : ''),
+        ...(takeToSpend
+          ? [
+              `⭐ TAKES BY BOARD (rules.turn.commonsTake: 'spend', 09/09/2026), ALL FIVE, not the ` +
+                `PAID half above: ${spendTakesByBoardLine || 'no takes'}. ${takes} takes over ` +
+                `${games.length} games, ${num(games.length === 0 ? NaN : takes / games.length, 1)} ` +
+                'a game. Orchard takes go to hand and wheat takes to barn exactly as under ' +
+                "'bonus'; dairy, vegetable and apiary each spend the pile on that board's own " +
+                'action instead - a18 carries what each one did with it (used / discarded / ' +
+                'stranded).',
+            ]
+          : []),
         `⭐ DEAN'S BAND, 09/09/2026, AND IT IS HIS NUMBER RATHER THAN ONE READ OFF OUR OWN ` +
           `OUTPUT: the bonus should be taken "${pct(PLAY_FLOOR, 0)}-${pct(PLAY_CEILING, 0)} of ` +
           'the time... earned, not automatic". It is read on the slot\'s TOTAL use (play plus ' +
@@ -397,7 +447,7 @@ function commonsMode({ data, pooled }: MeasureContext): Measurement {
           'option to be outnumbered by, so the law would read against zero and hand a table that ' +
           'never plays a card a triumphant PASS. The early/late split goes with it for the same ' +
           'reason: it asked whether a solitaire alternative was an opening convenience. ⭐ IT ' +
-          "COMES BACK UNDER commonsTake: 'bonus' - see that arm's own detail lines.",
+          "COMES BACK UNDER commonsTake: 'bonus' OR 'spend' - see that arm's own detail lines.",
         '⚠️ A TURN CAN PLAY TWICE. A Helping Hand grants a second play onto a central board (C8), ' +
           'so PLAYS PER TURN runs above the share of turns that used the slot. The VERDICT is ' +
           'taken on the turn share (slot used plus slot unspent is every turn); plays per turn ' +

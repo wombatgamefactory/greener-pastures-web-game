@@ -214,6 +214,26 @@ export function isCommonsTakeToHand(data: GameData): boolean {
 }
 
 /**
+ * Is DEAN'S 'spend' VARIANT of 09/09/2026 live - the SAME free `commonsTake`
+ * move as `isCommonsTakeToHand`, but resolved per-board (orchard to hand,
+ * wheat to barn, dairy/vegetable/apiary paid or sown from the pile) rather
+ * than always to hand? See `rules.turn.commonsTake` and `CommonsTake` for the
+ * ruling in full.
+ *
+ * ⭐ DEFAULTS FALSE, on the same reasoning `isCommonsTakeToHand` gives: only
+ * `overlays/commons-take-to-spend-v1.overlay.json` touches this knob and it
+ * sets `visitCurrency: 'commons'` in the same breath, so the knob can never be
+ * `'spend'` while `visitCurrency` is anything but `'commons'` in practice.
+ * Callers that already know they are in the commons may read this directly;
+ * callers that do not should check `isCommons` first. Kept as its own helper
+ * rather than folded into `isCommonsTakeToHand` so a caller can tell the two
+ * apart without re-reading the knob's raw string.
+ */
+export function isCommonsTakeToSpend(data: GameData): boolean {
+  return data.rules.turn.commonsTake === 'spend';
+}
+
+/**
  * Is R15 live - a meeple spendable as a card of its colour? See
  * `rules.turn.meepleAsCard`.
  *

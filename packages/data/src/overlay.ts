@@ -63,11 +63,18 @@ const VISIT_CURRENCY_VALUES: ReadonlySet<string> = new Set<string>(['card', 'mee
  * The closed value set behind `commonsTake` (Dean's variant, 09/09/2026), kept
  * here for the same reason as `VISIT_CURRENCY_VALUES`: a third value must not
  * pass validation on one side of the codebase and fail on the other.
- * `'harvest'` is the shipped C5 rule; `'bonus'` is Dean's variant, where
- * Harvest never reaches the centre and a free `commonsTake` move draws a whole
- * pile to hand instead.
+ * `'harvest'` is the shipped C5 rule; `'bonus'` is Dean's take-to-hand variant,
+ * where Harvest never reaches the centre and a free `commonsTake` move draws a
+ * whole pile to hand instead.
+ *
+ * ⭐ `'spend'` IS THE THIRD VALUE (Dean, 09/09/2026, following exactly the
+ * pattern that added `'bonus'`): the SAME free `commonsTake` move, but its
+ * resolution now depends on which board is taken - orchard to hand, wheat to
+ * barn, dairy a build paid from the pile, vegetable a delivery paid from the
+ * pile, apiary a sow of the whole pile - rather than always landing in the
+ * hand. See `CommonsTake` and the knob's own template for the ruling in full.
  */
-const COMMONS_TAKE_VALUES: ReadonlySet<string> = new Set<string>(['harvest', 'bonus']);
+const COMMONS_TAKE_VALUES: ReadonlySet<string> = new Set<string>(['harvest', 'bonus', 'spend']);
 
 /**
  * The closed value set behind `doorAction`: what a door may BUY. The five core

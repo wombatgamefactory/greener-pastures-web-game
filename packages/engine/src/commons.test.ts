@@ -673,6 +673,153 @@ describe("Dean's variant: commonsTake 'bonus' (09/09/2026)", () => {
   });
 });
 
+/**
+ * ⭐ DEAN'S 'spend' VARIANT (09/09/2026, `rules.turn.commonsTake: 'spend'`),
+ * `overlays/commons-take-to-spend-v1.overlay.json`: "You can play a card to a
+ * centre card to do the bonus action. OR, you can take all the cards from a
+ * central pile and then use those cards to pay for a bonus action of the
+ * matching type. So, if you take all the cards from the Draw card, they go
+ * into your hand. All the cards on the Harvest go into your barn. All the
+ * cards on the Build action can be spent to do a Build. All the cards on the
+ * Deliver action can immediately be used to deliver. All the cards on the
+ * Grow action are used to SOW. Any cards that cannot be used are discarded."
+ *
+ * REUSES THE SAME `commonsTake` MOVE AS 'bonus'; the resolution differs by
+ * board (D-S1 to D-S4 - see the overlay's own description).
+ */
+describe("Dean's variant: commonsTake 'spend' (09/09/2026)", () => {
+  const spend: GameData = loadGameData({
+    name: 'commons-take-to-spend-v1',
+    schemaVersion: 1,
+    set: { 'rules.turn.commonsTake': 'spend' },
+  });
+
+  it('never offers a central board to Harvest (D-S4)', () => {
+    const s = makeState(spend, ['wheat', 'orchard']);
+    s.turnPlayer = WHEAT;
+    seedPile(s, 'dairy', 'D4', 'D5');
+    const board = commonsBoardCard(spend, 'dairy');
+    expect(harvestOptions(spend, s, WHEAT)).not.toContain(board);
+    expect(() => apply(spend, s, { type: 'harvest', seat: WHEAT, building: board })).toThrow();
+  });
+
+  it('orchard: the whole pile moves to hand, exactly as under bonus', () => {
+    const s = makeState(spend, ['wheat', 'orchard']);
+    s.turnPlayer = WHEAT;
+    seedPile(s, 'orchard', 'O4', 'O5');
+    const before = player(s, WHEAT).hand.length;
+    const out = apply(spend, s, take(WHEAT, 'orchard'));
+    expect(player(out.state, WHEAT).hand.length).toBe(before + 2);
+    expect(player(out.state, WHEAT).hand).toEqual(expect.arrayContaining(['O4', 'O5']));
+    expect(commonsBoards(out.state)['orchard']).toEqual([]);
+    expect(out.state.turn.bonusUsed).toEqual(['commonsTake']);
+    const taken = out.events.find((e) => e.e === 'commonsTaken');
+    expect(taken?.e === 'commonsTaken' ? taken.cards : []).toEqual(['O4', 'O5']);
+    const spent = out.events.find((e) => e.e === 'commonsSpent');
+    expect(spent).toMatchObject({
+      e: 'commonsSpent',
+      board: 'orchard',
+      taken: 2,
+      used: 2,
+      discarded: 0,
+      deliveredFromCentre: false,
+    });
+  });
+
+  it('wheat: the whole pile moves to the BARN, never to hand, and fires no afterHarvest', () => {
+    const s = makeState(spend, ['wheat', 'orchard']);
+    s.turnPlayer = WHEAT;
+    seedPile(s, 'wheat', 'W9', 'W10');
+    const handBefore = player(s, WHEAT).hand.length;
+    const out = apply(spend, s, take(WHEAT, 'wheat'));
+    expect(player(out.state, WHEAT).hand.length).toBe(handBefore);
+    expect(player(out.state, WHEAT).barn).toEqual(expect.arrayContaining(['W9', 'W10']));
+    expect(commonsBoards(out.state)['wheat']).toEqual([]);
+    expect(out.events.some((e) => e.e === 'harvested')).toBe(false);
+    const spent = out.events.find((e) => e.e === 'commonsSpent');
+    expect(spent).toMatchObject({
+      e: 'commonsSpent',
+      board: 'wheat',
+      taken: 2,
+      used: 2,
+      discarded: 0,
+      deliveredFromCentre: false,
+    });
+  });
+
+  it('dairy: builds one card paid from the pile only, discards the excess (D-S1, D-S2)', () => {
+    const s = makeState(spend, ['wheat', 'orchard']);
+    s.turnPlayer = WHEAT;
+    dealTo(spend, s, WHEAT, 'D4'); // costs 1 dairy card, nothing else
+    seedPile(s, 'dairy', 'D8', 'D9', 'D10'); // three dairy-suit cards, only one needed
+    const out = settle(apply(spend, s, take(WHEAT, 'dairy')).state, spend);
+    expect(player(out, WHEAT).tableau.some((b) => b.card === 'D4')).toBe(true);
+    expect(commonsBoards(out)['dairy']).toEqual([]);
+    // The built card came from the HAND (not the pile); its payment came from
+    // the PILE only - no top-up, so the hand never lost a second card.
+    expect(player(out, WHEAT).hand).not.toContain('D4');
+    // Only ONE of the three pile cards was needed to pay the build (D4 costs
+    // 1); the other two are DISCARDED, not kept anywhere (D-S2) - EVERY pile
+    // card ends up in the discard, whether it paid the build or was excess.
+    expect(out.discards.dairy.filter((id) => ['D8', 'D9', 'D10'].includes(id))).toHaveLength(3);
+    expect(player(out, WHEAT).hand.some((id) => ['D8', 'D9', 'D10'].includes(id))).toBe(false);
+    expect(player(out, WHEAT).barn.some((id) => ['D8', 'D9', 'D10'].includes(id))).toBe(false);
+  });
+
+  it('is not offered when nothing in the pile pays for anything in hand (D-S3)', () => {
+    const s = makeState(spend, ['wheat', 'orchard']);
+    s.turnPlayer = WHEAT;
+    dealTo(spend, s, WHEAT, 'D4'); // needs a DAIRY card to pay its own-suit minimum
+    seedPile(s, 'dairy', 'A4', 'A5'); // apiary cards on the dairy pile: no dairy suit at all
+    expect(commonsTakeOptions(spend, s, WHEAT).some((m) => m.board === 'dairy')).toBe(false);
+    expect(() => apply(spend, s, take(WHEAT, 'dairy'))).toThrow();
+  });
+
+  it('vegetable: delivers one crate paid from the pile with the wild substitution, and scores the tile', () => {
+    const s = makeState(spend, ['wheat', 'orchard']);
+    s.turnPlayer = WHEAT;
+    const tile = s.island.tiles[0]!;
+    tile.crates = ['vegetable']; // one crate, 2 cards of vegetable, per the printed rate
+    // One vegetable card and three apiary fillers: the crate is short by one
+    // vegetable card, so the wild substitution (2 any-crop cards per missing
+    // named card) pays it - using two of the three apiary cards and leaving
+    // one to be discarded (D-S2).
+    seedPile(s, 'vegetable', 'V4', 'A4', 'A5', 'A6');
+    const receiptsBefore = player(s, WHEAT).receipts.length;
+    const out = settle(apply(spend, s, take(WHEAT, 'vegetable')).state, spend);
+    const deliveredTile = out.island.tiles.find((t) => t.tile === tile.tile);
+    expect(deliveredTile?.deliveredBy).toContain(WHEAT);
+    expect(player(out, WHEAT).receipts.length).toBe(receiptsBefore + 1);
+    expect(commonsBoards(out)['vegetable']).toEqual([]);
+    expect(player(out, WHEAT).barn).toEqual([]); // the cards never touch the barn
+    // All four pile cards end up discarded (the three used in the crate, the
+    // same as any barn-paid delivery; the one excess apiary card, D-S2) -
+    // none is kept anywhere.
+    expect(out.discards.vegetable).toContain('V4');
+    const apiaryDiscarded = out.discards.apiary.filter((id) => ['A4', 'A5', 'A6'].includes(id));
+    expect(apiaryDiscarded).toHaveLength(3); // two spent on the crate, one excess (D-S2)
+  });
+
+  it("apiary: sows the whole pile in pile order onto the taker's own buildings, discarding a card with no building left", () => {
+    const s = makeState(spend, ['wheat', 'orchard']);
+    s.turnPlayer = WHEAT;
+    buildFor(spend, s, WHEAT, 'W4'); // threshold 2, empty stack, the seat's only building
+    seedPile(s, 'apiary', 'A4', 'A5', 'A6'); // three cards, room for only two
+    const out = settle(apply(spend, s, take(WHEAT, 'apiary')).state, spend);
+    const w4 = player(out, WHEAT).tableau.find((b) => b.card === 'W4');
+    expect(w4?.stack).toEqual(['A4', 'A5']); // pile order, first two, then full
+    expect(commonsBoards(out)['apiary']).toEqual([]);
+    expect(out.discards.apiary).toContain('A6'); // the third card had nowhere to go
+  });
+
+  it('enumerates nothing under the shipped default', () => {
+    const s = position();
+    seedPile(s, 'dairy', 'D4', 'D5', 'D6');
+    expect(commonsTakeOptions(data, s, WHEAT)).toEqual([]);
+    expect(legalMoves(data, s).some((m) => m.type === 'commonsTake')).toBe(false);
+  });
+});
+
 describe('whole games under the commons', () => {
   /**
    * ⭐ THE POINT IS THE WEDGE, NOT THE OUTCOME, exactly as it is for the meeple

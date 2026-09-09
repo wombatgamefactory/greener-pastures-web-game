@@ -36,7 +36,13 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import { deliveriesPerTile, isCommons, isMeepleCurrency, meepleIndexForSpace } from '@gp/data';
+import {
+  deliveriesPerTile,
+  isCommons,
+  isCommonsTakeToSpend,
+  isMeepleCurrency,
+  meepleIndexForSpace,
+} from '@gp/data';
 import type { CardId, GameEvent, GameState, Move, ScoreBreakdown, Seat, Task } from '@gp/engine';
 import {
   MOVE_TYPES,
@@ -115,6 +121,12 @@ export const EVENT_KINDS = {
   // 'bonus'`): the whole of one central pile moving to a hand, no fee, no
   // action. Silent under the shipped `'harvest'` rule and under both controls.
   commonsTaken: true,
+  // ⭐ DEAN'S 'spend' VARIANT'S SUMMARY EVENT (09/09/2026, `rules.turn.
+  // commonsTake: 'spend'`): fires once per take, for every board, once its
+  // resolution completes - the taken/used/discarded accounting `commonsTaken`
+  // alone cannot carry for the dairy, vegetable and apiary legs. Silent under
+  // `'harvest'` and `'bonus'` and under both controls.
+  commonsSpent: true,
   reshuffled: true,
   built: true,
   demolished: true,
@@ -840,6 +852,31 @@ export interface GameMetrics {
   /** Cards moved to a hand by a take, by the SEAT that took them - the hand-share half of the farm-bypass reading under this variant. */
   commonsTakenCardsBySeat: number[];
 
+  // --- DEAN'S 'spend' VARIANT, 09/09/2026 (`rules.turn.commonsTake: 'spend'`)
+  //
+  // ⚠️ EVERY LINE HERE IS ZERO OR EMPTY UNDER `commonsTake: 'harvest'` OR
+  // `'bonus'`, on the same contract as the block above. `commonsTakesBySeat` /
+  // `commonsTakesByBoard` / `commonsTakeSizes` / `commonsTakenCardsBySeat`
+  // above are STILL POPULATED under `'spend'`, off the SAME `commonsTaken`
+  // event - but only for the orchard and wheat legs, the two uncomplicated
+  // whole-pile moves, which is why they are not repeated here. Everything
+  // below is `'spend'`-only accounting, off `commonsTake` MOVES (which board
+  // was chosen) and off `commonsSpent` EVENTS (what the chosen action did
+  // with what it took).
+
+  /** How many `commonsTake` MOVES chose each board, under `'spend'` - every board, not only orchard/wheat. */
+  commonsSpendTakesByBoard: Record<string, number>;
+  /** Off `commonsSpent`: cards a take's pile held when it began, by BOARD. */
+  commonsSpendTakenByBoard: Record<string, number>;
+  /** Off `commonsSpent`: cards the chosen action actually spent, by BOARD - a build's payment, a crate, cards sown before a target ran out. */
+  commonsSpendUsedByBoard: Record<string, number>;
+  /** Off `commonsSpent`: cards no action wanted (D-S2), by BOARD - the pile's own discard sink, `taken - used`. */
+  commonsSpendDiscardedByBoard: Record<string, number>;
+  /** How many `commonsSpent { deliveredFromCentre: true }` events fired - deliveries paid straight from the vegetable pile rather than the barn. */
+  commonsSpendDeliveriesFromCentre: number;
+  /** Cards that reached a BARN via the wheat leg's take rather than a Harvest, by the SEAT that took them - the farm-bypass reading's subject under `'spend'`. */
+  commonsSpendBarnBySeat: number[];
+
   // --- The Dairy rebuild, 2026-08-10 ---------------------------------------
   //
   // Four lines its pass conditions need and no previous run recorded. They
@@ -1219,6 +1256,12 @@ export class Fold {
       commonsTakesByBoard: byColour(),
       commonsTakeSizes: [],
       commonsTakenCardsBySeat: zeros(),
+      commonsSpendTakesByBoard: byColour(),
+      commonsSpendTakenByBoard: byColour(),
+      commonsSpendUsedByBoard: byColour(),
+      commonsSpendDiscardedByBoard: byColour(),
+      commonsSpendDeliveriesFromCentre: 0,
+      commonsSpendBarnBySeat: zeros(),
       buildsBySeat: zeros(),
       noBuildTurnsBySeat: zeros(),
       buildSampledBySeat: zeros(),
@@ -1636,15 +1679,29 @@ export class Fold {
         this.m.bonusDrawBySeat[move.seat] = (this.m.bonusDrawBySeat[move.seat] ?? 0) + 1;
         this.m.actionsBySeat[move.seat] = (this.m.actionsBySeat[move.seat] ?? 0) + 1;
         return;
-      // ⭐ DEAN'S VARIANT'S OTHER BONUS OPTION (09/09/2026, commonsTake:
-      // 'bonus'), counted here for the CARD count off `commonsTaken` and here
-      // for the ACTION count - on the same footing as `bonusDraw` above, on
-      // Dean's own framing: "we change the bonus action into a draw instead
-      // of a harvest". No `doorUsed` ever fires for a take (no door is
+      // ⭐ DEAN'S VARIANTS' OTHER BONUS OPTION (09/09/2026, commonsTake:
+      // 'bonus' OR 'spend'), counted here for the CARD count off `commonsTaken`
+      // and here for the ACTION count - on the same footing as `bonusDraw`
+      // above, on Dean's own framing: "we change the bonus action into a draw
+      // instead of a harvest". No `doorUsed` ever fires for a take (no door is
       // bought), so `boughtDoorActionsBySeat` is untouched and only the plain
-      // action count moves.
+      // action count moves. ⚠️ UNDER 'spend' THE ACTION COUNTS ONCE HERE, AT
+      // THE MOVE THAT CHOSE THE BOARD, never again when a dairy/vegetable/
+      // apiary take's own task-answer resolves - `taskAnswer` below adds
+      // nothing to `actionsBySeat` for a build/deliver/sow answer, on exactly
+      // the same "counted once, at the move" reasoning `commons` above states
+      // for a door bought through a central play.
       case 'commonsTake':
         this.m.actionsBySeat[move.seat] = (this.m.actionsBySeat[move.seat] ?? 0) + 1;
+        // ⭐ "TAKES BY BOARD" (09/09/2026, `commonsTake: 'spend'`): every board
+        // a `commonsTake` move ever chooses under 'spend', not only orchard and
+        // wheat - `commonsTakesByBoard` above is fed off `commonsTaken`, which
+        // dairy/vegetable/apiary never emit, so this is the one counter that
+        // sees all five.
+        if (isCommonsTakeToSpend(this.data)) {
+          this.m.commonsSpendTakesByBoard[move.board] =
+            (this.m.commonsSpendTakesByBoard[move.board] ?? 0) + 1;
+        }
         return;
       case 'task':
         this.taskAnswer(d, pre.tasks[0]);
@@ -1868,6 +1925,24 @@ export class Fold {
         m.commonsTakeSizes.push(e.cards.length);
         m.commonsTakenCardsBySeat[e.seat] =
           (m.commonsTakenCardsBySeat[e.seat] ?? 0) + e.cards.length;
+        return;
+      }
+      // ⭐ DEAN'S 'spend' VARIANT'S SUMMARY (09/09/2026, `commonsTake: 'spend'`):
+      // fires once per take, for every board, when that board's resolution
+      // completes - alongside `commonsTaken` for orchard/wheat, alone for
+      // dairy/vegetable/apiary. `taken`/`used`/`discarded` are the pile's own
+      // accounting; `deliveredFromCentre` is the vegetable leg's own flag, and
+      // a wheat take's `used` is ALSO the farm-bypass reading's new subject -
+      // cards that reached a barn with no Harvest at all.
+      case 'commonsSpent': {
+        m.commonsSpendTakenByBoard[e.board] = (m.commonsSpendTakenByBoard[e.board] ?? 0) + e.taken;
+        m.commonsSpendUsedByBoard[e.board] = (m.commonsSpendUsedByBoard[e.board] ?? 0) + e.used;
+        m.commonsSpendDiscardedByBoard[e.board] =
+          (m.commonsSpendDiscardedByBoard[e.board] ?? 0) + e.discarded;
+        if (e.deliveredFromCentre) m.commonsSpendDeliveriesFromCentre += 1;
+        if (e.board === 'wheat') {
+          m.commonsSpendBarnBySeat[e.seat] = (m.commonsSpendBarnBySeat[e.seat] ?? 0) + e.used;
+        }
         return;
       }
       case 'harvested': {

@@ -718,6 +718,72 @@ export class Fx {
     this.emit({ e: 'commonsTaken', seat, board, cards });
   }
 
+  /**
+   * ⭐ DEAN'S 'spend' VARIANT'S WHEAT LEG (09/09/2026, `rules.turn.commonsTake:
+   * 'spend'`): take the WHOLE of one central pile, straight to the taker's
+   * BARN. `takeCommons`'s sibling with a different destination and nothing
+   * else changed: no `afterHarvest` fires here either - this is not a
+   * Harvest, see `harvestOptions` - and the SAME `commonsTaken` event carries
+   * it, told apart from a hand-bound take only by `board` (fixed to `'wheat'`
+   * by the door table, C3), so nothing downstream has to learn a second event
+   * shape for a second destination.
+   */
+  takeCommonsToBarn(seat: Seat, board: Suit): void {
+    const pile = commonsBoards(this.state)[board];
+    if (!pile) throw new Error(`There is no ${board} board in the commons`);
+    const cards = pile.splice(0);
+    this.touch(seat);
+    player(this.state, seat).barn.push(...cards);
+    this.emit({ e: 'commonsTaken', seat, board, cards });
+  }
+
+  /**
+   * ⭐ DEAN'S 'spend' VARIANT'S DAIRY AND VEGETABLE LEGS: remove SPECIFIC cards
+   * (by id) from a central pile, structural only - no discard, no event. The
+   * caller decides where they go (a build payment's `divertOrDiscard`, a
+   * delivery's `fx.discard`) and emits its own accounting.
+   */
+  takeFromCommonsPile(board: Suit, cards: readonly CardId[]): void {
+    const pile = commonsBoards(this.state)[board];
+    if (!pile) throw new Error(`There is no ${board} board in the commons`);
+    for (const id of cards) {
+      const i = pile.indexOf(id);
+      if (i < 0) throw new Error(`${id} is not on the ${board} pile`);
+      pile.splice(i, 1);
+    }
+  }
+
+  /**
+   * ⭐ DEAN'S 'spend' VARIANT'S LEFTOVER HALF (D-S2): the REST of a central
+   * pile, taken out whole and handed back - not discarded, not touched to any
+   * zone. The dairy and vegetable legs call this after taking their payment,
+   * and the apiary leg calls it once, at push time, to hold the whole pile in
+   * the task's own limbo (`Task.commonsSpendSow.cards`) while it resolves one
+   * card at a time.
+   */
+  clearCommonsPile(board: Suit): CardId[] {
+    const pile = commonsBoards(this.state)[board];
+    if (!pile) throw new Error(`There is no ${board} board in the commons`);
+    return pile.splice(0);
+  }
+
+  /**
+   * ⭐ DEAN'S 'spend' VARIANT'S APIARY LEG: a HELD card - already out of the
+   * pile and in the `commonsSpendSow` task's own limbo, never in a hand -
+   * landing on a building. `placeFromDiscard`'s sibling for a card that came
+   * from neither a hand nor a discard: the same landing tail as
+   * `placeOnBuilding` (so `afterPlacement` fires exactly as a real sow's
+   * does), only the origin differs, and there is no origin pile to check the
+   * card out of here.
+   */
+  placeHeldCard(from: Seat, onto: CardInPlay, card: CardId): void {
+    const building = this.buildingDraft(onto);
+    if (!canTakeCard(this.data, building)) {
+      throw new Error(`${onto.card} cannot take a card (full or no stack)`);
+    }
+    this.land(from, onto, card);
+  }
+
   private land(from: Seat, onto: CardInPlay, card: CardId): void {
     const building = this.buildingDraft(onto);
     this.touch(onto.seat);

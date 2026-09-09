@@ -474,7 +474,44 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       '(free) and SLOT UNSPENT - because commonsTake is a free option sharing the slot with the ' +
       'paid commons play, which is the solitaire law this project has measured under every ' +
       'currency it has shipped (a free option in the bonus slot crowds out the paid one). Watch ' +
-      "the free option's share of USED slots (play + take), not of all turns, for that reading.",
+      "the free option's share of USED slots (play + take), not of all turns, for that reading. " +
+      "'spend' IS THE THIRD VALUE (Dean, 09/09/2026), READ ONLY UNDER visitCurrency 'commons' and " +
+      'unrun before this pass, at overlays/commons-take-to-spend-v1.overlay.json. It REUSES THE ' +
+      "SAME commonsTake MOVE as 'bonus' - no fee, no card played - but the resolution now depends " +
+      'on WHICH BOARD is taken, because Dean\'s own words describe five fates, not one: "You can ' +
+      'play a card to a centre card to do the bonus action. OR, you can take all the cards from a ' +
+      'central pile and then use those cards to pay for a bonus action of the matching type. So, ' +
+      'if you take all the cards from the Draw card, they go into your hand. All the cards on the ' +
+      'Harvest go into your barn. All the cards on the Build action can be spent to do a Build. ' +
+      'All the cards on the Deliver action can immediately be used to deliver (this is one to ' +
+      'watch, this could be crazy). All the cards on the Grow action are used to SOW (not grow, ' +
+      'that would be crazy). Any cards that cannot be used are discarded. So, if there are 3 cards ' +
+      'on the build action and you build a card that costs 1, the excess are discarded - they ' +
+      "don't go into your hand.\" Orchard to HAND (as 'bonus'); wheat to BARN instead of hand, " +
+      'still no Harvest (D-S4); dairy ONE card from hand, paid FROM THE PILE ONLY (D-S1); ' +
+      'vegetable ONE crate to a tile with room, paid FROM THE PILE ONLY, the wild substitution ' +
+      'applying within the pile (D-S1 again); apiary the WHOLE pile SOWN, one card at a time in ' +
+      "pile order onto the taker's own non-full buildings, a card with no legal building discarded. " +
+      "Every card the chosen action does not use is DISCARDED to its own suit's pile (D-S2), never " +
+      "kept, never boxed. THE FOUR BUILDER DEFAULTS, none of them Dean's ruling, named so a future " +
+      'session does not mistake them for rulings: D-S1 a dairy/vegetable spend never tops up from ' +
+      'hand or barn, pile only; D-S2 every unusable card is discarded, per its own suit; D-S3 a ' +
+      'board is offered only if it can do something (the standing "a door that can do nothing is ' +
+      'not offered" ruling) - orchard/wheat whenever non-empty, dairy only if some hand card is ' +
+      'payable from the pile, vegetable only if the pile can pay a crate for a tile with a free ' +
+      'space, apiary only if the taker has a non-full building; D-S4 Harvest, main or bought, ' +
+      "never reaches the centre under 'spend', exactly as under 'bonus'. ⭐ EVENTS: commonsTaken " +
+      "fires for the orchard and wheat legs exactly as it does under 'bonus' (board tells hand from " +
+      'barn); every board, including those two, ALSO emits commonsSpent { seat, board, taken, used, ' +
+      'discarded, deliveredFromCentre } once its resolution completes, which is what a17 and a18 ' +
+      'read for the three-way tally and the taken/used/discarded accounting. ⚠️ BOT BLINDNESS, ' +
+      'named rather than fixed: the dairy/vegetable/apiary legs reuse the plain build/deliver/sow ' +
+      'task-answer kinds so their gain is priced through the normal built/delivered/cardPlaced ' +
+      'events, but the SAME reuse means handSpend and barnSpend cannot tell a pile-sourced payment ' +
+      'from a hand- or barn-sourced one and charge it as if it were - the same admitted ' +
+      'over-valuation this file already carries for a sow from hand against a sow from a deck top. ' +
+      'The wheat leg is priced correctly (the harvest rate, off commonsTaken) because it has no ' +
+      'task to hide behind.',
   },
 
   // --- Economy -------------------------------------------------------------
