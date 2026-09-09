@@ -34,6 +34,7 @@
  */
 
 import { BASE_GAME_DATA as data } from '@gp/data';
+import type { GameData, Suit } from '@gp/data';
 import { describe, expect, it } from 'vitest';
 
 import { apply, legalMoves } from '../game.js';
@@ -44,6 +45,7 @@ import {
   buildFor,
   cardVisitGame,
   dealTo,
+  meepleEconomyGame,
   loadStack,
   makeState,
   noMeeples,
@@ -59,14 +61,37 @@ function base(): GameState {
   return makeState(data, ['apiary', 'wheat']);
 }
 
+/**
+ * THE MEEPLE ECONOMY, the game as it shipped from 05/09 to 09/09/2026 - and the
+ * arm every case whose subject is a VISIT now runs on.
+ *
+ * ⭐ THE COMMONS HAS NO VISIT TO TEST (09/09/2026). There is no host, so the
+ * cards that key on visiting a NEIGHBOUR - A16's rival placement, A17 The Smoke
+ * Pot - can only be exercised on a control. That branch is live code and the
+ * cards still print the text, so the cases move rather than going away. What a
+ * play onto a CENTRAL board does to the same cards is `commons.test.ts`.
+ */
+const visitArm: GameData = meepleEconomyGame();
+
+function armBase(): GameState {
+  const s = makeState(visitArm, ['apiary', 'wheat']);
+  // The meeple arm takes its bonus AFTER the action.
+  s.turn.actionSpent = true;
+  return s;
+}
+
 /** Answer pending tasks with a chosen (or the first legal) answer until the queue drains. */
-function answerAll(state: GameState, pick?: (answers: TaskAnswer[]) => TaskAnswer): GameState {
+function answerAll(
+  state: GameState,
+  pick?: (answers: TaskAnswer[]) => TaskAnswer,
+  on: GameData = data,
+): GameState {
   let s = state;
   for (let guard = 0; guard < 60 && s.tasks.length > 0; guard++) {
-    const answers = pendingAnswers(data, s);
+    const answers = pendingAnswers(on, s);
     const answer = pick ? pick(answers) : answers[0];
     if (!answer) throw new Error('No legal answer to a live task');
-    s = answerTask(data, s, answer).state;
+    s = answerTask(on, s, answer).state;
   }
   expect(s.tasks).toHaveLength(0);
   return s;
@@ -407,9 +432,11 @@ describe('A7 The Foraging Hive - the mandatory sow', () => {
     if (sow?.t !== 'sow') throw new Error('expected a sow task');
     expect(sow.optional).toBeUndefined(); // imperative = mandatory
     expect(sow.targets?.map((r) => r.card)).not.toContain('A7');
-    // Your own Notice Board and Service are ordinary sow targets.
-    // A0 the Service is gone (change 6); the Notice Board A3 is still a target.
-    expect(sow.targets?.map((r) => r.card)).toEqual(expect.arrayContaining(['A3', 'A10']));
+    // Your own starters are ordinary sow targets. ⛔ THE NOTICE BOARD A3 IS NOT
+    // ONE OF THEM ANY MORE: under the commons no player has a Notice Board at
+    // all (C1), so a farm is Barn plus Farmstead. A0 the Service went earlier,
+    // with change 6.
+    expect(sow.targets?.map((r) => r.card)).toEqual(expect.arrayContaining(['A1', 'A10']));
 
     const wheatSow = pendingAnswers(data, grown.state).find(
       (a) => a.kind === 'sow' && a.card === 'W4' && a.onto === 'A10',
@@ -631,8 +658,14 @@ describe("A13 The Queen's Hive - the swarm, straight into the barn", () => {
     dealTo(data, s, APIARY, 'W4'); // a WHEAT card: activationType is wild
     expect(growMoveFor(s, 'A13')).toBeDefined();
     const played = apply(data, s, { type: 'grow', seat: APIARY, building: 'A13', payment: 'W4' });
-    expect(played.state.turn.actionSpent).toBe(true);
-    expect(played.state.turnPlayer).toBe(APIARY); // the bonus slot is now open
+    // ⚠️ THE DIRECT ASSERTION IS UNAVAILABLE AGAIN (C2, 09/09/2026). The commons
+    // takes its bonus FIRST, so spending the action no longer opens a window
+    // that holds the turn - `settleTurn` ends it and `freshTurn` replaces the
+    // very object this used to read. The TURN PASSING ON is the observable once
+    // more, exactly as it was before 03/09/2026, and the docblock above is the
+    // record of this changing sides twice.
+    expect(played.state.turnPlayer).toBe(WHEAT);
+    expect(played.state.turn.actionSpent).toBe(false);
     expect(buildingOf(played.state, APIARY, 'A13').stack).toEqual(['W4']);
   });
 
@@ -703,9 +736,12 @@ describe('A14 The Honeycomb Tower - the faucet with its brake removed', () => {
     const s = base();
     buildFor(data, s, APIARY, 'A14', 'A4');
     dealTo(data, s, APIARY, 'A6');
-    // Change 6: the Wheat seat has ONE rival-touchable building, so clogging the
-    // whole table is clogging the Notice Board alone.
-    loadStack(data, s, WHEAT, 'W3', 2, 'wheat');
+    // ⛔ THERE IS NOTHING RIVAL-TOUCHABLE LEFT TO CLOG (C1, 09/09/2026): the
+    // Notice Board this line used to fill stands in the centre and belongs to
+    // nobody. A full building of the Wheat seat's own is what a clogged table
+    // now means, and the point of the case is unchanged - nothing gates A14.
+    buildFor(data, s, WHEAT, 'W4');
+    loadStack(data, s, WHEAT, 'W4', 2, 'wheat');
     expect(growMoveFor(s, 'A14')).toBeDefined();
     const grown = growBuilding(data, s, APIARY, 'A14', 'A6');
     expect(headDraw(grown.state)).toMatchObject({ see: 1, keep: 1, src: 'A14' });
@@ -753,9 +789,11 @@ describe('A15 The Royal Apiary - the draw that counts your loaded buildings', ()
     buildFor(data, s, APIARY, 'A15', 'A5', 'A10');
     dealTo(data, s, APIARY, 'A4');
     loadStack(data, s, APIARY, 'A5', 1);
-    loadStack(data, s, APIARY, 'A3', 1, 'wheat'); // the Notice Board, visited once
-    // A5, A3 and A15 itself; A10 is empty and does not count. Change 6 removed
-    // A0 the Service, so this is 3 where it used to be 4.
+    // A STARTER holding a card. It used to be the Notice Board, "visited once";
+    // under the commons nobody has one (C1), so the Barn stands in and the claim
+    // the case makes - starters count - is unchanged.
+    loadStack(data, s, APIARY, 'A1', 1, 'wheat');
+    // A5, A1 and A15 itself; A10 is empty and does not count.
     const grown = growBuilding(data, s, APIARY, 'A15', 'A4');
     expect(headDraw(grown.state)).toMatchObject({ see: 3, keep: 3, src: 'A15' });
   });
@@ -822,16 +860,14 @@ describe("A16 The Beekeeper's Veil - stack position 2, unchanged by the rebuild"
    * seat is still a placement by somebody who is not A16's owner.
    */
   it('never fires when a RIVAL brings a building to 2', () => {
-    const s = base();
-    buildFor(data, s, APIARY, 'A16');
-    loadStack(data, s, APIARY, 'A3', 1, 'apiary');
-    dealTo(data, s, WHEAT, 'W5');
-    buildFor(data, s, WHEAT, 'W6');
-    loadStack(data, s, WHEAT, 'W6', 1, 'wheat'); // the sow takes it to 2
+    const s = armBase();
+    buildFor(visitArm, s, APIARY, 'A16');
+    dealTo(visitArm, s, WHEAT, 'W5');
+    buildFor(visitArm, s, WHEAT, 'W6');
+    loadStack(visitArm, s, WHEAT, 'W6', 1, 'wheat'); // the sow takes it to 2
     s.turnPlayer = WHEAT;
-    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
-    const applied = apply(data, s, visitMove(WHEAT, APIARY, 'apiary'));
-    const done = answerAll(applied.state);
+    const applied = apply(visitArm, s, visitMove(WHEAT, APIARY, 'apiary'));
+    const done = answerAll(applied.state, undefined, visitArm);
     expect(drawsFrom(done, 'A16')).toBe(0);
   });
 
@@ -871,15 +907,14 @@ describe('A17 The Smoke Pot - a free barn card for visiting a neighbour', () => 
    * hook alone.
    */
   function visitTheWheatSeat(s: GameState) {
-    buildFor(data, s, APIARY, 'A5');
-    loadStack(data, s, APIARY, 'A5', 2, 'orchard');
-    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
-    return apply(data, s, visitMove(APIARY, WHEAT, 'wheat'));
+    buildFor(visitArm, s, APIARY, 'A5');
+    loadStack(visitArm, s, APIARY, 'A5', 2, 'orchard');
+    return apply(visitArm, s, visitMove(APIARY, WHEAT, 'wheat'));
   }
 
   it('adds the top card of a deck of your choice into your BARN, free', () => {
-    const s = base();
-    buildFor(data, s, APIARY, 'A17');
+    const s = armBase();
+    buildFor(visitArm, s, APIARY, 'A17');
     const wheatTop = s.decks.wheat[0] as string;
 
     const applied = visitTheWheatSeat(s);
@@ -887,12 +922,12 @@ describe('A17 The Smoke Pot - a free barn card for visiting a neighbour', () => 
 
     // The player chooses WHICH deck; the card is the top of it, not a choice.
     const decks = offered(applied.state).map((p) => p.suit);
-    expect(new Set(decks)).toEqual(new Set(data.cards.suits));
+    expect(new Set(decks)).toEqual(new Set(visitArm.cards.suits));
 
-    const buy = pendingAnswers(data, applied.state).find(
+    const buy = pendingAnswers(visitArm, applied.state).find(
       (a) => a.kind === 'card' && a.payload.suit === 'wheat',
     );
-    const state = answerTask(data, applied.state, buy as TaskAnswer).state;
+    const state = answerTask(visitArm, applied.state, buy as TaskAnswer).state;
     expect(player(state, APIARY).barn).toContain(wheatTop);
     // ⚠️ THE BARN, NOT A BUILDING: no threshold of the visitor's has moved.
     const onOwn = player(state, APIARY).tableau.reduce((n, b) => n + b.stack.length, 0);
@@ -906,10 +941,10 @@ describe('A17 The Smoke Pot - a free barn card for visiting a neighbour', () => 
    * in as a courtesy.
    */
   it('offers no skip: the text says "add", not "you may"', () => {
-    const s = base();
-    buildFor(data, s, APIARY, 'A17');
+    const s = armBase();
+    buildFor(visitArm, s, APIARY, 'A17');
     const applied = visitTheWheatSeat(s);
-    expect(pendingAnswers(data, applied.state)).not.toContainEqual({ kind: 'skip' });
+    expect(pendingAnswers(visitArm, applied.state)).not.toContainEqual({ kind: 'skip' });
   });
 
   /**
@@ -929,32 +964,30 @@ describe('A17 The Smoke Pot - a free barn card for visiting a neighbour', () => 
   });
 
   it('never fires when the owner is the one being VISITED', () => {
-    const s = base();
-    buildFor(data, s, APIARY, 'A17');
-    dealTo(data, s, WHEAT, 'W5');
-    buildFor(data, s, WHEAT, 'W6'); // somewhere for the Apiary door to sow
+    const s = armBase();
+    buildFor(visitArm, s, APIARY, 'A17');
+    dealTo(visitArm, s, WHEAT, 'W5');
+    buildFor(visitArm, s, WHEAT, 'W6'); // somewhere for the Apiary door to sow
     s.turnPlayer = WHEAT;
-    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
-    const applied = apply(data, s, visitMove(WHEAT, APIARY, 'apiary'));
+    const applied = apply(visitArm, s, visitMove(WHEAT, APIARY, 'apiary'));
     expect(tasksFrom(applied.state, 'A17')).toEqual([]);
   });
 
   it('adds nothing when every deck is dry, and leaves no dead prompt', () => {
-    const s = base();
-    buildFor(data, s, APIARY, 'A17');
-    buildFor(data, s, APIARY, 'A5');
-    loadStack(data, s, APIARY, 'A5', 2, 'orchard');
-    for (const suit of data.cards.suits) {
+    const s = armBase();
+    buildFor(visitArm, s, APIARY, 'A17');
+    buildFor(visitArm, s, APIARY, 'A5');
+    loadStack(visitArm, s, APIARY, 'A5', 2, 'orchard');
+    for (const suit of visitArm.cards.suits as Suit[]) {
       s.decks[suit] = [];
       s.discards[suit] = [];
     }
-    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
-    const applied = apply(data, s, visitMove(APIARY, WHEAT, 'wheat'));
+    const applied = apply(visitArm, s, visitMove(APIARY, WHEAT, 'wheat'));
     // The task is pushed unconditionally and gated in the ENUMERATOR: with no
     // live deck it has no legal answer, so the drain loop inside `apply` drops
     // it and no dead prompt ever reaches a player.
     expect(tasksFrom(applied.state, 'A17')).toEqual([]);
-    const state = answerAll(applied.state);
+    const state = answerAll(applied.state, undefined, visitArm);
     // The barn holds only what the Wheat door's harvest put there - the two
     // cards the fixture loaded onto A5 - and nothing the Smoke Pot added.
     expect(player(state, APIARY).barn).toHaveLength(2);
@@ -989,7 +1022,11 @@ describe('the endgame cards - A19, A20, A21', () => {
     // sits on; A21 itself scores nothing while every stack is empty.
     expect(gameEndScores(data, s)[APIARY]?.endgame).toBe(3);
     loadStack(data, s, APIARY, 'A5', 1);
-    loadStack(data, s, APIARY, 'A3', 1, 'wheat'); // the Notice Board, visited once
+    // A starter holding a card - the Barn, since no seat has a Notice Board
+    // under the commons (C1). ⭐ AND THAT IS THE CARD'S REAL LOSS, written down
+    // rather than left in a comment nobody reads: A21 counts YOUR OWN tableau,
+    // so the five central piles can never count for it however deep they get.
+    loadStack(data, s, APIARY, 'A1', 1, 'wheat');
     // 2 loaded buildings, not 3: change 6 removed A0 the Service as one.
     expect(gameEndScores(data, s)[APIARY]?.endgame).toBe(3 + 2);
   });

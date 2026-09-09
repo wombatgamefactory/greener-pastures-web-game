@@ -5,6 +5,7 @@
  */
 
 import type { Card, GameData, Suit, SuitDoor } from '@gp/data';
+import { isCommons, isMeepleCurrency } from '@gp/data';
 
 import type { BuildingState, CardId, GameState, PlayerState, Seat, WorkerState } from './state.js';
 
@@ -101,7 +102,15 @@ export function faceOf(data: GameData, building: BuildingState): Card {
  * untouched - they refused it before the arm and they refuse it after.
  */
 function noticeBoardIsBuilding(data: GameData): boolean {
-  return data.rules.turn.visitCurrency !== 'meeple';
+  // ⭐ THE COMMONS ANSWERS FALSE TOO (C4, 09/09/2026), and for a second reason
+  // on top of the meeple loop's: a central board has NO THRESHOLD, so it is
+  // never full, never clogged and refuses nothing. It is also not in anybody's
+  // tableau, so in practice the seam is belt and braces - but the two halves
+  // must agree, because A21 The Wax Hall counts "a building with a card on it"
+  // through `thresholdOf` and a central pile is deliberately not one (C8).
+  // `'card'` is the one value that answers true, and `overlays/v31-card-visit`
+  // is what exercises it.
+  return !isMeepleCurrency(data) && !isCommons(data);
 }
 
 export function thresholdOf(data: GameData, building: BuildingState): number | null {
@@ -248,6 +257,64 @@ export function noticeBoardSlots(state: GameState, seat: Seat): Record<Suit, Sui
 /** A slot refuses its colour while any meeple sits in it (R6). */
 export function slotBlocked(state: GameState, seat: Seat, colour: Suit): boolean {
   return (noticeBoardSlots(state, seat)[colour]?.length ?? 0) > 0;
+}
+
+/**
+ * THE FIVE CENTRAL PILES (C1). Throws rather than defaulting, for exactly the
+ * reason `noticeBoardSlots` does: a commons game with no commons zone is a setup
+ * that never ran, and an empty default would silently offer five boards that
+ * cannot be harvested and corrupt the traffic metric invisibly.
+ */
+export function commonsBoards(state: GameState): Record<Suit, CardId[]> {
+  const zone = state.commons;
+  if (!zone) throw new Error('There is no commons in this game');
+  return zone.boards;
+}
+
+/**
+ * The BOARD CARD for a colour: that colour's Notice Board starter (W3/V3/O3/A3/
+ * D3). Indexed per GameData for the same reason `cardById` is - `harvestOptions`
+ * asks for all five on every call and it is on the hot path through
+ * `hasMainOption` and `workerActionLegal`.
+ *
+ * Derived from the catalogue's `slot === 'noticeboard'` rather than from a list
+ * of ids, so the five faces are named in exactly one place in the project (the
+ * sheet) and a renumbered starter cannot desync the engine from it.
+ */
+const COMMONS_BOARD_INDEX = new WeakMap<GameData, Map<Suit, CardId>>();
+
+function commonsBoardIndex(data: GameData): Map<Suit, CardId> {
+  let index = COMMONS_BOARD_INDEX.get(data);
+  if (index === undefined) {
+    index = new Map<Suit, CardId>();
+    for (const card of data.cards.catalogue) {
+      if (card.slot === 'noticeboard' && !index.has(card.suit)) index.set(card.suit, card.id);
+    }
+    COMMONS_BOARD_INDEX.set(data, index);
+  }
+  return index;
+}
+
+export function commonsBoardCard(data: GameData, colour: Suit): CardId {
+  const card = commonsBoardIndex(data).get(colour);
+  if (card === undefined) throw new Error(`No Notice Board card for suit ${colour}`);
+  return card;
+}
+
+/**
+ * Which central board an id names, or null for anything else.
+ *
+ * ⚠️ IT ANSWERS NULL OUTSIDE THE COMMONS, whatever the id. W3 is a building in
+ * a Wheat seat's tableau under both controls, and a harvest of it there must
+ * stay a tableau harvest - so the mode is part of the question and not a check
+ * every caller has to remember to make first.
+ */
+export function commonsBoardSuit(data: GameData, id: CardId): Suit | null {
+  if (!isCommons(data)) return null;
+  for (const [colour, card] of commonsBoardIndex(data)) {
+    if (card === id) return colour;
+  }
+  return null;
 }
 
 /** Meeples of every colour a seat is holding, in colour order. Duplicates are impossible under the cap. */

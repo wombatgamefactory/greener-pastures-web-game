@@ -16,6 +16,7 @@ import { cardById, isCardId } from './query.js';
 import type {
   AerodromeState,
   CardId,
+  CommonsState,
   GameEvent,
   GameState,
   IslandState,
@@ -80,6 +81,14 @@ export interface PlayerView {
     receipts: number[];
   };
   rivals: RivalView[];
+  /**
+   * THE FIVE CENTRAL PILES, commons only and FULLY PUBLIC (C1: "each central
+   * board's pile is face up and public"). Nothing is redacted: the cards were
+   * played face up out of hands everybody watched, and what is sitting on the
+   * wheat board is the whole of the decision to buy a Harvest there. Absent
+   * under both controls, which have no commons.
+   */
+  commons?: CommonsState;
   decks: Record<Suit, number>;
   discards: Record<Suit, CardId[]>;
   fair: WorkerState[];
@@ -216,6 +225,15 @@ export function viewFor(data: GameData, state: GameState, seat: Seat): PlayerVie
             },
           ],
     ),
+    ...(state.commons === undefined
+      ? {}
+      : {
+          commons: {
+            boards: Object.fromEntries(
+              Object.entries(state.commons.boards).map(([colour, pile]) => [colour, [...pile]]),
+            ) as Record<Suit, CardId[]>,
+          },
+        }),
     decks: Object.fromEntries(
       Object.entries(state.decks).map(([suit, deck]) => [suit, deck.length]),
     ) as Record<Suit, number>,

@@ -36,6 +36,7 @@
  */
 
 import { BASE_GAME_DATA as data } from '@gp/data';
+import type { GameData } from '@gp/data';
 import { describe, expect, it } from 'vitest';
 
 import { Fx, fireHook } from '../fx.js';
@@ -43,7 +44,15 @@ import { apply, legalMoves } from '../game.js';
 import { answerTask, gameEndScores, growBuilding, pendingAnswers } from '../runtime.js';
 import { buildingOf, cardById, player, thresholdOf } from '../query.js';
 import type { GameState, Move, TaskAnswer } from '../state.js';
-import { buildFor, cardVisitGame, dealTo, loadStack, makeState, visitMove } from '../testkit.js';
+import {
+  buildFor,
+  cardVisitGame,
+  dealTo,
+  loadStack,
+  makeState,
+  meepleEconomyGame,
+  visitMove,
+} from '../testkit.js';
 import { handlerFor } from './registry.js';
 
 const WHEAT = 0;
@@ -51,6 +60,26 @@ const APIARY = 1;
 
 function base(): GameState {
   return makeState(data, ['wheat', 'apiary']);
+}
+
+/**
+ * THE MEEPLE ECONOMY, the game as it shipped from 05/09 to 09/09/2026, and the
+ * arm every case whose subject is a VISIT now runs on.
+ *
+ * ⭐ THE COMMONS HAS NO VISIT TO TEST (09/09/2026, C1): the Notice Boards stand
+ * in the centre and belong to nobody, so there is no host and W17 The Pie Shop -
+ * the game's only host-side payment - has no subject at all. C8 says so in as
+ * many words, and `commons.test.ts` asserts the card stays silent there. These
+ * cases move onto the control rather than going away: the branch is live code
+ * and the card still prints the text.
+ */
+const visitArm: GameData = meepleEconomyGame();
+
+function armBase(): GameState {
+  const s = makeState(visitArm, ['wheat', 'apiary']);
+  // The meeple arm takes its bonus AFTER the action.
+  s.turn.actionSpent = true;
+  return s;
 }
 
 /** Answer pending tasks with the first legal answer until the queue drains. */
@@ -170,16 +199,21 @@ describe('the Wheat Farmstead (W2) - the own-crop end-game scorer', () => {
    * the line now falls: full yes, 2-of-3 no, by either route.
    */
   it('the Wheat door harvests a FULL building and nothing else', () => {
-    const s = base();
+    const s = armBase();
     // The door harvests the VISITOR's own full building, not the host's, and
     // there is no self-visit any more (X5) - so the Apiary seat is the one that
     // buys the Wheat door, and W9 has to belong to it.
-    buildFor(data, s, APIARY, 'W9'); // threshold 2
-    fill(s, 'W9', APIARY);
+    buildFor(visitArm, s, APIARY, 'W9'); // threshold 2
+    for (let i = 0; i < 2; i++) {
+      const top = s.decks.wheat.shift();
+      if (top) buildingOf(s, APIARY, 'W9').stack.push(top);
+    }
     s.turnPlayer = APIARY;
-    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
-    const applied = apply(data, s, visitMove(APIARY, WHEAT, 'wheat'));
-    expect(pendingAnswers(data, applied.state)).toContainEqual({ kind: 'building', card: 'W9' });
+    const applied = apply(visitArm, s, visitMove(APIARY, WHEAT, 'wheat'));
+    expect(pendingAnswers(visitArm, applied.state)).toContainEqual({
+      kind: 'building',
+      card: 'W9',
+    });
   });
 
   /**
@@ -773,16 +807,15 @@ describe('the Power cards', () => {
    * and lives in the ledger, because the sheet is the source of truth for text.
    */
   it('W17 The Pie Shop: Draw 1 whenever a NEIGHBOUR visits you', () => {
-    const s = base();
-    buildFor(data, s, WHEAT, 'W17');
+    const s = armBase();
+    buildFor(visitArm, s, WHEAT, 'W17');
     // The door belongs to the HOST's suit, so an Apiary seat visiting a Wheat
     // seat buys a Harvest - and a door with nothing legal to do is not offered,
     // so the visitor needs a full building of their own to harvest.
-    buildFor(data, s, APIARY, 'A5'); // threshold 2
-    loadStack(data, s, APIARY, 'A5', 2, 'orchard');
+    buildFor(visitArm, s, APIARY, 'A5'); // threshold 2
+    loadStack(visitArm, s, APIARY, 'A5', 2, 'orchard');
     s.turnPlayer = APIARY;
-    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
-    const applied = apply(data, s, visitMove(APIARY, WHEAT, 'wheat'));
+    const applied = apply(visitArm, s, visitMove(APIARY, WHEAT, 'wheat'));
     expect(applied.state.tasks.some((t) => t.t === 'draw' && t.src === 'W17')).toBe(true);
     expect(applied.audit.crossSeat).toBe(true);
   });
@@ -794,12 +827,11 @@ describe('the Power cards', () => {
    * each other.
    */
   it('W17 The Pie Shop: pays nothing when its OWNER is the one going out', () => {
-    const s = base();
-    buildFor(data, s, WHEAT, 'W17');
-    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
+    const s = armBase();
+    buildFor(visitArm, s, WHEAT, 'W17');
     // The slot bought is a COLOUR, not the host's suit: every board carries all
     // five, so red is legal on an Apiary neighbour and Draw 2 is always live.
-    const applied = apply(data, s, visitMove(WHEAT, APIARY, 'orchard'));
+    const applied = apply(visitArm, s, visitMove(WHEAT, APIARY, 'orchard'));
     expect(applied.state.tasks.some((t) => t.t === 'draw' && t.src === 'W17')).toBe(false);
   });
 
@@ -812,16 +844,15 @@ describe('the Power cards', () => {
    * reachable.
    */
   it('W17 The Pie Shop: fires once a turn, however many visits land', () => {
-    const s = base();
-    buildFor(data, s, WHEAT, 'W17');
-    buildFor(data, s, APIARY, 'A5');
-    loadStack(data, s, APIARY, 'A5', 2, 'orchard');
+    const s = armBase();
+    buildFor(visitArm, s, WHEAT, 'W17');
+    buildFor(visitArm, s, APIARY, 'A5');
+    loadStack(visitArm, s, APIARY, 'A5', 2, 'orchard');
     s.turnPlayer = APIARY;
-    s.turn.actionSpent = true;
-    const once = apply(data, s, visitMove(APIARY, WHEAT, 'wheat'));
+    const once = apply(visitArm, s, visitMove(APIARY, WHEAT, 'wheat'));
     expect(once.state.turn.firedThisTurn).toContain('W17');
     const again = { ...once.state, tasks: [] };
-    const fx = new Fx(data, again, APIARY);
+    const fx = new Fx(visitArm, again, APIARY);
     fireHook(fx, 'afterVisit', { visitor: APIARY, host: WHEAT, self: false });
     expect(fx.state.tasks.some((t) => t.t === 'draw' && t.src === 'W17')).toBe(false);
   });

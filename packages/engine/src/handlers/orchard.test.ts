@@ -25,6 +25,7 @@
  */
 
 import { BASE_GAME_DATA as data } from '@gp/data';
+import type { GameData } from '@gp/data';
 import { describe, expect, it } from 'vitest';
 
 import { apply, legalMoves } from '../game.js';
@@ -34,6 +35,7 @@ import type { GameState, Move, Task, TaskAnswer } from '../state.js';
 import {
   buildFor,
   cardVisitGame,
+  meepleEconomyGame,
   dealTo,
   loadStack,
   makeState,
@@ -48,6 +50,21 @@ const WHEAT = 1;
 
 function base(): GameState {
   return makeState(data, ['orchard', 'wheat']);
+}
+
+/**
+ * THE MEEPLE ECONOMY, and the arm every case whose subject is a VISIT now runs
+ * on. ⭐ THE COMMONS HAS NO VISIT (C1): there is no host, so O16 The Fruit
+ * Store's "never for the host" half cannot be posed there at all. What the card
+ * does off a play onto a CENTRAL board - it fires, C8 - is `commons.test.ts`.
+ */
+const visitArm: GameData = meepleEconomyGame();
+
+function armBase(): GameState {
+  const s = makeState(visitArm, ['orchard', 'wheat']);
+  // The meeple arm takes its bonus AFTER the action.
+  s.turn.actionSpent = true;
+  return s;
 }
 
 /** Answer pending tasks with a chosen (or the first legal) answer until the queue drains. */
@@ -215,12 +232,19 @@ describe('the Orchard Farmstead (O2) - the own-crop end-game scorer', () => {
    * the printed value, which is the drift a "tidy it up" edit would introduce.
    */
   it('the Orchard door is a flat Draw 2, keep 2, with nothing composing on top', () => {
-    const s = base();
+    const s = armBase();
     s.turnPlayer = WHEAT; // the visitor, buying the ORCHARD seat's door
-    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
-    const visited = apply(data, s, visitMove(WHEAT, ORCHARD, 'orchard'));
+    const visited = apply(visitArm, s, visitMove(WHEAT, ORCHARD, 'orchard'));
     expect(headDraw(visited.state)).toMatchObject({ see: 2, keep: 2 });
   });
+
+  /**
+   * ⭐ AND IT IS A FLAT DRAW 2 THROUGH THE COMMONS TOO (C3), where Dean chose 2
+   * over 3 for the third time in a week - this time with a card fee back on the
+   * bonus, which is the argument that made it a 3 under v31. The contested
+   * number now has its own arm (`overlays/commons-draw-three`), and the case
+   * that proves the central board buys a Draw 2 lives in `commons.test.ts`.
+   */
 
   // The exception, still runnable on the arm it belonged to.
   it('is Draw 3 under the v31 card-visit control', () => {
@@ -683,9 +707,10 @@ describe('the Tier 3 GROW buildings - O13, O14, O15', () => {
     // Deal BEFORE loading: loadStack eats deck tops.
     dealTo(data, s, ORCHARD, 'O6', 'O7', 'O8');
     // Clog every building that could have taken a card. O1 the Barn and O2 the
-    // Farmstead print no threshold and were never targets; O3 the Notice Board
-    // and O4 are, so both are filled.
-    loadStack(data, s, ORCHARD, 'O3', 2, 'wheat');
+    // Farmstead print no threshold and were never targets.
+    // ⛔ O3 THE NOTICE BOARD IS NOT IN THE TABLEAU (C1, 09/09/2026), so the
+    // list of things to clog is one shorter than it was: O4 is the only target
+    // left besides O14 itself.
     loadStack(data, s, ORCHARD, 'O4', 3, 'wheat');
 
     const grown = growBuilding(data, s, ORCHARD, 'O14', 'O6');
@@ -710,7 +735,8 @@ describe('the Tier 3 GROW buildings - O13, O14, O15', () => {
     const s = base();
     buildFor(data, s, ORCHARD, 'O14');
     dealTo(data, s, ORCHARD, 'O4', 'O5', 'O6', 'O7', 'O8', 'O9');
-    loadStack(data, s, ORCHARD, 'O3', 2, 'wheat'); // the last target, clogged
+    // Nothing to clog: O14 fills on its own payment and the two starters left in
+    // a commons tableau print no threshold (C1).
     const grown = growBuilding(data, s, ORCHARD, 'O14', 'O4');
     const state = answerAll(grown.state);
     // Five left in hand after the payment, plus four drawn.
@@ -815,15 +841,14 @@ describe('O16 The Fruit Store - turned around to pay for GOING OUT', () => {
    * you VISIT a neighbour, Draw 1"; only the fee it no longer sees has moved.
    */
   it('draws for the VISITOR, and never for the host', () => {
-    const s = base();
-    buildFor(data, s, ORCHARD, 'O16');
+    const s = armBase();
+    buildFor(visitArm, s, ORCHARD, 'O16');
     // The Wheat door is a Harvest, so the visitor needs a full building of their
     // own or the door is not offered at all (Dean's standing ruling, which
     // survives the currency change).
-    buildFor(data, s, ORCHARD, 'O9');
-    loadStack(data, s, ORCHARD, 'O9', 2, 'apiary');
-    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
-    const applied = apply(data, s, visitMove(ORCHARD, WHEAT, 'wheat'));
+    buildFor(visitArm, s, ORCHARD, 'O9');
+    loadStack(visitArm, s, ORCHARD, 'O9', 2, 'apiary');
+    const applied = apply(visitArm, s, visitMove(ORCHARD, WHEAT, 'wheat'));
     // Keeper card drawn back (a choiceless autoDraw, so it resolves inline and
     // leaves no task), and the harvest the door bought still pending. No card
     // left the hand, because a meeple visit spends none.
@@ -834,11 +859,10 @@ describe('O16 The Fruit Store - turned around to pay for GOING OUT', () => {
   });
 
   it('does NOT fire when the owner is the one being visited', () => {
-    const s = base();
-    buildFor(data, s, ORCHARD, 'O16');
+    const s = armBase();
+    buildFor(visitArm, s, ORCHARD, 'O16');
     s.turnPlayer = WHEAT;
-    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
-    const applied = apply(data, s, visitMove(WHEAT, ORCHARD, 'orchard'));
+    const applied = apply(visitArm, s, visitMove(WHEAT, ORCHARD, 'orchard'));
     expect(player(applied.state, ORCHARD).hand).toHaveLength(0);
   });
 

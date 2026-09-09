@@ -609,10 +609,11 @@ describe('D11 The Heritage House - sow the payment back', () => {
     buildFor(data, s, DAIRY, 'D11');
     dealTo(data, s, DAIRY, 'D5', 'W13', 'W4', 'W5', 'W6', 'W7');
     // D11 is threshold 2 and the grow payment is its second card, so it fills
-    // itself; the Notice Board is 5. Change 6 deleted D0 the Service, so the
-    // seat has one fewer building to fill.
+    // itself. ⛔ THERE IS NOTHING ELSE TO FILL (C1, 09/09/2026): the Notice
+    // Board D3 this line used to load to 5 stands in the centre and is in no
+    // tableau, and D1 the Barn and D2 the Farmstead print no threshold, so they
+    // were never sow targets. Change 6 had already deleted D0 the Service.
     loadStack(data, s, DAIRY, 'D11', 1, 'wheat');
-    loadStack(data, s, DAIRY, 'D3', 5, 'wheat');
     const grown = growBuilding(data, s, DAIRY, 'D11', 'D5');
     const w13 = buildsOf(grown.state, 'W13').find((a) => a.kind === 'build');
     expect(w13).toBeDefined();
@@ -1011,9 +1012,9 @@ describe('the endgame cards - D19, D20, D21', () => {
   it('D21 never counts a starter', () => {
     const s = base();
     buildFor(data, s, DAIRY, 'D21');
-    expect(
-      player(s, DAIRY).tableau.filter((b) => ['D1', 'D2', 'D3'].includes(b.card)),
-    ).toHaveLength(3);
+    // TWO starters, not three: no seat has a Notice Board under the commons
+    // (C1), so D3 is not in this tableau to be counted or miscounted.
+    expect(player(s, DAIRY).tableau.filter((b) => ['D1', 'D2'].includes(b.card))).toHaveLength(2);
     expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(1); // D2's own line only
   });
 });

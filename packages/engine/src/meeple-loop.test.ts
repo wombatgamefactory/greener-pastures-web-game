@@ -44,6 +44,12 @@ const arm: GameData = loadGameData({
   schemaVersion: 1,
   set: {
     'rules.turn.visitCurrency': 'meeple',
+    // ⚠️ PINNED WITH THE COMMONS (09/09/2026). The shipped turn takes its bonus
+    // FIRST (C2) and deals no starting meeples (C6), and neither arm is that
+    // game: an unpinned leaf is how a control silently stops being the thing it
+    // is named after.
+    'rules.turn.bonusTiming': 'end',
+    'rules.turn.startingMeeplesPerColour': 1,
     'rules.turn.meepleAsCard': false,
     'rules.turn.slotToll': null,
     'rules.turn.meepleCapPerColour': 1,
@@ -56,9 +62,20 @@ const control: GameData = loadGameData({
   schemaVersion: 1,
   set: {
     'rules.turn.visitCurrency': 'card',
+    // ⚠️ PINNED WITH THE COMMONS (09/09/2026). The shipped turn takes its bonus
+    // FIRST (C2) and deals no starting meeples (C6), and neither arm is that
+    // game: an unpinned leaf is how a control silently stops being the thing it
+    // is named after.
+    'rules.turn.bonusTiming': 'end',
+    'rules.turn.startingMeeplesPerColour': 1,
     'rules.turn.meepleAsCard': false,
     'rules.turn.slotToll': null,
     'rules.turn.meepleCapPerColour': 1,
+    // The Orchard door is Draw 3 under a card fee - the self-cancellation law,
+    // which has a subject only in this game. The printed value went to 2 with
+    // the commons (C3), so the control has to pin it.
+    'workers.roster.draw.draw.see': 3,
+    'workers.roster.draw.draw.keep': 3,
   },
 });
 
@@ -417,20 +434,27 @@ describe('A Helping Hand under the arm (R11)', () => {
  * other side, which is worth keeping for exactly the reason it was written -
  * "the flag is where I think it is" is a claim worth failing on.
  */
-describe('the shipped default is still the meeple CURRENCY, and the control still reproduces v31', () => {
+describe('the shipped default is the COMMONS, and both controls still reproduce their own game', () => {
   /**
-   * ⚠️ NARROWED ON 05/09/2026. This case used to say "the base data IS the arm",
-   * and it is not any more: the meeple ECONOMY was ruled in on top of the loop,
-   * so the base data carries R15 and R17 as well. What survives, and is what
-   * this case was really pinning, is that the CURRENCY, the starting five and
-   * the one meeple a tile are the shipped setup. The four economy knobs are
-   * asserted in `meeple-as-card.test.ts`, where their subject lives.
+   * ⛔ NARROWED TWICE, AND THE SECOND TIME IT CHANGED SIDES. It said "the base
+   * data IS the arm" until 05/09/2026, when the meeple ECONOMY was ruled in on
+   * top of the loop; it said "the base data is the meeple CURRENCY" until
+   * 09/09/2026, when the commons replaced it (C1, C6). So what it pins now is
+   * the ABSENCE: no seat holds a meeple, no tile carries one, and this whole
+   * file is about an arm rather than about the shipped game. The commons' own
+   * setup is asserted in `commons.test.ts`.
    */
-  it('the base data IS the meeple currency, dealt as R3 deals it', () => {
-    expect(BASE_GAME_DATA.rules.turn.visitCurrency).toBe('meeple');
-    const s = newGame(BASE_GAME_DATA, { seats: 2, seed: 'shipped' });
+  it('the base data has no meeples in it at all, and the arm deals them as R3 does', () => {
+    expect(BASE_GAME_DATA.rules.turn.visitCurrency).toBe('commons');
+    const shipped = newGame(BASE_GAME_DATA, { seats: 2, seed: 'shipped' });
+    for (const p of shipped.players) {
+      for (const colour of BASE_GAME_DATA.cards.suits) expect(p.meeples[colour]).toBe(0);
+    }
+    for (const tile of shipped.island.tiles) expect(tile.meeples).toEqual([]);
+
+    const s = newGame(arm, { seats: 2, seed: 'shipped' });
     for (const p of s.players) {
-      for (const colour of BASE_GAME_DATA.cards.suits) expect(p.meeples[colour]).toBe(1);
+      for (const colour of arm.cards.suits) expect(p.meeples[colour]).toBe(1);
     }
     for (const tile of s.island.tiles) expect(tile.meeples).toHaveLength(1);
   });

@@ -28,7 +28,7 @@ import { BASE_GAME_DATA as data } from '@gp/data';
 import { describe, expect, it } from 'vitest';
 
 import { apply, legalMoves, newGame } from './game.js';
-import { isCardId } from './query.js';
+import { commonsBoardCard, isCardId } from './query.js';
 import { rngInt, seedRng } from './rng.js';
 import { answerTask, growBuilding, pendingAnswers } from './runtime.js';
 import type { CardId, GameState, Move, Seat, TaskAnswer } from './state.js';
@@ -141,6 +141,15 @@ function knowableIds(view: PlayerView): Set<CardId> {
   for (const b of view.you.tableau) ok.add(b.card);
   for (const rival of view.rivals) for (const b of rival.tableau) ok.add(b.card);
   for (const pile of Object.values(view.discards)) for (const id of pile) ok.add(id);
+  // ⭐ THE FIVE CENTRAL PILES ARE PUBLIC (C1, 09/09/2026): every card in them
+  // was played face up onto a board in the middle of the table, and what is
+  // sitting on the wheat board is the whole of the decision to buy a Harvest
+  // there. The five BOARD CARDS are public for the same reason and are added
+  // beside them, because a harvest move names one as its `building`.
+  if (view.commons) {
+    for (const pile of Object.values(view.commons.boards)) for (const id of pile) ok.add(id);
+    for (const colour of data.cards.suits) ok.add(commonsBoardCard(data, colour));
+  }
   for (const task of view.tasks) {
     if (task.pid !== view.seat) continue;
     if (task.t === 'draw') for (const id of task.revealed) ok.add(id);

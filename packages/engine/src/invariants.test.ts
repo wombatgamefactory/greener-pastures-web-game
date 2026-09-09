@@ -31,16 +31,32 @@ import { BASE_GAME_DATA as data } from '@gp/data';
 import { describe, expect, it } from 'vitest';
 
 import { player } from './query.js';
-import { makeState } from './testkit.js';
+import { cardVisitGame, makeState } from './testkit.js';
 
-// ⭐ THREE starters since change 6 (20/08/2026): the Service merged into the
-// Notice Board, so there is no fourth.
-describe('every seat keeps three starters', () => {
-  it('deals exactly one Farmstead, Barn and Notice Board per seat', () => {
+// ⭐ TWO starters since the commons (C1, 09/09/2026): the five Notice Boards
+// stand in the centre and nobody owns one, so a farm is a Farmstead and a Barn.
+// It was THREE from change 6 (20/08/2026), when the Service merged into the
+// Notice Board, and the v31 and meeple-loop controls still deal three - which is
+// what the second case below pins, because "the boards left the tableaux" is a
+// claim worth failing on from both sides.
+describe('every seat keeps its starters', () => {
+  it('deals exactly one Farmstead and one Barn per seat, and no Notice Board', () => {
     const state = makeState(data, ['dairy', 'wheat', 'orchard']);
     for (const seat of [0, 1, 2]) {
       const slots = player(state, seat)
         .tableau.map((b) => data.cards.catalogue.find((c) => c.id === b.card)?.slot)
+        .filter((slot) => slot !== undefined)
+        .sort();
+      expect(slots, `seat ${seat}`).toEqual(['barn', 'farmstead']);
+    }
+  });
+
+  it('still deals three under the v31 control, Notice Board included', () => {
+    const control = cardVisitGame();
+    const state = makeState(control, ['dairy', 'wheat', 'orchard']);
+    for (const seat of [0, 1, 2]) {
+      const slots = player(state, seat)
+        .tableau.map((b) => control.cards.catalogue.find((c) => c.id === b.card)?.slot)
         .filter((slot) => slot !== undefined)
         .sort();
       expect(slots, `seat ${seat}`).toEqual(['barn', 'farmstead', 'noticeboard']);

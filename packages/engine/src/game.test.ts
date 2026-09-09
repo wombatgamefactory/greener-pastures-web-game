@@ -35,6 +35,7 @@ import {
   deliveredAt,
   giveMeeples,
   makeState,
+  meepleEconomyGame,
   noMeeples,
 } from './testkit.js';
 import { redactEvents, viewFor } from './view.js';
@@ -51,6 +52,14 @@ const ORCHARD = 1;
 function base(): GameState {
   return makeState(data, ['wheat', 'orchard']);
 }
+
+/**
+ * THE MEEPLE ECONOMY, the game as it shipped from 05/09 to 09/09/2026, for the
+ * cases whose subject is a MEEPLE. The commons deletes the component outright
+ * (C6), so the island seed, the supply and the (absent) cap have no subject in
+ * the shipped game and are asserted on the arm that still has one.
+ */
+const meepleArm = meepleEconomyGame();
 
 /** A Wheat delivery to A1, which the testkit island stocks with two wheat crates (4 wheat). */
 function deliverA1(spend: Partial<Record<Suit, number>>): Move {
@@ -75,14 +84,17 @@ describe('newGame', () => {
       // v31: four cards in hand, NOTHING in the barn, and no coins to have.
       expect(p.hand).toHaveLength(4);
       expect(p.barn).toHaveLength(0);
-      // ONE MEEPLE OF EACH COLOUR (R3), not an empty supply: the meeple loop is
-      // the shipped game since 04/09/2026 and the starting five are its
-      // ignition, not an accelerant - the bootstrap arm measured the hook
-      // collapsing to 0.09 without them. They are NOT drawn from the island bag.
-      expect(Object.values(p.meeples)).toEqual([1, 1, 1, 1, 1]);
-      // THREE starters since change 6 (20/08/2026): Barn, Farmstead, Notice
-      // Board. The fourth was the Service and its door merged into the Board.
-      expect(p.tableau).toHaveLength(3);
+      // ⛔ NO MEEPLES AT ALL (C6, 09/09/2026). The meeple loop dealt one of each
+      // colour as its ignition and the commons deletes the component outright:
+      // no starting supply, no island seed, no spend and no Collect. The keys
+      // survive at zero because `PlayerState.meeples` is still typed - the two
+      // meeple CONTROLS need it - and `meeple-loop.test.ts` is where the deal
+      // itself is now asserted.
+      expect(Object.values(p.meeples)).toEqual([0, 0, 0, 0, 0]);
+      // TWO starters since the commons (C1): Barn and Farmstead. It was THREE
+      // from change 6 (20/08/2026), when the Service's door merged into the
+      // Notice Board; the boards now stand in the centre and nobody owns one.
+      expect(p.tableau).toHaveLength(2);
       // Own deck holds 14 after dealing the hand; nothing else is dealt.
       expect(state.decks[p.suit]).toHaveLength(14);
       for (const id of p.hand) expect(cardById(data, id).suit).toBe(p.suit);
@@ -115,14 +127,14 @@ describe('newGame', () => {
    * is farming still performs its action, so the island can and does hand out
    * colours no Notice Board on the table grants.
    */
-  it('deals one meeple per island TILE, face up, from all five colours', () => {
+  it('seeds NO meeple on any island space (C6), and the bag is untouched', () => {
     const state = newGame(data, { seats: 2, suits: ['wheat', 'apiary'], seed: 'meeples' });
-    const dealt = state.island.tiles.flatMap((t) => t.meeples);
-    // 6 tiles, ONE meeple each, on the 3 VP second delivery space (R12).
-    // `island.meeples.seededSpaces` names WHICH space rather than how many.
-    expect(dealt).toHaveLength(6);
-    for (const t of state.island.tiles) expect(t.meeples).toHaveLength(1);
-    for (const colour of dealt) expect(data.cards.suits).toContain(colour);
+    expect(state.island.tiles.flatMap((t) => t.meeples)).toEqual([]);
+    for (const t of state.island.tiles) expect(t.meeples).toEqual([]);
+    // ⭐ THE TILE'S 6 VP / 3 VP SPLIT STANDS ALONE NOW. Arriving second at a
+    // tile paid 3 VP AND a stored action under the meeple loop, which was the
+    // design's only catch-up term; the commons pays the VP and nothing else.
+    // The bag is still described in the data because both controls draw from it.
     expect(meeplePool(data)).toHaveLength(data.island.meeples.poolSize);
   });
 
@@ -143,21 +155,21 @@ describe('newGame', () => {
    * somebody "fixing" the bag to fit the board and silently deleting the thing
    * the arm measures.
    */
-  it('draws 12 of the bag of 25 at four seats, and 24 under the control', () => {
+  it('draws NONE of the bag at four seats, and 24 under the v31 control', () => {
     const opts = {
       seats: 4,
       suits: ['wheat', 'apiary', 'orchard', 'dairy'] as Suit[],
       seed: 'big',
     };
     const four = newGame(data, opts);
-    expect(four.island.tiles.flatMap((t) => t.meeples)).toHaveLength(12);
+    // ⭐ THE COMPONENT QUESTION IS ANSWERED BY DELETION (C6, 09/09/2026). The
+    // meeple economy needed 5 per player plus 1 per tile - 32 pieces at four
+    // seats against a printed bag of 25, which was ledger row C54 - and the
+    // commons needs none at all. The bag is still DESCRIBED in the data, at 25,
+    // because both meeple controls draw from it and the arms have to keep
+    // running; nothing in the shipped game touches it.
+    expect(four.island.tiles.flatMap((t) => t.meeples)).toEqual([]);
     expect(data.island.meeples.poolSize).toBe(25);
-    // ⚠️ THE HEADROOM IS SPENT ELSEWHERE NOW, and it is a component question
-    // rather than a bug. The island draws 12 of 25 under the shipped rules, but
-    // every seat also starts with five meeples that are NOT from the bag, so a
-    // 4-seat table needs 20 + 12 = 32 physical pieces against a printed 25. The
-    // bag is unchanged here on purpose: the sim never needed it to grow, and
-    // whether the box carries 7 per colour is Dean's, not the engine's.
     expect(newGame(cardVisitGame(), opts).island.tiles.flatMap((t) => t.meeples)).toHaveLength(24);
   });
 
@@ -261,58 +273,66 @@ describe('main actions through apply', () => {
   });
 
   /**
-   * ⭐ THE BONUS WINDOW OPENS WHEN THE ACTION IS SPENT (Dean, 03/09/2026),
-   * reversing the 19/08/2026 rule this test used to assert. The turn is
-   * meeples, then the CORE ACTION, then the bonus - `rules.turn.bonusTiming`
-   * `'end'`. The old order survives as `'start'`, asserted below.
+   * ⛔ REVERSED AGAIN (Dean, C2, 09/09/2026), and this case has now swung twice
+   * in a week, so read the history rather than the assertion. 19/08/2026: bonus
+   * FIRST. 03/09/2026: bonus LAST, called "a correction, not an experiment".
+   * 09/09/2026: bonus FIRST again, on Dean's reason that a turn visibly ends on
+   * the main action. `'end'` is the paired control now, asserted below.
    *
-   * Set here rather than reached through a real action because every main
-   * action pushes a task, and a pending task is the one thing that suppresses
-   * the whole move list.
+   * ⭐ THE PRICE OF THE REVERSAL IS WORTH KNOWING: under `'start'` a board can
+   * FUEL the action after it (play onto the orchard board for Draw 2, then
+   * Build), and the action can no longer set a board up - fill a building, then
+   * harvest it. The door mix should move, not only the play rate.
+   *
+   * Set here rather than reached through a real action because every main action
+   * pushes a task, and a pending task suppresses the whole move list.
    */
-  it('the bonus slot opens when the main action is taken, and not before', () => {
-    const shut = base();
-    expect(shut.turn.bonusUsed).toEqual([]); // unspent, and not yet reachable
-    expect(legalMoves(data, shut).some((m) => m.type === 'visit')).toBe(false);
-    expect(legalMoves(data, shut).some((m) => m.type === 'collect')).toBe(false);
-
+  it('the bonus slot is open before the main action, and shut after it', () => {
     const open = base();
-    open.turn.actionSpent = true;
-    expect(legalMoves(data, open).some((m) => m.type === 'visit')).toBe(true);
-    expect(legalMoves(data, open).some((m) => m.type === 'collect')).toBe(true);
-    // ⛔ AND THERE IS NO TURN-START MEEPLE PHASE BEHIND IT (R8). Under the v31
-    // rules this assertion read the other way round - meeples were spendable
-    // before the action and nowhere else - and the window is deleted, not shut:
-    // a meeple is spent in the bonus slot or not at all.
-    expect(legalMoves(data, shut).some((m) => m.type === 'spendMeeple')).toBe(false);
-    expect(legalMoves(data, open).some((m) => m.type === 'spendMeeple')).toBe(false);
+    dealTo(data, open, WHEAT, 'W4');
+    expect(open.turn.bonusUsed).toEqual([]);
+    expect(legalMoves(data, open).some((m) => m.type === 'commons')).toBe(true);
+
+    const shut = base();
+    dealTo(data, shut, WHEAT, 'W4');
+    shut.turn.actionSpent = true;
+    expect(legalMoves(data, shut).some((m) => m.type === 'commons')).toBe(false);
+    // ⛔ AND THE THREE OPTIONS IT REPLACED ARE GONE IN BOTH POSITIONS (C6, C9):
+    // no turn-start meeple phase, no card visit, no Collect and no free Draw 1.
+    for (const state of [open, shut]) {
+      const types = new Set(legalMoves(data, state).map((m) => m.type));
+      expect(types.has('spendMeeple')).toBe(false);
+      expect(types.has('visit')).toBe(false);
+      expect(types.has('collect')).toBe(false);
+      expect(types.has('bonusDraw')).toBe(false);
+    }
   });
 
   /**
-   * THE PAIRED CONTROL, and the rule the engine carried from 19/08/2026 to
-   * 03/09/2026: `bonusTiming: 'start'` puts the bonus back before the action.
-   * `'any'` opens it in both positions. Asserted so that an arm switching the
+   * THE PAIRED CONTROLS: `bonusTiming: 'end'` is the rule the engine carried
+   * from 03/09/2026 to 09/09/2026 (`overlays/commons-bonus-last`), and `'any'`
+   * is v14's once-per-turn-at-any-point. Asserted so that an arm switching the
    * knob cannot silently stop switching the rule.
    */
-  it('bonusTiming start and any are the paired controls', () => {
-    const startRules = {
+  it('bonusTiming end and any are the paired controls', () => {
+    const endRules = {
       ...data,
-      rules: { ...data.rules, turn: { ...data.rules.turn, bonusTiming: 'start' as const } },
+      rules: { ...data.rules, turn: { ...data.rules.turn, bonusTiming: 'end' as const } },
     };
     const top = base();
     dealTo(data, top, WHEAT, 'W4');
-    expect(legalMoves(startRules, top).some((m) => m.type === 'visit')).toBe(true);
+    expect(legalMoves(endRules, top).some((m) => m.type === 'commons')).toBe(false);
     const acted = base();
     dealTo(data, acted, WHEAT, 'W4');
     acted.turn.actionSpent = true;
-    expect(legalMoves(startRules, acted).some((m) => m.type === 'visit')).toBe(false);
+    expect(legalMoves(endRules, acted).some((m) => m.type === 'commons')).toBe(true);
 
     const anyRules = {
       ...data,
       rules: { ...data.rules, turn: { ...data.rules.turn, bonusTiming: 'any' as const } },
     };
-    expect(legalMoves(anyRules, top).some((m) => m.type === 'visit')).toBe(true);
-    expect(legalMoves(anyRules, acted).some((m) => m.type === 'visit')).toBe(true);
+    expect(legalMoves(anyRules, top).some((m) => m.type === 'commons')).toBe(true);
+    expect(legalMoves(anyRules, acted).some((m) => m.type === 'commons')).toBe(true);
   });
 
   /**
@@ -324,11 +344,13 @@ describe('main actions through apply', () => {
    * longer leaves the game - it moves onto a neighbour's board and comes home on
    * their Collect, so the island stopped having to be the whole supply.
    */
-  it('deliver pays crates from the barn and takes the next receipt; the 3 VP space carries the meeple', () => {
+  it('deliver pays crates from the barn and takes the next receipt, and pays no meeple (C6)', () => {
     const state = base();
-    // Testkit island at 2 seats: A1 holds [wheat, wheat], so 4 wheat. The tile
-    // stores its ONE meeple densely at index 0, whatever space it belongs to.
-    const meeple = state.island.tiles.find((t) => t.tile === 'A1')!.meeples[0]!;
+    // Testkit island at 2 seats: A1 holds [wheat, wheat], so 4 wheat. ⛔ AND NO
+    // MEEPLE ON EITHER SPACE (C6, 09/09/2026): the tile's 6 VP / 3 VP split
+    // stands alone, so arriving second is 3 VP and nothing else. That was the
+    // design's ONLY catch-up term and it went with the component.
+    expect(state.island.tiles.find((t) => t.tile === 'A1')!.meeples).toEqual([]);
     stockBarn(state, WHEAT, 'wheat', 4);
     const applied = apply(data, state, deliverA1({ wheat: 4 }));
     // First to this tile, so the head of the schedule: 6 VP, and VP alone.
@@ -343,12 +365,6 @@ describe('main actions through apply', () => {
     const s2 = applied.state;
     s2.turn = freshTurn();
     s2.turnPlayer = ORCHARD;
-    // ⚠️ THE SUPPLY HAS TO BE EMPTIED OF THAT COLOUR FIRST, and that is a fact
-    // about the game rather than about the fixture: every seat STARTS holding
-    // one of each colour (R3), so the first island meeple of any colour a seat
-    // takes is a duplicate under the cap and goes to the box. The gain is what
-    // is under test here; the boxing is under test below.
-    s2.players[ORCHARD]!.meeples[meeple] = 0;
     stockBarn(s2, ORCHARD, 'wheat', 4);
     const out = apply(data, s2, {
       type: 'deliver',
@@ -357,13 +373,7 @@ describe('main actions through apply', () => {
       spend: { wheat: 4 },
     });
     expect(out.state.players[ORCHARD]!.receipts).toEqual([3]);
-    expect(out.events).toContainEqual({
-      e: 'meepleGained',
-      seat: ORCHARD,
-      colour: meeple,
-      tile: 'A1',
-      space: 1,
-    });
+    expect(out.events.some((e) => e.e === 'meepleGained')).toBe(false);
   });
 
   /**
@@ -385,13 +395,17 @@ describe('main actions through apply', () => {
    * the board and from the island under the v1 loop's cap of one.
    */
   it('keeps an island meeple of a colour the seat already holds: there is no cap (R4)', () => {
-    const state = base();
+    // ⚠️ ON THE MEEPLE ARM SINCE 09/09/2026. The commons seeds no meeple on any
+    // island space (C6), so the position this case needs cannot occur in the
+    // shipped game at all - but the no-cap ruling is Dean's and the branch is
+    // still one knob away, so the case moves rather than going away.
+    const state = makeState(meepleArm, ['wheat', 'orchard']);
     const meeple = state.island.tiles.find((t) => t.tile === 'A1')!.meeples[0]!;
     deliveredAt(state, ORCHARD, 'A1'); // so WHEAT takes the second, seeded space
     stockBarn(state, WHEAT, 'wheat', 4);
     giveMeeples(state, WHEAT, meeple, 1);
     expect(state.players[WHEAT]!.meeples[meeple]).toBe(2);
-    const out = apply(data, state, deliverA1({ wheat: 4 }));
+    const out = apply(meepleArm, state, deliverA1({ wheat: 4 }));
     expect(out.state.players[WHEAT]!.meeples[meeple]).toBe(3); // a third, and a fourth would be fine
     expect(out.events.some((e) => e.e === 'meepleBoxed')).toBe(false);
     expect(out.events).toContainEqual({
@@ -1002,19 +1016,21 @@ describe('the meeple phase - the v31 control', () => {
  * Collect. A move type leaking across that line is the failure this pins.
  */
 describe('the two bonus slots are disjoint', () => {
-  it('the shipped game offers visit and collect, and nothing from v31', () => {
+  it('the shipped game offers the commons play alone, and nothing from either meeple game', () => {
     const s = base();
-    dealTo(data, s, WHEAT, 'W4'); // a card in hand, which buys nothing here
-    s.turn.actionSpent = true; // bonusTiming 'end': the window opens AFTER the action
+    dealTo(data, s, WHEAT, 'W4'); // the fee, and the whole of the bonus slot
     const types = new Set(legalMoves(data, s).map((m) => m.type));
-    expect(types.has('visit')).toBe(true);
-    expect(types.has('collect')).toBe(true);
+    // ⭐ ONE OPTION, WHICH IS C9 IN ONE ASSERTION: no free Draw 1, no Collect,
+    // no self-visit, and an unspent slot is a turn that chose not to pay.
+    expect(types.has('commons')).toBe(true);
+    expect(types.has('visit')).toBe(false);
+    expect(types.has('collect')).toBe(false);
     expect(types.has('bonusDraw')).toBe(false);
     expect(types.has('spendMeeple')).toBe(false);
-    // And the turn-start window it replaced is shut at the top of the turn too,
-    // not merely after the action.
-    const top = base();
-    expect(legalMoves(data, top).some((m) => m.type === 'spendMeeple')).toBe(false);
+    // And with an empty hand there is nothing to pay with, so the slot is simply
+    // not offered - it is never dead by rule, only by position.
+    const empty = base();
+    expect(legalMoves(data, empty).some((m) => m.type === 'commons')).toBe(false);
   });
 
   it('the v31 control offers bonusDraw and a card visit, and no collect', () => {
@@ -1040,30 +1056,39 @@ describe('the turn boundary', () => {
    * the turn settles on its own and `endTurn` is not needed.
    */
   /**
-   * ⭐ REVERSED ON 03/09/2026, and it is the clearest single statement of the
-   * new turn order. This test used to assert that the turn ENDED itself once the
-   * action was done, "because the slot is already shut". Under
-   * `bonusTiming: 'end'` the action is exactly what OPENS the slot, so the turn
-   * must now stay with the seat - and the cards the draw just produced are
-   * available to pay for the visit, which is the point of the correction.
+   * ⛔ REVERSED TWICE, AND THIS IS THE CLEAREST SINGLE STATEMENT OF THE TURN
+   * ORDER EACH TIME. It asserted the turn ENDING itself under `'start'`
+   * (19/08/2026 to 03/09/2026), then HOLDING OPEN under `'end'`, and the commons
+   * puts it back (C2, 09/09/2026): the bonus is taken first, so by the time the
+   * action is spent there is nothing left to wait for and the turn settles on
+   * its own. `endTurn` exists to decline options that are still live, and after
+   * a commons turn's action there are none.
+   *
+   * ⚠️ The `settleTurn` hold this used to prove is now unreachable and MUST
+   * STAY - `turnflow.ts` carries the tombstone explaining why deleting a line
+   * because the shipped knob makes it unreachable is how it had to come back
+   * once already.
    */
-  it('holds the turn open after the action, because the slot has just opened', () => {
+  it('ends the turn on the action, because the slot was open before it', () => {
     const state = base();
-    const applied = apply(data, state, { type: 'draw', seat: WHEAT });
-    // Resolve the draw: pick a deck twice, then keep both.
-    let s = applied.state;
+    dealTo(data, state, WHEAT, 'W4');
+    // The bonus first, while it is open: a card onto the orchard board.
+    let s = apply(data, state, { type: 'commons', seat: WHEAT, board: 'orchard', fee: 'W4' }).state;
     while (s.tasks.length > 0) {
       const moves = legalMoves(data, s);
       s = apply(data, s, moves[0] as Move).state;
     }
-    // The action has set the bonus slot up, and the seat still holds the turn.
     expect(s.turnPlayer).toBe(WHEAT);
-    expect(s.turn.actionSpent).toBe(true);
-    expect(legalMoves(data, s).some((m) => m.type === 'collect')).toBe(true);
-    expect(legalMoves(data, s).some((m) => m.type === 'visit')).toBe(true);
-    // And it passes on once the slot is spent or declined.
-    const ended = apply(data, s, { type: 'endTurn', seat: WHEAT }).state;
-    expect(ended.turnPlayer).toBe(ORCHARD);
+    expect(s.turn.bonusUsed).toEqual(['commons']);
+
+    // Then the action, which ends the turn with no `endTurn` needed.
+    const acted = apply(data, s, { type: 'draw', seat: WHEAT });
+    let after = acted.state;
+    while (after.tasks.length > 0) {
+      const moves = legalMoves(data, after);
+      after = apply(data, after, moves[0] as Move).state;
+    }
+    expect(after.turnPlayer).toBe(ORCHARD);
   });
 
   /**
@@ -1132,16 +1157,11 @@ describe('the turn boundary', () => {
       const moves = legalMoves(data, s);
       s = apply(data, s, moves[0] as Move).state;
     }
-    // ⭐ The turn no longer settles by itself here: under `bonusTiming: 'end'`
-    // the action has just OPENED the bonus slot, so the boundary is reached by
-    // declining it. The rule under test is unchanged - the draw was allowed over
-    // the limit and the discard priced it at the boundary - but the boundary now
-    // has to be asked for.
-    s = apply(data, s, { type: 'endTurn', seat: WHEAT }).state;
-    while (s.tasks.length > 0) {
-      const moves = legalMoves(data, s);
-      s = apply(data, s, moves[0] as Move).state;
-    }
+    // ⭐ The turn settles by itself again (C2, 09/09/2026): the bonus slot shut
+    // when the action was taken, so there is nothing left to decline and the
+    // boundary is reached without an `endTurn`. The rule under test has not
+    // moved - the draw was allowed over the limit and the discard priced it at
+    // the boundary - only the route to the boundary has.
     // The draw was allowed, the overflow was taken at the boundary, and the two
     // together are the rule: nothing refused the draw, the discard priced it.
     expect(s.turnPlayer).toBe(ORCHARD);
@@ -1185,15 +1205,33 @@ describe('views and redaction', () => {
   });
 
   it('meeple supplies are public, both your own and a rival s', () => {
-    const state = base();
-    // Every seat starts holding one of each colour (R3), so these read as
-    // deltas: 1 + 2 for the rival, 1 + 0 for you once yours is spent away.
+    // ⚠️ ON THE MEEPLE ARM: the commons deals no meeples at all (C6), so every
+    // supply in the shipped game is five zeros and the claim would assert
+    // nothing. The FIELD is still public and still typed, because both meeple
+    // controls need it, and this is what pins that.
+    const state = makeState(meepleArm, ['wheat', 'orchard']);
+    // Every seat starts holding one of each colour on the arm (R3), so these
+    // read as deltas: 1 + 2 for the rival, 1 + 0 for you once yours is gone.
     giveMeeples(state, ORCHARD, 'dairy', 2);
     state.players[WHEAT]!.meeples.wheat = 0;
-    const view = viewFor(data, state, WHEAT);
+    const view = viewFor(meepleArm, state, WHEAT);
     expect(view.you.meeples.wheat).toBe(0);
     expect(view.you.meeples.orchard).toBe(1);
     expect(view.rivals[0]?.meeples.dairy).toBe(3);
+  });
+
+  it('the five central piles are public to every seat (C1)', () => {
+    const state = base();
+    dealTo(data, state, WHEAT, 'W4');
+    const played = apply(data, state, {
+      type: 'commons',
+      seat: WHEAT,
+      board: 'orchard',
+      fee: 'W4',
+    }).state;
+    for (const seat of [WHEAT, ORCHARD]) {
+      expect(viewFor(data, played, seat).commons?.boards.orchard).toEqual(['W4']);
+    }
   });
 
   /**
@@ -1221,7 +1259,16 @@ describe('views and redaction', () => {
     const events: GameEvent[] = [
       { e: 'cardsToHand', seat: ORCHARD, cards: ['O5'] },
       { e: 'cardPlaced', seat: ORCHARD, onto: { seat: WHEAT, building: 'W3' }, card: 'O6' },
-      { e: 'harvested', seat: WHEAT, building: 'W4', cards: ['W5'] },
+      // `source` and `owner` are the commons' two additions (C5) and are carried
+      // by every harvest, tableau ones included - see the event's own note.
+      {
+        e: 'harvested',
+        seat: WHEAT,
+        building: 'W4',
+        cards: ['W5'],
+        source: 'tableau',
+        owner: WHEAT,
+      },
     ];
     const mine = redactEvents(events, ORCHARD);
     expect(mine[0]).toMatchObject({ cards: ['O5'] });

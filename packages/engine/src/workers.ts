@@ -27,16 +27,47 @@
  * those two actions need a size.
  */
 
-import type { Suit } from '@gp/data';
-import { isMeepleCurrency } from '@gp/data';
+import type { GameData, Suit } from '@gp/data';
+import { doorActionForSuit, isMeepleCurrency } from '@gp/data';
 
 import { doorOf } from './query.js';
 import type { Fx } from './fx.js';
 import { fireHook } from './fx.js';
-import type { Seat } from './state.js';
+import type { DoorAction, Seat } from './state.js';
 
-/** What paid for this door action: a card on a Notice Board, or a meeple leaving the game. */
-export type DoorVia = 'visit' | 'meeple';
+/**
+ * What paid for this door action: a card on a rival's Notice Board, a meeple
+ * leaving the supply, or - since 09/09/2026 - a card played onto a CENTRAL board
+ * (C3). Three routes, one dispatch, exactly as the first two have been since
+ * v31: `via` says what paid and nothing below it branches on the answer.
+ */
+export type DoorVia = 'visit' | 'meeple' | 'commons';
+
+/**
+ * ⭐ WHAT A COLOUR'S DOOR BUYS, WHICH IS NOT ALWAYS WHAT `action` PRINTS.
+ *
+ * Under the commons the Apiary board buys **GROW** - pay the building's
+ * activation card into its stack and gain the ability - where the roster's
+ * `action` prints SOW, and Dean's reason is worth keeping: a sow through the
+ * door cost a visitor two cards for one threshold step (the self-cancellation
+ * bite), and the commons fee is a third card on top of it. A Grow is the same
+ * placement with the ability attached, so the weakest door in the game becomes a
+ * real one at the same price.
+ *
+ * The override is DATA (`workers.roster.sow.actionUnderCommons`, C3), read
+ * through the data package's own `doorActionForSuit` so the engine, the bots and
+ * the sim cannot disagree about what a board buys. It is a second payload beside
+ * `action` rather than an edit to it, so `overlays/v31-card-visit` and
+ * `overlays/meeple-loop-v1` keep their Sow door without pinning anything.
+ *
+ * Throws rather than defaulting, exactly as `doorOf` does: a colour with no door
+ * is a corrupt roster and not a state a caller should be handling.
+ */
+export function doorActionOf(data: GameData, colour: Suit): DoorAction {
+  const action = doorActionForSuit(data, colour);
+  if (action === undefined) throw new Error(`No door action for suit ${colour}`);
+  return action;
+}
 
 /**
  * Perform a suit's door action as `actor`.
@@ -63,9 +94,12 @@ export type DoorVia = 'visit' | 'meeple';
  */
 export function performDoorAction(fx: Fx, actor: Seat, colour: Suit, via: DoorVia): void {
   const door = doorOf(fx.data, colour);
-  fx.emit({ e: 'doorUsed', seat: actor, colour, action: door.action, via });
+  // The commons re-reads one of the five (Apiary sow becomes GROW, C3); under
+  // both controls this is exactly `door.action`.
+  const action = doorActionOf(fx.data, colour);
+  fx.emit({ e: 'doorUsed', seat: actor, colour, action, via });
 
-  switch (door.action) {
+  switch (action) {
     case 'draw': {
       // Draw 3, keep 3 - see the exception note above. No draw modifier is
       // consulted: `withDrawModifier` went with the Orchard Farmstead (v31), so
@@ -76,6 +110,11 @@ export function performDoorAction(fx: Fx, actor: Seat, colour: Suit, via: DoorVi
       // standalone free Draw, so the door is the plain Draw 2 the other four
       // doors are equivalents of. A SECOND printed payload rather than an
       // overwrite, so the shipped 3/3 cannot move when the arm does.
+      // ⭐ THE COMMONS READS THE PRINTED `draw`, WHICH IS 2/2 SINCE 09/09/2026
+      // (C3: Dean chose Draw 2 over Draw 3, with `commons-draw-three` as the
+      // paired arm). No third payload and no branch: the data pass moved the
+      // printed number, the meeple arm keeps its own second payload, and the
+      // v31 control is the one game that ever wanted a 3 here.
       const spec = (isMeepleCurrency(fx.data) ? door.drawUnderMeepleCurrency : undefined) ??
         door.draw ?? { see: 1, keep: 1 };
       fx.pushTask({
@@ -115,6 +154,19 @@ export function performDoorAction(fx: Fx, actor: Seat, colour: Suit, via: DoorVi
         fx.pushTask({ t: 'sow', pid: actor, src: null, remaining: door.sow?.amount ?? 1 });
       }
       break;
+    case 'grow':
+      // ⭐ THE COMMONS APIARY BOARD (C3), and the one door action with no
+      // roster entry of its own. It reuses the main Grow action's own task
+      // chain - one task, answers straight out of `growOptions`, resolved
+      // through `doGrow` - so the ability fires through the same funnel a
+      // played Grow does and nothing here is a second implementation. The
+      // commons FEE is extra and has already left the hand by the time this
+      // runs, which is why the enumerator prices the payment without it.
+      // ⛔ NO CLOG BYPASS (C3): a card is placed, so a full building is not a
+      // target. The meeple-paid Grow's bypass (R15) is a different rule and
+      // there are no meeples here.
+      fx.pushTask({ t: 'grow', pid: actor, src: null });
+      break;
     case 'build':
       // The PLAIN Build: full cost, crop requirements apply. The Builder's Yard
       // used to waive the crops and take a card off the price; v31's flat doors
@@ -129,11 +181,11 @@ export function performDoorAction(fx: Fx, actor: Seat, colour: Suit, via: DoorVi
       fx.pushTask({ t: 'deliver', pid: actor, src: null });
       break;
     default:
-      door.action satisfies never;
+      action satisfies never;
   }
 
   // Fires for both routes. It used to carry `owner` (who collected the wage) and
   // `free` (the Herb Hive's off-the-books use); both described an economy that
   // no longer exists, so the payload says what happened instead of who was paid.
-  fireHook(fx, 'afterWork', { actor, colour, action: door.action, via });
+  fireHook(fx, 'afterWork', { actor, colour, action, via });
 }

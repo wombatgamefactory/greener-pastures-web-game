@@ -23,7 +23,7 @@
  *      them - the Farmstead prints an end-game scorer and nothing else now.
  */
 
-import type { Suit, WorkerAction } from '@gp/data';
+import type { DoorAction, Suit, WorkerAction } from '@gp/data';
 
 import type { BuildMods } from './actions.js';
 
@@ -58,6 +58,41 @@ export interface BuildingState {
 export interface NoticeBoardState {
   slots: Record<Suit, Suit[]>;
 }
+
+/**
+ * ⭐ THE COMMONS (C1, 09/09/2026): the five Notice Boards standing OWNERLESS in
+ * the centre of the table, one per colour, each with a face-up public pile.
+ *
+ * All five keys are always present regardless of `suitsInPlay`, which is the
+ * whole of C1's "so every action is available in every game" - the wheat board
+ * grants Harvest to a table with no Wheat seat on it. The board CARD for a
+ * colour is that colour's Notice Board starter (W3/V3/O3/A3/D3) and is derived
+ * rather than stored, so the key is the suit and nothing has to keep an id in
+ * step with it (`commonsBoardCard` in query.ts is the one lookup).
+ *
+ * ⚠️ PRESENT ONLY UNDER `visitCurrency: 'commons'`, exactly as
+ * `PlayerState.noticeBoard` is present only under `'meeple'`, and for the same
+ * reason: the v31 card game and the meeple loop are the CONTROLS and their
+ * serialised states, captures and fixtures have to stay byte-identical. A key
+ * present-and-empty would move every one of them for a zone those games have no
+ * concept of. `commonsBoards` in query.ts is the one accessor and it throws if
+ * the mode is on and this is missing, so the optionality never reaches a rule.
+ */
+export interface CommonsState {
+  boards: Record<Suit, CardId[]>;
+}
+
+/**
+ * What a DOOR buys, re-exported from the data package so the engine's events and
+ * hooks name the same type the roster does: the five printed door actions plus
+ * GROW, which only the commons Apiary board buys (C3,
+ * `workers.roster.sow.actionUnderCommons`).
+ *
+ * ⚠️ `grow` IS NOT A `WorkerAction`, deliberately - see the type's own note in
+ * `@gp/data`. Under the `'card'` and `'meeple'` controls a door action is
+ * exactly a `WorkerAction`.
+ */
+export type { DoorAction };
 
 export interface PlayerState {
   suit: Suit;
@@ -205,8 +240,14 @@ export interface AerodromeState {
  * `bonusUsed` records which have gone, so a card that grants a SECOND bonus
  * option (A Helping Hand: "you may take both") gives one of each rather than
  * two of the same.
+ *
+ * ⭐ `commons` IS THE EXCEPTION TO THAT LAST SENTENCE (C8, 09/09/2026). The
+ * commons slot holds ONE option, so "one of each" would make A Helping Hand
+ * grant nothing at all; under it the rule is "up to `bonusSlotsFor` plays", so
+ * the card buys a SECOND play onto a central board and never a third. The
+ * exemption is in `bonusOpen` and is keyed on the option, not on the mode.
  */
-export type BonusOption = 'draw' | 'visit' | 'collect';
+export type BonusOption = 'draw' | 'visit' | 'collect' | 'commons';
 
 /**
  * Everything scoped to the current turn. Turn end replaces the whole object,
@@ -389,6 +430,31 @@ export type Task =
        */
       targets?: BuildingRef[];
       /** "You may": a skip answer is offered and ends the task. */
+      optional?: boolean;
+    }
+  | {
+      /**
+       * ⭐ A FULL GROW ACTION MID-EFFECT - the commons Apiary board's door (C3),
+       * and its only producer today.
+       *
+       * Answers come from the same enumerator as the Grow move (`growOptions`),
+       * so a door-bought Grow targets exactly what a played Grow targets: your
+       * own non-full building with a printed activation type, paid with one
+       * matching card from your hand, never the Notice Board, never a card whose
+       * text has already fired this turn.
+       *
+       * ⚠️ CARD PAYMENTS ONLY. `growOptions` also enumerates meeple-paid Grows
+       * (R15) and those carry placement riders that would have to ride on the
+       * answer; the commons has no meeples at all (C6), so the enumerator here
+       * takes the card-paid options and the rider never has to exist. If a mode
+       * ever pushes this task with `meepleAsCard` live, that is the line to
+       * revisit - see the `build` answer's note on riders that must not be
+       * dropped.
+       */
+      t: 'grow';
+      pid: Seat;
+      src: CardId | null;
+      /** "You may GROW": a skip answer is offered. Nothing passes it today. */
       optional?: boolean;
     }
   | {
@@ -581,6 +647,16 @@ export type TaskAnswer =
    * of `sow`: when the answer names a different thing, it gets its own kind.
    */
   | { kind: 'activate'; card: CardId }
+  /**
+   * The `grow` task's answer: which of your buildings to activate, and the card
+   * out of your hand that pays for it.
+   *
+   * Deliberately NOT `kind: 'building'` (which `chooseBuilding` reads as a
+   * harvest) and not `kind: 'activate'` (which fires without placing): the
+   * answer names two things and a different act, so it gets its own kind, on
+   * exactly the reasoning written on `activate` just above.
+   */
+  | { kind: 'grow'; building: CardId; payment: CardId }
   /** `ontoSeat` is absent for the actor's own building - which is every sow but A4's and A14's. */
   | { kind: 'sow'; card: CardId; onto: CardId; ontoSeat?: Seat }
   /** sowFromDeck: which deck top, onto which building. */
@@ -712,6 +788,12 @@ export interface GameState {
   fair: WorkerState[];
   island: IslandState;
   aerodrome: AerodromeState | null;
+  /**
+   * THE FIVE CENTRAL NOTICE BOARDS (C1). Present only under
+   * `visitCurrency: 'commons'` - see `CommonsState` for why the key is absent
+   * rather than empty under the two controls.
+   */
+  commons?: CommonsState;
   turn: TurnState;
   tasks: Task[];
   resume: Resume | null;
@@ -928,6 +1010,27 @@ export type Move =
    * it is the line the free Draw 1 used to be.
    */
   | { type: 'collect'; seat: Seat }
+  /**
+   * ⭐ THE COMMONS PLAY (C3, 09/09/2026) - the whole of the bonus slot under
+   * `visitCurrency: 'commons'`: put ONE card from your hand face up on one of
+   * the five central Notice Boards and immediately take that board's action.
+   *
+   * `board` is the COLOUR, which is what decides the action (wheat Harvest,
+   * vegetable Deliver, orchard Draw, apiary GROW, dairy Build), and `fee` is the
+   * card played. Any card onto any board by default: the fee is a fee, not a
+   * payment in kind, and `rules.economy.commonsColourMatch` is the knob that
+   * makes it one (C10).
+   *
+   * ⛔ THERE IS NO HOST. The boards belong to nobody, so nothing here names a
+   * seat but the actor: no self-visit to gate, no clog to route around and no
+   * host-side payment. The fee is not lost either - it sits in the pile until
+   * SOMEBODY harvests the pile (C5), which is what makes the centre a shared
+   * barn faucet rather than a sink.
+   *
+   * A bonus-slot move, never a main action: it is in neither `MAIN_ACTIONS` nor
+   * `hasMainOption`.
+   */
+  | { type: 'commons'; seat: Seat; board: Suit; fee: CardId }
   /** Legal only when no main action is: spends the action, keeps the bonus slot. */
   | { type: 'pass'; seat: Seat }
   /** Decline whatever options are still live and end the turn. Legal once the action is spent. */
@@ -957,6 +1060,7 @@ const MOVE_TYPE_KEYS = {
   moveBalloon: true,
   visit: true,
   collect: true,
+  commons: true,
   pass: true,
   endTurn: true,
 } satisfies Record<MoveType, true>;
@@ -981,7 +1085,39 @@ export type GameEvent =
   | { e: 'deckToBarn'; seat: Seat; suit: Suit; card: CardId }
   /** One card lifted from a building's stack into its owner's barn (W14) - NOT a harvest, no on-harvest passives. */
   | { e: 'stackToBarn'; seat: Seat; building: CardId; card: CardId }
-  | { e: 'harvested'; seat: Seat; building: CardId; cards: CardId[] }
+  /**
+   * A HARVEST TOOK A STACK INTO A BARN. `seat` is always the HARVESTER, whose
+   * barn the cards went into.
+   *
+   * ⭐ TWO FIELDS ADDED WITH THE COMMONS (C5, 09/09/2026), because the harvest
+   * stopped being a purely private act. `source` says whether the stack came
+   * off a building in a tableau or off one of the five central piles, and
+   * `owner` says whose building it was - NULL for a central pile, which belongs
+   * to nobody. Under the `'card'` and `'meeple'` controls they are constants
+   * ('tableau' and the harvester's own seat), and they are carried there too
+   * rather than made optional: the sim's barn-source reading (a18) partitions
+   * every harvest by them, and a field that is absent half the time is a field
+   * every reader has to guess a default for.
+   */
+  | {
+      e: 'harvested';
+      seat: Seat;
+      building: CardId;
+      cards: CardId[];
+      source: 'tableau' | 'commons';
+      owner: Seat | null;
+    }
+  /**
+   * ⭐ A CARD WAS PLAYED ONTO A CENTRAL NOTICE BOARD (C3). The bonus slot's one
+   * option under the commons, and the event the sim counts plays and the fee-suit
+   * mix off. `pileSize` is the pile AFTER the card lands, so a harvest of that
+   * pile in the same turn (C5) can be read against the play that fed it.
+   *
+   * The door action it bought is `doorUsed` with `via: 'commons'`, emitted
+   * immediately after this - two events rather than one, so that action
+   * inflation (a16) and the door mix (a07) go on reading a single field (D4).
+   */
+  | { e: 'commonsPlayed'; seat: Seat; board: Suit; card: CardId; pileSize: number }
   /**
    * A DOOR ACTION RAN. `colour` is whose door it is (which is also what a meeple
    * of that colour does), `action` is what it did, and `via` is what paid for
@@ -993,7 +1129,13 @@ export type GameEvent =
    * tracks and no off-the-books uses in v31, so both fields would have been
    * constants. Whose farm was used is on `visited` instead, where it belongs.
    */
-  | { e: 'doorUsed'; seat: Seat; colour: Suit; action: WorkerAction; via: 'visit' | 'meeple' }
+  | {
+      e: 'doorUsed';
+      seat: Seat;
+      colour: Suit;
+      action: DoorAction;
+      via: 'visit' | 'meeple' | 'commons';
+    }
   /**
    * A MEEPLE WAS CLAIMED off an island delivery space and is now in a player's
    * supply. `space` is the index into the tile's `meeples`, so a UI can animate

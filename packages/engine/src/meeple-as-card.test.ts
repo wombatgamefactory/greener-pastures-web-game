@@ -39,6 +39,10 @@ const arm: GameData = loadGameData({
   schemaVersion: 1,
   set: {
     'rules.turn.visitCurrency': 'meeple',
+    // Pinned with the commons (C2, 09/09/2026): the shipped turn now takes its
+    // bonus FIRST and deals no starting meeples, and this arm is neither.
+    'rules.turn.bonusTiming': 'end',
+    'rules.turn.startingMeeplesPerColour': 1,
     'rules.turn.meepleAsCard': true,
     'rules.turn.meepleAsCardGoesTo': 'box',
     'rules.turn.slotToll': 1,
@@ -56,6 +60,10 @@ const v1: GameData = loadGameData({
   schemaVersion: 1,
   set: {
     'rules.turn.visitCurrency': 'meeple',
+    // Pinned with the commons (C2, 09/09/2026): the shipped turn now takes its
+    // bonus FIRST and deals no starting meeples, and this arm is neither.
+    'rules.turn.bonusTiming': 'end',
+    'rules.turn.startingMeeplesPerColour': 1,
     'rules.turn.meepleAsCard': false,
     'rules.turn.slotToll': null,
     'rules.turn.meepleCapPerColour': 1,
@@ -182,9 +190,8 @@ describe('R15 - a meeple in a GROW, and the priced clog bypass', () => {
     if (move === undefined) throw new Error('the move under test was not offered');
     const after = apply(arm, s, move);
     // The ability fired, NOTHING was added, the building is as it was.
-    const stackAfter = after.state.players[WHEAT]?.tableau.find(
-      (b) => b.card === 'W4',
-    )?.stack.length;
+    const stackAfter = after.state.players[WHEAT]?.tableau.find((b) => b.card === 'W4')?.stack
+      .length;
     expect(stackAfter).toBe(stackBefore);
     expect(
       after.events.some(
@@ -282,19 +289,26 @@ describe('the v1 loop - with the knobs off, nothing of v2 exists', () => {
   });
 
   /**
-   * ⭐ THE DEFAULTS MOVED ON 05/09/2026, when Dean ruled R17 in, and this case is
-   * the tripwire on that: the shipped game is now R15 plus R17 - a meeple pays,
-   * and it lands on a NEIGHBOUR'S BOARD - with a priced slot and a cap of two.
-   * If any of these four ever reads the other way again it is a flip nobody
-   * meant, and every arm in `overlays/` is measuring a different game than its
+   * ⛔ THE DEFAULTS MOVED AGAIN ON 09/09/2026, and this case is the tripwire on
+   * both moves. R17 was the shipped game from 05/09; the COMMONS replaced it,
+   * and the whole meeple economy went subjectless in one flip - `meepleAsCard`
+   * false, `slotToll` null, no starting supply, no meeple on a tile. So the
+   * four knobs this case used to read off the base data are now read off the
+   * ARM, and what the base data is asserted to say is that there are no meeples
+   * in the game at all.
+   *
+   * If `visitCurrency` ever reads 'meeple' here again it is a flip nobody meant,
+   * and every arm in `overlays/` is measuring a different game than its
    * description claims.
    */
-  it('names the four knobs at their shipped defaults, and the v1 loop as one flag away', () => {
-    expect(BASE_GAME_DATA.rules.turn.meepleAsCard).toBe(true);
+  it('names the knobs at their shipped defaults, and the two meeple arms as one flag away', () => {
+    expect(BASE_GAME_DATA.rules.turn.visitCurrency).toBe('commons');
+    expect(BASE_GAME_DATA.rules.turn.meepleAsCard).toBe(false);
+    expect(BASE_GAME_DATA.rules.turn.slotToll).toBeNull();
+    expect(BASE_GAME_DATA.rules.turn.startingMeeplesPerColour).toBe(0);
+    // R17's own knobs, which this file's arm still pins: a meeple spent as a
+    // card lands on a board rather than in the box, and nothing caps a supply.
     expect(BASE_GAME_DATA.rules.turn.meepleAsCardGoesTo).toBe('board');
-    expect(BASE_GAME_DATA.rules.turn.slotToll).toBe(1);
-    // ⭐ null is NO CAP, ruled the same day the cap of two was noticed to have
-    // shipped by accident. A number here would be a ceiling nobody ruled.
     expect(BASE_GAME_DATA.rules.turn.meepleCapPerColour).toBeNull();
 
     expect(v1.rules.turn.meepleAsCard).toBe(false);

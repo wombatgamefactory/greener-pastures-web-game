@@ -21,7 +21,7 @@ export * from './query.js';
 export * from './actions.js';
 export { Fx, fireHook, wireHookBus } from './fx.js';
 export type { CardInPlay, FxAudit, HookEvents, HookName } from './fx.js';
-export { performDoorAction } from './workers.js';
+export { doorActionOf, performDoorAction } from './workers.js';
 export type { DoorVia } from './workers.js';
 export { taskAnswers, resolveTask, drainTasks } from './tasks.js';
 export { handlerFor, registeredCards } from './handlers/registry.js';
@@ -53,6 +53,9 @@ export {
   emptyMeeples,
   startingMeeples,
   freshNoticeBoard,
+  freshCommons,
+  commonsZone,
+  starterCardsFor,
   meepleLoopPlayerFields,
   buildIsland,
   parkBalloons,

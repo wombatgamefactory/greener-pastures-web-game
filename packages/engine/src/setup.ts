@@ -20,12 +20,13 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import { isMeepleCurrency, meeplesPerTile } from '@gp/data';
+import { isCommons, isMeepleCurrency, meeplesPerTile } from '@gp/data';
 
 import { seedRng, shuffle } from './rng.js';
 import type {
   AerodromeState,
   CardId,
+  CommonsState,
   GameState,
   IslandTileState,
   NoticeBoardState,
@@ -105,6 +106,48 @@ export function freshNoticeBoard(data: GameData): NoticeBoardState {
  */
 export function meepleLoopPlayerFields(data: GameData): { noticeBoard?: NoticeBoardState } {
   return isMeepleCurrency(data) ? { noticeBoard: freshNoticeBoard(data) } : {};
+}
+
+/**
+ * THE FIVE CENTRAL BOARDS, empty (C1): all five colours as keys regardless of
+ * `suitsInPlay`, because C1's whole point is that every action is available in
+ * every game.
+ */
+export function freshCommons(data: GameData): CommonsState {
+  return {
+    boards: Object.fromEntries(data.cards.suits.map((s) => [s, [] as CardId[]])) as Record<
+      Suit,
+      CardId[]
+    >,
+  };
+}
+
+/**
+ * The state field the commons adds, as a spread - the exact counterpart of
+ * `meepleLoopPlayerFields` above, and absent for the same reason: the key is
+ * MISSING rather than present-and-undefined under the two controls, so their
+ * serialised states, captures and fixtures stay byte-identical.
+ */
+export function commonsZone(data: GameData): { commons?: CommonsState } {
+  return isCommons(data) ? { commons: freshCommons(data) } : {};
+}
+
+/**
+ * The starters a seat lays out. THREE under the controls (Farmstead, Barn,
+ * Notice Board) and TWO under the commons (C1): the five Notice Boards stand in
+ * the centre and no player has one, so a farm is Farmstead plus Barn.
+ *
+ * One function so `newGame` and the testkit cannot disagree about it, exactly as
+ * `meepleLoopPlayerFields` exists so they cannot disagree about the slots.
+ * ⚠️ Nothing REMOVES a board from a tableau - they are never dealt into one -
+ * so the starter invariant (`packages/sim/src/starter-invariant.test.ts`) is
+ * untouched by this.
+ */
+export function starterCardsFor(data: GameData, suit: Suit, requireEnabled: boolean): CardId[] {
+  return data.cards.catalogue
+    .filter((c) => c.suit === suit && c.type === 'starter' && (!requireEnabled || c.enabled))
+    .filter((c) => !(isCommons(data) && c.slot === 'noticeboard'))
+    .map((c) => c.id);
 }
 
 /**
@@ -192,7 +235,13 @@ export function buildIsland(
   // in `island.meeples.seededSpaces` - [1], the 3 VP second delivery - so a tile
   // holds ONE meeple, stored densely, and `meepleIndexForSpace` is what maps a
   // space back to it.
-  const spaces = meeplesPerTile(data);
+  // ⛔ NO MEEPLE ANYWHERE UNDER THE COMMONS (C6). The data pass makes
+  // `meeplesPerTile` answer 0 for the mode; this says so in the engine as well,
+  // so that the island is seedless the moment the knob flips and never depends
+  // on the two packages landing in the same commit. Under `'meeple'` it is the
+  // 3 VP space alone and under `'card'` every delivery space, and those two
+  // branches are the controls.
+  const spaces = isCommons(data) ? 0 : meeplesPerTile(data);
   let next = 0;
   let nextMeeple = 0;
   return islandTilesInPlay(data, seats).map((tileId) => {
@@ -299,9 +348,7 @@ export function newGame(data: GameData, opts: NewGameOptions): GameState {
     barn: decks[suit].splice(0, startingBarnCards),
     meeples: startingMeeples(data),
     ...meepleLoopPlayerFields(data),
-    tableau: data.cards.catalogue
-      .filter((c) => c.suit === suit && c.type === 'starter' && c.enabled)
-      .map((c) => ({ card: c.id, stack: [] as CardId[] })),
+    tableau: starterCardsFor(data, suit, true).map((card) => ({ card, stack: [] as CardId[] })),
     receipts: [] as number[],
   }));
 
@@ -349,6 +396,7 @@ export function newGame(data: GameData, opts: NewGameOptions): GameState {
     }),
     island,
     aerodrome,
+    ...commonsZone(data),
     turn: freshTurn(),
     tasks: [],
     resume: null,

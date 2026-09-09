@@ -13,12 +13,28 @@
  * did, so the flags cannot drift from the code.
  */
 
-import type { GameData, Suit, WorkerAction } from '@gp/data';
+import type { GameData, Suit } from '@gp/data';
 import { isMeepleCurrency } from '@gp/data';
 
-import { cardById, canTakeCard, drawableSuits, noticeBoardSlots, player } from './query.js';
+import {
+  cardById,
+  canTakeCard,
+  commonsBoardSuit,
+  commonsBoards,
+  drawableSuits,
+  noticeBoardSlots,
+  player,
+} from './query.js';
 import { shuffle } from './rng.js';
-import type { CardId, GameEvent, GameState, IslandTileState, Seat, Task } from './state.js';
+import type {
+  CardId,
+  DoorAction,
+  GameEvent,
+  GameState,
+  IslandTileState,
+  Seat,
+  Task,
+} from './state.js';
 
 /** A built card owned by a seat - the `self` every handler callback receives. */
 export interface CardInPlay {
@@ -663,6 +679,25 @@ export class Fx {
     this.land(from, onto, card);
   }
 
+  /**
+   * ⭐ THE COMMONS PLAY (C3): one card out of a hand and face up onto a central
+   * board's pile.
+   *
+   * Deliberately NOT `placeOnBuilding`. A central board is not a building -
+   * there is no threshold to check, no owner to touch and no clog to refuse (C4)
+   * - and, crucially, `afterPlacement` MUST NOT FIRE: A16 The Beekeeper's Veil
+   * reads a card landing on a building and a commons play is not one (C8). So
+   * this is its own two-line primitive with its own event, and the absence of
+   * the hook is the rule rather than an omission.
+   */
+  playOnCommons(seat: Seat, board: Suit, card: CardId): void {
+    const pile = commonsBoards(this.state)[board];
+    if (!pile) throw new Error(`There is no ${board} board in the commons`);
+    this.removeFromHand(seat, card);
+    pile.push(card);
+    this.emit({ e: 'commonsPlayed', seat, board, card, pileSize: pile.length });
+  }
+
   private land(from: Seat, onto: CardInPlay, card: CardId): void {
     const building = this.buildingDraft(onto);
     this.touch(onto.seat);
@@ -740,10 +775,43 @@ export class Fx {
    */
   harvest(seat: Seat, buildingCard: CardId): void {
     this.touch(seat);
+    // ⭐ A HARVEST MAY TAKE A CENTRAL PILE (C5, 09/09/2026), and the branch is
+    // here rather than in the action so that every route reaches it - the
+    // Harvest action, the Wheat board's bought Harvest through `chooseBuilding`,
+    // and any card that harvests a chosen building. The cards go into the
+    // HARVESTER's barn (D3: never to a discard, and a central pile is reset by
+    // nothing else), the pile belongs to nobody (`owner: null`) and
+    // `afterHarvest` fires exactly as it does for a building (D1: a Harvest is
+    // a Harvest, so Wheat's riders fire). `commonsBoardSuit` answers null under
+    // both controls whatever the id, so W3 in a Wheat tableau is still a
+    // building there.
+    const board = commonsBoardSuit(this.data, buildingCard);
+    if (board !== null) {
+      const pile = commonsBoards(this.state)[board];
+      const cards = pile.splice(0);
+      player(this.state, seat).barn.push(...cards);
+      this.emit({
+        e: 'harvested',
+        seat,
+        building: buildingCard,
+        cards,
+        source: 'commons',
+        owner: null,
+      });
+      fireHook(this, 'afterHarvest', { seat, building: buildingCard, cards });
+      return;
+    }
     const building = this.buildingDraft({ seat, card: buildingCard });
     const cards = building.stack.splice(0);
     player(this.state, seat).barn.push(...cards);
-    this.emit({ e: 'harvested', seat, building: buildingCard, cards });
+    this.emit({
+      e: 'harvested',
+      seat,
+      building: buildingCard,
+      cards,
+      source: 'tableau',
+      owner: seat,
+    });
     fireHook(this, 'afterHarvest', { seat, building: buildingCard, cards });
   }
 
@@ -805,7 +873,20 @@ export interface HookEvents {
    * field it replaces distinguished the coin, Service and 2-card visits, none of
    * which exist.
    */
-  afterVisit: { visitor: Seat; host: Seat; self: boolean };
+  /**
+   * ⚠️ `host` IS NULLABLE SINCE THE COMMONS (C3, 09/09/2026), and `board` is
+   * the field that says why: a card played onto a CENTRAL Notice Board is a
+   * VISIT for every card that keys on the word (C8), but there is no seat to
+   * name as the host, so it fires with `host: null` and the board's colour.
+   *
+   * What that does to the three cards, WITHOUT a word of their text changing:
+   * W17 The Pie Shop compares `event.host === self.seat` and can never match a
+   * null, so it is dead under the commons exactly as C8 says; O16 The Fruit
+   * Store and A17 The Smoke Pot compare `event.visitor` and fire. A host-side
+   * listener written from here on has to answer the null rather than inherit an
+   * answer, which is the same warning `self` carries below.
+   */
+  afterVisit: { visitor: Seat; host: Seat | null; self: boolean; board?: Suit };
   /**
    * A see-N/keep-K draw finished and the kept cards entered the hand - the
    * reference's onDraw moment (keepFromReveal). Fires for the Draw action, the
@@ -823,7 +904,12 @@ export interface HookEvents {
    * to being VISITED listens to `afterVisit`, which carries the host; a card
    * that reacts to taking an action listens here.
    */
-  afterWork: { actor: Seat; colour: Suit; action: WorkerAction; via: 'visit' | 'meeple' };
+  afterWork: {
+    actor: Seat;
+    colour: Suit;
+    action: DoorAction;
+    via: 'visit' | 'meeple' | 'commons';
+  };
   /**
    * A card landed in a tableau, by ANY path - the Build action, a Worker's
    * build, a card-granted or free build. `src` is the card whose ability caused

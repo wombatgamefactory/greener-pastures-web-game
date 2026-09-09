@@ -13,11 +13,13 @@ import type { GameData, Suit } from '@gp/data';
 import { seedRng } from './rng.js';
 import {
   buildIsland,
+  commonsZone,
   demandPool,
   freshTurn,
   meepleLoopPlayerFields,
   meeplePool,
   parkBalloons,
+  starterCardsFor,
   startingMeeples,
 } from './setup.js';
 import type { CardId, GameState, Move, Seat } from './state.js';
@@ -66,9 +68,10 @@ export function makeState(data: GameData, suits: Suit[]): GameState {
       // would be testing a position no real game reaches.
       meeples: startingMeeples(data),
       ...meepleLoopPlayerFields(data),
-      tableau: data.cards.catalogue
-        .filter((c) => c.suit === suit && c.type === 'starter')
-        .map((c) => ({ card: c.id, stack: [] })),
+      // Two starters under the commons and three under the controls - see
+      // `starterCardsFor`. The testkit takes every starter whether or not it is
+      // enabled, which is the one way it has always differed from `newGame`.
+      tableau: starterCardsFor(data, suit, false).map((card) => ({ card, stack: [] })),
       receipts: [],
     })),
     decks,
@@ -83,6 +86,8 @@ export function makeState(data: GameData, suits: Suit[]): GameState {
     aerodrome: suits.includes('vegetable')
       ? parkBalloons(data.aerodrome.balloons.map((b) => b.id))
       : null,
+    // The five central boards, empty - present only under the commons (C1).
+    ...commonsZone(data),
     turn: freshTurn(),
     tasks: [],
     resume: null,
@@ -119,9 +124,58 @@ export function cardVisitGame(): GameData {
   cardVisitCache ??= loadGameData({
     name: 'v31-card-visit',
     schemaVersion: 1,
-    set: { 'rules.turn.visitCurrency': 'card' },
+    // ⚠️ SEVEN PINS, AND EVERY ONE OF THEM WAS ONCE THE DEFAULT. This was a
+    // single `visitCurrency: 'card'` on 04/09/2026; the meeple economy of
+    // 05/09/2026 added four knobs to pin, and the commons of 09/09/2026 added
+    // the bonus TIMING, the starting supply and the Orchard door's size. An
+    // unpinned leaf is how a control silently stops being the game it is named
+    // after - the 05/09/2026 passenger lesson, arriving on schedule.
+    set: {
+      'rules.turn.visitCurrency': 'card',
+      'rules.turn.bonusTiming': 'end',
+      'rules.turn.startingMeeplesPerColour': 1,
+      'rules.turn.meepleAsCard': false,
+      'rules.turn.slotToll': null,
+      'rules.turn.meepleCapPerColour': 1,
+      // The Orchard door is Draw 3 under a card fee: a door handing back 2 for
+      // the 1 you placed is worth exactly the free Draw 1 beside it (the
+      // self-cancellation law, which has a subject only in this game).
+      'workers.roster.draw.draw.see': 3,
+      'workers.roster.draw.draw.keep': 3,
+    },
   });
   return cardVisitCache;
+}
+
+/**
+ * THE MEEPLE ECONOMY - the game as it shipped from 05/09/2026 to 09/09/2026,
+ * which is `reference-v14` and the default this engine had until the commons.
+ *
+ * R15 and R17 in full: a meeple pays wherever a card of its colour would, a
+ * meeple spent that way lands on a neighbour's board, a slot is PRICED rather
+ * than blocked, and there is no supply cap. Every knob is pinned, because all
+ * seven of them moved when the commons became the default.
+ *
+ * It is the arm for every case whose subject is a MEEPLE VISIT: those cases test
+ * card behaviour that the commons cannot reach (there is no host to visit), and
+ * the branch they exercise is a live control rather than dead code.
+ */
+let meepleEconomyCache: GameData | null = null;
+export function meepleEconomyGame(): GameData {
+  meepleEconomyCache ??= loadGameData({
+    name: 'meeple-economy-v1',
+    schemaVersion: 1,
+    set: {
+      'rules.turn.visitCurrency': 'meeple',
+      'rules.turn.bonusTiming': 'end',
+      'rules.turn.startingMeeplesPerColour': 1,
+      'rules.turn.meepleAsCard': true,
+      'rules.turn.meepleAsCardGoesTo': 'board',
+      'rules.turn.slotToll': 1,
+      'rules.turn.meepleCapPerColour': null,
+    },
+  });
+  return meepleEconomyCache;
 }
 
 /**
@@ -213,6 +267,10 @@ export function meepleLoopGame(): GameData {
     schemaVersion: 1,
     set: {
       'rules.turn.visitCurrency': 'meeple',
+      // Pinned with the commons (09/09/2026): the default turn is bonus-FIRST
+      // and deals no starting meeples, and this arm is neither.
+      'rules.turn.bonusTiming': 'end',
+      'rules.turn.startingMeeplesPerColour': 1,
       'rules.turn.meepleAsCard': false,
       'rules.turn.slotToll': null,
       'rules.turn.meepleCapPerColour': 1,

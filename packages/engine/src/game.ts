@@ -10,9 +10,11 @@ import {
   balloonMoveOptions,
   bonusDrawOpen,
   buildOptions,
+  commonsOptions,
   deliverOptions,
   doBonusDraw,
   doBuild,
+  doCommons,
   doDeliver,
   doDraw,
   doMoveBalloon,
@@ -150,6 +152,13 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
   if (bonusDrawOpen(data, state)) moves.push({ type: 'bonusDraw', seat });
   moves.push(...collectOptions(data, state, seat));
   moves.push(...visitOptions(data, state, seat));
+  // THE COMMONS (C3): the whole of the bonus slot under `visitCurrency:
+  // 'commons'`, and empty under both controls. It sits in this block rather
+  // than beside the main actions because it IS a bonus option - it spends
+  // `turn.bonusUsed` and never `turn.actionSpent` - and `bonusOpen` gates it,
+  // so under the commons' own `bonusTiming: 'start'` these moves are on offer
+  // exactly while the action is unspent, which is C2.
+  moves.push(...commonsOptions(data, state, seat));
   moves.push(...standingMoves(data, state, seat));
   if (turn.actionSpent) moves.push({ type: 'endTurn', seat });
 
@@ -167,6 +176,9 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
  * and no legal move at all.
  */
 const MAIN_ACTIONS = new Set<Move['type']>([
+  // ⚠️ `commons` IS NOT HERE EITHER, on the same rule as the three above it: it
+  // spends the bonus slot, and adding it would suppress `pass` for a seat whose
+  // only remaining option is a commons play.
   'draw',
   'build',
   'grow',
@@ -183,7 +195,11 @@ const MAIN_ACTIONS = new Set<Move['type']>([
  * named stopped existing.)
  */
 function resumeFor(type: Move['type']): Resume {
-  return type === 'visit' || type === 'bonusDraw' || type === 'collect' || type === 'spendMeeple'
+  return type === 'visit' ||
+    type === 'bonusDraw' ||
+    type === 'collect' ||
+    type === 'commons' ||
+    type === 'spendMeeple'
     ? 'bonus'
     : 'main';
 }
@@ -283,6 +299,11 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
       break;
     case 'collect':
       doCollect(fx, move.seat);
+      break;
+    case 'commons':
+      // One card onto one central board, then that board's action (C3). No
+      // host, so nothing here names a second seat.
+      doCommons(fx, move.seat, move.board, move.fee);
       break;
     case 'endTurn':
       if (!turn.actionSpent) throw new Error('End turn requires the action spent (or passed)');

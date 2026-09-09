@@ -22,6 +22,7 @@ import {
   doBuild,
   doDeliver,
   doMoveBalloon,
+  growOptions,
   harvestOptions,
   subsets,
 } from './actions.js';
@@ -29,16 +30,8 @@ import type { BuildMods } from './actions.js';
 import type { Fx } from './fx.js';
 import { fireHook } from './fx.js';
 import { canTakeCard, drawableSuits, fullBuildings, player } from './query.js';
-import { activateOnly } from './runtime.js';
-import type {
-  BuildingRef,
-  BuildingState,
-  CardId,
-  GameState,
-  Seat,
-  Task,
-  TaskAnswer,
-} from './state.js';
+import { activateOnly, doGrow } from './runtime.js';
+import type { BuildingRef, CardId, GameState, Seat, Task, TaskAnswer } from './state.js';
 import { handlerFor } from './handlers/registry.js';
 
 /**
@@ -205,22 +198,26 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
 
     case 'chooseBuilding': {
       const p = player(state, task.pid);
-      let pool =
+      // ⭐ CARD IDS RATHER THAN BUILDINGS, AND THAT IS THE COMMONS (C5). This
+      // used to look each `harvestable` id back up in the actor's tableau, which
+      // was total while every harvest target was a building of theirs. A central
+      // pile is in NO tableau and is harvestable by anybody, so the lookup
+      // returned undefined and the answer list crashed on its `.card`. The other
+      // three filters are still tableau-only and simply hand over their ids.
+      let ids: CardId[] =
         task.filter === 'harvestable'
-          ? harvestOptions(data, state, task.pid, task.relaxedMin).map(
-              (id) => p.tableau.find((b) => b.card === id) as BuildingState,
-            )
+          ? harvestOptions(data, state, task.pid, task.relaxedMin)
           : task.filter === 'full'
-            ? fullBuildings(data, state, task.pid)
+            ? fullBuildings(data, state, task.pid).map((b) => b.card)
             : task.filter === 'loaded'
-              ? p.tableau.filter((b) => b.stack.length >= 1)
-              : p.tableau.filter((b) => canTakeCard(data, b));
-      if (task.exclude !== undefined) pool = pool.filter((b) => b.card !== task.exclude);
-      if (task.targets) pool = pool.filter((b) => task.targets?.includes(b.card));
+              ? p.tableau.filter((b) => b.stack.length >= 1).map((b) => b.card)
+              : p.tableau.filter((b) => canTakeCard(data, b)).map((b) => b.card);
+      if (task.exclude !== undefined) ids = ids.filter((card) => card !== task.exclude);
+      if (task.targets) ids = ids.filter((card) => task.targets?.includes(card));
       // A harvest used to also drop targets whose printed GBP 1 surcharge (W8)
       // the seat could not pay, matching the action gate. No card prints a
       // surcharge in v31 and there is nothing to pay one with.
-      const out: TaskAnswer[] = pool.map((b) => ({ kind: 'building', card: b.card }));
+      const out: TaskAnswer[] = ids.map((card) => ({ kind: 'building', card }));
       if (task.optional === true && out.length > 0) out.push({ kind: 'skip' });
       return out;
     }
@@ -231,6 +228,17 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
       const out = hand.flatMap((card) =>
         targets.map((ref) => sowAnswer(task.pid, ref, { kind: 'sow', card })),
       );
+      if (task.optional === true && out.length > 0) out.push({ kind: 'skip' });
+      return out;
+    }
+
+    case 'grow': {
+      // CARD-PAID OPTIONS ONLY - see the task's own note. A meeple-paid Grow
+      // carries placement riders this answer has no field for, and the one mode
+      // that pushes this task has no meeples in it.
+      const out: TaskAnswer[] = growOptions(data, state, task.pid)
+        .filter((o) => o.payment !== null)
+        .map((o) => ({ kind: 'grow', building: o.building, payment: o.payment as CardId }));
       if (task.optional === true && out.length > 0) out.push({ kind: 'skip' });
       return out;
     }
@@ -350,6 +358,19 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
       fx.placeOnBuilding(task.pid, ontoRef(task.pid, answer), answer.card);
       task.remaining -= 1;
       return task.remaining <= 0;
+    }
+
+    case 'grow': {
+      if (answer.kind === 'skip' && task.optional === true) return true;
+      if (answer.kind !== 'grow') throw new Error('grow expects a grow answer');
+      // The same funnel the GROW ACTION uses, so the card's text fires once,
+      // through `handlerFor(building).activate`, and the fire-once guard is the
+      // same list. The action-scoped effects that live on game.ts's `grow`
+      // branch deliberately do NOT run here: a door buys the placement and the
+      // ability, not whatever the ACTION used to add on top (there is nothing
+      // left in v31 that does, and the constraint is permanent - see `doGrow`).
+      doGrow(fx, task.pid, answer.building, answer.payment);
+      return true;
     }
 
     case 'build': {
