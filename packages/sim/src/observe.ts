@@ -877,6 +877,25 @@ export interface GameMetrics {
   /** Cards that reached a BARN via the wheat leg's take rather than a Harvest, by the SEAT that took them - the farm-bypass reading's subject under `'spend'`. */
   commonsSpendBarnBySeat: number[];
 
+  // --- DEAN'S 'paid' VARIANT, 09/09/2026 (`rules.turn.commonsTake: 'paid'`)
+  //
+  // ⚠️ ZERO UNDER EVERY OTHER VALUE OF `commonsTake`, on the same contract as
+  // the two blocks above. `commonsTakesBySeat` / `commonsTakesByBoard` /
+  // `commonsTakeSizes` / `commonsTakenCardsBySeat` are STILL POPULATED under
+  // `'paid'`, off the SAME `commonsTaken` event every take fires - a take is
+  // still a take. This is the one line `'paid'` adds: the fee, which neither
+  // `'bonus'` nor `'spend'` ever charges.
+
+  /**
+   * ⭐ THE FIRST PER-USE SINK IN THE COMMONS LINE (Dean, 09/09/2026): one card
+   * discarded per `commonsTake` under `'paid'`, off `commonsTaken.fee`. By the
+   * SEAT that paid it. Read beside `commonsTakesBySeat`: every take under
+   * `'paid'` pays exactly one fee, so the two counts move together by
+   * construction - this exists so a18 can print the sink as its own line
+   * rather than a reader inferring it from the take count.
+   */
+  commonsTakeFeesBySeat: number[];
+
   // --- The Dairy rebuild, 2026-08-10 ---------------------------------------
   //
   // Four lines its pass conditions need and no previous run recorded. They
@@ -1262,6 +1281,7 @@ export class Fold {
       commonsSpendDiscardedByBoard: byColour(),
       commonsSpendDeliveriesFromCentre: 0,
       commonsSpendBarnBySeat: zeros(),
+      commonsTakeFeesBySeat: zeros(),
       buildsBySeat: zeros(),
       noBuildTurnsBySeat: zeros(),
       buildSampledBySeat: zeros(),
@@ -1925,6 +1945,12 @@ export class Fold {
         m.commonsTakeSizes.push(e.cards.length);
         m.commonsTakenCardsBySeat[e.seat] =
           (m.commonsTakenCardsBySeat[e.seat] ?? 0) + e.cards.length;
+        // ⭐ DEAN'S 'paid' VARIANT (09/09/2026): `fee` is present only under
+        // that value - the first per-use sink in the commons line, counted by
+        // the SEAT that paid it.
+        if (e.fee !== undefined) {
+          m.commonsTakeFeesBySeat[e.seat] = (m.commonsTakeFeesBySeat[e.seat] ?? 0) + 1;
+        }
         return;
       }
       // ⭐ DEAN'S 'spend' VARIANT'S SUMMARY (09/09/2026, `commonsTake: 'spend'`):

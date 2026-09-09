@@ -73,8 +73,18 @@ const VISIT_CURRENCY_VALUES: ReadonlySet<string> = new Set<string>(['card', 'mee
  * barn, dairy a build paid from the pile, vegetable a delivery paid from the
  * pile, apiary a sow of the whole pile - rather than always landing in the
  * hand. See `CommonsTake` and the knob's own template for the ruling in full.
+ *
+ * ⭐ `'paid'` IS THE FOURTH VALUE (Dean, 09/09/2026): `'bonus'` exactly - a
+ * take always lands the whole pile in the taker's hand - except the take now
+ * costs one card, discarded to its own suit's pile. See `CommonsTake` and the
+ * knob's own template for the ruling in full.
  */
-const COMMONS_TAKE_VALUES: ReadonlySet<string> = new Set<string>(['harvest', 'bonus', 'spend']);
+const COMMONS_TAKE_VALUES: ReadonlySet<string> = new Set<string>([
+  'harvest',
+  'bonus',
+  'spend',
+  'paid',
+]);
 
 /**
  * The closed value set behind `doorAction`: what a door may BUY. The five core

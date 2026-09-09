@@ -430,6 +430,12 @@ function cardsLeavingHand(act: Act): number {
     // top, which arrives through the rollout as the `built` event's payment.
     case 'commons':
       return 1;
+    // ⭐ DEAN'S 'paid' VARIANT (09/09/2026): `fee` is present only under that
+    // value, exactly as `visit`'s fee is present only under 'card' - gated on
+    // the ACT rather than on the knob so the two can never disagree. `'bonus'`
+    // and `'spend'` pay no fee, so a take there spends no hand card.
+    case 'commonsTake':
+      return act.fee !== undefined ? 1 : 0;
     case 'sow':
       return 1;
     case 'cardMove':
@@ -464,7 +470,11 @@ export const TERMS: readonly Term[] = [
      * and what a Power card costs. Everything the bot spends, it spends here.
      */
     name: 'handSpend',
-    claims: ['build', 'grow', 'visit', 'commons', 'cardMove', ...ACTION_AND_TASK],
+    // ⭐ `commonsTake` JOINS THE LIST (09/09/2026, `commonsTake: 'paid'`): the
+    // only thing that prices the fee's cost, exactly as it does `commons`'s -
+    // `cardsLeavingHand` reads 0 for a take under `'bonus'`/`'spend'`, so this
+    // is a no-op there.
+    claims: ['build', 'grow', 'visit', 'commons', 'commonsTake', 'cardMove', ...ACTION_AND_TASK],
     feature: (act, s) => -handSpendCost(s, cardsLeavingHand(act)),
     cost: true,
   },
@@ -1383,7 +1393,11 @@ export const TERMS: readonly Term[] = [
     // because the fee-suit mix is one of the readings the pass asks for - are
     // players paying junk? - and an instrument with no ordering at all would
     // answer that question with a random tie-break.
-    claims: ['visit', 'commons'],
+    // ⭐ AND `commonsTake` JOINS IT (09/09/2026, `commonsTake: 'paid'`): the
+    // same "pay with the card you least want" ordering, for the one fee the
+    // take can carry. `'bonus'` and `'spend'` pay no fee, so this is a no-op
+    // there (`act.fee` is `undefined`).
+    claims: ['visit', 'commons', 'commonsTake'],
     // ⛔ NO FEE, NO ORDERING (the meeple-loop arm, R1). "Your junk is their
     // treasure" was a statement about a CARD changing hands and the arm stops
     // any card changing hands, so this term loses its subject outright rather
@@ -1393,6 +1407,9 @@ export const TERMS: readonly Term[] = [
     // currency, and it needed no new term.
     feature: (act, s) => {
       if (act.a === 'commons') return -cardValue(s.data, act.fee);
+      if (act.a === 'commonsTake') {
+        return act.fee !== undefined ? -cardValue(s.data, act.fee) : 0;
+      }
       return act.a === 'visit' && act.fee !== null ? -cardValue(s.data, act.fee) : 0;
     },
     cost: true,

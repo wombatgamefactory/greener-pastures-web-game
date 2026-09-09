@@ -366,12 +366,18 @@ export function describeMove(data: GameData, view: PlayerView, move: Move): stri
     case 'commons':
       return `Play ${cardName(data, move.fee)} onto the central ${SUIT_META[move.board].label} board (the commons: unsupported in this interface, C59)`;
     /*
-     * ⭐ DEAN'S VARIANT'S TAKE (09/09/2026, `rules.turn.commonsTake: 'bonus'`),
-     * and the same admission as `commons` above for the same reason: no central
-     * boards on the table to drag from. `commonsTake` is on `UNROUTED_MOVES`.
+     * ⭐ DEAN'S VARIANTS' TAKE (09/09/2026, `rules.turn.commonsTake: 'bonus'`,
+     * `'spend'` or `'paid'`), and the same admission as `commons` above for the
+     * same reason: no central boards on the table to drag from. `commonsTake`
+     * is on `UNROUTED_MOVES`.
+     *
+     * `move.fee` is present only under `'paid'`, where the take costs a card -
+     * named here exactly as `commons`'s own fee is named above.
      */
     case 'commonsTake':
-      return `Take the whole ${SUIT_META[move.board].label} pile to hand (the commons: unsupported in this interface, C59)`;
+      return move.fee === undefined
+        ? `Take the whole ${SUIT_META[move.board].label} pile to hand (the commons: unsupported in this interface, C59)`
+        : `Take the whole ${SUIT_META[move.board].label} pile to hand, paying ${cardName(data, move.fee)} to the discard (the commons: unsupported in this interface, C59)`;
     case 'pass':
       return 'Pass';
     case 'endTurn':

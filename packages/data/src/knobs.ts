@@ -511,7 +511,28 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'from a hand- or barn-sourced one and charge it as if it were - the same admitted ' +
       'over-valuation this file already carries for a sow from hand against a sow from a deck top. ' +
       'The wheat leg is priced correctly (the harvest rate, off commonsTaken) because it has no ' +
-      'task to hide behind.',
+      'task to hide behind. ' +
+      "'paid' IS THE FOURTH VALUE (Dean, 09/09/2026, dated), READ ONLY UNDER visitCurrency " +
+      "'commons' and unrun before this pass, at overlays/commons-take-paid-v1.overlay.json. " +
+      'Dean\'s own words: "Play a card to take a bonus action. Then play a card to take all the ' +
+      'cards from a pile. The take-a-pile action just gives you all the cards on a pile into your ' +
+      "hand. The card you pay goes to the discard pile.\" It is 'bonus' EXACTLY - Harvest never " +
+      "reaches the centre, a take always lands the whole pile in the taker's HAND - with ONE " +
+      "change: the commonsTake move now carries an optional fee, and under 'paid' that fee is " +
+      "REQUIRED. One card from the hand is discarded to ITS OWN suit's pile BEFORE the take " +
+      'resolves, never onto the pile it is paying to take and never boxed - so the fee can never ' +
+      'be one of the taken cards, and enumerateCommonsTake offers one move per (non-empty board, ' +
+      'card in hand) pair, the same shape enumerateCommons walks for the paid play. ⭐ WHY IT ' +
+      "MATTERS: it is the FIRST PER-USE SINK anywhere in the commons line. 'bonus' keeps the take " +
+      "free and 'spend' keeps everything the pile itself pays for, so neither ever removes a card " +
+      "that was not already headed to the centre; 'paid' is the first value to burn a card that " +
+      'never touches a central pile at all, on every single take. a17 keeps its PLAY / TAKE / ' +
+      "SLOT UNSPENT tally (the take is still the free half's shape, just no longer free of " +
+      'charge - "the take is PAID (one card to the discard) so there is no free option in the ' +
+      "slot\" replaces the 'bonus' detail line about a free option), and a18 gains a TAKE FEES " +
+      'DISCARDED reading and a second conservation identity: cards paid as take fees = discarded. ' +
+      "Farm bypass reads 0% by construction, exactly as under 'bonus', because Harvest still " +
+      'never reaches the centre.',
   },
 
   // --- Economy -------------------------------------------------------------

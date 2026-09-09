@@ -1117,8 +1117,14 @@ export type Move =
    * Helping Hand's second slot lets a seat play twice, take twice, or one of
    * each - never three. Under `bonusTiming: 'start'` it is only ever offered
    * before the main action, the same window `commons` plays live in.
+   *
+   * ⭐ `fee` (09/09/2026, `rules.turn.commonsTake: 'paid'`) IS PRESENT ONLY
+   * UNDER THAT VALUE: one card from the taker's own hand, discarded to its own
+   * suit's discard pile before the take resolves - Dean's own words, "the
+   * card you pay goes to the discard pile". Absent (never optional-but-set)
+   * under `'bonus'` and `'spend'`, where the take is still free.
    */
-  | { type: 'commonsTake'; seat: Seat; board: Suit }
+  | { type: 'commonsTake'; seat: Seat; board: Suit; fee?: CardId }
   /** Legal only when no main action is: spends the action, keeps the bonus slot. */
   | { type: 'pass'; seat: Seat }
   /** Decline whatever options are still live and end the turn. Legal once the action is spent. */
@@ -1241,8 +1247,17 @@ export type GameEvent =
    * already knows which destination a given board means. The dairy, vegetable
    * and apiary legs never emit this: they resolve through a task and their own
    * `commonsSpent` event carries their accounting instead.
+   *
+   * ⭐ `fee` (09/09/2026, `rules.turn.commonsTake: 'paid'`) IS PRESENT ONLY
+   * UNDER THAT VALUE: the card discarded to pay for this take (D-P1),
+   * already gone from `seat`'s hand and already in its own suit's discard
+   * pile by the time this event fires - `fx.discardFromHand` runs first.
+   * Folded onto this event rather than split into a second one (`fee` alone
+   * would otherwise need its own `commonsTakeFeePaid`), so a reader watching
+   * for "a pile was taken" never has to join two events to see the whole of
+   * it. Absent under `'bonus'` and `'spend'`, where the take is free.
    */
-  | { e: 'commonsTaken'; seat: Seat; board: Suit; cards: CardId[] }
+  | { e: 'commonsTaken'; seat: Seat; board: Suit; cards: CardId[]; fee?: CardId }
   /**
    * ⭐ DEAN'S 'spend' VARIANT'S SUMMARY (09/09/2026, `rules.turn.commonsTake:
    * 'spend'`): fires once, for EVERY board, when that board's take finishes

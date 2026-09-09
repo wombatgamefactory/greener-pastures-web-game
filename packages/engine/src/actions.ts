@@ -20,6 +20,7 @@ import {
   deliveriesPerTile,
   deliveryVp,
   isCommons,
+  isCommonsTakePaid,
   isCommonsTakeToHand,
   isCommonsTakeToSpend,
   isMeepleCurrency,
@@ -1660,14 +1661,17 @@ export function harvestOptions(
   // action see exactly the same central targets, and the union above is where
   // the two gates still differ for BUILDINGS.
   if (!isCommons(data)) return own;
-  // ⭐ DEAN'S VARIANTS (09/09/2026, commonsTake: 'bonus' OR 'spend'): HARVEST
-  // NEVER REACHES THE CENTRE AT ALL (D-S4 under 'spend', the same rule
-  // 'bonus' states). A central pile is taken by the `commonsTake` bonus move
-  // instead - to hand under 'bonus', per-board under 'spend' (wheat to barn,
-  // the rest elsewhere) - so the Harvest action stops at own full buildings
-  // under either knob value. commonsHarvestMin and commonsHarvestTake have no
-  // subject, which is why this returns before either is read.
-  if (isCommonsTakeToHand(data) || isCommonsTakeToSpend(data)) return own;
+  // ⭐ DEAN'S VARIANTS (09/09/2026, commonsTake: 'bonus', 'spend' OR 'paid'):
+  // HARVEST NEVER REACHES THE CENTRE AT ALL (D-S4 under 'spend', the same
+  // rule the other two state). A central pile is taken by the `commonsTake`
+  // bonus move instead - to hand under 'bonus' and 'paid' (free or costing a
+  // fee), per-board under 'spend' (wheat to barn, the rest elsewhere) - so
+  // the Harvest action stops at own full buildings under any of the three
+  // knob values. commonsHarvestMin and commonsHarvestTake have no subject,
+  // which is why this returns before either is read.
+  if (isCommonsTakeToHand(data) || isCommonsTakeToSpend(data) || isCommonsTakePaid(data)) {
+    return own;
+  }
   const boards = commonsBoards(state);
   const min = commonsHarvestMin(data);
   const central = data.cards.suits
@@ -3535,13 +3539,15 @@ function commonsHarvestLegalAfterFee(
   board: Suit,
 ): boolean {
   if (player(state, seat).tableau.some((b) => isFull(data, b))) return true;
-  // ⭐ UNDER commonsTake: 'bonus' OR 'spend' THE WHEAT BOARD IS AN ORDINARY
-  // BOARD AGAIN, exactly as under commonsHarvestMin (D6 stops holding):
-  // Harvest never reaches the centre under either knob value (D-S4), so the
-  // fee just played can never be what makes this Harvest legal. Without a
-  // full building of their own, this seat has nothing for the wheat board's
-  // action to do.
-  if (isCommonsTakeToHand(data) || isCommonsTakeToSpend(data)) return false;
+  // ⭐ UNDER commonsTake: 'bonus', 'spend' OR 'paid' THE WHEAT BOARD IS AN
+  // ORDINARY BOARD AGAIN, exactly as under commonsHarvestMin (D6 stops
+  // holding): Harvest never reaches the centre under any of the three knob
+  // values (D-S4), so the fee just played can never be what makes this
+  // Harvest legal. Without a full building of their own, this seat has
+  // nothing for the wheat board's action to do.
+  if (isCommonsTakeToHand(data) || isCommonsTakeToSpend(data) || isCommonsTakePaid(data)) {
+    return false;
+  }
   const min = commonsHarvestMin(data);
   const boards = commonsBoards(state);
   for (const colour of data.cards.suits) {
@@ -3676,14 +3682,18 @@ export type CommonsTakeOption = Extract<Move, { type: 'commonsTake' }>;
 
 /**
  * ⭐ DEAN'S VARIANTS' SHARED MOVE (09/09/2026, `rules.turn.commonsTake:
- * 'bonus'` OR `'spend'`): every legal `commonsTake` move, one per central pile
- * this seat may legally take right now.
+ * 'bonus'`, `'spend'` OR `'paid'`): every legal `commonsTake` move, one per
+ * central pile this seat may legally take right now (or, under `'paid'`, one
+ * per (pile, fee card) pair).
  *
  * Never producible under the shipped `'harvest'` rule - `enumerateCommonsTake`
  * checks the knob first, exactly as `enumerateCommons` checks `isCommons`
  * first, so the two enumerators fail closed the same way. Under `'bonus'`
  * every non-empty pile qualifies; under `'spend'` a board also has to have
- * something for its action to do (D-S3), which is `commonsSpendTakeLegal`.
+ * something for its action to do (D-S3), which is `commonsSpendTakeLegal`;
+ * under `'paid'` a board qualifies whenever it is non-empty AND the seat has
+ * at least one card in hand to pay with (D-P1's other half - see
+ * `enumerateCommonsTake`).
  */
 export function commonsTakeOptions(
   data: GameData,
@@ -3703,6 +3713,13 @@ export function anyCommonsTakeOption(data: GameData, state: GameState, seat: Sea
 /**
  * The one walk behind both, exactly as `enumerateCommons` is for the play:
  * `out === null` means "stop at the first legal take".
+ *
+ * ⭐ UNDER `'paid'` (09/09/2026) THE SHAPE CHANGES: `enumerateCommons` walks
+ * (board, fee) pairs because a commons PLAY needs a fee card, and a paid take
+ * now needs one too, so this branch walks the same product - one move per
+ * non-empty board per card in hand. The fee can never be one of the taken
+ * cards: it comes out of the hand, the taken cards come out of the pile, and
+ * the two pools never overlap.
  */
 function enumerateCommonsTake(
   data: GameData,
@@ -3712,10 +3729,24 @@ function enumerateCommonsTake(
 ): boolean {
   const toHand = isCommonsTakeToHand(data);
   const toSpend = isCommonsTakeToSpend(data);
-  if (!isCommons(data) || (!toHand && !toSpend)) return false;
+  const toPaid = isCommonsTakePaid(data);
+  if (!isCommons(data) || (!toHand && !toSpend && !toPaid)) return false;
   if (!bonusOpen(data, state, 'commonsTake')) return false;
   const boards = commonsBoards(state);
   let any = false;
+  if (toPaid) {
+    const hand = player(state, seat).hand;
+    if (hand.length === 0) return false;
+    for (const board of data.cards.suits) {
+      if ((boards[board]?.length ?? 0) === 0) continue;
+      for (const fee of hand) {
+        if (out === null) return true;
+        out.push({ type: 'commonsTake', seat, board, fee });
+        any = true;
+      }
+    }
+    return any;
+  }
   for (const board of data.cards.suits) {
     if ((boards[board]?.length ?? 0) === 0) continue;
     if (toSpend && !commonsSpendTakeLegal(data, state, seat, board)) continue;
@@ -3751,19 +3782,24 @@ function commonsSpendTakeLegal(data: GameData, state: GameState, seat: Seat, boa
 
 /**
  * ⭐ DEAN'S VARIANTS' TAKE, DISPATCHED BY commonsTake (09/09/2026): take the
- * whole of one central pile. Under `'bonus'` it always goes straight to hand
- * (`Fx.takeCommons`); under `'spend'` its fate depends on `board` -
- * `doCommonsSpendTake` is where the five legs live.
+ * whole of one central pile. Under `'bonus'` and `'paid'` it always goes
+ * straight to hand (`Fx.takeCommons`); under `'spend'` its fate depends on
+ * `board` - `doCommonsSpendTake` is where the five legs live.
  *
  * Every predicate the enumerator checked is re-checked here, on the same
- * discipline `doCommons` follows.
+ * discipline `doCommons` follows. `fee` is read only under `'paid'`, where it
+ * is required; it is ignored (and should be `undefined`, as `legalMoves`
+ * never sets it) under the other two.
  */
-export function doCommonsTake(fx: Fx, seat: Seat, board: Suit): void {
+export function doCommonsTake(fx: Fx, seat: Seat, board: Suit, fee?: CardId): void {
   const { data, state } = fx;
   const toHand = isCommonsTakeToHand(data);
   const toSpend = isCommonsTakeToSpend(data);
-  if (!isCommons(data) || (!toHand && !toSpend)) {
-    throw new Error("commonsTake is legal only under rules.turn.commonsTake: 'bonus' or 'spend'");
+  const toPaid = isCommonsTakePaid(data);
+  if (!isCommons(data) || (!toHand && !toSpend && !toPaid)) {
+    throw new Error(
+      "commonsTake is legal only under rules.turn.commonsTake: 'bonus', 'spend' or 'paid'",
+    );
   }
   if (!bonusOpen(data, state, 'commonsTake')) {
     throw new Error('The bonus slot is shut: spent, or outside its window for this bonusTiming');
@@ -3771,6 +3807,24 @@ export function doCommonsTake(fx: Fx, seat: Seat, board: Suit): void {
   const pile = commonsBoards(state)[board];
   if (pile === undefined) throw new Error(`There is no ${board} board in the commons`);
   if (pile.length === 0) throw new Error(`The ${board} board is empty`);
+
+  if (toPaid) {
+    if (fee === undefined) {
+      throw new Error("commonsTake needs a fee card under rules.turn.commonsTake: 'paid'");
+    }
+    if (!player(state, seat).hand.includes(fee)) {
+      throw new Error(`Card ${fee} is not in seat ${seat}'s hand`);
+    }
+    // ⭐ DEAN'S 'paid' VARIANT (09/09/2026): the fee is discarded FIRST, to its
+    // OWN suit's discard pile - "the card you pay goes to the discard pile",
+    // never onto the pile it is paying to take and never boxed. Only once it
+    // is gone does the pile move, so the fee can never be counted among the
+    // cards taken.
+    fx.discardFromHand(seat, fee);
+    fx.takeCommons(seat, board, fee);
+    state.turn.bonusUsed.push('commonsTake');
+    return;
+  }
 
   if (toSpend) {
     if (!commonsSpendTakeLegal(data, state, seat, board)) {

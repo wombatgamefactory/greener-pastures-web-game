@@ -136,10 +136,24 @@ export type VisitCurrency = 'card' | 'meeple' | 'commons';
  * if the taker has a non-full building; **D-S4** Harvest, main or bought,
  * never reaches the centre under `'spend'`, exactly as under `'bonus'`.
  *
+ * ⭐ `'paid'` IS THE FOURTH VALUE (Dean, 09/09/2026), Dean's own words: *"Play a
+ * card to take a bonus action. Then play a card to take all the cards from a
+ * pile. The take-a-pile action just gives you all the cards on a pile into
+ * your hand. The card you pay goes to the discard pile."* It is `'bonus'`
+ * EXACTLY - Harvest never reaches the centre, and a take always lands the
+ * whole pile in the taker's HAND - with ONE change: the take is no longer
+ * free. It COSTS one card from the taker's hand, discarded (D-P1) to ITS OWN
+ * suit's discard pile rather than boxed or joining the pile it is paying to
+ * take, and never the pile's own suit unless that happens to be the card
+ * spent. This is the first PER-USE sink anywhere in the commons line: every
+ * previous currency this project has shipped either kept the take free
+ * (`'bonus'`) or paid in kind (`'spend'`'s own pile), and `'paid'` is the
+ * first to burn a card that was never going to touch the centre at all.
+ *
  * Read only under `visitCurrency: 'commons'`; subjectless under `'card'` and
  * `'meeple'`.
  */
-export type CommonsTake = 'harvest' | 'bonus' | 'spend';
+export type CommonsTake = 'harvest' | 'bonus' | 'spend' | 'paid';
 
 /**
  * Trigger keywords detected in the printed text. This is keyword detection, not a
@@ -940,6 +954,18 @@ export interface RulesFile {
      * the pile alone, apiary the whole pile sown one card at a time - rather
      * than always landing in the hand. See `CommonsTake` for the ruling in
      * full and the four builder defaults D-S1 to D-S4.
+     *
+     * ⭐ `'paid'` IS THE FOURTH VALUE (Dean, 09/09/2026), unrun before this
+     * pass (`overlays/commons-take-paid-v1.overlay.json`). Dean's own words:
+     * *"Play a card to take a bonus action. Then play a card to take all the
+     * cards from a pile. The take-a-pile action just gives you all the cards
+     * on a pile into your hand. The card you pay goes to the discard pile."*
+     * It is `'bonus'` exactly - Harvest never reaches the centre, a take
+     * always lands the whole pile in the taker's hand - except the
+     * `commonsTake` move now carries an optional `fee`, which under `'paid'`
+     * is REQUIRED: one card from the taker's own hand, discarded to its own
+     * suit's pile before the take resolves. It is the first PER-USE sink in
+     * the commons line. See `CommonsTake` for the ruling in full.
      */
     readonly commonsTake: CommonsTake;
   };

@@ -1,4 +1,4 @@
-import { isCommons, isCommonsTakeToHand, isCommonsTakeToSpend } from '@gp/data';
+import { isCommons, isCommonsTakePaid, isCommonsTakeToHand, isCommonsTakeToSpend } from '@gp/data';
 
 import type { Assertion, Measurement } from './types.js';
 import { NO_REMEDY } from './types.js';
@@ -305,6 +305,94 @@ export const commonsTraffic: Assertion = {
             "SEAT'S DECK DRAWS, THE SAME QUESTION APPLIES UNDER A NEW NAME: is the hand being " +
             "filled by the table's own discipline (grow, harvest, deliver) or by a free lucky " +
             'dip into whichever pile got fat?**',
+          ...feeSuitLines,
+        ],
+        verdict: 'OBSERVE',
+      };
+    }
+
+    // ⭐ DEAN'S 'paid' VARIANT (09/09/2026, `rules.turn.commonsTake: 'paid'`):
+    // `'bonus'` exactly - Harvest never reaches the centre, a take always
+    // lands the whole pile in the taker's HAND, and `commonsTakesBySeat` /
+    // `commonsTakeSizes` / `commonsTakenCardsBySeat` are read the same way -
+    // except the take now costs a card, off `commonsTakeFeesBySeat`, which
+    // `'bonus'` never populates. That fee is THE FIRST PER-USE SINK anywhere
+    // in the commons line: `'spend'`'s own discard sink only ever catches
+    // cards that were already in the centre and had nowhere left to go, where
+    // this fee is a card that never touched the centre at all, burned on
+    // every single take.
+    if (isCommonsTakePaid(data)) {
+      const takes = sum(games.map((g) => sum(g.commonsTakesBySeat)));
+      const stranded = sum(games.map((g) => g.commonsStrandedAtEnd));
+      const takenCards = sum(games.map((g) => sum(g.commonsTakenCardsBySeat)));
+      const feesPaid = sum(games.map((g) => sum(g.commonsTakeFeesBySeat)));
+      const sizes = games.flatMap((g) => g.commonsTakeSizes);
+      const value = turns === 0 ? NaN : plays / turns;
+
+      const buckets = [1, 2, 3, 4].map((n) => sizes.filter((x) => x === n).length);
+      const big = sizes.filter((x) => x >= 5).length;
+      const histogram = [...buckets.map((c, i) => [`${i + 1}`, c] as const), ['5+', big] as const]
+        .map(
+          ([label, count]) =>
+            `${label}: ${count} ${pct(sizes.length === 0 ? NaN : count / sizes.length, 0)}`,
+        )
+        .join('   ');
+
+      return {
+        value,
+        headline:
+          `${num(value, 2)} plays per player per turn (${plays} plays over ${turns} turns); ` +
+          `${num(seatGames === 0 ? NaN : takes / seatGames, 2)} central takes per player ` +
+          `per game, each PAID (${feesPaid} fees discarded, ` +
+          `${num(games.length === 0 ? NaN : feesPaid / games.length, 1)} a game); central ` +
+          `harvests read 0 by construction under commonsTake: 'paid'`,
+        detail: [
+          `⭐ DEAN'S 'paid' VARIANT (rules.turn.commonsTake: 'paid', 09/09/2026): CENTRAL HARVESTS ` +
+            "READ 0 BY CONSTRUCTION, exactly as under 'bonus' - harvestOptions never returns a " +
+            'central board under this knob, so the wheat board buys an own-building Harvest or ' +
+            'nothing at all. `commonsHarvestMin` and `commonsHarvestTake` have no subject.',
+          `⚠️ THE PLAY RATE IS a17'S NUMBER AND ITS VERDICT IS a17'S: ` +
+            `${pct(value)} of turns play a card, against Dean's band of 30%-60% ("earned, not ` +
+            'automatic", 09/09/2026). It is repeated here because everything else on this page ' +
+            'is read against it, and it deliberately carries no verdict here.',
+          `plays per game: ${num(games.length === 0 ? NaN : plays / games.length, 1)} across ` +
+            `${games.length} ended games, ${num(seatGames === 0 ? NaN : plays / seatGames, 1)} ` +
+            'per player per game.',
+          `CENTRAL TAKES: ${takes} in all, ` +
+            `${num(seatGames === 0 ? NaN : takes / seatGames, 2)} per player per game, taking ` +
+            `a mean of ${num(mean(sizes), 2)} and a median of ${num(median(sizes), 1)} cards ` +
+            `(p90 ${num(percentile(sizes, 0.9), 1)}, ` +
+            `max ${sizes.length === 0 ? 'n/a' : sizes.reduce((a, b) => (b > a ? b : a), 0)}). A ` +
+            "pile only ever leaves by a take (Dean's variant) or by sitting stranded at game " +
+            'end - never by Harvest.',
+          `⭐ CARDS TAKEN PER CENTRAL TAKE, the distribution: ${histogram}.`,
+          `⭐⭐ TAKE FEES DISCARDED: ${feesPaid} per game across ${games.length} games ` +
+            `(${num(games.length === 0 ? NaN : feesPaid / games.length, 1)} a game, ` +
+            `${num(seatGames === 0 ? NaN : feesPaid / seatGames, 2)} per player per game) - THE ` +
+            "FIRST PER-USE SINK IN THE COMMONS LINE. Every take under 'paid' costs exactly one " +
+            'fee (an enumerated take always carries one, D-P1), so this count and the take count ' +
+            'above move together by construction: it exists as its own line so a reader does not ' +
+            'have to infer the sink from the take rate.',
+          `⭐⭐ THE CONSERVATION LINE, per game, RE-DERIVED FOR THE VARIANT: ` +
+            `${num(games.length === 0 ? NaN : plays / games.length, 1)} cards played ONTO boards ` +
+            `= ${num(games.length === 0 ? NaN : takenCards / games.length, 1)} TAKEN TO HAND ` +
+            `+ ${num(games.length === 0 ? NaN : stranded / games.length, 1)} STRANDED at game ` +
+            `end (${plays} = ${takenCards} + ${stranded} over ${games.length} ended games; ` +
+            `stranded is ${pct(plays === 0 ? NaN : stranded / plays)} of plays). The fee never ` +
+            'joins this identity at all - it never touches a central pile - which is exactly why ' +
+            'it needs a SECOND identity of its own: cards paid as take fees = cards discarded ' +
+            `(${feesPaid} = ${feesPaid}, by construction - fx.discardFromHand discards the same ` +
+            'card `doCommonsTake` just charged, one for one, before the pile ever moves).',
+          `⭐⭐ THE FARM BYPASS MOVED FROM THE BARN TO THE HAND. It reads 0% CENTRE-TO-BARN BY ` +
+            "CONSTRUCTION - no harvest of a central pile is possible under commonsTake: 'paid', " +
+            'so `barnFromCommonsBySeat` is a structural zero and the old ratio has no subject. ' +
+            `THE NUMBER TO READ INSTEAD: ${takenCards} cards moved to a HAND from the centre ` +
+            `(${num(games.length === 0 ? NaN : takenCards / games.length, 1)} a game, ` +
+            `${num(seatGames === 0 ? NaN : takenCards / seatGames, 1)} per player per game) ` +
+            'against cards drawn from decks per game - which this instrument does not currently ' +
+            'total, so only the centre-to-hand count is printed. Read it beside the fee: a seat ' +
+            'nets `takenCards - feesPaid` cards from a run of takes, never the raw pile size, ' +
+            'because every take costs one to gain however many the pile held.',
           ...feeSuitLines,
         ],
         verdict: 'OBSERVE',

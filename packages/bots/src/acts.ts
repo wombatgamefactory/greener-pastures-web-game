@@ -246,8 +246,14 @@ export type Act =
    * ⭐ ON `isProbed`, for the same reason a door is: what comes out is a fact
    * about the position (which cards sit in that pile right now), not
    * something a flat feature can price without rolling the move out.
+   *
+   * ⭐ `fee` (09/09/2026, `rules.turn.commonsTake: 'paid'`) IS PRESENT ONLY
+   * UNDER THAT VALUE: the card the take costs, so `handSpend` and
+   * `visitFeeJunk` have something to price and order, exactly as `commons`'s
+   * own `fee` above. Absent under `'bonus'` and `'spend'`, where the take is
+   * free.
    */
-  | { a: 'commonsTake'; board: Suit }
+  | { a: 'commonsTake'; board: Suit; fee?: CardId }
   | { a: 'cardMove'; card: CardId; kind: string; payload: Record<string, unknown> }
   | { a: 'pass' }
   | { a: 'endTurn' }
@@ -445,10 +451,14 @@ export function actOf(move: Move): Act {
     // `host === seat` to read off it because there is no host at all.
     case 'commons':
       return { a: 'commons', board: move.board, fee: move.fee };
-    // ⭐ DEAN'S VARIANT (09/09/2026): the take carries no fee and buys no
-    // action, so there is nothing to normalise beyond the board itself.
+    // ⭐ DEAN'S VARIANTS (09/09/2026): the take buys no action under any of
+    // them, so there is nothing to normalise beyond the board itself - except
+    // under `'paid'`, where `move.fee` is the card the take costs and
+    // `handSpend`/`visitFeeJunk` need it on the act to price and order it.
     case 'commonsTake':
-      return { a: 'commonsTake', board: move.board };
+      return move.fee === undefined
+        ? { a: 'commonsTake', board: move.board }
+        : { a: 'commonsTake', board: move.board, fee: move.fee };
     case 'pass':
       return { a: 'pass' };
     case 'endTurn':

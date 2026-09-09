@@ -1,4 +1,11 @@
-import { isCommons, isCommonsTakeToHand, isCommonsTakeToSpend, isMeepleCurrency } from '@gp/data';
+import {
+  commonsTakeGoesToHand,
+  isCommons,
+  isCommonsTakePaid,
+  isCommonsTakeToHand,
+  isCommonsTakeToSpend,
+  isMeepleCurrency,
+} from '@gp/data';
 
 import type { GameMetrics } from '../observe.js';
 import type { Assertion, Measurement, MeasureContext } from './types.js';
@@ -253,23 +260,32 @@ function freeShareLine(plays: number, takes: number): string {
 function commonsMode({ data, pooled }: MeasureContext): Measurement {
   const takeToHand = isCommonsTakeToHand(data);
   const takeToSpend = isCommonsTakeToSpend(data);
-  // ⭐ BOTH VARIANTS PRINT THE SAME THREE-COLUMN SHAPE (Dean, 09/09/2026): a
-  // free `commonsTake` sharing the slot with the paid `commons` play. They
-  // differ only in what a take's cards then DO, which a17 does not need to
-  // know - see a18 for that.
-  const threeColumn = takeToHand || takeToSpend;
+  // ⭐ DEAN'S 'paid' VARIANT (09/09/2026): the SAME to-hand shape as `'bonus'`,
+  // so it is folded into every place below that already asks "does a take
+  // land in the hand" (`commonsTakeGoesToHand`) - it differs from `'bonus'`
+  // only in whether it is FREE, which only the wording, never the counting,
+  // has to know about.
+  const takePaid = isCommonsTakePaid(data);
+  const toHandOrPaid = commonsTakeGoesToHand(data);
+  // ⭐ ALL THREE VARIANTS PRINT THE SAME THREE-COLUMN SHAPE (Dean, 09/09/2026):
+  // a `commonsTake` sharing the slot with the paid `commons` play. They differ
+  // only in what a take's cards then DO and whether the take itself costs
+  // anything, which a17 does not need to know beyond the wording - see a18 for
+  // the traffic and the sink.
+  const threeColumn = takeToHand || takeToSpend || takePaid;
   const games = pooled.ended;
   const turns = totalTurns(games);
   const bonusTurns = totalBonusTurns(games);
   const plays = sum(games.map((g) => sum(g.commonsPlaysBySeat)));
-  // ⭐ THE FREE HALF OF THE SLOT. 0 by construction under the shipped
+  // ⭐ THE OTHER HALF OF THE SLOT. 0 by construction under the shipped
   // `'harvest'` rule, where `commonsTake` moves are never enumerated. Under
-  // `'bonus'` every take lands in a hand and `commonsTakesBySeat` (off
-  // `commonsTaken`) counts all five boards; under `'spend'` that same counter
-  // sees ONLY the orchard and wheat legs (the two `commonsTaken`-emitting
-  // ones), so the total has to come off `commonsSpendTakesByBoard` instead -
-  // a MOVE-level count that sees all five boards a take can choose.
-  const takes = takeToHand
+  // `'bonus'` and `'paid'` every take lands in a hand and `commonsTakesBySeat`
+  // (off `commonsTaken`) counts all five boards; under `'spend'` that same
+  // counter sees ONLY the orchard and wheat legs (the two
+  // `commonsTaken`-emitting ones), so the total has to come off
+  // `commonsSpendTakesByBoard` instead - a MOVE-level count that sees all five
+  // boards a take can choose.
+  const takes = toHandOrPaid
     ? sum(games.map((g) => sum(g.commonsTakesBySeat)))
     : takeToSpend
       ? sum(games.map((g) => sum(Object.values(g.commonsSpendTakesByBoard))))
@@ -302,7 +318,7 @@ function commonsMode({ data, pooled }: MeasureContext): Measurement {
     .map((slice) => {
       const t = totalTurns(slice.ended);
       const p = sum(slice.ended.map((g) => sum(g.commonsPlaysBySeat)));
-      const k = takeToHand
+      const k = toHandOrPaid
         ? sum(slice.ended.map((g) => sum(g.commonsTakesBySeat)))
         : takeToSpend
           ? sum(slice.ended.map((g) => sum(Object.values(g.commonsSpendTakesByBoard))))
@@ -373,12 +389,19 @@ function commonsMode({ data, pooled }: MeasureContext): Measurement {
     .map(([board, n]) => `${board} ${pct(takes === 0 ? NaN : n / takes, 0)}`)
     .join('  ');
 
+  const modeName = takeToHand ? 'bonus' : takePaid ? 'paid' : 'spend';
+  const takeDescription = takeToHand
+    ? 'a whole central pile taken free to hand - no card, no fee'
+    : takePaid
+      ? "a whole central pile taken to hand for one card, discarded to its own suit's pile - " +
+        'the take itself, never the pile'
+      : "one board's action bought from what its pile holds - no card, no fee";
+
   const detail = threeColumn
     ? [
-        `⭐ DEAN'S VARIANT (rules.turn.commonsTake: '${takeToHand ? 'bonus' : 'spend'}', ` +
+        `⭐ DEAN'S VARIANT (rules.turn.commonsTake: '${modeName}', ` +
           '09/09/2026): THREE columns rather than two, as a share of every turn played: PLAY ' +
-          `${share(plays)} (a card paid, a board's action bought), TAKE ${share(takes)} (a whole ` +
-          `central pile taken free${takeToHand ? ' to hand' : ", one board's action bought from what it holds"} - no card, no fee), ` +
+          `${share(plays)} (a card paid, a board's action bought), TAKE ${share(takes)} (${takeDescription}), ` +
           `SLOT UNSPENT ${share(unspent)}.`,
         `by seat count, and THIS is the reading the verdict is taken on (slot used = play or ` +
           `take; play/take per turn in brackets): ${rows
@@ -392,7 +415,7 @@ function commonsMode({ data, pooled }: MeasureContext): Measurement {
         `by BOARD PLAYED (the PAID half only, C3): ${boardLine || 'no plays'}. ${plays} plays ` +
           `over ${games.length} games, ${num(games.length === 0 ? NaN : plays / games.length, 1)} ` +
           'a game.' +
-          (takeToHand
+          (toHandOrPaid
             ? ' A take buys no action, so it has no board mix of its own - a18 carries the ' +
               'take-size distribution instead.'
             : ''),
@@ -412,12 +435,24 @@ function commonsMode({ data, pooled }: MeasureContext): Measurement {
           'the time... earned, not automatic". It is read on the slot\'s TOTAL use (play plus ' +
           "take), because Dean's sentence is about the slot being spent at all, not about which " +
           'half of it did the spending.',
-        freeShareLine(plays, takes),
+        takePaid
+          ? '⭐ THE TAKE IS PAID (one card to the discard) SO THERE IS NO FREE OPTION IN THE ' +
+            'SLOT (Dean, 09/09/2026). Every previous currency this project has shipped, and both ' +
+            "of commonsTake's other values, has had to watch whether a free option sharing the " +
+            "bonus slot with a paid one crowds it out; 'paid' is the first arm where neither half " +
+            'of the slot is free, so that law has no subject here and PLAY/TAKE is a choice ' +
+            'between two prices rather than a price and a freebie.'
+          : freeShareLine(plays, takes),
         UNSPENT_CAVEAT,
-        '⚠️ AND UNDER THE COMMONS THE UNSPENT COLUMN MEANS SOMETHING SHARPER THAN UNDER EITHER ' +
-          'CONTROL: a PLAY costs a card, though a TAKE costs nothing at all - so an unspent slot ' +
-          'here is a seat that declined even the free option, which is a stronger finding than ' +
-          'declining a paid one.',
+        takePaid
+          ? '⚠️ AND UNDER THE COMMONS THE UNSPENT COLUMN MEANS THE SAME THING IT DOES UNDER THE ' +
+            'PAID CONTROL: BOTH options cost a card, so an unspent slot here is a seat that ' +
+            "declined to pay for either one, exactly as under the shipped `harvest` rule's single " +
+            'paid option.'
+          : '⚠️ AND UNDER THE COMMONS THE UNSPENT COLUMN MEANS SOMETHING SHARPER THAN UNDER ' +
+            'EITHER CONTROL: a PLAY costs a card, though a TAKE costs nothing at all - so an ' +
+            'unspent slot here is a seat that declined even the free option, which is a stronger ' +
+            'finding than declining a paid one.',
         perGameLine(games.length, bonusTurns, turns),
       ]
     : [

@@ -318,9 +318,10 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
       doCommons(fx, move.seat, move.board, move.fee);
       break;
     case 'commonsTake':
-      // Dean's variant (09/09/2026): the whole of one central pile, straight
-      // to hand. No card played, no action bought.
-      doCommonsTake(fx, move.seat, move.board);
+      // Dean's variants (09/09/2026): the whole of one central pile. No
+      // action is ever bought; under 'paid' `move.fee` is the card it costs,
+      // discarded before the pile moves.
+      doCommonsTake(fx, move.seat, move.board, move.fee);
       break;
     case 'endTurn':
       if (!turn.actionSpent) throw new Error('End turn requires the action spent (or passed)');

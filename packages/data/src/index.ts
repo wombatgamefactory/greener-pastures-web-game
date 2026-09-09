@@ -234,6 +234,39 @@ export function isCommonsTakeToSpend(data: GameData): boolean {
 }
 
 /**
+ * Is DEAN'S 'paid' VARIANT of 09/09/2026 live - the SAME free-shaped
+ * `commonsTake` move as `isCommonsTakeToHand` (a whole pile, straight to
+ * hand), except the take now costs one card of the taker's own, discarded to
+ * its own suit's pile? See `rules.turn.commonsTake` and `CommonsTake` for the
+ * ruling in full.
+ *
+ * ⭐ DEFAULTS FALSE, on the same reasoning the other two give: only
+ * `overlays/commons-take-paid-v1.overlay.json` touches this knob and it sets
+ * `visitCurrency: 'commons'` in the same breath. Callers that already know
+ * they are in the commons may read this directly; callers that do not should
+ * check `isCommons` first.
+ */
+export function isCommonsTakePaid(data: GameData): boolean {
+  return data.rules.turn.commonsTake === 'paid';
+}
+
+/**
+ * Does a `commonsTake` land its pile in the taker's HAND? True under both
+ * `'bonus'` (free) and `'paid'` (one card discarded first) - the two values
+ * whose take is an uncomplicated whole-pile move to hand, told apart only by
+ * whether it costs anything. FALSE under `'spend'`, where the destination
+ * depends on which board is taken (orchard to hand, wheat to barn, the rest
+ * elsewhere) and no single answer is correct.
+ *
+ * Use this where the DESTINATION is what a caller cares about; use
+ * `isCommonsTakeToHand` or `isCommonsTakePaid` directly where the caller
+ * needs to tell the two apart (for instance, whether a fee is owed).
+ */
+export function commonsTakeGoesToHand(data: GameData): boolean {
+  return isCommonsTakeToHand(data) || isCommonsTakePaid(data);
+}
+
+/**
  * Is R15 live - a meeple spendable as a card of its colour? See
  * `rules.turn.meepleAsCard`.
  *

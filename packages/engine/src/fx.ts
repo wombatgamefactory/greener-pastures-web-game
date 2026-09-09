@@ -700,8 +700,9 @@ export class Fx {
   }
 
   /**
-   * ⭐ DEAN'S VARIANT (09/09/2026, `rules.turn.commonsTake: 'bonus'`): take the
-   * WHOLE of one central pile, straight to the taker's HAND.
+   * ⭐ DEAN'S VARIANTS (09/09/2026, `rules.turn.commonsTake: 'bonus'` OR
+   * `'paid'`): take the WHOLE of one central pile, straight to the taker's
+   * HAND.
    *
    * Deliberately NOT `harvest`: nothing here touches a barn, no `afterHarvest`
    * fires (there was no Harvest), and the destination is a hand rather than the
@@ -709,13 +710,35 @@ export class Fx {
    * HAND", Dean's own words. Routed through `cardsToHand` so the gain is priced
    * exactly as a draw is (`outcome.ts`'s `cardsToHand` case), and its own
    * `commonsTaken` event carries the board and the cards for the sim to count.
+   *
+   * `fee` is present only under `'paid'`, where `doCommonsTake` has already
+   * discarded it (`fx.discardFromHand`) before calling here - it is carried
+   * through only so `commonsTaken` can report it, never spent twice.
    */
-  takeCommons(seat: Seat, board: Suit): void {
+  takeCommons(seat: Seat, board: Suit, fee?: CardId): void {
     const pile = commonsBoards(this.state)[board];
     if (!pile) throw new Error(`There is no ${board} board in the commons`);
     const cards = pile.splice(0);
     this.cardsToHand(seat, cards);
-    this.emit({ e: 'commonsTaken', seat, board, cards });
+    this.emit(
+      fee === undefined
+        ? { e: 'commonsTaken', seat, board, cards }
+        : { e: 'commonsTaken', seat, board, cards, fee },
+    );
+  }
+
+  /**
+   * ⭐ DEAN'S 'paid' VARIANT'S FEE (09/09/2026, `rules.turn.commonsTake:
+   * 'paid'`): one card OUT OF A HAND, straight to its own suit's discard
+   * pile. "The card you pay goes to the discard pile", Dean's own words - not
+   * boxed, not onto the pile it is paying to take, and not routed through the
+   * divert seam (`discardOrDivert`), which exists for the end-of-turn discard
+   * and O17's family, not for a flat per-use fee. A build cost's overflow and
+   * this fee both end up in the same place; this is the simplest path there.
+   */
+  discardFromHand(seat: Seat, card: CardId): void {
+    this.removeFromHand(seat, card);
+    this.discard([card]);
   }
 
   /**
