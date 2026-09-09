@@ -676,8 +676,13 @@ export function subsetAdditions(
  * so the list cannot rot into a place where a real route hides. Delete the
  * entry the moment the commons gets a surface; do not add to it to quieten a
  * failure.
+ *
+ * ⭐ `commonsTake` JOINS IT FOR THE SAME REASON (Dean's variant, 09/09/2026,
+ * `rules.turn.commonsTake: 'bonus'`): it is the other half of the same
+ * unrendered bonus slot, so it inherits `commons`'s admission wholesale rather
+ * than earning a separate one.
  */
-export const UNROUTED_MOVES = ['commons'] as const satisfies readonly MoveType[];
+export const UNROUTED_MOVES = ['commons', 'commonsTake'] as const satisfies readonly MoveType[];
 
 /** A move type this interface admits it cannot offer. See `UNROUTED_MOVES`. */
 export type UnroutedMove = (typeof UNROUTED_MOVES)[number];

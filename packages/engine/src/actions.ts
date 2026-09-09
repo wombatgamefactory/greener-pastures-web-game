@@ -20,6 +20,7 @@ import {
   deliveriesPerTile,
   deliveryVp,
   isCommons,
+  isCommonsTakeToHand,
   isMeepleCurrency,
   meepleAsCardGoesToBoard,
   meepleIndexForSpace,
@@ -1658,6 +1659,12 @@ export function harvestOptions(
   // action see exactly the same central targets, and the union above is where
   // the two gates still differ for BUILDINGS.
   if (!isCommons(data)) return own;
+  // ⭐ DEAN'S VARIANT (09/09/2026, commonsTake: 'bonus'): HARVEST NEVER REACHES
+  // THE CENTRE AT ALL. A central pile is taken by the new `commonsTake` bonus
+  // move instead, straight to hand, so the Harvest action stops at own full
+  // buildings under this knob - commonsHarvestMin and commonsHarvestTake have
+  // no subject, which is why this returns before either is read.
+  if (isCommonsTakeToHand(data)) return own;
   const boards = commonsBoards(state);
   const min = commonsHarvestMin(data);
   const central = data.cards.suits
@@ -2948,10 +2955,22 @@ export function bonusOpen(data: GameData, state: GameState, option?: BonusOption
   // to `bonusSlotsFor` plays" - two with the card, one without, never three -
   // and the count above is the whole of the bound.
   //
-  // Keyed on the OPTION and not on the mode, because `'commons'` is producible
-  // only under the commons; the two-option slot the controls play keeps the
-  // per-option refusal that stops a seat taking Draw 1 twice.
-  if (option !== undefined && option !== 'commons' && turn.bonusUsed.includes(option)) {
+  // ⭐ `commonsTake` CARRIES THE SAME EXEMPTION (Dean's variant, 09/09/2026):
+  // under `commonsTake: 'bonus'` the slot holds ONE free option (the take)
+  // beside the paid `commons` play, so a seat may play twice, take twice, or
+  // one of each with A Helping Hand - never three - on exactly the reasoning
+  // above.
+  //
+  // Keyed on the OPTION and not on the mode, because `'commons'` and
+  // `'commonsTake'` are each producible only under their own knob; the
+  // two-option slot the controls play keeps the per-option refusal that stops
+  // a seat taking Draw 1 twice.
+  if (
+    option !== undefined &&
+    option !== 'commons' &&
+    option !== 'commonsTake' &&
+    turn.bonusUsed.includes(option)
+  ) {
     return false;
   }
   // A knob and not a constant because this rule ships with others that all move
@@ -3489,6 +3508,12 @@ function commonsHarvestLegalAfterFee(
   board: Suit,
 ): boolean {
   if (player(state, seat).tableau.some((b) => isFull(data, b))) return true;
+  // ⭐ UNDER commonsTake: 'bonus' THE WHEAT BOARD IS AN ORDINARY BOARD AGAIN,
+  // exactly as under commonsHarvestMin (D6 stops holding): Harvest never
+  // reaches the centre, so the fee just played can never be what makes this
+  // Harvest legal. Without a full building of their own, this seat has
+  // nothing for the wheat board's action to do.
+  if (isCommonsTakeToHand(data)) return false;
   const min = commonsHarvestMin(data);
   const boards = commonsBoards(state);
   for (const colour of data.cards.suits) {
@@ -3619,6 +3644,78 @@ export function doCommons(fx: Fx, seat: Seat, board: Suit, fee: CardId): void {
   performDoorAction(fx, seat, board, 'commons');
 }
 
+export type CommonsTakeOption = Extract<Move, { type: 'commonsTake' }>;
+
+/**
+ * ⭐ DEAN'S VARIANT'S OTHER HALF (09/09/2026, `rules.turn.commonsTake:
+ * 'bonus'`): every legal `commonsTake` move, one per non-empty central pile.
+ *
+ * Never producible under the shipped `'harvest'` rule - `enumerateCommonsTake`
+ * checks the knob first, exactly as `enumerateCommons` checks `isCommons`
+ * first, so the two enumerators fail closed the same way.
+ */
+export function commonsTakeOptions(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+): CommonsTakeOption[] {
+  const out: CommonsTakeOption[] = [];
+  enumerateCommonsTake(data, state, seat, out);
+  return out;
+}
+
+/** Is ANY commonsTake on offer? The same walk, stopping at the first hit. */
+export function anyCommonsTakeOption(data: GameData, state: GameState, seat: Seat): boolean {
+  return enumerateCommonsTake(data, state, seat, null);
+}
+
+/**
+ * The one walk behind both, exactly as `enumerateCommons` is for the play:
+ * `out === null` means "stop at the first legal take".
+ */
+function enumerateCommonsTake(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+  out: CommonsTakeOption[] | null,
+): boolean {
+  if (!isCommons(data) || !isCommonsTakeToHand(data)) return false;
+  if (!bonusOpen(data, state, 'commonsTake')) return false;
+  const boards = commonsBoards(state);
+  let any = false;
+  for (const board of data.cards.suits) {
+    if ((boards[board]?.length ?? 0) === 0) continue;
+    if (out === null) return true;
+    out.push({ type: 'commonsTake', seat, board });
+    any = true;
+  }
+  return any;
+}
+
+/**
+ * ⭐ DEAN'S VARIANT'S TAKE (09/09/2026): take the whole of one central pile
+ * straight to hand. No fee, no action - see `Fx.takeCommons` for the shape and
+ * the reasoning.
+ *
+ * Every predicate the enumerator checked is re-checked here, on the same
+ * discipline `doCommons` follows.
+ */
+export function doCommonsTake(fx: Fx, seat: Seat, board: Suit): void {
+  const { data, state } = fx;
+  if (!isCommons(data) || !isCommonsTakeToHand(data)) {
+    throw new Error("commonsTake is legal only under rules.turn.commonsTake: 'bonus'");
+  }
+  if (!bonusOpen(data, state, 'commonsTake')) {
+    throw new Error('The bonus slot is shut: spent, or outside its window for this bonusTiming');
+  }
+  const pile = commonsBoards(state)[board];
+  if (pile === undefined) throw new Error(`There is no ${board} board in the commons`);
+  if (pile.length === 0) throw new Error(`The ${board} board is empty`);
+
+  fx.takeCommons(seat, board);
+  state.turn.bonusUsed.push('commonsTake');
+}
+
 /**
  * Is ANY bonus-slot option legal right now? Two of them since v31, and the
  * shrinking is the point: the slot held five options on 19/08/2026 (two visit
@@ -3635,7 +3732,8 @@ export function hasBonusOption(data: GameData, state: GameState, seat: Seat): bo
     bonusDrawOpen(data, state) ||
     collectOpen(data, state, seat) ||
     anyVisitOption(data, state, seat) ||
-    anyCommonsOption(data, state, seat)
+    anyCommonsOption(data, state, seat) ||
+    anyCommonsTakeOption(data, state, seat)
   );
 }
 

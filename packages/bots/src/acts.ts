@@ -233,6 +233,21 @@ export type Act =
    * whole-extra-action premium when the board actually resolves something.
    */
   | { a: 'commons'; board: Suit; fee: CardId }
+  /**
+   * ⭐ DEAN'S VARIANT'S OTHER HALF (09/09/2026, `rules.turn.commonsTake:
+   * 'bonus'`): take the whole of one central pile straight to hand. No fee, no
+   * action, so there is nothing here for `handSpend` or `bonusAction` to price
+   * - see `isProbed` and the `outcome` term, which is what prices the cards
+   * that come out. Carries only `board`: the pile size is public state
+   * (`Scratch.view.commons`), not a fact about the move, so it is read where
+   * it is needed rather than duplicated onto the act - the same choice
+   * `harvest` makes about a stack's size.
+   *
+   * ⭐ ON `isProbed`, for the same reason a door is: what comes out is a fact
+   * about the position (which cards sit in that pile right now), not
+   * something a flat feature can price without rolling the move out.
+   */
+  | { a: 'commonsTake'; board: Suit }
   | { a: 'cardMove'; card: CardId; kind: string; payload: Record<string, unknown> }
   | { a: 'pass' }
   | { a: 'endTurn' }
@@ -430,6 +445,10 @@ export function actOf(move: Move): Act {
     // `host === seat` to read off it because there is no host at all.
     case 'commons':
       return { a: 'commons', board: move.board, fee: move.fee };
+    // ⭐ DEAN'S VARIANT (09/09/2026): the take carries no fee and buys no
+    // action, so there is nothing to normalise beyond the board itself.
+    case 'commonsTake':
+      return { a: 'commonsTake', board: move.board };
     case 'pass':
       return { a: 'pass' };
     case 'endTurn':

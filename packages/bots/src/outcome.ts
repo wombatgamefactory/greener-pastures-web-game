@@ -545,6 +545,19 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
     case 'commonsPlayed':
       return 0;
 
+    /**
+     * ⭐ DEAN'S VARIANT (09/09/2026, commonsTake: 'bonus'): a whole central pile
+     * moved to `seat`'s hand, priced at ZERO HERE and deliberately. `takeCommons`
+     * pushes the cards through `fx.cardsToHand`, which emits its own
+     * `cardsToHand` event beside this one, and THAT is what prices the gain -
+     * the blind draw rate, exactly as a real draw pays. Pricing it again here
+     * would double it, on the same arrangement `commonsPlayed` carries above for
+     * the fee. This case exists only so the event reaches the pricer as a card
+     * it must not read twice.
+     */
+    case 'commonsTaken':
+      return 0;
+
     // A door action's worth arrives as that action's own events, so scoring the
     // fact that a door ran would double count. Same for `visited`: the fee is
     // charged by `handSpend` and `visitFeeJunk`, the payoff is the door.

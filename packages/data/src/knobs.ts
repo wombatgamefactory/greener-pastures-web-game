@@ -81,7 +81,8 @@ export type KnobType =
   | 'meepleDestination'
   | 'paymentHostChoice'
   | 'balloonReward'
-  | 'doorAction';
+  | 'doorAction'
+  | 'commonsTake';
 
 export interface KnobTemplate {
   /** Dotted path, `{}` for a wildcard segment. */
@@ -444,6 +445,36 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'wild pair in a slot counts as two occupants. Dean\'s framing: it "might be a good way of ' +
       'sinking surplus meeples" once the cap is loosened - sweep it with meepleCapPerColour, never ' +
       'alone.',
+  },
+  {
+    template: 'rules.turn.commonsTake',
+    type: 'commonsTake',
+    description:
+      "⭐ DEAN'S VARIANT (Dean, 09/09/2026), READ ONLY UNDER visitCurrency 'commons' and SHIPPED " +
+      'AT harvest, the C5 rule, WHICH MUST STAY BIT-REPRODUCIBLE. His words to the engine ' +
+      'session: "Your bonus action can be to place 1 card in the centre [and take that board\'s ' +
+      'action], OR take all the cards on one pile (without playing a card). If you take the ' +
+      'pile of cards, instead of going into the barn, they go into your HAND. So we remove the ' +
+      'rule that a harvest takes the cards from one central card. Effectively we change the ' +
+      'bonus action into a draw instead of a harvest." ' +
+      "'harvest' is the shipped game: a central pile is reached only through the Harvest " +
+      'action (own full building, or any non-empty pile per C5), whole pile into the ' +
+      "harvester's BARN, rationed by commonsHarvestMin and commonsHarvestTake. " +
+      "'bonus' is the variant, unrun before this pass, at " +
+      'overlays/commons-take-to-hand-v1.overlay.json. TWO CHANGES, NOT ONE: (1) Harvest never ' +
+      'reaches the centre - harvestOptions returns own full buildings only, so the wheat board ' +
+      'is offered only when the seat already has one, and commonsHarvestMin / commonsHarvestTake ' +
+      'have no subject; (2) a NEW bonus move, commonsTake { seat, board }, takes the WHOLE of one ' +
+      "central pile straight to the taker's HAND, no card played, no action bought, no fee. It is " +
+      "the bonus slot's other free half under 'bonus', on the same shape as bonusDraw under " +
+      "'card' and collect under 'meeple': it counts as a bonus use exactly as a commons play " +
+      "does, so A Helping Hand's second slot lets a seat play twice, take twice, or one of " +
+      'each, never three, and under bonusTiming "start" it is only offered before the main ' +
+      'action. ⭐ WHY IT EXISTS: a17 now has to watch THREE shares of a turn - PLAY (paid), TAKE ' +
+      '(free) and SLOT UNSPENT - because commonsTake is a free option sharing the slot with the ' +
+      'paid commons play, which is the solitaire law this project has measured under every ' +
+      'currency it has shipped (a free option in the bonus slot crowds out the paid one). Watch ' +
+      "the free option's share of USED slots (play + take), not of all turns, for that reading.",
   },
 
   // --- Economy -------------------------------------------------------------

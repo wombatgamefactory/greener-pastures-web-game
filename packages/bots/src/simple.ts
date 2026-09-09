@@ -106,6 +106,11 @@ export const GREEDY_PRIORITY: readonly MoveType[] = [
   // and it is the same answer: greedy is the regression baseline, it is not in
   // `BALANCE_PROFILES`, and no arm is measured through it.
   'commons',
+  // ⭐ DEAN'S VARIANT (09/09/2026, commonsTake: 'bonus'): sits with `bonusDraw`,
+  // the shipped game's other free bonus-slot option, on the same judgement -
+  // greedy takes the paid `commons` play first when both are on offer, and
+  // never enumerates under the shipped `'harvest'` rule.
+  'commonsTake',
   'bonusDraw',
   // ⭐ COLLECT SITS BELOW `visit` AND BESIDE `bonusDraw`, which is the same
   // judgement in the meeple arm's currency: it is that arm's solitaire half, so

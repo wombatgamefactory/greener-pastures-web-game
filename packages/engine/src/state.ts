@@ -246,8 +246,17 @@ export interface AerodromeState {
  * grant nothing at all; under it the rule is "up to `bonusSlotsFor` plays", so
  * the card buys a SECOND play onto a central board and never a third. The
  * exemption is in `bonusOpen` and is keyed on the option, not on the mode.
+ *
+ * ⭐ `commonsTake` JOINS IT UNDER DEAN'S VARIANT (`rules.turn.commonsTake:
+ * 'bonus'`, 09/09/2026): a free draw of one whole central pile to hand, the
+ * variant's other half of the slot beside `commons`. It carries the SAME
+ * exemption as `commons` and for the same reason - a seat may play twice,
+ * take twice, or one of each with A Helping Hand, never three - so
+ * `bonusOpen` treats both options as "up to `bonusSlotsFor` uses" rather than
+ * "one of each". Never produced under `commonsTake: 'harvest'`, the shipped
+ * rule.
  */
-export type BonusOption = 'draw' | 'visit' | 'collect' | 'commons';
+export type BonusOption = 'draw' | 'visit' | 'collect' | 'commons' | 'commonsTake';
 
 /**
  * Everything scoped to the current turn. Turn end replaces the whole object,
@@ -1031,6 +1040,25 @@ export type Move =
    * `hasMainOption`.
    */
   | { type: 'commons'; seat: Seat; board: Suit; fee: CardId }
+  /**
+   * ⭐ DEAN'S VARIANT (09/09/2026, `rules.turn.commonsTake: 'bonus'`): the
+   * bonus slot's OTHER half under that knob, and never producible under the
+   * shipped `'harvest'` rule.
+   *
+   * Take the WHOLE of one central board's pile, straight into the taker's
+   * HAND. No card is played, no fee is paid, no action is bought - it is a
+   * free draw of a known, chosen pile, in Dean's own words *"we change the
+   * bonus action into a draw instead of a harvest"*. `board` names the pile;
+   * it must be non-empty, exactly as a Harvest of it would have to be under
+   * the shipped rule.
+   *
+   * It counts as a bonus use exactly as a `commons` play does (`BonusOption`
+   * carries the same "up to `bonusSlotsFor` uses" exemption for both), so A
+   * Helping Hand's second slot lets a seat play twice, take twice, or one of
+   * each - never three. Under `bonusTiming: 'start'` it is only ever offered
+   * before the main action, the same window `commons` plays live in.
+   */
+  | { type: 'commonsTake'; seat: Seat; board: Suit }
   /** Legal only when no main action is: spends the action, keeps the bonus slot. */
   | { type: 'pass'; seat: Seat }
   /** Decline whatever options are still live and end the turn. Legal once the action is spent. */
@@ -1061,6 +1089,7 @@ const MOVE_TYPE_KEYS = {
   visit: true,
   collect: true,
   commons: true,
+  commonsTake: true,
   pass: true,
   endTurn: true,
 } satisfies Record<MoveType, true>;
@@ -1134,6 +1163,17 @@ export type GameEvent =
    * inflation (a16) and the door mix (a07) go on reading a single field (D4).
    */
   | { e: 'commonsPlayed'; seat: Seat; board: Suit; card: CardId; pileSize: number }
+  /**
+   * ⭐ A WHOLE CENTRAL PILE WAS TAKEN TO HAND (Dean's variant, 09/09/2026,
+   * `rules.turn.commonsTake: 'bonus'`). The bonus slot's other free option
+   * under that knob: no fee, no action, the pile empties into `seat`'s hand.
+   * `cards` is the whole pile as it stood, oldest first, so the sim can price
+   * the take by what came out exactly as it would a draw.
+   *
+   * Never emitted under `commonsTake: 'harvest'`, the shipped rule, where a
+   * central pile is reached only through `harvested` with `source: 'commons'`.
+   */
+  | { e: 'commonsTaken'; seat: Seat; board: Suit; cards: CardId[] }
   /**
    * A DOOR ACTION RAN. `colour` is whose door it is (which is also what a meeple
    * of that colour does), `action` is what it did, and `via` is what paid for

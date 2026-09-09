@@ -287,11 +287,17 @@ function cardMoveSpend(payload: Record<string, unknown>): CardId | null {
  * meeple as a move term and `priceEvent` prices the same meeple as an event, and
  * only the fact that a delivery is never probed keeps those two from both firing.
  */
+// ⭐ DEAN'S VARIANT (09/09/2026, commonsTake: 'bonus') PUTS `commonsTake` ON
+// THIS LIST TOO: what a take is worth is a fact about the position - which
+// cards sit in that pile right now - not a fixed count the way
+// `rules.turn.bonusDraw` is, so it rolls out through the same `outcome` term
+// rather than a flat feature.
 function isProbed(act: Act): boolean {
   switch (act.a) {
     case 'grow':
     case 'visit':
     case 'commons':
+    case 'commonsTake':
     case 'spendMeeple':
     case 'cardMove':
     case 'balloon':
@@ -545,6 +551,10 @@ export const TERMS: readonly Term[] = [
       // ONLY thing that can see what the bonus slot buys, because the slot holds
       // exactly one option and its whole value is the board's action.
       'commons',
+      // ⭐ DEAN'S VARIANT'S TAKE (09/09/2026, commonsTake: 'bonus'): the only
+      // thing that can see what a take is actually worth, on the same footing
+      // as `commons` above - a rollout, priced through `cardsToHand`.
+      'commonsTake',
       'spendMeeple',
       'cardMove',
       'moveBalloon',

@@ -197,6 +197,23 @@ export function isCommons(data: GameData): boolean {
 }
 
 /**
+ * Is DEAN'S VARIANT of 09/09/2026 live - the commons' Harvest turned into a
+ * free draw of a whole pile to hand? See `rules.turn.commonsTake` and
+ * `CommonsTake` for the ruling in full.
+ *
+ * ⭐ DEFAULTS FALSE. Meaningless outside the commons, but this does not gate on
+ * `isCommons` itself, on the same reasoning as `isMeepleAsCard`: the knob can
+ * never be `'bonus'` while `visitCurrency` is anything but `'commons'` in
+ * practice, because only `overlays/commons-take-to-hand-v1.overlay.json`
+ * touches it and it sets `visitCurrency: 'commons'` in the same breath.
+ * Callers that already know they are in the commons may read this directly;
+ * callers that do not should check `isCommons` first.
+ */
+export function isCommonsTakeToHand(data: GameData): boolean {
+  return data.rules.turn.commonsTake === 'bonus';
+}
+
+/**
  * Is R15 live - a meeple spendable as a card of its colour? See
  * `rules.turn.meepleAsCard`.
  *

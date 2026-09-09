@@ -81,6 +81,27 @@ export type BonusTiming = 'start' | 'any' | 'end';
 export type VisitCurrency = 'card' | 'meeple' | 'commons';
 
 /**
+ * ⭐ WHAT A HARVEST OF THE CENTRE IS, UNDER THE COMMONS. See
+ * `rules.turn.commonsTake`.
+ *
+ * Dean's variant, put to the engine session on 09/09/2026: *"Your bonus action
+ * can be to place 1 card in the centre [and take that board's action], OR take
+ * all the cards on one pile (without playing a card). If you take the pile of
+ * cards, instead of going into the barn, they go into your HAND. So we remove
+ * the rule that a harvest takes the cards from one central card. Effectively
+ * we change the bonus action into a draw instead of a harvest."*
+ *
+ * `'harvest'` is the shipped rule (C5): a central pile is reached only by
+ * Harvest, whole pile to the harvester's BARN, and `commonsHarvestMin` /
+ * `commonsHarvestTake` ration it. `'bonus'` is Dean's variant: Harvest never
+ * reaches the centre at all - the wheat board buys a Harvest of an own full
+ * building only - and the bonus slot's second option becomes `commonsTake`, a
+ * free draw of one whole pile straight into the taker's HAND. Read only under
+ * `visitCurrency: 'commons'`; subjectless under `'card'` and `'meeple'`.
+ */
+export type CommonsTake = 'harvest' | 'bonus';
+
+/**
  * Trigger keywords detected in the printed text. This is keyword detection, not a
  * resolved ruling: `needsDesignReview` marks the cards where 0 or more than 1
  * matched and a human has to read the card.
@@ -839,6 +860,39 @@ export interface RulesFile {
      * decision of who to feed and collapses the factor to the host count.
      */
     readonly paymentHostChoice: 'perMeeple' | 'perPayment';
+    /**
+     * ⭐ DEAN'S VARIANT (09/09/2026): TURN THE COMMONS' HARVEST INTO A FREE
+     * DRAW. Read only under `visitCurrency: 'commons'`; subjectless under
+     * `'card'` and `'meeple'`. See `CommonsTake` for the ruling in full.
+     *
+     * `'harvest'` IS THE SHIPPED RULE (C5) AND MUST STAY BIT-REPRODUCIBLE: a
+     * central pile is reached only through the Harvest action - own full
+     * building or any non-empty central pile, whole pile to the harvester's
+     * BARN - so nothing here moves the shipped game.
+     *
+     * `'bonus'` is Dean's variant, unrun before this pass
+     * (`overlays/commons-take-to-hand-v1.overlay.json`). Two changes, not one:
+     *
+     *   1. **Harvest never reaches the centre.** `harvestOptions` returns own
+     *      full buildings only, so the wheat board's action can do nothing
+     *      that a full pile alone would enable - `commonsHarvestMin` and
+     *      `commonsHarvestTake` have no subject, and the wheat board is
+     *      offered only when the seat already has a full building of its own.
+     *   2. **A new bonus move, `commonsTake`,** takes the WHOLE of one central
+     *      pile straight into the taker's HAND, no card played, no action
+     *      bought. It is the bonus slot's other half under `'bonus'`, exactly
+     *      as Draw 1 is under `'card'` and Collect is under `'meeple'`: a
+     *      free option sharing the slot with the paid `commons` play, so a17
+     *      now watches three shares of a turn - PLAY, TAKE and SLOT UNSPENT -
+     *      rather than two.
+     *
+     * Dean's own words for why: *"we change the bonus action into a draw
+     * instead of a harvest"* - the take is a draw of a known, chosen pile
+     * rather than the top of a random deck, and it competes with the paid
+     * play on the same "is the free option crowding out the paid one" law
+     * this project has measured under every currency it has shipped.
+     */
+    readonly commonsTake: CommonsTake;
   };
   readonly economy: {
     /**
@@ -939,6 +993,10 @@ export interface RulesFile {
      * lands on REACHES `n`, so at `n = 3` a play onto an empty wheat board buys
      * a Harvest of nothing and the wheat board is simply not offered unless some
      * pile is already deep enough or the seat has a full building.
+     *
+     * ⭐ HAS NO SUBJECT UNDER `commonsTake: 'bonus'` (Dean, 09/09/2026): Harvest
+     * never reaches the centre under that knob, so there is no central harvest
+     * left for this to ration.
      */
     readonly commonsHarvestMin: number | null;
     /**
@@ -960,6 +1018,10 @@ export interface RulesFile {
      * cards behind is the only rule that changes the ratio itself, because the
      * remainder stays in the centre where it can still be taken later or stranded
      * at the end. Read it against a18's conservation line.
+     *
+     * ⭐ HAS NO SUBJECT UNDER `commonsTake: 'bonus'` (Dean, 09/09/2026): Harvest
+     * never reaches the centre under that knob, so there is no central harvest
+     * left for this to cap - `commonsTake` moves a whole pile at once, always.
      */
     readonly commonsHarvestTake: number | null;
   };

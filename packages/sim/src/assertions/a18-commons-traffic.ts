@@ -1,4 +1,4 @@
-import { isCommons } from '@gp/data';
+import { isCommons, isCommonsTakeToHand } from '@gp/data';
 
 import type { Assertion, Measurement } from './types.js';
 import { NO_REMEDY } from './types.js';
@@ -139,7 +139,14 @@ export const commonsTraffic: Assertion = {
     'end); barn cards from the CENTRE against barn cards off a seat’s own buildings, pooled ' +
     "AND by seat count, with Dean's 30-40% target printed beside it; the fee-suit mix with the " +
     'off-crop share; and the median size of the whole centre by game third. No subject under ' +
-    'visitCurrency "card" or "meeple".',
+    'visitCurrency "card" or "meeple". ' +
+    "⭐ UNDER DEAN'S VARIANT (rules.turn.commonsTake: 'bonus', 09/09/2026) THE HARVEST-SIDE " +
+    'READINGS ARE REPLACED WHOLE: central harvests, the harvest histogram and the wheat-board ' +
+    "split all read 0 or 'no subject' by construction - Harvest never reaches the centre under " +
+    'that knob - and are printed instead as central TAKES per player per game, the take-size ' +
+    'distribution, the conservation line re-derived as plays = taken out + stranded, and the ' +
+    'farm bypass moved from the barn to the HAND (cards taken to hand from the centre, against ' +
+    'deck draws where that count exists).',
   threshold:
     'OBSERVE, and there is NO FAIL CONDITION in this pass. The design names no number for any ' +
     'of these readings, the handoff names none, and one taken from the first commons run would ' +
@@ -172,6 +179,132 @@ export const commonsTraffic: Assertion = {
     const turns = totalTurns(games);
     const plays = sum(games.map((g) => sum(g.commonsPlaysBySeat)));
     const seatGames = sum(games.map((g) => g.seats));
+
+    const feeTotal = sum(games.map((g) => sum(Object.values(g.commonsPlaysByFeeSuit))));
+    const feeMix = new Map<string, number>();
+    for (const g of games) {
+      for (const [suit, n] of Object.entries(g.commonsPlaysByFeeSuit)) {
+        feeMix.set(suit, (feeMix.get(suit) ?? 0) + n);
+      }
+    }
+    const offCrop = sum(games.map((g) => g.commonsPlaysOffCrop));
+
+    // The centre's size by third, pooled as the MEDIAN OF PER-GAME MEDIANS.
+    // Each game computes its own thirds in `finish` for the reason that field's
+    // comment gives: games are different lengths, so a series aligned on round 1
+    // would compare one game's endgame with another's midgame.
+    const thirds = [0, 1, 2].map((i) =>
+      median(
+        games.flatMap((g) => {
+          const v = g.commonsPileSizeByRoundThird[i];
+          return v === undefined || !Number.isFinite(v) ? [] : [v];
+        }),
+      ),
+    );
+
+    const feeSuitLines = [
+      `THE FEE-SUIT MIX (L5), what the table actually burns: ${[...feeMix.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([suit, n]) => `${suit} ${pct(feeTotal === 0 ? NaN : n / feeTotal, 0)}`)
+        .join('  ')}`,
+      `OFF-CROP SHARE: ${pct(feeTotal === 0 ? NaN : offCrop / feeTotal)} of plays paid with a ` +
+        `card that was NOT the payer's own suit (${offCrop} of ${feeTotal}). A farm feeding ` +
+        'the centre with its OWN suit is burning its engine to buy an action; one feeding it ' +
+        'with somebody else’s is clearing junk, which is what L5 wants. Any card pays for ' +
+        'any board by default (C3); overlays/commons-colour-match-v1.overlay.json is the arm ' +
+        'that removes the choice.',
+      `THE CENTRE'S SIZE BY GAME THIRD, median cards standing on all five piles: ` +
+        `${thirds.map((t, i) => `${['first', 'middle', 'last'][i]} ${num(t, 1)}`).join('  ')}. ` +
+        'A series that climbs and never falls is a centre nobody bothers to harvest, which ' +
+        'is a different failure from one that empties every round.',
+      '⚠️ THE BOTS ARE NOT PRICED FOR ANY OF THIS. A fee is picked by visitFeeJunk and a ' +
+        'board by what its action is worth to the payer alone; nothing in the pricer knows ' +
+        'that a card played onto a pile is a card a RIVAL may harvest, and no bot has ever ' +
+        'declined to fatten a pile the leader was about to take. That is ledger C64’s ' +
+        'blindness arriving one design later: these numbers are the RULES speaking, not a ' +
+        'taste.',
+      '⛔ NO FAIL CONDITION IN THIS PASS. Every line above is OBSERVE, because the design ' +
+        'names no number for any of them and one taken from this run would be a snapshot ' +
+        'test. reference-v15 has no noise floor either, so a delta in any of these is not ' +
+        'yet formally readable.',
+    ];
+
+    // ⭐ DEAN'S VARIANT (09/09/2026, `rules.turn.commonsTake: 'bonus'`): Harvest
+    // never reaches the centre under this knob (see `harvestOptions`), so the
+    // whole harvest-side half of this file - central harvests, the pile-depth
+    // histogram, the wheat-board split, the farm bypass into the BARN - reads 0
+    // or has no subject BY CONSTRUCTION. The bypass moved from the barn to the
+    // HAND instead: a `commonsTake` move carries the whole of it, so this
+    // branch reports takes where the shipped branch below reports harvests.
+    if (isCommonsTakeToHand(data)) {
+      const takes = sum(games.map((g) => sum(g.commonsTakesBySeat)));
+      const stranded = sum(games.map((g) => g.commonsStrandedAtEnd));
+      const takenCards = sum(games.map((g) => sum(g.commonsTakenCardsBySeat)));
+      const sizes = games.flatMap((g) => g.commonsTakeSizes);
+      const value = turns === 0 ? NaN : plays / turns;
+
+      const buckets = [1, 2, 3, 4].map((n) => sizes.filter((x) => x === n).length);
+      const big = sizes.filter((x) => x >= 5).length;
+      const histogram = [...buckets.map((c, i) => [`${i + 1}`, c] as const), ['5+', big] as const]
+        .map(
+          ([label, count]) =>
+            `${label}: ${count} ${pct(sizes.length === 0 ? NaN : count / sizes.length, 0)}`,
+        )
+        .join('   ');
+
+      return {
+        value,
+        headline:
+          `${num(value, 2)} plays per player per turn (${plays} plays over ${turns} turns); ` +
+          `${num(seatGames === 0 ? NaN : takes / seatGames, 2)} central takes per player ` +
+          `per game; central harvests read 0 by construction under commonsTake: 'bonus'`,
+        detail: [
+          `⭐ DEAN'S VARIANT (rules.turn.commonsTake: 'bonus', 09/09/2026): CENTRAL HARVESTS ` +
+            'READ 0 BY CONSTRUCTION. harvestOptions never returns a central board under this ' +
+            'knob, so the wheat board buys an own-building Harvest or nothing at all - a central ' +
+            'pile is reached only through the new `commonsTake` bonus move, which is reported ' +
+            'here instead. `commonsHarvestMin` and `commonsHarvestTake` have no subject.',
+          `⚠️ THE PLAY RATE IS a17'S NUMBER AND ITS VERDICT IS a17'S: ` +
+            `${pct(value)} of turns play a card, against Dean's band of 30%-60% ("earned, not ` +
+            'automatic", 09/09/2026). It is repeated here because everything else on this page ' +
+            'is read against it, and it deliberately carries no verdict here.',
+          `plays per game: ${num(games.length === 0 ? NaN : plays / games.length, 1)} across ` +
+            `${games.length} ended games, ${num(seatGames === 0 ? NaN : plays / seatGames, 1)} ` +
+            'per player per game.',
+          `CENTRAL TAKES: ${takes} in all, ` +
+            `${num(seatGames === 0 ? NaN : takes / seatGames, 2)} per player per game, taking ` +
+            `a mean of ${num(mean(sizes), 2)} and a median of ${num(median(sizes), 1)} cards ` +
+            `(p90 ${num(percentile(sizes, 0.9), 1)}, ` +
+            `max ${sizes.length === 0 ? 'n/a' : sizes.reduce((a, b) => (b > a ? b : a), 0)}). A ` +
+            "pile only ever leaves by a take (Dean's variant) or by sitting stranded at game " +
+            'end - never by Harvest.',
+          `⭐ CARDS TAKEN PER CENTRAL TAKE, the distribution: ${histogram}.`,
+          `⭐⭐ THE CONSERVATION LINE, per game, RE-DERIVED FOR THE VARIANT: ` +
+            `${num(games.length === 0 ? NaN : plays / games.length, 1)} cards played INTO the ` +
+            `centre = ${num(games.length === 0 ? NaN : takenCards / games.length, 1)} TAKEN OUT ` +
+            `+ ${num(games.length === 0 ? NaN : stranded / games.length, 1)} STRANDED at game ` +
+            `end (${plays} = ${takenCards} + ${stranded} over ${games.length} ended games; ` +
+            `stranded is ${pct(plays === 0 ? NaN : stranded / plays)} of plays). The shipped ` +
+            'line reads plays = harvested out + stranded; under this variant nothing is ever ' +
+            'harvested out of the centre, so the line becomes plays = TAKEN out + stranded, and ' +
+            'the same closed-system arithmetic still has to balance.',
+          `⭐⭐ THE FARM BYPASS MOVED FROM THE BARN TO THE HAND. It reads 0% CENTRE-TO-BARN BY ` +
+            "CONSTRUCTION - no harvest of a central pile is possible under commonsTake: 'bonus', " +
+            'so `barnFromCommonsBySeat` is a structural zero and the old ratio has no subject. ' +
+            `THE NUMBER TO READ INSTEAD: ${takenCards} cards moved to a HAND from the centre ` +
+            `(${num(games.length === 0 ? NaN : takenCards / games.length, 1)} a game, ` +
+            `${num(seatGames === 0 ? NaN : takenCards / seatGames, 1)} per player per game) ` +
+            'against cards drawn from decks per game - which this instrument does not currently ' +
+            'total, so only the centre-to-hand count is printed. **IF THAT COUNT DWARFS A ' +
+            "SEAT'S DECK DRAWS, THE SAME QUESTION APPLIES UNDER A NEW NAME: is the hand being " +
+            "filled by the table's own discipline (grow, harvest, deliver) or by a free lucky " +
+            'dip into whichever pile got fat?**',
+          ...feeSuitLines,
+        ],
+        verdict: 'OBSERVE',
+      };
+    }
+
     const harvests = sum(games.map((g) => sum(g.commonsHarvestsBySeat)));
     const bought = sum(games.map((g) => sum(g.commonsHarvestsBoughtBySeat)));
     const fromCentre = sum(games.map((g) => sum(g.barnFromCommonsBySeat)));
@@ -204,28 +337,6 @@ export const commonsTraffic: Assertion = {
       const total = centre + own;
       return `${slice.seats}p ${pct(total === 0 ? NaN : centre / total)}`;
     });
-
-    const feeTotal = sum(games.map((g) => sum(Object.values(g.commonsPlaysByFeeSuit))));
-    const feeMix = new Map<string, number>();
-    for (const g of games) {
-      for (const [suit, n] of Object.entries(g.commonsPlaysByFeeSuit)) {
-        feeMix.set(suit, (feeMix.get(suit) ?? 0) + n);
-      }
-    }
-    const offCrop = sum(games.map((g) => g.commonsPlaysOffCrop));
-
-    // The centre's size by third, pooled as the MEDIAN OF PER-GAME MEDIANS.
-    // Each game computes its own thirds in `finish` for the reason that field's
-    // comment gives: games are different lengths, so a series aligned on round 1
-    // would compare one game's endgame with another's midgame.
-    const thirds = [0, 1, 2].map((i) =>
-      median(
-        games.flatMap((g) => {
-          const v = g.commonsPileSizeByRoundThird[i];
-          return v === undefined || !Number.isFinite(v) ? [] : [v];
-        }),
-      ),
-    );
 
     return {
       value,
@@ -291,30 +402,7 @@ export const commonsTraffic: Assertion = {
           'deck, hand, stack and discard shortcuts fill a barn too and are counted in ' +
           'barnInByRoute. The share above is of HARVESTED cards, which is the comparison the ' +
           'question asks for.',
-        `THE FEE-SUIT MIX (L5), what the table actually burns: ${[...feeMix.entries()]
-          .sort((a, b) => b[1] - a[1])
-          .map(([suit, n]) => `${suit} ${pct(feeTotal === 0 ? NaN : n / feeTotal, 0)}`)
-          .join('  ')}`,
-        `OFF-CROP SHARE: ${pct(feeTotal === 0 ? NaN : offCrop / feeTotal)} of plays paid with a ` +
-          `card that was NOT the payer's own suit (${offCrop} of ${feeTotal}). A farm feeding ` +
-          'the centre with its OWN suit is burning its engine to buy an action; one feeding it ' +
-          'with somebody else’s is clearing junk, which is what L5 wants. Any card pays for ' +
-          'any board by default (C3); overlays/commons-colour-match-v1.overlay.json is the arm ' +
-          'that removes the choice.',
-        `THE CENTRE'S SIZE BY GAME THIRD, median cards standing on all five piles: ` +
-          `${thirds.map((t, i) => `${['first', 'middle', 'last'][i]} ${num(t, 1)}`).join('  ')}. ` +
-          'A series that climbs and never falls is a centre nobody bothers to harvest, which ' +
-          'is a different failure from one that empties every round.',
-        '⚠️ THE BOTS ARE NOT PRICED FOR ANY OF THIS. A fee is picked by visitFeeJunk and a ' +
-          'board by what its action is worth to the payer alone; nothing in the pricer knows ' +
-          'that a card played onto a pile is a card a RIVAL may harvest, and no bot has ever ' +
-          'declined to fatten a pile the leader was about to take. That is ledger C64’s ' +
-          'blindness arriving one design later: these numbers are the RULES speaking, not a ' +
-          'taste.',
-        '⛔ NO FAIL CONDITION IN THIS PASS. Every line above is OBSERVE, because the design ' +
-          'names no number for any of them and one taken from this run would be a snapshot ' +
-          'test. reference-v15 has no noise floor either, so a delta in any of these is not ' +
-          'yet formally readable.',
+        ...feeSuitLines,
       ],
       verdict: 'OBSERVE',
     };

@@ -96,7 +96,15 @@ const MEEPLE_WINDOW: readonly MoveType[] = ['spendMeeple'];
  * `windowedPick` returns null and the ordinary argmax takes the bonus after the
  * main action - the same path both meeple controls and the v31 control take.
  */
-const BONUS_WINDOW: readonly MoveType[] = ['visit', 'bonusDraw', 'collect', 'commons'];
+const BONUS_WINDOW: readonly MoveType[] = [
+  'visit',
+  'bonusDraw',
+  'collect',
+  'commons',
+  // ⭐ DEAN'S VARIANT (09/09/2026, commonsTake: 'bonus'): the slot's other free
+  // option under that knob, on the same footing as `bonusDraw` and `collect`.
+  'commonsTake',
+];
 
 /**
  * The scoring loop. One `Scratch` for the whole decision, one `Outcomes` (which

@@ -11,10 +11,12 @@ import {
   bonusDrawOpen,
   buildOptions,
   commonsOptions,
+  commonsTakeOptions,
   deliverOptions,
   doBonusDraw,
   doBuild,
   doCommons,
+  doCommonsTake,
   doDeliver,
   doDraw,
   doMoveBalloon,
@@ -159,6 +161,11 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
   // so under the commons' own `bonusTiming: 'start'` these moves are on offer
   // exactly while the action is unspent, which is C2.
   moves.push(...commonsOptions(data, state, seat));
+  // ⭐ DEAN'S VARIANT (09/09/2026, `rules.turn.commonsTake: 'bonus'`): the
+  // slot's OTHER free option under that knob, empty under the shipped
+  // `'harvest'` rule and under both controls - `commonsTakeOptions` fails
+  // closed on the same checks `commonsOptions` does.
+  moves.push(...commonsTakeOptions(data, state, seat));
   moves.push(...standingMoves(data, state, seat));
   if (turn.actionSpent) moves.push({ type: 'endTurn', seat });
 
@@ -178,7 +185,9 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
 const MAIN_ACTIONS = new Set<Move['type']>([
   // ⚠️ `commons` IS NOT HERE EITHER, on the same rule as the three above it: it
   // spends the bonus slot, and adding it would suppress `pass` for a seat whose
-  // only remaining option is a commons play.
+  // only remaining option is a commons play. `commonsTake` (Dean's variant,
+  // 09/09/2026) is the same case again: it spends `turn.bonusUsed`, never
+  // `turn.actionSpent`.
   'draw',
   'build',
   'grow',
@@ -199,6 +208,7 @@ function resumeFor(type: Move['type']): Resume {
     type === 'bonusDraw' ||
     type === 'collect' ||
     type === 'commons' ||
+    type === 'commonsTake' ||
     type === 'spendMeeple'
     ? 'bonus'
     : 'main';
@@ -304,6 +314,11 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
       // One card onto one central board, then that board's action (C3). No
       // host, so nothing here names a second seat.
       doCommons(fx, move.seat, move.board, move.fee);
+      break;
+    case 'commonsTake':
+      // Dean's variant (09/09/2026): the whole of one central pile, straight
+      // to hand. No card played, no action bought.
+      doCommonsTake(fx, move.seat, move.board);
       break;
     case 'endTurn':
       if (!turn.actionSpent) throw new Error('End turn requires the action spent (or passed)');

@@ -1,4 +1,4 @@
-import { isCommons, isMeepleCurrency } from '@gp/data';
+import { isCommons, isCommonsTakeToHand, isMeepleCurrency } from '@gp/data';
 
 import type { GameMetrics } from '../observe.js';
 import type { Assertion, Measurement, MeasureContext } from './types.js';
@@ -221,6 +221,27 @@ export const bonusMix: Assertion = {
 };
 
 /**
+ * ⭐ DEAN'S VARIANT'S OTHER FREE OPTION (09/09/2026, `commonsTake: 'bonus'`):
+ * how much of the SLOT'S ACTUAL USE was the free take rather than the paid
+ * play. Not part of the verdict - see `commonsMode`'s own comment on why -
+ * printed as the line that watches the solitaire law under a new name.
+ */
+function freeShareLine(plays: number, takes: number): string {
+  const used = plays + takes;
+  return (
+    `⭐ THE FREE OPTION'S SHARE OF USED SLOTS: ${pct(used === 0 ? NaN : takes / used)} ` +
+    `(${takes} takes of ${used} used slots, plays and takes together). This is the solitaire ` +
+    'law arriving under a new name: every currency this project has shipped has watched whether ' +
+    'a free option sharing the bonus slot with a paid one crowds it out (Draw 1 against the ' +
+    "card visit, the empty-board Collect against the meeple visit), and commonsTake: 'bonus' " +
+    'puts a free option back in the slot beside the paid commons play for the first time since ' +
+    "the commons shipped. ⚠️ OBSERVE, NOT FAIL: Dean set a band for the slot's OVERALL use rate " +
+    '(play or take together), not for the split between the two, so a high free share is a ' +
+    'reading to watch rather than a threshold this assertion can fail on.'
+  );
+}
+
+/**
  * ⭐ THE COMMONS (C1-C10, 09/09/2026): two columns and Dean's band.
  *
  * The per-seat-count rows are computed first and the pooled figure second, and
@@ -229,11 +250,16 @@ export const bonusMix: Assertion = {
  * two players means the threshold knob is the next run") and a pooled number
  * hides a hot 2-player table inside a healthy average.
  */
-function commonsMode({ pooled }: MeasureContext): Measurement {
+function commonsMode({ data, pooled }: MeasureContext): Measurement {
+  const takeToHand = isCommonsTakeToHand(data);
   const games = pooled.ended;
   const turns = totalTurns(games);
   const bonusTurns = totalBonusTurns(games);
   const plays = sum(games.map((g) => sum(g.commonsPlaysBySeat)));
+  // ⭐ DEAN'S VARIANT (09/09/2026, `rules.turn.commonsTake: 'bonus'`): the
+  // free half of the slot. 0 by construction under the shipped `'harvest'`
+  // rule, where `commonsTake` moves are never enumerated.
+  const takes = takeToHand ? sum(games.map((g) => sum(g.commonsTakesBySeat))) : 0;
   const unspent = Math.max(0, turns - bonusTurns);
 
   if (turns === 0) {
@@ -248,6 +274,12 @@ function commonsMode({ pooled }: MeasureContext): Measurement {
   // 09/09/2026 - and judging plays per turn would fail a table for owning a card.
   // Both are printed; only the turn share carries the verdict (corrected
   // 09/09/2026, after the first baseline was read on the wrong quantity).
+  //
+  // ⭐ AND UNDER commonsTake: 'bonus' "USED" MEANS PLAY OR TAKE, NOT PLAY
+  // ALONE: `bonusTurnsBySeat` counts a turn as a bonus turn on EITHER move
+  // (see observe.ts's `turnEnded` fold), so this ratio and the band it is
+  // read against are unchanged in shape - only the menu behind "used" grew a
+  // free half.
   const value = bonusTurns / turns;
   const playsPerTurn = plays / turns;
 
@@ -256,12 +288,14 @@ function commonsMode({ pooled }: MeasureContext): Measurement {
     .map((slice) => {
       const t = totalTurns(slice.ended);
       const p = sum(slice.ended.map((g) => sum(g.commonsPlaysBySeat)));
+      const k = takeToHand ? sum(slice.ended.map((g) => sum(g.commonsTakesBySeat))) : 0;
       const b = totalBonusTurns(slice.ended);
       return {
         seats: slice.seats,
         turns: t,
         rate: t === 0 ? NaN : b / t,
         playsPerTurn: t === 0 ? NaN : p / t,
+        takesPerTurn: t === 0 ? NaN : k / t,
         unspent: t === 0 ? NaN : Math.max(0, t - b) / t,
       };
     });
@@ -269,6 +303,8 @@ function commonsMode({ pooled }: MeasureContext): Measurement {
   // By BOARD, which under the commons is by ACTION: the board decides what the
   // play buys (C3), so this row is the door mix asked of the plays rather than
   // of the door uses. a07 owns the door mix itself and reads a different table.
+  // ⚠️ PAID PLAYS ONLY, even under `commonsTake: 'bonus'` - a take buys no
+  // action (it is a free draw of a chosen pile), so it has no door to mix into.
   const byBoard = new Map<string, number>();
   for (const g of games) {
     for (const [board, n] of Object.entries(g.commonsPlaysByBoard)) {
@@ -287,58 +323,97 @@ function commonsMode({ pooled }: MeasureContext): Measurement {
       ? 'FAIL'
       : 'PASS';
 
-  return {
-    value,
-    headline:
-      `the bonus slot is used on ${pct(value)} of ${turns} turns ` +
+  const headline = takeToHand
+    ? `the bonus slot is used on ${pct(value)} of ${turns} turns ` +
+      `(Dean's band ${pct(PLAY_FLOOR, 0)}-${pct(PLAY_CEILING, 0)}); ` +
+      `PLAY ${share(plays)}, TAKE ${share(takes)}, SLOT UNSPENT ${share(unspent)}` +
+      (outOfBand.length === 0
+        ? ''
+        : `; OUT OF BAND at ${outOfBand.map((r) => `${r.seats}p ${pct(r.rate)}`).join(', ')}`)
+    : `the bonus slot is used on ${pct(value)} of ${turns} turns ` +
       `(Dean's band ${pct(PLAY_FLOOR, 0)}-${pct(PLAY_CEILING, 0)}); plays per turn ${pct(playsPerTurn)} ` +
       `(A Helping Hand's second play is the difference); SLOT UNSPENT ${share(unspent)}` +
       (outOfBand.length === 0
         ? ''
-        : `; OUT OF BAND at ${outOfBand.map((r) => `${r.seats}p ${pct(r.rate)}`).join(', ')}`),
-    detail: [
-      `the two-column tally, as a share of every turn played: SLOT USED ${pct(value)} ` +
-        `(${share(plays)} plays per turn), SLOT UNSPENT ${share(unspent)}. There is no third column: the slot holds one option ` +
-        '(C9) - no free Draw 1, no Collect, no self-visit - so an unspent slot is a turn that ' +
-        'chose not to pay a card, and nothing else.',
-      `by seat count, and THIS is the reading the verdict is taken on (slot used; plays per turn in brackets): ${rows
-        .map((r) => `${r.seats}p ${pct(r.rate)} (${pct(r.playsPerTurn)}) of ${r.turns} turns`)
-        .join('   ')}. The handoff asks the question this way round because a hot 2-player ` +
-        'table hides inside a healthy pool.',
-      `slot unspent by seat count: ${rows.map((r) => `${r.seats}p ${pct(r.unspent)}`).join('  ')}`,
-      `by BOARD, which is by ACTION (C3): ${boardLine || 'no plays'}. ` +
-        `${plays} plays over ${games.length} games, ` +
-        `${num(games.length === 0 ? NaN : plays / games.length, 1)} a game. Watch Deliver ` +
-        '(vegetable took 8% of door uses under the meeples) and whether Draw 2 (orchard) is ' +
-        'dead now that the fee is a card and the board hands back two.',
-      `⭐ DEAN'S BAND, 09/09/2026, AND IT IS HIS NUMBER RATHER THAN ONE READ OFF OUR OWN ` +
-        `OUTPUT: the bonus should be taken "${pct(PLAY_FLOOR, 0)}-${pct(PLAY_CEILING, 0)} of ` +
-        'the time... earned, not automatic". BELOW the floor the fee is too dear or the boards ' +
-        'buy too little and the commons is decoration; ABOVE the ceiling the bonus is a phase ' +
-        'of the turn rather than a choice, and rules.economy.commonsThreshold (C10) is the one ' +
-        'number that pulls it back.',
-      '⛔ THE SOLITAIRE LAW HAS NO SUBJECT HERE, and that is why this arm reports a BAND rather ' +
-        'than a ratio. Every previous verdict in this file was "the visit must not be ' +
-        'outnumbered by the largest single SOLITAIRE option"; the commons slot has no second ' +
-        'option to be outnumbered by, so the law would read against zero and hand a table that ' +
-        'never plays a card a triumphant PASS. The early/late split goes with it for the same ' +
-        'reason: it asked whether a solitaire alternative was an opening convenience.',
-      '⚠️ A TURN CAN PLAY TWICE. A Helping Hand grants a second play onto a central board (C8), ' +
-        'so PLAYS PER TURN runs above the share of turns that used the slot. The VERDICT is ' +
-        'taken on the turn share (slot used plus slot unspent is every turn); plays per turn ' +
-        'is printed beside it so a Helping Hand cannot fail the band on its own. Corrected ' +
-        '09/09/2026: the first reference-v15 baseline was judged on plays per turn (68.5%) ' +
-        'when the turn share read 58.9%.',
-      UNSPENT_CAVEAT,
-      '⚠️ AND UNDER THE COMMONS THE UNSPENT COLUMN MEANS SOMETHING SHARPER THAN UNDER EITHER ' +
-        'CONTROL: a play COSTS A CARD, so an unspent slot is a seat that declined to pay rather ' +
-        'than one that had nothing to spend. It is still the rational floor - a bot never ' +
-        'forgets a slot and never mis-prices a card it will want next turn - so read it as the ' +
-        'cheapest the restriction can possibly be, never as what a table will do.',
-      perGameLine(games.length, bonusTurns, turns),
-    ],
-    verdict,
-  };
+        : `; OUT OF BAND at ${outOfBand.map((r) => `${r.seats}p ${pct(r.rate)}`).join(', ')}`);
+
+  const detail = takeToHand
+    ? [
+        `⭐ DEAN'S VARIANT (rules.turn.commonsTake: 'bonus', 09/09/2026): THREE columns rather ` +
+          'than two, as a share of every turn played: PLAY ' +
+          `${share(plays)} (a card paid, a board's action bought), TAKE ${share(takes)} (a whole ` +
+          'central pile taken free to hand - no card, no fee, no action), SLOT UNSPENT ' +
+          `${share(unspent)}.`,
+        `by seat count, and THIS is the reading the verdict is taken on (slot used = play or ` +
+          `take; play/take per turn in brackets): ${rows
+            .map(
+              (r) =>
+                `${r.seats}p ${pct(r.rate)} (${pct(r.playsPerTurn)} play, ${pct(r.takesPerTurn)} take) of ${r.turns} turns`,
+            )
+            .join('   ')}. The handoff asks the question this way round because a hot ` +
+          '2-player table hides inside a healthy pool.',
+        `slot unspent by seat count: ${rows.map((r) => `${r.seats}p ${pct(r.unspent)}`).join('  ')}`,
+        `by BOARD PLAYED (the PAID half only, C3): ${boardLine || 'no plays'}. ${plays} plays ` +
+          `over ${games.length} games, ${num(games.length === 0 ? NaN : plays / games.length, 1)} ` +
+          'a game. A take buys no action, so it has no board mix of its own - a18 carries the ' +
+          'take-size distribution instead.',
+        `⭐ DEAN'S BAND, 09/09/2026, AND IT IS HIS NUMBER RATHER THAN ONE READ OFF OUR OWN ` +
+          `OUTPUT: the bonus should be taken "${pct(PLAY_FLOOR, 0)}-${pct(PLAY_CEILING, 0)} of ` +
+          'the time... earned, not automatic". It is read on the slot\'s TOTAL use (play plus ' +
+          "take), because Dean's sentence is about the slot being spent at all, not about which " +
+          'half of it did the spending.',
+        freeShareLine(plays, takes),
+        UNSPENT_CAVEAT,
+        '⚠️ AND UNDER THE COMMONS THE UNSPENT COLUMN MEANS SOMETHING SHARPER THAN UNDER EITHER ' +
+          'CONTROL: a PLAY costs a card, though a TAKE costs nothing at all - so an unspent slot ' +
+          'here is a seat that declined even the free option, which is a stronger finding than ' +
+          'declining a paid one.',
+        perGameLine(games.length, bonusTurns, turns),
+      ]
+    : [
+        `the two-column tally, as a share of every turn played: SLOT USED ${pct(value)} ` +
+          `(${share(plays)} plays per turn), SLOT UNSPENT ${share(unspent)}. There is no third column: the slot holds one option ` +
+          '(C9) - no free Draw 1, no Collect, no self-visit - so an unspent slot is a turn that ' +
+          'chose not to pay a card, and nothing else.',
+        `by seat count, and THIS is the reading the verdict is taken on (slot used; plays per turn in brackets): ${rows
+          .map((r) => `${r.seats}p ${pct(r.rate)} (${pct(r.playsPerTurn)}) of ${r.turns} turns`)
+          .join('   ')}. The handoff asks the question this way round because a hot 2-player ` +
+          'table hides inside a healthy pool.',
+        `slot unspent by seat count: ${rows.map((r) => `${r.seats}p ${pct(r.unspent)}`).join('  ')}`,
+        `by BOARD, which is by ACTION (C3): ${boardLine || 'no plays'}. ` +
+          `${plays} plays over ${games.length} games, ` +
+          `${num(games.length === 0 ? NaN : plays / games.length, 1)} a game. Watch Deliver ` +
+          '(vegetable took 8% of door uses under the meeples) and whether Draw 2 (orchard) is ' +
+          'dead now that the fee is a card and the board hands back two.',
+        `⭐ DEAN'S BAND, 09/09/2026, AND IT IS HIS NUMBER RATHER THAN ONE READ OFF OUR OWN ` +
+          `OUTPUT: the bonus should be taken "${pct(PLAY_FLOOR, 0)}-${pct(PLAY_CEILING, 0)} of ` +
+          'the time... earned, not automatic". BELOW the floor the fee is too dear or the boards ' +
+          'buy too little and the commons is decoration; ABOVE the ceiling the bonus is a phase ' +
+          'of the turn rather than a choice, and rules.economy.commonsThreshold (C10) is the one ' +
+          'number that pulls it back.',
+        '⛔ THE SOLITAIRE LAW HAS NO SUBJECT HERE, and that is why this arm reports a BAND rather ' +
+          'than a ratio. Every previous verdict in this file was "the visit must not be ' +
+          'outnumbered by the largest single SOLITAIRE option"; the commons slot has no second ' +
+          'option to be outnumbered by, so the law would read against zero and hand a table that ' +
+          'never plays a card a triumphant PASS. The early/late split goes with it for the same ' +
+          'reason: it asked whether a solitaire alternative was an opening convenience. ⭐ IT ' +
+          "COMES BACK UNDER commonsTake: 'bonus' - see that arm's own detail lines.",
+        '⚠️ A TURN CAN PLAY TWICE. A Helping Hand grants a second play onto a central board (C8), ' +
+          'so PLAYS PER TURN runs above the share of turns that used the slot. The VERDICT is ' +
+          'taken on the turn share (slot used plus slot unspent is every turn); plays per turn ' +
+          'is printed beside it so a Helping Hand cannot fail the band on its own. Corrected ' +
+          '09/09/2026: the first reference-v15 baseline was judged on plays per turn (68.5%) ' +
+          'when the turn share read 58.9%.',
+        UNSPENT_CAVEAT,
+        '⚠️ AND UNDER THE COMMONS THE UNSPENT COLUMN MEANS SOMETHING SHARPER THAN UNDER EITHER ' +
+          'CONTROL: a play COSTS A CARD, so an unspent slot is a seat that declined to pay rather ' +
+          'than one that had nothing to spend. It is still the rational floor - a bot never ' +
+          'forgets a slot and never mis-prices a card it will want next turn - so read it as the ' +
+          'cheapest the restriction can possibly be, never as what a table will do.',
+        perGameLine(games.length, bonusTurns, turns),
+      ];
+
+  return { value, headline, detail, verdict };
 }
 
 function outside(rate: number): boolean {

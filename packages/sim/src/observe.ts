@@ -111,6 +111,10 @@ export const EVENT_KINDS = {
   // the play BOUGHT, which is a different question and a different counter
   // (D4). Silent under both controls, where there is no commons at all.
   commonsPlayed: true,
+  // ⭐ DEAN'S VARIANT'S ONE NEW EVENT (09/09/2026, `rules.turn.commonsTake:
+  // 'bonus'`): the whole of one central pile moving to a hand, no fee, no
+  // action. Silent under the shipped `'harvest'` rule and under both controls.
+  commonsTaken: true,
   reshuffled: true,
   built: true,
   demolished: true,
@@ -139,6 +143,10 @@ export const MOVE_KINDS = {
   // the MOVE knows which card left the hand (so the funnel can junk it), and
   // only the EVENT knows how deep the pile it landed on was.
   commons: true,
+  // ⭐ DEAN'S VARIANT'S OTHER BONUS OPTION (09/09/2026): folded through BOTH the
+  // move and the `commonsTaken` event, on the same split `commons` draws above -
+  // the MOVE is what a bonus-turn tally counts, the EVENT carries the cards.
+  commonsTake: true,
   cardMove: true,
   draw: true,
   bonusDraw: true,
@@ -810,6 +818,28 @@ export interface GameMetrics {
    */
   commonsStrandedAtEnd: number;
 
+  // --- DEAN'S VARIANT, 09/09/2026 (`rules.turn.commonsTake: 'bonus'`) -------
+  //
+  // ⚠️ EVERY LINE HERE IS ZERO OR EMPTY UNDER `commonsTake: 'harvest'` (the
+  // shipped rule) AND UNDER BOTH CONTROLS, on the same contract as the block
+  // above: read a zero as "the variant was off", never as a finding.
+
+  /**
+   * ⭐ TAKES OF A CENTRAL PILE TO HAND (Dean's variant), by the seat that took
+   * them. The variant's other free bonus option, and the numerator a17's
+   * three-way tally reads under `commonsTake: 'bonus'` - PLAY (`commonsPlaysBySeat`
+   * above) against TAKE against SLOT UNSPENT. One event per take, and A Helping
+   * Hand's second use (which the take carries too, see `BonusOption`) counts
+   * twice.
+   */
+  commonsTakesBySeat: number[];
+  /** ...by the BOARD taken from - the colour, and therefore which pile emptied. */
+  commonsTakesByBoard: Record<string, number>;
+  /** How many cards each take carried. The 1/2/3/4/5+ histogram, mean, median, p90 and max are a18's. */
+  commonsTakeSizes: number[];
+  /** Cards moved to a hand by a take, by the SEAT that took them - the hand-share half of the farm-bypass reading under this variant. */
+  commonsTakenCardsBySeat: number[];
+
   // --- The Dairy rebuild, 2026-08-10 ---------------------------------------
   //
   // Four lines its pass conditions need and no previous run recorded. They
@@ -1185,6 +1215,10 @@ export class Fold {
       barnFromCommonsBySeat: zeros(),
       barnFromOwnBySeat: zeros(),
       commonsStrandedAtEnd: 0,
+      commonsTakesBySeat: zeros(),
+      commonsTakesByBoard: byColour(),
+      commonsTakeSizes: [],
+      commonsTakenCardsBySeat: zeros(),
       buildsBySeat: zeros(),
       noBuildTurnsBySeat: zeros(),
       buildSampledBySeat: zeros(),
@@ -1602,6 +1636,16 @@ export class Fold {
         this.m.bonusDrawBySeat[move.seat] = (this.m.bonusDrawBySeat[move.seat] ?? 0) + 1;
         this.m.actionsBySeat[move.seat] = (this.m.actionsBySeat[move.seat] ?? 0) + 1;
         return;
+      // ⭐ DEAN'S VARIANT'S OTHER BONUS OPTION (09/09/2026, commonsTake:
+      // 'bonus'), counted here for the CARD count off `commonsTaken` and here
+      // for the ACTION count - on the same footing as `bonusDraw` above, on
+      // Dean's own framing: "we change the bonus action into a draw instead
+      // of a harvest". No `doorUsed` ever fires for a take (no door is
+      // bought), so `boughtDoorActionsBySeat` is untouched and only the plain
+      // action count moves.
+      case 'commonsTake':
+        this.m.actionsBySeat[move.seat] = (this.m.actionsBySeat[move.seat] ?? 0) + 1;
+        return;
       case 'task':
         this.taskAnswer(d, pre.tasks[0]);
         return;
@@ -1812,6 +1856,20 @@ export class Fold {
         if (feeSuit !== player(d.post, e.seat).suit) m.commonsPlaysOffCrop += 1;
         return;
       }
+      // ⭐ DEAN'S VARIANT'S ONE EVENT (09/09/2026, `commonsTake: 'bonus'`): the
+      // whole of one central pile moved to `e.seat`'s hand. `cards.length` is
+      // both the take's size (a18's 1/2/3/4/5+ histogram) and the hand-share
+      // half of the farm-bypass reading under this variant, since a `harvested`
+      // with `source: 'commons'` can never fire while Harvest never reaches
+      // the centre.
+      case 'commonsTaken': {
+        m.commonsTakesBySeat[e.seat] = (m.commonsTakesBySeat[e.seat] ?? 0) + 1;
+        m.commonsTakesByBoard[e.board] = (m.commonsTakesByBoard[e.board] ?? 0) + 1;
+        m.commonsTakeSizes.push(e.cards.length);
+        m.commonsTakenCardsBySeat[e.seat] =
+          (m.commonsTakenCardsBySeat[e.seat] ?? 0) + e.cards.length;
+        return;
+      }
       case 'harvested': {
         m.barnInByRoute.harvest = (m.barnInByRoute.harvest ?? 0) + e.cards.length;
         m.barnInBySeat[e.seat] = (m.barnInBySeat[e.seat] ?? 0) + e.cards.length;
@@ -1954,11 +2012,18 @@ export class Fold {
         // missed - which would under-report bonus turns and over-report SLOT
         // UNSPENT, and slot unspent is one of a17's two columns under this mode
         // and the only one that is derived rather than counted.
+        //
+        // ⭐ AND `commonsTake` JOINS IT BESIDE `commons` (Dean's variant,
+        // 09/09/2026, `commonsTake: 'bonus'`): the slot's other free option
+        // under that knob, on exactly the same reasoning - a take that lands in
+        // the same apply as the boundary must count as a bonus turn or a17's
+        // three-way tally under-reports the free option's own share.
         const bonusMove =
           d.move.type === 'visit' ||
           d.move.type === 'bonusDraw' ||
           d.move.type === 'collect' ||
-          d.move.type === 'commons';
+          d.move.type === 'commons' ||
+          d.move.type === 'commonsTake';
         if (d.pre.turn.bonusUsed.length > 0 || bonusMove) {
           m.bonusTurnsBySeat[seat] = (m.bonusTurnsBySeat[seat] ?? 0) + 1;
         }

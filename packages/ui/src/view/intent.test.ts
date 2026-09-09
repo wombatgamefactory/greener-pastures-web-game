@@ -184,6 +184,14 @@ function reachable(position: Position, move: Move): boolean {
     case 'commons':
       return false;
 
+    /*
+     * ⭐ DEAN'S VARIANT'S TAKE (09/09/2026), THE SAME ADMISSION AS `commons`
+     * ABOVE AND FOR THE SAME REASON: no central boards on the table to drag
+     * from, and it is on `UNROUTED_MOVES` beside `commons`.
+     */
+    case 'commonsTake':
+      return false;
+
     default:
       return move satisfies never;
   }
@@ -565,9 +573,11 @@ describe('the route table cannot drift from the engine', () => {
       // And the admission has to name a move type the engine really offers.
       expect(MOVE_TYPES).toContain(type);
     }
-    // ⛔ THE ONE ADMISSION THE UI IS ALLOWED TODAY, ledger C59. If this list
+    // ⛔ THE ADMISSIONS THE UI IS ALLOWED TODAY, ledger C59. If this list
     // grows, the UI debt grew with it and the ledger row is owed an update.
-    expect([...UNROUTED_MOVES]).toEqual(['commons']);
+    // `commonsTake` (Dean's variant, 09/09/2026) joined `commons` for the
+    // same reason: no central boards on the table to drag from or take.
+    expect([...UNROUTED_MOVES]).toEqual(['commons', 'commonsTake']);
   });
 });
 

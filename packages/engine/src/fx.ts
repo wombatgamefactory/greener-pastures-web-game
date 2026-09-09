@@ -699,6 +699,25 @@ export class Fx {
     this.emit({ e: 'commonsPlayed', seat, board, card, pileSize: pile.length });
   }
 
+  /**
+   * ⭐ DEAN'S VARIANT (09/09/2026, `rules.turn.commonsTake: 'bonus'`): take the
+   * WHOLE of one central pile, straight to the taker's HAND.
+   *
+   * Deliberately NOT `harvest`: nothing here touches a barn, no `afterHarvest`
+   * fires (there was no Harvest), and the destination is a hand rather than the
+   * harvester's barn - "instead of going into the barn, they go into your
+   * HAND", Dean's own words. Routed through `cardsToHand` so the gain is priced
+   * exactly as a draw is (`outcome.ts`'s `cardsToHand` case), and its own
+   * `commonsTaken` event carries the board and the cards for the sim to count.
+   */
+  takeCommons(seat: Seat, board: Suit): void {
+    const pile = commonsBoards(this.state)[board];
+    if (!pile) throw new Error(`There is no ${board} board in the commons`);
+    const cards = pile.splice(0);
+    this.cardsToHand(seat, cards);
+    this.emit({ e: 'commonsTaken', seat, board, cards });
+  }
+
   private land(from: Seat, onto: CardInPlay, card: CardId): void {
     const building = this.buildingDraft(onto);
     this.touch(onto.seat);

@@ -23,6 +23,7 @@ import {
   bonusDrawOpen,
   collectOptions,
   commonsOptions,
+  commonsTakeOptions,
   harvestOptions,
   meepleOptions,
   visitOptions,
@@ -109,6 +110,11 @@ function seedPile(state: GameState, board: Suit, ...cards: CardId[]): void {
 
 function play(seat: Seat, board: Suit, fee: CardId): Move {
   return { type: 'commons', seat, board, fee };
+}
+
+/** Dean's variant (09/09/2026): take the whole of one central pile to hand. */
+function take(seat: Seat, board: Suit): Move {
+  return { type: 'commonsTake', seat, board };
 }
 
 describe('the commons is the shipped game', () => {
@@ -562,6 +568,108 @@ describe('the two harvest knobs (Dean, 09/09/2026)', () => {
     loadStack(min3, s, WHEAT, 'W4', 2);
     dealTo(min3, s, WHEAT, 'W7');
     expect(commonsOptions(min3, s, WHEAT).some((m) => m.board === 'wheat')).toBe(true);
+  });
+});
+
+/**
+ * ⭐ DEAN'S VARIANT (09/09/2026, `rules.turn.commonsTake: 'bonus'`),
+ * `overlays/commons-take-to-hand-v1.overlay.json`: "Your bonus action can be
+ * to place 1 card in the centre [and take that board's action], OR take all
+ * the cards on one pile (without playing a card). If you take the pile of
+ * cards, instead of going into the barn, they go into your HAND. So we
+ * remove the rule that a harvest takes the cards from one central card.
+ * Effectively we change the bonus action into a draw instead of a harvest."
+ */
+describe("Dean's variant: commonsTake 'bonus' (09/09/2026)", () => {
+  const takeToHand: GameData = loadGameData({
+    name: 'commons-take-to-hand-v1',
+    schemaVersion: 1,
+    set: { 'rules.turn.commonsTake': 'bonus' },
+  });
+
+  it('never offers a central board to Harvest', () => {
+    const s = makeState(takeToHand, ['wheat', 'orchard']);
+    s.turnPlayer = WHEAT;
+    seedPile(s, 'dairy', 'D4', 'D5');
+    const board = commonsBoardCard(takeToHand, 'dairy');
+    expect(harvestOptions(takeToHand, s, WHEAT)).not.toContain(board);
+    expect(() => apply(takeToHand, s, { type: 'harvest', seat: WHEAT, building: board })).toThrow();
+  });
+
+  it('moves the whole pile to hand and uses the bonus, buying no action', () => {
+    const s = makeState(takeToHand, ['wheat', 'orchard']);
+    s.turnPlayer = WHEAT;
+    seedPile(s, 'dairy', 'D4', 'D5');
+    const before = player(s, WHEAT).hand.length;
+    const out = apply(takeToHand, s, take(WHEAT, 'dairy'));
+    expect(player(out.state, WHEAT).hand.length).toBe(before + 2);
+    expect(player(out.state, WHEAT).hand).toEqual(expect.arrayContaining(['D4', 'D5']));
+    expect(commonsBoards(out.state)['dairy']).toEqual([]);
+    expect(player(out.state, WHEAT).barn).toEqual([]);
+    expect(out.state.turn.bonusUsed).toEqual(['commonsTake']);
+    expect(out.state.turn.actionSpent).toBe(false);
+    const taken = out.events.find((e) => e.e === 'commonsTaken');
+    expect(taken?.e === 'commonsTaken' ? taken.board : null).toBe('dairy');
+    expect(taken?.e === 'commonsTaken' ? taken.cards : []).toEqual(['D4', 'D5']);
+    // No fee, no door action: no card left any hand and no door ran.
+    expect(out.events.some((e) => e.e === 'commonsPlayed')).toBe(false);
+    expect(out.events.some((e) => e.e === 'doorUsed')).toBe(false);
+    expect(out.events.some((e) => e.e === 'harvested')).toBe(false);
+  });
+
+  it('is not offered on an empty pile', () => {
+    const s = makeState(takeToHand, ['wheat', 'orchard']);
+    s.turnPlayer = WHEAT;
+    expect(commonsTakeOptions(takeToHand, s, WHEAT).some((m) => m.board === 'dairy')).toBe(false);
+    expect(() =>
+      apply(takeToHand, s, { type: 'commonsTake', seat: WHEAT, board: 'dairy' }),
+    ).toThrow();
+  });
+
+  it('lets play and take share a turn only with A Helping Hand, never without it', () => {
+    const bare = makeState(takeToHand, ['wheat', 'orchard']);
+    bare.turnPlayer = WHEAT;
+    seedPile(bare, 'dairy', 'D4');
+    dealTo(takeToHand, bare, WHEAT, 'W7');
+    const afterPlay = settle(apply(takeToHand, bare, play(WHEAT, 'orchard', 'W7')).state);
+    expect(commonsTakeOptions(takeToHand, afterPlay, WHEAT)).toEqual([]);
+    expect(() => apply(takeToHand, afterPlay, take(WHEAT, 'dairy'))).toThrow();
+
+    const helped = makeState(takeToHand, ['wheat', 'orchard']);
+    helped.turnPlayer = WHEAT;
+    buildFor(takeToHand, helped, WHEAT, 'W18');
+    seedPile(helped, 'dairy', 'D4');
+    dealTo(takeToHand, helped, WHEAT, 'W7');
+    const afterHelpedPlay = settle(apply(takeToHand, helped, play(WHEAT, 'orchard', 'W7')).state);
+    expect(commonsTakeOptions(takeToHand, afterHelpedPlay, WHEAT).length).toBeGreaterThan(0);
+    const afterTake = apply(takeToHand, afterHelpedPlay, take(WHEAT, 'dairy'));
+    expect(afterTake.state.turn.bonusUsed).toEqual(['commons', 'commonsTake']);
+    // Never a third, whichever order the two arrive in.
+    expect(commonsOptions(takeToHand, afterTake.state, WHEAT)).toEqual([]);
+    expect(commonsTakeOptions(takeToHand, afterTake.state, WHEAT)).toEqual([]);
+  });
+
+  it('offers the wheat board only on a full building of your own (D6 does not hold)', () => {
+    const bare = makeState(takeToHand, ['wheat', 'orchard']);
+    bare.turnPlayer = WHEAT;
+    seedPile(bare, 'wheat', 'W9', 'W10');
+    dealTo(takeToHand, bare, WHEAT, 'W7');
+    expect(commonsOptions(takeToHand, bare, WHEAT).some((m) => m.board === 'wheat')).toBe(false);
+
+    const full = makeState(takeToHand, ['wheat', 'orchard']);
+    full.turnPlayer = WHEAT;
+    buildFor(takeToHand, full, WHEAT, 'W4');
+    loadStack(takeToHand, full, WHEAT, 'W4', 2);
+    dealTo(takeToHand, full, WHEAT, 'W7');
+    expect(commonsOptions(takeToHand, full, WHEAT).some((m) => m.board === 'wheat')).toBe(true);
+  });
+
+  it('enumerates nothing under the shipped default', () => {
+    const s = position();
+    seedPile(s, 'dairy', 'D4', 'D5');
+    expect(commonsTakeOptions(data, s, WHEAT)).toEqual([]);
+    expect(legalMoves(data, s).some((m) => m.type === 'commonsTake')).toBe(false);
+    expect(() => apply(data, s, { type: 'commonsTake', seat: WHEAT, board: 'dairy' })).toThrow();
   });
 });
 

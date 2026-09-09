@@ -60,6 +60,16 @@ const MEEPLE_DESTINATION_VALUES = new Set(['box', 'board']);
 const VISIT_CURRENCY_VALUES: ReadonlySet<string> = new Set<string>(['card', 'meeple', 'commons']);
 
 /**
+ * The closed value set behind `commonsTake` (Dean's variant, 09/09/2026), kept
+ * here for the same reason as `VISIT_CURRENCY_VALUES`: a third value must not
+ * pass validation on one side of the codebase and fail on the other.
+ * `'harvest'` is the shipped C5 rule; `'bonus'` is Dean's variant, where
+ * Harvest never reaches the centre and a free `commonsTake` move draws a whole
+ * pile to hand instead.
+ */
+const COMMONS_TAKE_VALUES: ReadonlySet<string> = new Set<string>(['harvest', 'bonus']);
+
+/**
  * The closed value set behind `doorAction`: what a door may BUY. The five core
  * actions plus `grow`, which is the commons Apiary board and the only door
  * action that is not a `WorkerAction` (09/09/2026, C3). Kept here rather than
@@ -149,6 +159,8 @@ function typeMatches(type: KnobType, value: Leaf): boolean {
       return typeof value === 'string' && BALLOON_REWARD_VALUES.has(value);
     case 'doorAction':
       return typeof value === 'string' && DOOR_ACTION_VALUES.has(value);
+    case 'commonsTake':
+      return typeof value === 'string' && COMMONS_TAKE_VALUES.has(value);
   }
 }
 
