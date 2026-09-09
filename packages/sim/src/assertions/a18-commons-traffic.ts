@@ -174,7 +174,7 @@ export const commonsTraffic: Assertion = {
         `CENTRAL HARVESTS: ${harvests} in all, ` +
           `${num(seatGames === 0 ? NaN : harvests / seatGames, 2)} per player per game, taking ` +
           `a median of ${num(median(piles), 1)} cards (p90 ${num(percentile(piles, 0.9), 1)}, ` +
-          `max ${piles.length === 0 ? 'n/a' : Math.max(...piles)}). A pile only ever leaves by ` +
+          `max ${piles.length === 0 ? 'n/a' : piles.reduce((a, b) => (b > a ? b : a), 0)}). A pile only ever leaves by ` +
           'harvest (D3), so this is the whole of the centre’s outflow.',
         `⭐⭐ THE FARM BYPASS: ${fromCentre} barn cards came out of the CENTRE against ` +
           `${fromOwn} off a seat's OWN buildings (${pct(centreShare)} centre). ` +

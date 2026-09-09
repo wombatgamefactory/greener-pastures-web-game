@@ -1087,25 +1087,35 @@ export interface NoiseFloor {
  * the deltas anybody is arguing about. A delta under the figure here is not a
  * finding, whatever else the report says about it.
  */
+/**
+ * 09/09/2026: re-measured on `reference-v15` (the commons) at n=1580 per seat
+ * count, 4820 games per arm, two seeds, from
+ * `reports/noise-2026-09-09T15-59-21-reference-v15.txt`. reference-v13 and v14
+ * never had a floor. `meeple spend rate` and `self-visit share` are NaN because
+ * there are no meeples and no visits under the commons: no subject, not zero.
+ * ⚠️ This floor covers HEADLINE_METRICS only. There is NO measured floor for the
+ * a17 play rate, the door mix, the farm-bypass share, the off-crop share or the
+ * barn-glut medians, which are the readings the commons pass turns on.
+ */
 export const NOISE_FLOOR: NoiseFloor | null = {
-  reference: 'reference-v12',
-  games: 500,
-  measured: '2026-09-04',
+  reference: 'reference-v15',
+  games: 1580,
+  measured: '2026-09-09',
   movement: {
     'meeples held at game end': 0,
     'barn at game end': 0,
-    'game length, rounds': 1,
-    'visits per turn': 0.002,
-    'actions per turn': 0.005,
-    'meeple spend rate': 0.007,
-    'self-visit share of visits': 0,
-    'unfinished games': 0.001,
-    'winning score': 1,
-    'last as % of winner': 0.006,
-    'tied top score': 0.006,
+    'game length, rounds': 0,
+    'visits per turn': 0,
+    'actions per turn': 0.003,
+    'meeple spend rate': NaN,
+    'self-visit share of visits': NaN,
+    'unfinished games': 0,
+    'winning score': 0,
+    'last as % of winner': 0.005,
+    'tied top score': 0.001,
     'deck reshuffles per game': 0,
     'reshuffles, played crop': 0,
-    'seat deviation': 1.4,
+    'seat deviation': 0.927,
   },
 };
 /**
