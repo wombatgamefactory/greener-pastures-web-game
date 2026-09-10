@@ -528,6 +528,19 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
      * same arrangement, for the same reason, that `visited` carries below for
      * the v31 card fee.
      *
+     * ⚠️ **THAT PARAGRAPH SAID "THE CARD" UNTIL 10/09/2026 AND THE WILD PAIR
+     * MADE IT HALF WRONG.** `handSpend` charges what `cardsLeavingHand` counts,
+     * and that function hard-coded 1 for a commons act because a commons play
+     * could only ever take one card. Under K3 two cards of any colours stand in
+     * for one of the board's colour and BOTH leave the hand, so it now reads 2
+     * when `fee2` is present. The arrangement is unchanged - the fee is still
+     * charged exactly once, on the move - and the count is the thing that moved.
+     *
+     * ⚠️ **AND THIS EVENT NOW FIRES ONCE PER CARD (10/09/2026), so a pair emits
+     * two of them.** Both are still worth 0 here, for the reason below, so the
+     * change is invisible to the pricer; it is stated because a future case that
+     * ever prices this event would be pricing a pair twice.
+     *
      * **The card sitting in the pile is worth 0 to the payer**, and that is a
      * ruling rather than an oversight. It is not lost - somebody harvests that
      * pile eventually (C5), and it may well be this seat on this same turn
@@ -577,7 +590,79 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
       if (isCommonsTakeToSpend(s.data) && event.board === 'wheat') {
         return event.seat === me ? weight(w, 'harvest') * event.cards.length : 0;
       }
+      // ⭐ **AND UNDER `'coins'` (K3, 10/09/2026) IT STAYS 0, WHICH IS A RULING
+      // AND NOT A GAP.** The take mints one coin per card and the pile's cards
+      // go to their suits' discards and LEAVE THE GAME: nothing arrives in a
+      // hand, a barn or a tableau, so there is nothing here to price. The whole
+      // value of the take is the coins, and `coinsMinted` fires beside this
+      // event carrying exactly that (`coins === cards.length`, always). Pricing
+      // `cards.length` here as well would pay the seat twice for one pile, on
+      // the same arrangement `commonsPlayed` and `boardCollected` carry.
       return 0;
+
+    /**
+     * ⭐ **THE MINT (K3/K8, Dean 10/09/2026): ONE COIN PER CARD OFF A CLEARED
+     * CENTRAL PILE, AND THE ONLY FAUCET THE ARM HAS.**
+     *
+     * It is the busiest priced event under `rules.turn.commonsTake: 'coins'` and
+     * the direct heir of `meepleGained`, which was itself the heir of v30's
+     * `coins`. ⛔ **It is NOT that v30 coin coming back**: this one is minted by
+     * nothing but a pile, spends on nothing but the Farmstead's suit power and
+     * the fifteen Endgame cards, scores nothing and breaks no ties (K7). The v31
+     * evaluator's runway machinery priced a currency with a market, a card buy,
+     * an upgrade and a wage behind it and its numbers are void here - see
+     * `coinWorth`'s own entry in `weights.ts` for what 3.5 is argued from.
+     *
+     * A flat count times one weight, because unlike a meeple a coin has no
+     * colour: every coin buys the same two things, so there is nothing for a
+     * per-seat `meepleWorth`-style read to tell apart.
+     *
+     * ⚠️ Reached ONLY inside the rollout of a `commonsTake`, which is on
+     * `isProbed`, so there is no move-term twin to double with - the `coinWorth`
+     * term's own feature is 0 and says why.
+     */
+    case 'coinsMinted':
+      return event.seat === me ? weight(w, 'coinWorth') * event.coins : 0;
+
+    /**
+     * ⭐ **THE COIN LEAVING (K10/K15), CHARGED HERE FOR THE PROBED SINK AND
+     * DELIBERATELY NOT FOR THE UNPROBED ONE.**
+     *
+     * A coin has exactly two sinks and they sit on opposite sides of this file's
+     * one structural line:
+     *
+     *   - **the Farmstead's suit power (K10) is a GROW, and a GROW is PROBED**,
+     *     so this event arrives inside the rollout of the very move that spent
+     *     the coin and the charge belongs HERE. What the coin BUYS - the Draw 3,
+     *     the double GROW, the Harvest of every building, the discounted Build,
+     *     the second Deliver - arrives as those actions' own events in the same
+     *     rollout, so the two halves of the exchange are priced against each
+     *     other exactly as a door's are.
+     *   - **an Endgame card (K15) is a BUILD, and a BUILD IS NOT PROBED**, so a
+     *     build CHOSEN AS THE MOVE never produces a rollout at all and this line
+     *     never sees its coin; the `coinSpend` MOVE term charges that route
+     *     instead, and its own comment carries the argument. A build resolved
+     *     INSIDE another move's rollout - the dairy board's Build door, or the
+     *     Dairy Farmstead's own power - does reach this line and is charged
+     *     here, which is right and is not a double: the move being scored is the
+     *     `commons` or the `grow`, and `coinSpend` does not claim either.
+     *
+     * ⚠️ **THAT IS THE `meepleSpent` TRAP READ THE OTHER WAY UP, AND IT IS WHY
+     * BOTH LINES EXIST.** `meepleSpent` prices at 0 here because its only
+     * producer is unprobed and a move term already charges it; a coin has one
+     * producer on each side of the line, so it takes one of each and the two are
+     * disjoint by construction. A decision can never see both: a build reached
+     * inside a rollout is a task during another move's probe, and a build chosen
+     * as the move is never rolled out.
+     *
+     * ⛔ **IF THE ENDGAME BUILD IS EVER PUT ON `isProbed`, DELETE THE
+     * `coinSpend` TERM IN THE SAME EDIT** or every Endgame card will cost six
+     * coins in the bot's books and none will ever be built. The charge is
+     * `on: 'endgame'`-blind on purpose - it prices what left, not what it
+     * bought - so this line needs no change when that day comes.
+     */
+    case 'coinsSpent':
+      return event.seat === me ? -weight(w, 'coinSpend') * event.coins : 0;
 
     /**
      * ⭐ DEAN'S 'spend' VARIANT'S SUMMARY EVENT (09/09/2026): pure accounting,
@@ -831,8 +916,57 @@ function effectKey(move: Move, act: Act): string {
      */
     case 'balloon':
       return `balloon:${act.balloon}`;
-    case 'cardMove':
-      return `cardMove:${act.card}:${act.kind}:${JSON.stringify(act.payload)}`;
+    /**
+     * ⭐ **THE COMMONS PLAY (10/09/2026), AND THE COLLAPSE IS DELIBERATELY
+     * HALF A COLLAPSE.**
+     *
+     * A single-fee play keeps ONE ROLLOUT PER FEE. That is not a decision so
+     * much as a preservation: `commons` used to fall through to
+     * `JSON.stringify(move)`, and a commons move carries only `type`, `seat`,
+     * `board` and `fee`, of which the first two are constant within a decision -
+     * so this key partitions the moves into exactly the same classes the
+     * stringify did, and the shipped commons prices byte for byte as it did on
+     * 09/09/2026. **The nine fixtures in @gp/sim are the proof and they are the
+     * reason it was not collapsed further.**
+     *
+     * ⭐ **A WILD PAIR (K3) COLLAPSES TO ONE ROLLOUT PER BOARD, AND IT HAS TO.**
+     * The engine offers every C(hand, 2) pair per board: at the engine's hand
+     * bound of 7 that is 21 a board and up to 105 a turn, against a PROBE BUDGET
+     * OF 96 SHARED BY THE WHOLE DECISION. Left uncollapsed the pairs would eat
+     * the budget before the grows, the builds and the deliveries were priced at
+     * all, and the arm would be measuring an exhausted prober rather than a
+     * rule. What the collapse folds away is only WHICH two cards pay, and that
+     * is priced in the open by `visitFeeJunk`, a MOVE term the memo cannot
+     * touch, which ranks both cards of the pair for exactly this reason.
+     *
+     * ⚠️ It inherits the known leak stated above, and inherits it doubled: the
+     * engine gates a board on the hand MINUS the fee, so a pair can strip the
+     * only card a Build board could have built with. The first enumerated pair's
+     * rollout stands for all of them, which is the same bargain `grow` and
+     * `balloon` already strike.
+     */
+    case 'commons':
+      return act.fee2 === undefined
+        ? `commons:${act.board}:${act.fee}`
+        : `commonsPair:${act.board}`;
+    /**
+     * ⭐ **THE TAKE, WHICH IS THE BOARD AND NOTHING ELSE.** What a take is worth
+     * is the pile it clears - cards to hand under `'bonus'`, cards to barn under
+     * `'spend'`'s wheat leg, coins under `'coins'` (K3) - and the board names the
+     * pile, so there is genuinely nothing else about the move that changes the
+     * outcome. Under `'coins'` there is never a fee at all, so this is the whole
+     * key.
+     *
+     * ⚠️ **`'paid'` KEEPS ITS FEE IN THE KEY**, and that is preservation rather
+     * than principle: that variant was measured on 09/09/2026
+     * (`...T22-17-29-...-commons-take-paid-v1.txt`) with one rollout per fee,
+     * and collapsing it now would silently re-cut a report somebody may still
+     * quote. It is the same partition `JSON.stringify(move)` gave it.
+     */
+    case 'commonsTake':
+      return act.fee === undefined
+        ? `commonsTake:${act.board}`
+        : `commonsTake:${act.board}:${act.fee}`;
     default:
       return JSON.stringify(move);
   }

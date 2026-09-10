@@ -92,6 +92,28 @@
  * outside it either, so the v31 card visit and the meeple economy reduce to
  * exactly the pre-09/09/2026 arithmetic - which is what the sim's `-v31-` and
  * `-meeple-` fixtures assert.
+ *
+ * ## ⭐ THE COMMONS WITH COINS (10/09/2026) - NO NEW ACT, TWO NEW FIELDS
+ *
+ * `docs/commons-coins-handoff-2026-09-10-v2.md`, rules K3 and K10, built as a
+ * PAIRED ARM and not as the default. Neither half of it is a new kind of thing a
+ * seat can DO - a commons play is still a commons play and a Grow is still a
+ * Grow - so neither gets an act, exactly as R15's meeple-as-a-card did not:
+ *
+ *   - `commons.fee2` - the WILD PAIR (K3). Two cards of any colours stand in for
+ *     one card of the board's colour and both land on the pile.
+ *   - `grow.coin` - the COIN-ACTIVATED FARMSTEAD (K10). A main-action Grow that
+ *     places nothing and costs one coin instead of a card.
+ *
+ * ⚠️ **THE COIN TAKE NEEDS NOTHING AT ALL**, which is worth saying so nobody
+ * goes looking: `rules.turn.commonsTake: 'coins'` mints one coin per card off a
+ * cleared pile, and the move it rides on is the `commonsTake` that already
+ * exists, with no fee under that value. What the take is WORTH arrives through
+ * the rollout as `coinsMinted`, priced in `outcome.ts`.
+ *
+ * ⚠️ **BOTH FIELDS ARE ABSENT OR FALSE UNTIL THE ARM'S KNOBS ARE ON**, so the
+ * shipped commons and both controls reduce to exactly the pre-10/09/2026
+ * arithmetic - which the nine fixtures in @gp/sim assert byte for byte.
  */
 
 import type { Suit } from '@gp/data';
@@ -160,7 +182,37 @@ export type Act =
    * and the two that do are `handSpend` (no card leaves the hand) and
    * `growSpend` (there is no card to junk-rank).
    */
-  | { a: 'grow'; building: CardId; payment: CardId | null; meeples: readonly Suit[] }
+  /**
+   * ⭐ **`coin` IS THE COIN-ACTIVATED FARMSTEAD (K10, Dean 10/09/2026), AND IT
+   * IS A THIRD WAY FOR `payment` TO BE NULL.**
+   *
+   * Under `rules.economy.farmsteadCoinPower` the Farmstead is a building with
+   * no threshold whose activation cost is ONE COIN, fired as your MAIN action,
+   * once per turn, with nothing placed on it. So `payment` is null for the same
+   * reason R15's meeple-paid Grow has a null payment - no card left the hand -
+   * and every term that already gates on that null keeps working unchanged
+   * (`handSpend` charges nothing, `growSpend` has no card to rank).
+   *
+   * ⚠️ **THE FLAG IS CARRIED ANYWAY, AND THE REASON IS THAT THE NULL IS NOW
+   * AMBIGUOUS.** `payment === null` used to mean exactly one thing (a meeple
+   * paid); it now means "a meeple paid OR a coin paid", and the two cost
+   * different currencies at different weights. Nothing in the shipped table has
+   * to tell them apart yet - the two knobs are mutually exclusive in every
+   * overlay anybody has written, and the coin's price is charged inside the
+   * rollout rather than by a move term (see `priceEvent`'s `coinsSpent`) - but a
+   * term that ever needs to should read this flag rather than re-derive it from
+   * a knob, which is the same rule `Scratch.meepleArm` states.
+   *
+   * `false` on every task-answer Grow and under both controls, so the arm is
+   * gated by the ACT's own shape.
+   */
+  | {
+      a: 'grow';
+      building: CardId;
+      payment: CardId | null;
+      meeples: readonly Suit[];
+      coin: boolean;
+    }
   | { a: 'harvest'; building: CardId }
   /**
    * `spend` is what the ISLAND was paid, in suits, and `meeples` is the part of
@@ -231,8 +283,18 @@ export type Act =
    * one label, and only a rollout can tell them apart. `handSpend` charges the
    * fee, `visitFeeJunk` orders WHICH card pays it, and `bonusAction` pays the
    * whole-extra-action premium when the board actually resolves something.
+   *
+   * ⭐ **`fee2` IS THE WILD PAIR (K3, Dean 10/09/2026), AND IT IS PRESENT ONLY
+   * UNDER `rules.economy.commonsColourMatch` AND `rules.economy.commonsWildPair`
+   * TOGETHER.** Two cards of ANY colours stand in for one card of the board's
+   * colour, and BOTH land on the pile - so a pair costs twice what a single fee
+   * costs and buys exactly the same action. That count is the whole reason the
+   * second card is carried here rather than derived: `cardsLeavingHand` must
+   * read 2, and `visitFeeJunk` must rank BOTH cards, or the bot pays its worst
+   * card and one at random. Absent under the shipped default, where the pair
+   * cannot be enumerated at all.
    */
-  | { a: 'commons'; board: Suit; fee: CardId }
+  | { a: 'commons'; board: Suit; fee: CardId; fee2?: CardId }
   /**
    * ⭐ DEAN'S VARIANT'S OTHER HALF (09/09/2026, `rules.turn.commonsTake:
    * 'bonus'`): take the whole of one central pile straight to hand. No fee, no
@@ -361,12 +423,19 @@ function actOfAnswer(answer: TaskAnswer): Act {
     // down this line. If a mode ever pushes this task with `meepleAsCard` live,
     // this is the line that has to learn about it, exactly as the `build` answer
     // above says of its own riders.
+    //
+    // ⭐ AND `coin` IS FALSE HERE BY RULE (K10, 10/09/2026), not by omission.
+    // The coin-activated Farmstead is your MAIN action: `growOptions` offers it
+    // only when the caller passes `mods.mainAction`, and the `grow` task's
+    // enumerator does not, so a bonus may never buy a suit power and this line
+    // can never see one.
     case 'grow':
       return {
         a: 'grow',
         building: answer.building,
         payment: answer.payment,
         meeples: NO_MEEPLES,
+        coin: false,
       };
     case 'deliver':
       return { a: 'deliver', tile: answer.tile, spend: answer.spend, meeples: NO_MEEPLES };
@@ -414,6 +483,9 @@ export function actOf(move: Move): Act {
         building: move.building,
         payment: move.payment,
         meeples: move.meeples ?? NO_MEEPLES,
+        // ⭐ K10: `true` or ABSENT on the move, never `false`, so the read is a
+        // strict comparison and the act carries a plain boolean either way.
+        coin: move.coin === true,
       };
     case 'harvest':
       return { a: 'harvest', building: move.building };
@@ -449,8 +521,15 @@ export function actOf(move: Move): Act {
     // ⭐ THE COMMONS PLAY (C3). Nothing is derived and nothing is normalised:
     // the move already carries the only two things the play IS, and there is no
     // `host === seat` to read off it because there is no host at all.
+    // ⭐ K3 (10/09/2026): `fee2` rides across ONLY when the engine offered a
+    // wild pair, and the optional field is spelled the same way `commonsTake`'s
+    // fee is below - present or absent, never null - so `cardsLeavingHand` and
+    // `visitFeeJunk` gate on the ACT's shape rather than on the two knobs that
+    // produced it.
     case 'commons':
-      return { a: 'commons', board: move.board, fee: move.fee };
+      return move.fee2 === undefined
+        ? { a: 'commons', board: move.board, fee: move.fee }
+        : { a: 'commons', board: move.board, fee: move.fee, fee2: move.fee2 };
     // ⭐ DEAN'S VARIANTS (09/09/2026): the take buys no action under any of
     // them, so there is nothing to normalise beyond the board itself - except
     // under `'paid'`, where `move.fee` is the card the take costs and

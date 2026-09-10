@@ -25,6 +25,7 @@ import type { Move } from '@gp/engine';
 import { describe, expect, it } from 'vitest';
 
 import { makePolicy, policyRng } from './roster.js';
+import { cardById } from './scratch.js';
 import type { PolicyId } from './roster.js';
 
 /**
@@ -178,6 +179,118 @@ describe('the commons, under the shipped default', () => {
     });
     expect(walked.crash).toBeNull();
     expect(countOf(walked.moves, 'commons')).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * ⭐ THE COMMONS WITH COINS (K1-K15, `docs/commons-coins-handoff-2026-09-10-v2.md`,
+ * 10/09/2026), which is an ARM and not the default.
+ *
+ * ⚠️ **THESE CASES ASSERT THAT THE ECONOMY CLOSES, AND NOTHING ELSE.** A coin
+ * arithmetic with one mint and two sinks fails in exactly one silent way: the
+ * bots mint coins and never spend them, which is what ticket 37 measured of the
+ * v31 coin (65.4% of every coin minted never spent on anything) and what the
+ * arm's a19 "dead coins" line exists to read. A bot that cannot see a coin's
+ * worth would take the free pile all game and leave the Farmstead cold, and
+ * every number in the pass would be about this package rather than about K7.
+ * So: the mint fires, BOTH sinks fire, the pair gets played, and the game ends.
+ * The RATES are the simulator's business and are deliberately not asserted here.
+ */
+describe('the commons with coins, the arm', () => {
+  const coins = loadGameData({
+    name: 'commons-coins-v1',
+    schemaVersion: 1,
+    // The seven passengers of `overlays/commons-coins-v1.overlay.json`, spelled
+    // out rather than loaded, so this case cannot start passing or failing
+    // because somebody edited an overlay file.
+    set: {
+      'rules.turn.visitCurrency': 'commons',
+      'rules.turn.bonusTiming': 'start',
+      'rules.turn.commonsTake': 'coins',
+      'rules.economy.commonsColourMatch': true,
+      'rules.economy.commonsWildPair': true,
+      'rules.economy.endgameCoinCost': 3,
+      'rules.economy.farmsteadCoinPower': true,
+    },
+  });
+
+  it('mints coins, spends them on the Farmstead, plays the pair, and still ends', () => {
+    let mints = 0;
+    let farmstead = 0;
+    let pairs = 0;
+    for (const seed of ['coins-a', 'coins-b', 'coins-c']) {
+      const walked = walk(coins, { seats: 3, seed, policies: MIXED.slice(0, 3) });
+      expect(walked.crash, seed).toBeNull();
+      expect(walked.ended, seed).toBe(true);
+      for (const move of walked.moves) {
+        // The mint (K3/K8): clear a pile, one coin per card. No fee is ever
+        // offered under `'coins'`, so a take here is always the free option.
+        if (move.type === 'commonsTake') mints += 1;
+        // Sink one (K10): the coin-activated Farmstead, a main-action GROW that
+        // places nothing. `coin` is `true` or absent, never `false`.
+        if (move.type === 'grow' && move.coin === true) farmstead += 1;
+        // The wild pair (K3), built for the first time in this arm.
+        if (move.type === 'commons' && move.fee2 !== undefined) pairs += 1;
+      }
+    }
+    expect(mints).toBeGreaterThan(0);
+    expect(farmstead).toBeGreaterThan(0);
+    expect(pairs).toBeGreaterThan(0);
+  });
+
+  /**
+   * ⛔ **SINK TWO IS UNREACHABLE TO THESE BOTS, AND IT IS A PRE-EXISTING BLIND
+   * SPOT RATHER THAN A COIN PRICE.** Measured 10/09/2026 while building
+   * `coinSpend`: over three 3-seat games under the SHIPPED commons, where an
+   * Endgame card costs two cards of its own suit and no coins at all, the bots
+   * built **0 of 38 builds** as Endgame cards. The reason is in the catalogue -
+   * all fifteen print **0 VP** and their whole worth is a game-end handler - and
+   * nothing in `terms.ts` prices a game-end handler, so an Endgame card is worth
+   * `build` 3 plus `farmsteadVp` 1.5 against a cost of `handSpend` 5, and it
+   * loses to everything.
+   *
+   * ⚠️ **THE CONSEQUENCE FOR THE ARM'S OWN MEASUREMENT PLAN IS THE POINT OF
+   * THIS CASE.** a19 asks for "coins spent on the Farmstead against on Endgame
+   * cards" and for dead coins at game end. **That split will read 100 / 0 at any
+   * price of `endgameCoinCost`, and the dead-coin count will be inflated, and
+   * neither is the rule speaking.** Do not sweep the coin price against it, and
+   * do not read K15 as measured until an Endgame card is worth something to a
+   * bot.
+   *
+   * The case pins both halves so the finding cannot rot: it fails the day
+   * somebody teaches the bots to price a game-end scorer, which is exactly when
+   * the note above needs re-reading.
+   */
+  it('never buys an Endgame card, under the arm OR the shipped game', () => {
+    const endgameBuilds = (data: GameData, seed: string): number =>
+      walk(data, { seats: 3, seed, policies: MIXED.slice(0, 3) }).moves.filter(
+        (move) => move.type === 'build' && cardById(data, move.card).type === 'endgame',
+      ).length;
+    for (const seed of ['coins-a', 'coins-b', 'coins-c']) {
+      expect(endgameBuilds(coins, seed), `arm ${seed}`).toBe(0);
+      expect(endgameBuilds(BASE_GAME_DATA, seed), `shipped ${seed}`).toBe(0);
+    }
+  });
+
+  it('replays a seed move for move under the arm too', () => {
+    const spec = { seats: 2, seed: 'coins-same', policies: ['balanced', 'socialite'] as const };
+    const first = walk(coins, { ...spec, policies: [...spec.policies] });
+    const second = walk(coins, { ...spec, policies: [...spec.policies] });
+    expect(first.crash).toBeNull();
+    expect(second.moves).toEqual(first.moves);
+  });
+
+  it('leaves the hermit unable to play a card, but free to clear a pile', () => {
+    // ⚠️ THE CONTROL CHANGES SHAPE UNDER THIS ARM AND IT IS WORTH KNOWING. The
+    // `visit` term claims the commons PLAY and nothing else, so a hermit still
+    // never puts a card on a board - but the coin take is a `commonsTake`, which
+    // `visit` does not claim, so the arm hands the hermit back a bonus option
+    // the shipped commons had taken away from it (C9). Read a hermit's game
+    // length under the coins arm knowing it is no longer "the game with the
+    // bonus slot deleted".
+    const walked = walk(coins, { seats: 2, seed: 'coins-hermit', policies: ['hermit', 'hermit'] });
+    expect(walked.crash).toBeNull();
+    expect(countOf(walked.moves, 'commons')).toBe(0);
   });
 });
 

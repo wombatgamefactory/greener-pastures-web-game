@@ -121,7 +121,7 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import { deliveryVp } from '@gp/data';
+import { deliveryVp, endgameCoinCost } from '@gp/data';
 import type { CardId, Move, MoveType } from '@gp/engine';
 import { commonsBoardSuit } from '@gp/engine';
 
@@ -428,8 +428,18 @@ function cardsLeavingHand(act: Act): number {
     // ⭐ THE COMMONS FEE (C3): always exactly one card, never null, and the fee
     // is EXTRA in every case - a Build board still pays the build's own cost on
     // top, which arrives through the rollout as the `built` event's payment.
+    //
+    // ⭐ **UNLESS IT IS A WILD PAIR, WHICH IS TWO (K3, 10/09/2026).** This line
+    // hard-coded `return 1` until the pair was built, and the comment beside
+    // `commonsPlayed` in `outcome.ts` said the fee was "charged once by the
+    // `handSpend` MOVE term" - both were right about a slot that could only ever
+    // take one card. Two cards of any colours now stand in for one of the
+    // board's colour and BOTH leave the hand, so a pair that read 1 here would
+    // be half price to the bot and it would take pairs it should have refused.
+    // Gated on the ACT's shape (`fee2` present) rather than on the two knobs, so
+    // the two can never disagree.
     case 'commons':
-      return 1;
+      return act.fee2 === undefined ? 1 : 2;
     // ⭐ DEAN'S 'paid' VARIANT (09/09/2026): `fee` is present only under that
     // value, exactly as `visit`'s fee is present only under 'card' - gated on
     // the ACT rather than on the knob so the two can never disagree. `'bonus'`
@@ -782,6 +792,81 @@ export const TERMS: readonly Term[] = [
       for (const colour of meeplesLeavingSupply(act)) cost += meepleWorth(s, colour);
       if (act.a === 'visit') for (const colour of act.toll) cost += meepleWorth(s, colour);
       return -cost;
+    },
+    cost: true,
+  },
+
+  // --- the coins (the commons-with-coins arm, K7-K15, 10/09/2026) -----------
+  {
+    /**
+     * ⭐ **WHAT A COIN IS WORTH, AND THIS TERM'S MOVE-SIDE FEATURE IS ZERO ON
+     * PURPOSE** (K3/K8, Dean 10/09/2026).
+     *
+     * The only mint in the game is clearing a central pile: `commonsTake` under
+     * `rules.turn.commonsTake: 'coins'` discards the whole pile to its suits'
+     * discards and pays one coin per card. That move is on `isProbed`, so what
+     * it is worth arrives INSIDE THE ROLLOUT as `coinsMinted`, priced at this
+     * weight by `outcome.ts`. Charging it here as well would pay the seat twice
+     * for one pile - which is the exact trap `meepleSpent` names in that file,
+     * and the same probed / unprobed split `meeplesLeavingSupply` is built on.
+     *
+     * So why does the term exist at all? Because `checkWeightTable` holds both
+     * ways: every weight must name a real term and every term must have a
+     * weight, and the pricer reads its numbers out of the same table by term
+     * name (`weight(w, 'coinWorth')`). A term is how a number gets INTO that
+     * table. It claims `commonsTake` rather than nothing, because that is the
+     * move the number is about, and a reader who greps for where a coin is
+     * earned should land on the mint's own move type.
+     *
+     * ⚠️ **IF A SECOND MINT IS EVER ADDED, THIS IS WHERE IT GOES** - and read
+     * K7 first, because every earlier coin economy in this project died of a
+     * second faucet.
+     */
+    name: 'coinWorth',
+    claims: ['commonsTake'],
+    feature: () => 0,
+  },
+  {
+    /**
+     * ⭐ **THE ENDGAME CARD'S COIN PRICE (K15, Dean 10/09/2026), AND IT IS
+     * CHARGED HERE RATHER THAN IN THE PRICER FOR ONE REASON: A BUILD IS NOT
+     * PROBED.**
+     *
+     * Under `rules.economy.endgameCoinCost` the fifteen Endgame cards cost that
+     * many COINS and ZERO CARDS, so a build move for one carries an EMPTY
+     * payment - and `handSpend`, `buildSpend` and `barnSpend` all read a payment
+     * by count, so every one of them prices it at nothing. Left alone, an
+     * Endgame card would be free to a bot holding three coins, it would take
+     * every one it was offered, and a19's "coins spent on the Farmstead against
+     * on Endgame cards" would be reporting this omission rather than the rules.
+     *
+     * The COIN-ACTIVATED FARMSTEAD (K10) is deliberately NOT charged here, and
+     * the split is exactly the probed / unprobed line and nothing else - the
+     * same rule `meeplesLeavingSupply` states in the other direction. A Grow is
+     * on `isProbed`, so its `coinsSpent` event reaches `priceEvent` inside the
+     * rollout of the very move that spent it and is charged there; charge it
+     * here as well and the Farmstead would cost two coins in the bot's books
+     * and never fire. A build is NOT on `isProbed`, so its `coinsSpent` never
+     * reaches a pricer at all and this is the only place left to charge it.
+     *
+     * ⚠️ **THE TWO ROUTES ARE DISJOINT, WHICH IS WHY "EXACTLY ONCE" HOLDS.** A
+     * build reached INSIDE a rollout (the dairy board's Build door, or the
+     * Dairy Farmstead's own power) is a task resolved during another move's
+     * probe, and its coin is charged by the event; a build chosen AS THE MOVE -
+     * either spelling, the main action or the task answer - is scored by this
+     * term and never rolled out. No decision can see both.
+     *
+     * ⛔ **STRUCTURALLY ZERO WHEN THE ARM IS OFF**: `endgameCoinCost` is null in
+     * the shipped game and under both controls, so the guard returns before it
+     * reads a card and the term cannot move a fixture.
+     */
+    name: 'coinSpend',
+    claims: ['build', ...ACTION_AND_TASK],
+    feature: (act, s) => {
+      if (act.a !== 'build') return 0;
+      const coins = endgameCoinCost(s.data);
+      if (coins === null) return 0;
+      return cardById(s.data, act.card).type === 'endgame' ? -coins : 0;
     },
     cost: true,
   },
@@ -1405,8 +1490,21 @@ export const TERMS: readonly Term[] = [
     // equal visits is `meepleSpend`: of two doors worth the same, take the one
     // that costs the meeple you can least use. That is the same idea in the new
     // currency, and it needed no new term.
+    // ⭐ AND IT RANKS **BOTH** CARDS OF A WILD PAIR (K3, 10/09/2026). A pair is
+    // one fee paid with two cards, so "pay with the card you least want" becomes
+    // "pay with the two cards you least want" - and it has to, because without
+    // the second card in the rank the bot would pay its junk and then whichever
+    // card enumeration happened to put beside it. The engine offers every
+    // C(hand, 2) pair per board, so this term is the only thing that separates
+    // them: `handSpend` charges a pair by COUNT (2) and prices every pair the
+    // same, and `outcome`'s memo collapses them to one rollout per board
+    // deliberately (see `effectKey`), which leaves this ordering carrying the
+    // whole of the choice.
     feature: (act, s) => {
-      if (act.a === 'commons') return -cardValue(s.data, act.fee);
+      if (act.a === 'commons') {
+        const first = cardValue(s.data, act.fee);
+        return act.fee2 === undefined ? -first : -(first + cardValue(s.data, act.fee2));
+      }
       if (act.a === 'commonsTake') {
         return act.fee !== undefined ? -cardValue(s.data, act.fee) : 0;
       }

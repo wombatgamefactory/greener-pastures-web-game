@@ -119,6 +119,31 @@
  * solitaire option with it - there is no solitaire option to take (C9) - which
  * makes it a cleaner control than it has ever been and a more extreme one. Read
  * a hermit's game length knowing it is playing a strictly smaller game.
+ *
+ * ## ⭐ THE COMMONS WITH COINS (10/09/2026): TWO NEW WEIGHTS, AND NOTHING ELSE
+ *
+ * `docs/commons-coins-handoff-2026-09-10-v2.md`, K7-K15. This is the first of
+ * these passes where the discipline could NOT be "not one number moves", because
+ * the arm puts a currency back in the game and a currency with no price is a
+ * currency the bots mint and then abandon - which is precisely what ticket 37
+ * measured of the v31 coin (65.4% of every coin minted never spent on
+ * anything). So two weights arrive, `coinWorth` and `coinSpend`, pinned to each
+ * other and argued at their own entries.
+ *
+ * ⛔ **EVERY OTHER NUMBER IS UNCHANGED, AND BOTH NEW ONES MULTIPLY A
+ * STRUCTURAL ZERO WHEN THE ARM IS OFF.** Nothing outside
+ * `rules.turn.commonsTake: 'coins'` and its two sinks can mint or spend a coin,
+ * so the shipped commons, the v31 card visit and the meeple economy all price
+ * exactly as they did on 09/09/2026 - which is the property the nine fixtures in
+ * @gp/sim assert byte for byte, and the reason a new nonzero weight was safe to
+ * add at all.
+ *
+ * ⚠️ **NO PROFILE OVERRIDES EITHER, DELIBERATELY.** The arm's own headline
+ * readings are the play / take split and the Farmstead-against-Endgame spend
+ * split, and both are the shape of result a manufactured taste flips on its own.
+ * A taste for hoarding coins belongs in a profile the day somebody wants to
+ * bracket that reading the way `hermit` and `socialite` bracket the play rate;
+ * until then the reference measures the rule.
  */
 
 import { TERM_NAMES } from './terms.js';
@@ -212,6 +237,94 @@ export const BALANCED: WeightTable = {
    * in the bots' eyes and is what makes the wild-share metric mean something.
    */
   meepleSpend: 2.5,
+  /**
+   * ⭐ **WHAT A COIN IS WORTH UNDER THE COMMONS-WITH-COINS ARM (K7-K15, Dean
+   * 10/09/2026), AND IT IS AN ARGUED NUMBER RATHER THAN A MEASURED ONE** -
+   * exactly as `MEEPLE_AS_CARD_DOOR_PREMIUM` is in `scratch.ts`, and it is
+   * flagged here for the same reason: nobody has run the arm, so this is a
+   * starting position and the first thing to sweep if the arm reports coins
+   * piling up unspent or being spent the moment they are minted.
+   *
+   * ⛔ **IT IS NOT THE v31 COIN EVALUATOR COMING BACK.** That machinery
+   * (`coinWorth`, `coinRunway`, `sinkGap`, `coinNeverDead`, `marketPayability`)
+   * priced a DIFFERENT CURRENCY IN A DIFFERENT GAME - a continuous, fungible
+   * bank balance with a market, a card buy, a starter upgrade and a wage behind
+   * it - and its numbers are void here. `scratch.ts`'s header keeps the reading
+   * that outlived the rule; nothing else survives. This coin has exactly one
+   * mint (clearing a central pile, K8) and exactly two sinks (the Farmstead's
+   * suit power and the fifteen Endgame cards, K7), and it scores nothing, breaks
+   * no ties and buys no ordinary card.
+   *
+   * **THE ANCHOR, WHICH IS THE WHOLE ARGUMENT FOR 3.5.** A coin buys "two plain
+   * actions minus one": the Farmstead power is worth about two plain actions
+   * (K12, Dean's own pricing) and it costs the ACTION as well as the coin, so
+   * what the coin itself buys is the difference. Two numbers already in this
+   * table fix that difference:
+   *
+   *   - `bonusAction` 2.4 is what ONE WHOLE EXTRA ACTION is worth (Dean,
+   *     03/09/2026), so "two actions minus one" starts at about 2.4;
+   *   - `handSpend` 2.5 is what one card out of hand costs, and `meepleGain` /
+   *     `meepleSpend` at 2.5 are THE WORKED PRECEDENT for a stored token priced
+   *     at about one hand card, pinned in both directions.
+   *
+   * A coin is dearer than a meeple was, on two rules rather than a taste: the
+   * only way to get one is to clear a whole pile with your bonus, and there are
+   * only two things in the game to spend it on, so it is scarcer at the faucet
+   * and narrower at the drain. 3.5 puts it about half a card above a meeple and
+   * about a card above a plain action, which is the band the anchor argues for
+   * and the smallest claim that still makes a pile worth clearing.
+   *
+   * ⚠️ **A SWEEP OF THIS NUMBER IS AN EDIT AND A REBUILD, NOT AN OVERLAY.**
+   * `weightsFor` takes a profile id and nothing else, so the weight table is not
+   * overlay-addressable (the ledger's C45), and a run that wants a different
+   * coin price has to change this line. Say so in any write-up that quotes a
+   * coin number.
+   *
+   * ⛔ **STRUCTURALLY ZERO WHEN THE ARM IS OFF.** Nothing mints or spends a coin
+   * outside `rules.turn.commonsTake: 'coins'` and its two sinks, so this weight
+   * multiplies a zero in the shipped game and under both controls. That is what
+   * lets a new nonzero weight land without moving one fixture.
+   */
+  coinWorth: 3.5,
+  /**
+   * PINNED to `coinWorth`, on exactly the arrangement `meepleSpend` has with
+   * `meepleGain`: one price for a coin whichever direction it travels, so the
+   * bot's books balance and the decision to spend turns entirely on whether the
+   * thing bought beats holding the coin. **If one moves, move both**, and
+   * `roster.test.ts` asserts it.
+   *
+   * ⚠️ It also makes the arm's a19 reading honest. "Coins spent on the Farmstead
+   * against on Endgame cards" is a headline of the pass, and an instrument that
+   * charged a coin at one price on one sink and another price on the other would
+   * be reporting this table rather than the rules.
+   *
+   * ⛔ **AND IT IS THE FIRST NUMBER TO SWEEP, MEASURED RATHER THAN SUSPECTED.**
+   * Paired A/B on identical seeds, five 3-seat games under
+   * `overlays/commons-coins-v1.overlay.json`, this weight the ONLY thing moved:
+   *
+   *     coin take (the mint)      43.0 a game  ->  57.8 a game   at coinSpend 0
+   *     FARMSTEAD FIRES            1.4 a game  ->  44.8 a game   at coinSpend 0
+   *     commons plays             55.2 a game  ->  71.2 a game   at coinSpend 0
+   *
+   * **At 3.5 the Farmstead sink is all but shut, and the 32x swing proves the
+   * fault is the PRICE and not the plumbing**: the power's payoff reaches the
+   * rollout perfectly well (it is what the bot spends 44.8 coins a game on the
+   * moment the charge is lifted), it simply loses to the charge. The arithmetic
+   * is legible on the Orchard power: Draw 3 rolls out at 3.6 against a plain
+   * Draw 2 at 2.4, so the power nets about 1.2 over the action it displaces and
+   * a 3.5 coin buries it.
+   *
+   * ⚠️ **SO a19's "FARMSTEAD FIRES BY SUIT" - the imbalance reading Dean raised
+   * by name - CANNOT BE READ AT 3.5**, because at 3.5 hardly anything fires and
+   * the ranking would be noise. **Sweep this weight (0, 1, 2, 3.5) before
+   * quoting one number about either sink, and remember it is an edit and a
+   * rebuild rather than an overlay.** It is shipped at 3.5 anyway, on the
+   * standing rule that a weight tuned against its own first run is a snapshot
+   * test: 3.5 is the number the anchor argues for, the A/B above is the evidence
+   * that the anchor is probably too dear, and Dean's measurement session gets
+   * both rather than one of them silently chosen.
+   */
+  coinSpend: 3.5,
   /**
    * **A balloon is worth its reward and nothing else** - the same sentence
    * ticket 40 applied to the visit, for the same measured reason (ticket 49).
