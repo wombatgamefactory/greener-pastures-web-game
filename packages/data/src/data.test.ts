@@ -17,15 +17,22 @@ import {
   SUITS,
   activeCards,
   applyOverlay,
+  commonsHarvestReachesCentre,
+  commonsTakeGoesToHand,
+  commonsTakeLeavesTheGame,
+  commonsWildPair,
   deadTemplates,
   deliveriesPerTile,
   deliveryCost,
   deliveryVp,
   doorActionForSuit,
   doorForSuit,
+  endgameCoinCost,
   expandSweep,
+  farmsteadCoinPower,
   flatten,
   isCommons,
+  isCommonsTakeCoins,
   isMeepleCurrency,
   listKnobs,
   loadGameData,
@@ -140,29 +147,65 @@ describe('the extract', () => {
   });
 });
 
-// ⭐ THE v31 DRIFT GUARD, and the most valuable test in this file for the next
-// few months. Coins were removed from the game on 02/09/2026, and the way they
-// come back is not a decision - it is one key surviving a merge, or an old
-// overlay being restored, or a re-extract from a sheet that still prints a coin
-// icon. So assert on the whole tree rather than on a list of known keys.
-describe('there are no coins', () => {
+// ⭐ THE v31 DRIFT GUARD, REWRITTEN FOR AN ARM RATHER THAN DELETED (10/09/2026).
+//
+// WHY THE GUARD EXISTS, AND IT IS THE PART TO KEEP. Coins were removed from the
+// game on 02/09/2026 (v31), and the way they come back is not a decision - it is
+// one key surviving a merge, or an old overlay being restored, or a re-extract
+// from a sheet that still prints a coin icon. So this asserts on the WHOLE TREE
+// rather than on a list of known keys. Every earlier coin economy in this
+// project died the same way: a SECOND FAUCET (the Hiring Fair's bank-paid wage,
+// the visit payout, the market) or a PITY RATE (£5 = 1 VP), and each of those
+// arrived as an addition nobody re-derived the arithmetic for.
+//
+// ⭐ WHAT CHANGED: coins are genuinely back, as the ARM of 10/09/2026
+// (docs/commons-coins-handoff-2026-09-10-v2.md, K7-K15) and not as the game.
+// The arm has EXACTLY ONE MINT - clearing a central pile under
+// `rules.turn.commonsTake: 'coins'` (K8) - and EXACTLY TWO SINKS - the
+// Farmstead's coin-activated suit power (`farmsteadCoinPower`, K10-K14) and the
+// fifteen Endgame cards priced in coins (`endgameCoinCost`, K15). Coins score
+// nothing, break no ties, buy no ordinary card and leftover coins are dead. So
+// the guard's job is no longer "no coin may exist" but "the shipped game has
+// none, and the arm's surface is exactly these two leaves and no third" - which
+// is the assertion that would catch a faucet arriving.
+describe('coins are an arm, not the shipped game', () => {
   const COIN = /coin/i;
 
-  // Two paths are allowed to say "coin" and neither is a currency:
-  //  - island.tileRule.coinsPerDelivery is a TOMBSTONE pinned at 0, kept because
-  //    the v31 plan named the key rather than deleting it;
-  //  - the magenta balloon keeps the id `balloonCoins` on purpose, because V19
-  //    The Sky Market scores by balloon COUNT and a rename would have to be
-  //    chased through the handler, the art and the reports for no gain.
-  // Anything else matching is a currency creeping back in.
+  // The magenta balloon keeps the id `balloonCoins` on purpose, because V19 The
+  // Sky Market scores by balloon COUNT and a rename would have to be chased
+  // through the handler, the art and the reports for no gain. It pays a harvest,
+  // not money.
   const BALLOON_ID = 'aerodrome.balloons.balloonCoins.';
 
-  it('names no coin anywhere in the data, bar two declared tombstones', () => {
+  it('ships every coin switch OFF, so the default game has no currency', () => {
+    // The mint.
+    expect(BASE_GAME_DATA.rules.turn.commonsTake).toBe('harvest');
+    expect(isCommonsTakeCoins(BASE_GAME_DATA)).toBe(false);
+    expect(commonsTakeLeavesTheGame(BASE_GAME_DATA)).toBe(false);
+    // Both sinks.
+    expect(BASE_GAME_DATA.rules.economy.farmsteadCoinPower).toBe(false);
+    expect(farmsteadCoinPower(BASE_GAME_DATA)).toBe(false);
+    expect(BASE_GAME_DATA.rules.economy.endgameCoinCost).toBeNull();
+    expect(endgameCoinCost(BASE_GAME_DATA)).toBeNull();
+  });
+
+  // Listed LITERALLY rather than by count, so a third coin leaf cannot creep in
+  // unnoticed behind a passing test. Two of the three are the arm's switches and
+  // the third is a tombstone pinned at 0.
+  it("names no coin anywhere in the data, bar the tombstone and the arm's two switches", () => {
     const offenders = [...flatten(BASE_GAME_DATA).keys()]
       .filter((path) => COIN.test(path))
       .filter((path) => !path.startsWith(BALLOON_ID))
       .sort();
-    expect(offenders).toEqual(['island.tileRule.coinsPerDelivery']);
+    expect(offenders).toEqual([
+      'island.tileRule.coinsPerDelivery',
+      'rules.economy.endgameCoinCost',
+      'rules.economy.farmsteadCoinPower',
+    ]);
+    // ⛔ THE TOMBSTONE IS STILL PINNED AT 0 AND IS NOT A FAUCET. The v31 plan
+    // named the key rather than deleting it; island delivery pays VP and has
+    // paid nothing else since. If this ever reads non-zero, the arm has grown a
+    // second mint and the whole economy needs re-deriving.
     expect(BASE_GAME_DATA.island.tileRule.coinsPerDelivery).toBe(0);
     // And the balloon that keeps the name has stopped paying money.
     expect(
@@ -170,10 +213,24 @@ describe('there are no coins', () => {
     ).toBe('harvestAny');
   });
 
-  it('offers no knob that could mint one', () => {
-    expect(KNOB_TEMPLATES.filter((t) => COIN.test(t.template))).toEqual([]);
+  // The registry is the other surface a coin could arrive on, and the same
+  // literal listing applies: these two are SINKS, and there must never be a
+  // third knob here or a knob that MINTS one. The mint is `commonsTake`, which
+  // does not match /coin/i and is asserted above by value.
+  it('offers exactly two coin knobs, and both of them are sinks', () => {
+    expect(KNOB_TEMPLATES.filter((t) => COIN.test(t.template)).map((t) => t.template)).toEqual([
+      'rules.economy.endgameCoinCost',
+      'rules.economy.farmsteadCoinPower',
+    ]);
   });
 
+  // ⛔ THE COIN PRICE IS A RULES KNOB AND NEVER A CARD FIELD, AND THIS
+  // ASSERTION IS THE THING THAT KEEPS IT SO. `BuildCost` lost its `coins` third
+  // with the currency on 02/09/2026; K15 prices the fifteen Endgame cards in
+  // coins through `rules.economy.endgameCoinCost` instead, so a coin price can
+  // only ever arrive from a RULING. If it were a card field it could arrive from
+  // a re-extract of a sheet nobody had read, which is exactly the silent drift
+  // this file exists to make loud.
   it('prices no build in coins', () => {
     for (const card of BASE_GAME_DATA.cards.catalogue) {
       if (!card.buildCost) continue;
@@ -290,6 +347,72 @@ describe('the commons', () => {
         doorForSuit(BASE_GAME_DATA, suit)?.action,
       );
     }
+  });
+
+  // ⭐ THE COMMONS WITH COINS (Dean, 10/09/2026, K1-K15). Five more knobs, and
+  // every one of them ships at the value that turns the arm OFF - the same shape
+  // as the two fallback knobs above, and asserted the same way: off in the
+  // shipped data, present in the registry, and reachable through an overlay.
+  it('ships every commons-with-coins knob off, and offers all seven leaves as knobs', () => {
+    expect(BASE_GAME_DATA.rules.economy.commonsWildPair).toBe(false);
+    expect(commonsWildPair(BASE_GAME_DATA)).toBe(false);
+    expect(BASE_GAME_DATA.rules.economy.endgameCoinCost).toBeNull();
+    expect(BASE_GAME_DATA.rules.economy.farmsteadCoinPower).toBe(false);
+    // The four suit-power numbers Dean ruled on 10/09/2026 (K12). Four and not
+    // five because Wheat's power - harvest every building - carries no number.
+    expect(BASE_GAME_DATA.rules.economy.farmsteadPower).toEqual({
+      orchardDraw: 3,
+      dairyDiscount: 1,
+      apiaryGrows: 2,
+      vegetableDeliveries: 2,
+    });
+
+    const knobs = listKnobs(BASE_GAME_DATA).map((k) => k.path);
+    expect(knobs).toContain('rules.economy.commonsWildPair');
+    expect(knobs).toContain('rules.economy.endgameCoinCost');
+    expect(knobs).toContain('rules.economy.farmsteadCoinPower');
+    expect(knobs).toContain('rules.economy.farmsteadPower.orchardDraw');
+    expect(knobs).toContain('rules.economy.farmsteadPower.dairyDiscount');
+    expect(knobs).toContain('rules.economy.farmsteadPower.apiaryGrows');
+    expect(knobs).toContain('rules.economy.farmsteadPower.vegetableDeliveries');
+
+    const paired = loadGameData(
+      overlay({
+        'rules.economy.commonsWildPair': true,
+        'rules.economy.endgameCoinCost': 3,
+        'rules.economy.farmsteadCoinPower': true,
+        'rules.economy.farmsteadPower.orchardDraw': 4,
+      }),
+    );
+    expect(commonsWildPair(paired)).toBe(true);
+    expect(endgameCoinCost(paired)).toBe(3);
+    expect(farmsteadCoinPower(paired)).toBe(true);
+    expect(paired.rules.economy.farmsteadPower.orchardDraw).toBe(4);
+  });
+
+  // K3/K4: the fifth commonsTake value. ⛔ A COIN TAKE HANDS BACK NO CARDS, so
+  // it must never join `commonsTakeGoesToHand` - the pile is discarded to its
+  // suits' piles and the taker is paid in a currency instead. What it DOES share
+  // with the other three is that Harvest stops reaching the centre.
+  it("takes a pile OUT of the game under 'coins', and never into a hand", () => {
+    const coins = loadGameData(overlay({ 'rules.turn.commonsTake': 'coins' }, 'commons-coins-v1'));
+    expect(isCommonsTakeCoins(coins)).toBe(true);
+    expect(commonsTakeLeavesTheGame(coins)).toBe(true);
+    expect(commonsTakeGoesToHand(coins)).toBe(false);
+
+    // C5 is the shipped rule and the only value that leaves Harvest reaching the
+    // centre; all four variants take it away, which is why the farm-bypass
+    // reading is a structural zero under each of them rather than a fix.
+    expect(commonsHarvestReachesCentre(BASE_GAME_DATA)).toBe(true);
+    for (const take of ['bonus', 'spend', 'paid', 'coins']) {
+      const arm = loadGameData(overlay({ 'rules.turn.commonsTake': take }));
+      expect(commonsHarvestReachesCentre(arm), take).toBe(false);
+    }
+
+    // A closed set: a take may never resolve in a way nothing dispatches on.
+    expect(() =>
+      validateOverlay(overlay({ 'rules.turn.commonsTake': 'gold' }), BASE_GAME_DATA),
+    ).toThrow(/commonsTake/);
   });
 
   it('offers the Apiary door action as a knob, so a Sow arm is one overlay', () => {

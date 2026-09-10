@@ -1,0 +1,14 @@
+{
+  "name": "commons-coins-no-wild-v1",
+  "description": "⭐ THE COMMONS WITH COINS, THE WILD PAIR OFF (Dean, 10/09/2026). It is overlays/commons-coins-v1.overlay.json EXACTLY, every one of its seven passengers pinned to the same value, WITH ONE CHANGE: rules.economy.commonsWildPair is false, so the colour gate is absolute and a hand with no card of a board's suit simply cannot buy that board. THE QUESTION IT ANSWERS is what the pair is worth, and it is the oldest unanswered question in the commons line: D5 of the 09/09/2026 pass described the pair and D7 recorded that the colour-match arm shipped WITHOUT it, so that arm's 34.4% of turns is the gate AT ITS HARSHEST rather than the rule Dean would write. This overlay reproduces that harshness on top of the coin economy; the arm beside it builds the pair. ⚠️ THE PAIR IS THE ONLY LEVER ANYBODY HAS FOR LANDING THE BONUS RATE IN THE MIDDLE OF DEAN'S 30-60% BAND rather than at one end of it, so this pairing is the reading that says whether it does. READ: the bonus rate on the turn measure by seat count, the PLAY / COIN TAKE / SLOT UNSPENT split (a gate this hard should push traffic off the play and onto the free coin take, which is the solitaire law watching a free option in the slot), the door mix, and branching, which should FALL here because the pair is what adds C(h,2) fee options per board. ⛔ NOTHING ELSE MOVES: same mint, same two sinks, same price of 3, same bonus timing, same currency. UNRUN BEFORE THIS PASS.",
+  "schemaVersion": 1,
+  "set": {
+    "rules.turn.visitCurrency": "commons",
+    "rules.turn.bonusTiming": "start",
+    "rules.turn.commonsTake": "coins",
+    "rules.economy.commonsColourMatch": true,
+    "rules.economy.commonsWildPair": false,
+    "rules.economy.endgameCoinCost": 3,
+    "rules.economy.farmsteadCoinPower": true
+  }
+}

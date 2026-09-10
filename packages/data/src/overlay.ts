@@ -78,12 +78,23 @@ const VISIT_CURRENCY_VALUES: ReadonlySet<string> = new Set<string>(['card', 'mee
  * take always lands the whole pile in the taker's hand - except the take now
  * costs one card, discarded to its own suit's pile. See `CommonsTake` and the
  * knob's own template for the ruling in full.
+ *
+ * ⭐ `'coins'` IS THE FIFTH VALUE (Dean, 10/09/2026, K3/K4 of
+ * `docs/commons-coins-handoff-2026-09-10-v2.md`) and the first whose take hands
+ * the cards to NOBODY: the whole pile is discarded to its cards' own suit
+ * discards and the taker mints ONE COIN PER CARD, no card paid. Harvest still
+ * never reaches the centre. ⛔ It is the only value in this set that creates a
+ * currency, so it is also the only one whose two sinks
+ * (`economy.farmsteadCoinPower`, `economy.endgameCoinCost`) have to be pinned
+ * beside it; `overlays/commons-coins-v1.overlay.json` pins every passenger by
+ * name. See `CommonsTake` and the knob's own template for the ruling in full.
  */
 const COMMONS_TAKE_VALUES: ReadonlySet<string> = new Set<string>([
   'harvest',
   'bonus',
   'spend',
   'paid',
+  'coins',
 ]);
 
 /**

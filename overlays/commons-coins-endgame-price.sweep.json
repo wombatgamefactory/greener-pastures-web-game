@@ -1,0 +1,19 @@
+{
+  "name": "commons-coins-endgame-price",
+  "description": "⭐ WHAT AN ENDGAME CARD SHOULD COST IN COINS (K15, Dean 10/09/2026, price PROPOSED rather than ruled). The arm ships 3 and 3 is a starting price nobody has measured, so this sweeps 2 / 3 / 4 on top of the arm's own pins. THE BASE IS THE WHOLE OF overlays/commons-coins-v1.overlay.json bar the price itself - the currency, the bonus timing, the coin take, the colour gate, the wild pair and the Farmstead power are all pinned by name underneath every cell - so the only thing moving across the three cells is the price, which is what makes the cells comparable to each other AND to the arm. ⚠️ THE PRICE IS THE ONE NUMBER THAT SETS HOW MANY PILES A SEAT HAS TO CLEAR FOR A CARD, and clearing a pile is the bonus slot's free half, so read the COIN TAKE's share of turns across the cells first: if a dearer card visibly buys more takes, the price is doing the rationing the design wants; if the take rate is flat across 2, 3 and 4, the Farmstead is setting the coin's worth and the Endgame price is a rounding error. READ NEXT: coins held at game end (dead coins - a price of 4 that strands three coins a player is too dear), Endgame cards built per player AND BY SUIT, the own-crop build share, and winning scores with their sources, since an Endgame card is points as well as a pull. ⚠️ Every cell needs --n=1580 to be quotable, so this is three full runs and not a cheap look; if only one number can be afforded, run overlays/commons-coins-endgame-cards-v1.overlay.json instead, which asks whether the coin price is worth having at all.",
+  "schemaVersion": 1,
+  "base": {
+    "rules.turn.visitCurrency": "commons",
+    "rules.turn.bonusTiming": "start",
+    "rules.turn.commonsTake": "coins",
+    "rules.economy.commonsColourMatch": true,
+    "rules.economy.commonsWildPair": true,
+    "rules.economy.farmsteadCoinPower": true
+  },
+  "sweep": [
+    {
+      "knob": "rules.economy.endgameCoinCost",
+      "values": [2, 3, 4]
+    }
+  ]
+}

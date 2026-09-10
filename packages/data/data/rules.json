@@ -41,7 +41,8 @@
       "WHETHER INTERACTION IS A PER-TURN OR A PER-GAME QUANTITY, which is the old hook question surviving its own subject. a08-the-hook has NO SUBJECT under the commons - there is no neighbour to visit - and a18-commons-traffic replaces it, so the same choice has to be made again about plays per turn against plays per game before either number can pass or fail anything.",
       "THE MONOCULTURE PULL (v31 risk 3). The Farmstead pays 1 VP per own-suit card built and the Power and Endgame cards cost 2 cards of their own suit; the own-crop build share was 82.6% before and 83.3% after, and it has not been read under either meeple pass or this one. The commons pushes the other way for the first time - any card pays for any board - so this is worth re-reading rather than assuming.",
       "THE INTERFACE IS NOW TWO VERSIONS BEHIND. packages/ui pins itself to overlays/v31-card-visit.overlay.json and draws the v31 game: a Notice Board per player, a fill bar, a visit assembled by dragging a card. It never grew the meeple loop and it does not have the commons either. ⭐ THE ENCOURAGING HALF: the commons is a SIMPLER interface than either meeple version - five piles in the centre, drag a card onto one - so the debt is bigger and the job is smaller. See the docblock on `data` in packages/ui/src/session/table.ts.",
-      "THE 2-SEAT GAME IS STILL THE SEAT COUNT WITH THE LEAST EVIDENCE BEHIND IT. deliveriesToTrigger is flat, the island is half-used at 12 spaces, and the commons removes the one thing 2p was worst at (one rival board to visit) by putting all five boards in the middle. That is the change most likely to read differently at two seats than at four."
+      "THE 2-SEAT GAME IS STILL THE SEAT COUNT WITH THE LEAST EVIDENCE BEHIND IT. deliveriesToTrigger is flat, the island is half-used at 12 spaces, and the commons removes the one thing 2p was worst at (one rival board to visit) by putting all five boards in the middle. That is the change most likely to read differently at two seats than at four.",
+      "⭐ THE COMMONS WITH COINS IS AN ARM AND NOT THE GAME (Dean, 10/09/2026, docs/commons-coins-handoff-2026-09-10-v2.md, rules K1-K15). FOUR LEAVES HERE ARE ITS OFF SWITCHES AND EVERY ONE OF THEM SHIPS OFF: commonsTake stays 'harvest', commonsWildPair false, endgameCoinCost null and farmsteadCoinPower false, with the four farmsteadPower numbers standing ready but read by nothing while farmsteadCoinPower is off. WHAT THE ARM IS: the bonus slot's second option becomes DISCARD EVERY CARD ON ONE CENTRAL PILE TO ITS SUITS' DISCARDS AND TAKE ONE COIN PER CARD (commonsTake 'coins'), no card paid, and Harvest never reaches the centre (K4, reversing C5); the play half is colour-matched with the wild pair built at last (commonsColourMatch true plus commonsWildPair true, which is D5/D7 of the commons pass finally implemented); and the coins have EXACTLY TWO SINKS AND ONE MINT - the Farmstead as a coin-activated suit power taken as your main action (farmsteadCoinPower, K10-K14) and the fifteen Endgame cards priced in coins instead of two own-suit cards (endgameCoinCost, K15). ⛔ COINS WERE DELETED ON 02/09/2026 (v31) AND EVERY EARLIER COIN ECONOMY IN THIS PROJECT DIED OF A SECOND FAUCET OR A PITY RATE, so the one thing that must never be added here is a third use or a second mint: coins score nothing, break no ties, buy no ordinary card, and leftover coins are dead. island.tileRule.coinsPerDelivery stays pinned at 0 and is a tombstone, not a faucet. overlays/commons-coins-v1.overlay.json is the arm and it pins every passenger by name; commons-coins-no-wild-v1 and commons-coins-endgame-cards-v1 are its two paired sub-arms and commons-coins-endgame-price.sweep.json prices the Endgame card at 2, 3 and 4."
     ]
   },
   "setup": {
@@ -73,8 +74,17 @@
     "noticeBoardThreshold": 2,
     "commonsThreshold": null,
     "commonsColourMatch": false,
+    "commonsWildPair": false,
     "commonsHarvestMin": null,
-    "commonsHarvestTake": null
+    "commonsHarvestTake": null,
+    "endgameCoinCost": null,
+    "farmsteadCoinPower": false,
+    "farmsteadPower": {
+      "orchardDraw": 3,
+      "dairyDiscount": 1,
+      "apiaryGrows": 2,
+      "vegetableDeliveries": 2
+    }
   },
   "endGame": {
     "trigger": "deliveryCount",

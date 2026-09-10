@@ -251,12 +251,129 @@ export function isCommonsTakePaid(data: GameData): boolean {
 }
 
 /**
+ * Is DEAN'S 'coins' VARIANT of 10/09/2026 live - the commons with coins, K3/K4
+ * of `docs/commons-coins-handoff-2026-09-10-v2.md`? Under it the bonus slot's
+ * second option is *"discard every card on one central pile to their suits'
+ * discard piles and take ONE COIN PER CARD"*: no card is paid, the pile leaves
+ * the game rather than reaching anybody, and Harvest never reaches the centre
+ * (K4, reversing C5).
+ *
+ * ⭐ DEFAULTS FALSE, on the same reasoning the other three give: only
+ * `overlays/commons-coins-v1.overlay.json` and its two sub-arms touch this
+ * knob and each of them sets `visitCurrency: 'commons'` in the same breath.
+ * Callers that already know they are in the commons may read this directly;
+ * callers that do not should check `isCommons` first.
+ *
+ * ⛔ IT IS THE ONLY `commonsTake` VALUE THAT MINTS A CURRENCY, so it is also
+ * the gate on the arm's two coin sinks: `farmsteadCoinPower` and
+ * `endgameCoinCost` are meaningless without it, because nothing else in the
+ * game produces a coin.
+ */
+export function isCommonsTakeCoins(data: GameData): boolean {
+  return data.rules.turn.commonsTake === 'coins';
+}
+
+/**
+ * Does a `commonsTake` send the pile OUT OF THE GAME rather than to a player?
+ * True under `'coins'` alone, where the pile is discarded to its cards' own
+ * suit discards and the taker is paid in a currency instead.
+ *
+ * ⭐ IT IS THE COUNTERPART OF `commonsTakeGoesToHand` AND DELIBERATELY NOT PART
+ * OF IT. Every earlier take handed the cards to somebody - `'bonus'` and
+ * `'paid'` to the hand, `'spend'` to whatever the board's action used - and all
+ * three ran the bonus at 74% to 89% of turns, because the cards taken paid for
+ * the next play. This one hands back nothing playable, which is the whole
+ * design difference, so a caller asking "where do the cards go" must be able to
+ * tell the two apart in one read.
+ */
+export function commonsTakeLeavesTheGame(data: GameData): boolean {
+  return isCommonsTakeCoins(data);
+}
+
+/**
+ * Does HARVEST still reach the centre? False under every `commonsTake` value
+ * but the shipped `'harvest'`, which is C5 - own full building OR any non-empty
+ * central pile, into the barn.
+ *
+ * ⭐ ONE SPELLING FOR "the wheat board is offered only when the seat already has
+ * a full building", which four separate rules now say and which the farm-bypass
+ * reading depends on: under `'bonus'`, `'spend'` and `'paid'` the centre empties
+ * through the `commonsTake` move instead (D-S4), and under `'coins'` it empties
+ * to the discards (K4). In every one of those the centre-to-barn share reads 0%
+ * BY CONSTRUCTION, and a reader who does not know that will mistake a structural
+ * zero for a fixed problem.
+ *
+ * ⚠️ `commonsHarvestMin` and `commonsHarvestTake` have no subject whenever this
+ * is false: there is no central harvest left for either of them to ration.
+ */
+export function commonsHarvestReachesCentre(data: GameData): boolean {
+  return data.rules.turn.commonsTake === 'harvest';
+}
+
+/**
+ * Is the WILD PAIR built (D5/D7 of the commons pass, ruled back in by K3 on
+ * 10/09/2026) - two cards of any colours paying for one board of any colour,
+ * both landing on its pile?
+ *
+ * ⭐ DEFAULTS FALSE, AND THAT IS ALSO HOW THE COLOUR-MATCH ARM WAS MEASURED. D5
+ * described the pair and D7 recorded that the 09/09/2026 arm shipped without it,
+ * so that arm's 34.4% of turns is the colour rule at its HARSHEST and the rule
+ * Dean would write reads somewhere between it and the shipped 58.9%.
+ *
+ * ⚠️ MEANINGLESS WITHOUT `rules.economy.commonsColourMatch`, unlike the
+ * `commonsTake` predicates above: with any card already paying for any board
+ * there is no colour for a pair to stand in for. A caller must read both.
+ */
+export function commonsWildPair(data: GameData): boolean {
+  return data.rules.economy.commonsWildPair;
+}
+
+/**
+ * What an Endgame card costs in COINS, or null for the shipped card price of two
+ * cards of its own suit (K15, Dean 10/09/2026). The arm sets 3.
+ *
+ * ⛔ THE PRICE IS A RULES KNOB AND NEVER A CARD FIELD. `Card.buildCost` has
+ * exactly `suit` and `wild`; the coin third of it went with the currency on
+ * 02/09/2026, and a coin price arriving from a re-extract rather than from a
+ * ruling is exactly the drift `data.test.ts` guards against.
+ *
+ * ⚠️ Read only under `isCommonsTakeCoins`, which is the only thing that mints a
+ * coin: a price in a currency nobody can earn is a card nobody can build.
+ */
+export function endgameCoinCost(data: GameData): number | null {
+  return data.rules.economy.endgameCoinCost;
+}
+
+/**
+ * Is the Farmstead a COIN-ACTIVATED SUIT POWER (K10-K14, Dean 10/09/2026)? True
+ * makes it a building with no threshold whose activation cost is one coin, used
+ * as a GROW that is your MAIN action, once per turn, with nothing placed on it,
+ * and its own end-game scorer moved to the BARN (K13) rather than deleted.
+ *
+ * ⛔ NO RENT (K14): a rival can never use your Farmstead.
+ *
+ * ⚠️ Read only under `isCommonsTakeCoins`, for the same reason
+ * `endgameCoinCost` is: it is the second of the arm's two sinks and nothing
+ * else in the game produces a coin to spend on it.
+ */
+export function farmsteadCoinPower(data: GameData): boolean {
+  return data.rules.economy.farmsteadCoinPower;
+}
+
+/**
  * Does a `commonsTake` land its pile in the taker's HAND? True under both
  * `'bonus'` (free) and `'paid'` (one card discarded first) - the two values
  * whose take is an uncomplicated whole-pile move to hand, told apart only by
  * whether it costs anything. FALSE under `'spend'`, where the destination
  * depends on which board is taken (orchard to hand, wheat to barn, the rest
  * elsewhere) and no single answer is correct.
+ *
+ * ⛔ AND FALSE UNDER `'coins'` (10/09/2026), WHICH IS THE ONE A FUTURE SESSION
+ * IS MOST LIKELY TO ADD BY REFLEX. A coin take hands back no cards at all: the
+ * pile is discarded to its cards' own suit piles and the taker is paid in a
+ * currency, so nothing arrives in the hand and adding `'coins'` here would put
+ * cards into a hand that never got any. `commonsTakeLeavesTheGame` is its
+ * predicate.
  *
  * Use this where the DESTINATION is what a caller cares about; use
  * `isCommonsTakeToHand` or `isCommonsTakePaid` directly where the caller

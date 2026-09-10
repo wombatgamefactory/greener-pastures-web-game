@@ -150,10 +150,28 @@ export type VisitCurrency = 'card' | 'meeple' | 'commons';
  * (`'bonus'`) or paid in kind (`'spend'`'s own pile), and `'paid'` is the
  * first to burn a card that was never going to touch the centre at all.
  *
+ * ⭐ `'coins'` IS THE FIFTH VALUE (Dean, 10/09/2026, K3/K4 of
+ * `docs/commons-coins-handoff-2026-09-10-v2.md`), and it is the first one whose
+ * take does NOT hand the cards to anybody. The bonus slot's second option
+ * becomes *"discard every card on one central pile to their suits' discard
+ * piles and take ONE COIN PER CARD"*: no card is paid, nothing enters a hand,
+ * nothing enters a barn, and the pile simply leaves the game. Harvest never
+ * reaches the centre under it either (K4, reversing C5), exactly as under
+ * `'bonus'`, `'spend'` and `'paid'`, so the farm bypass reads 0% by
+ * construction.
+ *
+ * ⛔ IT IS THE ONLY VALUE THAT MINTS A CURRENCY, and that is the whole reason
+ * it is dangerous rather than merely different. Coins were deleted from this
+ * game on 02/09/2026 (v31) and every earlier coin economy in the project died
+ * of a second faucet or a pity rate, so the arm ships with EXACTLY ONE MINT
+ * (this take) and EXACTLY TWO SINKS (`economy.farmsteadCoinPower` and
+ * `economy.endgameCoinCost`). Coins score nothing, break no ties and buy no
+ * ordinary card. `overlays/commons-coins-v1.overlay.json` is the arm.
+ *
  * Read only under `visitCurrency: 'commons'`; subjectless under `'card'` and
  * `'meeple'`.
  */
-export type CommonsTake = 'harvest' | 'bonus' | 'spend' | 'paid';
+export type CommonsTake = 'harvest' | 'bonus' | 'spend' | 'paid' | 'coins';
 
 /**
  * Trigger keywords detected in the printed text. This is keyword detection, not a
@@ -966,6 +984,15 @@ export interface RulesFile {
      * is REQUIRED: one card from the taker's own hand, discarded to its own
      * suit's pile before the take resolves. It is the first PER-USE sink in
      * the commons line. See `CommonsTake` for the ruling in full.
+     *
+     * ⭐ `'coins'` IS THE FIFTH VALUE (Dean, 10/09/2026, K3/K4): the take
+     * discards the WHOLE pile to its cards' own suit discards and mints ONE
+     * COIN PER CARD for the taker. No card is paid, nothing reaches a hand or
+     * a barn, and Harvest still never reaches the centre. It is the only
+     * `commonsTake` value that creates a currency rather than moving cards, so
+     * it is read beside `economy.farmsteadCoinPower` and
+     * `economy.endgameCoinCost`, which are the only two things a coin buys.
+     * See `CommonsTake` for the ruling in full.
      */
     readonly commonsTake: CommonsTake;
   };
@@ -1039,6 +1066,32 @@ export interface RulesFile {
      */
     readonly commonsColourMatch: boolean;
     /**
+     * ⭐ THE WILD PAIR, BUILT AT LAST (Dean, 10/09/2026, K3 of
+     * `docs/commons-coins-handoff-2026-09-10-v2.md`). Read only under
+     * `visitCurrency: 'commons'` AND `commonsColourMatch: true`; it means
+     * nothing on its own, because there is no colour to stand in for when any
+     * card already pays for any board.
+     *
+     * `false` IS THE SHIPPED VALUE and it is also how the colour-match arm was
+     * actually MEASURED on 09/09/2026. That is the point of the knob: D5 said
+     * two cards of any colours count as one card of the board's colour, at the
+     * island's own substitution rate, and D7 recorded that the arm shipped
+     * WITHOUT it - so the 34.4% of turns the colour-match arm read is that rule
+     * at its HARSHEST, and the rule Dean would actually write reads somewhere
+     * between 34.4% and the shipped 58.9%.
+     *
+     * `true` builds it: two cards of ANY colours pay for one board of any
+     * colour, and BOTH cards land on that board's pile, so the pile grows by
+     * two and the payer is down two cards. ⚠️ READ THE PAIR'S SHARE OF ALL
+     * PLAYS as the pressure gauge, not the bonus rate alone: under about a
+     * fifth and the colour keying is doing its work, over about half and the
+     * matching rule is a tax everybody is paying around.
+     * `overlays/commons-coins-v1.overlay.json` turns it on and
+     * `overlays/commons-coins-no-wild-v1.overlay.json` is the paired arm that
+     * says what the pair is worth.
+     */
+    readonly commonsWildPair: boolean;
+    /**
      * ⭐ DEAN'S QUESTION OF 09/09/2026, HALF ONE: THE BUILDING SEMANTIC OF A
      * CENTRAL PILE. Read only under `visitCurrency: 'commons'`.
      *
@@ -1099,6 +1152,97 @@ export interface RulesFile {
      * left for this to cap - `commonsTake` moves a whole pile at once, always.
      */
     readonly commonsHarvestTake: number | null;
+    /**
+     * ⭐ THE FIRST OF THE ARM'S TWO COIN SINKS (Dean, 10/09/2026, K15). Read
+     * only under `commonsTake: 'coins'`, which is the only thing that mints a
+     * coin.
+     *
+     * `null` IS THE SHIPPED RULE: the fifteen Endgame cards cost two cards of
+     * their own suit, exactly as v31 priced them and exactly as the fifteen
+     * Power cards still do. A number `n` prices an Endgame card at `n` COINS
+     * and NO CARDS at all; the arm sets 3.
+     *
+     * ⛔ THE PRICE IS A RULES KNOB AND NEVER A CARD FIELD. `Card.buildCost`
+     * has exactly `suit` and `wild` and must keep having exactly those two:
+     * the coin third of that interface went with the currency on 02/09/2026,
+     * and putting it back would mean a coin price could arrive from a
+     * re-extract rather than from a ruling. `data.test.ts` asserts the shape.
+     *
+     * WHAT IT BUYS THE DESIGN: the second monoculture pull leaves with it. Under
+     * v31 both the Farmstead's own-crop scorer and the Power/Endgame two-own-suit
+     * cost pushed the same way, and the own-crop build share read 82.6% before
+     * and 83.3% after. K13 moves the scorer to the Barn rather than deleting it,
+     * so this cost is the ONLY pull that goes, and the prediction is a small
+     * move off 83% rather than a large one.
+     * `overlays/commons-coins-endgame-cards-v1.overlay.json` is the paired arm
+     * that turns it back off, and
+     * `overlays/commons-coins-endgame-price.sweep.json` prices it at 2, 3 and 4.
+     */
+    readonly endgameCoinCost: number | null;
+    /**
+     * ⭐ THE SECOND OF THE ARM'S TWO COIN SINKS, AND THE BIGGER RULES CHANGE
+     * (Dean, 10/09/2026, K10-K14). Read only under `commonsTake: 'coins'`.
+     *
+     * `false` IS THE SHIPPED RULE: the Farmstead is an ordinary starter that
+     * prints *"Game end: 1 VP for each `<CROP>` card you have built"* and does
+     * nothing during play.
+     *
+     * `true` makes it a BUILDING WITH NO THRESHOLD whose activation cost is ONE
+     * COIN. Using it is a GROW and it is your MAIN ACTION, once per turn, and
+     * nothing is placed on it: *"spend a coin instead of a card"*. Each suit's
+     * Farmstead has a unique power worth about two plain actions, because it
+     * costs the action AND the coin - the four numbers behind them are
+     * `farmsteadPower` below, and Wheat's power carries no number. ⛔ NO RENT
+     * (K14): a rival can never use your Farmstead, because a reference card for
+     * five rival powers is more than the five-minute teach can carry.
+     *
+     * ⚠️ TWO CONSEQUENCES TO NAME BEFORE ANY RUN. The Farmstead's own end-game
+     * scorer MOVES TO THE BARN (K13) rather than being deleted, so the
+     * monoculture pull does not leave with it and `gameEnd` must score exactly
+     * what it scored before, off a different card. And all five powers are
+     * SOLITAIRE, so the Farmstead adds nothing at all to the interaction budget
+     * and the whole of this design's cross-table pressure sits in the middle of
+     * the table.
+     */
+    readonly farmsteadCoinPower: boolean;
+    /**
+     * ⭐ THE FOUR NUMBERS BEHIND THE FIVE FARMSTEAD POWERS (Dean, 10/09/2026,
+     * K12). Read only under `farmsteadCoinPower: true`, and flat rather than
+     * per-suit-keyed because each number belongs to exactly one suit and a
+     * `{suit}` wildcard would expand four knobs into twenty, nineteen of which
+     * mean nothing.
+     *
+     * There are four and not five because WHEAT'S POWER HAS NO NUMBER: *"Harvest
+     * every one of your buildings, however many cards are on them"* is a
+     * quantity the board supplies, not a dial. If a fifth ever appears, it goes
+     * here beside these.
+     *
+     * ⚠️ THREE OF THE FIVE POWERS COLLIDE WITH CARDS ALREADY ON THE SHEET
+     * (§2.6 of the handoff), which is what makes these sweepable rather than
+     * pinned: the Wheat power is W13 The Bakery word for word, the Vegetable
+     * power is V15 The International Port, and the Dairy power strictly
+     * dominates D4 The Milking Shed. Those are card-face questions rather than
+     * knob questions, but a mispriced power shows up in the fires-by-suit
+     * reading first, and these are the numbers to move when it does.
+     */
+    readonly farmsteadPower: {
+      /** Cards the Orchard Farmstead draws. 3 (Dean, 10/09/2026). */
+      readonly orchardDraw: number;
+      /**
+       * Cards the Dairy Farmstead takes off a build cost, with every crop
+       * requirement treated as wild on top. 1 (Dean, 10/09/2026).
+       */
+      readonly dairyDiscount: number;
+      /**
+       * Buildings the Apiary Farmstead GROWS, paying each activation cost as
+       * normal. 2 (Dean, 10/09/2026). ⚠️ Paying as normal is the whole of the
+       * difference from A12 The Honey Hut and A5 The Meadow Hive, which grow
+       * WITHOUT placing a card; the printed text has to keep saying so.
+       */
+      readonly apiaryGrows: number;
+      /** Deliveries the Vegetable Farmstead makes. 2 (Dean, 10/09/2026). */
+      readonly vegetableDeliveries: number;
+    };
   };
   readonly endGame: {
     /**

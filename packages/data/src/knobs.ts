@@ -44,6 +44,20 @@
  * and the meeple economy are controls, and the knobs are how they are reached.
  * A description that says "read only under X" is doing the work a deletion would
  * have done, and it keeps the reasoning.
+ *
+ * ⭐ THE COMMONS WITH COINS (Dean, 10/09/2026) ADDS SEVEN TEMPLATES AND DELETES
+ * NONE, and every one of them ships at the value that turns the arm OFF.
+ * `rules.economy.commonsWildPair` is D5/D7 of the commons pass finally built,
+ * `rules.economy.endgameCoinCost` and `rules.economy.farmsteadCoinPower` are the
+ * arm's only two coin SINKS, and the four `rules.economy.farmsteadPower.*`
+ * numbers are the suit powers behind the second of them. ⛔ SOME OF THE FOURTEEN
+ * TEMPLATES v31 DELETED ARE THEREFORE ADJACENT AGAIN, AND THE DIFFERENCE MATTERS:
+ * `startingCoins`, `buyCost`, `marketCost`, `coinPityDivisor` and the four
+ * `visitPayout` branches were FAUCETS AND A PITY RATE, which is what every coin
+ * economy in this project has died of. Nothing added here mints a coin at all -
+ * the only mint is `rules.turn.commonsTake` at `'coins'`, and these are two
+ * sinks and four numbers. If a future session finds itself adding a second mint
+ * or a third use, that is the failure repeating, not a tuning.
  */
 
 import { flatten } from './paths.js';
@@ -532,7 +546,30 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       "slot\" replaces the 'bonus' detail line about a free option), and a18 gains a TAKE FEES " +
       'DISCARDED reading and a second conservation identity: cards paid as take fees = discarded. ' +
       "Farm bypass reads 0% by construction, exactly as under 'bonus', because Harvest still " +
-      'never reaches the centre.',
+      'never reaches the centre. ' +
+      "'coins' IS THE FIFTH VALUE (Dean, 10/09/2026, K3/K4 of " +
+      "docs/commons-coins-handoff-2026-09-10-v2.md), READ ONLY UNDER visitCurrency 'commons' and " +
+      'UNBUILT AND UNRUN BEFORE THIS PASS, at overlays/commons-coins-v1.overlay.json. The rule: ' +
+      "the bonus slot's second option is DISCARD EVERY CARD ON ONE CENTRAL PILE to their suits' " +
+      'discard piles and TAKE ONE COIN PER CARD. No card is paid, and a coin take is not offered ' +
+      'on an empty pile (K5, the standing door ruling). Harvest never reaches the centre (K4, ' +
+      "reversing C5), exactly as under 'bonus', 'spend' and 'paid', so commonsHarvestMin and " +
+      'commonsHarvestTake have no subject and the farm bypass reads 0% by construction. ' +
+      '⭐ WHY IT IS DIFFERENT FROM THE OTHER THREE TAKES, WHICH IS THE WHOLE REASON IT EXISTS. ' +
+      "'bonus', 'spend' and 'paid' all sent the pile's cards somewhere a player could use them, " +
+      'and every one of them ran the bonus at 74% to 89% of turns, because the cards taken paid ' +
+      'for the next play. This take sends the cards OUT OF THE GAME and hands back a currency ' +
+      'that cannot buy a play at all, which is the one shape none of the four measured variants ' +
+      'had. Read the PLAY / COIN TAKE / SLOT UNSPENT tally a17 prints, on TURNS, against ' +
+      "Dean's 30-60% band. ⛔ IT IS ALSO THE ONLY KNOB IN THIS REGISTRY THAT MINTS A CURRENCY, " +
+      'and coins were deleted from this game on 02/09/2026 because every coin economy this ' +
+      'project has had died of a second faucet or a pity rate. So the arm ships with EXACTLY ONE ' +
+      'MINT (this) and EXACTLY TWO SINKS (rules.economy.farmsteadCoinPower and ' +
+      'rules.economy.endgameCoinCost); coins score nothing, break no ties, buy no ordinary card, ' +
+      'and leftover coins are dead. ⚠️ NEVER SET THIS ALONE. On its own it mints a currency ' +
+      'with nothing to spend it on, which measures a slot with a free option in it and nothing ' +
+      'else; the arm overlay pins both sinks, the colour gate, the wild pair, the bonus timing ' +
+      'and the currency by name, which is the 05/09/2026 passenger lesson applied.',
   },
 
   // --- Economy -------------------------------------------------------------
@@ -596,6 +633,136 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'own-suit hand can only ever afford its own board, so an own-crop build share already at ' +
       '83% would be the first thing to re-read. overlays/commons-colour-match-v1.overlay.json is ' +
       'the arm.',
+  },
+  {
+    template: 'rules.economy.commonsWildPair',
+    type: 'boolean',
+    description:
+      '⭐ THE WILD PAIR, BUILT AT LAST (Dean, 10/09/2026, K3), SHIPPED OFF AND READ ONLY UNDER ' +
+      "visitCurrency 'commons' WITH commonsColourMatch ON. It means nothing on its own: with any " +
+      'card paying for any board there is no colour to stand in for. false is the shipped value ' +
+      'AND it is how the colour-match arm was actually measured on 09/09/2026 - D5 said two ' +
+      "cards of any colours count as one card of the board's colour at the island's own " +
+      'substitution rate, and D7 recorded that the arm shipped WITHOUT it, so the 34.4% of turns ' +
+      'that arm read is that rule AT ITS HARSHEST and the rule Dean would write reads somewhere ' +
+      'between 34.4% and the shipped 58.9%. true builds it: two cards of any colours pay one ' +
+      "board of any colour and BOTH land on that board's pile, so the pile grows by two and the " +
+      'payer is down two cards. ⭐ IT IS THE HIGHEST-VALUE SINGLE RUN ON THE LIST AND HAS BEEN ' +
+      'SINCE 09/09/2026: it is the only way anybody has of landing the bonus rate in the MIDDLE ' +
+      "of the band rather than at one end of it. ⚠️ READ THE PAIR'S SHARE OF ALL PLAYS as the " +
+      'pressure gauge rather than the rate alone - under about a fifth and the colour keying is ' +
+      'doing its work, over about half and the matching rule is a tax everybody is paying ' +
+      "around. ⚠️ AND WATCH BRANCHING: pairs are C(h,2) per board, so at the engine's hand " +
+      'bound of 7 that is 21 per board and 105 a turn, well under the build enumerator but not ' +
+      'nothing. overlays/commons-coins-v1.overlay.json turns it on and ' +
+      'overlays/commons-coins-no-wild-v1.overlay.json is the paired arm that says what it is ' +
+      'worth.',
+  },
+  {
+    template: 'rules.economy.endgameCoinCost',
+    type: 'intOrNull',
+    description:
+      "⭐ THE FIRST OF THE ARM'S TWO COIN SINKS (Dean, 10/09/2026, K15), SHIPPED OFF AT null AND " +
+      "READ ONLY UNDER commonsTake 'coins', which is the only thing that mints a coin. null is " +
+      'the shipped rule: the fifteen Endgame cards cost two cards of their own suit, exactly as ' +
+      'v31 priced them and exactly as the fifteen Power cards still do, so each currency ends up ' +
+      'with one kind of card. A number n prices an Endgame card at n COINS and no cards at all; ' +
+      "the arm sets 3, which is Dean's proposed starting price rather than a measured one, and " +
+      'overlays/commons-coins-endgame-price.sweep.json prices it at 2, 3 and 4. ' +
+      '⛔ THE PRICE IS A RULES KNOB AND NEVER A CARD FIELD. cards.catalogue.{}.buildCost has ' +
+      'exactly suit and wild and must keep having exactly those two - the coin third of it went ' +
+      'with the currency on 02/09/2026, and putting it back would mean a coin price could arrive ' +
+      'from a re-extract rather than from a ruling. data.test.ts asserts that shape and is the ' +
+      'thing that keeps it. ⭐ WHAT IT BUYS THE DESIGN: the second monoculture pull leaves with ' +
+      "it. K13 moves the Farmstead's own-crop scorer to the BARN rather than deleting it, so " +
+      'this cost is the ONLY pull that goes and the prediction is a SMALL move off the 82.6% to ' +
+      '83.3% own-crop build share, not a large one; a large move means the coin economy did it ' +
+      'rather than the price. overlays/commons-coins-endgame-cards-v1.overlay.json is the paired ' +
+      'arm that turns it back off.',
+  },
+  {
+    template: 'rules.economy.farmsteadCoinPower',
+    type: 'boolean',
+    description:
+      "⭐ THE SECOND OF THE ARM'S TWO COIN SINKS AND THE BIGGER RULES CHANGE (Dean, 10/09/2026, " +
+      "K10-K14), SHIPPED OFF AND READ ONLY UNDER commonsTake 'coins'. false is the shipped rule: " +
+      'the Farmstead is an ordinary starter that prints "Game end: 1 VP for each <CROP> card you ' +
+      'have built" and does nothing during play. true makes it a BUILDING WITH NO THRESHOLD ' +
+      'whose activation cost is ONE COIN - thresholdOf returns null, it is never full and never ' +
+      'a sow target - and using it is a GROW taken as your MAIN ACTION, once per turn, with ' +
+      'nothing placed on it: "spend a coin instead of a card". Each suit has a unique power ' +
+      'worth about two plain actions, because it costs the action AND the coin, and the four ' +
+      "numbers behind them are rules.economy.farmsteadPower.* (Wheat's power carries no " +
+      'number). ⛔ NO RENT (K14): a rival may never use your Farmstead, because a reference card ' +
+      'for five rival powers is more than the five-minute teach can carry. ' +
+      "⚠️ TWO CONSEQUENCES TO NAME BEFORE ANY RUN. (1) The Farmstead's own end-game scorer " +
+      'MOVES TO THE BARN (K13) rather than being deleted, so the monoculture pull does NOT leave ' +
+      'with it and gameEnd must score exactly what it scored before off a different card - a ' +
+      'test asserting the unchanged total against the shipped commons is the cheap proof. (2) ' +
+      'All five powers are SOLITAIRE, so the Farmstead adds nothing to the interaction budget ' +
+      "and the whole of this design's cross-table pressure sits in the middle of the table; " +
+      'read that beside the soft metric that decides all of it, whether players watch each ' +
+      "other's turns. ⭐ THE READING IT OWNS is a19's Farmstead-fires-by-suit line: if one suit " +
+      'fires twice as often as another the POWERS are mispriced, not the coins.',
+  },
+  {
+    template: 'rules.economy.farmsteadPower.orchardDraw',
+    type: 'int',
+    description:
+      '⭐ THE ORCHARD FARMSTEAD DRAWS THIS MANY (Dean, 10/09/2026, K12: "Draw 3."). Read only ' +
+      'under rules.economy.farmsteadCoinPower. ⚠️ IT IS NOT THE RETIRED DRAW-3 DOOR AND MUST ' +
+      'NOT BE ARGUED AGAINST AS ONE: that ruling was about a FREE BONUS door and died twice ' +
+      'over, most recently because a door that hands back cards feeds the slot that bought it. ' +
+      'This is a PAID MAIN ACTION costing a coin, and the coin costs a whole pile cleared, so ' +
+      'the self-cancellation law has nothing to bite on here. ⭐ IT IS ALSO THE ONE POWER OF THE ' +
+      'FIVE THAT COLLIDES WITH NOTHING ON THE SHEET. Sweep it against the Vegetable number ' +
+      "first: Draw against Deliver is the imbalance Dean raised by name, and a19's " +
+      'fires-by-suit line is where it shows.',
+  },
+  {
+    template: 'rules.economy.farmsteadPower.dairyDiscount',
+    type: 'int',
+    description:
+      '⭐ CARDS THE DAIRY FARMSTEAD TAKES OFF A BUILD COST (Dean, 10/09/2026, K12: "Build at a ' +
+      'discount of 1, ignoring crop requirements."). Read only under ' +
+      'rules.economy.farmsteadCoinPower. ⚠️ THE DISCOUNT IS ONLY HALF THE POWER and this knob ' +
+      'moves only that half: every crop requirement is treated as WILD on top of it, which is ' +
+      'not a number and cannot be swept. ⚠️ IT STRICTLY DOMINATES D4 THE MILKING SHED ("Build ' +
+      'at a discount of 1."), which is a Tier 1 engine card, so the domination is mild rather ' +
+      'than fatal - but Dairy already reads the thinnest of the five boards at 5% of plays and ' +
+      'this does not help it. That is a card-face question (a Table B row) rather than a knob ' +
+      'question; lower this only if the fires-by-suit line says Dairy is running hot, which ' +
+      'would be a first.',
+  },
+  {
+    template: 'rules.economy.farmsteadPower.apiaryGrows',
+    type: 'int',
+    description:
+      '⭐ BUILDINGS THE APIARY FARMSTEAD GROWS (Dean, 10/09/2026, K12: "GROW 2 of your ' +
+      'buildings, paying their activation costs as normal."). Read only under ' +
+      'rules.economy.farmsteadCoinPower. ⛔ PAYING AS NORMAL IS THE WHOLE OF THE DIFFERENCE FROM ' +
+      'A12 THE HONEY HUT AND A5 THE MEADOW HIVE, which GROW without placing a card, and the ' +
+      'printed text has to keep saying so or the Farmstead silently becomes a better Honey Hut. ' +
+      '⚠️ AND THE RULED POWER NO LONGER REACHES ACROSS THE TABLE: v1 of the handoff proposed ' +
+      "sowing onto any farm, yours or a rival's, on the reading that Apiary was always the " +
+      'pollinator, and Dean ruled a double GROW on your OWN buildings instead. So no Farmstead ' +
+      'power touches another player, and the sow-match and DL-63 questions have no subject in ' +
+      "this arm. Raising this raises the coin's worth faster than any other power, because each " +
+      'extra grow still costs its own activation card.',
+  },
+  {
+    template: 'rules.economy.farmsteadPower.vegetableDeliveries',
+    type: 'int',
+    description:
+      '⭐ DELIVERIES THE VEGETABLE FARMSTEAD MAKES (Dean, 10/09/2026, K12: "Deliver twice."). ' +
+      'Read only under rules.economy.farmsteadCoinPower. ⚠️ IT IS V15 THE INTERNATIONAL PORT ' +
+      'WORD FOR WORD, a Tier 3 card in a slot that is thin already, which is a Table B row to ' +
+      'raise when the arm is ruled in rather than a reason to move the number. ⭐ IT IS ALSO THE ' +
+      'ONE POWER AIMED AT A STANDING PROBLEM: Deliver is the scoring action and the Vegetable ' +
+      'board has taken 11% of plays and 8-18% of door uses under every version this project has ' +
+      'measured, because Deliver is worth nothing to a payer with an empty barn. A power that ' +
+      'delivers twice is worth nothing to an empty barn either, so read this beside deliveries ' +
+      'per player and the barn glut, never alone.',
   },
   {
     template: 'rules.economy.commonsHarvestMin',
