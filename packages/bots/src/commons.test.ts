@@ -239,37 +239,55 @@ describe('the commons with coins, the arm', () => {
   });
 
   /**
-   * ⛔ **SINK TWO IS UNREACHABLE TO THESE BOTS, AND IT IS A PRE-EXISTING BLIND
-   * SPOT RATHER THAN A COIN PRICE.** Measured 10/09/2026 while building
-   * `coinSpend`: over three 3-seat games under the SHIPPED commons, where an
-   * Endgame card costs two cards of its own suit and no coins at all, the bots
-   * built **0 of 38 builds** as Endgame cards. The reason is in the catalogue -
-   * all fifteen print **0 VP** and their whole worth is a game-end handler - and
-   * nothing in `terms.ts` prices a game-end handler, so an Endgame card is worth
-   * `build` 3 plus `farmsteadVp` 1.5 against a cost of `handSpend` 5, and it
-   * loses to everything.
+   * ⛔ **NOBODY IS BUYING AN ENDGAME CARD FOR WHAT IT SCORES, UNDER EITHER GAME,
+   * AND THAT IS A PRE-EXISTING INSTRUMENT BLIND SPOT RATHER THAN A COIN PRICE.**
    *
-   * ⚠️ **THE CONSEQUENCE FOR THE ARM'S OWN MEASUREMENT PLAN IS THE POINT OF
-   * THIS CASE.** a19 asks for "coins spent on the Farmstead against on Endgame
-   * cards" and for dead coins at game end. **That split will read 100 / 0 at any
-   * price of `endgameCoinCost`, and the dead-coin count will be inflated, and
-   * neither is the rule speaking.** Do not sweep the coin price against it, and
-   * do not read K15 as measured until an Endgame card is worth something to a
-   * bot.
+   * All fifteen Endgame cards print **0 VP** and their whole worth is a game-end
+   * handler, and nothing in `terms.ts` prices a game-end handler. So an Endgame
+   * card is worth `build` 3 plus `farmsteadVp` 1.5 to a bot, whatever it
+   * actually scores, and the only thing that decides whether one gets built is
+   * whether that 4.5 beats the price. Measured 10/09/2026 over 30 games at
+   * 2/3/4 seats with all five suits rotated:
    *
-   * The case pins both halves so the finding cannot rot: it fails the day
-   * somebody teaches the bots to price a game-end scorer, which is exactly when
-   * the note above needs re-reading.
+   *     the shipped commons (2 own-suit cards, handSpend 5)   1 of 115 builds
+   *     the arm at coinSpend 1.2 (3 coins, so 3.6)           59 of 337 builds
+   *
+   * ⚠️ **SO THE ARM'S ENDGAME SINK IS REACHABLE, BUT IT MOVES WITH `coinSpend`
+   * AND NOT WITH ANYTHING DEAN RULED.** At the 3.5 this weight first shipped at
+   * the price was 10.5 and NOT ONE Endgame card was built; at 1.2 it is 3.6,
+   * which slips under the flat 4.5, and 17.5% of all builds become Endgame
+   * cards. **a19's "coins spent on the Farmstead against on Endgame cards" is
+   * therefore a reading of this table's coin price, not of K15's appeal**, and
+   * the same goes for any sweep of `endgameCoinCost`. Do not read K15 as
+   * measured until an Endgame card is worth something to a bot.
+   *
+   * The case pins both halves so the finding cannot rot: the shipped game's
+   * share stays near zero, and the arm's stays reachable.
    */
-  it('never buys an Endgame card, under the arm OR the shipped game', () => {
-    const endgameBuilds = (data: GameData, seed: string): number =>
-      walk(data, { seats: 3, seed, policies: MIXED.slice(0, 3) }).moves.filter(
-        (move) => move.type === 'build' && cardById(data, move.card).type === 'endgame',
-      ).length;
+  it('buys an Endgame card only when the price falls, never for what it scores', () => {
+    const share = (data: GameData, seed: string): { endgame: number; builds: number } => {
+      const builds = walk(data, { seats: 3, seed, policies: MIXED.slice(0, 3) }).moves.filter(
+        (move) => move.type === 'build',
+      );
+      return {
+        endgame: builds.filter((move) => cardById(data, move.card).type === 'endgame').length,
+        builds: builds.length,
+      };
+    };
+    let armEndgame = 0;
+    let shippedEndgame = 0;
+    let shippedBuilds = 0;
     for (const seed of ['coins-a', 'coins-b', 'coins-c']) {
-      expect(endgameBuilds(coins, seed), `arm ${seed}`).toBe(0);
-      expect(endgameBuilds(BASE_GAME_DATA, seed), `shipped ${seed}`).toBe(0);
+      armEndgame += share(coins, seed).endgame;
+      const shipped = share(BASE_GAME_DATA, seed);
+      shippedEndgame += shipped.endgame;
+      shippedBuilds += shipped.builds;
     }
+    // The blind spot: under the shipped game an Endgame card costs 5 in hand
+    // cards against a flat 4.5, so it is all but never worth it.
+    expect(shippedEndgame / shippedBuilds).toBeLessThan(0.05);
+    // The arm: 3 coins at 1.2 is 3.6, which slips under the same flat 4.5.
+    expect(armEndgame).toBeGreaterThan(0);
   });
 
   it('replays a seed move for move under the arm too', () => {

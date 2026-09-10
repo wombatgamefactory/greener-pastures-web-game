@@ -128,7 +128,17 @@
  * currency the bots mint and then abandon - which is precisely what ticket 37
  * measured of the v31 coin (65.4% of every coin minted never spent on
  * anything). So two weights arrive, `coinWorth` and `coinSpend`, pinned to each
- * other and argued at their own entries.
+ * other and MEASURED at their own entries.
+ *
+ * ⭐ **THEY SHIPPED AT 3.5 ON AN ARGUMENT AND WERE RE-CUT TO 1.2 ON A
+ * MEASUREMENT THE SAME DAY**, which is the one thing to read before quoting
+ * either. The argument was the design's own (K12: a Farmstead power is "worth
+ * about two plain actions"); the measurement priced all five powers through the
+ * rollout in 6,771 real positions and found the claim false - the power returns
+ * about ZERO net over the action it displaces, not +2.4. **The gap is a finding
+ * about the DESIGN and not about this table**, it is written out per suit at
+ * `coinWorth`, and it is the first thing the measurement session should put in
+ * front of Dean.
  *
  * ⛔ **EVERY OTHER NUMBER IS UNCHANGED, AND BOTH NEW ONES MULTIPLY A
  * STRUCTURAL ZERO WHEN THE ARM IS OFF.** Nothing outside
@@ -238,12 +248,8 @@ export const BALANCED: WeightTable = {
    */
   meepleSpend: 2.5,
   /**
-   * ⭐ **WHAT A COIN IS WORTH UNDER THE COMMONS-WITH-COINS ARM (K7-K15, Dean
-   * 10/09/2026), AND IT IS AN ARGUED NUMBER RATHER THAN A MEASURED ONE** -
-   * exactly as `MEEPLE_AS_CARD_DOOR_PREMIUM` is in `scratch.ts`, and it is
-   * flagged here for the same reason: nobody has run the arm, so this is a
-   * starting position and the first thing to sweep if the arm reports coins
-   * piling up unspent or being spent the moment they are minted.
+   * ⭐ **WHAT A COIN IS WORTH UNDER THE COMMONS-WITH-COINS ARM (K7-K15), AND
+   * SINCE 10/09/2026 IT IS A MEASURED NUMBER RATHER THAN AN ARGUED ONE.**
    *
    * ⛔ **IT IS NOT THE v31 COIN EVALUATOR COMING BACK.** That machinery
    * (`coinWorth`, `coinRunway`, `sinkGap`, `coinNeverDead`, `marketPayability`)
@@ -255,24 +261,81 @@ export const BALANCED: WeightTable = {
    * suit power and the fifteen Endgame cards, K7), and it scores nothing, breaks
    * no ties and buys no ordinary card.
    *
-   * **THE ANCHOR, WHICH IS THE WHOLE ARGUMENT FOR 3.5.** A coin buys "two plain
-   * actions minus one": the Farmstead power is worth about two plain actions
-   * (K12, Dean's own pricing) and it costs the ACTION as well as the coin, so
-   * what the coin itself buys is the difference. Two numbers already in this
-   * table fix that difference:
+   * ## WHAT THE DESIGN CLAIMED, WHICH IS KEPT HERE SO THE GAP STAYS VISIBLE
    *
-   *   - `bonusAction` 2.4 is what ONE WHOLE EXTRA ACTION is worth (Dean,
-   *     03/09/2026), so "two actions minus one" starts at about 2.4;
-   *   - `handSpend` 2.5 is what one card out of hand costs, and `meepleGain` /
-   *     `meepleSpend` at 2.5 are THE WORKED PRECEDENT for a stored token priced
-   *     at about one hand card, pinned in both directions.
+   * K12 (Dean, 10/09/2026) prices a Farmstead power at **"about two plain
+   * actions"**, because it costs the ACTION as well as the coin. In this table
+   * one whole action is `bonusAction` 2.4, so the claim is that a firing returns
+   * about 4.8 gross and therefore about **+2.4 NET** over the action it
+   * displaces - and the coin, buying exactly that difference, would be worth
+   * about 3.5 once `handSpend` 2.5 and the `meepleGain`/`meepleSpend` precedent
+   * are read beside it. **This weight shipped at 3.5 on that argument on
+   * 10/09/2026 and the argument is wrong.**
    *
-   * A coin is dearer than a meeple was, on two rules rather than a taste: the
-   * only way to get one is to clear a whole pile with your bonus, and there are
-   * only two things in the game to spend it on, so it is scarcer at the faucet
-   * and narrower at the drain. 3.5 puts it about half a card above a meeple and
-   * about a card above a plain action, which is the band the anchor argues for
-   * and the smallest claim that still makes a pile worth clearing.
+   * ## ⭐ WHAT THE ROLLOUT PRICER ACTUALLY MEASURES (10/09/2026)
+   *
+   * **6,771 positions in which the coin-activated Farmstead was legal**, over 45
+   * games at 2, 3 and 4 seats under `overlays/commons-coins-v1.overlay.json`,
+   * with all five suits rotated through every seat count so no power is measured
+   * only in the company of the same neighbours. Every candidate main action in
+   * the SAME position was priced through the same rollout pricer, each on its
+   * own fresh probe budget so nothing was truncated. ⚠️ **Taken with `coinSpend`
+   * temporarily at 0**, because at 3.5 the bot will not fire the power often
+   * enough to observe it.
+   *
+   *     (c) NET, power minus the best plain main action it displaces
+   *         all suits pooled      mean -2.91   median -2.16   p10 -6.28   p90 0.00
+   *         live fires only       mean about -1.6 by suit (see the table below)
+   *     (c') NET against a plain DRAW 2, the action `bonusAction` 2.4 is anchored on
+   *         wheat -0.52   vegetable -1.26   orchard +0.43   apiary -1.21   dairy -0.25
+   *
+   * **The design's +2.4 is not there. The measured net is about ZERO at best and
+   * negative on the median**, and the only positions where a coin buys anything
+   * at all are the top decile: the p90 of the live net, averaged over the five
+   * suits, is **+1.32**. That is the whole of what a coin can be spent for.
+   *
+   * ## ⛔ AND THE REASON IS THE FIVE POWERS THEMSELVES, WHICH IS A DESIGN
+   * FINDING AND NOT A WEIGHT ONE
+   *
+   * `live` is a position where the power prices above zero; the rest are DEAD
+   * FIRES, positions where the Farmstead was offered and could do nothing.
+   * "actions" reads the gross value against `bonusAction` 2.4, the anchor for
+   * one whole plain action, so K12's target is **about 2.0 actions**:
+   *
+   *     suit        live    gross when live      actions   against K12's "two"
+   *     wheat       18.9%   mean 4.48  med 3.66   1.9      ON TARGET, but dead 4 times in 5
+   *     vegetable    5.2%   mean 10.09 med 15.00  4.2      4x OVER, and dead 19 times in 20
+   *     orchard     63.2%   mean 2.65  med 3.25   1.1      HALF, and capped by the instrument
+   *     apiary      44.1%   mean 1.99  med 1.50   0.8      A THIRD
+   *     dairy       41.5%   mean 4.55  med 4.87   1.9      ON TARGET
+   *
+   * **Not one of the five hits "about two plain actions" as an EXPECTED value**
+   * (unconditional means: dairy 1.88, orchard 1.67, apiary 0.88, wheat 0.85,
+   * vegetable 0.52, against a target of 4.8), and when they do fire the spread
+   * is FIVEFOLD, Vegetable 10.09 against Apiary 1.99.
+   *
+   * ⛔ **THE DOMINANT FAULT IS THE DEAD FIRE, AND IT IS THE STANDING DOOR RULING
+   * NOT BEING APPLIED.** K5 says a central board whose action you cannot perform
+   * is not offered; the Farmstead is offered whenever you hold a coin and have
+   * not fired it this turn, whatever it can do. So Wheat harvests nothing when
+   * nothing is full and Vegetable delivers nothing from an empty barn, and four
+   * of the five powers are dead most of the time.
+   *
+   * ⚠️ **ORCHARD'S NUMBER IS THE INSTRUMENT'S AND NOT THE TABLE'S.** Its gross
+   * is hard-capped at 3.25 because Draw 3 is capped by room in hand, and the
+   * hand bound of 7 is the SIMULATOR'S BOUND rather than a rule of the game
+   * (C7). At a real table with no hand limit the Orchard power is worth more
+   * than this measures, and it is the only one of the five that bound touches.
+   *
+   * ## SO THE NUMBER IS 1.2, AND IT IS A PIN RATHER THAN A FIT
+   *
+   * The measured band is 0 to about 1.3, and rather than ship a fitted decimal
+   * this takes `drawAction`'s **1.2** - "one card of draw" - which sits inside
+   * the band and states the measurement in the table's own currency: **firing
+   * the Farmstead is worth about the same as a plain Draw 2 and no more**, which
+   * is exactly what (c') says (the median net against a Draw is 0.00 on wheat
+   * and on orchard). ⚠️ It is a SOFT pin: no test asserts the two are equal, so
+   * they can move apart - but if `drawAction` ever moves, re-read this.
    *
    * ⚠️ **A SWEEP OF THIS NUMBER IS AN EDIT AND A REBUILD, NOT AN OVERLAY.**
    * `weightsFor` takes a profile id and nothing else, so the weight table is not
@@ -283,9 +346,9 @@ export const BALANCED: WeightTable = {
    * ⛔ **STRUCTURALLY ZERO WHEN THE ARM IS OFF.** Nothing mints or spends a coin
    * outside `rules.turn.commonsTake: 'coins'` and its two sinks, so this weight
    * multiplies a zero in the shipped game and under both controls. That is what
-   * lets a new nonzero weight land without moving one fixture.
+   * lets a nonzero weight land without moving one fixture.
    */
-  coinWorth: 3.5,
+  coinWorth: 1.2,
   /**
    * PINNED to `coinWorth`, on exactly the arrangement `meepleSpend` has with
    * `meepleGain`: one price for a coin whichever direction it travels, so the
@@ -298,33 +361,34 @@ export const BALANCED: WeightTable = {
    * charged a coin at one price on one sink and another price on the other would
    * be reporting this table rather than the rules.
    *
-   * ⛔ **AND IT IS THE FIRST NUMBER TO SWEEP, MEASURED RATHER THAN SUSPECTED.**
-   * Paired A/B on identical seeds, five 3-seat games under
-   * `overlays/commons-coins-v1.overlay.json`, this weight the ONLY thing moved:
+   * ## ⭐ WHAT EACH PRICE DOES, SWEPT ON IDENTICAL SEEDS (10/09/2026)
    *
-   *     coin take (the mint)      43.0 a game  ->  57.8 a game   at coinSpend 0
-   *     FARMSTEAD FIRES            1.4 a game  ->  44.8 a game   at coinSpend 0
-   *     commons plays             55.2 a game  ->  71.2 a game   at coinSpend 0
+   * 30 games, 2/3/4 seats, all five suits rotated, this pair of weights the ONLY
+   * thing moved. Reported as the CONSEQUENCE of the number above rather than as
+   * the reason for it - the number comes from (c), not from this table.
    *
-   * **At 3.5 the Farmstead sink is all but shut, and the 32x swing proves the
-   * fault is the PRICE and not the plumbing**: the power's payoff reaches the
-   * rollout perfectly well (it is what the bot spends 44.8 coins a game on the
-   * moment the charge is lifted), it simply loses to the charge. The arithmetic
-   * is legible on the Orchard power: Draw 3 rolls out at 3.6 against a plain
-   * Draw 2 at 2.4, so the power nets about 1.2 over the action it displaces and
-   * a 3.5 coin buries it.
+   *     price   Farmstead fires   DEAD fires   coins spent   fires by suit (w/v/o/a/d)
+   *             a game            of those     of minted
+   *     0       43.67             66.3%        52.5%         11.3 / 7.3 / 7.4 / 7.5 / 10.2
+   *     1.2      5.60              7.1%         6.9%          1.7 / 0.3 / 1.9 / 0.3 /  1.4
+   *     2        3.23              1.0%         4.3%          1.7 / 0.0 / 0.3 / 0.2 /  1.1
+   *     3.5      1.33              0.0%         1.9%          1.0 / 0.0 / 0.0 / 0.1 /  0.3
    *
-   * ⚠️ **SO a19's "FARMSTEAD FIRES BY SUIT" - the imbalance reading Dean raised
-   * by name - CANNOT BE READ AT 3.5**, because at 3.5 hardly anything fires and
-   * the ranking would be noise. **Sweep this weight (0, 1, 2, 3.5) before
-   * quoting one number about either sink, and remember it is an edit and a
-   * rebuild rather than an overlay.** It is shipped at 3.5 anyway, on the
-   * standing rule that a weight tuned against its own first run is a snapshot
-   * test: 3.5 is the number the anchor argues for, the A/B above is the evidence
-   * that the anchor is probably too dear, and Dean's measurement session gets
-   * both rather than one of them silently chosen.
+   * ⛔ **AT 3.5 ONLY WHEAT EVER FIRES, SO a19's "FARMSTEAD FIRES BY SUIT" - the
+   * imbalance reading Dean raised by name - COULD NOT BE READ AT ALL.** At 1.2
+   * every one of the five fires at least sometimes, which is the precondition
+   * for that reading to mean anything, and the DEAD-fire share collapses from
+   * 66.3% at a free coin to 7.1%: the bot stops firing a power that does nothing
+   * and starts waiting for a position where it does. ⚠️ **0 IS NOT A CANDIDATE
+   * PRICE**, and the dead-fire column is why: a free coin has the bot firing an
+   * empty Harvest two turns in three.
+   *
+   * ⚠️ The spend share is still only 6.9% of coins minted, which is a finding
+   * about the RULES rather than about this weight - 27 coins a player a game are
+   * minted and there is almost nothing to spend them on (the Endgame sink is
+   * unreachable, see `commons.test.ts`). Read a19's dead-coin line knowing that.
    */
-  coinSpend: 3.5,
+  coinSpend: 1.2,
   /**
    * **A balloon is worth its reward and nothing else** - the same sentence
    * ticket 40 applied to the visit, for the same measured reason (ticket 49).
