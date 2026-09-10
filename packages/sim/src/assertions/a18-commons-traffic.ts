@@ -1,4 +1,11 @@
-import { isCommons, isCommonsTakePaid, isCommonsTakeToHand, isCommonsTakeToSpend } from '@gp/data';
+import {
+  commonsWildPair,
+  isCommons,
+  isCommonsTakeCoins,
+  isCommonsTakePaid,
+  isCommonsTakeToHand,
+  isCommonsTakeToSpend,
+} from '@gp/data';
 
 import type { Assertion, Measurement } from './types.js';
 import { NO_REMEDY } from './types.js';
@@ -152,7 +159,13 @@ export const commonsTraffic: Assertion = {
     'the first SINK the commons line has had; deliveries paid straight from the vegetable pile, ' +
     'against every delivery in the game; the conservation line re-derived as plays = to hand + ' +
     'to barn + spent + discarded + stranded; and the farm bypass moved to the WHEAT leg alone ' +
-    '(barn cards from a wheat take against a seat’s own buildings), beside the same 30-40% target.',
+    '(barn cards from a wheat take against a seat’s own buildings), beside the same 30-40% target. ' +
+    "⭐ UNDER commonsTake: 'coins' (10/09/2026) THE FARM BYPASS IS A STRUCTURAL 0% and says so " +
+    'rather than printing a zero: Harvest never reaches the centre and no take puts a card in a ' +
+    'hand or a barn, so the centre’s only exit leads OUT OF THE GAME. The conservation line is ' +
+    're-derived as cards into the centre = cards discarded by coin takes + cards stranded at ' +
+    'game end, in CARDS rather than plays because the wild pair puts two cards in for one play, ' +
+    'and the take-size distribution doubles as the distribution of coins minted per take.',
   threshold:
     'OBSERVE, and there is NO FAIL CONDITION in this pass. The design names no number for any ' +
     'of these readings, the handoff names none, and one taken from the first commons run would ' +
@@ -184,6 +197,13 @@ export const commonsTraffic: Assertion = {
     const games = pooled.ended;
     const turns = totalTurns(games);
     const plays = sum(games.map((g) => sum(g.commonsPlaysBySeat)));
+    // ⛔ CARDS, NOT PLAYS, AND THE CONSERVATION IDENTITY IS WRITTEN IN CARDS.
+    // `rules.economy.commonsWildPair` (K3, 10/09/2026) lets two cards pay for one
+    // board, so a play count cannot balance a centre that is counted in cards. The
+    // two are equal under every knob but the pair, which is why every identity below
+    // reads this one and every rate reads `plays`.
+    const cards = sum(games.map((g) => sum(g.commonsCardsIntoCentreBySeat)));
+    const wildPairPlays = sum(games.map((g) => sum(g.commonsWildPairPlaysBySeat)));
     const seatGames = sum(games.map((g) => g.seats));
 
     const feeTotal = sum(games.map((g) => sum(Object.values(g.commonsPlaysByFeeSuit))));
@@ -286,11 +306,11 @@ export const commonsTraffic: Assertion = {
             'end - never by Harvest.',
           `⭐ CARDS TAKEN PER CENTRAL TAKE, the distribution: ${histogram}.`,
           `⭐⭐ THE CONSERVATION LINE, per game, RE-DERIVED FOR THE VARIANT: ` +
-            `${num(games.length === 0 ? NaN : plays / games.length, 1)} cards played INTO the ` +
+            `${num(games.length === 0 ? NaN : cards / games.length, 1)} cards played INTO the ` +
             `centre = ${num(games.length === 0 ? NaN : takenCards / games.length, 1)} TAKEN OUT ` +
             `+ ${num(games.length === 0 ? NaN : stranded / games.length, 1)} STRANDED at game ` +
-            `end (${plays} = ${takenCards} + ${stranded} over ${games.length} ended games; ` +
-            `stranded is ${pct(plays === 0 ? NaN : stranded / plays)} of plays). The shipped ` +
+            `end (${cards} = ${takenCards} + ${stranded} over ${games.length} ended games; ` +
+            `stranded is ${pct(cards === 0 ? NaN : stranded / cards)} of cards). The shipped ` +
             'line reads plays = harvested out + stranded; under this variant nothing is ever ' +
             'harvested out of the centre, so the line becomes plays = TAKEN out + stranded, and ' +
             'the same closed-system arithmetic still has to balance.',
@@ -374,11 +394,11 @@ export const commonsTraffic: Assertion = {
             'above move together by construction: it exists as its own line so a reader does not ' +
             'have to infer the sink from the take rate.',
           `⭐⭐ THE CONSERVATION LINE, per game, RE-DERIVED FOR THE VARIANT: ` +
-            `${num(games.length === 0 ? NaN : plays / games.length, 1)} cards played ONTO boards ` +
+            `${num(games.length === 0 ? NaN : cards / games.length, 1)} cards played ONTO boards ` +
             `= ${num(games.length === 0 ? NaN : takenCards / games.length, 1)} TAKEN TO HAND ` +
             `+ ${num(games.length === 0 ? NaN : stranded / games.length, 1)} STRANDED at game ` +
-            `end (${plays} = ${takenCards} + ${stranded} over ${games.length} ended games; ` +
-            `stranded is ${pct(plays === 0 ? NaN : stranded / plays)} of plays). The fee never ` +
+            `end (${cards} = ${takenCards} + ${stranded} over ${games.length} ended games; ` +
+            `stranded is ${pct(cards === 0 ? NaN : stranded / cards)} of cards). The fee never ` +
             'joins this identity at all - it never touches a central pile - which is exactly why ' +
             'it needs a SECOND identity of its own: cards paid as take fees = cards discarded ' +
             `(${feesPaid} = ${feesPaid}, by construction - fx.discardFromHand discards the same ` +
@@ -394,6 +414,123 @@ export const commonsTraffic: Assertion = {
             'nets `takenCards - feesPaid` cards from a run of takes, never the raw pile size, ' +
             'because every take costs one to gain however many the pile held.',
           ...feeSuitLines,
+        ],
+        verdict: 'OBSERVE',
+      };
+    }
+
+    // ⭐ THE COMMONS WITH COINS (K3/K4, Dean 10/09/2026, `rules.turn.commonsTake:
+    // 'coins'`): the fourth branch, and the first one where the centre's outflow
+    // leaves THE GAME rather than moving to a player. A take discards every card
+    // on one pile to those cards' own suit discards and mints one coin per card;
+    // Harvest never reaches the centre at all (K4, reversing C5). So the whole
+    // harvest-side half of this file has no subject, exactly as under 'bonus',
+    // 'paid' and 'spend' - but this time the farm bypass does not MOVE anywhere
+    // either. It is a structural 0%, and it says so.
+    if (isCommonsTakeCoins(data)) {
+      const takes = sum(games.map((g) => sum(g.commonsTakesBySeat)));
+      const stranded = sum(games.map((g) => g.commonsStrandedAtEnd));
+      // Cards cleared OUT of the centre by a coin take. Under this knob they go
+      // to their suits' discard piles rather than to anybody, so this counter is
+      // the DISCARDED column of the conservation line rather than a hand's
+      // intake. It equals the coins minted, card for card (K3), and a19 reads
+      // the same quantity as a currency.
+      const discardedByTakes = sum(games.map((g) => sum(g.commonsTakenCardsBySeat)));
+      const coinsMinted = sum(games.map((g) => sum(g.coinsMintedBySeat)));
+      const sizes = games.flatMap((g) => g.commonsTakeSizes);
+      const fromOwn = sum(games.map((g) => sum(g.barnFromOwnBySeat)));
+      const value = turns === 0 ? NaN : plays / turns;
+
+      const buckets = [1, 2, 3, 4].map((n) => sizes.filter((x) => x === n).length);
+      const big = sizes.filter((x) => x >= 5).length;
+      const histogram = [...buckets.map((c, i) => [`${i + 1}`, c] as const), ['5+', big] as const]
+        .map(
+          ([label, count]) =>
+            `${label}: ${count} ${pct(sizes.length === 0 ? NaN : count / sizes.length, 0)}`,
+        )
+        .join('   ');
+
+      return {
+        value,
+        headline:
+          `${num(value, 2)} plays per player per turn (${plays} plays, ${cards} cards, over ` +
+          `${turns} turns); ${num(seatGames === 0 ? NaN : takes / seatGames, 2)} coin takes per ` +
+          `player per game; the farm bypass is 0% BY CONSTRUCTION under commonsTake: 'coins'`,
+        detail: [
+          `⭐ THE COMMONS WITH COINS (rules.turn.commonsTake: 'coins', 10/09/2026): CENTRAL ` +
+            'HARVESTS READ 0 BY CONSTRUCTION (K4, reversing C5). harvestOptions never returns a ' +
+            'central board under this knob, so the wheat board buys an own-building Harvest or ' +
+            'nothing at all, and `commonsHarvestMin` and `commonsHarvestTake` have no subject. ' +
+            'The centre is emptied only by the coin take, which is reported here instead.',
+          `⚠️ THE PLAY RATE IS a17'S NUMBER AND ITS VERDICT IS a17'S: ` +
+            `${pct(value)} of turns play a card, against Dean's band of 30%-60% ("earned, not ` +
+            'automatic", 09/09/2026). It is repeated here because everything else on this page ' +
+            'is read against it, and it deliberately carries no verdict here. ⛔ AND THE BAND IS ' +
+            'READ ON TURNS THAT USED THE SLOT, not on this rate: a17 owns that number and this ' +
+            'page must not be quoted for it.',
+          `⛔ PLAYS AND CARDS ARE TWO NUMBERS UNDER THIS ARM. ${plays} plays put ${cards} cards ` +
+            `into the centre, because ${wildPairPlays} of those plays were paid with a WILD ` +
+            `PAIR (K3: two cards of any colours as one card of the board's colour, both landing ` +
+            `on the pile). ${plays} + ${wildPairPlays} = ${cards}, exactly, or the fold is ` +
+            'wrong. Every RATE on this page is per play; every IDENTITY is in cards, because ' +
+            'the centre is counted in cards.' +
+            (commonsWildPair(data)
+              ? ''
+              : ' (rules.economy.commonsWildPair is OFF in this run, so the two are equal here ' +
+                'by construction.)'),
+          `plays per game: ${num(games.length === 0 ? NaN : plays / games.length, 1)} across ` +
+            `${games.length} ended games, ${num(seatGames === 0 ? NaN : plays / seatGames, 1)} ` +
+            'per player per game.',
+          `COIN TAKES: ${takes} in all, ` +
+            `${num(seatGames === 0 ? NaN : takes / seatGames, 2)} per player per game, clearing ` +
+            `a mean of ${num(mean(sizes), 2)} and a median of ${num(median(sizes), 1)} cards ` +
+            `(p90 ${num(percentile(sizes, 0.9), 1)}, ` +
+            `max ${sizes.length === 0 ? 'n/a' : sizes.reduce((a, b) => (b > a ? b : a), 0)}). A ` +
+            'pile leaves only by a coin take or by sitting stranded at game end - never by ' +
+            'Harvest, and never to a hand.',
+          `⭐ CARDS CLEARED PER COIN TAKE, the distribution: ${histogram}. It is also the ` +
+            'distribution of COINS PAID PER TAKE, one for one (K3), so the tail is what decides ' +
+            'whether the mint is a trickle or a windfall: a19 reads the same numbers as a ' +
+            'currency.',
+          `⭐⭐ THE CONSERVATION LINE, per game, RE-DERIVED FOR THE ARM: ` +
+            `${num(games.length === 0 ? NaN : cards / games.length, 1)} cards played INTO the ` +
+            `centre = ${num(games.length === 0 ? NaN : discardedByTakes / games.length, 1)} ` +
+            `DISCARDED BY COIN TAKES + ` +
+            `${num(games.length === 0 ? NaN : stranded / games.length, 1)} STRANDED at game end ` +
+            `(${cards} = ${discardedByTakes} + ${stranded} over ${games.length} ended games; ` +
+            `stranded is ${pct(cards === 0 ? NaN : stranded / cards)} of cards). ⛔ NOTHING ` +
+            'REACHES A BARN OR A HAND FROM THE CENTRE UNDER THIS ARM, which is what makes the ' +
+            'identity two-term rather than three: the centre is still a closed system, but its ' +
+            'only exit now leads OUT OF THE GAME. The coins are the receipt: ' +
+            `${coinsMinted} minted against ${discardedByTakes} cards discarded, one for one, ` +
+            'and a disagreement between those two is a fold bug rather than a reading.',
+          `⭐⭐ THE FARM BYPASS READS 0% BY CONSTRUCTION AND THAT IS NOT A ZERO TO READ. No ` +
+            "harvest of a central pile is possible under commonsTake: 'coins' (K4) and no take " +
+            'puts a card into a hand or a barn either, so `barnFromCommonsBySeat` is a ' +
+            'STRUCTURAL zero and the ratio the shipped rule fails on has no subject at all. ' +
+            `Every one of the ${fromOwn} harvested barn cards in this run came off a seat's OWN ` +
+            'buildings. ⭐ THAT IS THE WHOLE POINT OF THE ARM: the shipped commons sent 63.0% of ' +
+            'harvested barn cards through the middle and every rule ON the piles failed to move ' +
+            'it, so this one stops the flow at the source and pays for the clearing in a ' +
+            'currency instead. **THE QUESTION IT REPLACES THE OLD ONE WITH IS WHETHER THE PILES ' +
+            'ARE STILL WORTH CLEARING**, which is the take rate above and the mint in a19, not ' +
+            'a bypass share.',
+          `⚠️ AND THE PRICE OF THAT IS PRINTED HERE RATHER THAN LEFT TO BE INFERRED: ` +
+            `${discardedByTakes} cards a run (` +
+            `${num(games.length === 0 ? NaN : discardedByTakes / games.length, 1)} a game, ` +
+            `${num(seatGames === 0 ? NaN : discardedByTakes / seatGames, 1)} per player per ` +
+            'game) LEAVE THE GAME through the coin take. Every earlier variant handed those ' +
+            'cards back to somebody - to a hand, to a barn, to an action - and all three ran ' +
+            'the bonus slot at 74% to 89% of turns because the cards taken paid for the next ' +
+            'play. This is the arm that does not, so read the deck pressure beside the ' +
+            'reshuffle count: a mint that eats the decks is a different failure from one that ' +
+            'floods the wallets.',
+          ...feeSuitLines,
+          `⚠️ AND THE FEE-SUIT MIX ABOVE COUNTS **CARDS**, NOT PLAYS, under this arm: both ` +
+            'halves of a wild pair are tested for the payer’s own crop and counted separately, ' +
+            'so its rows and its denominator are both in cards and every share it prints is ' +
+            `sound. ${cards} fee cards against ${plays} plays is the gap, and it is the wild ` +
+            'pair.',
         ],
         verdict: 'OBSERVE',
       };
@@ -501,13 +638,13 @@ export const commonsTraffic: Assertion = {
             'share here is a delivery pipeline that skips the barn (and therefore the building ' +
             'layer) altogether.',
           `⭐⭐ THE CONSERVATION LINE, per game, RE-DERIVED FOR THE VARIANT: ` +
-            `${num(games.length === 0 ? NaN : plays / games.length, 1)} cards played INTO the ` +
+            `${num(games.length === 0 ? NaN : cards / games.length, 1)} cards played INTO the ` +
             `centre = ${num(games.length === 0 ? NaN : toHand / games.length, 1)} TO HAND (orchard) ` +
             `+ ${num(games.length === 0 ? NaN : toBarn / games.length, 1)} TO BARN (wheat) ` +
             `+ ${num(games.length === 0 ? NaN : spent / games.length, 1)} SPENT (dairy/vegetable/apiary) ` +
             `+ ${num(games.length === 0 ? NaN : discardedTotal / games.length, 1)} DISCARDED ` +
             `+ ${num(games.length === 0 ? NaN : stranded / games.length, 1)} STRANDED at game end ` +
-            `(${plays} = ${toHand} + ${toBarn} + ${spent} + ${discardedTotal} + ${stranded} over ` +
+            `(${cards} = ${toHand} + ${toBarn} + ${spent} + ${discardedTotal} + ${stranded} over ` +
             `${games.length} ended games). The shipped line reads plays = harvested out + ` +
             'stranded; this variant has no single "out", so the line splits into every fate a ' +
             'card can meet.',
@@ -587,11 +724,11 @@ export const commonsTraffic: Assertion = {
           'moved the centre share by 0.1 points (63.1% to 63.0%) because a central harvest was ' +
           'already taking a median of two cards, so the cap could only ever reach the tail above ' +
           'it. Read the 3 / 4 / 5+ buckets as the whole of what any cap has to work with.',
-        `⭐⭐ THE CONSERVATION LINE, per game: ${num(games.length === 0 ? NaN : plays / games.length, 1)} ` +
+        `⭐⭐ THE CONSERVATION LINE, per game: ${num(games.length === 0 ? NaN : cards / games.length, 1)} ` +
           `cards played INTO the centre = ${num(games.length === 0 ? NaN : fromCentre / games.length, 1)} ` +
           `harvested OUT + ${num(games.length === 0 ? NaN : stranded / games.length, 1)} STRANDED ` +
-          `at game end (${plays} = ${fromCentre} + ${stranded} over ${games.length} ended games; ` +
-          `stranded is ${pct(plays === 0 ? NaN : stranded / plays)} of plays). The centre is a ` +
+          `at game end (${cards} = ${fromCentre} + ${stranded} over ${games.length} ended games; ` +
+          `stranded is ${pct(cards === 0 ? NaN : stranded / cards)} of cards). The centre is a ` +
           'CLOSED system - in by a play (C3), out by a harvest (D3) - so the three columns must ' +
           'balance exactly and a disagreement is a fold bug, not a reading. ⭐ IT IS ALSO THE ' +
           'ANSWER TO WHY AN INFLOW CAP CANNOT MOVE THE SHARE: every card played into the centre ' +

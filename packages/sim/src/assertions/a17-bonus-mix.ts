@@ -1,6 +1,8 @@
 import {
   commonsTakeGoesToHand,
+  commonsWildPair,
   isCommons,
+  isCommonsTakeCoins,
   isCommonsTakePaid,
   isCommonsTakeToHand,
   isCommonsTakeToSpend,
@@ -139,6 +141,40 @@ import { num, pct, sum } from '../stats.js';
  * rational floor and still not a prediction: a bot never forgets the slot and
  * never mis-prices a card it will want next turn.
  *
+ * ## ⭐⭐ THE COMMONS WITH COINS (10/09/2026): A FOURTH THREE-COLUMN ARM, AND
+ * ## THREE QUANTITIES THAT MUST NEVER BE CONFLATED AGAIN
+ *
+ * `rules.turn.commonsTake: 'coins'` (K3/K4, Dean 10/09/2026) puts a second
+ * option back in the slot: discard every card on one central pile to its cards'
+ * own suit discards and take ONE COIN PER CARD. It counts here exactly as
+ * `'bonus'` and `'paid'` do - PLAY / COIN TAKE / SLOT UNSPENT as shares of every
+ * turn played, the verdict on the slot's TOTAL use against Dean's band - and it
+ * differs only in what the taker receives and where the cards go, which is a18's
+ * and a19's business rather than this file's.
+ *
+ * ⛔ **WHAT IS THIS FILE'S BUSINESS IS THE DENOMINATOR, BECAUSE THE ARM BREAKS IT
+ * FOR THE SECOND TIME.** `rules.economy.commonsWildPair` (K3) lets two cards of
+ * any colours pay for one board, and the engine emits one `commonsPlayed` per
+ * CARD, so under this arm there are THREE different numbers where the shipped
+ * game has two:
+ *
+ *   TURNS THAT USED THE SLOT  at most one per turn - **THE VERDICT QUANTITY**,
+ *                             and the only one Dean's 30-60% band is written in
+ *   PLAYS                     one per `commons` MOVE - A Helping Hand can put
+ *                             two in one turn (C8)
+ *   CARDS INTO THE CENTRE     one per `commonsPlayed` EVENT - a wild pair puts
+ *                             TWO cards in for ONE play
+ *
+ * ⚠️ **THIS IS THE 09/09/2026 TRAP ARRIVING A SECOND TIME.** That day the band
+ * was judged on plays per turn (68.5%) where the turn share read 58.9%, a FAIL
+ * was reported that was not one, and all five arms had to be re-run on corrected
+ * counters. A 30-game smoke run of the coin arm on 10/09/2026 printed "plays per
+ * turn 67.8%" when the number was cards per turn. **Any rule that grants a second
+ * one of the thing being counted breaks the denominator**, and this design now
+ * has two such rules. All three quantities are printed side by side under the
+ * arm, with the reconciliation (plays + wild-pair plays = cards) printed beside
+ * them so a reader can check it rather than trust it.
+ *
  * ## The early/late split
  *
  * Kept from assertion 14 because the lesson it encodes was expensive: a CAPPED
@@ -185,7 +221,10 @@ export const bonusMix: Assertion = {
     'amended), the mean toll paid, and the most-visited seat’s share of a game’s rival visits. ' +
     'Under "commons" it is TWO columns - commons play / slot unspent - as shares of every turn ' +
     'played, split by BOARD (the board is the action bought) and reported per seat count as ' +
-    'well as pooled.',
+    'well as pooled. Under rules.turn.commonsTake "bonus", "spend", "paid" or "coins" it is ' +
+    'THREE - play / take / slot unspent - and under "coins" (10/09/2026) it also prints the ' +
+    'three quantities the wild pair separates: turns that used the slot (the verdict), plays ' +
+    'per turn and CARDS per turn, with plays + wild-pair plays = cards as the reconciliation.',
   threshold:
     `Under "commons": FAIL if the PLAY RATE - the share of turns that play a card onto a ` +
     `central board - falls outside ${pct(PLAY_FLOOR, 0)} to ${pct(PLAY_CEILING, 0)} at ANY ` +
@@ -233,18 +272,26 @@ export const bonusMix: Assertion = {
  * the paid play. Not part of the verdict - see `commonsMode`'s own comment on
  * why - printed as the line that watches the solitaire law under a new name.
  */
-function freeShareLine(plays: number, takes: number): string {
+function freeShareLine(plays: number, takes: number, modeName: string): string {
   const used = plays + takes;
   return (
     `⭐ THE FREE OPTION'S SHARE OF USED SLOTS: ${pct(used === 0 ? NaN : takes / used)} ` +
     `(${takes} takes of ${used} used slots, plays and takes together). This is the solitaire ` +
     'law arriving under a new name: every currency this project has shipped has watched whether ' +
     'a free option sharing the bonus slot with a paid one crowds it out (Draw 1 against the ' +
-    "card visit, the empty-board Collect against the meeple visit), and commonsTake: 'bonus' or " +
-    "'spend' puts a free option back in the slot beside the paid commons play for the first time " +
-    "since the commons shipped. ⚠️ OBSERVE, NOT FAIL: Dean set a band for the slot's OVERALL use " +
+    `card visit, the empty-board Collect against the meeple visit), and commonsTake: '${modeName}' ` +
+    'puts a free option back in the slot beside the paid commons play. ' +
+    "⚠️ OBSERVE, NOT FAIL: Dean set a band for the slot's OVERALL use " +
     'rate (play or take together), not for the split between the two, so a high free share is a ' +
-    'reading to watch rather than a threshold this assertion can fail on.'
+    'reading to watch rather than a threshold this assertion can fail on.' +
+    (modeName === 'coins'
+      ? " ⭐ AND IT IS SHARPER UNDER 'coins' THAN UNDER ANY EARLIER VARIANT, because the coin " +
+        'take is the ONLY free option in the game and it hands back no cards at all (K4: the ' +
+        'pile goes to its suits’ discards and leaves the game). Every earlier free take ' +
+        'refilled the hand that pays for the next play, which is why they ran the slot at 74% ' +
+        'to 89% of turns; this one cannot, so a high free share here is a table choosing a ' +
+        'currency over an action rather than a table financing itself.'
+      : '')
   );
 }
 
@@ -266,17 +313,40 @@ function commonsMode({ data, pooled }: MeasureContext): Measurement {
   // only in whether it is FREE, which only the wording, never the counting,
   // has to know about.
   const takePaid = isCommonsTakePaid(data);
+  // ⭐ THE COMMONS WITH COINS (K3/K4, Dean 10/09/2026): the FOURTH `commonsTake`
+  // value and the fourth three-column arm. It counts exactly as `'bonus'` and
+  // `'paid'` do - a `commonsTake` move sharing the slot with the paid play, one
+  // `commonsTaken` event per take, all five boards - and differs only in what the
+  // taker receives (one coin per card) and where the cards go (their suits'
+  // discards, out of the game). a17 needs to know neither; a18 and a19 do.
+  const takeCoins = isCommonsTakeCoins(data);
   const toHandOrPaid = commonsTakeGoesToHand(data);
+  // Every take that emits `commonsTaken` for all five boards - the three
+  // to-a-player values plus the coin mint. `'spend'` is the exception and reads
+  // `commonsSpendTakesByBoard` instead, for the reason its own comment gives.
+  const takesOffTakenEvent = toHandOrPaid || takeCoins;
+  // The take column's name, declared here because the headline is built before the
+  // detail lines are. 'COIN TAKE' rather than 'TAKE' under the arm because the two
+  // words are the whole difference: nothing is taken to a hand.
+  const takeLabel = takeCoins ? 'COIN TAKE' : 'TAKE';
   // ⭐ ALL THREE VARIANTS PRINT THE SAME THREE-COLUMN SHAPE (Dean, 09/09/2026):
   // a `commonsTake` sharing the slot with the paid `commons` play. They differ
   // only in what a take's cards then DO and whether the take itself costs
   // anything, which a17 does not need to know beyond the wording - see a18 for
   // the traffic and the sink.
-  const threeColumn = takeToHand || takeToSpend || takePaid;
+  const threeColumn = takeToHand || takeToSpend || takePaid || takeCoins;
   const games = pooled.ended;
   const turns = totalTurns(games);
   const bonusTurns = totalBonusTurns(games);
+  // ⛔ PLAYS, AND SINCE 10/09/2026 THAT IS NOT THE SAME QUANTITY AS CARDS. The
+  // wild pair (K3) pays for one board with two cards, so `commonsPlaysBySeat` is
+  // folded off the `commons` MOVE and `commonsCardsIntoCentreBySeat` off the
+  // `commonsPlayed` EVENT. Under every knob but the pair the two are equal. See
+  // the caveat line in the detail below, which is the same shape as A Helping
+  // Hand's and is there for the same reason.
   const plays = sum(games.map((g) => sum(g.commonsPlaysBySeat)));
+  const cards = sum(games.map((g) => sum(g.commonsCardsIntoCentreBySeat)));
+  const wildPairPlays = sum(games.map((g) => sum(g.commonsWildPairPlaysBySeat)));
   // ⭐ THE OTHER HALF OF THE SLOT. 0 by construction under the shipped
   // `'harvest'` rule, where `commonsTake` moves are never enumerated. Under
   // `'bonus'` and `'paid'` every take lands in a hand and `commonsTakesBySeat`
@@ -285,7 +355,7 @@ function commonsMode({ data, pooled }: MeasureContext): Measurement {
   // `commonsTaken`-emitting ones), so the total has to come off
   // `commonsSpendTakesByBoard` instead - a MOVE-level count that sees all five
   // boards a take can choose.
-  const takes = toHandOrPaid
+  const takes = takesOffTakenEvent
     ? sum(games.map((g) => sum(g.commonsTakesBySeat)))
     : takeToSpend
       ? sum(games.map((g) => sum(Object.values(g.commonsSpendTakesByBoard))))
@@ -312,13 +382,14 @@ function commonsMode({ data, pooled }: MeasureContext): Measurement {
   // free half.
   const value = bonusTurns / turns;
   const playsPerTurn = plays / turns;
+  const cardsPerTurn = cards / turns;
 
   const rows = [...pooled.bySeats]
     .sort((a, b) => a.seats - b.seats)
     .map((slice) => {
       const t = totalTurns(slice.ended);
       const p = sum(slice.ended.map((g) => sum(g.commonsPlaysBySeat)));
-      const k = toHandOrPaid
+      const k = takesOffTakenEvent
         ? sum(slice.ended.map((g) => sum(g.commonsTakesBySeat)))
         : takeToSpend
           ? sum(slice.ended.map((g) => sum(Object.values(g.commonsSpendTakesByBoard))))
@@ -360,7 +431,7 @@ function commonsMode({ data, pooled }: MeasureContext): Measurement {
   const headline = threeColumn
     ? `the bonus slot is used on ${pct(value)} of ${turns} turns ` +
       `(Dean's band ${pct(PLAY_FLOOR, 0)}-${pct(PLAY_CEILING, 0)}); ` +
-      `PLAY ${share(plays)}, TAKE ${share(takes)}, SLOT UNSPENT ${share(unspent)}` +
+      `PLAY ${share(plays)}, ${takeLabel} ${share(takes)}, SLOT UNSPENT ${share(unspent)}` +
       (outOfBand.length === 0
         ? ''
         : `; OUT OF BAND at ${outOfBand.map((r) => `${r.seats}p ${pct(r.rate)}`).join(', ')}`)
@@ -389,20 +460,71 @@ function commonsMode({ data, pooled }: MeasureContext): Measurement {
     .map(([board, n]) => `${board} ${pct(takes === 0 ? NaN : n / takes, 0)}`)
     .join('  ');
 
-  const modeName = takeToHand ? 'bonus' : takePaid ? 'paid' : 'spend';
+  // ⭐ THE COIN TAKE'S OWN BOARD MIX (K3, 10/09/2026), off `commonsTakesByBoard`
+  // - which pile was worth clearing. It is a different question from the PAID
+  // half's board mix above: that one says which action a table wanted to buy,
+  // this one says which pile a table wanted gone (and paid for in coins).
+  const coinTakesByBoard = new Map<string, number>();
+  if (takeCoins) {
+    for (const g of games) {
+      for (const [board, n] of Object.entries(g.commonsTakesByBoard)) {
+        coinTakesByBoard.set(board, (coinTakesByBoard.get(board) ?? 0) + n);
+      }
+    }
+  }
+  const coinTakesByBoardLine = [...coinTakesByBoard.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([board, n]) => `${board} ${pct(takes === 0 ? NaN : n / takes, 0)}`)
+    .join('  ');
+
+  const modeName = takeToHand ? 'bonus' : takePaid ? 'paid' : takeCoins ? 'coins' : 'spend';
   const takeDescription = takeToHand
     ? 'a whole central pile taken free to hand - no card, no fee'
     : takePaid
       ? "a whole central pile taken to hand for one card, discarded to its own suit's pile - " +
         'the take itself, never the pile'
-      : "one board's action bought from what its pile holds - no card, no fee";
+      : takeCoins
+        ? "every card on one central pile discarded to its own suit's pile and ONE COIN PER " +
+          'CARD taken - no card paid, and the cards LEAVE THE GAME (K4)'
+        : "one board's action bought from what its pile holds - no card, no fee";
 
   const detail = threeColumn
     ? [
         `⭐ DEAN'S VARIANT (rules.turn.commonsTake: '${modeName}', ` +
-          '09/09/2026): THREE columns rather than two, as a share of every turn played: PLAY ' +
-          `${share(plays)} (a card paid, a board's action bought), TAKE ${share(takes)} (${takeDescription}), ` +
+          `${takeCoins ? '10/09/2026' : '09/09/2026'}): THREE columns rather than two, as a ` +
+          `share of every turn played: PLAY ` +
+          `${share(plays)} (a card paid, a board's action bought), ${takeLabel} ${share(takes)} (${takeDescription}), ` +
           `SLOT UNSPENT ${share(unspent)}.`,
+        ...(takeCoins
+          ? [
+              `⛔ THREE QUANTITIES, AND THE VERDICT IS ON THE FIRST OF THEM. TURNS THAT USED ` +
+                `THE SLOT ${pct(value)} - play or coin take, at most one per turn, and THE ONLY ` +
+                `ONE THE BAND IS READ AGAINST. PLAYS PER TURN ${pct(playsPerTurn)} - one per ` +
+                `commons MOVE, so A Helping Hand can put two in one turn. CARDS PER TURN ` +
+                `${pct(cardsPerTurn)} - one per card that landed on a pile, and THE WILD PAIR ` +
+                `(K3) PUTS TWO CARDS IN FOR ONE PLAY. ${cards} cards entered the centre on ` +
+                `${plays} plays, of which ${wildPairPlays} were paid with a pair ` +
+                `(${pct(plays === 0 ? NaN : wildPairPlays / plays)} of plays); ` +
+                `${plays} + ${wildPairPlays} = ${cards} exactly, or the fold is wrong. ` +
+                `⚠️ THIS IS THE SAME TRAP A HELPING HAND SPRANG ON 09/09/2026, when the band was ` +
+                'judged on plays per turn (68.5%) where the turn share read 58.9% and all five ' +
+                'arms had to be re-run. Any rule that grants a second one of the thing being ' +
+                'counted breaks the denominator, and the wild pair is the second such rule this ' +
+                'design has had. Quote the measure with the number, every time.' +
+                (commonsWildPair(data)
+                  ? ''
+                  : ' (rules.economy.commonsWildPair is OFF in this run, so plays and cards ' +
+                    'are equal here by construction.)'),
+              `⚠️ AND THE THREE COLUMNS DO NOT SUM TO 100%, WHICH IS NOT AN ARITHMETIC ` +
+                `ERROR. A Helping Hand grants a SECOND bonus action of either kind (K2/C75), ` +
+                `so one turn can both PLAY and take and is counted in both columns while being ` +
+                `ONE turn that used the slot. PLAY ${share(plays)} + ${takeLabel} ` +
+                `${share(takes)} + SLOT UNSPENT ${share(unspent)} therefore overshoots. ` +
+                `⛔ THE TWO NUMBERS THAT DO SUM TO EVERY TURN PLAYED ARE SLOT USED ${pct(value)} ` +
+                `AND SLOT UNSPENT ${share(unspent)}, and the first of those is the one the band ` +
+                `is read against.`,
+            ]
+          : []),
         `by seat count, and THIS is the reading the verdict is taken on (slot used = play or ` +
           `take; play/take per turn in brackets): ${rows
             .map(
@@ -418,7 +540,22 @@ function commonsMode({ data, pooled }: MeasureContext): Measurement {
           (toHandOrPaid
             ? ' A take buys no action, so it has no board mix of its own - a18 carries the ' +
               'take-size distribution instead.'
+            : '') +
+          (takeCoins
+            ? ' ⭐ IT IS A COUNT OF PLAYS AND NOT OF CARDS: a wild pair buys ONE board action ' +
+              'however many cards land on the pile, so the rows and their denominator are both ' +
+              'in plays and the mix is not skewed by whichever board attracts the pairs.'
             : ''),
+        ...(takeCoins
+          ? [
+              `⭐ COIN TAKES BY BOARD (rules.turn.commonsTake: 'coins', 10/09/2026), which pile ` +
+                `was worth clearing: ${coinTakesByBoardLine || 'no takes'}. ${takes} takes over ` +
+                `${games.length} games, ${num(games.length === 0 ? NaN : takes / games.length, 1)} ` +
+                'a game. It is a different question from the board mix above: that one says ' +
+                'which ACTION a table wanted to buy, this one says which PILE a table wanted ' +
+                'gone. a18 carries the take-size distribution and a19 the coins it minted.',
+            ]
+          : []),
         ...(takeToSpend
           ? [
               `⭐ TAKES BY BOARD (rules.turn.commonsTake: 'spend', 09/09/2026), ALL FIVE, not the ` +
@@ -442,7 +579,7 @@ function commonsMode({ data, pooled }: MeasureContext): Measurement {
             "bonus slot with a paid one crowds it out; 'paid' is the first arm where neither half " +
             'of the slot is free, so that law has no subject here and PLAY/TAKE is a choice ' +
             'between two prices rather than a price and a freebie.'
-          : freeShareLine(plays, takes),
+          : freeShareLine(plays, takes, modeName),
         UNSPENT_CAVEAT,
         takePaid
           ? '⚠️ AND UNDER THE COMMONS THE UNSPENT COLUMN MEANS THE SAME THING IT DOES UNDER THE ' +

@@ -24,16 +24,26 @@
  * any of its lines, and one taken off the first commons run would be a snapshot
  * test.
  *
- * Ids are never reused, so the suite is 2, 4-9, 11-13, 15-18 and the gaps are
- * the tombstones. Six carry a threshold and can FAIL; seven are OBSERVE, because
+ * ⭐ AND ONE MORE IS NEW ON 10/09/2026 WITH THE COMMONS-WITH-COINS ARM:
+ * `a19-coin-economy`. It exists because the arm puts a CURRENCY back in a game
+ * that deleted one eight days earlier, and every coin economy this project has
+ * shipped died of a second faucet or a pity rate - so the whole balance sheet
+ * (one mint, two sinks, what is left dead in a wallet) belongs on one page where
+ * a third use arriving in a later pass is visible as one. It ships with NO FAIL
+ * CONDITION for the same reason a18 does, and it reports NO SUBJECT under every
+ * value of `rules.turn.commonsTake` but `'coins'`, which is every mode this
+ * project has ever shipped.
+ *
+ * Ids are never reused, so the suite is 2, 4-9, 11-13, 15-19 and the gaps are
+ * the tombstones. Six carry a threshold and can FAIL; eight are OBSERVE, because
  * the design names no number for them and a snapshot of our own first run is
  * not a threshold. That split is not a gap in the work - it is ticket 11
  * section 2 doing its job.
  *
- * ⚠️ TWO OF THE FOURTEEN NOW REPORT "NO SUBJECT" UNDER WHICHEVER MODE THEY WERE
+ * ⚠️ THREE OF THE FIFTEEN NOW REPORT "NO SUBJECT" UNDER WHICHEVER MODE THEY WERE
  * NOT WRITTEN FOR, and the pattern is deliberate rather than a special case:
- * a08 says so under the commons, a18 says so under both controls, and a04, a05
- * and a15 say so under the commons. A branch is never deleted while a control
+ * a08 says so under the commons, a18 says so under both controls, a19 says so
+ * everywhere but the coin arm, and a04, a05 and a15 say so under the commons. A branch is never deleted while a control
  * still exercises it; a mode where a reading has nothing to measure says NO
  * SUBJECT and points at whatever owns the question there.
  */
@@ -52,6 +62,7 @@ import { meepleEconomy } from './a15-meeple-economy.js';
 import { actionInflation } from './a16-action-inflation.js';
 import { bonusMix } from './a17-bonus-mix.js';
 import { commonsTraffic } from './a18-commons-traffic.js';
+import { coinEconomy } from './a19-coin-economy.js';
 import type { Assertion } from './types.js';
 
 export const WATCHLIST: readonly Assertion[] = [
@@ -69,6 +80,7 @@ export const WATCHLIST: readonly Assertion[] = [
   actionInflation,
   bonusMix,
   commonsTraffic,
+  coinEconomy,
 ];
 
 export type { Assertion, MeasureContext, Measurement, Verdict } from './types.js';

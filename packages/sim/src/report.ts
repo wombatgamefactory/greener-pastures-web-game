@@ -14,7 +14,13 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import { isCommons, isMeepleCurrency } from '@gp/data';
+import {
+  endgameCoinCost,
+  farmsteadCoinPower,
+  isCommons,
+  isCommonsTakeCoins,
+  isMeepleCurrency,
+} from '@gp/data';
 import { ENGINE_VERSION, RULES_EDITION } from '@gp/engine';
 import { LADDER, POLICY_IDS } from '@gp/bots';
 
@@ -114,7 +120,7 @@ function header({ result, pooled, overlayName, mirrorGames }: ReportInput): stri
     handLimitNote(result.data.rules.turn.handLimit),
     '',
     'Every number below is defined against this reference and is meaningless without it.',
-    ...boundaryBanner(reference.id),
+    ...boundaryBanner(reference.id, result.data, overlayName ?? null),
     ...crashBanner(pooled),
     '',
   ];
@@ -133,9 +139,16 @@ function header({ result, pooled, overlayName, mirrorGames }: ReportInput): stri
  * re-cuts shipped with no banner at all. It fires on the CURRENT reference and
  * on nothing else; when v16 is cut it moves again or it goes.
  */
-function boundaryBanner(id: string): string[] {
-  if (id === 'reference-v15') return commonsBanner();
-  if (id !== 'reference-v10') return [];
+function boundaryBanner(id: string, data: GameData, overlayName: string | null): string[] {
+  // ⛔ THE ARM BANNER RIDES *WITH* THE REFERENCE BANNER, NEVER INSTEAD OF IT
+  // (10/09/2026). The commons-with-coins arm runs on `reference-v15` seeds
+  // BECAUSE it is paired against the shipped commons on them; cutting a new
+  // reference for it would throw away the pairing, which is the only sound
+  // comparison this project has. So the boundary banner still says what
+  // reference-v15 is, and the arm banner says, immediately underneath, that this
+  // particular report is not the shipped game.
+  if (id === 'reference-v15') return [...commonsBanner(), ...coinArmBanner(data, overlayName)];
+  if (id !== 'reference-v10') return coinArmBanner(data, overlayName);
   return [
     '',
     '*** reference-v10: NO NUMBER IN ANY EARLIER REPORT IN reports/ IS COMPARABLE WITH THIS ONE. ***',
@@ -163,6 +176,51 @@ function boundaryBanner(id: string): string[] {
     '    THE NOISE FLOOR HAS NOT BEEN RE-MEASURED FOR THIS INSTRUMENT unless the footer below',
     '    says otherwise, and the v9 floor was NOT carried over - three of its eleven metrics no',
     '    longer exist under their old names.',
+  ];
+}
+
+/**
+ * ⭐ THE COMMONS-WITH-COINS ARM (K1-K15, Dean 10/09/2026), printed at the top
+ * beside the reference banner and SILENT under every other run, because a
+ * permanent banner is a banner nobody reads.
+ *
+ * ⛔ IT IS NOT A NEW REFERENCE AND MUST NOT BECOME ONE while the arm is an arm.
+ * `reference-v15` is the instrument; the arm is measured against the shipped
+ * commons on ITS seeds, which is the whole reason the comparison is sound. Cut
+ * `reference-v16` only when Dean rules the arm in.
+ */
+function coinArmBanner(data: GameData, overlayName: string | null): string[] {
+  if (!isCommonsTakeCoins(data)) return [];
+  const price = endgameCoinCost(data);
+  return [
+    '',
+    '*** THIS IS AN ARM AND NOT THE SHIPPED GAME. COINS EXIST HERE AND NOWHERE ELSE. ***',
+    '',
+    `    overlay: ${overlayName ?? 'none named - the knobs were set directly'}.  rules.turn.commonsTake = 'coins'`,
+    `    (K3/K4, Dean 10/09/2026), with rules.economy.commonsWildPair ${data.rules.economy.commonsWildPair},`,
+    `    commonsColourMatch ${data.rules.economy.commonsColourMatch}, farmsteadCoinPower ${farmsteadCoinPower(data)}`,
+    `    and endgameCoinCost ${price === null ? 'null (the Endgame cards keep their two-own-suit card price)' : price}.`,
+    '',
+    '    THE RULE IN ONE LINE: the bonus slot is EITHER play a card onto a central board and take',
+    '    its action, OR discard every card on one central pile and take ONE COIN PER CARD. Coins',
+    '    have exactly TWO uses - the Farmstead suit power and the Endgame cards - and they score',
+    '    nothing, break no ties and buy no ordinary card. ONE MINT, TWO SINKS (K7): every coin',
+    '    economy this project has shipped died of a second faucet, and coins were deleted from the',
+    '    shipped game with v31 on 02/09/2026. a19-coin-economy carries the whole balance sheet.',
+    '',
+    '    THE FARM-BYPASS SHARE IS A STRUCTURAL ZERO HERE AND NOT A RESULT. Harvest never reaches',
+    '    the centre under this knob (K4, reversing C5) and no take puts a card in a hand or a barn,',
+    '    so 0% of harvested barn cards can come from the middle by construction. a18 says so in',
+    '    words rather than printing a bare zero. The shipped commons reads 63.0% on the same seeds.',
+    '',
+    '    AND PLAYS ARE NOT CARDS UNDER THIS ARM. The wild pair (K3) pays for one board with TWO',
+    '    cards, so a17 prints turns that used the slot, plays per turn and cards per turn side by',
+    '    side. ONLY THE TURN SHARE CARRIES DEAN BAND of 30%-60%; judging it on the wrong quantity',
+    '    cost this project a re-run of all five arms on 09/09/2026.',
+    '',
+    '    NOT A NEW REFERENCE. This runs on reference-v15 seeds on purpose: the arm is PAIRED',
+    '    against the shipped commons and against the measured colour-match arm. reference-v16 is',
+    '    cut only if Dean rules the arm in.',
   ];
 }
 

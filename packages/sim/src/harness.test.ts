@@ -312,8 +312,12 @@ describe('the watch-list suite', () => {
     // rather than a re-point of 8, for the reason this test guards: 8 still
     // measures its own thing under both controls, and re-pointing it would
     // silently change what every archived report that names it was saying.
+    // ⭐ AND 19 JOINED ON 10/09/2026 with the commons-with-coins arm, on the same
+    // rule: it measures a currency that exists under one knob and nothing else, so
+    // it is a new id rather than a re-point of anything. It reports NO SUBJECT in
+    // every mode this project has ever shipped.
     const live = rows.map((r) => r.assertion.id);
-    expect(live).toEqual([2, 4, 5, 6, 7, 8, 9, 11, 12, 13, 15, 16, 17, 18]);
+    expect(live).toEqual([2, 4, 5, 6, 7, 8, 9, 11, 12, 13, 15, 16, 17, 18, 19]);
     expect(new Set(live).size, 'a duplicate id').toBe(live.length);
 
     const buried = RETIRED.map((t) => t.id);
@@ -375,8 +379,14 @@ describe('the watch-list suite', () => {
     // the mirror spread beside it, a18's plays-per-turn is a number one
     // archetype could be producing on its own - which is precisely what this
     // flag is for.
+    //
+    // ⭐ AND 19 JOINS THEM (10/09/2026) FOR THE SAME REASON, one layer down. Every
+    // coin in the game is minted by a bonus-slot choice, so a hermit that never
+    // clears a pile has no economy at all and a socialite that clears every fat one
+    // has two sinks to spend on: the mint, both sinks and the dead-coin line are all
+    // shares of what one archetype chose to do with a slot.
     expect(rows.filter((r) => r.assertion.taste).map((r) => r.assertion.id)).toEqual([
-      2, 8, 11, 15, 16, 17, 18,
+      2, 8, 11, 15, 16, 17, 18, 19,
     ]);
   });
 
