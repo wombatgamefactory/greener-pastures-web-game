@@ -328,11 +328,17 @@ function coinsMode({ data, pooled }: MeasureContext): Measurement {
         'no number for any of them and one taken from this run - the run that first measures ' +
         'them - would be a snapshot test that can never fail. reference-v15 has no noise floor ' +
         'for any of these readings either, so a delta in one is not yet formally readable.',
-      '⚠️ AND THE BOTS HAVE A COIN WEIGHT THAT SOMEBODY CHOSE. A coin has no intrinsic worth ' +
-        'to a rollout, so the evaluator prices one by an argument rather than by measurement, ' +
-        'and every number on this page is downstream of that choice. It is the same shape of ' +
-        'caveat a18 carries about the fee and the board: these are the RULES speaking through ' +
-        'one pricing, not a taste.',
+      '⚠️ EVERY NUMBER ON THIS PAGE IS DOWNSTREAM OF THE BOTS COIN WEIGHT, WHICH IS NOW ' +
+        'MEASURED RATHER THAN ARGUED (10/09/2026). A coin has no intrinsic worth to a rollout, ' +
+        'so one had to be given: coinWorth and coinSpend are pinned at 1.2, derived from 6,771 ' +
+        'positions in which the coin Farmstead was legal, by pricing the power against the best ' +
+        'plain main action available in the SAME position. The value it replaced, 3.5, came from ' +
+        "K12's claim that a Farmstead power is worth about two plain actions, and that claim is " +
+        'not true of any of the five: at 3.5 only Wheat ever fired and this page could not be ' +
+        'read at all. It is still one pricing, and it is the same shape of caveat a18 carries ' +
+        'about the fee and the board: these are the RULES speaking through one pricing, not a ' +
+        'taste. ⛔ AND IT IS NOT SWEEPABLE: weights are not overlay-addressable (C45), so ' +
+        'moving a coin price is an edit and a rebuild, never an arm.',
     ],
     verdict: 'OBSERVE',
   };
