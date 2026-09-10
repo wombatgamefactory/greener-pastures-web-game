@@ -9,6 +9,7 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
+import { farmsteadCoinPower } from '@gp/data';
 
 import { assertPlacementMatches, doVisit, meepleAsCard } from './actions.js';
 import { clonePlain } from './clone.js';
@@ -16,7 +17,7 @@ import { Fx } from './fx.js';
 import type { FxAudit } from './fx.js';
 import { handlerFor } from './handlers/registry.js';
 import type { CardMove } from './handlers/types.js';
-import { canTakeCard, cardById, faceOf, player } from './query.js';
+import { canTakeCard, cardById, coinsOf, faceOf, player } from './query.js';
 import type { CardId, GameEvent, GameState, Seat, Task, TaskAnswer } from './state.js';
 import { drainTasks, popTask, resolveTask, taskAnswers } from './tasks.js';
 
@@ -41,6 +42,25 @@ export interface GrowMods {
    * (2026-08-11). It survives only here, on one card that pays for it.
    */
   anyCrop?: boolean;
+  /**
+   * ⭐ K10 (Dean, 10/09/2026): THE PAYMENT IS ONE COIN AND THE TARGET IS THIS
+   * SEAT'S OWN FARMSTEAD. `payment` is null, `meeples` is empty, nothing is
+   * placed on the stack, and the suit power on the Farmstead's face fires
+   * through the ordinary `activate` hook.
+   *
+   * ⚠️ IT SITS ON `GrowMods` RATHER THAN ON A SIXTH ARGUMENT, and the
+   * interface's own title - "what granted this GROW, when it was not the plain
+   * action" - stretches to cover it: a coin-paid Grow IS the plain Grow action,
+   * bought with the other currency. The alternative was widening `payment` to
+   * `CardId | 'coin' | null`, which would have put a string sentinel through
+   * every re-validation in `doGrow` and through the move shape besides.
+   *
+   * ⛔ MAIN-ACTION ONLY (builder default D-C1). Nothing here enforces that -
+   * the enumerator does, through `GrowOptionMods.mainAction` - because the
+   * funnel's job is to check what the MOVE needs, and what the move needs is a
+   * coin, a Farmstead and an unfired latch.
+   */
+  coin?: boolean;
 }
 
 /**
@@ -82,6 +102,41 @@ export function doGrow(
   if (!b) throw new Error(`Seat ${seat} has not built ${building}`);
   if (cardById(fx.data, building).slot === 'noticeboard') {
     throw new Error('The Notice Board is never a Grow target');
+  }
+  // ⭐ THE COIN-PAID GROW (K10, Dean 10/09/2026): the Farmstead's activation
+  // cost is ONE COIN, it is your MAIN action, once per turn, and NOTHING IS
+  // PLACED ON IT. It returns before every card-and-meeple check below, on the
+  // same shape the meeple branch uses further down, because none of them has a
+  // subject: there is no payment card to match against an activation type, and
+  // no card to place means the full-building gate does not apply - the
+  // Farmstead has no threshold at all (its printed `threshold` is null, so
+  // `thresholdOf` already answers null and `canTakeCard` already answers
+  // false), which is why the gate would otherwise refuse it every time.
+  //
+  // ⚠️ EVERY GATE THE ENUMERATOR APPLIED IS RE-ASKED HERE, including the
+  // once-per-turn latch, because a re-validation must ask what the move NEEDS
+  // and never trust the window the caller consumed. The enumerator FILTERS on
+  // the same three facts and this THROWS on them, which is the file's standing
+  // division of labour.
+  if (mods.coin === true) {
+    if (!farmsteadCoinPower(fx.data)) {
+      throw new Error('A coin pays for a GROW only under rules.economy.farmsteadCoinPower');
+    }
+    if (payment !== null || meeples.length > 0) {
+      throw new Error('A coin-paid GROW pays no card and no meeple');
+    }
+    if (cardById(fx.data, building).slot !== 'farmstead') {
+      throw new Error(`${building} is not a Farmstead: only a Farmstead is activated with a coin`);
+    }
+    if (fx.state.turn.firedThisTurn.includes(building)) {
+      throw new Error(`${building} has already fired this turn`);
+    }
+    if (coinsOf(fx.state, seat) < 1)
+      throw new Error(`Seat ${seat} has no coin to activate ${building}`);
+    fx.spendCoins(seat, 'farmstead', 1);
+    markFired(fx, building);
+    handlerFor(building)?.activate?.(fx, { seat, card: building });
+    return;
   }
   const byMeeple = meeples.length > 0;
   if (byMeeple && payment !== null) {
@@ -129,10 +184,16 @@ export function doGrow(
       // box. `assertPlacementMatches` recomputes the toll off the live boards,
       // so an under-declared toll is a free placement and is refused here.
       assertPlacementMatches(fx.data, fx.state, seat, counts, placement);
-      fx.placeMeeplesAsCards(seat, placement.placements, placement.paymentToll ?? {}, 'activation', {
-        wildPairs,
-        atThreshold,
-      });
+      fx.placeMeeplesAsCards(
+        seat,
+        placement.placements,
+        placement.paymentToll ?? {},
+        'activation',
+        {
+          wildPairs,
+          atThreshold,
+        },
+      );
     }
     markFired(fx, building);
     handlerFor(building)?.activate?.(fx, { seat, card: building });

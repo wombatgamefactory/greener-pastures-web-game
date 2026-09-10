@@ -260,6 +260,22 @@ export function slotBlocked(state: GameState, seat: Seat, colour: Suit): boolean
 }
 
 /**
+ * A SEAT'S COINS, under the commons-with-coins arm (K7, Dean 10/09/2026).
+ *
+ * Throws rather than returning 0, for exactly the reason `noticeBoardSlots` and
+ * `commonsBoards` do: a coin game with no wallet is a setup that never ran, and
+ * a silent 0 would quietly make every Endgame card unbuildable and every
+ * Farmstead power unusable for the whole run, which reads as a design finding
+ * rather than as the bug it is. `PlayerState.coins` is absent by design under
+ * the shipped game - see its comment - so nothing on that path may call this.
+ */
+export function coinsOf(state: GameState, seat: Seat): number {
+  const coins = player(state, seat).coins;
+  if (coins === undefined) throw new Error(`Seat ${seat} has no coins in this game`);
+  return coins;
+}
+
+/**
  * THE FIVE CENTRAL PILES (C1). Throws rather than defaulting, for exactly the
  * reason `noticeBoardSlots` does: a commons game with no commons zone is a setup
  * that never ran, and an empty default would silently offer five boards that

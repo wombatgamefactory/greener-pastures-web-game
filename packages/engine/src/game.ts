@@ -86,19 +86,26 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
             },
       );
     }
-    for (const o of growOptions(data, state, seat)) {
+    // ⭐ `mainAction: true` IS THE ONE PLACE IT IS SET (builder default D-C1,
+    // 10/09/2026), and it is what makes the coin-activated Farmstead a MAIN
+    // action and only a main action: the Apiary board's bought Grow pushes a
+    // `grow` task whose answers come from this same enumerator without it.
+    for (const o of growOptions(data, state, seat, { mainAction: true })) {
       moves.push(
-        o.meeples === undefined
-          ? { type: 'grow', seat, building: o.building, payment: o.payment }
-          : {
-              type: 'grow',
-              seat,
-              building: o.building,
-              payment: null,
-              meeples: o.meeples,
-              ...(o.placements === undefined ? {} : { placements: o.placements }),
-              ...(o.paymentToll === undefined ? {} : { paymentToll: o.paymentToll }),
-            },
+        o.coin === true
+          ? // K10: one coin, nothing placed, the Farmstead's suit power fires.
+            { type: 'grow', seat, building: o.building, payment: null, coin: true }
+          : o.meeples === undefined
+            ? { type: 'grow', seat, building: o.building, payment: o.payment }
+            : {
+                type: 'grow',
+                seat,
+                building: o.building,
+                payment: null,
+                meeples: o.meeples,
+                ...(o.placements === undefined ? {} : { placements: o.placements }),
+                ...(o.paymentToll === undefined ? {} : { paymentToll: o.paymentToll }),
+              },
       );
     }
     for (const building of harvestOptions(data, state, seat)) {
@@ -161,12 +168,13 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
   // so under the commons' own `bonusTiming: 'start'` these moves are on offer
   // exactly while the action is unspent, which is C2.
   moves.push(...commonsOptions(data, state, seat));
-  // ⭐ DEAN'S VARIANTS (09/09/2026, `rules.turn.commonsTake: 'bonus'` OR
-  // `'spend'`): the slot's OTHER free option under either knob value, empty
-  // under the shipped `'harvest'` rule and under both controls -
-  // `commonsTakeOptions` fails closed on the same checks `commonsOptions`
-  // does, and dispatches its own resolution by board under `'spend'`
-  // (`doCommonsTake`).
+  // ⭐ DEAN'S VARIANTS (`rules.turn.commonsTake: 'bonus'`, `'spend'` or
+  // `'paid'`, 09/09/2026, and `'coins'`, 10/09/2026): the slot's OTHER option
+  // under any of those knob values, empty under the shipped `'harvest'` rule
+  // and under both controls - `commonsTakeOptions` fails closed on the same
+  // checks `commonsOptions` does, and dispatches its own resolution
+  // (`doCommonsTake`), by board under `'spend'` and to the discards for coins
+  // under `'coins'`.
   moves.push(...commonsTakeOptions(data, state, seat));
   moves.push(...standingMoves(data, state, seat));
   if (turn.actionSpent) moves.push({ type: 'endTurn', seat });
@@ -275,10 +283,21 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
       // nowhere else, so that A5, A6 and A12 did not each trigger it. The card
       // is gone (v31); the rule that an action-scoped effect belongs on this
       // branch and never inside `doGrow` is not.
-      doGrow(fx, move.seat, move.building, move.payment, {}, move.meeples ?? [], {
-        ...(move.placements === undefined ? {} : { placements: move.placements }),
-        ...(move.paymentToll === undefined ? {} : { paymentToll: move.paymentToll }),
-      });
+      doGrow(
+        fx,
+        move.seat,
+        move.building,
+        move.payment,
+        // K10: `coin` is the only mod the ACTION ever carries, and it is the
+        // payment rather than a grant - see `GrowMods.coin`. Spread so the
+        // object is `{}` in the shipped game, exactly as it always was.
+        move.coin === true ? { coin: true } : {},
+        move.meeples ?? [],
+        {
+          ...(move.placements === undefined ? {} : { placements: move.placements }),
+          ...(move.paymentToll === undefined ? {} : { paymentToll: move.paymentToll }),
+        },
+      );
       break;
     case 'harvest':
       // ⛔ The ActionAgain arming stood here ("Harvest is 2 buildings", the
@@ -314,13 +333,15 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
       break;
     case 'commons':
       // One card onto one central board, then that board's action (C3). No
-      // host, so nothing here names a second seat.
-      doCommons(fx, move.seat, move.board, move.fee);
+      // host, so nothing here names a second seat. `fee2` is the wild pair's
+      // second card (K3, 10/09/2026) and is undefined in the shipped game.
+      doCommons(fx, move.seat, move.board, move.fee, move.fee2);
       break;
     case 'commonsTake':
-      // Dean's variants (09/09/2026): the whole of one central pile. No
-      // action is ever bought; under 'paid' `move.fee` is the card it costs,
-      // discarded before the pile moves.
+      // Dean's variants: the whole of one central pile. No action is ever
+      // bought; under 'paid' `move.fee` is the card it costs, discarded before
+      // the pile moves, and under 'coins' (K3/K8, 10/09/2026) the pile goes to
+      // the discards and pays one coin per card.
       doCommonsTake(fx, move.seat, move.board, move.fee);
       break;
     case 'endTurn':

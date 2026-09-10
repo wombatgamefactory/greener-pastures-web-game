@@ -20,7 +20,14 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import { isCommons, isMeepleCurrency, meeplesPerTile } from '@gp/data';
+import {
+  endgameCoinCost,
+  farmsteadCoinPower,
+  isCommons,
+  isCommonsTakeCoins,
+  isMeepleCurrency,
+  meeplesPerTile,
+} from '@gp/data';
 
 import { seedRng, shuffle } from './rng.js';
 import type {
@@ -106,6 +113,37 @@ export function freshNoticeBoard(data: GameData): NoticeBoardState {
  */
 export function meepleLoopPlayerFields(data: GameData): { noticeBoard?: NoticeBoardState } {
   return isMeepleCurrency(data) ? { noticeBoard: freshNoticeBoard(data) } : {};
+}
+
+/**
+ * ⭐ IS THERE A COIN ECONOMY IN THIS GAME AT ALL? (K7, Dean 10/09/2026.)
+ *
+ * True when ANY of the arm's three knobs is on, rather than on
+ * `isCommonsTakeCoins` alone, and the OR is the point: the mint and the two
+ * sinks are separate knobs, and a sub-arm that turns one of them off must still
+ * have a wallet to read. `commons-coins-endgame-cards-v1` is exactly that case
+ * (the Endgame cards keep their card price while the Farmstead still eats
+ * coins), and a sweep that turned the mint off while leaving a sink on would
+ * otherwise crash in `coinsOf` rather than simply reading zero for ever.
+ *
+ * ⚠️ IT IS NOT A RULES QUESTION AND MUST NEVER BECOME ONE. Nothing about play
+ * branches on this: it decides only whether the integer EXISTS, which is a
+ * serialisation question (see `PlayerState.coins`). The rules branch on the
+ * three knobs themselves.
+ */
+export function coinEconomy(data: GameData): boolean {
+  return isCommonsTakeCoins(data) || farmsteadCoinPower(data) || endgameCoinCost(data) !== null;
+}
+
+/**
+ * The player field the coin arm adds, as a spread - the exact counterpart of
+ * `meepleLoopPlayerFields` above and absent for the same reason: the key is
+ * MISSING rather than present-and-zero under the shipped game, so its
+ * serialised states, captures and fixtures stay byte-identical. Starts at 0
+ * (K7: nothing but a pile mints a coin, so nobody starts with one).
+ */
+export function coinPlayerFields(data: GameData): { coins?: number } {
+  return coinEconomy(data) ? { coins: 0 } : {};
 }
 
 /**
@@ -348,6 +386,9 @@ export function newGame(data: GameData, opts: NewGameOptions): GameState {
     barn: decks[suit].splice(0, startingBarnCards),
     meeples: startingMeeples(data),
     ...meepleLoopPlayerFields(data),
+    // The coin wallet at 0, present only under the commons-with-coins arm (K7)
+    // and ABSENT otherwise - see `coinPlayerFields`.
+    ...coinPlayerFields(data),
     tableau: starterCardsFor(data, suit, true).map((card) => ({ card, stack: [] as CardId[] })),
     receipts: [] as number[],
   }));

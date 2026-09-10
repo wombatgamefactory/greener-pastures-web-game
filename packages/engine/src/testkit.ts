@@ -13,6 +13,7 @@ import type { GameData, Suit } from '@gp/data';
 import { seedRng } from './rng.js';
 import {
   buildIsland,
+  coinPlayerFields,
   commonsZone,
   demandPool,
   freshTurn,
@@ -68,6 +69,10 @@ export function makeState(data: GameData, suits: Suit[]): GameState {
       // would be testing a position no real game reaches.
       meeples: startingMeeples(data),
       ...meepleLoopPlayerFields(data),
+      // The coin wallet, present only under the commons-with-coins arm (K7) and
+      // ABSENT otherwise, exactly as `meepleLoopPlayerFields` is - see
+      // `coinPlayerFields`.
+      ...coinPlayerFields(data),
       // Two starters under the commons and three under the controls - see
       // `starterCardsFor`. The testkit takes every starter whether or not it is
       // enabled, which is the one way it has always differed from `newGame`.

@@ -17,9 +17,14 @@
 
 import type { GameData, Suit, SuitDoor, WorkerAction } from '@gp/data';
 import {
+  commonsHarvestReachesCentre,
+  commonsWildPair,
   deliveriesPerTile,
   deliveryVp,
+  endgameCoinCost,
+  farmsteadCoinPower,
   isCommons,
+  isCommonsTakeCoins,
   isCommonsTakePaid,
   isCommonsTakeToHand,
   isCommonsTakeToSpend,
@@ -33,6 +38,7 @@ import { fireHook } from './fx.js';
 import {
   canTakeCard,
   cardById,
+  coinsOf,
   commonsBoardCard,
   commonsBoards,
   commonsHarvestMin,
@@ -677,14 +683,37 @@ export interface BuildOption {
  * where O17's v31 text wants to hook.
  */
 
-/** How many cards a build actually costs under its modifiers. Coins are gone (v31). */
+/**
+ * How many cards a build actually costs under its modifiers - and, under K15
+ * alone, how many COINS instead.
+ *
+ * ⭐ THE COIN PRICE IS A RULES KNOB AND NEVER A CARD FIELD (K15, Dean
+ * 10/09/2026). `rules.economy.endgameCoinCost` re-prices the fifteen Endgame
+ * cards at that many COINS and ZERO CARDS; the fifteen Power cards keep their
+ * two-own-suit cost, so each currency buys one kind of card. `Card.buildCost`
+ * holds exactly `suit` and `wild` - its coin third went with the currency on
+ * 02/09/2026 - and `data.test.ts` asserts that on purpose, because a coin price
+ * arriving from a re-extract rather than from a ruling is exactly the drift
+ * that guard exists to catch. So the branch is HERE, in the one function every
+ * build route prices through, and not in the catalogue.
+ *
+ * ⚠️ A DISCOUNT CANNOT TOUCH A COIN PRICE, and the early return is how that is
+ * said. A discount is measured in cards ("Build at a discount of 1"), a coin
+ * price has no cards in it, and D4 The Milking Shed taking a coin off an
+ * Endgame card would be a rate nobody wrote. The own-suit minimum goes to 0 for
+ * the same reason: there is no payment for it to constrain.
+ */
 function priceOf(
   data: GameData,
   card: CardId,
   mods: BuildMods,
-): { cardsNeeded: number; ownSuitMin: number } | null {
+): { cardsNeeded: number; ownSuitMin: number; coins?: number } | null {
   const cost = cardById(data, card).buildCost;
   if (!cost) return null;
+  const coins = endgameCoinCost(data);
+  if (coins !== null && cardById(data, card).type === 'endgame') {
+    return { cardsNeeded: 0, ownSuitMin: 0, coins };
+  }
   const discount = mods.discount ?? 0;
   const totalCards = cost.suit + cost.wild;
   const cardsNeeded = Math.max(0, totalCards - discount);
@@ -806,7 +835,7 @@ function paymentsFor(
   card: CardId,
   hand: readonly CardId[],
   groups: readonly CardId[][],
-  price: { cardsNeeded: number; ownSuitMin: number },
+  price: { cardsNeeded: number; ownSuitMin: number; coins?: number },
   fills: readonly MeepleFill[] = NO_MEEPLES,
   supply: Readonly<Record<Suit, number>> | null = null,
   place: ((counts: Partial<Record<Suit, number>>) => ResolvedPlacement[]) | null = null,
@@ -902,6 +931,15 @@ function paymentsFor(
 }
 
 /**
+ * Can this seat pay a coin price at all? True for every card in the shipped
+ * game, where `price.coins` is never set. K15's one gate, asked wherever a
+ * build is enumerated or probed.
+ */
+function coinsAffordable(state: GameState, seat: Seat, price: { coins?: number }): boolean {
+  return price.coins === undefined || coinsOf(state, seat) >= price.coins;
+}
+
+/**
  * Every legal (card, payment) pair. A cost is n cards of the BUILT card's suit
  * plus m of any suit - the coin third of it went with the currency (v31), and
  * the 30 Power and Endgame cards that printed two coin icons now print two crop
@@ -968,6 +1006,13 @@ export function buildOptions(
   cardLoop: for (const id of cards) {
     const price = priceOf(data, id, mods);
     if (!price) continue;
+    // ⭐ K15: AN ENDGAME CARD COSTS COINS, so a seat short of them is never
+    // offered it - the gate is a filter here rather than a throw in `doBuild`,
+    // on the file's standing rule that the enumerators are the single source of
+    // legality. `coinsAffordable` reads `coinsOf`, which throws when the arm is
+    // off, so it is only ever asked when `price.coins` is set and the wallet
+    // therefore exists.
+    if (!coinsAffordable(state, seat, price)) continue;
     // Hoisted: the hand-minus-this-card list was rebuilt once per SOURCE.
     const rest = cards.filter((h) => h !== id);
     for (const groups of sources) {
@@ -1015,6 +1060,11 @@ export function paymentOptions(
 ): { payment: CardId[]; meeples?: Partial<Record<Suit, number>>; wildPairs?: number }[] {
   const price = priceOf(data, card, mods);
   if (!price) return [];
+  // K15: a coin-priced Endgame card revealed off a deck top is buildable only
+  // by a seat holding the coins, exactly as one in the hand is. D10 The Scout's
+  // Post is the only caller and its build runs through `doBuild` like any
+  // other, so the price is charged there; this is the offer half.
+  if (!coinsAffordable(state, seat, price)) return [];
   // R15 reaches D10 too, because D10 is a BUILD and R15 says build costs. It
   // is the cheapest case in the game - the discount waives the own-suit half -
   // so in practice a meeple only ever pays the wild half here.
@@ -1048,6 +1098,11 @@ export function anyBuildOption(
   return cards.some((id) => {
     const price = priceOf(data, id, mods);
     if (!price) return false;
+    // K15, and the gate has to be here as well as in `buildOptions`: a gate
+    // that asks a WIDER question than its enumerator says yes where no move
+    // exists, which is the failure this function's own comment below records
+    // costing two crashed games on 04/09/2026.
+    if (!coinsAffordable(state, seat, price)) return false;
     const suit = cardById(data, id).suit;
     const others = cards.filter((h) => h !== id);
     const own = others.filter((c) => cardById(data, c).suit === suit).length;
@@ -1213,6 +1268,13 @@ export function doBuild(
     throw new Error(`${card} needs ${price.ownSuitMin} ${c.suit} cards in payment`);
   }
 
+  // ⭐ K15's PRICE, CHARGED IN THE FUNNEL: the coins come off before the card
+  // lands, and `fx.spendCoins` re-checks the balance, so an Endgame card the
+  // enumerator would not have offered cannot be built through a task answer or
+  // a hand-rolled move. The `built` event is UNCHANGED and its `payment` is
+  // simply empty - a coin price is zero cards - so nothing downstream that
+  // counts builds or reads what a build spent has to learn a second shape.
+  if (price.coins !== undefined) fx.spendCoins(seat, 'endgame', price.coins);
   fx.removeFromHand(seat, card);
   for (const id of payment) fx.removeFromHand(seat, id);
   // ⭐ THE MEEPLES GO TO THE BOX AND NOWHERE ELSE (R15). They are taken out
@@ -1367,10 +1429,29 @@ export function doDraw(fx: Fx, seat: Seat): void {
 
 // --- Grow ------------------------------------------------------------------
 
+/**
+ * ⭐ WHAT THE FARMSTEAD'S ACTIVATION COSTS (K10, Dean 10/09/2026): ONE COIN.
+ *
+ * A constant rather than a knob, deliberately, and the handoff's knob list
+ * agrees: `rules.economy.farmsteadPower.*` carries the four numbers behind the
+ * POWERS, which are what a sweep would move, and the price is the rule - "spend
+ * a coin instead of a card", Dean's own words. If it ever becomes a dial it
+ * goes in `rules.economy` beside those four, and this constant is the one place
+ * to re-point.
+ */
+const FARMSTEAD_COIN_COST = 1;
+
 export interface GrowOption {
   building: CardId;
-  /** Null when a meeple paid (R15): nothing is placed, so nothing is named. */
+  /** Null when a meeple paid (R15) or a coin did (K10): nothing is placed. */
   payment: CardId | null;
+  /**
+   * ⭐ K10: this GROW is paid with ONE COIN and the target is the seat's own
+   * FARMSTEAD. Mutually exclusive with `payment` and with `meeples`; nothing is
+   * placed, so the Farmstead's stack stays empty for the whole game and its
+   * "no threshold" is the printed rule rather than a special case.
+   */
+  coin?: true;
   /**
    * R15: the meeple that paid, or the two meeples spent as a wild pair (R10).
    * It goes STRAIGHT TO THE BOX - never onto the stack, never toward the
@@ -1421,6 +1502,28 @@ export interface GrowOptionMods {
    * own warning, which cost hours on 19/08/2026).
    */
   excludeHandCard?: CardId;
+  /**
+   * The WILD PAIR's second fee (K3, 10/09/2026): the same rule as
+   * `excludeHandCard`, for the second of the two cards paying one board. Set
+   * only by `doorActionLegal`, and only under `commonsWildPair`.
+   */
+  excludeHandCard2?: CardId;
+  /**
+   * ⭐ IS THIS THE MAIN-ACTION GROW? (Builder default D-C1, ruled by Dean on
+   * 10/09/2026.)
+   *
+   * It gates ONE THING, in one place: the coin-activated FARMSTEAD (K10) is a
+   * Grow target only when this is true. `legalMoves`'s Grow branch is the only
+   * caller that sets it. The Apiary board's BOUGHT Grow pushes a `grow` TASK
+   * whose answers come from this same enumerator WITHOUT it, so a bonus can
+   * never buy a suit power - which is Dean's ruling that the Farmstead is your
+   * main action, expressed as one flag rather than as a second enumerator.
+   *
+   * ⚠️ THE GATE AND THE ACTION MUST AGREE, as ever: `doorActionLegal`'s
+   * `'grow'` branch omits it too, so the Apiary board is never OFFERED on the
+   * strength of a Farmstead the task could not then fire.
+   */
+  mainAction?: boolean;
 }
 
 /**
@@ -1447,16 +1550,49 @@ export function growOptions(
   mods: GrowOptionMods = {},
 ): GrowOption[] {
   const p = player(state, seat);
-  const hand =
+  const withoutFee =
     mods.excludeHandCard === undefined ? p.hand : withoutFirst(p.hand, mods.excludeHandCard);
+  const hand =
+    mods.excludeHandCard2 === undefined
+      ? withoutFee
+      : withoutFirst(withoutFee, mods.excludeHandCard2);
   const out: GrowOption[] = [];
   const asCard = meepleAsCard(data);
   const onBoard = meepleAsCardGoesToBoard(data);
   const rate = data.rules.turn.paymentSlotToll;
+  // ⭐ THE COIN-ACTIVATED FARMSTEAD (K10, Dean 10/09/2026), and it is false in
+  // the shipped game twice over: the knob is off, and `mods.mainAction` is set
+  // by exactly one caller. Hoisted so the loop below is byte-identical when it
+  // is false.
+  const farmsteadCoin = farmsteadCoinPower(data) && mods.mainAction === true;
   for (const b of p.tableau) {
     if (cardById(data, b.card).slot === 'noticeboard') continue;
     if (state.turn.firedThisTurn.includes(b.card)) continue;
     if (mods.exclude?.includes(b.card)) continue;
+    // ⭐ K10: THE FARMSTEAD IS A BUILDING WITH NO THRESHOLD WHOSE ACTIVATION
+    // COST IS ONE COIN, used as a GROW that is your MAIN action, once per turn,
+    // with NOTHING PLACED ON IT.
+    //
+    // ⚠️ IT IS FOUND BY SLOT AND NOT BY `activationType`. The v35 sheet prints
+    // the Farmstead's activation cost as `coin`, but `cards.json` is pinned at
+    // v32 (which prints `null`) and the arm is measured on handlers alone, so
+    // the engine may not read a coin off a card face that does not yet carry
+    // one. `slot === 'farmstead'` is the same rule the sheet states and it
+    // needs no re-extract; if a `coin` activation type ever lands in the data,
+    // this is the line that reads it instead.
+    //
+    // ⭐ AND IT IS FILTERED, NEVER THROWN. Both gates - the coin and the
+    // once-per-turn latch (`firedThisTurn`, the guard just above, which is
+    // shared with every other fire-once rule) - drop the option out of the list
+    // rather than refusing it later: bots probe by cloning and applying, so a
+    // throw from an enumerator surfaces as a crash in probe.ts rather than as a
+    // move nobody chose.
+    if (farmsteadCoin && cardById(data, b.card).slot === 'farmstead') {
+      if (coinsOf(state, seat) >= FARMSTEAD_COIN_COST) {
+        out.push({ building: b.card, payment: null, coin: true });
+      }
+      continue;
+    }
     const type = faceOf(data, b).activationType;
     if (type === null) continue;
     // ⭐ THE FULL-BUILDING GATE MOVED OFF THE TOP OF THIS LOOP (R15). It used
@@ -1661,15 +1797,21 @@ export function harvestOptions(
   // action see exactly the same central targets, and the union above is where
   // the two gates still differ for BUILDINGS.
   if (!isCommons(data)) return own;
-  // ⭐ DEAN'S VARIANTS (09/09/2026, commonsTake: 'bonus', 'spend' OR 'paid'):
-  // HARVEST NEVER REACHES THE CENTRE AT ALL (D-S4 under 'spend', the same
-  // rule the other two state). A central pile is taken by the `commonsTake`
-  // bonus move instead - to hand under 'bonus' and 'paid' (free or costing a
-  // fee), per-board under 'spend' (wheat to barn, the rest elsewhere) - so
-  // the Harvest action stops at own full buildings under any of the three
-  // knob values. commonsHarvestMin and commonsHarvestTake have no subject,
-  // which is why this returns before either is read.
-  if (isCommonsTakeToHand(data) || isCommonsTakeToSpend(data) || isCommonsTakePaid(data)) {
+  // ⭐ DEAN'S VARIANTS: HARVEST NEVER REACHES THE CENTRE AT ALL under any
+  // `commonsTake` value but the shipped `'harvest'`. Under 'bonus', 'spend'
+  // and 'paid' (09/09/2026) a central pile is taken by the `commonsTake` bonus
+  // move instead - to hand, to barn or per-board (D-S4); under 'coins'
+  // (10/09/2026, K4, reversing C5) it is DISCARDED for one coin per card and
+  // nothing playable comes back at all. In every one of the four the Harvest
+  // action stops at own full buildings, commonsHarvestMin and
+  // commonsHarvestTake have no subject, and the farm-bypass share reads 0% BY
+  // CONSTRUCTION - which is why this returns before either knob is read.
+  //
+  // ⭐ ONE HELPER RATHER THAN A DISJUNCTION THAT GROWS BY ONE TERM PER VARIANT
+  // (10/09/2026). `commonsHarvestReachesCentre` is written in @gp/data against
+  // the shipped value, so a FIFTH `commonsTake` gets this rule right by
+  // default instead of by somebody remembering to widen an `||` in two files.
+  if (!commonsHarvestReachesCentre(data)) {
     return own;
   }
   const boards = commonsBoards(state);
@@ -2835,7 +2977,7 @@ export function workerActionLegal(
   state: GameState,
   seat: Seat,
   workerId: string,
-  opts?: { excludingHandCard?: CardId },
+  opts?: { excludingHandCard?: CardId; excludingHandCard2?: CardId },
 ): boolean {
   return doorActionLegal(data, state, seat, workerData(data, workerId).action, opts);
 }
@@ -2854,12 +2996,22 @@ export function doorActionLegal(
   state: GameState,
   seat: Seat,
   action: DoorAction,
-  opts?: { excludingHandCard?: CardId },
+  /**
+   * ⭐ `excludingHandCard2` IS THE WILD PAIR'S SECOND FEE (K3, 10/09/2026) and
+   * nothing else ever sets it. Two optional fields rather than one `CardId[]`,
+   * because every shipped call site passes exactly one card and must keep
+   * passing one: an array would rewrite four call sites and both visit routes
+   * for a knob that ships off.
+   */
+  opts?: { excludingHandCard?: CardId; excludingHandCard2?: CardId },
 ): boolean {
   const door = doorForAction(data, action);
-  const hand = opts?.excludingHandCard
+  const withoutFee = opts?.excludingHandCard
     ? withoutFirst(player(state, seat).hand, opts.excludingHandCard)
     : player(state, seat).hand;
+  const hand = opts?.excludingHandCard2
+    ? withoutFirst(withoutFee, opts.excludingHandCard2)
+    : withoutFee;
   switch (action) {
     case 'draw':
       return drawableSuits(data, state).length > 0;
@@ -2886,6 +3038,9 @@ export function doorActionLegal(
           ...(opts?.excludingHandCard === undefined
             ? {}
             : { excludeHandCard: opts.excludingHandCard }),
+          ...(opts?.excludingHandCard2 === undefined
+            ? {}
+            : { excludeHandCard2: opts.excludingHandCard2 }),
         }).length > 0
       );
     case 'deliver':
@@ -3516,10 +3671,22 @@ function commonsActionLegal(
   seat: Seat,
   board: Suit,
   fee: CardId,
+  /**
+   * ⭐ THE WILD PAIR'S SECOND CARD (K3, 10/09/2026). It lands on the pile
+   * exactly as `fee` does, so it has to leave the hand for this probe exactly as
+   * `fee` does: a hand of two cards can pay a pair OR pay a build, never both.
+   * Leaving it in would offer a dairy board the seat cannot then afford to use,
+   * which is the enumerator-and-funnel disagreement `workerActionLegal`'s own
+   * warning describes, arriving from a third direction.
+   */
+  fee2?: CardId,
 ): boolean {
   const action = doorActionOf(data, board);
   if (action === 'harvest') return commonsHarvestLegalAfterFee(data, state, seat, board);
-  return doorActionLegal(data, state, seat, action, { excludingHandCard: fee });
+  return doorActionLegal(data, state, seat, action, {
+    excludingHandCard: fee,
+    ...(fee2 === undefined ? {} : { excludingHandCard2: fee2 }),
+  });
 }
 
 /**
@@ -3539,13 +3706,14 @@ function commonsHarvestLegalAfterFee(
   board: Suit,
 ): boolean {
   if (player(state, seat).tableau.some((b) => isFull(data, b))) return true;
-  // ⭐ UNDER commonsTake: 'bonus', 'spend' OR 'paid' THE WHEAT BOARD IS AN
+  // ⭐ UNDER EVERY `commonsTake` VALUE BUT THE SHIPPED ONE THE WHEAT BOARD IS AN
   // ORDINARY BOARD AGAIN, exactly as under commonsHarvestMin (D6 stops
-  // holding): Harvest never reaches the centre under any of the three knob
-  // values (D-S4), so the fee just played can never be what makes this
-  // Harvest legal. Without a full building of their own, this seat has
-  // nothing for the wheat board's action to do.
-  if (isCommonsTakeToHand(data) || isCommonsTakeToSpend(data) || isCommonsTakePaid(data)) {
+  // holding): Harvest never reaches the centre (D-S4 under 'bonus', 'spend'
+  // and 'paid'; K4 under 'coins'), so the fee just played can never be what
+  // makes this Harvest legal. Without a full building of their own, this seat
+  // has nothing for the wheat board's action to do. Read through the same
+  // helper `harvestOptions` uses, so the gate and the action cannot disagree.
+  if (!commonsHarvestReachesCentre(data)) {
     return false;
   }
   const min = commonsHarvestMin(data);
@@ -3610,16 +3778,48 @@ function enumerateCommons(
     // is a knob and not a rule - C4 says a central board never refuses a play.
     if (knobs.threshold !== null && (boards[board]?.length ?? 0) >= knobs.threshold) continue;
     for (const fee of hand) {
-      // C10 again: the fee must match the board's colour. ⚠️ D5's WILD PAIR (two
-      // cards of any colour for one of the board's) IS NOT IMPLEMENTED - the
-      // move carries a single `fee` and a pair would change its shape for a knob
-      // that is off. If the knob is ever turned on, that is the first thing to
-      // add, and it is listed as an open gap in the handoff report.
+      // C10 again: the fee must match the board's colour.
       if (knobs.colourMatch && cardById(data, fee).suit !== board) continue;
       if (!commonsActionLegal(data, state, seat, board, fee)) continue;
       if (out === null) return true;
       out.push({ type: 'commons', seat, board, fee });
       any = true;
+    }
+    // ⭐ THE WILD PAIR (D5 of the commons pass, left unbuilt on 09/09/2026 by
+    // D7, ruled back in by K3 on 10/09/2026): TWO cards of ANY colours pay for
+    // one board of any colour, and BOTH land on its pile.
+    //
+    // ⚠️ ONLY UNDER COLOUR MATCHING, and the guard is a rule rather than an
+    // optimisation: with any card already paying for any board there is no
+    // colour for a pair to stand in for, so every pair would be a strictly
+    // dominated way to pay - two cards out for what one buys - and offering
+    // them would multiply the bonus slot's branching by C(hand, 2) for a choice
+    // no player would ever make.
+    //
+    // ⚠️ BRANCHING: C(h, 2) MORE OPTIONS PER BOARD, which at the engine's
+    // hand bound of 7 (C7, an instrument bound and not a rule of the game) is 21
+    // a board and 105 a turn, well under the build enumerator. Unordered and
+    // distinct - `j` starts at `i + 1` - because a pair is a pair whichever card
+    // is named first and both go to the same place, so (a, b) and (b, a) are the
+    // same move.
+    //
+    // ⭐ AND THE PAIR IS OFFERED WHEREVER IT IS LEGAL, never only as a last
+    // resort. That is the OPPOSITE of the meeple wild pair's rule in
+    // `paymentsFor` and `growOptions`, and deliberately so: a meeple pair was
+    // strictly dominated by spending the exact colour singly, whereas a seat
+    // holding one matching card AND two off-colour cards has a real choice
+    // between paying its good card and paying two junk ones (L5, "your junk is
+    // their treasure"). Suppressing it would make that decision for the player.
+    if (!knobs.colourMatch || !commonsWildPair(data)) continue;
+    for (let i = 0; i < hand.length; i++) {
+      const fee = hand[i] as CardId;
+      for (let j = i + 1; j < hand.length; j++) {
+        const fee2 = hand[j] as CardId;
+        if (!commonsActionLegal(data, state, seat, board, fee, fee2)) continue;
+        if (out === null) return true;
+        out.push({ type: 'commons', seat, board, fee, fee2 });
+        any = true;
+      }
     }
   }
   return any;
@@ -3648,7 +3848,7 @@ function enumerateCommons(
  * re-validation must ask what the move NEEDS and never trust the window the
  * caller consumed.
  */
-export function doCommons(fx: Fx, seat: Seat, board: Suit, fee: CardId): void {
+export function doCommons(fx: Fx, seat: Seat, board: Suit, fee: CardId, fee2?: CardId): void {
   const { data, state } = fx;
   if (!isCommons(data)) {
     throw new Error('There is no commons unless rules.turn.visitCurrency is commons');
@@ -3665,14 +3865,45 @@ export function doCommons(fx: Fx, seat: Seat, board: Suit, fee: CardId): void {
   if (knobs.threshold !== null && pile.length >= knobs.threshold) {
     throw new Error(`The ${board} board is at its threshold of ${knobs.threshold}`);
   }
-  if (knobs.colourMatch && cardById(data, fee).suit !== board) {
+  // ⭐ THE WILD PAIR (K3, 10/09/2026): two cards of ANY colours in place of one
+  // card of the board's colour, both landing on the pile. Everything the
+  // enumerator checked is re-checked here, on the file's standing discipline -
+  // a re-validation asks what the move NEEDS and never trusts the window the
+  // caller consumed - and the colour gate is the one predicate the pair
+  // REPLACES rather than adds to, which is exactly what the pair is.
+  if (fee2 !== undefined) {
+    if (!knobs.colourMatch || !commonsWildPair(data)) {
+      throw new Error(
+        'A second fee is a wild pair and needs both commonsColourMatch and commonsWildPair',
+      );
+    }
+    if (fee2 === fee) throw new Error('A wild pair is two DIFFERENT cards');
+    if (!player(state, seat).hand.includes(fee2)) {
+      throw new Error(`Card ${fee2} is not in seat ${seat}'s hand`);
+    }
+  } else if (knobs.colourMatch && cardById(data, fee).suit !== board) {
     throw new Error(`The ${board} board takes a ${board} card under commonsColourMatch`);
   }
-  if (!commonsActionLegal(data, state, seat, board, fee)) {
+  if (!commonsActionLegal(data, state, seat, board, fee, fee2)) {
     throw new Error(`The ${board} board has nothing legal to do for seat ${seat}`);
   }
 
+  // ⭐ ONE `commonsPlayed` PER CARD, which is builder's choice and is recorded
+  // as one: `fx.playOnCommons` is called twice for a pair, so `pileSize` is
+  // right on each event and the count of cards ENTERING the centre is simply
+  // the number of `commonsPlayed` events - never a field somebody has to
+  // remember to add. That keeps a18's conservation identity (in = discarded by
+  // takes + stranded) exact arithmetic rather than a special case, and it keeps
+  // the fee-suit mix reading one row per card, which is what the pair is FOR
+  // (two junk cards instead of one matching one, L5).
+  //
+  // ⚠️ IT ALSO MEANS PLAYS PER TURN AND CARDS INTO THE CENTRE STOP BEING THE
+  // SAME NUMBER under this arm, exactly as A Helping Hand made plays per turn
+  // and the share of turns that used the slot stop being the same number on
+  // 09/09/2026 - which cost a re-run. a17 counts TURNS, a18 counts CARDS, and
+  // under the pair one bonus can put two cards in.
   fx.playOnCommons(seat, board, fee);
+  if (fee2 !== undefined) fx.playOnCommons(seat, board, fee2);
   state.turn.bonusUsed.push('commons');
   fireHook(fx, 'afterVisit', { visitor: seat, host: null, self: false, board });
   performDoorAction(fx, seat, board, 'commons');
@@ -3681,10 +3912,10 @@ export function doCommons(fx: Fx, seat: Seat, board: Suit, fee: CardId): void {
 export type CommonsTakeOption = Extract<Move, { type: 'commonsTake' }>;
 
 /**
- * ⭐ DEAN'S VARIANTS' SHARED MOVE (09/09/2026, `rules.turn.commonsTake:
- * 'bonus'`, `'spend'` OR `'paid'`): every legal `commonsTake` move, one per
- * central pile this seat may legally take right now (or, under `'paid'`, one
- * per (pile, fee card) pair).
+ * ⭐ DEAN'S VARIANTS' SHARED MOVE (`rules.turn.commonsTake: 'bonus'`, `'spend'`
+ * or `'paid'`, 09/09/2026, and `'coins'`, 10/09/2026): every legal
+ * `commonsTake` move, one per central pile this seat may legally take right now
+ * (or, under `'paid'`, one per (pile, fee card) pair).
  *
  * Never producible under the shipped `'harvest'` rule - `enumerateCommonsTake`
  * checks the knob first, exactly as `enumerateCommons` checks `isCommons`
@@ -3693,7 +3924,8 @@ export type CommonsTakeOption = Extract<Move, { type: 'commonsTake' }>;
  * something for its action to do (D-S3), which is `commonsSpendTakeLegal`;
  * under `'paid'` a board qualifies whenever it is non-empty AND the seat has
  * at least one card in hand to pay with (D-P1's other half - see
- * `enumerateCommonsTake`).
+ * `enumerateCommonsTake`); under `'coins'` (K3/K5) every non-empty pile
+ * qualifies and nothing else is asked, because a coin take buys no action.
  */
 export function commonsTakeOptions(
   data: GameData,
@@ -3730,7 +3962,15 @@ function enumerateCommonsTake(
   const toHand = isCommonsTakeToHand(data);
   const toSpend = isCommonsTakeToSpend(data);
   const toPaid = isCommonsTakePaid(data);
-  if (!isCommons(data) || (!toHand && !toSpend && !toPaid)) return false;
+  // ⭐ THE COIN TAKE (K3 second half / K8, Dean 10/09/2026): "discard every card
+  // on one central pile and take one coin per card". It needs NO branch of its
+  // own down the walk - no fee to choose (unlike 'paid') and no per-board
+  // legality to ask (unlike 'spend', whose action has to have something to do,
+  // D-S3) - because a coin take buys no action at all. So it is one more term
+  // in the fail-closed guard and one more mode the plain loop below serves, and
+  // K5's "not offered on an empty pile" is the loop's own existing check.
+  const toCoins = isCommonsTakeCoins(data);
+  if (!isCommons(data) || (!toHand && !toSpend && !toPaid && !toCoins)) return false;
   if (!bonusOpen(data, state, 'commonsTake')) return false;
   const boards = commonsBoards(state);
   let any = false;
@@ -3781,24 +4021,27 @@ function commonsSpendTakeLegal(data: GameData, state: GameState, seat: Seat, boa
 }
 
 /**
- * ⭐ DEAN'S VARIANTS' TAKE, DISPATCHED BY commonsTake (09/09/2026): take the
- * whole of one central pile. Under `'bonus'` and `'paid'` it always goes
- * straight to hand (`Fx.takeCommons`); under `'spend'` its fate depends on
- * `board` - `doCommonsSpendTake` is where the five legs live.
+ * ⭐ DEAN'S VARIANTS' TAKE, DISPATCHED BY commonsTake: take the whole of one
+ * central pile. Under `'bonus'` and `'paid'` it always goes straight to hand
+ * (`Fx.takeCommons`); under `'spend'` its fate depends on `board` -
+ * `doCommonsSpendTake` is where the five legs live; under `'coins'` (K3/K8,
+ * 10/09/2026) it goes to the suits' DISCARDS and pays one coin per card, which
+ * is the one value where the pile leaves the game rather than reaching anybody.
  *
  * Every predicate the enumerator checked is re-checked here, on the same
  * discipline `doCommons` follows. `fee` is read only under `'paid'`, where it
  * is required; it is ignored (and should be `undefined`, as `legalMoves`
- * never sets it) under the other two.
+ * never sets it) under the other three.
  */
 export function doCommonsTake(fx: Fx, seat: Seat, board: Suit, fee?: CardId): void {
   const { data, state } = fx;
   const toHand = isCommonsTakeToHand(data);
   const toSpend = isCommonsTakeToSpend(data);
   const toPaid = isCommonsTakePaid(data);
-  if (!isCommons(data) || (!toHand && !toSpend && !toPaid)) {
+  const toCoins = isCommonsTakeCoins(data);
+  if (!isCommons(data) || (!toHand && !toSpend && !toPaid && !toCoins)) {
     throw new Error(
-      "commonsTake is legal only under rules.turn.commonsTake: 'bonus', 'spend' or 'paid'",
+      "commonsTake is legal only under rules.turn.commonsTake: 'bonus', 'spend', 'paid' or 'coins'",
     );
   }
   if (!bonusOpen(data, state, 'commonsTake')) {
@@ -3807,6 +4050,19 @@ export function doCommonsTake(fx: Fx, seat: Seat, board: Suit, fee?: CardId): vo
   const pile = commonsBoards(state)[board];
   if (pile === undefined) throw new Error(`There is no ${board} board in the commons`);
   if (pile.length === 0) throw new Error(`The ${board} board is empty`);
+
+  if (toCoins) {
+    // ⭐ THE MINT (K3/K8, Dean 10/09/2026): NO FEE IS PAID, so `fee` is ignored
+    // here exactly as it is under 'bonus' and 'spend' - `legalMoves` never sets
+    // it under this value. The pile goes to its cards' OWN suits' discard piles
+    // (a pile holds any colours, and the wild pair puts two of any colours on
+    // one board) and the taker is paid one coin per card. Marked spent BEFORE
+    // the resolution, on the same rule `'spend'` states: the slot goes the
+    // moment the board is chosen.
+    state.turn.bonusUsed.push('commonsTake');
+    fx.clearCommonsForCoins(seat, board);
+    return;
+  }
 
   if (toPaid) {
     if (fee === undefined) {

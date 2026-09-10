@@ -19,6 +19,7 @@ import { isMeepleCurrency } from '@gp/data';
 import {
   cardById,
   canTakeCard,
+  coinsOf,
   commonsBoardSuit,
   commonsHarvestTake,
   commonsBoards,
@@ -760,6 +761,78 @@ export class Fx {
     this.emit({ e: 'commonsTaken', seat, board, cards });
   }
 
+  // --- coins (the commons-with-coins arm, K7-K15, Dean 10/09/2026) ---------
+  //
+  // ⛔ THIS IS NOT v31's `gainCoins` / `payCoins` COMING BACK, and the pair
+  // above says why the meeples were not either. The old pair served a fungible
+  // currency with a bank behind it, a wage, a pity rate and a market; this pair
+  // serves ONE MINT (clearing a central pile) and TWO SINKS (the Farmstead's
+  // activation and an Endgame card's price), and there is nothing else in the
+  // game that can produce or consume a coin. Every earlier coin economy in this
+  // project died of a second faucet, so the narrowness is the design.
+
+  /**
+   * ⭐ THE MINT (K3 second half / K8): clear the WHOLE of one central pile to
+   * its cards' OWN suits' discard piles and pay the clearer one coin per card.
+   *
+   * Deliberately NOT `takeCommons` and deliberately NOT `harvest`: nothing
+   * reaches a hand, a barn or a building, no `afterHarvest` fires, and the pile
+   * LEAVES THE GAME (`commonsTakeLeavesTheGame` in @gp/data). That is the whole
+   * difference between this arm and the three take variants of 09/09/2026,
+   * every one of which handed the cards back to somebody and ran the bonus slot
+   * at 74% to 89% of turns because the cards taken paid for the next play.
+   *
+   * ⚠️ TO THEIR OWN SUITS, NEVER TO THE BOARD'S. A pile holds whatever colours
+   * were played onto it, which under `commonsColourMatch` is usually but not
+   * always the board's colour - the wild pair (K3 first half) puts two cards of
+   * ANY colours onto a board. `fx.discard` routes each card by its own suit and
+   * emits one `cardsDiscarded` per card, so the deck accounting is exact
+   * without this primitive knowing anything about colour.
+   *
+   * Two events, on the same reasoning `commonsPlayed` and `doorUsed` are two:
+   * `commonsTaken` is what every reader of the centre's outflow already counts,
+   * and `coinsMinted` carries only the half that is new.
+   */
+  clearCommonsForCoins(seat: Seat, board: Suit): void {
+    const pile = commonsBoards(this.state)[board];
+    if (!pile) throw new Error(`There is no ${board} board in the commons`);
+    const cards = pile.splice(0);
+    this.discard(cards);
+    this.gainCoins(seat, cards.length);
+    this.emit({ e: 'commonsTaken', seat, board, cards });
+    this.emit({ e: 'coinsMinted', seat, board, coins: cards.length });
+  }
+
+  /**
+   * Add coins to a seat's pile. Private to the mint above by convention rather
+   * than by keyword: nothing else in the game may call it, because K8 says the
+   * only mint is clearing a pile, and a second caller here IS a second faucet.
+   * `coinsOf` throws when the arm is off, so a stray call cannot quietly create
+   * a wallet.
+   */
+  private gainCoins(seat: Seat, n: number): void {
+    if (n <= 0) return;
+    this.touch(seat);
+    player(this.state, seat).coins = coinsOf(this.state, seat) + n;
+  }
+
+  /**
+   * ⭐ A SINK (K10 or K15): take `n` coins off a seat and say which of the two
+   * uses took them. The enumerators have already refused the move if the seat
+   * cannot pay - a seat short of coins is never offered the Farmstead as a Grow
+   * target or the Endgame card as a build - so a throw here is a funnel
+   * catching a move `legalMoves` never made, which is the discipline the whole
+   * file is written on.
+   */
+  spendCoins(seat: Seat, on: 'farmstead' | 'endgame', n: number): void {
+    const held = coinsOf(this.state, seat);
+    if (n <= 0) throw new Error(`A coin sink costs at least one coin, got ${n}`);
+    if (held < n) throw new Error(`Seat ${seat} has ${held} coins, not ${n}`);
+    this.touch(seat);
+    player(this.state, seat).coins = held - n;
+    this.emit({ e: 'coinsSpent', seat, on, coins: n });
+  }
+
   /**
    * ⭐ DEAN'S 'spend' VARIANT'S DAIRY AND VEGETABLE LEGS: remove SPECIFIC cards
    * (by id) from a central pile, structural only - no discard, no event. The
@@ -894,6 +967,14 @@ export class Fx {
     // a Harvest, so Wheat's riders fire). `commonsBoardSuit` answers null under
     // both controls whatever the id, so W3 in a Wheat tableau is still a
     // building there.
+    // ⚠️ AND THE BRANCH IS UNREACHABLE UNDER EVERY `commonsTake` VALUE BUT THE
+    // SHIPPED `'harvest'` (checked 10/09/2026 while building K4). Nothing needs
+    // to be added here for 'bonus', 'spend', 'paid' or 'coins': the only routes
+    // that name a building to harvest are `harvestOptions` and the tasks that
+    // read it, and `commonsHarvestReachesCentre` drops every central pile out of
+    // that set, so no caller can hand this a board card. It is left as it stands
+    // rather than guarded, because a second gate here would be a second place
+    // for the rule to live and the first one would stop being read.
     const board = commonsBoardSuit(this.data, buildingCard);
     if (board !== null) {
       const pile = commonsBoards(this.state)[board];

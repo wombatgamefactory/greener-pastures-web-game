@@ -21,9 +21,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
   bonusDrawOpen,
+  buildOptions,
   collectOptions,
   commonsOptions,
   commonsTakeOptions,
+  growOptions,
   harvestOptions,
   meepleOptions,
   visitOptions,
@@ -960,6 +962,630 @@ describe("Dean's variant: commonsTake 'paid' (09/09/2026)", () => {
     expect(() =>
       apply(data, s, { type: 'commonsTake', seat: WHEAT, board: 'dairy', fee: 'W7' }),
     ).toThrow();
+  });
+});
+
+/**
+ * ⭐ THE COMMONS WITH COINS (`rules.turn.commonsTake: 'coins'`, Dean
+ * 10/09/2026), `overlays/commons-coins-v1.overlay.json` and
+ * `docs/commons-coins-handoff-2026-09-10-v2.md`, rules K1-K15.
+ *
+ * THE ARM IN ONE PARAGRAPH. The bonus slot is EITHER *"play a card OF THE
+ * BOARD'S COLOUR onto it and take that board's plain action"* - with two cards
+ * of any colours standing in as one, the WILD PAIR, both landing on the pile -
+ * OR *"discard every card on one central pile and take ONE COIN PER CARD"*.
+ * Harvest never reaches the centre at all (K4, reversing C5), so the farm-bypass
+ * share reads 0% by construction. Coins have exactly one mint (a pile) and
+ * exactly two sinks: the Farmstead, which becomes a coin-activated suit power
+ * used as your MAIN action, and the fifteen Endgame cards, which cost coins
+ * instead of two cards of their own suit.
+ *
+ * ⚠️ EVERY BLOCK BELOW RUNS ON AN OVERLAY AND NOT ON `BASE_GAME_DATA`. The arm
+ * is OFF in the shipped game and each block asserts that from the other side
+ * too, because "the flag is where I think it is" is a claim worth failing on -
+ * and because six of the nine fixtures replay byte-identically only while every
+ * one of these branches is unreachable at the default.
+ */
+describe("Dean's arm: the commons with coins (10/09/2026)", () => {
+  /** The whole arm, exactly as `overlays/commons-coins-v1.overlay.json` pins it. */
+  const coins: GameData = loadGameData({
+    name: 'commons-coins-v1',
+    schemaVersion: 1,
+    set: {
+      'rules.turn.visitCurrency': 'commons',
+      'rules.turn.bonusTiming': 'start',
+      'rules.turn.commonsTake': 'coins',
+      'rules.economy.commonsColourMatch': true,
+      'rules.economy.commonsWildPair': true,
+      'rules.economy.endgameCoinCost': 3,
+      'rules.economy.farmsteadCoinPower': true,
+    },
+  });
+
+  /** The paired sub-arm: the same rules with the wild pair OFF. */
+  const noPair: GameData = loadGameData({
+    name: 'commons-coins-no-wild-v1',
+    schemaVersion: 1,
+    set: {
+      'rules.turn.visitCurrency': 'commons',
+      'rules.turn.bonusTiming': 'start',
+      'rules.turn.commonsTake': 'coins',
+      'rules.economy.commonsColourMatch': true,
+      'rules.economy.commonsWildPair': false,
+      'rules.economy.endgameCoinCost': 3,
+      'rules.economy.farmsteadCoinPower': true,
+    },
+  });
+
+  /** The paired sub-arm: the same rules with the Endgame cards back on cards. */
+  const endgameOnCards: GameData = loadGameData({
+    name: 'commons-coins-endgame-cards-v1',
+    schemaVersion: 1,
+    set: {
+      'rules.turn.visitCurrency': 'commons',
+      'rules.turn.bonusTiming': 'start',
+      'rules.turn.commonsTake': 'coins',
+      'rules.economy.commonsColourMatch': true,
+      'rules.economy.commonsWildPair': true,
+      'rules.economy.endgameCoinCost': null,
+      'rules.economy.farmsteadCoinPower': true,
+    },
+  });
+
+  /** `seedPile` reads the shipped catalogue; under an overlay the ids are the same. */
+  function armState(on: GameData, suits: Suit[] = ['wheat', 'orchard']): GameState {
+    const s = makeState(on, suits);
+    s.turnPlayer = 0;
+    return s;
+  }
+
+  /** Coins are minted only by a pile, so a scenario that wants some says so. */
+  function giveCoins(state: GameState, seat: Seat, n: number): void {
+    const p = state.players[seat];
+    if (!p) throw new Error(`No player in seat ${seat}`);
+    p.coins = (p.coins ?? 0) + n;
+  }
+
+  function pairPlay(seat: Seat, board: Suit, fee: CardId, fee2: CardId): Move {
+    return { type: 'commons', seat, board, fee, fee2 };
+  }
+
+  function growCoin(seat: Seat, building: CardId): Move {
+    return { type: 'grow', seat, building, payment: null, coin: true };
+  }
+
+  describe('setup and the wallet (K7)', () => {
+    it('gives every seat a wallet at zero, and the shipped game none at all', () => {
+      const armed = newGame(coins, { seats: 2, suits: ['wheat', 'orchard'], seed: 'coins-setup' });
+      for (const p of armed.players) expect(p.coins).toBe(0);
+
+      const shipped = newGame(data, { seats: 2, suits: ['wheat', 'orchard'], seed: 'coins-setup' });
+      // ⛔ ABSENT, not present-and-zero. Six of the nine fixtures replay
+      // byte-identically and this is the assertion that says why they can.
+      for (const p of shipped.players) expect(Object.hasOwn(p, 'coins')).toBe(false);
+      expect(Object.hasOwn(viewFor(data, shipped, 0).you, 'coins')).toBe(false);
+    });
+
+    it('shows coins in the view, your own and every rival s (they are public)', () => {
+      const s = armState(coins);
+      giveCoins(s, 0, 4);
+      giveCoins(s, 1, 2);
+      const view = viewFor(coins, s, 0);
+      expect(view.you.coins).toBe(4);
+      expect(view.rivals[0]?.coins).toBe(2);
+    });
+  });
+
+  describe('K3 first half: the colour gate and the WILD PAIR', () => {
+    // The ORCHARD board throughout, because it is the one door whose action is
+    // legal from an empty position (Draw 2 needs only a deck with cards in it).
+    // The wheat board is deliberately NOT used here: under K4 its Harvest needs
+    // a full building of the seat's own, which is K4's own test below.
+    it('offers a matching card and refuses an off-colour one', () => {
+      const s = armState(coins);
+      dealTo(coins, s, 0, 'O7', 'W7');
+      const onto = commonsOptions(coins, s, 0).filter((m) => m.board === 'orchard');
+      expect(onto.some((m) => m.fee === 'O7' && m.fee2 === undefined)).toBe(true);
+      expect(onto.some((m) => m.fee === 'W7' && m.fee2 === undefined)).toBe(false);
+      expect(() => apply(coins, s, play(0, 'orchard', 'W7'))).toThrow();
+    });
+
+    it('offers every unordered pair of two hand cards, of any colours, per board', () => {
+      const s = armState(coins);
+      dealTo(coins, s, 0, 'W7', 'V7');
+      const onto = commonsOptions(coins, s, 0).filter((m) => m.board === 'orchard');
+      // No orchard card in hand, so every orchard option is a pair - and there
+      // is exactly one pair to make out of two cards, named once and not twice.
+      expect(onto).toHaveLength(1);
+      expect(onto[0]?.fee).toBe('W7');
+      expect(onto[0]?.fee2).toBe('V7');
+    });
+
+    it('lands BOTH cards on the pile and emits one commonsPlayed per card', () => {
+      const s = armState(coins);
+      dealTo(coins, s, 0, 'W7', 'V7');
+      const out = apply(coins, s, pairPlay(0, 'orchard', 'W7', 'V7'));
+      expect(commonsBoards(out.state)['orchard']).toEqual(['W7', 'V7']);
+      expect(player(out.state, 0).hand).not.toContain('W7');
+      expect(player(out.state, 0).hand).not.toContain('V7');
+      const played = out.events.filter((e) => e.e === 'commonsPlayed');
+      expect(played).toHaveLength(2);
+      expect(played.map((e) => (e.e === 'commonsPlayed' ? e.pileSize : 0))).toEqual([1, 2]);
+      // One bonus, whatever it cost: the pair is a PRICE and never a second slot.
+      expect(out.state.turn.bonusUsed).toEqual(['commons']);
+      expect(out.events.filter((e) => e.e === 'doorUsed')).toHaveLength(1);
+    });
+
+    it('refuses a pair of one card named twice, and a pair with the knob off', () => {
+      const s = armState(coins);
+      dealTo(coins, s, 0, 'W7', 'V7');
+      expect(() => apply(coins, s, pairPlay(0, 'orchard', 'W7', 'W7'))).toThrow();
+
+      const off = armState(noPair);
+      dealTo(noPair, off, 0, 'W7', 'V7');
+      expect(commonsOptions(noPair, off, 0).filter((m) => m.board === 'orchard')).toEqual([]);
+      expect(() => apply(noPair, off, pairPlay(0, 'orchard', 'W7', 'V7'))).toThrow();
+    });
+
+    it('takes BOTH fees out of the hand before asking whether the action is legal', () => {
+      // Two cards in hand and both are the pair: the dairy board's Build has
+      // nothing left to pay with, so the board is not offered as a pair at all.
+      const s = armState(coins, ['dairy', 'orchard']);
+      s.turnPlayer = 0;
+      dealTo(coins, s, 0, 'W7', 'V7');
+      expect(commonsOptions(coins, s, 0).some((m) => m.board === 'dairy')).toBe(false);
+      // One more card, and the same pair now buys a Build it can afford - D4
+      // costs one card of its own suit and D5 is one.
+      dealTo(coins, s, 0, 'D4', 'D5');
+      expect(
+        commonsOptions(coins, s, 0).some(
+          (m) => m.board === 'dairy' && m.fee === 'W7' && m.fee2 === 'V7',
+        ),
+      ).toBe(true);
+    });
+
+    it('enumerates no pair under the shipped default', () => {
+      const s = position();
+      dealTo(data, s, WHEAT, 'W7', 'V7');
+      expect(commonsOptions(data, s, WHEAT).every((m) => m.fee2 === undefined)).toBe(true);
+      expect(() => apply(data, s, pairPlay(WHEAT, 'orchard', 'W7', 'V7'))).toThrow();
+    });
+  });
+
+  describe('K3 second half and K8: the coin take is the only mint', () => {
+    it('discards the whole pile to its cards OWN suits and pays one coin per card', () => {
+      const s = armState(coins);
+      seedPile(s, 'wheat', 'O7', 'V7', 'W7');
+      const out = apply(coins, s, take(0, 'wheat'));
+      expect(player(out.state, 0).coins).toBe(3);
+      expect(commonsBoards(out.state)['wheat']).toEqual([]);
+      // ⛔ NEVER the board's suit: a pile holds whatever colours were played.
+      expect(out.state.discards['orchard']).toContain('O7');
+      expect(out.state.discards['vegetable']).toContain('V7');
+      expect(out.state.discards['wheat']).toContain('W7');
+      // Nothing playable comes back.
+      expect(player(out.state, 0).hand).toEqual([]);
+      expect(player(out.state, 0).barn).toEqual([]);
+      expect(out.state.turn.bonusUsed).toEqual(['commonsTake']);
+      expect(out.state.turn.actionSpent).toBe(false);
+      const minted = out.events.find((e) => e.e === 'coinsMinted');
+      expect(minted).toEqual({ e: 'coinsMinted', seat: 0, board: 'wheat', coins: 3 });
+      const taken = out.events.find((e) => e.e === 'commonsTaken');
+      expect(taken?.e === 'commonsTaken' ? taken.cards : []).toEqual(['O7', 'V7', 'W7']);
+      expect(taken?.e === 'commonsTaken' ? taken.fee : 'x').toBeUndefined();
+      // No fee and no action bought.
+      expect(out.events.some((e) => e.e === 'commonsPlayed')).toBe(false);
+      expect(out.events.some((e) => e.e === 'doorUsed')).toBe(false);
+      expect(out.events.some((e) => e.e === 'harvested')).toBe(false);
+    });
+
+    it('is not offered on an empty pile (K5)', () => {
+      const s = armState(coins);
+      expect(commonsTakeOptions(coins, s, 0).some((m) => m.board === 'dairy')).toBe(false);
+      expect(() => apply(coins, s, take(0, 'dairy'))).toThrow();
+    });
+
+    it('takes no fee, so no fee-bearing take is ever offered', () => {
+      const s = armState(coins);
+      seedPile(s, 'dairy', 'D4');
+      dealTo(coins, s, 0, 'W7');
+      expect(commonsTakeOptions(coins, s, 0).every((m) => m.fee === undefined)).toBe(true);
+      expect(
+        legalMoves(coins, s).some((m) => m.type === 'commonsTake' && m.fee !== undefined),
+      ).toBe(false);
+      // ⚠️ A `fee` handed to the funnel anyway is IGNORED rather than refused,
+      // which is what `'bonus'` and `'spend'` already do and is documented on
+      // `doCommonsTake`: the card stays in the hand and nothing is charged.
+      const out = apply(coins, s, takePaid(0, 'dairy', 'W7'));
+      expect(player(out.state, 0).hand).toContain('W7');
+      expect(player(out.state, 0).coins).toBe(1);
+    });
+
+    it('spends the one bonus slot, so a play and a take share a turn only with A Helping Hand', () => {
+      const bare = armState(coins);
+      seedPile(bare, 'dairy', 'D5');
+      dealTo(coins, bare, 0, 'W7');
+      const afterTake = settle(apply(coins, bare, take(0, 'dairy')).state, coins);
+      expect(commonsOptions(coins, afterTake, 0)).toEqual([]);
+
+      const helped = armState(coins);
+      buildFor(coins, helped, 0, 'W18');
+      seedPile(helped, 'dairy', 'D5');
+      // An ORCHARD card, so the play that follows the take has a legal board to
+      // go to under the colour gate.
+      dealTo(coins, helped, 0, 'O7');
+      const after = settle(apply(coins, helped, take(0, 'dairy')).state, coins);
+      expect(commonsOptions(coins, after, 0).length).toBeGreaterThan(0);
+    });
+
+    it('enumerates nothing under the shipped default', () => {
+      const s = position();
+      seedPile(s, 'dairy', 'D4', 'D5');
+      expect(commonsTakeOptions(data, s, WHEAT)).toEqual([]);
+      expect(() => apply(data, s, take(WHEAT, 'dairy'))).toThrow();
+    });
+  });
+
+  describe('K4: Harvest never reaches the centre', () => {
+    it('never offers a central board to Harvest, and refuses one asked for', () => {
+      const s = armState(coins);
+      seedPile(s, 'dairy', 'D4', 'D5');
+      const board = commonsBoardCard(coins, 'dairy');
+      expect(harvestOptions(coins, s, 0)).not.toContain(board);
+      expect(() => apply(coins, s, { type: 'harvest', seat: 0, building: board })).toThrow();
+    });
+
+    it('offers the wheat board only on a full building of your own (D6 does not hold)', () => {
+      const bare = armState(coins);
+      seedPile(bare, 'wheat', 'W9', 'W10');
+      dealTo(coins, bare, 0, 'W7');
+      expect(commonsOptions(coins, bare, 0).some((m) => m.board === 'wheat')).toBe(false);
+
+      const full = armState(coins);
+      buildFor(coins, full, 0, 'W4');
+      loadStack(coins, full, 0, 'W4', 2);
+      dealTo(coins, full, 0, 'W7');
+      expect(commonsOptions(coins, full, 0).some((m) => m.board === 'wheat')).toBe(true);
+    });
+  });
+
+  describe('K10: the Farmstead is a coin-activated GROW, and it is your MAIN action', () => {
+    /**
+     * ⚠️ THE ORCHARD SEAT, BECAUSE THE TURN MUST NOT SETTLE UNDER US. `bonusTiming`
+     * is 'start', so a turn whose action is spent and whose bonus slot is shut
+     * ends immediately inside `apply` and `turn` is replaced by a fresh one -
+     * which would make every assertion about `actionSpent` and `firedThisTurn`
+     * read the NEXT seat's turn. The Orchard Farmstead's Draw 3 leaves a draw
+     * task pending, which suspends the boundary and lets the turn be inspected.
+     */
+    function orchardSeat(): GameState {
+      const s = armState(coins, ['orchard', 'wheat']);
+      s.turnPlayer = 0;
+      return s;
+    }
+
+    it('is offered with a coin, spends it, places nothing and spends the ACTION', () => {
+      const s = orchardSeat();
+      giveCoins(s, 0, 1);
+      expect(
+        legalMoves(coins, s).some(
+          (m) => m.type === 'grow' && m.building === 'O2' && m.coin === true,
+        ),
+      ).toBe(true);
+      const out = apply(coins, s, growCoin(0, 'O2'));
+      expect(player(out.state, 0).coins).toBe(0);
+      // Nothing is placed: no threshold, never full, never a sow target.
+      expect(player(out.state, 0).tableau.find((b) => b.card === 'O2')?.stack).toEqual([]);
+      // ⭐ THE MAIN ACTION AND NOT THE BONUS (K10): `actionSpent` goes, the
+      // bonus slot is untouched.
+      expect(out.state.turn.actionSpent).toBe(true);
+      expect(out.state.turn.bonusUsed).toEqual([]);
+      expect(out.state.turn.firedThisTurn).toContain('O2');
+      const spent = out.events.find((e) => e.e === 'coinsSpent');
+      expect(spent).toEqual({ e: 'coinsSpent', seat: 0, on: 'farmstead', coins: 1 });
+    });
+
+    it('is not offered once the main action is spent, because it IS the main action', () => {
+      const s = orchardSeat();
+      giveCoins(s, 0, 3);
+      s.turn.actionSpent = true;
+      expect(legalMoves(coins, s).some((m) => m.type === 'grow')).toBe(false);
+      expect(() => apply(coins, s, growCoin(0, 'O2'))).toThrow();
+    });
+
+    it('is not offered without a coin, and the funnel refuses it', () => {
+      const s = orchardSeat();
+      expect(legalMoves(coins, s).some((m) => m.type === 'grow' && m.building === 'O2')).toBe(
+        false,
+      );
+      expect(() => apply(coins, s, growCoin(0, 'O2'))).toThrow();
+    });
+
+    it('is once per turn: the latch drops it out of the enumerator rather than throwing', () => {
+      const s = orchardSeat();
+      giveCoins(s, 0, 3);
+      const after = apply(coins, s, growCoin(0, 'O2')).state;
+      // FILTERED, never thrown: bots probe by cloning and applying, so an
+      // enumerator that throws surfaces as a crash in probe.ts. Coins are not
+      // the binding constraint here - the seat still holds two.
+      expect(after.turn.firedThisTurn).toContain('O2');
+      expect(player(after, 0).coins).toBe(2);
+      expect(growOptions(coins, after, 0, { mainAction: true }).some((o) => o.coin === true)).toBe(
+        false,
+      );
+      expect(() => apply(coins, after, growCoin(0, 'O2'))).toThrow();
+    });
+
+    it('⛔ THE APIARY BOARD CANNOT BUY IT (D-C1): the task never offers a Farmstead', () => {
+      const s = armState(coins, ['apiary', 'orchard']);
+      s.turnPlayer = 0;
+      giveCoins(s, 0, 5);
+      // A card of the board's colour to pay the bonus, plus a real Grow target
+      // so the apiary board has something legal to do at all.
+      buildFor(coins, s, 0, 'A4');
+      dealTo(coins, s, 0, 'A5', 'A6');
+      const out = apply(coins, s, play(0, 'apiary', 'A5'));
+      const answers = legalMoves(coins, out.state).filter((m) => m.type === 'task');
+      expect(answers.length).toBeGreaterThan(0);
+      expect(
+        answers.some(
+          (m) => m.type === 'task' && m.answer.kind === 'grow' && m.answer.building === 'A2',
+        ),
+      ).toBe(false);
+      // And the enumerator agrees when asked the way the task asks it.
+      expect(growOptions(coins, out.state, 0).some((o) => o.coin === true)).toBe(false);
+      expect(
+        growOptions(coins, out.state, 0, { mainAction: true }).some((o) => o.coin === true),
+      ).toBe(true);
+    });
+
+    it('is never offered under the shipped default, coins or no coins', () => {
+      const s = position();
+      expect(growOptions(data, s, WHEAT, { mainAction: true }).some((o) => o.coin === true)).toBe(
+        false,
+      );
+      expect(legalMoves(data, s).some((m) => m.type === 'grow' && m.building === 'W2')).toBe(false);
+      expect(() => apply(data, s, growCoin(WHEAT, 'W2'))).toThrow();
+    });
+  });
+
+  describe('K12: the five powers, each reading its own knob', () => {
+    it('Orchard draws rules.economy.farmsteadPower.orchardDraw cards', () => {
+      const s = armState(coins, ['orchard', 'wheat']);
+      s.turnPlayer = 0;
+      giveCoins(s, 0, 1);
+      const n = coins.rules.economy.farmsteadPower.orchardDraw;
+      const after = settle(apply(coins, s, growCoin(0, 'O2')).state, coins);
+      expect(player(after, 0).hand).toHaveLength(n);
+    });
+
+    it('Dairy pushes a Build at a discount of dairyDiscount, with the crops waived', () => {
+      const s = armState(coins, ['dairy', 'wheat']);
+      s.turnPlayer = 0;
+      giveCoins(s, 0, 1);
+      // D9 costs 3 cards of which 2 must be DAIRY. At a discount of 1 that is
+      // two cards and NO crop requirement at all (`priceOf` waives the own-suit
+      // half whenever a discount applies, which is the same rule D4 The Milking
+      // Shed runs on), so two WHEAT cards pay for it.
+      dealTo(coins, s, 0, 'D9', 'W7', 'W9');
+      const out = apply(coins, s, growCoin(0, 'D2'));
+      const build = out.state.tasks.find((t) => t.t === 'build');
+      expect(build?.t === 'build' ? build.mods?.discount : null).toBe(
+        coins.rules.economy.farmsteadPower.dairyDiscount,
+      );
+      const answers = legalMoves(coins, out.state).filter((m) => m.type === 'task');
+      expect(
+        answers.some(
+          (m) =>
+            m.type === 'task' &&
+            m.answer.kind === 'build' &&
+            m.answer.card === 'D9' &&
+            m.answer.payment.length === 2 &&
+            m.answer.payment.every((id) => id.startsWith('W')),
+        ),
+      ).toBe(true);
+    });
+
+    it('Apiary pushes apiaryGrows grow tasks that PAY their activation costs', () => {
+      const s = armState(coins, ['apiary', 'wheat']);
+      s.turnPlayer = 0;
+      giveCoins(s, 0, 1);
+      buildFor(coins, s, 0, 'A4', 'A7');
+      dealTo(coins, s, 0, 'A5', 'A6');
+      const out = apply(coins, s, growCoin(0, 'A2'));
+      expect(out.audit.tasksPushed).toBe(coins.rules.economy.farmsteadPower.apiaryGrows);
+      expect(out.state.tasks.filter((t) => t.t === 'grow')).toHaveLength(
+        coins.rules.economy.farmsteadPower.apiaryGrows,
+      );
+      // ⛔ NOT A12 The Honey Hut and NOT A5 The Meadow Hive: both of those GROW
+      // WITHOUT PLACING A CARD (an `activate` task, whose answer names only a
+      // building). These are full Grows, so every answer names a PAYMENT out of
+      // the hand, and that distinction is the whole difference between the two
+      // cards.
+      const answers = legalMoves(coins, out.state).filter((m) => m.type === 'task');
+      expect(answers.length).toBeGreaterThan(0);
+      expect(
+        answers.every(
+          (m) => m.type === 'task' && m.answer.kind === 'grow' && m.answer.payment !== undefined,
+        ),
+      ).toBe(true);
+      expect(answers.some((m) => m.type === 'task' && m.answer.kind === 'activate')).toBe(false);
+    });
+
+    it('Wheat harvests EVERY loaded building, however many cards are on it (W13 s rule)', () => {
+      const s = armState(coins, ['wheat', 'orchard']);
+      s.turnPlayer = 0;
+      giveCoins(s, 0, 1);
+      buildFor(coins, s, 0, 'W4', 'W6');
+      loadStack(coins, s, 0, 'W4', 1); // one card, nowhere near its threshold of 2
+      loadStack(coins, s, 0, 'W6', 2); // two, on a threshold of 3
+      const out = settle(apply(coins, s, growCoin(0, 'W2')).state, coins);
+      expect(player(out, 0).tableau.find((b) => b.card === 'W4')?.stack).toEqual([]);
+      expect(player(out, 0).tableau.find((b) => b.card === 'W6')?.stack).toEqual([]);
+      expect(player(out, 0).barn).toHaveLength(3);
+    });
+
+    it('Vegetable pushes vegetableDeliveries FULL deliveries, not one paying twice', () => {
+      const s = armState(coins, ['vegetable', 'wheat']);
+      s.turnPlayer = 0;
+      giveCoins(s, 0, 1);
+      const out = apply(coins, s, growCoin(0, 'V2'));
+      // ⭐ D-C2: `vegetableDeliveries` separate `deliver` TASKS, each paid and
+      // targeted separately. V14 is the card that chose `receipts = 2` (one
+      // payment, two receipts) and this is deliberately not that rule.
+      //
+      // ⚠️ COUNTED OFF THE AUDIT AND NOT OFF `state.tasks`, because a deliver
+      // task with no payable answer is DROPPED by the drain loop - which is
+      // V15's documented behaviour and correct here too: a seat with an empty
+      // barn simply takes neither delivery. `tasksPushed` is what the primitive
+      // did, which is the claim under test.
+      expect(out.audit.tasksPushed).toBe(coins.rules.economy.farmsteadPower.vegetableDeliveries);
+    });
+
+    it('fires none of them under the shipped default', () => {
+      const s = position();
+      // The shipped Farmstead has no activation type at all, so no route into
+      // its text exists: `growOptions` skips it and the coin move is refused.
+      expect(
+        growOptions(data, s, WHEAT, { mainAction: true }).some((o) => o.building === 'W2'),
+      ).toBe(false);
+    });
+  });
+
+  describe('K13: the Farmstead s own scorer is OFF under the arm', () => {
+    it('scores exactly the Farmstead term less than the shipped game, on the same tableau', () => {
+      const build = (on: GameData): GameState => {
+        const s = makeState(on, ['wheat', 'orchard']);
+        buildFor(on, s, 0, 'W4', 'W5', 'W6');
+        return s;
+      };
+      const shipped = gameEndScores(data, build(data))[0];
+      const armed = gameEndScores(coins, build(coins))[0];
+      expect(shipped?.endgame).toBe(3); // three built Wheat deck cards
+      expect(armed?.endgame).toBe(0);
+      // ⚠️ VISIBLE RATHER THAN SILENT: the difference is exactly the Farmstead
+      // term. K13 moves that scorer to the BARN on the sheet, and the Barn has
+      // no handler, so under the arm it does not fire at all - which is a real
+      // scoring difference and is asserted here as one.
+      expect((shipped?.total ?? 0) - (armed?.total ?? 0)).toBe(3);
+    });
+  });
+
+  describe('K15: an Endgame card costs coins and no cards', () => {
+    it('is offered with the coins, takes no cards, and charges them on the build', () => {
+      const s = armState(coins);
+      const price = coins.rules.economy.endgameCoinCost as number;
+      giveCoins(s, 0, price);
+      dealTo(coins, s, 0, 'W19');
+      const offer = buildOptions(coins, s, 0).filter((o) => o.card === 'W19');
+      expect(offer).toHaveLength(1);
+      expect(offer[0]?.payment).toEqual([]);
+      const out = apply(coins, s, { type: 'build', seat: 0, card: 'W19', payment: [] });
+      expect(player(out.state, 0).coins).toBe(0);
+      expect(player(out.state, 0).tableau.some((b) => b.card === 'W19')).toBe(true);
+      const spent = out.events.find((e) => e.e === 'coinsSpent');
+      expect(spent).toEqual({ e: 'coinsSpent', seat: 0, on: 'endgame', coins: price });
+      const built = out.events.find((e) => e.e === 'built');
+      expect(built?.e === 'built' ? built.payment : null).toEqual([]);
+    });
+
+    it('is not offered a coin short, even with a hand full of its own suit', () => {
+      const s = armState(coins);
+      giveCoins(s, 0, (coins.rules.economy.endgameCoinCost as number) - 1);
+      dealTo(coins, s, 0, 'W19', 'W7', 'W9');
+      expect(buildOptions(coins, s, 0).some((o) => o.card === 'W19')).toBe(false);
+      expect(() => apply(coins, s, { type: 'build', seat: 0, card: 'W19', payment: [] })).toThrow();
+      // And two Wheat cards do not buy it either: the price is coins, full stop.
+      expect(() =>
+        apply(coins, s, { type: 'build', seat: 0, card: 'W19', payment: ['W7', 'W9'] }),
+      ).toThrow();
+    });
+
+    it('leaves the fifteen POWER cards on their two-own-suit price', () => {
+      const s = armState(coins);
+      giveCoins(s, 0, 9);
+      dealTo(coins, s, 0, 'W16', 'W7', 'W9');
+      const offer = buildOptions(coins, s, 0).filter((o) => o.card === 'W16');
+      expect(offer.length).toBeGreaterThan(0);
+      expect(offer.every((o) => o.payment.length === 2)).toBe(true);
+      const out = apply(coins, s, { type: 'build', seat: 0, card: 'W16', payment: ['W7', 'W9'] });
+      expect(player(out.state, 0).coins).toBe(9);
+    });
+
+    it('keeps the card price under the endgame-cards sub-arm and under the default', () => {
+      const sub = armState(endgameOnCards);
+      dealTo(endgameOnCards, sub, 0, 'W19', 'W7', 'W9');
+      expect(
+        buildOptions(endgameOnCards, sub, 0).some(
+          (o) => o.card === 'W19' && o.payment.length === 2,
+        ),
+      ).toBe(true);
+
+      const s = position();
+      dealTo(data, s, WHEAT, 'W19', 'W7', 'W9');
+      expect(
+        buildOptions(data, s, WHEAT).some((o) => o.card === 'W19' && o.payment.length === 2),
+      ).toBe(true);
+    });
+  });
+
+  describe('whole games under the commons with coins', () => {
+    /**
+     * ⭐ THE POINT IS THE WEDGE, NOT THE OUTCOME, exactly as it is for the block
+     * above. This arm narrows the bonus slot twice over - the colour gate can
+     * make a play IMPOSSIBLE rather than merely expensive, and Harvest no longer
+     * reaches the centre - and adds two coin-gated options that are legal only
+     * sometimes. A position offering nothing legal would show up in a balance run
+     * as a crash rather than as a number, so it is caught here.
+     */
+    const PRIORITY: Move['type'][] = [
+      'task',
+      'deliver',
+      'harvest',
+      'build',
+      'grow',
+      'draw',
+      'commons',
+      'commonsTake',
+      'cardMove',
+      'pass',
+      'endTurn',
+      // Last, and for the meeple file's reason: a balloon move IS the Deliver
+      // action but never an island delivery, so preferring it stops the clock.
+      'moveBalloon',
+    ];
+
+    function pick(rng: [number, number, number, number], moves: Move[]): Move {
+      for (const type of PRIORITY) {
+        const of = moves.filter((m) => m.type === type);
+        if (of.length > 0) return of[rngInt(rng, of.length)] as Move;
+      }
+      throw new Error(`no move to pick: ${[...new Set(moves.map((m) => m.type))].join(', ')}`);
+    }
+
+    it.each([
+      ['coins-2p', 2, ['wheat', 'orchard'] as Suit[]],
+      ['coins-3p', 3, ['vegetable', 'wheat', 'apiary'] as Suit[]],
+      ['coins-4p', 4, ['dairy', 'orchard', 'vegetable', 'wheat'] as Suit[]],
+    ])('plays %s to the end trigger with a legal move at every step', (seed, seats, suits) => {
+      let state = newGame(coins, { seats, suits, seed });
+      const rng = seedRng(`policy:${seed}`);
+      for (let step = 0; step < 6000; step++) {
+        if (isOver(state)) break;
+        const moves = legalMoves(coins, state);
+        expect(moves.length, `step ${step}`).toBeGreaterThan(0);
+        expect(moves.length).toBeLessThan(4000);
+        state = apply(coins, state, pick(rng, moves)).state;
+      }
+      const dry =
+        coins.cards.suits.every(
+          (c) => state.decks[c].length === 0 && state.discards[c].length === 0,
+        ) && state.players.every((p) => p.hand.length === 0);
+      expect(state.phase === 'ended' || dry, `${seed}: neither ended nor supply-locked`).toBe(true);
+      // Every coin ever minted came off a pile and every coin spent went to one
+      // of the two sinks, so the wallet can never go negative or vanish.
+      for (const p of state.players) expect(p.coins).toBeGreaterThanOrEqual(0);
+    });
   });
 });
 

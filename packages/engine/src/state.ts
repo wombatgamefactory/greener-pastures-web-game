@@ -134,6 +134,34 @@ export interface PlayerState {
    * slot back on their Collect, cap and all.
    */
   noticeBoard?: NoticeBoardState;
+  /**
+   * ⭐ COINS HELD - THE COMMONS-WITH-COINS ARM ONLY (K7, Dean 10/09/2026,
+   * `docs/commons-coins-handoff-2026-09-10-v2.md`).
+   *
+   * ⚠️ ABSENT UNDER THE SHIPPED GAME, and the absence is the same deliberate
+   * register `noticeBoard` above and `GameState.commons` are written in: a key
+   * present-and-zero would change every serialised state, every capture and
+   * every fixture replay for a currency the shipped game has no concept of. Six
+   * of the nine fixtures in `packages/sim/fixtures/` replay byte-identically and
+   * depend on it. `coinsOf` in query.ts is the one accessor and it THROWS when
+   * the arm is on and this is missing, so the optionality never reaches a rule.
+   *
+   * ⛔ EXACTLY ONE MINT AND EXACTLY TWO SINKS, which is the whole of the
+   * economy and the reason it is written down here rather than only in the
+   * knob's description. The mint is clearing a central pile (K3/K8: one coin
+   * per card, the cards to their own suits' discards). The sinks are the
+   * Farmstead's coin-activated suit power (K10-K12) and the Endgame cards'
+   * price (K15). Coins score nothing, break no ties, buy no ordinary card and
+   * are minted by nothing but a pile; leftover coins are dead. Every earlier
+   * coin economy in this project died of a second faucet or a pity rate, so a
+   * future session adding a third use or a second mint is repeating that
+   * failure rather than tuning this one.
+   *
+   * A plain integer, not the v31 wallet: `startingCoins`, the bank, the wage,
+   * the GBP 5 = 1 VP pity rate, the coin tie-break and the market all went with
+   * the currency on 02/09/2026 and none of them comes back with it.
+   */
+  coins?: number;
   tableau: BuildingState[];
   /**
    * VP taken from the island, in delivery order - one entry per delivery, so
@@ -960,12 +988,27 @@ export type Move =
    * apply. That is a PRICED CLOG BYPASS and it is deliberate. `atThreshold` on
    * the `meepleAsCard` event is how often it happens.
    */
+  /**
+   * ⭐ AND UNDER K10 THE PAYMENT MAY BE A COIN (Dean, 10/09/2026,
+   * `rules.economy.farmsteadCoinPower`). `coin` is set, `payment` is null and
+   * `meeples` is absent: the target is the seat's own FARMSTEAD, whose
+   * activation cost is one coin, nothing is placed on it, and the suit power
+   * on its face fires through the ordinary `activate` hook.
+   *
+   * ⛔ IT IS A MAIN-ACTION GROW AND ONLY A MAIN-ACTION GROW (builder default
+   * D-C1, ruled 10/09/2026). The Apiary board's BOUGHT Grow pushes a `grow`
+   * task, and that task's enumerator asks `growOptions` without
+   * `mods.mainAction`, so the Farmstead is never among its answers: a bonus
+   * may not buy a suit power.
+   */
   | {
       type: 'grow';
       seat: Seat;
       building: CardId;
       payment: CardId | null;
       meeples?: Suit[];
+      /** K10: this GROW is paid with ONE COIN and places nothing. */
+      coin?: true;
       /** R17: where the paid meeple(s) land, by seat, and the toll they owed. */
       placements?: Partial<Record<Suit, number>>[];
       paymentToll?: Partial<Record<Suit, number>>;
@@ -1099,7 +1142,24 @@ export type Move =
    * A bonus-slot move, never a main action: it is in neither `MAIN_ACTIONS` nor
    * `hasMainOption`.
    */
-  | { type: 'commons'; seat: Seat; board: Suit; fee: CardId }
+  /**
+   * ⭐ `fee2` IS THE WILD PAIR (D5/D7 of the commons pass, ruled back in by K3
+   * on 10/09/2026, `rules.economy.commonsWildPair`): TWO cards of any colours
+   * standing in as one card of the board's colour, and BOTH land on the pile.
+   *
+   * ⭐ BUILDER DEFAULT D-C3, Dean 10/09/2026: it is an OPTIONAL SECOND FEE ON
+   * THE EXISTING MOVE, never a change of shape to `fee` (which could have
+   * become `CardId | [CardId, CardId]`). An absent key is what keeps every
+   * commons fixture byte-identical, exactly as `noticeBoard?` and `commons?`
+   * do on the state side, and it means a reader that has never heard of the
+   * pair reads `fee` and is right about the shipped game.
+   *
+   * ⚠️ MEANINGLESS WITHOUT `commonsColourMatch`. With any card already paying
+   * for any board there is no colour for a pair to stand in for, so
+   * `enumerateCommons` offers pairs only when BOTH knobs are on and `doCommons`
+   * refuses one otherwise.
+   */
+  | { type: 'commons'; seat: Seat; board: Suit; fee: CardId; fee2?: CardId }
   /**
    * ⭐ DEAN'S VARIANT (09/09/2026, `rules.turn.commonsTake: 'bonus'`): the
    * bonus slot's OTHER half under that knob, and never producible under the
@@ -1258,6 +1318,41 @@ export type GameEvent =
    * it. Absent under `'bonus'` and `'spend'`, where the take is free.
    */
   | { e: 'commonsTaken'; seat: Seat; board: Suit; cards: CardId[]; fee?: CardId }
+  /**
+   * ⭐ A CENTRAL PILE WAS CLEARED FOR COINS - THE ONE MINT IN THE GAME (K3/K8,
+   * Dean 10/09/2026, `rules.turn.commonsTake: 'coins'`). One coin per card, the
+   * cards to their OWN suits' discard piles (a pile holds any colours, so this
+   * is never the board's suit), no fee paid and no action bought.
+   *
+   * ⭐ IT RIDES BESIDE `commonsTaken`, NOT INSTEAD OF IT, and the pairing is
+   * deliberate: `commonsTaken` already means "a whole pile left the centre" and
+   * every reader of the centre's outflow - the conservation identity above all -
+   * counts off it, so a coin take must not be invisible to them. This event
+   * carries only the half that is new, which is the currency: `coins` is the
+   * number minted and is always `cards.length` on the paired `commonsTaken`.
+   *
+   * ⛔ A COIN TAKE HANDS BACK NO CARDS. `commonsTaken` here reports the pile
+   * that was DISCARDED rather than one that went anywhere playable, which is
+   * `commonsTakeLeavesTheGame` in @gp/data - the difference between this and
+   * the three take variants of 09/09/2026, all of which put the cards back into
+   * a hand or a barn and ran the bonus at 74% to 89% of turns because of it.
+   */
+  | { e: 'coinsMinted'; seat: Seat; board: Suit; coins: number }
+  /**
+   * ⭐ COINS LEFT A SEAT'S PILE - one of the currency's EXACTLY TWO SINKS (K7,
+   * Dean 10/09/2026). `on` says which:
+   *
+   *  - `'farmstead'`: the Farmstead's activation cost, one coin, spent as a
+   *    MAIN-ACTION GROW that places nothing and fires the suit power (K10-K12).
+   *  - `'endgame'`: an Endgame card's whole price, `rules.economy.endgameCoinCost`
+   *    coins and ZERO CARDS (K15). The `built` event fires unchanged beside it,
+   *    with an empty `payment`.
+   *
+   * ⚠️ THE UNION IS THE ECONOMY'S GUARD RAIL. A third member is a third use for
+   * coins, which K7 rules out in so many words, so adding one is a design
+   * decision and never an implementation detail. a19 reads the split.
+   */
+  | { e: 'coinsSpent'; seat: Seat; on: 'farmstead' | 'endgame'; coins: number }
   /**
    * ⭐ DEAN'S 'spend' VARIANT'S SUMMARY (09/09/2026, `rules.turn.commonsTake:
    * 'spend'`): fires once, for EVERY board, when that board's take finishes

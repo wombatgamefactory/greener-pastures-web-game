@@ -57,6 +57,14 @@ export interface RivalView {
    * unclear. Absent under the shipped `'card'` game, where there are no slots.
    */
   noticeBoard?: NoticeBoardState;
+  /**
+   * COINS HELD - the commons-with-coins arm only (K7) and FULLY PUBLIC, like
+   * the meeples above and like the coins v31 deleted. They are minted face up
+   * off a central pile everybody watched being cleared, and what a rival can
+   * afford - a Farmstead power, an Endgame card - is part of reading the table.
+   * ABSENT under the shipped game, where there is no currency at all.
+   */
+  coins?: number;
   handCount: number;
   barnCount: number;
   tableau: BuildingView[];
@@ -75,6 +83,8 @@ export interface PlayerView {
     meeples: Record<Suit, number>;
     /** Your own five colour slots. Meeple-loop arm only - see `RivalView`. */
     noticeBoard?: NoticeBoardState;
+    /** Your own coins. Commons-with-coins arm only - see `RivalView`. */
+    coins?: number;
     hand: CardId[];
     barn: Partial<Record<Suit, number>>;
     tableau: BuildingView[];
@@ -176,6 +186,16 @@ function copyNoticeBoard(board: NoticeBoardState | undefined): { noticeBoard?: N
   };
 }
 
+/**
+ * The coin count, or nothing at all under the shipped game, where a
+ * `PlayerState` carries no wallet. A spread rather than an assignment so the key
+ * is ABSENT and not present-and-undefined, on exactly the rule `copyNoticeBoard`
+ * above states: that is what keeps the controls' views identical.
+ */
+function copyCoins(coins: number | undefined): { coins?: number } {
+  return coins === undefined ? {} : { coins };
+}
+
 function buildingView(data: GameData, b: { card: CardId; stack: CardId[] }): BuildingView {
   return { card: b.card, stack: b.stack.map((id) => cardById(data, id).suit) };
 }
@@ -204,6 +224,7 @@ export function viewFor(data: GameData, state: GameState, seat: Seat): PlayerVie
       suit: you.suit,
       meeples: { ...you.meeples },
       ...copyNoticeBoard(you.noticeBoard),
+      ...copyCoins(you.coins),
       hand: [...you.hand],
       barn,
       tableau: you.tableau.map((b) => buildingView(data, b)),
@@ -218,6 +239,7 @@ export function viewFor(data: GameData, state: GameState, seat: Seat): PlayerVie
               suit: p.suit,
               meeples: { ...p.meeples },
               ...copyNoticeBoard(p.noticeBoard),
+              ...copyCoins(p.coins),
               handCount: p.hand.length,
               barnCount: p.barn.length,
               tableau: p.tableau.map((b) => buildingView(data, b)),
