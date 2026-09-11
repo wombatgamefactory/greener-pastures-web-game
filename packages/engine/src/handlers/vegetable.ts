@@ -74,7 +74,7 @@ import type { DemandRef } from '../actions.js';
 import type { Fx } from '../fx.js';
 import { cardById, drawableSuits, player } from '../query.js';
 import type { BuildingState, CardId, GameState, Seat, TaskAnswer } from '../state.js';
-import { farmsteadHandler } from './farmstead.js';
+import { barnCropScorer, farmsteadHandler } from './farmstead.js';
 import type { CardHandler } from './types.js';
 
 const DEPOT_NAME = /\bDepot\b/;
@@ -179,12 +179,38 @@ function faceDownTargets(data: GameData, state: GameState): DemandRef[] {
 export const vegetableBarn: CardHandler = {
   difficulty: {
     score: 1,
-    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
+    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: true },
     asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'No behaviour, and no printed text to have behaviour about. Registered so that a Barn ' +
-      'with no entry reads as a deliberate blank rather than as a card nobody implemented.',
+      'No behaviour of its own, and no printed text to have behaviour about. Registered ' +
+      'so that a Barn with no entry reads as a deliberate blank rather than as a card ' +
+      'nobody implemented. ' +
+      '⭐ ENDGAME IS TRUE SINCE 10/09/2026, AND THE FLAG IS STRUCTURAL RATHER THAN A ' +
+      'taste: the card carries a `gameEnd` now. Under the notice-board visit (S1) the ' +
+      'crop scorer - "Game end: 1 VP for each <CROP> card you have built" - moves off ' +
+      'the Farmstead onto the Barn, which is the starter whose one job is to hold your ' +
+      'harvested cards. `barnCropScorer` answers 0 in every other game, so the printed ' +
+      'behaviour is still nothing at all in the shipped commons and in all four ' +
+      'controls. Every other flag stays false: no prompt, no move, no hook, nothing ' +
+      'cross-table.',
   },
+  /**
+   * ⭐ THE CROP SCORER, WHICH LANDS HERE UNDER THE NOTICE-BOARD VISIT ONLY
+   * (S1, Dean 10/09/2026): *"Game end: 1 VP for each Vegetable card you have
+   * built."* Under that rejig each starter does exactly one thing - the Notice
+   * Board prints your suit's power and holds the visit fees, the Barn holds
+   * your harvested cards and prints this line, and the Farmstead holds six
+   * island receipt tokens and prints nothing at all.
+   *
+   * ⚠️ AND IT IS SILENT IN EVERY OTHER GAME. `barnCropScorer` answers 0
+   * unless `rules.turn.visitCurrency` is `'noticeBoardPower'`, so the shipped
+   * commons, the v31 control, the meeple controls and the coins arm all score
+   * exactly as they did - the Farmstead keeps the line in the first four and
+   * loses it with nowhere to go in the fifth (K13). The two are gated by the
+   * same predicate from opposite sides, so the term can never be scored twice
+   * or dropped.
+   */
+  gameEnd: barnCropScorer('vegetable'),
 };
 
 /**

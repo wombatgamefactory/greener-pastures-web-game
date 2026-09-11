@@ -50,7 +50,10 @@
  * `rules.economy.commonsWildPair` is D5/D7 of the commons pass finally built,
  * `rules.economy.endgameCoinCost` and `rules.economy.farmsteadCoinPower` are the
  * arm's only two coin SINKS, and the four `rules.economy.farmsteadPower.*`
- * numbers are the suit powers behind the second of them. ⛔ SOME OF THE FOURTEEN
+ * numbers are the suit powers behind the second of them. ⚠️ THAT BLOCK WAS
+ * RENAMED `rules.economy.noticeBoardPower.*` ON 10/09/2026, SO THE COINS ARM'S
+ * HANDLER READS A BLOCK THAT HAS MOVED; see the note below on the notice-board
+ * visit. ⛔ SOME OF THE FOURTEEN
  * TEMPLATES v31 DELETED ARE THEREFORE ADJACENT AGAIN, AND THE DIFFERENCE MATTERS:
  * `startingCoins`, `buyCost`, `marketCost`, `coinPityDivisor` and the four
  * `visitPayout` branches were FAUCETS AND A PITY RATE, which is what every coin
@@ -58,6 +61,60 @@
  * the only mint is `rules.turn.commonsTake` at `'coins'`, and these are two
  * sinks and four numbers. If a future session finds itself adding a second mint
  * or a third use, that is the failure repeating, not a tuning.
+ *
+ * ⭐ THE NOTICE BOARD VISIT (Dean, 10/09/2026) ADDS ONE TEMPLATE, RENAMES FOUR
+ * AND DELETES NONE. `rules.economy.noticeBoardBlocks` is the new one and it is
+ * the `3+` rule's off switch (S8): false makes the board's threshold a MINIMUM
+ * to harvest at rather than a maximum to clog at, true is the paired control
+ * that makes it an ordinary clogging building so the stall can be measured. The
+ * four renamed ones are `rules.economy.farmsteadPower.*` becoming
+ * `rules.economy.noticeBoardPower.*`, with a fifth number added: the powers left
+ * the Farmstead and went to the Notice Boards, and A KNOB WHOSE NAME NO LONGER
+ * DESCRIBES IT IS WORSE THAN A NEW ONE. ⚠️ A RENAME IS THE ONE REGISTRY EDIT
+ * THAT CAN BREAK A SAVED OVERLAY, which is the point of it: an overlay still
+ * naming `rules.economy.farmsteadPower.dairyDiscount` now fails loudly instead
+ * of setting a number the game has stopped reading. ⛔ AND ONE BASE VALUE MOVED
+ * BESIDE THEM, which is not a registry change but is the thing to check first:
+ * `rules.economy.noticeBoardThreshold` is 3 where it was 2, so
+ * `overlays/v31-card-visit.overlay.json` pins 2 by name and `data.test.ts` has
+ * the regression test that says it still does.
+ *
+ * ⭐ DEAN'S UNCLAIMED-BOARDS VARIANT (11/09/2026) ADDS ONE TEMPLATE, RENAMES
+ * NOTHING AND DELETES NOTHING. `rules.economy.unclaimedBoardsToCentre` sends the
+ * Notice Board of every suit nobody is farming to the CENTRE of the table,
+ * ownerless, so that with self-visiting banned every seat faces exactly FOUR
+ * targets at every player count. ⭐ AND IT IS ONE TEMPLATE RATHER THAN FOUR
+ * BECAUSE IT REUSES THE COMMONS: a central pile's `3+` rule is already
+ * expressible as `commonsThreshold` null, `commonsHarvestMin` 3 and
+ * `commonsHarvestTake` null under `rules.turn.commonsTake` `'harvest'`, so the
+ * two new overlays PIN those four rather than adding leaves that would say the
+ * same thing twice. A new knob that duplicates an old one is a defect, and the
+ * check that it does not is in `data.test.ts`.
+ *
+ * ⭐ DEAN'S TWO-BOARD FIX (11/09/2026) ADDS ONE TEMPLATE AND IT IS THE FIRST
+ * PER-SEAT-COUNT MAP THIS FILE HAS OUTSIDE `island.*`.
+ * `rules.economy.noticeBoardsBySeats.{}` says how many Notice Boards each player
+ * lays out, shipped at one each so the base changes nothing, and the arm sets
+ * two at two seats only. It is a MAP rather than a boolean deliberately: it
+ * matches `island.decksInPlayBySeats.{}` and `island.demandTokensBySeats.{}.*`,
+ * which is how this codebase has always spelled a per-seat-count quantity, and a
+ * later pass can sweep a third seat count without another knob. ⛔ THE LESSON IT
+ * CARRIES IS THE ONE THE UNCLAIMED-BOARDS ARM MEASURED: there are only ever four
+ * targets in a bonus slot, and every target added that is NOT a person dilutes
+ * the person, so this one adds targets that ARE people. See the template for the
+ * 2x2 behind it and for the arithmetic ceiling on what the map can ask for.
+ *
+ * ⭐ S17, THE HOST DRAW (Dean, 11/09/2026), ADDS ONE TEMPLATE AND IS THE FIRST
+ * KNOB IN THIS FILE WHOSE PROVENANCE IS A TABLE RATHER THAN A RUN.
+ * `rules.turn.hostDrawOnVisit` is how many cards the OWNER of a Notice Board
+ * draws when somebody else visits it, shipped at 0 so the base changes nothing
+ * and set to 1 by `overlays/notice-board-visit-host-draw-v1.overlay.json`. It
+ * amends S7, which said the card left on the board was the payment and there was
+ * no other. ⛔ AND IT CARRIES A CAVEAT NO OTHER TEMPLATE HERE DOES: THE
+ * SIMULATOR CANNOT MEASURE THE EFFECT DEAN LIKED, because the hand limit of 7 is
+ * the instrument's bound and the table plays with none, so a run of the arm
+ * answers the rate, the glut, the length, the deliveries and the hook and
+ * answers NOTHING about whether the game feels less tight.
  */
 
 import { flatten } from './paths.js';
@@ -206,6 +263,27 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     template: 'rules.turn.selfVisitAllowed',
     type: 'boolean',
     description:
+      '⭐ ALIVE AGAIN AND RULED ON (Dean, 10/09/2026, S6 of ' +
+      'docs/notice-board-visit-handoff-2026-09-10-v2.md), WHICH REVERSES THE BAN OF 04/09/2026. ' +
+      "Under visitCurrency 'noticeBoardPower' every player owns a Notice Board again and true " +
+      "means you MAY play your bonus card onto your own board and take your own suit's power. " +
+      '⭐ WHY IT IS SAFE NOW AND WAS NOT IN v31, WHICH IS THE WHOLE OF THE DIFFERENCE: in v31 ' +
+      'every Notice Board printed the SAME thing, so a self-visit was strictly better than a ' +
+      'visit - same benefit, no gift, no travel - and it took 22.2% OF TURNS and was banned ' +
+      'within two days. Here the five boards print five DIFFERENT powers, so your own board is ' +
+      'one option of five and it is the one that never has what you have not got: if your board ' +
+      'draws and you need to deliver, the vegetable farm is the only place to get it. It also ' +
+      'answers the predecessor\'s largest dislike cluster, "reverse engine building" - about ten ' +
+      'of 887 BGG comments - because a power you can use yourself cannot draw that charge. ' +
+      '⛔ AND IT IS THE HEADLINE RISK OF THE PASS. Paying a card to your OWN board is cheaper ' +
+      "than paying it to a rival's, because you harvest it back, so if the self-visit share " +
+      'runs much above 22.2% the variety argument is wrong, the interaction is decoration and ' +
+      'the design has failed the way v31 failed. Read it BY SEAT COUNT: it should be worst at ' +
+      "two players, where a neighbour's gift is closest to zero-sum. " +
+      'overlays/notice-board-visit-no-self-v1.overlay.json is the control and the single most ' +
+      'important sub-arm in the plan. ⚠️ THE KNOB IS NOT RENAMED: the handoff calls it ' +
+      'rules.turn.selfVisit and the data has always called it selfVisitAllowed, so the existing ' +
+      'path stands and no overlay has to be re-pinned. The 09/09/2026 note follows, unchanged. ' +
       '⛔ SUBJECTLESS TWICE OVER, AND READ ONLY BY overlays/v31-card-visit.overlay.json. The ' +
       'meeple loop made a self-visit impossible by construction (X5, 04/09/2026) whatever this ' +
       'flag says; under the COMMONS (09/09/2026) NOBODY OWNS A BOARD - all five sit in the ' +
@@ -222,6 +300,54 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'game; its only brake is that your card clogs your own board in two placements and shuts ' +
       'your own door. FALSE IS THE PAIRED CONTROL. Read the bonus mix four ways - Draw 1 / visit a ' +
       'neighbour / visit yourself / slot unspent - and never let an assertion pool the two visits.',
+  },
+  {
+    template: 'rules.turn.hostDrawOnVisit',
+    type: 'int',
+    description:
+      '⭐ S17, THE HOST DRAW, AND ITS PROVENANCE IS A TABLE RATHER THAN A SIMULATION (Dean, ruled ' +
+      '11/09/2026): WHEN A NEIGHBOUR VISITS YOU, YOU DRAW THIS MANY CARDS, immediately, off a deck. ' +
+      "SHIPPED AT 0, which changes nothing, and READ ONLY UNDER visitCurrency 'noticeBoardPower'. " +
+      'overlays/notice-board-visit-host-draw-v1.overlay.json sets 1 and is the arm; ' +
+      'overlays/notice-board-visit-two-boards-v1.overlay.json is its control and its paired arm. ' +
+      '⭐ DEAN PLAYED THE TWO-BOARD ARM AT A TWO-PLAYER TABLE ON 11/09/2026 AND HOUSE-RULED THIS IN ' +
+      'DURING THE SESSION, which is why it is here at all. His verdict: the visiting worked well, ' +
+      'everyone visited, every Notice Board was used at some stage, and "the rule that the person who ' +
+      'gets visited draws a card led to a lot of extra cards in play, which relieved the tightness of ' +
+      'the game in a useful way". He has now ruled it in. ' +
+      '⛔ IT AMENDS S7 OF docs/notice-board-visit-handoff-2026-09-10-v2.md, WHICH SAID THE OPPOSITE ' +
+      'IN AS MANY WORDS: S7 reads that the card stays on the board it was played to and its owner ' +
+      'harvests it into their barn, "and that is the payment and there is no other". Under S17 there ' +
+      'is now one other and it is paid INSTANTLY, so the host is paid twice - once in a card drawn ' +
+      'now, once in material harvested later. Do not quote S7 forward without this amendment. ' +
+      '⭐ WHY IT IS DEFENSIBLE, AND BOTH HALVES ARE ON THE RECORD. (1) IT IS THE SANCTIONED SHAPE ' +
+      'RATHER THAN A BANNED ONE: this project banned RESTOCK as "a per-interaction bank faucet", and ' +
+      'the standing rule beside that ban reads "if a give-cards effect returns, it pays in draws". A ' +
+      'host draw comes off a DECK and never off a bank. (2) THE DESIGN LENS PREDICTS IT: the fault ' +
+      'named in all seven previous versions of this bonus slot is PAY THE GIVER IN THE SAME ACT, OR ' +
+      'THE GIVER DRAWS THE CHARGE, and S7 pays the host in DEFERRED material they must harvest and ' +
+      'then deliver where S17 pays them in the same act. It is a closer fit to the lens than the rule ' +
+      'it amends. ' +
+      '⚠️ AND THE COST IS REAL: EVERY VISIT NOW ADDS A CARD TO THE GAME. At two seats under the ' +
+      'control arm there are about 14.4 visits received per player per game, so this is a substantial ' +
+      'new faucet and it is the first thing a run has to price. Read it with the barn glut and the ' +
+      'game length, never alone. ' +
+      '⛔ A SELF-VISIT MUST NEVER PAY IT. rules.turn.selfVisitAllowed is false on the arm that ' +
+      'matters, so it has no subject there, but the knob is defined for the case and the rule is ' +
+      'explicit: a card drawn for visiting yourself is a PURE FAUCET, paid by nobody, and it would be ' +
+      'the solitaire option eating the bonus slot for the fourth time in this project. ' +
+      '⛔ AND THE SIMULATOR CANNOT MEASURE THE EFFECT DEAN ACTUALLY LIKED. The engine caps hands at ' +
+      "7 as an INSTRUMENT BOUND (C7) while the table plays with NO HAND LIMIT AT ALL, and this rule's " +
+      'principal effect is more cards in hand, so the instrument clips exactly the thing the table ' +
+      "enjoyed. A run can honestly answer whether the bonus rate leaves Dean's 30% to 60% band, and " +
+      'what happens to the barn glut, game length, deliveries and the hook. IT CANNOT ANSWER WHETHER ' +
+      'THE GAME FEELS LESS TIGHT, and no report of this arm may be quoted as evidence that it does. ' +
+      '⚠️ AN INTEGER RATHER THAN A BOOLEAN, so the size can be swept later without another knob, ' +
+      "which is this project's established preference. " +
+      '⚠️ TWO ENGINE RULINGS ARE OWED AND NEITHER IS A LEAF: WHICH DECK the host draws from ' +
+      "(their own suit's, or the top of any deck in play as a plain Draw allows), and what happens " +
+      'when A Helping Hand sends a SECOND visit to the same owner in one turn, which at two seats ' +
+      'under the two-board arm is reachable because the one rival holds two boards.',
   },
   {
     template: 'rules.turn.bonusTiming',
@@ -260,6 +386,32 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     template: 'rules.turn.visitCurrency',
     type: 'visitCurrency',
     description:
+      "⭐ FOUR VALUES SINCE 10/09/2026, AND 'noticeBoardPower' IS THE NEW ARM (Dean, " +
+      'docs/notice-board-visit-handoff-2026-09-10-v2.md, rules S1-S16). THE CENTRE IS DELETED ' +
+      "AND THE NOTICE BOARDS COME HOME: the five Notice Board cards go back to their owners' " +
+      'farms and are BUILDINGS again, and the bonus is to play ONE card from your hand onto ANY ' +
+      "player's Notice Board - YOUR OWN INCLUDED (S6) - and immediately take that board's " +
+      "PRINTED POWER. The card stays on the host's board and the host harvests it into their " +
+      "barn later: THAT IS THE HOST'S WHOLE PAYMENT AND THERE IS NO OTHER, which is the " +
+      "predecessor's own answer to the fault every one of the seven previous bonus slots had - " +
+      'pay the giver in the same act, or the giver draws the charge. THE FIVE POWERS (S12, as ' +
+      'amended by rulings C88 and C89 the same evening): Orchard "Draw 4"; Dairy "Build. You may ' +
+      'spend cards of any crops"; Wheat "Harvest one of your buildings, then put 1 card from ' +
+      'your hand into your barn"; Apiary "Sow 2 cards from your hand onto YOUR buildings"; ' +
+      'Vegetable "Deliver. If you cannot, put 2 cards from your hand into your barn". The bonus ' +
+      "still comes FIRST. The board's threshold is 3 and it is a MINIMUM, not a maximum " +
+      '(rules.economy.noticeBoardThreshold 3 with rules.economy.noticeBoardBlocks false), so a ' +
+      'board never blocks and nothing ever refuses a play. ' +
+      '⛔ IT IS A FOURTH VALUE AND NOT A REPOINTING OF card, DELIBERATELY, AND THIS IS THE ' +
+      "REASON: 'card' is the v31 control and carries THREE PASSENGERS this design does not want " +
+      '- a BLOCKING Notice Board threshold of 2, the standalone free Draw 1 in the bonus slot, ' +
+      'and the turn-start meeple spend. Repointing it would silently change one of the three ' +
+      'named controls this arm is read against, which is the 05/09/2026 failure in a new ' +
+      'costume. overlays/notice-board-visit-v1.overlay.json is the arm and pins every passenger ' +
+      'by name; -no-self-v1, -blocking-v1, -threshold-2-v1 and -threshold-4-v1 are its ' +
+      "sub-arms. ⚠️ THE READING THAT DECIDES IT IS THE SELF-VISIT SHARE, against v31's 22.2%, " +
+      'and the bonus rate on the TURN measure against 30-60%. The 09/09/2026 note follows, ' +
+      'unchanged, and its "three games" is now four. ' +
       "⭐ WHICH OF THREE GAMES THIS IS, AND 'commons' IS THE SHIPPED ONE SINCE 09/09/2026 " +
       '(Dean, docs/commons-handoff-2026-09-09-v1.md, rules C1-C10). THE FIVE NOTICE BOARDS SIT ' +
       'OWNERLESS IN THE CENTRE OF THE TABLE, all five whatever suits are in play, and the bonus ' +
@@ -577,6 +729,22 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     template: 'rules.economy.noticeBoardThreshold',
     type: 'intOrNull',
     description:
+      '⭐ 3 SINCE 10/09/2026, AND UNDER visitCurrency noticeBoardPower IT IS A MINIMUM RATHER ' +
+      'THAN A MAXIMUM (Dean, S8). Three is the fewest cards a Notice Board must hold before its ' +
+      'OWNER may harvest it; with rules.economy.noticeBoardBlocks false the board goes on ' +
+      'accepting cards for ever, so isFull and canTakeCard stop being the same question for the ' +
+      'first time in this codebase. ⚠️ THE FACE MUST PRINT 3+, NOT 3, because the plus sign is ' +
+      'the only thing that says floor rather than ceiling. ⛔ THE BASE MOVE FROM 2 TO 3 CHANGES ' +
+      'THE v31 CONTROL UNLESS THE CONTROL PINS IT, so overlays/v31-card-visit.overlay.json now ' +
+      "sets this to 2 by name: under 'card' the board is a BLOCKING building at 2 and that arm " +
+      'has to stay bit-reproducible. data.test.ts carries the regression test. ⚠️ AND THE ' +
+      'PRINTED FACE STILL SAYS 2 until Isle-of-Farms-v36.xlsm, so the override and the print ' +
+      'disagree again for the first time since v31 closed the old 5-versus-2 drift; the face is ' +
+      'what has to catch up. ⚠️ overlays/noticeboard-threshold-3.overlay.json is now a no-op ' +
+      "against the base and was already subjectless under the commons; the arm's own sweep is " +
+      'overlays/notice-board-visit-threshold-2-v1 and -threshold-4-v1, which are the two ' +
+      "candidates Dean named: at 2 the owner's harvest is barely worth an action, at 4 they are " +
+      'paid too late. The 09/09/2026 note follows, unchanged. ' +
       '⛔ NO LONGER THE ONLY ECONOMY NUMBER, AND READ ONLY BY overlays/v31-card-visit.overlay.json ' +
       'SINCE 04/09/2026. Under the meeple loop the Notice Board stopped being a building; under ' +
       'the COMMONS (09/09/2026, C4) a central board has NO threshold at all - any number of ' +
@@ -592,6 +760,124 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       't=3 62.8%, t=2 42.0% against an even share of 36.4% on the two-building surface, and on the ' +
       'single-door surface t=5 clogged 2.3% of turn boundaries, t=3 5%, t=2 11%. In v31 it also ' +
       'throttles self-visits, so it is doing more work than any arm has measured.',
+  },
+  {
+    template: 'rules.economy.noticeBoardBlocks',
+    type: 'boolean',
+    description:
+      '⭐ THE 3+ RULE, AND THE FIRST TIME "harvestable" AND "accepts a card" HAVE BEEN SEPARATE ' +
+      'QUESTIONS IN THIS CODEBASE (Dean, 10/09/2026, S8). SHIPPED false AND READ ONLY UNDER ' +
+      "visitCurrency 'noticeBoardPower'. false IS THE RULE: rules.economy.noticeBoardThreshold " +
+      'is a MINIMUM, the owner may harvest at or above it, cards may ALWAYS be added, nothing ' +
+      'ever blocks, and nobody can shut a board by declining to harvest. true IS THE PAIRED ' +
+      'CONTROL: the board becomes an ordinary clogging building, full at its threshold and ' +
+      'refusing every card until its owner harvests. ⭐ IT EXISTS SO THE STALL IS MEASURED ' +
+      'RATHER THAN ARGUED, and the question is not hypothetical - the stall is a DOCUMENTED ' +
+      'FAILURE IN THE PREDECESSOR, where the game stops when nobody wants to load, and a ' +
+      'blocking board hands an owner a denial he is paid nothing for. ⚠️ READ IT HARDEST AT TWO ' +
+      'PLAYERS, where there are only two boards on the table and a shut one is total denial ' +
+      'rather than a race. overlays/notice-board-visit-blocking-v1.overlay.json is the arm and ' +
+      'it changes exactly this one leaf against the main arm.',
+  },
+  {
+    template: 'rules.economy.unclaimedBoardsToCentre',
+    type: 'boolean',
+    description:
+      "⭐ DEAN'S VARIANT OF THE NOTICE BOARD VISIT (Dean, ruled 11/09/2026), SHIPPED false AND " +
+      "READ ONLY UNDER visitCurrency 'noticeBoardPower', exactly as noticeBoardBlocks beside it " +
+      'is. false is the shipped value: every Notice Board belongs to a player, so a suit nobody ' +
+      'is farming has no board on the table at all. true SENDS THE UNCLAIMED ONES TO THE CENTRE: ' +
+      'the Notice Board of every suit no player is farming sits in the middle of the table, ' +
+      'ownerless, with a face-up public pile, and any seat may play a card onto it. ' +
+      '⭐ IT IS RULED TOGETHER WITH A BAN ON SELF-VISITING (rules.turn.selfVisitAllowed false) ' +
+      'AND THE PAIR IS ARITHMETIC RATHER THAN TASTE: five boards exist, you may never visit your ' +
+      'own, so EVERY SEAT FACES EXACTLY FOUR TARGETS AT EVERY PLAYER COUNT, solo included - ' +
+      "1 player 1 own / 0 rivals' / 4 central, 2 players 1 / 1 / 3, 3 players 1 / 2 / 2, " +
+      '4 players 1 / 3 / 1. ' +
+      '⭐ WHY IT EXISTS, MEASURED RATHER THAN ARGUED. The notice board visit was measured on ' +
+      '10/09/2026 at 4,820 games per arm and the bonus slot was used on 71.2% OF TURNS against ' +
+      "Dean's band of 30% to 60%, OUT OF BAND AT EVERY SEAT COUNT, with 44.4% of all visits " +
+      "going to the visitor's OWN board (58.4% at two players) against v31's 22.2%. The control " +
+      'that bans self-visiting fixes exactly that - 46.4% pooled, and cross-table traffic nearly ' +
+      'doubles - but STARVES AT TWO PLAYERS at 29.1% of turns, below the 30% floor, because with ' +
+      'self-visiting banned and only two suits in play there is exactly ONE board a seat may ' +
+      'visit. This knob is the fix for the starve and it fixes it by arithmetic. ' +
+      '⭐ AND IT RESTORES A STANDING DEAN RULING THE BUILT DESIGN SILENTLY BROKE: all five ' +
+      'actions must exist in every game, which fails today because at two players only two ' +
+      'Notice Boards are in play at all. ' +
+      '⛔ THE HEADLINE RISK, AND IT IS THE NUMBER THAT DECIDES THE VARIANT: A CENTRAL BOARD ' +
+      "IS SOCIALLY FREE AND A RIVAL'S BOARD IS NOT, so there is a standing incentive to prefer " +
+      "the centre, and this design's whole thesis is that YOU PAY THE GIVER. If cross-table " +
+      'visits FALL rather than rise, the variant has recreated the village green with an extra ' +
+      'step. Read visits received per player and the own/rival/central split of every play, by ' +
+      'seat count, before reading the rate. ' +
+      "⚠️ IT ADDS NO CENTRE MACHINERY, WHICH IS THE POINT. A play onto a rival's board " +
+      'stays the visit move and a play onto a central board is the EXISTING commons move, so the ' +
+      '`3+` rule on a central pile is spelled with the commons knobs already here: ' +
+      'commonsThreshold null (no cap, nothing ever refuses a play), commonsHarvestMin 3 (any ' +
+      'player may harvest a pile of three cards or more and nobody may touch it below that), ' +
+      "commonsHarvestTake null (the whole pile) and rules.turn.commonsTake 'harvest' (Harvest " +
+      'reaches the centre at all). A HARVEST IS A HARVEST (D1, reaffirmed 11/09/2026): main ' +
+      'action or bought through the Wheat board, no rules exception either way, which was ' +
+      "Dean's explicit reason. " +
+      '⚠️ NEVER SET IT ALONE. overlays/notice-board-visit-unclaimed-v1.overlay.json is ' +
+      "Dean's variant (self-visiting OFF) and " +
+      'overlays/notice-board-visit-unclaimed-self-v1.overlay.json is its paired arm (self-visiting ' +
+      'ON): the variant moves TWO knobs at once, ruling in a bundle rules in the bundle ' +
+      '(05/09/2026), and the four overlays form a 2x2 with notice-board-visit-v1 and ' +
+      '-no-self-v1 so the two can be separated.',
+  },
+  {
+    template: 'rules.economy.noticeBoardsBySeats.{}',
+    type: 'int',
+    description:
+      "⭐ DEAN'S TWO-BOARD FIX (ruled 11/09/2026): HOW MANY NOTICE BOARDS EACH PLAYER LAYS OUT, " +
+      "keyed by SEAT COUNT. Read only under visitCurrency 'noticeBoardPower' with " +
+      'rules.turn.selfVisitAllowed false, exactly as noticeBoardBlocks and ' +
+      'unclaimedBoardsToCentre beside it are. SHIPPED AT ONE EACH AT EVERY SEAT COUNT, so the ' +
+      'base changes nothing; the arm sets {"2": 2, "3": 1, "4": 1}. At 2 each player lays out ' +
+      "TWO boards - their own suit's, plus one more drawn AT RANDOM from the suits nobody is " +
+      'farming - and the fifth board is not used. At three and four seats the arm IS ' +
+      'overlays/notice-board-visit-no-self-v1.overlay.json, so the pair differs AT TWO SEATS ' +
+      'ONLY and those two columns must reproduce the control on identical seeds. ' +
+      '⭐ A MAP RATHER THAN A BOOLEAN, DELIBERATELY: it matches how this codebase already ' +
+      'expresses a per-seat-count quantity (island.decksInPlayBySeats, ' +
+      'island.demandTokensBySeats) and it lets a later pass sweep "what if three seats also got ' +
+      'two?" without another knob. ' +
+      '⭐ WHY IT EXISTS, MEASURED RATHER THAN ARGUED. Four corners of a 2x2 ran at 4,820 games ' +
+      'each on 11/09/2026: self-visits ON with no centre read a bonus rate of 71.2% and a hook ' +
+      'of 0.44 (FAIL), self-visits ON with the centre 78.4% and 0.23 (FAIL), self-visits OFF ' +
+      'with the centre 64.7% and 0.31 (FAIL), and self-visits OFF with NO centre 46.1% and ' +
+      '0.54, THE ONLY CORNER THAT PASSES THE HOOK and therefore the only version in which the ' +
+      "design's own thesis - a visit pays the person visited - actually works. ⛔ AND THAT " +
+      'CORNER STARVES AT TWO PLAYERS: the bonus is used on 28.8% of turns against a 30% floor, ' +
+      'and 17.9% of two-player turns begin with cards in hand and NO LEGAL VISIT, because with ' +
+      'self-visiting banned and one board each there is exactly ONE board a seat may visit. ' +
+      'Adding ownerless central boards fixed the rate and DESTROYED the cross-table traffic: at ' +
+      'two players only 14.7% of plays reached a person. THE STRUCTURAL LESSON IS THE REASON ' +
+      'FOR THIS KNOB - THERE ARE ONLY EVER FOUR TARGETS, AND EVERY TARGET ADDED THAT IS NOT A ' +
+      'PERSON DILUTES THE PERSON. ' +
+      '⭐ SO EVERY TARGET THIS ADDS IS A PERSON, WHICH IS THE WHOLE POINT AND THE THING THE ' +
+      'CENTRAL-BOARDS VARIANT GOT WRONG. Targets become 2 / 2 / 3 by seat count: at 2 seats one ' +
+      'rival holding two boards, at 3 seats two rivals holding one each, at 4 seats three ' +
+      'rivals holding one each. A seat still may never visit its own board, either of them. ' +
+      '⭐ AND THE RANDOM BOARD PAYS ITS OWNER: its power is usable only by rivals, but every fee ' +
+      'paid onto it rests there until its OWNER harvests it into their barn, so a popular board ' +
+      "is income. That is this design's core loop, arriving on a board whose power its owner can " +
+      'never use. ' +
+      '⚠️ IT HAS AN ARITHMETIC CEILING NOBODY HAS PRICED: the suits nobody is farming number ' +
+      '(5 - seats), so n boards each is only realisable where seats x (n - 1) is at most ' +
+      '(5 - seats) - which is 2 at two seats (2 drawn from 3, one left over) and 1 at three and ' +
+      'four seats. A sweep of {"3": 2} asks for six boards out of five, and what an engine does ' +
+      'with an infeasible value is an ENGINE ruling that has not been made. ' +
+      '⚠️ AND A REAL CONSEQUENCE NOBODY HAS PRICED: at two seats a player owns TWO boards, so ' +
+      'they have two income streams to harvest and twice the harvesting to do, and A21 The Wax ' +
+      'Hall (1 VP for each of your buildings holding a card) can count TWO Notice Boards rather ' +
+      'than one. rules.economy.noticeBoardThreshold applies to each board separately, so a ' +
+      "seat's fee traffic splits across two boards and each fills at half the rate, which points " +
+      'the a20 stall reading at a new subject. ' +
+      'overlays/notice-board-visit-two-boards-v1.overlay.json is the arm and ' +
+      'overlays/notice-board-visit-no-self-v1.overlay.json is its control.',
   },
   {
     template: 'rules.economy.commonsThreshold',
@@ -691,9 +977,11 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'whose activation cost is ONE COIN - thresholdOf returns null, it is never full and never ' +
       'a sow target - and using it is a GROW taken as your MAIN ACTION, once per turn, with ' +
       'nothing placed on it: "spend a coin instead of a card". Each suit has a unique power ' +
-      'worth about two plain actions, because it costs the action AND the coin, and the four ' +
-      "numbers behind them are rules.economy.farmsteadPower.* (Wheat's power carries no " +
-      'number). ⛔ NO RENT (K14): a rival may never use your Farmstead, because a reference card ' +
+      'worth about two plain actions, because it costs the action AND the coin. ⚠️ THE FOUR ' +
+      'NUMBERS BEHIND THEM HAVE MOVED: rules.economy.farmsteadPower was renamed ' +
+      'rules.economy.noticeBoardPower on 10/09/2026 and repointed to the five NOTICE BOARD ' +
+      'powers, so this arm reads a block that no longer describes it and its numbers have to be ' +
+      're-argued rather than inherited. ⛔ NO RENT (K14): a rival may never use your Farmstead, because a reference card ' +
       'for five rival powers is more than the five-minute teach can carry. ' +
       "⚠️ TWO CONSEQUENCES TO NAME BEFORE ANY RUN. (1) The Farmstead's own end-game scorer " +
       'MOVES TO THE BARN (K13) rather than being deleted, so the monoculture pull does NOT leave ' +
@@ -706,63 +994,92 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'fires twice as often as another the POWERS are mispriced, not the coins.',
   },
   {
-    template: 'rules.economy.farmsteadPower.orchardDraw',
+    template: 'rules.economy.noticeBoardPower.orchardDraw',
     type: 'int',
     description:
-      '⭐ THE ORCHARD FARMSTEAD DRAWS THIS MANY (Dean, 10/09/2026, K12: "Draw 3."). Read only ' +
-      'under rules.economy.farmsteadCoinPower. ⚠️ IT IS NOT THE RETIRED DRAW-3 DOOR AND MUST ' +
-      'NOT BE ARGUED AGAINST AS ONE: that ruling was about a FREE BONUS door and died twice ' +
-      'over, most recently because a door that hands back cards feeds the slot that bought it. ' +
-      'This is a PAID MAIN ACTION costing a coin, and the coin costs a whole pile cleared, so ' +
-      'the self-cancellation law has nothing to bite on here. ⭐ IT IS ALSO THE ONE POWER OF THE ' +
-      'FIVE THAT COLLIDES WITH NOTHING ON THE SHEET. Sweep it against the Vegetable number ' +
-      "first: Draw against Deliver is the imbalance Dean raised by name, and a19's " +
-      'fires-by-suit line is where it shows.',
+      '⭐ THE ORCHARD NOTICE BOARD DRAWS THIS MANY (Dean, 10/09/2026, S12: "Draw 4."), UP FROM ' +
+      "THE MORNING'S 3. Read under visitCurrency 'noticeBoardPower'. ⭐ THE BLOCK IS RENAMED " +
+      'FROM rules.economy.farmsteadPower AND THIS NUMBER IS REPOINTED WITH IT: the powers left ' +
+      'the Farmstead and went to the Notice Boards, and a knob whose name no longer describes ' +
+      'it is worse than a new one. ⚠️ IT IS NOT THE RETIRED DRAW-3 DOOR AND MUST NOT BE ARGUED ' +
+      'AGAINST AS ONE: that ruling was about a FREE bonus door and died twice over, most ' +
+      'recently because a door that hands back cards feeds the slot that bought it. This power ' +
+      "costs a card OFF YOUR HAND AND ONTO SOMEBODY ELSE'S BOARD, so it nets +3 rather than " +
+      '+4 and the card it spends is one a rival may end up harvesting. ⭐ IT IS THE ONE POWER ' +
+      'THAT CAN NEVER BE DEAD, because the decks are always there, and it collides with nothing ' +
+      'on the sheet - which is why it is the only one of the five S13 did not have to re-cut. ' +
+      'Sweep it against vegetableFallback first: Draw against Deliver is the imbalance Dean ' +
+      'raised by name, and the visit spread is where it shows.',
   },
   {
-    template: 'rules.economy.farmsteadPower.dairyDiscount',
+    template: 'rules.economy.noticeBoardPower.apiarySows',
     type: 'int',
     description:
-      '⭐ CARDS THE DAIRY FARMSTEAD TAKES OFF A BUILD COST (Dean, 10/09/2026, K12: "Build at a ' +
-      'discount of 1, ignoring crop requirements."). Read only under ' +
-      'rules.economy.farmsteadCoinPower. ⚠️ THE DISCOUNT IS ONLY HALF THE POWER and this knob ' +
-      'moves only that half: every crop requirement is treated as WILD on top of it, which is ' +
-      'not a number and cannot be swept. ⚠️ IT STRICTLY DOMINATES D4 THE MILKING SHED ("Build ' +
-      'at a discount of 1."), which is a Tier 1 engine card, so the domination is mild rather ' +
-      'than fatal - but Dairy already reads the thinnest of the five boards at 5% of plays and ' +
-      'this does not help it. That is a card-face question (a Table B row) rather than a knob ' +
-      'question; lower this only if the fires-by-suit line says Dairy is running hot, which ' +
-      'would be a first.',
+      '⭐ CARDS THE APIARY NOTICE BOARD SOWS FROM YOUR HAND (Dean, 10/09/2026, S12: "Sow 2 ' +
+      'cards from your hand onto your buildings."). Read under visitCurrency ' +
+      "'noticeBoardPower'. ⭐ A SOW AND NOT A GROW, WHICH IS WHY THE KEY IS NO LONGER " +
+      'apiaryGrows: nothing is activated and no ability fires, so the power can never become a ' +
+      'better A12 The Honey Hut or A5 The Meadow Hive, and it stays the suit verb Apiary has ' +
+      'owned since 03/07/2026. ⛔ RULING C89, ONTO YOUR OWN BUILDINGS ONLY: S12 said "onto any ' +
+      'buildings", which read literally reaches across the table, and Dean ruled it ' +
+      'self-contained on 10/09/2026. So EVERY POWER IS SOLITAIRE AND THE VISIT ITSELF IS THE ' +
+      'ONLY CROSS-TABLE ACT IN THE DESIGN, which is what keeps the interaction budget readable ' +
+      'and leaves the sow-match and DL-63 questions with no subject. ⚠️ Raising it raises the ' +
+      "board's worth faster than any other number here, because a sow needs no matching suit " +
+      'and pays no activation.',
   },
   {
-    template: 'rules.economy.farmsteadPower.apiaryGrows',
+    template: 'rules.economy.noticeBoardPower.vegetableFallback',
     type: 'int',
     description:
-      '⭐ BUILDINGS THE APIARY FARMSTEAD GROWS (Dean, 10/09/2026, K12: "GROW 2 of your ' +
-      'buildings, paying their activation costs as normal."). Read only under ' +
-      'rules.economy.farmsteadCoinPower. ⛔ PAYING AS NORMAL IS THE WHOLE OF THE DIFFERENCE FROM ' +
-      'A12 THE HONEY HUT AND A5 THE MEADOW HIVE, which GROW without placing a card, and the ' +
-      'printed text has to keep saying so or the Farmstead silently becomes a better Honey Hut. ' +
-      '⚠️ AND THE RULED POWER NO LONGER REACHES ACROSS THE TABLE: v1 of the handoff proposed ' +
-      "sowing onto any farm, yours or a rival's, on the reading that Apiary was always the " +
-      'pollinator, and Dean ruled a double GROW on your OWN buildings instead. So no Farmstead ' +
-      'power touches another player, and the sow-match and DL-63 questions have no subject in ' +
-      "this arm. Raising this raises the coin's worth faster than any other power, because each " +
-      'extra grow still costs its own activation card.',
+      '⭐ CARDS THE VEGETABLE NOTICE BOARD PUTS INTO YOUR BARN WHEN YOU CANNOT DELIVER (Dean, ' +
+      '10/09/2026, S12: "Deliver. If you cannot, put 2 cards from your hand into your barn."). ' +
+      "Read under visitCurrency 'noticeBoardPower'. ⚠️ IT IS NOT A COUNT OF DELIVERIES AND THE " +
+      'KEY IS NO LONGER vegetableDeliveries: delivering twice was V15 The International Port ' +
+      'word for word, and S13 killed it so the card keeps its identity. ⭐ THE FALLBACK IS WHAT ' +
+      'MAKES THE BOARD NEVER DEAD, and it is the standing answer to the oldest availability ' +
+      'problem in the door set: Deliver is the scoring action, and the Vegetable board has ' +
+      'taken 11% of plays and 8-18% of door uses under every version this project has measured, ' +
+      'because DELIVER IS WORTH NOTHING TO A PAYER WITH AN EMPTY BARN. A fallback that fills ' +
+      'the barn sets the NEXT delivery up instead of failing. Read it beside deliveries per ' +
+      'player and the barn glut, never alone.',
   },
   {
-    template: 'rules.economy.farmsteadPower.vegetableDeliveries',
+    template: 'rules.economy.noticeBoardPower.dairyWild',
+    type: 'boolean',
+    description:
+      '⭐ THE DAIRY NOTICE BOARD WAIVES THE CROP REQUIREMENTS ON A BUILD (Dean, 10/09/2026, ' +
+      'S12: "Build. You may spend cards of any crops."). SHIPPED true and read under ' +
+      "visitCurrency 'noticeBoardPower'. ⭐ A FLAG AND NOT A DISCOUNT, WHICH IS WHY IT REPLACES " +
+      'dairyDiscount: a build at a discount of 1 ALREADY waives crop requirements, so the ' +
+      "morning's Dairy power was D4 The Milking Shed exactly and S13 killed it. The full cost " +
+      'is still paid here; only the n-of-suit requirement goes. ' +
+      '⛔ NAME IT AS A PASSENGER IN EVERY WRITE-UP, BECAUSE IT IS THE BIGGEST ONE THE ARM ' +
+      'CARRIES: this waives what CLAUDE.md calls "the natural gate" on building - build costs\' ' +
+      'n-of-suit requirements are the only thing rationing which cards a hand can turn into a ' +
+      'tableau - and it waives it FREE, FOR EVERY PLAYER, EVERY TURN, for the price of the ' +
+      'bonus. Dean ruled on 10/09/2026 to KEEP it and MEASURE it rather than to soften it. ' +
+      '⚠️ THE READING THAT JUDGES IT IS THE OWN-CROP BUILD SHARE, 82.6% before v31 and 83.3% ' +
+      'after, over 38,012 builds and never re-read since. A large fall says the gate was doing ' +
+      'the monoculture work nobody had credited it with; no move at all says the gate was never ' +
+      'binding and the power is weaker than it reads. false is the control that answers it.',
+  },
+  {
+    template: 'rules.economy.noticeBoardPower.wheatBarn',
     type: 'int',
     description:
-      '⭐ DELIVERIES THE VEGETABLE FARMSTEAD MAKES (Dean, 10/09/2026, K12: "Deliver twice."). ' +
-      'Read only under rules.economy.farmsteadCoinPower. ⚠️ IT IS V15 THE INTERNATIONAL PORT ' +
-      'WORD FOR WORD, a Tier 3 card in a slot that is thin already, which is a Table B row to ' +
-      'raise when the arm is ruled in rather than a reason to move the number. ⭐ IT IS ALSO THE ' +
-      'ONE POWER AIMED AT A STANDING PROBLEM: Deliver is the scoring action and the Vegetable ' +
-      'board has taken 11% of plays and 8-18% of door uses under every version this project has ' +
-      'measured, because Deliver is worth nothing to a payer with an empty barn. A power that ' +
-      'delivers twice is worth nothing to an empty barn either, so read this beside deliveries ' +
-      'per player and the barn glut, never alone.',
+      '⭐ CARDS THE WHEAT NOTICE BOARD PUTS INTO YOUR BARN AFTER ITS HARVEST (Dean, 10/09/2026, ' +
+      'RULING C88: "Harvest one of your buildings, then put 1 card from your hand into your ' +
+      "barn.\"). NEW, and read under visitCurrency 'noticeBoardPower'. ⛔ THE RULING IS WHY THE " +
+      'KEY EXISTS AT ALL: S12\'s Wheat power was "Harvest any one of your buildings, however ' +
+      'many cards are on it", which is W11 The Bakehouse WORD FOR WORD, and Dean ruled that the ' +
+      "POWER moves and the CARD keeps its identity - S13's own precedent, the one that killed " +
+      "the morning's Dairy and Vegetable powers for duplicating D4 and V15, applied a third " +
+      'time. So the board harvests plainly and pays a card into the barn on top. ⭐ THE BARN ' +
+      'CARD IS ALSO THE AVAILABILITY FIX: a seat with nothing full to harvest still gets ' +
+      'something for its card, which is the same job D6 did for the commons wheat board and the ' +
+      'reason no power in this set can be dead. ⚠️ It is a barn faucet that needs no building, ' +
+      'so read it beside the barn glut and the farm-bypass share.',
   },
   {
     template: 'rules.economy.commonsHarvestMin',

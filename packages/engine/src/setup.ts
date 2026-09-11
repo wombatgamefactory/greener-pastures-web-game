@@ -26,9 +26,13 @@ import {
   isCommons,
   isCommonsTakeCoins,
   isMeepleCurrency,
+  isNoticeBoardPower,
   meeplesPerTile,
+  noticeBoardsPerSeat,
+  unclaimedBoardsToCentre,
 } from '@gp/data';
 
+import { commonsBoardCard, hasCentre } from './query.js';
 import { seedRng, shuffle } from './rng.js';
 import type {
   AerodromeState,
@@ -147,16 +151,41 @@ export function coinPlayerFields(data: GameData): { coins?: number } {
 }
 
 /**
- * THE FIVE CENTRAL BOARDS, empty (C1): all five colours as keys regardless of
- * `suitsInPlay`, because C1's whole point is that every action is available in
- * every game.
+ * ⭐ WHICH SUITS' NOTICE BOARDS STAND OWNERLESS IN THE CENTRE AT SETUP.
+ *
+ * ALL FIVE under the commons (C1): every colour is a key regardless of who is at
+ * the table, because C1's whole point is that every action is available in every
+ * game and the wheat board grants Harvest to a table with no Wheat seat on it.
+ *
+ * ⭐ THE SUITS NO PLAYER IS FARMING under Dean's unclaimed-boards variant
+ * (ruled 11/09/2026): a seat's own Notice Board is a building in that seat's
+ * tableau, so only what is left over goes to the middle.
+ *
+ * ⛔ THE SELECTION IS `data.cards.suits` MINUS THE SEATS' OWN SUITS, AND
+ * DELIBERATELY *NOT* MINUS `state.suitsInPlay`, WHICH IS THE ONE PLACE THIS
+ * BUILD DEPARTED FROM ITS BRIEF. `suitsInPlay` is player suits PLUS the neutral
+ * DECKS (`island.decksInPlayBySeats`: 3 decks at two seats, 4 at three, 5 at
+ * four), and a neutral deck is a crop nobody is FARMING - it has no Notice
+ * Board on anybody's farm, so under `suitsInPlay` its board would exist nowhere
+ * at all. Reading it that way gives 2 central boards at two seats and 0 at
+ * four, so a seat faces 3 targets and then 3 again, and the variant's entire
+ * argument - and its restored ruling that all five actions exist in every game
+ * - would be false. Read off the SEATS it is exactly (5 - seats) central plus
+ * (seats - 1) rivals = FOUR targets at every player count, solo included, which
+ * is the table in `rules.economy.unclaimedBoardsToCentre`'s own description and
+ * the thing `notice-board-unclaimed.test.ts` asserts first.
+ *
+ * ⚠️ The seats' suits are distinct by construction (`newGame` refuses a
+ * duplicate), so this never has to de-duplicate and a suit is EITHER one seat's
+ * or central, never both - which is what makes the S9 latch's card-id key and a
+ * suit key the same partition. See `enumerateCommons`.
  */
-export function freshCommons(data: GameData): CommonsState {
+export function freshCommons(data: GameData, seatSuits: readonly Suit[]): CommonsState {
+  const central = unclaimedBoardsToCentre(data)
+    ? data.cards.suits.filter((s) => !seatSuits.includes(s))
+    : data.cards.suits;
   return {
-    boards: Object.fromEntries(data.cards.suits.map((s) => [s, [] as CardId[]])) as Record<
-      Suit,
-      CardId[]
-    >,
+    boards: Object.fromEntries(central.map((s) => [s, [] as CardId[]])) as Record<Suit, CardId[]>,
   };
 }
 
@@ -165,15 +194,40 @@ export function freshCommons(data: GameData): CommonsState {
  * `meepleLoopPlayerFields` above, and absent for the same reason: the key is
  * MISSING rather than present-and-undefined under the two controls, so their
  * serialised states, captures and fixtures stay byte-identical.
+ *
+ * ⭐ TWO GAMES PUT A ZONE HERE SINCE 11/09/2026 and `hasCentre` is the one
+ * question both are asked through. The commons fills it with all five piles;
+ * Dean's unclaimed-boards variant fills it with the unfarmed suits' piles only.
+ * Every other game - the v31 control, the meeple loop, the meeple economy and
+ * the notice-board visit WITHOUT the variant's knob - still gets `{}`.
  */
-export function commonsZone(data: GameData): { commons?: CommonsState } {
-  return isCommons(data) ? { commons: freshCommons(data) } : {};
+export function commonsZone(
+  data: GameData,
+  seatSuits: readonly Suit[],
+): { commons?: CommonsState } {
+  // ⛔ AND THE NOTICE-BOARD VISIT AS BUILT ON 10/09/2026 HAS NO CENTRAL STATE
+  // AT ALL (S2): the centre is DELETED, the five board cards go home to their
+  // owners' farms, and there is nothing in the middle of the table but the
+  // island. That is still true whenever `unclaimedBoardsToCentre` is false,
+  // which is its shipped value and the value both no-centre arms of the 2x2
+  // pin - so the arm this variant is read against is untouched, and it is
+  // worth saying out loud because "no central state" is a rule of that design
+  // rather than an accident of a predicate.
+  return hasCentre(data) ? { commons: freshCommons(data, seatSuits) } : {};
 }
 
 /**
  * The starters a seat lays out. THREE under the controls (Farmstead, Barn,
  * Notice Board) and TWO under the commons (C1): the five Notice Boards stand in
  * the centre and no player has one, so a farm is Farmstead plus Barn.
+ *
+ * ⭐ AND THREE AGAIN UNDER THE NOTICE-BOARD VISIT (S1/S2, Dean 10/09/2026),
+ * where each of the three does exactly one thing: the NOTICE BOARD prints your
+ * suit's power and holds the cards visitors play onto it (threshold `3+`), the
+ * BARN holds your harvested cards and prints the crop scorer, and the FARMSTEAD
+ * holds your six island receipt tokens and prints no rules text at all. The
+ * filter below is keyed on `isCommons` alone, so that arm needs no clause here:
+ * three starters is the DEFAULT and the commons is the exception.
  *
  * One function so `newGame` and the testkit cannot disagree about it, exactly as
  * `meepleLoopPlayerFields` exists so they cannot disagree about the slots.
@@ -186,6 +240,99 @@ export function starterCardsFor(data: GameData, suit: Suit, requireEnabled: bool
     .filter((c) => c.suit === suit && c.type === 'starter' && (!requireEnabled || c.enabled))
     .filter((c) => !(isCommons(data) && c.slot === 'noticeboard'))
     .map((c) => c.id);
+}
+
+/**
+ * ⭐ HOW MANY NOTICE BOARDS A SEAT LAYS OUT BEYOND ITS OWN (Dean's two-board
+ * fix, ruled 11/09/2026, `rules.economy.noticeBoardsBySeats`). ZERO in every
+ * game this project has shipped, and ONE per seat at two seats under
+ * `overlays/notice-board-visit-two-boards-v1.overlay.json`.
+ *
+ * ⛔ READ ONLY UNDER `visitCurrency: 'noticeBoardPower'`, which is the gate the
+ * knob's own description states and the reason this returns a flat 0 elsewhere.
+ * Under the commons no seat has a Notice Board at all (C1) and under the v31
+ * card fee and the meeple loop a board is a different object with a different
+ * payoff, so a second one would be a rule nobody has written. A sweep that sets
+ * the map under any of those three therefore changes NOTHING rather than
+ * building a game that was never designed.
+ *
+ * ⚠️ THE KNOB IS A FREE MAP, SO IT IS VALIDATED HERE AND NOWHERE ELSE.
+ * `noticeBoardsPerSeat` in @gp/data answers what the map says and deliberately
+ * does not police it; a value below 1 would leave a seat with no board and
+ * break the invariant every `noticeBoardOf` caller stands on, so it throws at
+ * setup rather than producing a game that crashes on its first visit.
+ */
+export function extraNoticeBoardsPerSeat(data: GameData, seats: number): number {
+  if (!isNoticeBoardPower(data)) return 0;
+  const n = noticeBoardsPerSeat(data, seats);
+  if (!Number.isInteger(n) || n < 1) {
+    throw new Error(
+      `rules.economy.noticeBoardsBySeats.${seats} is ${n}: a seat lays out at least one Notice Board`,
+    );
+  }
+  return n - 1;
+}
+
+/**
+ * ⭐ THE EXTRA NOTICE BOARDS, DEALT: one list of board cards per seat, in seat
+ * order, taken from `pool` without replacement (Dean's two-board fix, ruled
+ * 11/09/2026).
+ *
+ * `pool` is THE SUITS NOBODY IS FARMING, in the order they are to be dealt.
+ * `newGame` hands it a fresh `shuffle(rng, ...)` so the draw is random and
+ * reproducible from the seed alone; the testkit hands it catalogue order so a
+ * scenario knows exactly which board it got. Neither of them may deal a suit a
+ * seat is farming, which is what makes every extra board one whose POWER ITS
+ * OWNER CAN NEVER USE - the whole point of the ruling, since a popular board is
+ * then income rather than a handicap.
+ *
+ * ⛔ THE TWO SEATS GET DIFFERENT BOARDS, which falls out of dealing from one
+ * pool without replacement rather than out of a check.
+ *
+ * ⚠️ THE CEILING IS ARITHMETIC AND THIS IS WHERE THE ENGINE RULES ON IT. There
+ * are `5 - seats` unfarmed suits, so `n` boards each needs
+ * `seats * (n - 1) <= 5 - seats`: two at two seats (2 drawn from 3, one left
+ * over) and one at three and four. A map asking `{"3": 2}` wants six boards out
+ * of five and there is no sensible engine answer - dealing fewer would make the
+ * seats asymmetric in a way nobody ruled, and reusing a board would put one
+ * card in two tableaux and break card conservation - so it THROWS at setup with
+ * the arithmetic in the message. The data agent flagged the ceiling and left
+ * the ruling to the engine; this is the ruling.
+ *
+ * ⚠️ THE DRAW DOES NOT PREFER A SUIT WHOSE DECK IS IN PLAY, and that is a
+ * choice rather than an oversight. `island.decksInPlayBySeats` is 3 at two
+ * seats, so of the three unfarmed suits only one has a deck on the table; a
+ * board grants a POWER and never a deck, exactly as the commons put all five
+ * actions on the table regardless of who farmed them, so all three are equally
+ * drawable. Preferring the in-play deck would also weld the extra board to the
+ * neutral-deck choice, which is a correlation no reading could then unpick.
+ */
+export function dealExtraNoticeBoards(
+  data: GameData,
+  seats: number,
+  seatSuits: readonly Suit[],
+  pool: readonly Suit[],
+): CardId[][] {
+  const extra = extraNoticeBoardsPerSeat(data, seats);
+  if (extra === 0) return seatSuits.map(() => []);
+  const drawable = pool.filter((s) => !seatSuits.includes(s));
+  const wanted = seats * extra;
+  if (wanted > drawable.length) {
+    throw new Error(
+      `rules.economy.noticeBoardsBySeats.${seats} asks ${seats} seats for ${extra} extra ` +
+        `Notice Board(s) each, which is ${wanted} boards, and only ${drawable.length} suits ` +
+        `are unfarmed at ${seats} seats: seats * (n - 1) must be at most 5 - seats`,
+    );
+  }
+  let next = 0;
+  // ⚠️ `commonsBoardCard` DESPITE THE NAME, and it is the right function: it
+  // answers "that colour's Notice Board starter (W3/V3/O3/A3/D3)" off the
+  // catalogue's `slot`, which is the question here and has nothing to do with
+  // the commons beyond where it was first needed. One spelling, so the five
+  // faces stay named in exactly one place - the sheet.
+  return seatSuits.map(() =>
+    drawable.slice(next, (next += extra)).map((suit) => commonsBoardCard(data, suit)),
+  );
 }
 
 /**
@@ -377,8 +524,40 @@ export function newGame(data: GameData, opts: NewGameOptions): GameState {
     allSuits.map((s) => [s, [] as CardId[]]),
   ) as GameState['discards'];
 
+  // ⭐ DEAN'S TWO-BOARD FIX (11/09/2026): the SECOND Notice Board each seat
+  // lays out at two seats, drawn at random from the suits nobody is farming.
+  //
+  // ⛔ THE GUARD IS WHAT KEEPS THE ARM IDENTICAL TO ITS CONTROL AT THREE AND
+  // FOUR SEATS, AND IT IS A GUARD ON THE RNG RATHER THAN ON THE DEAL. The
+  // overlay pins the map to 1 at three and four seats, so `extra` is 0 there
+  // and this line must not touch `rng` at all: one shuffle consumed here would
+  // reorder every deck below it and produce a DIFFERENT GAME on the same seed,
+  // which is exactly the "setup draw consuming an rng call it did not consume
+  // before" leak the arm's own description warns about. Hence the branch, and
+  // hence `notice-board-two-boards.test.ts` replaying both datasets on
+  // identical seeds and asserting byte-identical games at three and four.
+  //
+  // ⚠️ A FRESH SHUFFLE AND NOT `remaining`, WHICH IS ALREADY TO HAND AND WOULD
+  // BE WRONG. `remaining` is the order the NEUTRAL DECKS are dealt from, so
+  // reusing it would give seat 0 the board of the one unfarmed suit whose deck
+  // is on the table, every game, for ever - a fixed structural asymmetry that
+  // no reading of the arm could afterwards separate from the rule itself.
+  const extraBoardsPerSeat = extraNoticeBoardsPerSeat(data, seats);
+  const extraBoards =
+    extraBoardsPerSeat === 0
+      ? playerSuits.map(() => [] as CardId[])
+      : dealExtraNoticeBoards(
+          data,
+          seats,
+          playerSuits,
+          shuffle(
+            rng,
+            allSuits.filter((s) => !playerSuits.includes(s)),
+          ),
+        );
+
   const { startingHand, startingBarnCards } = data.rules.setup;
-  const players = playerSuits.map((suit) => ({
+  const players = playerSuits.map((suit, seat) => ({
     suit,
     hand: decks[suit].splice(0, startingHand),
     // 0 since v31. `splice(0, 0)` is a deliberate no-op rather than a branch, so
@@ -389,7 +568,14 @@ export function newGame(data: GameData, opts: NewGameOptions): GameState {
     // The coin wallet at 0, present only under the commons-with-coins arm (K7)
     // and ABSENT otherwise - see `coinPlayerFields`.
     ...coinPlayerFields(data),
-    tableau: starterCardsFor(data, suit, true).map((card) => ({ card, stack: [] as CardId[] })),
+    // ⭐ THE STARTERS FIRST AND THE EXTRA BOARD(S) AFTER, which is the order
+    // `noticeBoardOf` and the report lines both read through: a seat's OWN
+    // suit's board is the one its starters brought, and everything appended
+    // here is a board whose power only its rivals can buy.
+    tableau: [...starterCardsFor(data, suit, true), ...(extraBoards[seat] ?? [])].map((card) => ({
+      card,
+      stack: [] as CardId[],
+    })),
     receipts: [] as number[],
   }));
 
@@ -437,7 +623,7 @@ export function newGame(data: GameData, opts: NewGameOptions): GameState {
     }),
     island,
     aerodrome,
-    ...commonsZone(data),
+    ...commonsZone(data, playerSuits),
     turn: freshTurn(),
     tasks: [],
     resume: null,

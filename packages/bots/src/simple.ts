@@ -82,6 +82,16 @@ export const pulse: Policy = {
  * its own included. That is a real blind spot in the baseline and greedy must
  * never be read for anything about risk 2. It is not in `BALANCE_PROFILES`, so
  * no arm is measured through it.
+ *
+ * ⚠️ **AND IT DOES NOT DISTINGUISH WHICH OF A HOST'S BOARDS EITHER**
+ * (Dean's two-board fix, 11/09/2026). At two seats a host holds two Notice
+ * Boards printing two different powers, and `MoveType` is one word for both, so
+ * greedy always takes the first the enumerator produced - which is the host's
+ * OWN SUIT'S board, because setup lays the starters out before it deals the
+ * extras. The scored bots read `Act.board` and `effectKey` partitions on it;
+ * greedy reads neither, so **a board split taken off greedy would read the
+ * enumeration order and nothing else.** Same blind spot, one design later, and
+ * the same answer: greedy is the smoke test and never the instrument.
  */
 export const GREEDY_PRIORITY: readonly MoveType[] = [
   'task',

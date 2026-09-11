@@ -20,7 +20,7 @@ import {
   cardById,
   canTakeCard,
   coinsOf,
-  commonsBoardSuit,
+  centralPileSuit,
   commonsHarvestTake,
   commonsBoards,
   drawableSuits,
@@ -350,11 +350,27 @@ export class Fx {
 
   // --- hands and barns ---------------------------------------------------
 
-  cardsToHand(seat: Seat, cards: CardId[]): void {
+  /**
+   * Cards into a hand.
+   *
+   * ⭐ `via` IS OPTIONAL AND ITS ONLY VALUE IS S17's (Dean, 11/09/2026): the
+   * cards are the host draw, taken by the OWNER of a visited Notice Board. It
+   * is passed through to the event and nothing else - the cards arrive in the
+   * hand identically either way, which is the point. Omitted by every one of
+   * the dozen other callers, so the emitted event is byte-identical to what it
+   * was for all of them.
+   */
+  cardsToHand(seat: Seat, cards: CardId[], via?: 'hostDraw'): void {
     if (cards.length === 0) return;
     this.touch(seat);
     player(this.state, seat).hand.push(...cards);
-    this.emit({ e: 'cardsToHand', seat, cards });
+    // The key is ABSENT rather than present-and-undefined for an ordinary
+    // draw, so a serialised event stream is byte-identical to what it was.
+    this.emit(
+      via === undefined
+        ? { e: 'cardsToHand', seat, cards }
+        : { e: 'cardsToHand', seat, cards, via },
+    );
   }
 
   /**
@@ -964,9 +980,17 @@ export class Fx {
     // HARVESTER's barn (D3: never to a discard, and a central pile is reset by
     // nothing else), the pile belongs to nobody (`owner: null`) and
     // `afterHarvest` fires exactly as it does for a building (D1: a Harvest is
-    // a Harvest, so Wheat's riders fire). `commonsBoardSuit` answers null under
+    // a Harvest, so Wheat's riders fire). `centralPileSuit` answers null under
     // both controls whatever the id, so W3 in a Wheat tableau is still a
     // building there.
+    // ⭐ AND IT IS `centralPileSuit` RATHER THAN `commonsBoardSuit` SINCE
+    // 11/09/2026, because under Dean's unclaimed-boards variant THE SAME CARD
+    // ID IS A CENTRAL PILE IN ONE GAME AND A SEAT'S OWN BUILDING IN THE NEXT:
+    // W3 is ownerless in the middle when nobody farms Wheat, and is the Wheat
+    // seat's own Notice Board when somebody does. Only the STATE can tell the
+    // two apart, and a harvest routed down the wrong branch would either
+    // silently empty a rival's board into your barn or throw looking for a pile
+    // that is not there.
     // ⚠️ AND THE BRANCH IS UNREACHABLE UNDER EVERY `commonsTake` VALUE BUT THE
     // SHIPPED `'harvest'` (checked 10/09/2026 while building K4). Nothing needs
     // to be added here for 'bonus', 'spend', 'paid' or 'coins': the only routes
@@ -975,7 +999,7 @@ export class Fx {
     // that set, so no caller can hand this a board card. It is left as it stands
     // rather than guarded, because a second gate here would be a second place
     // for the rule to live and the first one would stop being read.
-    const board = commonsBoardSuit(this.data, buildingCard);
+    const board = centralPileSuit(this.data, this.state, buildingCard);
     if (board !== null) {
       const pile = commonsBoards(this.state)[board];
       // ⭐ HOW MANY COME OUT IS `commonsHarvestTake` (Dean, 09/09/2026). null

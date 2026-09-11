@@ -77,6 +77,19 @@ export interface NoticeBoardState {
  * present-and-empty would move every one of them for a zone those games have no
  * concept of. `commonsBoards` in query.ts is the one accessor and it throws if
  * the mode is on and this is missing, so the optionality never reaches a rule.
+ *
+ * ⭐ AND SINCE 11/09/2026 IT IS PRESENT UNDER A SECOND GAME WITH A DIFFERENT
+ * KEY SET (Dean's unclaimed-boards variant,
+ * `rules.economy.unclaimedBoardsToCentre` under `'noticeBoardPower'`). There
+ * the zone holds ONLY the suits NO PLAYER IS FARMING - two keys at three
+ * seats, one at four - because the rest of the boards are owned buildings in
+ * their seats' tableaux. ⛔ SO A MISSING KEY MEANS "THERE IS NO SUCH CENTRAL
+ * BOARD" AND IS NOT THE SAME THING AS AN EMPTY PILE, and the idiom
+ * `boards[colour]?.length ?? 0` cannot tell the two apart. Anything that
+ * enumerates the centre asks `centralBoardSuits` (query.ts) for the set; the
+ * `Record` type is kept rather than made `Partial` because
+ * `noUncheckedIndexedAccess` already forces every read to handle the absence
+ * and every existing caller already does.
  */
 export interface CommonsState {
   boards: Record<Suit, CardId[]>;
@@ -374,6 +387,22 @@ export interface TurnState {
 }
 
 /**
+ * ⭐ RECORD THAT A CARD'S PRINTED TEXT HAS FIRED THIS TURN - the write half of
+ * the recursion guard above, and THE ONE IMPLEMENTATION of it.
+ *
+ * It lives here, on the leaf module that declares `TurnState`, since 10/09/2026
+ * and for one reason: the notice-board visit's ONE-USE-PER-BOARD latch (S9) is
+ * written from `actions.ts`, and `runtime.ts` - where `markFired` has always
+ * lived - imports `actions.ts`, so `actions.ts` may not import it back.
+ * `runtime.ts` still exports `markFired(fx, building)` and every handler still
+ * calls that; it is now a one-line delegate to this, so there is still exactly
+ * one place the dedupe happens.
+ */
+export function markFiredOnTurn(turn: TurnState, card: CardId): void {
+  if (!turn.firedThisTurn.includes(card)) turn.firedThisTurn.push(card);
+}
+
+/**
  * A building ANYWHERE on the table. Sow targets used to be bare `CardId[]`,
  * implicitly the actor's own tableau; A4 The Herb Hive and A14 The Honeycomb
  * Tower place on a NEIGHBOUR's building, so the pair travels together. A target
@@ -418,6 +447,22 @@ export type Task =
       see: number;
       keep: number;
       revealed: CardId[];
+      /**
+       * ⭐ S17, THE HOST DRAW (Dean, 11/09/2026): this draw is the payment the
+       * OWNER of a visited Notice Board takes for being visited, and the field
+       * exists so that the cards can be counted apart from every other card
+       * that reaches a hand. It rides to the `cardsToHand` event through
+       * `resolveTask`, which is the only thing that reads it.
+       *
+       * ⚠️ IT IS A LABEL AND NEVER A BEHAVIOUR. Nothing in `taskAnswers` or
+       * `resolveTask` branches on it: a host draw is a plain see-N/keep-N draw
+       * with the seat's own choice of deck, exactly as `rules.turn.baseDraw`
+       * and every card ability's draw are, which is the whole of Dean's "no
+       * rules exceptions" ruling on which deck a host draws from. Absent on
+       * every other draw in the game, so the field is purely additive and the
+       * event it feeds is unchanged for every producer but this one.
+       */
+      via?: 'hostDraw';
     }
   | {
       /**
@@ -438,6 +483,29 @@ export type Task =
        * words ("however many cards are on it").
        */
       filter: 'full' | 'notFull' | 'harvestable' | 'loaded';
+      /**
+       * ⭐ `'loaded'` ONLY, AND ONLY UNDER DEAN'S UNCLAIMED-BOARDS VARIANT
+       * (11/09/2026): union in every CENTRAL pile at or above
+       * `rules.economy.commonsHarvestMin`, on top of the actor's own loaded
+       * buildings.
+       *
+       * Its one producer is the WHEAT Notice Board's power
+       * (`fireNoticeBoardPower`), and it exists because Dean reaffirmed D1 that
+       * day - "a Harvest is a Harvest", in his words "to prevent any rules
+       * exceptions" - so a Harvest BOUGHT through the Wheat board must reach a
+       * central pile exactly as the main Harvest action does, under exactly the
+       * same minimum. `'harvestable'` needs no equivalent flag: it runs through
+       * `harvestOptions`, which already unions the centre in.
+       *
+       * ⛔ IT IS A FLAG AND NOT A SIXTH `filter` VALUE, deliberately. The three
+       * OTHER producers of `filter: 'loaded'` are card faces - W11 The
+       * Bakehouse, W13 The Bakery and O7 - whose texts say "your buildings",
+       * and a new filter value would have tempted the next reader to repoint
+       * one of them. ⚠️ ABSENT rather than present-and-false everywhere else,
+       * so every serialised task, capture and fixture outside this variant is
+       * byte-identical.
+       */
+      central?: boolean;
       /**
        * `harvestable` only: buildings holding at least this many cards count
        * even when not full. The Wheat SERVICE passes 2 and nothing else passes
@@ -1085,6 +1153,29 @@ export type Move =
        */
       fee: CardId | null;
       /**
+       * ⭐ WHICH OF THE HOST'S NOTICE BOARDS THE FEE LANDS ON, and therefore
+       * WHICH POWER IS BOUGHT (Dean's two-board fix, ruled 11/09/2026,
+       * `rules.economy.noticeBoardsBySeats`). At two seats a host lays out
+       * TWO - its own suit's board, plus one drawn at random from the suits
+       * nobody is farming - so `host` alone stopped being enough information to
+       * resolve the move.
+       *
+       * ⛔ PRESENT ONLY WHEN THE HOST HOLDS MORE THAN ONE, WHICH IS THE WHOLE
+       * REASON IT IS OPTIONAL RATHER THAN REQUIRED. An absent key is what keeps
+       * this arm's three-seat and four-seat games byte-identical to
+       * `overlays/notice-board-visit-no-self-v1.overlay.json` on identical
+       * seeds - the claim the whole variant is read through - and what keeps
+       * every fixture in `packages/sim/fixtures/` replaying unchanged. It is
+       * the same rule `fee2`, `coin` and `noticeBoard?` follow, and it means a
+       * reader that has never heard of the fix reads `host` and is right about
+       * every game but this one.
+       *
+       * ⚠️ `doNoticeBoardVisit` THROWS rather than defaulting when a host with
+       * two boards is not given one: defaulting would put the fee on the wrong
+       * building while the payoff still looked correct.
+       */
+      board?: CardId;
+      /**
        * MEEPLE ARM ONLY: the meeples leaving the visitor's supply. One for a
        * plain visit; TWO for the wild spend (R10), which is why this is a list
        * and not a colour. Both land in the slot of `colour`, and the host takes
@@ -1235,7 +1326,27 @@ export const MOVE_TYPES = Object.keys(MOVE_TYPE_KEYS) as readonly MoveType[];
  */
 export type GameEvent =
   | { e: 'cardPlaced'; seat: Seat; onto: { seat: Seat; building: CardId }; card: CardId }
-  | { e: 'cardsToHand'; seat: Seat; cards: CardId[] }
+  /**
+   * Cards entered a hand. `seat` is whose hand they entered.
+   *
+   * ⭐ `via` IS ONE PURELY ADDITIVE FIELD, ADDED FOR S17 (Dean, 11/09/2026),
+   * AND IT IS THE ONLY WAY THE HOST DRAW CAN BE COUNTED APART FROM AN ORDINARY
+   * ONE. `'hostDraw'` means these cards are the payment the OWNER of a visited
+   * Notice Board took for being visited (`rules.turn.hostDrawOnVisit`); the
+   * field is ABSENT on every other producer, of which there are many, so no
+   * existing reader changes and no existing count moves. It is a new FIELD and
+   * deliberately not a new EVENT: the sim's `EVENT_KINDS` is exhaustive over
+   * this union and a sixth-of-its-kind event would be a change in a package
+   * this pass may not touch, while the cards themselves must keep arriving on
+   * `cardsToHand` so that everything already priced off a draw still prices
+   * this one.
+   *
+   * ⚠️ IT SURVIVES REDACTION BY CONSTRUCTION (`redactEvents` spreads the event
+   * and masks only `cards`), which is right: who was visited and what the rule
+   * pays are public at a real table. Only the card identities are private, and
+   * they are masked exactly as they are for any other seat's draw.
+   */
+  | { e: 'cardsToHand'; seat: Seat; cards: CardId[]; via?: 'hostDraw' }
   | { e: 'cardsDiscarded'; suit: Suit; cards: CardId[] }
   | { e: 'deckToBarn'; seat: Seat; suit: Suit; card: CardId }
   /** One card lifted from a building's stack into its owner's barn (W14) - NOT a harvest, no on-harvest passives. */

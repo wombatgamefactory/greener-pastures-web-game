@@ -54,6 +54,11 @@ const cardControl: GameData = loadGameData({
     'rules.turn.meepleAsCard': false,
     'rules.turn.slotToll': null,
     'rules.turn.meepleCapPerColour': 1,
+    // ⛔ THE BOARD'S OWN THRESHOLD, PINNED SINCE 10/09/2026. The
+    // notice-board visit moved the BASE value from 2 to 3 (S8's `3+`), and
+    // under `'card'` the Notice Board is a BLOCKING building whose 2 is the
+    // brake on the self-visit. The overlay file pins the same leaf.
+    'rules.economy.noticeBoardThreshold': 2,
   },
 });
 
@@ -1350,96 +1355,130 @@ describe("Dean's arm: the commons with coins (10/09/2026)", () => {
   });
 
   describe('K12: the five powers, each reading its own knob', () => {
-    it('Orchard draws rules.economy.farmsteadPower.orchardDraw cards', () => {
+    /**
+     * ⛔ THESE ARE THE S12 POWERS, NOT THE MORNING'S, AND THE SET CHANGED
+     * UNDER THIS ARM WITHOUT THE ARM BEING TOUCHED (10/09/2026 evening).
+     *
+     * `rules.economy.farmsteadPower` was RENAMED `noticeBoardPower` and
+     * repointed to S12 as amended by Dean's rulings C88 and C89, on the
+     * handoff's own reasoning that a knob whose name no longer describes it is
+     * worse than a new one. The coins arm's Farmstead therefore now activates
+     * into Draw 4 / build with the crops waived / SOW 2 / harvest ONE and bank
+     * a card / deliver-or-bank-two, where that morning it was Draw 3 / build
+     * at a discount of 1 / GROW 2 / harvest EVERY loaded building / deliver
+     * twice.
+     *
+     * ⚠️ WHICH MEANS THE COINS ARM'S NUMBERS HAVE TO BE RE-ARGUED RATHER
+     * THAN INHERITED IF IT IS EVER RE-RUN. These tests assert the shared
+     * dispatch (`fireNoticeBoardPower` in workers.ts) through the one route
+     * that reaches it without a visit; the notice-board visit's own route is
+     * covered in `notice-board-visit.test.ts`.
+     */
+    it('Orchard draws rules.economy.noticeBoardPower.orchardDraw cards', () => {
       const s = armState(coins, ['orchard', 'wheat']);
       s.turnPlayer = 0;
       giveCoins(s, 0, 1);
-      const n = coins.rules.economy.farmsteadPower.orchardDraw;
+      const n = coins.rules.economy.noticeBoardPower.orchardDraw;
       const after = settle(apply(coins, s, growCoin(0, 'O2')).state, coins);
       expect(player(after, 0).hand).toHaveLength(n);
     });
 
-    it('Dairy pushes a Build at a discount of dairyDiscount, with the crops waived', () => {
+    it('Dairy pushes a Build with the CROPS WAIVED and no discount (S13 killed D4)', () => {
       const s = armState(coins, ['dairy', 'wheat']);
       s.turnPlayer = 0;
       giveCoins(s, 0, 1);
-      // D9 costs 3 cards of which 2 must be DAIRY. At a discount of 1 that is
-      // two cards and NO crop requirement at all (`priceOf` waives the own-suit
-      // half whenever a discount applies, which is the same rule D4 The Milking
-      // Shed runs on), so two WHEAT cards pay for it.
-      dealTo(coins, s, 0, 'D9', 'W7', 'W9');
+      // D9 costs 3 cards of which 2 must be DAIRY. The waiver takes the
+      // own-suit half and NOT the card count, so three WHEAT cards pay for it
+      // and two do not - which is the whole difference from the morning's
+      // discount of 1, and the difference that gives D4 The Milking Shed its
+      // identity back.
+      dealTo(coins, s, 0, 'D9', 'W7', 'W9', 'W10');
       const out = apply(coins, s, growCoin(0, 'D2'));
       const build = out.state.tasks.find((t) => t.t === 'build');
-      expect(build?.t === 'build' ? build.mods?.discount : null).toBe(
-        coins.rules.economy.farmsteadPower.dairyDiscount,
+      expect(build?.t === 'build' ? build.mods?.discount : undefined).toBeUndefined();
+      expect(build?.t === 'build' ? build.mods?.substitute : undefined).toBe(
+        coins.rules.economy.noticeBoardPower.dairyWild,
       );
       const answers = legalMoves(coins, out.state).filter((m) => m.type === 'task');
+      const paid = answers.filter(
+        (m) => m.type === 'task' && m.answer.kind === 'build' && m.answer.card === 'D9',
+      );
+      expect(paid.length).toBeGreaterThan(0);
+      for (const m of paid) {
+        if (m.type !== 'task' || m.answer.kind !== 'build') continue;
+        expect(m.answer.payment).toHaveLength(3);
+      }
       expect(
-        answers.some(
+        paid.some(
           (m) =>
             m.type === 'task' &&
             m.answer.kind === 'build' &&
-            m.answer.card === 'D9' &&
-            m.answer.payment.length === 2 &&
             m.answer.payment.every((id) => id.startsWith('W')),
         ),
       ).toBe(true);
     });
 
-    it('Apiary pushes apiaryGrows grow tasks that PAY their activation costs', () => {
+    it('Apiary pushes ONE sow task for apiarySows cards, and never a GROW (C89)', () => {
       const s = armState(coins, ['apiary', 'wheat']);
       s.turnPlayer = 0;
       giveCoins(s, 0, 1);
       buildFor(coins, s, 0, 'A4', 'A7');
       dealTo(coins, s, 0, 'A5', 'A6');
       const out = apply(coins, s, growCoin(0, 'A2'));
-      expect(out.audit.tasksPushed).toBe(coins.rules.economy.farmsteadPower.apiaryGrows);
-      expect(out.state.tasks.filter((t) => t.t === 'grow')).toHaveLength(
-        coins.rules.economy.farmsteadPower.apiaryGrows,
+      const sow = out.state.tasks.find((t) => t.t === 'sow');
+      expect(sow?.t === 'sow' ? sow.remaining : null).toBe(
+        coins.rules.economy.noticeBoardPower.apiarySows,
       );
-      // ⛔ NOT A12 The Honey Hut and NOT A5 The Meadow Hive: both of those GROW
-      // WITHOUT PLACING A CARD (an `activate` task, whose answer names only a
-      // building). These are full Grows, so every answer names a PAYMENT out of
-      // the hand, and that distinction is the whole difference between the two
-      // cards.
+      expect(out.state.tasks.filter((t) => t.t === 'grow')).toHaveLength(0);
+      // ⛔ A SOW AND NOT A GROW (C89): nothing is activated, no ability
+      // fires and no crop is matched, so the answers are sow answers and there
+      // is no payment to name. That is the whole difference from the morning's
+      // `apiaryGrows`, and from A12 The Honey Hut and A5 The Meadow Hive.
       const answers = legalMoves(coins, out.state).filter((m) => m.type === 'task');
       expect(answers.length).toBeGreaterThan(0);
-      expect(
-        answers.every(
-          (m) => m.type === 'task' && m.answer.kind === 'grow' && m.answer.payment !== undefined,
-        ),
-      ).toBe(true);
-      expect(answers.some((m) => m.type === 'task' && m.answer.kind === 'activate')).toBe(false);
+      expect(answers.every((m) => m.type === 'task' && m.answer.kind === 'sow')).toBe(true);
     });
 
-    it('Wheat harvests EVERY loaded building, however many cards are on it (W13 s rule)', () => {
+    it('Wheat harvests ONE building at any size, then banks wheatBarn cards (C88)', () => {
       const s = armState(coins, ['wheat', 'orchard']);
       s.turnPlayer = 0;
       giveCoins(s, 0, 1);
       buildFor(coins, s, 0, 'W4', 'W6');
       loadStack(coins, s, 0, 'W4', 1); // one card, nowhere near its threshold of 2
       loadStack(coins, s, 0, 'W6', 2); // two, on a threshold of 3
+      dealTo(coins, s, 0, 'W14');
       const out = settle(apply(coins, s, growCoin(0, 'W2')).state, coins);
-      expect(player(out, 0).tableau.find((b) => b.card === 'W4')?.stack).toEqual([]);
-      expect(player(out, 0).tableau.find((b) => b.card === 'W6')?.stack).toEqual([]);
-      expect(player(out, 0).barn).toHaveLength(3);
+      // ⛔ EXACTLY ONE of the two comes off - this is NOT W13 The Bakery's
+      // cascade, which is what ruling C88 took away - and the relaxation is
+      // real: the building emptied was one card into a threshold of 2.
+      const emptied = ['W4', 'W6'].filter(
+        (id) => player(out, 0).tableau.find((b) => b.card === id)?.stack.length === 0,
+      );
+      expect(emptied).toHaveLength(1);
+      // And the tail: `wheatBarn` cards out of the hand and into the barn, on
+      // top of whatever the harvest brought.
+      expect(player(out, 0).barn.length).toBeGreaterThanOrEqual(
+        coins.rules.economy.noticeBoardPower.wheatBarn,
+      );
+      expect(player(out, 0).barn).toContain('W14');
     });
 
-    it('Vegetable pushes vegetableDeliveries FULL deliveries, not one paying twice', () => {
+    it('Vegetable delivers ONCE, or banks vegetableFallback cards when it cannot', () => {
       const s = armState(coins, ['vegetable', 'wheat']);
       s.turnPlayer = 0;
       giveCoins(s, 0, 1);
+      // An empty barn and no balloon: the seat CANNOT deliver, so the fallback
+      // is what fires. ⭐ That is S13's fix in one assertion - the morning's
+      // power pushed two deliveries into a position with no payable answer and
+      // the drain loop dropped both, which is how four of five powers came to
+      // be dead most of the time.
+      dealTo(coins, s, 0, 'V7', 'V9');
       const out = apply(coins, s, growCoin(0, 'V2'));
-      // ⭐ D-C2: `vegetableDeliveries` separate `deliver` TASKS, each paid and
-      // targeted separately. V14 is the card that chose `receipts = 2` (one
-      // payment, two receipts) and this is deliberately not that rule.
-      //
-      // ⚠️ COUNTED OFF THE AUDIT AND NOT OFF `state.tasks`, because a deliver
-      // task with no payable answer is DROPPED by the drain loop - which is
-      // V15's documented behaviour and correct here too: a seat with an empty
-      // barn simply takes neither delivery. `tasksPushed` is what the primitive
-      // did, which is the claim under test.
-      expect(out.audit.tasksPushed).toBe(coins.rules.economy.farmsteadPower.vegetableDeliveries);
+      const bank = out.state.tasks.find((t) => t.t === 'handToBarn');
+      expect(bank?.t === 'handToBarn' ? bank.remaining : null).toBe(
+        coins.rules.economy.noticeBoardPower.vegetableFallback,
+      );
+      expect(out.state.tasks.filter((t) => t.t === 'deliver')).toHaveLength(0);
     });
 
     it('fires none of them under the shipped default', () => {

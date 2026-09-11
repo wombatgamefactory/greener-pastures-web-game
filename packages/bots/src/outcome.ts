@@ -220,11 +220,46 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
      * the seat's OWN board, which exists only under `'card'` and `'meeple'`
      * (there is no such thing as your own board under the commons), so under the
      * shipped default it is null and the term never fires.
+     *
+     * ⛔ **AND THAT SELF-GUARD STOPPED BEING ENOUGH ON 10/09/2026, WHICH IS A
+     * REAL BUG FIXED HERE ON 11/09/2026.** Under `visitCurrency:
+     * 'noticeBoardPower'` the five boards come home to their owners' farms as
+     * BUILDINGS, so `s.noticeBoard` is NOT null - and S8's `3+` is a MINIMUM
+     * rather than a maximum, so the board cannot clog and there is no shut door
+     * to reopen. A Harvest reached inside a rollout (the Wheat board's power is
+     * a Harvest, and Wheat's riders fire on one) that took the seat's own
+     * Notice Board was therefore paying the full `unclogBoard` weight of **6**,
+     * the largest number in the table, for reopening a door that was never
+     * shut.
+     *
+     * ⚠️ **IT IS THE EVENT-SIDE TWIN OF THE TWO MOVE TERMS**, which were guarded
+     * on `Scratch.noticeBoardClogs` when the arm was built and are the reason
+     * that boolean exists; this path was missed because it reads the weight
+     * directly rather than through `TERMS`. So it now asks the same one
+     * question, in the same spelling, and **no control moves**: the boolean is
+     * true under the v31 `'card'` game, true under both meeple arms, and true
+     * again under `-blocking-v1`, where a stall can actually happen and the
+     * reward is real. It is false only under the notice-board family with
+     * `noticeBoardBlocks` off, which includes Dean's unclaimed-boards variant of
+     * 11/09/2026.
+     *
+     * ⭐ A CENTRAL PILE CANNOT COLLIDE WITH THIS LEG IN ANY CASE. Under that
+     * variant a suit is either one seat's or central and never both, so
+     * `event.building` for a central harvest is a board card no seat owns and
+     * `s.noticeBoard.card` is this seat's own suit's board. The guard is
+     * belt-and-braces for the centre and load-bearing for the owner's own board.
      */
     case 'harvested': {
       if (event.seat !== me) return 0;
-      const board = s.noticeBoard;
-      const unclog = board !== null && event.building === board.card ? weight(w, 'unclogBoard') : 0;
+      // ⭐ ANY BOARD OF MINE, NOT JUST MY OWN SUIT'S (Dean's two-board fix,
+      // 11/09/2026). At two seats this seat holds two, either of them can be
+      // harvested, and either would reopen a door under `-blocking-v1` - so the
+      // question is membership and never identity. `Scratch.noticeBoards` is
+      // one entry in every other game and empty under the commons, so this
+      // answers exactly what the old `=== s.noticeBoard.card` answered
+      // everywhere that test was right.
+      const unclog =
+        s.noticeBoardClogs && s.noticeBoards.has(event.building) ? weight(w, 'unclogBoard') : 0;
       return weight(w, 'harvest') * event.cards.length + unclog;
     }
 
@@ -241,6 +276,32 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
       // D14: the building leaves the tableau and becomes freight.
       return event.seat === me ? weight(w, 'harvest') : 0;
 
+    /**
+     * ⛔ **AND SINCE S17 (Dean, 11/09/2026) THE `: 0` LEG HAS A BUSY NEW
+     * PRODUCER, WHICH IS WHY IT IS WRITTEN OUT RATHER THAN LEFT TO THE FILE'S
+     * STANDING RULE.**
+     *
+     * `rules.turn.hostDrawOnVisit` pays the HOST a card the moment a neighbour
+     * visits them, and the engine labels it `via: 'hostDraw'`. So a visit's own
+     * rollout now carries a `cardsToHand` for a RIVAL seat, every time, and
+     * `redactEvents` masks the ids to `W?` while leaving the COUNT intact - the
+     * rollout can see exactly how many cards the host was handed.
+     *
+     * **It is priced at ZERO all the same, and that is a decision.** This file
+     * values what the probing seat gains and never what a rival gains, and the
+     * ONE exception to that rule in the whole package is the `hostGift` MOVE
+     * term, which is where C64 lives and which was re-measured to 2.7 on
+     * 11/09/2026 to cover exactly this card. Charging it here as well would
+     * charge one card twice, and it would break the promise `weights.ts` makes
+     * about that term: that `hostGift: 0` reproduces the blind bot exactly and
+     * is the control arm for every reading the charge moves. One exception, one
+     * term, one control.
+     *
+     * ⚠️ **A SELF-VISIT NEVER PRODUCES ONE** (the engine refuses to pay the
+     * draw when visitor and host are the same seat), so the `event.seat === me`
+     * leg cannot be reached this way and a host draw can never be mistaken for
+     * the visitor's own gain.
+     */
     case 'cardsToHand':
       // The blind price: count times the catalogue mean, never these cards.
       return event.seat === me
@@ -296,8 +357,18 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
      */
     case 'cardPlaced': {
       if (event.onto.seat !== me) return 0;
-      const board = s.noticeBoard;
-      if (board !== null && event.onto.building === board.card) return 0;
+      // ⛔ **AND "MY NOTICE BOARD" IS A SET SINCE DEAN'S TWO-BOARD FIX
+      // (11/09/2026), WHICH IS LOAD-BEARING RATHER THAN TIDYING.** At two seats
+      // this seat holds two boards and a fee can land on either; the field this
+      // line used to read held the seat's RANDOM EXTRA board (see
+      // `Scratch.noticeBoard`), so a card arriving on the seat's OWN SUIT'S
+      // board fell straight through to `sow` and collected 1.5 for advancing a
+      // building toward a threshold that is a MINIMUM. Worse, it would have
+      // been paid TWICE for one card: once here, and again as `harvest` when
+      // the owner cashed the board - which is exactly the "a popular board is
+      // income" loop the variant is built on, and it is priced at the HARVEST
+      // and nowhere else.
+      if (s.noticeBoards.has(event.onto.building)) return 0;
       return weight(w, 'sow');
     }
 
@@ -771,6 +842,40 @@ export interface Outcomes {
  * exactly one on the case that matters - and short by one at room 0 is the
  * difference between "worth a card" and "worth nothing". A null limit means no
  * limit, so nothing is capped there either.
+ *
+ * ⛔ **IT CAN NEVER PRICE A RIVAL'S DRAW AS THIS SEAT'S, AND UNDER S17 THAT
+ * STOPPED BEING A HYPOTHETICAL** (Dean, 11/09/2026,
+ * `rules.turn.hostDrawOnVisit`). The rule pushes an ordinary draw TASK for the
+ * HOST in the middle of the visitor's turn, so the task this function would
+ * read belongs to another seat - and `probe.pending` is set only when the head
+ * task is the probing seat's own, so it comes back NULL and this returns null
+ * with it. The guard is a line in @gp/engine's `probeAt` rather than a line
+ * here, which is the sort of arrangement that stops being true quietly: if
+ * `pending` is ever widened to rival tasks, THIS is the function that would
+ * start paying a visitor `keepValue` for the card it just gave away, and the
+ * sign would be the wrong way round on the busiest move in the arm.
+ *
+ * ⚠️ **THE SAME ENGINE LINE COSTS THIS FILE THE WHOLE OF A VISIT'S PAYOFF, AND
+ * IT IS A DEFECT REPORTED RATHER THAN FIXED** (11/09/2026, engine-side, outside
+ * this package's reach). The host's draw task is pushed BEFORE the visitor's
+ * power resolves, so it sits at the head of the queue, `probe.next` comes back
+ * empty and `rollout` stops before the power's own task is ever walked.
+ * Measured at two seats: **99.6% of visit probes stop dead under the arm
+ * against 0.0% under its paired control**, so `outcome` prices nearly every
+ * visit at whatever the move emitted synchronously and `bonusAction` - which
+ * pays only on a strictly positive rollout - barely fires at all:
+ *
+ *     mean `outcome` on a visit       `outcome` == 0     `bonusAction` paid
+ *     2p  2.358 -> 0.003              18.9% -> 99.9%     80.6% ->  0.1%
+ *     3p  3.367 -> 0.115               2.4% -> 89.4%     96.4% -> 10.6%
+ *     4p  2.806 -> 0.240              13.3% -> 81.3%     86.4% -> 18.7%
+ *
+ * ⛔ **A VISIT UNDER THE ARM COSTS `handSpend` 2.5 PLUS `hostGift` 2.7 AND
+ * EARNS, IN THE BOT'S BOOKS, ABOUT NOTHING.** Nothing in @gp/bots can step past
+ * another seat's task, so no weight and no term here can correct it: the fix is
+ * the queue position or the probe. Until it lands, **every bonus rate, door mix
+ * and hook number off the host-draw arm is a reading about this defect and not
+ * about S17.**
  */
 function pendingDrawValue(probe: ReturnType<Prober>, s: Scratch, w: WeightTable): number | null {
   const task = probe.pending;
@@ -895,8 +1000,43 @@ function effectKey(move: Move, act: Act): string {
     // decision and there is nothing for the collapse to fold away.
     case 'activate':
       return `activate:${act.building}`;
+    /**
+     * ⭐ **THE VISIT, AND SINCE DEAN'S TWO-BOARD FIX (11/09/2026) THE HOST
+     * IS NOT THE WHOLE OF IT.**
+     *
+     * `visit:${act.host}` was exactly right for every game this project has
+     * shipped: a host held ONE Notice Board, so naming the host named the
+     * building the fee landed on and the power that came back, and every fee
+     * for that host legitimately shared one rollout (which is the collapse the
+     * header describes, with `visitFeeJunk` pricing the fee in the open).
+     *
+     * ⛔ **AT TWO SEATS A HOST NOW HOLDS TWO BOARDS PRINTING TWO DIFFERENT
+     * POWERS, AND THE OLD KEY COLLAPSED THEM INTO ONE.** Measured before the
+     * fix, on the seed `notice-board-two-boards.test.ts` still uses: the two
+     * candidate moves scored **1.3099 apiece, equal to every decimal place
+     * `explain` prints**, because the first-enumerated board's rollout was
+     * memoised and handed straight back for the second - and `bestOf` then
+     * broke the tie on the policy's own rng. The bot was choosing between a
+     * Draw and a waived Build by coin flip.
+     *
+     * ⚠️ **AND THE DIRECTION OF THAT ERROR IS THE ONE THAT MATTERS TO
+     * THE MEASUREMENT.** The whole point of the second board is that it gives a
+     * two-seat player a CHOICE of powers - the fix for the 17.9% of two-seat
+     * turns that begin with cards in hand and nothing legal to do - so a bot
+     * blind to the choice takes the worse power about half the time and
+     * **understates the variant's benefit**. An instrument that cannot see a
+     * fix cannot demonstrate one.
+     *
+     * ⭐ **THE KEY IS FINER, NEVER DIFFERENT.** `act.board` is present only
+     * when the host holds more than one board (the engine omits it otherwise),
+     * so at three and four seats, under every control, and for every fixture in
+     * `packages/sim/fixtures/`, this returns the identical string it returned
+     * yesterday. The FEE stays out of the key at both arities, so the collapse
+     * the header argues for is untouched: what is added is the one thing that
+     * genuinely changes the outcome, and nothing else.
+     */
     case 'visit':
-      return `visit:${act.host}`;
+      return act.board === undefined ? `visit:${act.host}` : `visit:${act.host}:${act.board}`;
     // The colour IS the action, and nothing else about the move varies.
     case 'spendMeeple':
       return `meeple:${act.colour}`;

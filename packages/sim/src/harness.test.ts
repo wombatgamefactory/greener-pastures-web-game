@@ -316,8 +316,17 @@ describe('the watch-list suite', () => {
     // rule: it measures a currency that exists under one knob and nothing else, so
     // it is a new id rather than a re-point of anything. It reports NO SUBJECT in
     // every mode this project has ever shipped.
+    // ⭐ AND 20 JOINED ON 10/09/2026 with the notice-board visit, on the same
+    // rule again: `a04-door-clog` asks whether a board is FULL, and S8's `3+`
+    // board is never full, so a04 reads a genuine and permanent 0% under that
+    // mode and the question it used to answer needed a new id rather than a
+    // re-point of 4. It reports NO SUBJECT under every other currency.
+    // ⭐ AND 21 JOINED ON 11/09/2026 WITH S17, THE HOST DRAW, on the same rule
+    // once more: the rule is a FAUCET, nothing in the suite counted one, and it
+    // is the first assertion in this project whose subject came off a TABLE
+    // rather than off a run. It reports NO SUBJECT under every other currency.
     const live = rows.map((r) => r.assertion.id);
-    expect(live).toEqual([2, 4, 5, 6, 7, 8, 9, 11, 12, 13, 15, 16, 17, 18, 19]);
+    expect(live).toEqual([2, 4, 5, 6, 7, 8, 9, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21]);
     expect(new Set(live).size, 'a duplicate id').toBe(live.length);
 
     const buried = RETIRED.map((t) => t.id);
@@ -385,8 +394,15 @@ describe('the watch-list suite', () => {
     // clears a pile has no economy at all and a socialite that clears every fat one
     // has two sinks to spend on: the mint, both sinks and the dead-coin line are all
     // shares of what one archetype chose to do with a slot.
+    //
+    // ⭐ AND 20 JOINS THEM (10/09/2026). Every card on a Notice Board was put
+    // there by somebody choosing to visit, and every board cleared was somebody
+    // choosing to spend a Harvest on their own payment rather than on their own
+    // farm: a hermit's boards never fill and a socialite's fill fast, so a
+    // stall rate without the mirror spread beside it is a number one archetype
+    // could be producing alone.
     expect(rows.filter((r) => r.assertion.taste).map((r) => r.assertion.id)).toEqual([
-      2, 8, 11, 15, 16, 17, 18, 19,
+      2, 8, 11, 15, 16, 17, 18, 19, 20,
     ]);
   });
 

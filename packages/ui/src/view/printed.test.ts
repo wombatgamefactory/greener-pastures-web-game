@@ -18,6 +18,7 @@
 import { describe, expect, it } from 'vitest';
 import { BASE_GAME_DATA as data } from '@gp/data';
 
+import { data as control } from '../session/table';
 import { printedFace } from './printed';
 
 describe('printedFace, against the sheet', () => {
@@ -68,10 +69,24 @@ describe('printedFace, against the sheet', () => {
     const face = printedFace(data, 'W3');
     expect(face.activation).toBe('wild');
     expect(face.convert).toBe('convert');
-    // The 5-versus-2 drift the threshold seam was built for is closed: the v31
-    // sheet prints 2 and `rules.economy.noticeBoardThreshold` is 2.
+    // The v31 sheet prints 2, and the second assertion is that the game this
+    // package actually RENDERS agrees with the print.
+    //
+    // ⚠️ IT READS THE PIN AND NOT THE BASE VALUE SINCE 10/09/2026, which is
+    // a real change of claim. The base `rules.economy.noticeBoardThreshold`
+    // moved from 2 to 3 with the notice-board visit (S8's `3+`), so the two
+    // stopped agreeing; the UI is pinned to the v31 control and pins that leaf
+    // back to 2 by name, which is the number on screen and therefore the
+    // number this print-versus-render file is about. Comparing against
+    // BASE_GAME_DATA would now assert that the shipped ARM matches a v31 card
+    // face, which is a claim nobody wants to be true.
     expect(face.threshold).toBe(2);
-    expect(face.threshold).toBe(data.rules.economy.noticeBoardThreshold);
+    expect(control.rules.economy.noticeBoardThreshold).toBe(2);
+    expect(face.threshold).toBe(control.rules.economy.noticeBoardThreshold);
+    // And the divergence itself, stated so it cannot be discovered by
+    // accident: the base override is 3 and the printed face is 2 until
+    // `Isle-of-Farms-v36.xlsm` catches up.
+    expect(data.rules.economy.noticeBoardThreshold).toBe(3);
   });
 
   it('W10 The Furrow: two wheat and a cornucopia, in that order', () => {

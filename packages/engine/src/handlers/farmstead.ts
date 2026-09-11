@@ -36,173 +36,110 @@
  * replacement for the tableau's printed points.
  */
 
-import type { GameData, Suit } from '@gp/data';
-import { farmsteadCoinPower } from '@gp/data';
+/**
+ * ⚠️ THE FILE KEEPS ITS NAME AND THE FIVE POWERS HAVE LEFT IT (10/09/2026).
+ *
+ * It was proposed that this file be renamed `notice-board-power.ts`, because
+ * `rules.economy.farmsteadPower` was renamed `rules.economy.noticeBoardPower`
+ * and the powers moved from the Farmstead's face to the Notice Board's (S12).
+ * What is left here after that move is the FARMSTEAD CARD's handler and
+ * nothing else, so `farmstead.ts` is the accurate name and a file called
+ * `notice-board-power.ts` that did not contain the notice board's power would
+ * be the misleading one.
+ *
+ * ⭐ THE POWERS ARE IN `workers.ts`, as `fireNoticeBoardPower`, beside
+ * `performDoorAction`. That file is already "perform a suit's action, bought
+ * by something", which is exactly what a Notice Board power is; it is also the
+ * only home that keeps the module graph acyclic, since `actions.ts` calls the
+ * dispatch from `doVisit` and may not import a handler.
+ *
+ * ⭐ AND THE FARMSTEAD IS INERT UNDER THE NOTICE-BOARD VISIT (S1, S4). Its
+ * one job there is to hold six island receipt tokens in six printed slots, so
+ * that every player's distance from ending the game is readable across the
+ * table - a FACE with no rules text, no threshold, no activation and no
+ * scorer. `barnCropScorer` at the foot of this file is the line that moves off
+ * it, onto the Barn.
+ */
 
+import type { GameData, Suit } from '@gp/data';
+import { farmsteadCoinPower, isNoticeBoardPower } from '@gp/data';
+
+import { doorActionLegal } from '../actions.js';
 import type { CardInPlay, Fx } from '../fx.js';
-import { cropBuildings, player } from '../query.js';
+import { cropBuildings } from '../query.js';
 import type { GameState, Seat } from '../state.js';
+import { fireNoticeBoardPower } from '../workers.js';
 import type { CardHandler } from './types.js';
 
 /**
- * ⭐ THE FIVE COIN-ACTIVATED SUIT POWERS (K11/K12, RULED BY DEAN 10/09/2026,
- * `docs/commons-coins-handoff-2026-09-10-v2.md` §2.3, and printed in column P of
- * `Isle-of-Farms-v35.xlsm`). Live ONLY under
- * `rules.economy.farmsteadCoinPower`, so the shipped Farmstead - one end-game
- * scorer and no seam anywhere - is untouched by every line below.
+ * ⭐ WHICH GAMES FIRE A NOTICE BOARD POWER AT ALL, in one predicate, because
+ * two very different routes reach the same five branches and confusing them is
+ * how a knob rename becomes a rules change.
  *
- *   Orchard    "Draw 3."
- *   Dairy      "Build at a discount of 1, ignoring crop requirements."
- *   Apiary     "GROW 2 of your buildings, paying their activation costs as normal."
- *   Wheat      "Harvest every one of your buildings, however many cards are on them."
- *   Vegetable  "Deliver twice."
+ *  - `rules.economy.farmsteadCoinPower` is the SUPERSEDED coins arm of the
+ *    morning of 10/09/2026 (K10-K12): the FARMSTEAD carries the power, its
+ *    activation cost is one coin, it is your MAIN action and nothing is placed
+ *    on it. The gate stays because a branch whose only producer is a knob at
+ *    its shipped value is a control, not dead code - and because the coins
+ *    measurement is what this design is read against.
+ *  - `rules.turn.visitCurrency: 'noticeBoardPower'` is the arm of that evening
+ *    (S1-S16): the NOTICE BOARD carries the power, a visitor buys it with one
+ *    card from hand, and the power fires for the VISITOR while the card lands
+ *    on the HOST. That route never reaches this file - `doVisit` calls
+ *    `fireNoticeBoardPower` directly.
  *
- * ⭐ EACH IS WORTH ABOUT TWO PLAIN ACTIONS, because it costs the main action AND
- * a coin (K12). That is the calibration to argue with if the fires-by-suit
- * reading (a19) comes back lopsided - the four numbers are knobs
- * (`rules.economy.farmsteadPower.*`) and NONE of them is hard-coded here.
- *
- * ⚠️ THREE OF THE FIVE COLLIDE WITH CARDS ALREADY ON THE SHEET (§2.6 of the
- * handoff), which is a card-face question and not an engine one, but it is why
- * each power below says which card it is the same rule as: the Wheat power is
- * W13 The Bakery word for word, the Vegetable power is V15 The International
- * Port, and the Dairy power strictly dominates D4 The Milking Shed.
+ * ⚠️ THE TWO ARMS NOW SHARE ONE SET OF NUMBERS AND THREE OF THE FIVE
+ * CHANGED MEANING UNDER THEM (S13, C88, C89). The coins arm's powers were
+ * Draw 3 / build at a discount of 1 / GROW 2 / harvest every loaded building /
+ * deliver twice; they are now Draw 4 / build with the crops waived / SOW 2 /
+ * harvest one and bank a card / deliver-or-bank-two. That is deliberate and it
+ * is named rather than silent: `rules.economy.farmsteadPower` was RENAMED
+ * rather than copied, on the handoff's own reasoning that a knob whose name no
+ * longer describes it is worse than a new one, and the coins arm's numbers
+ * therefore have to be re-argued rather than inherited if it is ever re-run.
  */
-
-/**
- * ⛔ THE APIARY POWER IS NOT A12 THE HONEY HUT, AND THAT DISTINCTION IS THE
- * WHOLE OF THE DIFFERENCE BETWEEN THE TWO CARDS.
- *
- * A12 and A5 The Meadow Hive GROW **without placing a card** - they push an
- * `activate` task, which fires a building's ability with no payment, no crop
- * matched and no stack advanced, and can therefore fire a building that is
- * already full. That is the Apiary suit's signature and its clog bypass.
- *
- * The Farmstead pays its activations AS NORMAL: `apiaryGrows` full `grow`
- * tasks, each answered out of `growOptions` and resolved through `doGrow`, so
- * each one costs a matching card out of the hand, puts that card on the stack,
- * and cannot target a full building at all. If this ever became an `activate`
- * task the Farmstead would silently be a better Honey Hut for one coin, which
- * is the failure §2.6 of the handoff names by name and the printed text is
- * worded to prevent.
- */
-function growTasks(fx: Fx, self: CardInPlay, n: number): void {
-  for (let i = 0; i < n; i++) fx.pushTask({ t: 'grow', pid: self.seat, src: self.card });
+function powersLive(data: GameData): boolean {
+  return farmsteadCoinPower(data) || isNoticeBoardPower(data);
 }
 
 /**
- * ⭐ THE VEGETABLE POWER IS TWO FULL DELIVERIES (builder default D-C2, ruled by
- * Dean 10/09/2026): `vegetableDeliveries` separate `deliver` tasks, each PAID
- * for separately, TARGETED separately, taking ONE receipt each, and each free
- * to be an island claim or a balloon move independently of the other (DL-12).
- * The power is meant to be worth about two plain actions and this is what two
- * plain actions are.
+ * ⭐ THE CROP SCORER, AS THE BARN PRINTS IT (S1, Dean 10/09/2026): *"Game
+ * end: 1 VP for each `<CROP>` card you have built."*
  *
- * ⚠️ V14 The Vegetable Exchange CHOSE THE OTHER SHAPE AND THEY ARE DIFFERENT
- * RULES: it delivers ONCE and takes `receipts = 2` off one tile, which is one
- * payment for two receipts. V15 The International Port, which this power's
- * printed text duplicates, already pushes two deliver tasks exactly as this
- * does - so the collision to raise on the sheet is with V15, and the card NOT
- * to copy is V14.
+ * The line has moved twice in one day. v31 put it on the Farmstead; the coins
+ * arm (K13) took it off, because a card cannot be three things and the
+ * Farmstead had become a suit power, and it had nowhere to land - the five
+ * Barns have had no handler at all since v31 blanked them, so that arm's
+ * game-end total is the shipped total MINUS this term and `commons.test.ts`
+ * asserts the difference by name. The notice-board rejig gives it a home: the
+ * Barn's one job is to hold your harvested cards and print this, and the
+ * Farmstead's one job is to hold six receipt tokens.
  *
- * Two tasks rather than one task with a budget of 2, for V15's own reason: the
- * deliver task has no budget field and does not need one, because the queue is
- * the counter. The second task also enumerates AFTER the first resolves, so a
- * barn emptied by delivery one correctly offers nothing for delivery two.
+ * ⚠️ SO THE ARM'S SCORES ARE COMPARABLE WITH THE SHIPPED GAME'S AND THE
+ * COINS ARM'S ARE NOT, and that is the reason to wire it here rather than
+ * leave the scorer on an inert Farmstead: the measurement pass reads winning
+ * scores and their sources against the shipped commons, and a silently missing
+ * VP term would be a passenger in every one of those readings.
+ *
+ * Both readings are unchanged and both fall out of `query.cropOf`: DECK CARDS
+ * ONLY, so your three starters do not count; and EVERY deck card of the crop,
+ * not just the buildings, so a Power card and an Endgame card of your own suit
+ * each pay 1.
  */
-function deliverTasks(fx: Fx, self: CardInPlay, n: number): void {
-  for (let i = 0; i < n; i++) fx.pushTask({ t: 'deliver', pid: self.seat, src: self.card });
+export function barnCropScorer(crop: Suit) {
+  return (data: GameData, state: GameState, seat: Seat): number =>
+    isNoticeBoardPower(data) ? cropBuildings(data, state, seat, crop).length : 0;
 }
 
 /**
- * ⭐ THE WHEAT POWER IS W13 THE BAKERY, WORD FOR WORD: *"Harvest every one of
- * your buildings, however many cards are on them."*
+ * One suit's Farmstead. A factory rather than five hand-written handlers
+ * because the five cards are the same card: any divergence between them would
+ * be a mistake, and there is no way to write one here.
  *
- * This is W13's implementation - `harvestCascade` over `loadedBuildings`, both
- * in `handlers/wheat.ts` - restated rather than imported, and the reason is
- * structural: all five suit files import `farmsteadHandler` from THIS file, so
- * an import back into `wheat.ts` would close a module cycle whose wrong half
- * initialises first (`wheat.ts` calls `farmsteadHandler('wheat')` at module
- * scope). The rule is identical and must stay identical: snapshot the seat's
- * buildings holding one or more cards, harvest each of them once, no fullness
- * gate, and the Farmstead itself is never in the set because nothing is ever
- * placed on it (K10).
- *
- * ⚠️ W13 NEEDS A NEW TEXT OR A CUT (§2.6 of the handoff) and that is a Table B
- * row for the sheet, not an engine change: the collision is the sharper of the
- * three because Wheat's Tier 3 slot is thin already.
- */
-function harvestEveryLoadedBuilding(fx: Fx, self: CardInPlay): void {
-  const loaded = player(fx.state, self.seat)
-    .tableau.filter((b) => b.stack.length >= 1)
-    .map((b) => b.card);
-  for (const card of loaded) fx.harvest(self.seat, card);
-}
-
-/**
- * The one power that is dispatched by CROP rather than written five times. The
- * `crop satisfies never` tail is the file's own exhaustiveness guard: a sixth
- * suit would fail to compile here rather than silently do nothing.
- */
-function firePower(fx: Fx, self: CardInPlay, crop: Suit): void {
-  const numbers = fx.data.rules.economy.farmsteadPower;
-  switch (crop) {
-    case 'orchard':
-      // "Draw 3." Through the ordinary plain-draw path - a see-N/keep-N draw
-      // task, one card from any deck in play per card seen, which is what every
-      // card-granted draw in the game pushes. ⚠️ NOT the Orchard board's Draw 2:
-      // that is a free bonus door and this is a paid main action, which is why
-      // the retired Draw-3 door ruling (§5 of CLAUDE.md, dead twice over) has
-      // nothing to say about it.
-      fx.pushTask({
-        t: 'draw',
-        pid: self.seat,
-        src: self.card,
-        see: numbers.orchardDraw,
-        keep: numbers.orchardDraw,
-        revealed: [],
-      });
-      return;
-    case 'dairy':
-      // "Build at a discount of 1, ignoring crop requirements." ⭐ THIS IS D4
-      // THE MILKING SHED'S IMPLEMENTATION, call shape and all (`buildWith` in
-      // handlers/dairy.ts, which is one `build` task carrying `{ discount }`).
-      // The crop waiver is NOT a second mod: `priceOf` in actions.ts ALREADY
-      // sets the own-suit minimum to 0 whenever the discount is above 0, which
-      // is the printed rule for every discount in the game, so the Farmstead's
-      // second clause is describing what D4 already does rather than adding to
-      // it. ⚠️ Which is also why this power strictly dominates D4 (§2.6): a
-      // Table B row, not an engine problem.
-      fx.pushTask({
-        t: 'build',
-        pid: self.seat,
-        src: self.card,
-        mods: { discount: numbers.dairyDiscount },
-      });
-      return;
-    case 'apiary':
-      growTasks(fx, self, numbers.apiaryGrows);
-      return;
-    case 'wheat':
-      harvestEveryLoadedBuilding(fx, self);
-      return;
-    case 'vegetable':
-      deliverTasks(fx, self, numbers.vegetableDeliveries);
-      return;
-    default:
-      return crop satisfies never;
-  }
-}
-
-/**
- * One suit's Farmstead. A factory rather than five hand-written handlers because
- * the five cards are the same card: any divergence between them would be a
- * mistake, and there is no way to write one here.
- *
- * ⚠️ IT KEYS OFF THE CROP PASSED IN, NOT OFF THE SEAT'S SUIT, even though the
- * two can never differ today - a Farmstead is a starter, so it is only ever in
- * front of the seat that plays its suit. The crop is what the card PRINTS, and
- * printing is the thing a handler implements.
+ * ⚠️ IT KEYS OFF THE CROP PASSED IN, NOT OFF THE SEAT'S SUIT, even though
+ * the two can never differ today - a Farmstead is a starter, so it is only
+ * ever in front of the seat that plays its suit. The crop is what the card
+ * PRINTS, and printing is the thing a handler implements.
  */
 export function farmsteadHandler(crop: Suit): CardHandler {
   return {
@@ -224,44 +161,49 @@ export function farmsteadHandler(crop: Suit): CardHandler {
         'endgame is true and every other flag false: no prompt, no hook, no move, and ' +
         'nothing cross-table, which is exactly what a starter with one printed line should ' +
         'look like. ' +
-        '⚠️ THE FLAGS DESCRIBE THE SHIPPED CARD AND NOT THE COMMONS-WITH-COINS ARM ' +
-        '(rules.economy.farmsteadCoinPower, 10/09/2026), under which this card is a ' +
-        'coin-activated suit power that PROMPTS through four of its five faces and scores ' +
-        'NOTHING at game end. They are left as they are deliberately: the difficulty score ' +
-        'is a teach-cost proxy for the game as shipped, and the arm is not shipped. If it ' +
-        'is ever ruled in, this whole block is rewritten at 3-4 and prompts goes true.',
+        '⚠️ THE FLAGS DESCRIBE THE SHIPPED CARD AND NEITHER ARM. Under ' +
+        'rules.economy.farmsteadCoinPower (the superseded coins arm, 10/09/2026) this card ' +
+        'is a coin-activated suit power that PROMPTS through four of its five faces and ' +
+        'scores NOTHING at game end; under rules.turn.visitCurrency noticeBoardPower (the ' +
+        'notice-board visit of the same evening, S1/S4) it is a token tray with no rules ' +
+        'text at all, which is difficulty 0 and not 1. They are left as they are ' +
+        'deliberately: the difficulty score is a teach-cost proxy for the game as shipped, ' +
+        'and neither arm is shipped.',
     },
     /**
-     * ⭐ THE COIN-ACTIVATED SUIT POWER (K10-K12), and it exists on the shipped
-     * card only as this guard: with `farmsteadCoinPower` off the Farmstead has
-     * no activation type at all (`cards.json` prints null), so `growOptions`
-     * skips it, `activateOnly` refuses it and nothing in the game can reach
-     * this callback. The guard is belt and braces against a future route
-     * reaching a starter it should not.
+     * ⭐ THE COIN-ACTIVATED SUIT POWER (K10-K12), and it exists on the
+     * shipped card only as this guard: with `farmsteadCoinPower` off the
+     * Farmstead has no activation type at all (`cards.json` prints null), so
+     * `growOptions` skips it, `activateOnly` refuses it and nothing in the
+     * game can reach this callback.
+     *
+     * ⛔ AND IT STAYS THE COINS ARM'S ROUTE ONLY. Under the notice-board
+     * visit the powers belong to the NOTICE BOARD and are bought by a visitor
+     * with a card, so `doVisit` fires them directly; the Farmstead is inert
+     * there (S1/S4) and this callback must not become a second way in.
      */
     activate(fx: Fx, self: CardInPlay): void {
       if (!farmsteadCoinPower(fx.data)) return;
-      firePower(fx, self, crop);
+      fireNoticeBoardPower(fx, self.seat, crop, {
+        src: self.card,
+        deliverLegal: doorActionLegal(fx.data, fx.state, self.seat, 'deliver'),
+      });
     },
 
     /**
-     * ⛔ AND THE SCORER IS OFF UNDER THE ARM (K13, ruled 10/09/2026): *"Game
-     * end: 1 VP for each `<CROP>` card you have built"* MOVES TO THE BARN. It
-     * is not deleted - the own-crop pull leaves with the Endgame cards' price
-     * (K15) and with nothing else - but a card cannot be three things, so the
-     * line comes off the Farmstead the moment the Farmstead is a suit power.
+     * ⛔ AND THE SCORER IS OFF UNDER BOTH ARMS: *"Game end: 1 VP for each
+     * `<CROP>` card you have built"* MOVES TO THE BARN.
      *
-     * ⚠️ AND UNDER THIS ARM IT SIMPLY DOES NOT FIRE, WHICH IS A REAL SCORING
-     * DIFFERENCE AND NOT A NO-OP. The Barn has no handler at all - v31 blanked
-     * all five on 02/09/2026 - so there is nothing for the scorer to move ONTO
-     * in the engine, and the arm's game-end total is the shipped total MINUS
-     * exactly this term. `commons.test.ts` asserts that difference by name, so
-     * it is visible in a test rather than silent in a report. Giving the Barn a
-     * handler is a card-face change (a Table B row on the v35 sheet), and doing
-     * it here would put the scorer back before the arm has been measured.
+     * Under `farmsteadCoinPower` (K13, ruled 10/09/2026) it moved because a
+     * card cannot be three things and the Farmstead had become a suit power,
+     * and it had nowhere to land - so that arm's game-end total is the shipped
+     * total minus exactly this term, which `commons.test.ts` asserts by name.
+     * Under the notice-board visit (S1) it moves for the same reason and DOES
+     * land: `barnCropScorer` above is wired onto all five Barns, so the term
+     * survives and the arm's scores stay comparable with the shipped game's.
      */
     gameEnd(data: GameData, state: GameState, seat: Seat): number {
-      if (farmsteadCoinPower(data)) return 0;
+      if (powersLive(data)) return 0;
       return cropBuildings(data, state, seat, crop).length;
     },
   };

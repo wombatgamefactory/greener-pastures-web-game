@@ -18,6 +18,7 @@ import type { GameData } from '@gp/data';
 
 import {
   buildOptions,
+  centralHarvestTargets,
   commonsSpendBuildOptions,
   commonsSpendDeliverOptions,
   deliverAnswers,
@@ -33,7 +34,7 @@ import {
 import type { BuildMods } from './actions.js';
 import type { Fx } from './fx.js';
 import { fireHook } from './fx.js';
-import { canTakeCard, drawableSuits, fullBuildings, player } from './query.js';
+import { canSowOnto, drawableSuits, fullBuildings, player } from './query.js';
 import { activateOnly, doGrow } from './runtime.js';
 import type { BuildingRef, CardId, GameState, Seat, Task, TaskAnswer } from './state.js';
 import { handlerFor } from './handlers/registry.js';
@@ -151,7 +152,12 @@ function sowTargets(
   return refs.filter((ref) => {
     const p = state.players[ref.seat];
     const b = p?.tableau.find((x) => x.card === ref.card);
-    return b !== undefined && canTakeCard(data, b);
+    // ⚠️ `canSowOnto` AND NOT `canTakeCard` SINCE 10/09/2026 (S11). Under
+    // the notice-board visit a Notice Board is a building for HARVEST and for
+    // nothing else, so no sow may choose one; in every other game the two
+    // predicates are the same boolean and a neighbour's clogged board still
+    // simply is not offered.
+    return b !== undefined && canSowOnto(data, b);
   });
 }
 
@@ -214,8 +220,26 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
           : task.filter === 'full'
             ? fullBuildings(data, state, task.pid).map((b) => b.card)
             : task.filter === 'loaded'
-              ? p.tableau.filter((b) => b.stack.length >= 1).map((b) => b.card)
-              : p.tableau.filter((b) => canTakeCard(data, b)).map((b) => b.card);
+              ? [
+                  ...p.tableau.filter((b) => b.stack.length >= 1).map((b) => b.card),
+                  // ⭐ AND THE CENTRE, ON THE `central` FLAG ALONE (11/09/2026,
+                  // Dean's unclaimed-boards variant). Its only producer is the
+                  // WHEAT Notice Board's power, because Dean reaffirmed D1 that
+                  // day - a Harvest is a Harvest, "to prevent any rules
+                  // exceptions" - so a Harvest bought through the Wheat board
+                  // reaches a central pile exactly as the main action does and
+                  // under exactly the same `commonsHarvestMin`.
+                  // ⛔ THE CARD FACES THAT ALSO USE `'loaded'` (W11, W13, O7)
+                  // DO NOT SET THE FLAG and therefore do not reach the centre:
+                  // their printed texts say "your buildings", and widening the
+                  // filter itself would have changed three cards nobody ruled
+                  // on. `centralHarvestTargets` is the same helper
+                  // `harvestOptions` uses, so the two routes cannot drift.
+                  ...(task.central === true ? centralHarvestTargets(data, state) : []),
+                ]
+              : // 'notFull' is a PLACEMENT filter, so S11's exclusion applies to it
+                // exactly as it does to a sow (10/09/2026).
+                p.tableau.filter((b) => canSowOnto(data, b)).map((b) => b.card);
       if (task.exclude !== undefined) ids = ids.filter((card) => card !== task.exclude);
       if (task.targets) ids = ids.filter((card) => task.targets?.includes(card));
       // A harvest used to also drop targets whose printed GBP 1 surcharge (W8)
@@ -304,7 +328,11 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
     case 'commonsSpendSow': {
       const head = task.cards[0];
       if (head === undefined) return [];
-      const targets = player(state, task.pid).tableau.filter((b) => canTakeCard(data, b));
+      // Commons-only, where a Notice Board is not in anybody's tableau at all,
+      // so `canSowOnto` and `canTakeCard` cannot differ here. Asked through the
+      // sow predicate anyway, because this IS a sow and the next mode should
+      // inherit S11 rather than have to remember it.
+      const targets = player(state, task.pid).tableau.filter((b) => canSowOnto(data, b));
       return targets.map((b) => ({ kind: 'sow', card: head, onto: b.card }) as TaskAnswer);
     }
 
@@ -370,7 +398,12 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
       }
       if (answer.kind !== 'keep') throw new Error('draw expects a deck or keep answer');
       const rest = task.revealed.filter((c) => !answer.cards.includes(c));
-      fx.cardsToHand(task.pid, answer.cards);
+      // ⭐ `task.via` IS S17's LABEL AND THE ONLY THING THIS LINE DOES WITH IT
+      // IS HAND IT ON (Dean, 11/09/2026). A host draw is a plain see-N/keep-N
+      // draw in every other respect - same deck choice, same keep, same
+      // discard seam, same `afterDrawKeep` - and `undefined` on every other
+      // draw leaves the event exactly as it was.
+      fx.cardsToHand(task.pid, answer.cards, task.via);
       // The card a see/keep draw throws away goes through the divert seam. Since
       // v31 the base Draw keeps both cards (see 2, keep 2) and so does every
       // door, so `rest` is empty for the printed actions and only a `see > keep`
@@ -489,7 +522,7 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
       fx.placeHeldCard(task.pid, { seat: task.pid, card: answer.onto }, answer.card);
       task.cards = task.cards.filter((c) => c !== answer.card);
       task.used += 1;
-      const stillOpen = player(fx.state, task.pid).tableau.some((b) => canTakeCard(fx.data, b));
+      const stillOpen = player(fx.state, task.pid).tableau.some((b) => canSowOnto(fx.data, b));
       if (!stillOpen && task.cards.length > 0) {
         fx.discard([...task.cards]);
         task.discarded += task.cards.length;

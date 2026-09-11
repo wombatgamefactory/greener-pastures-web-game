@@ -36,6 +36,17 @@
  * grant a slot with nothing legal to spend it on; capping at 1 says that in the
  * code instead of relying on `bonusOpen` to refuse it one layer down. If a third
  * bonus option is ever printed, this cap is the line to revisit.
+ *
+ * ⭐ AND UNDER THE TWO NEWEST DESIGNS THE SLOT HOLDS ONE OPTION, SO THE CARD
+ * GRANTS A SECOND USE OF IT RATHER THAN THE OTHER HALF. `bonusOpen` exempts
+ * `'commons'` (C9, 09/09/2026) and `'visit'` under `visitCurrency:
+ * 'noticeBoardPower'` (S9, 10/09/2026) from its "one of each" refusal, because
+ * otherwise this card would grant a seat nothing at all. ⛔ UNDER S9 THE TWO
+ * PLAYS MUST GO TO DIFFERENT BOARDS - a board may be used once per turn, and
+ * `enumerateNoticeBoardVisits` is where that is enforced - which is also why
+ * A17 The Smoke Pot and O16 The Fruit Store gained per-turn guards that day:
+ * this card is the only thing in the game that can make a placement reactor
+ * fire twice in one turn.
  */
 
 import { wireExtraBonusSlots } from '../actions.js';

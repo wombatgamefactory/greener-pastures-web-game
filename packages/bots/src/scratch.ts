@@ -46,7 +46,14 @@
 
 import type { Card, GameData, Suit, WorkerAction } from '@gp/data';
 import type { BuildingView, CardId, PlayerView } from '@gp/engine';
-import { deliveriesPerTile, doorForSuit, isMeepleAsCard, isMeepleCurrency } from '@gp/data';
+import {
+  deliveriesPerTile,
+  doorForSuit,
+  isMeepleAsCard,
+  isMeepleCurrency,
+  isNoticeBoardPower,
+  noticeBoardBlocks,
+} from '@gp/data';
 
 import { magpieTarget } from './magpie.js';
 
@@ -100,16 +107,31 @@ export function cardById(data: GameData, id: CardId): Card {
  * over-value an orange meeple in exactly the positions where the Apiary door is
  * dead, and `meepleWorth` is the hoarding dial's own input.
  *
- * ⚠️ It does NOT copy the engine's `economy.noticeBoardThreshold` override, and
- * never has. Under the `'card'` game the override and the print both read 2 and
- * the drift is closed, so the two agree; if that knob is ever moved off the
- * printed value again, this is the line that will silently disagree with the
- * engine and it should be fixed here rather than worked around at a call site.
+ * ⭐ **IT NOW COPIES THE ENGINE'S `economy.noticeBoardThreshold` OVERRIDE, AND
+ * THAT IS A FIX RATHER THAN AN ADDITION (11/09/2026).** The note that stood
+ * here until today said the override was deliberately not copied, because under
+ * the `'card'` game the knob and the print both read 2 so the two agreed - and
+ * it named the day this would bite: *"if that knob is ever moved off the printed
+ * value again, this is the line that will silently disagree with the engine and
+ * it should be fixed here rather than worked around at a call site."* The
+ * notice-board visit is that day. S8 sets the override to **3** while the v33
+ * sheet still prints 2, so without this the bots would have believed a board
+ * fills one card early - and `clogOwnBoard`, the largest cost in the table at 6,
+ * reads exactly that boolean under the `-blocking-v1` control.
+ *
+ * ⛔ **AND IT MOVES NO CONTROL.** `overlays/v31-card-visit.overlay.json` pins
+ * the override to 2, which is the printed value, so the v31 game reads the same
+ * number by both routes; the meeple arm returns null one line above; and under
+ * the commons no Notice Board is dealt into a tableau at all, so nothing here
+ * is ever asked about one.
  */
 export function thresholdOfView(data: GameData, building: BuildingView): number | null {
   const card = cardById(data, building.card);
   if (isMeepleCurrency(data) && card.slot === 'noticeboard') return null;
-  return card.threshold;
+  if (card.threshold === null) return null;
+  const override = data.rules.economy.noticeBoardThreshold;
+  if (override === null || card.slot !== 'noticeboard') return card.threshold;
+  return override;
 }
 
 /**
@@ -252,6 +274,57 @@ export interface Scratch {
    */
   readonly meepleArm: boolean;
   /**
+   * ⭐ IS THIS THE NOTICE-BOARD VISIT (`rules.turn.visitCurrency:
+   * 'noticeBoardPower'`, Dean 10/09/2026)? The twin of `meepleArm` above, and
+   * it exists for the same reason: "am I under this arm" gets exactly ONE
+   * spelling in this package, because a missed gate does not throw or fail a
+   * type check, it silently moves a CONTROL.
+   *
+   * Read by `hostGift` and, since 11/09/2026, by `visitFeeOwnCrop` - and by
+   * nothing else. Every other term this arm touches can gate on the ACT's own
+   * shape - a `visit` with a non-null `fee`, a `self` flag - and should, because
+   * that gate is the rule's shape and cannot drift from it.
+   *
+   * ⭐ **WHY `visitFeeOwnCrop` NEEDS IT AND COULD NOT GATE ON THE ACT (Dean's
+   * unclaimed-boards variant, 11/09/2026).** Under that variant a play onto a
+   * CENTRAL board is a `commons` act, which is the same act the SHIPPED COMMONS
+   * produces - so the act's own shape cannot tell the arm from the control, and
+   * the magpie's disposal lane has to be open in one and shut in the other. That
+   * is exactly the case this flag was written for: a subject that appears under
+   * the arm and must not appear under a control.
+   */
+  readonly noticeBoardArm: boolean;
+  /**
+   * ⭐ **CAN AN OWNED NOTICE BOARD EVER CLOG IN THIS GAME (S8, Dean
+   * 10/09/2026)?** One boolean because two terms ask exactly this question and
+   * they are pinned to each other at 6, the largest cost in the table:
+   * `clogOwnBoard` charges for shutting your own door and `unclogBoard` pays for
+   * reopening it.
+   *
+   * ⛔ **AND A THIRD READER SINCE 11/09/2026, WHICH IS WHY ONE SPELLING WAS
+   * WORTH HAVING**: `outcome.ts`'s `harvested` case pays the SAME `unclogBoard`
+   * weight for an owner's harvest reached inside a rollout, and it was missed
+   * when the arm was built because it reads the weight directly rather than
+   * through `TERMS`. A Harvest bought through the Wheat board's power that took
+   * the seat's own Notice Board was paying 6 for reopening a door that cannot
+   * shut. It now asks this boolean too.
+   *
+   * ⛔ **THE `3+` RULE MAKES BOTH SUBJECTLESS.** Three is the MINIMUM before
+   * the owner may harvest and never a maximum load, so a board takes cards for
+   * ever, no owner can shut a board by declining to harvest, and there is no
+   * door to reopen. Left unguarded, a 6-point cost would have fired on the
+   * self-visit that filled a board to three - the exact move the arm's headline
+   * reading counts - and a 6-point reward would have manufactured the owner's
+   * harvest that a20, the stall reading, exists to measure. Either one is the
+   * instrument answering the design's own question.
+   *
+   * True everywhere else, which is what keeps the controls still: under the v31
+   * `'card'` game the board is an ordinary clogging building, and under the
+   * `-blocking-v1` sub-arm (`rules.economy.noticeBoardBlocks: true`) it is one
+   * again, which is precisely the stall being measured against `3+`.
+   */
+  readonly noticeBoardClogs: boolean;
+  /**
    * The magpie's mark: the strongest SEATED crop that is not `mySuit` (see
    * `magpie.ts`). Derived for every profile because it costs one array scan,
    * and read only by the `*TargetCrop` terms - which every profile but `magpie`
@@ -279,7 +352,48 @@ export interface Scratch {
    */
   readonly handRoom: number;
   readonly buildings: ReadonlyMap<CardId, BuildingView>;
+  /**
+   * THIS SEAT'S OWN SUIT'S NOTICE BOARD, or null in a game that deals none.
+   *
+   * ⛔ **"OWN SUIT'S" RATHER THAN "THE ONE IN THE TABLEAU" SINCE DEAN'S
+   * TWO-BOARD FIX (11/09/2026)**, which is the engine's `noticeBoardOf` seam
+   * arriving here. Those were the same building in every game until that
+   * ruling; at TWO seats a tableau holds two boards - the seat's own suit's,
+   * laid out with the starters, and one drawn at random from the unfarmed suits
+   * and pushed on after - and the scan that used to fill this field kept the
+   * LAST match, so a wheat seat's `noticeBoard` read **A3 rather than W3**.
+   * Measured, not deduced: that is what the field held before this pass.
+   *
+   * ⚠️ **EVERY READER THAT MEANT "ANY BOARD OF MINE" MUST ASK
+   * `noticeBoards` BELOW**, and all of them now do - the `cardPlaced`
+   * exclusion in `outcome.ts`, its `harvested` unclog leg, and the
+   * `unclogBoard` term. This one is right for a caller that means the board
+   * whose POWER is this seat's own suit's, and for nothing else.
+   */
   readonly noticeBoard: BuildingView | null;
+  /**
+   * ⭐ **EVERY NOTICE BOARD IN THIS SEAT'S OWN TABLEAU, by card id** - the
+   * view-side twin of the engine's `noticeBoardsOf` (Dean's two-board fix,
+   * 11/09/2026), and the field a term wants whenever the question is about
+   * BOARDS rather than about which power a seat prints.
+   *
+   * ⛔ **IT CANNOT SIMPLY CALL THE ENGINE'S.** `noticeBoardsOf` takes a
+   * `GameState` and this package deliberately never sees one (see `index.ts` -
+   * a policy gets a `PlayerView` and a `Prober`), which is exactly the problem
+   * `centralPileSuitOfView` in `terms.ts` solved for central piles on the same
+   * day. So it is mirrored here off the one authority the view carries, the
+   * seat's own tableau, in tableau order.
+   *
+   * A SET rather than an array because every reader asks the same question -
+   * "is this building one of mine?" - and none of them cares which.
+   *
+   * ⚠️ **ONE ENTRY IN EVERY GAME BUT THE TWO-SEAT ARM**, and EMPTY
+   * under the commons, where no Notice Board is dealt into a tableau at all
+   * (C1). So a reader that swapped an `=== s.noticeBoard.card` test for
+   * `s.noticeBoards.has(...)` answers identically everywhere the old test was
+   * right, which is what keeps all three controls still.
+   */
+  readonly noticeBoards: ReadonlySet<CardId>;
   /**
    * The crop this seat's FARMSTEAD prints, or null if it somehow has none.
    *
@@ -603,6 +717,15 @@ function collectKeepsFor(data: GameData, view: PlayerView): readonly Suit[] {
 export function makeScratch(data: GameData, view: PlayerView): Scratch {
   const you = view.you;
   const buildings = new Map<CardId, BuildingView>();
+  // ⭐ TWO FIELDS WHERE THERE WAS ONE (Dean's two-board fix, 11/09/2026).
+  // The scan below used to keep the LAST board it walked past, which was the
+  // only board in every game until 11/09/2026 and is the seat's RANDOM EXTRA
+  // one at two seats under `rules.economy.noticeBoardsBySeats` - setup lays the
+  // starters out first and pushes the extras on after. So the board a term
+  // meant by "your own board" is now taken by SUIT, exactly as the engine's
+  // `noticeBoardOf` takes it, and the set carries all of them for the readers
+  // that meant "any board of mine".
+  const noticeBoards = new Set<CardId>();
   let noticeBoard: BuildingView | null = null;
   let farmsteadCrop: Suit | null = null;
 
@@ -610,7 +733,18 @@ export function makeScratch(data: GameData, view: PlayerView): Scratch {
     buildings.set(building.card, building);
     const card = cardById(data, building.card);
     const slot = starterSlotOf(card);
-    if (slot === 'noticeboard') noticeBoard = building;
+    if (slot === 'noticeboard') {
+      noticeBoards.add(building.card);
+      // The seat's own suit's board wins outright; anything else only fills the
+      // field while nothing has. ⚠️ The fallback is not dead code and it
+      // is not a guess: it is the pre-fix answer for a one-board tableau, and
+      // it keeps this field non-null for a game that ever deals a seat a board
+      // of a suit it is not farming without dealing it its own. The engine
+      // THROWS on that shape (`noticeBoardOf`); a pricer must not, so it takes
+      // the first board it sees and the report reads a number rather than a
+      // stack trace.
+      if (card.suit === you.suit || noticeBoard === null) noticeBoard = building;
+    }
     if (slot === 'farmstead') farmsteadCrop = card.suit;
   }
 
@@ -630,12 +764,17 @@ export function makeScratch(data: GameData, view: PlayerView): Scratch {
     view,
     mySuit: you.suit,
     meepleArm: isMeepleCurrency(data),
+    noticeBoardArm: isNoticeBoardPower(data),
+    // The one place the `3+` rule reaches the bots' model of the table. Under
+    // every other game a threshold is a ceiling, so this is true.
+    noticeBoardClogs: !isNoticeBoardPower(data) || noticeBoardBlocks(data),
     targetSuit: magpieTarget(you.suit, view.suitsInPlay),
     handLimit,
     handRoom:
       handLimit === null ? Number.POSITIVE_INFINITY : Math.max(0, handLimit - you.hand.length),
     buildings,
     noticeBoard,
+    noticeBoards,
     farmsteadCrop,
     demandSuits,
     meepleWorth: meepleWorthByColour(data, view, buildings),

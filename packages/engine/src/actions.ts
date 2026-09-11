@@ -23,12 +23,14 @@ import {
   deliveryVp,
   endgameCoinCost,
   farmsteadCoinPower,
+  hostDrawOnVisit,
   isCommons,
   isCommonsTakeCoins,
   isCommonsTakePaid,
   isCommonsTakeToHand,
   isCommonsTakeToSpend,
   isMeepleCurrency,
+  isNoticeBoardPower,
   meepleAsCardGoesToBoard,
   meepleIndexForSpace,
 } from '@gp/data';
@@ -36,6 +38,7 @@ import {
 import type { Fx } from './fx.js';
 import { fireHook } from './fx.js';
 import {
+  canSowOnto,
   canTakeCard,
   cardById,
   coinsOf,
@@ -45,11 +48,15 @@ import {
   doorOf,
   faceOf,
   drawableSuits,
+  hasCentre,
   isFull,
+  isHarvestable,
   meeplesHeld,
   noticeBoardOf,
   noticeBoardSlots,
+  noticeBoardsOf,
   player,
+  unclaimedCentre,
   visitTargetOf,
   workerData,
 } from './query.js';
@@ -65,8 +72,9 @@ import type {
   Seat,
   TaskAnswer,
 } from './state.js';
+import { markFiredOnTurn } from './state.js';
 import { rngInt } from './rng.js';
-import { doorActionOf, performDoorAction } from './workers.js';
+import { doorActionOf, fireNoticeBoardPower, performDoorAction } from './workers.js';
 
 /**
  * All k-card subsets, as a list. `k` is a build cost (at most 5 cards) or a hand
@@ -1769,8 +1777,15 @@ export function harvestOptions(
    */
   relaxedMin: number = Infinity,
 ): CardId[] {
+  // ⚠️ `isHarvestable` AND NOT `isFull` SINCE 10/09/2026, and the two stopped
+  // being the same boolean that day (S8, see `query.thresholdShuts`). This is
+  // the HARVEST question - is the stack at or above its threshold - where
+  // `isFull` now answers the CLOG question, and a `3+` Notice Board is
+  // harvestable at three cards while never clogging at all. Asking `isFull`
+  // here would have made the owned Notice Board unharvestable under the arm,
+  // which is the whole of the host's payment (S7).
   const own = player(state, seat)
-    .tableau.filter((b) => isFull(data, b) || b.stack.length >= relaxedMin)
+    .tableau.filter((b) => isHarvestable(data, b) || b.stack.length >= relaxedMin)
     .map((b) => b.card);
   // ⭐ AND, UNDER THE COMMONS, EVERY CENTRAL PILE DEEP ENOUGH TO TAKE (C5).
   // Not your buildings and not anybody's: a pile with a card on it is
@@ -1796,7 +1811,15 @@ export function harvestOptions(
   // so it is never "not full"; the magenta balloon's harvest-any and the plain
   // action see exactly the same central targets, and the union above is where
   // the two gates still differ for BUILDINGS.
-  if (!isCommons(data)) return own;
+  // ⭐ TWO GAMES HAVE A CENTRE SINCE 11/09/2026, AND A HARVEST IS A HARVEST IN
+  // BOTH (D1, reaffirmed by Dean that day, in his words "to prevent any rules
+  // exceptions"). The commons puts all five piles in the middle; Dean's
+  // unclaimed-boards variant puts the unfarmed suits' boards there and leaves
+  // the rest as owned buildings. The gate is the same either way and so is the
+  // minimum, which is why this reads `hasCentre` rather than growing a second
+  // branch: the variant's overlay pins `commonsHarvestMin` to 3, so a pile
+  // below three may be taken by nobody and a pile at three or more by ANYBODY.
+  if (!hasCentre(data)) return own;
   // ⭐ DEAN'S VARIANTS: HARVEST NEVER REACHES THE CENTRE AT ALL under any
   // `commonsTake` value but the shipped `'harvest'`. Under 'bonus', 'spend'
   // and 'paid' (09/09/2026) a central pile is taken by the `commonsTake` bonus
@@ -1814,12 +1837,49 @@ export function harvestOptions(
   if (!commonsHarvestReachesCentre(data)) {
     return own;
   }
+  return [...own, ...centralHarvestTargets(data, state)];
+}
+
+/**
+ * ⭐ EVERY CENTRAL PILE DEEP ENOUGH FOR ANYBODY TO TAKE, as board card ids.
+ *
+ * Split out of `harvestOptions` on 11/09/2026 because a SECOND route now needs
+ * exactly the same set: the Wheat Notice Board's power, which Dean ruled must
+ * reach the centre under the unclaimed-boards variant "to prevent any rules
+ * exceptions". A second copy of the depth test in `tasks.ts` is how a gate and
+ * the action it gates come to disagree, which this file has already paid for
+ * once (19/08/2026, five call sites).
+ *
+ * ⛔ IT WALKS `centralBoardSuits` AND NOT `data.cards.suits`. Under the commons
+ * those are the same five; under the variant only the unfarmed suits have a
+ * pile at all, and a colour with no board must not be offered as a pile of zero
+ * - `commonsBoardCard` would happily hand back a card id that is sitting in a
+ * rival's tableau.
+ *
+ * ⚠️ `relaxedMin` HAS NO SUBJECT HERE (D2). A central pile has no threshold, so
+ * it is never "not full": the magenta balloon's harvest-any and the plain action
+ * see exactly the same central targets, and the only gate is
+ * `commonsHarvestMin`.
+ */
+export function centralHarvestTargets(data: GameData, state: GameState): CardId[] {
+  if (!hasCentre(data) || !commonsHarvestReachesCentre(data)) return [];
   const boards = commonsBoards(state);
   const min = commonsHarvestMin(data);
-  const central = data.cards.suits
-    .filter((colour) => (boards[colour]?.length ?? 0) >= min)
-    .map((colour) => commonsBoardCard(data, colour));
-  return [...own, ...central];
+  const out: CardId[] = [];
+  // ⚠️ ONE WALK AND ONE ARRAY, RATHER THAN `centralBoardSuits().filter().map()`.
+  // This runs through `hasMainOption` on every settle and through the bots'
+  // speculative applies on top of that, and three throwaway arrays a call is
+  // exactly the per-decision allocation ticket 28 went hunting for. An ABSENT
+  // pile is a board that is not in the centre at all (a seat is farming that
+  // suit); an EMPTY one is a board with nothing on it, and `>= min` refuses it
+  // anyway - but the two are still checked separately, because conflating them
+  // is how a rival's board would come to be offered as a harvest target.
+  for (const colour of data.cards.suits) {
+    const pile = boards[colour];
+    if (pile === undefined || pile.length < min) continue;
+    out.push(commonsBoardCard(data, colour));
+  }
+  return out;
 }
 
 /**
@@ -3022,10 +3082,14 @@ export function doorActionLegal(
       // a target - which is exactly why it is the weakest door on the table:
       // two cards out, one threshold step in. `from: 'deck'` is the ruled fix if
       // the board takes no traffic, and this branch already handles it.
+      // ⚠️ `canSowOnto` AND NOT `canTakeCard` (S11, 10/09/2026): a sow may
+      // never choose a Notice Board under the notice-board visit, so the gate
+      // and `sowTargets` have to ask the same question or a door is offered
+      // with nothing to do. Identical to `canTakeCard` in every other game.
       return door.sow?.from === 'deck'
         ? drawableSuits(data, state).length > 0 &&
-            player(state, seat).tableau.some((b) => canTakeCard(data, b))
-        : hand.length > 0 && player(state, seat).tableau.some((b) => canTakeCard(data, b));
+            player(state, seat).tableau.some((b) => canSowOnto(data, b))
+        : hand.length > 0 && player(state, seat).tableau.some((b) => canSowOnto(data, b));
     case 'build':
       return anyBuildOption(data, state, seat, hand);
     case 'grow':
@@ -3151,10 +3215,38 @@ export function bonusOpen(data: GameData, state: GameState, option?: BonusOption
   // `'commonsTake'` are each producible only under their own knob; the
   // two-option slot the controls play keeps the per-option refusal that stops
   // a seat taking Draw 1 twice.
+  //
+  // ⭐ AND THE NOTICE-BOARD VISIT CARRIES IT TOO (S9, 10/09/2026), for
+  // exactly the commons' reason: its slot holds ONE option, the visit, so
+  // refusing a second use of it would make A Helping Hand grant a seat nothing
+  // at all. What stops the two plays being the same play is not this rule but
+  // S9's ONE-USE-PER-BOARD latch in `enumerateNoticeBoardVisits`, which sends
+  // the second bonus to a DIFFERENT board. The exemption is keyed on the mode
+  // as well as the option, because `'visit'` is producible under three
+  // currencies and only this one widens the slot.
+  //
+  // ⛔ AND SINCE 11/09/2026 BOTH EXEMPTIONS CAN BE LIVE AT ONCE, WHICH IS THE
+  // ONE CASE TO REASON ABOUT BEFORE TOUCHING THIS FUNCTION. Under Dean's
+  // unclaimed-boards variant a seat may produce a `visit` (onto a rival's
+  // board) AND a `commons` play (onto an ownerless one) in the same turn, so
+  // for the first time two exempt options share one slot.
+  //
+  // ⭐ THEY DO NOT ADD UP TO TWO SLOTS, AND THE LINE THAT GUARANTEES IT IS THE
+  // COUNT AT THE TOP OF THIS FUNCTION, NOT THE EXEMPTION BELOW.
+  // `turn.bonusUsed.length >= bonusSlotsFor(...)` is a count of PLAYS and is
+  // blind to which kind each one was: one slot means one play, whichever kind;
+  // A Helping Hand means two, of any mix; and there is never a third. The
+  // exemption only ever says "a second play may be the same KIND as the first",
+  // which is what makes the card grant anything at all. What stops the two
+  // plays being the same BOARD is S9's latch, and under the variant that latch
+  // is written by `doNoticeBoardVisit` and `doCommons` into the same
+  // `turn.firedThisTurn` list, so it spans both halves of the slot.
+  // `notice-board-unclaimed.test.ts` asserts all four of those separately.
   if (
     option !== undefined &&
     option !== 'commons' &&
     option !== 'commonsTake' &&
+    !(option === 'visit' && isNoticeBoardPower(data)) &&
     turn.bonusUsed.includes(option)
   ) {
     return false;
@@ -3282,6 +3374,16 @@ export function bonusDrawOpen(data: GameData, state: GameState): boolean {
   // number survives here too, unread - there is no Collect under the commons
   // for it to price either.
   if (isCommons(data)) return false;
+  // ⛔ AND CLOSED UNDER THE NOTICE-BOARD VISIT (S5, 10/09/2026), which is a
+  // PASSENGER THE HANDOFF DID NOT PIN and had to be named rather than
+  // inherited. S5 says the bonus action IS the visit, one per turn, optional -
+  // the slot holds one option - and the standalone free Draw 1 is one of the
+  // three things `'card'` carries that this arm explicitly does not want. It
+  // is also the thing that killed v31: the free Draw ate the slot at 67.6%,
+  // and leaving it open here would have measured that failure a second time
+  // under a different name. The NUMBER survives, unread, exactly as it does
+  // under the commons and the meeple loop.
+  if (isNoticeBoardPower(data)) return false;
   if (!bonusOpen(data, state, 'draw')) return false;
   if (data.rules.turn.bonusDraw <= 0) return false;
   return drawableSuits(data, state).length > 0;
@@ -3301,6 +3403,14 @@ export type VisitOption = Extract<Move, { type: 'visit' }>;
 /**
  * Every visit on offer: one card from hand onto ANY unclogged Notice Board,
  * your own included.
+ *
+ * ⭐ THREE ENUMERATORS BEHIND ONE MOVE TYPE SINCE 10/09/2026, and the note
+ * below describes the FIRST of them. `enumerateVisits` dispatches on the
+ * currency: the v31 card fee (this note), the meeple loop
+ * (`enumerateMeepleVisits`) and the notice-board visit
+ * (`enumerateNoticeBoardVisits`), which buys a board's PRINTED POWER rather
+ * than its suit's plain door and rations boards by a per-turn latch rather than
+ * by a clog.
  *
  * ⭐ THE SELF-VISIT IS RISK 2 OF THE WHOLE PASS, and `rules.turn.selfVisitAllowed`
  * is its paired control. It replaces the old "activate your own Service for a
@@ -3358,11 +3468,27 @@ function enumerateVisits(
   // inside `legalMoves`.
   if (isCommons(data)) return false;
   if (isMeepleCurrency(data)) return enumerateMeepleVisits(data, state, seat, out);
+  // ⛔ AND A CENTRAL BOARD IS NEVER A `visit` TARGET UNDER DEAN'S
+  // UNCLAIMED-BOARDS VARIANT (11/09/2026). A play onto an OWNERLESS board is
+  // the `commons` move; a `visit` names a HOST SEAT, which is the whole of what
+  // the two moves are for - the visit's fee rests on a person's board as
+  // material they must harvest (S7, "pay the giver in the same act"), and a
+  // central fee is paid to nobody. It falls out of the enumerator below looping
+  // `state.players` rather than needing a filter: a board with no owner has no
+  // seat index to be `host`, so it cannot be produced here at all.
+  if (isNoticeBoardPower(data)) return enumerateNoticeBoardVisits(data, state, seat, out);
   const hand = player(state, seat).hand;
   if (hand.length === 0) return false;
   let any = false;
   for (let host = 0; host < state.players.length; host++) {
     if (host === seat && !data.rules.turn.selfVisitAllowed) continue;
+    // ⚠️ ONE BOARD PER SEAT HERE, DELIBERATELY, and `noticeBoardOf` is the
+    // right function rather than a first-match accident. Dean's two-board fix
+    // (`rules.economy.noticeBoardsBySeats`, 11/09/2026) is read ONLY under
+    // `visitCurrency: 'noticeBoardPower'` - `extraNoticeBoardsPerSeat` returns
+    // 0 for every other currency - so under the v31 card fee no seat has a
+    // second board and this line has no second board to miss. If that gate ever
+    // widens, this is one of the two enumerators that has to learn to loop.
     if (isFull(data, noticeBoardOf(data, state, host))) continue;
     const doorId = doorOf(data, player(state, host).suit).id;
     // ONLY TWO OF THE FIVE DOORS READ THE HAND, so only two of them can give a
@@ -3385,6 +3511,215 @@ function enumerateVisits(
       if (out === null) return true;
       out.push({ type: 'visit', seat, host, fee });
       any = true;
+    }
+  }
+  return any;
+}
+
+/**
+ * ⭐ IS THIS BOARD'S POWER LEGAL FOR THIS SEAT RIGHT NOW (S10, Dean
+ * 10/09/2026)? The standing door ruling - a board whose power you cannot
+ * perform is not offered - asked of the five S12 powers rather than of the five
+ * plain doors.
+ *
+ * ⚠️ IT IS A DIFFERENT QUESTION FROM `doorActionLegal` AND HAS TO BE. Three
+ * of the five powers are wider than the plain action they are named after: the
+ * Dairy board waives the crop requirement, so it is legal where a plain Build
+ * is not; the Wheat board harvests a building at ANY stack size and banks a
+ * card besides, so it is legal where a plain Harvest has no full building; and
+ * the Vegetable board has a fallback, so it is legal with an empty barn.
+ * Asking the plain gate would refuse boards the arm exists to keep alive - S13
+ * fixed availability first, and four of the morning's five powers were dead
+ * most of the time.
+ *
+ * ⭐ IT SHOULD ALMOST NEVER BITE, which is §2.3's whole purpose: with a card
+ * in hand only the Orchard board can be dead (every deck exhausted), and even
+ * the Apiary board needs only one building with room.
+ *
+ * `excludingHandCard` is the FEE, which has left the hand by the time the power
+ * runs, so every hand-reading leg has to be asked without it - the same rule
+ * `doorActionLegal` follows and for the same reason: a hand of one card cannot
+ * both pay the board and feed the power.
+ */
+export function noticeBoardPowerLegal(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+  colour: Suit,
+  opts?: {
+    excludingHandCard?: CardId;
+    /**
+     * ⭐ THE CENTRAL BOARD THE FEE IS ABOUT TO LAND ON, under Dean's
+     * unclaimed-boards variant (11/09/2026). Present only on the `commons`
+     * route - a play onto an OWNERLESS board - and never on the `visit` route,
+     * where the fee lands on a rival's building instead and no pile moves.
+     *
+     * ⛔ ONLY THE WHEAT BRANCH READS IT, and it is the same question
+     * `commonsHarvestLegalAfterFee` asks under the commons: the fee joins the
+     * pile BEFORE the power runs, so a play onto the wheat board can be what
+     * takes its own pile to `commonsHarvestMin`. Asking the position as it
+     * stands rather than as the fee makes it is how an enumerator and its
+     * funnel come to disagree.
+     */
+    feeOntoCentral?: Suit;
+  },
+): boolean {
+  const p = player(state, seat);
+  const hand =
+    opts?.excludingHandCard === undefined ? p.hand : withoutFirst(p.hand, opts.excludingHandCard);
+  const numbers = data.rules.economy.noticeBoardPower;
+  switch (colour) {
+    case 'orchard':
+      // "Draw 4." Dead only when every deck in play is exhausted.
+      return drawableSuits(data, state).length > 0;
+    case 'dairy':
+      // "Build. You may spend cards of any crops." The waiver is part of the
+      // gate, not just of the resolution: a hand that cannot pay the own-suit
+      // half can still pay this build, and offering it is the point.
+      return anyBuildOption(data, state, seat, hand, numbers.dairyWild ? { substitute: true } : {});
+    case 'wheat':
+      // "Harvest one of your buildings, then put 1 card from your hand into
+      // your barn." EITHER leg makes it live: a building with a card on it
+      // (`filter: 'loaded'`, any stack size), or a card left in hand for the
+      // barn. That second leg is ruling C88's whole purpose.
+      //
+      // ⭐ AND A THIRD LEG SINCE 11/09/2026, UNDER DEAN'S UNCLAIMED-BOARDS
+      // VARIANT: ANY CENTRAL PILE AT `commonsHarvestMin`. "A Harvest is a
+      // Harvest" (D1, reaffirmed that day, and his explicit reason was "to
+      // prevent any rules exceptions"), so the Wheat power reaches the centre
+      // exactly as the main Harvest action does and under exactly the same
+      // minimum. Without this leg the bought Harvest would be the one Harvest
+      // in the game that could not take a pile, which is the rules exception
+      // the ruling forbids.
+      return (
+        p.tableau.some((b) => b.stack.length >= 1) ||
+        anyCentralHarvestAfterFee(data, state, opts?.feeOntoCentral) ||
+        (numbers.wheatBarn > 0 && hand.length > 0)
+      );
+    case 'apiary':
+      // "Sow 2 cards from your hand onto your buildings." A card to sow and
+      // somewhere of your OWN to put it (C89) - and never the Notice Board
+      // itself (S11), which is why this reads `canSowOnto`.
+      return (
+        numbers.apiarySows > 0 && hand.length > 0 && p.tableau.some((b) => canSowOnto(data, b))
+      );
+    case 'vegetable':
+      // "Deliver. If you cannot, put 2 cards from your hand into your barn."
+      // Island claim or balloon move (DL-12), else the fallback - so it is
+      // dead only for a seat that can do neither AND holds nothing.
+      return (
+        doorActionLegal(data, state, seat, 'deliver') ||
+        (numbers.vegetableFallback > 0 && hand.length > 0)
+      );
+    default:
+      return colour satisfies never;
+  }
+}
+
+/**
+ * EVERY NOTICE-BOARD VISIT ON OFFER (S5-S11, Dean 10/09/2026): one card from
+ * your hand onto ANY player's Notice Board, your own included, for that board's
+ * printed power.
+ *
+ * ⭐ THE THREE RULES THAT ARE NOT THE v31 ENUMERATOR'S, in the order they are
+ * applied:
+ *
+ *  - **S6, self-use is back**, reversing the ban of 04/09/2026, gated by
+ *    `rules.turn.selfVisitAllowed` as it was in v31.
+ *    `overlays/notice-board-visit-no-self-v1.overlay.json` is the control and
+ *    the single most important sub-arm in the plan. Why it is safe now and was
+ *    not then: in v31 every board printed the SAME thing, so a self-visit was
+ *    strictly better than a visit and took 22.2% of turns; here the five
+ *    boards print five DIFFERENT powers, so your own board is one option of
+ *    five and it is the one that never has what you have not got.
+ *  - **S9, ONE USE PER BOARD PER TURN.** A Helping Hand's second bonus must go
+ *    to a DIFFERENT board. The corpus records a chaining blow-up in the
+ *    predecessor where five or six loads in one turn drew most of the deck.
+ *  - **S8, nothing ever blocks.** `isFull` answers false for a `3+` board
+ *    however deep the stack, so this filter bites only under the paired
+ *    control `noticeBoardBlocks: true` - where it is exactly the v31 rule and
+ *    exactly the stall being measured.
+ *
+ * ⛔ THE LATCH IS `turn.firedThisTurn`, KEYED BY THE BOARD'S CARD ID, and the
+ * choice is worth the sentence it takes. That list means "this card's printed
+ * text has fired this turn" and a Notice Board's power IS its printed text, so
+ * the semantics fit rather than being borrowed. It identifies the HOST
+ * uniquely because `newGame` refuses duplicate player suits, so W3 is one
+ * seat's board and no other's. And nothing else reads it in a way that could
+ * change: `growOptions` and `activateTargets` are the only two filters over
+ * that list and both have excluded the noticeboard slot by name since v31. The
+ * alternative - a parallel per-turn list - would have added a `TurnState`
+ * field, and an added field is a serialisation change every fixture in
+ * `packages/sim/fixtures/` would have had to absorb.
+ *
+ * ⚠️ ONLY THE DAIRY BOARD IS ASKED ONCE PER FEE. Four of the five powers
+ * read the hand for its SIZE alone after the fee leaves it, and that is
+ * `hand.length - 1` whichever card pays; the Dairy board's waived build reads
+ * WHICH cards are left, so it and only it can answer differently for different
+ * fees. Same reduction the v31 enumerator makes for its three hand-blind doors,
+ * and it saves a `withoutFirst` copy per card in hand on four boards out of
+ * five.
+ *
+ * ⭐ AND SINCE DEAN'S TWO-BOARD FIX (11/09/2026) IT WALKS BOARDS RATHER THAN
+ * SEATS, WHICH IS THE WHOLE OF THE VARIANT IN THIS FUNCTION. A host may hold
+ * TWO Notice Boards at two seats - its own suit's, and one drawn from the suits
+ * nobody is farming - so the inner loop is over `noticeBoardsOf(host)` and a
+ * seat now faces 2 / 2 / 3 targets by seat count instead of 1 / 2 / 3.
+ *
+ * ⛔ AND THE POWER COMES OFF THE BOARD'S OWN SUIT, NEVER OFF
+ * `player(state, host).suit`. That was the same thing in every game until the
+ * fix and is the silent bug the variant can have: a host's SECOND board prints
+ * a different colour's power, so reading the owner's suit would sell a wheat
+ * visitor the apiary board's Grow, invisibly, and only ever at two seats.
+ *
+ * ⭐ S9'S LATCH IS STILL A CORRECT PARTITION AND NEEDED NO CHANGE, because it
+ * is keyed on the BOARD'S CARD ID: no suit's board is ever on the table twice
+ * (a seat's own suit is its own board and the extras are dealt from the
+ * unfarmed suits without replacement), so W3 still identifies one board on one
+ * farm. What changes is that A Helping Hand's second play finally has somewhere
+ * to go at two seats - the rival's other board - where under the control the
+ * one legal target was latched by the first play and the card granted nothing.
+ */
+function enumerateNoticeBoardVisits(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+  out: VisitOption[] | null,
+): boolean {
+  const hand = player(state, seat).hand;
+  if (hand.length === 0) return false;
+  // The stand-in fee for the four hand-blind powers: they read the hand's SIZE
+  // after the fee leaves it, which is the same for every card in it.
+  const probeFee = hand[0] as CardId;
+  let any = false;
+  for (let host = 0; host < state.players.length; host++) {
+    if (host === seat && !data.rules.turn.selfVisitAllowed) continue;
+    const boards = noticeBoardsOf(data, state, host);
+    // ⭐ THE FIELD IS OMITTED WHEN THE HOST HAS ONE BOARD, which is what keeps
+    // every move this enumerator produces byte-identical to the control's at
+    // three and four seats - and to the shipped game's, and to every fixture
+    // in `packages/sim/fixtures/`. See the `visit` move's own docblock.
+    const named = boards.length > 1;
+    for (const board of boards) {
+      if (state.turn.firedThisTurn.includes(board.card)) continue;
+      if (isFull(data, board)) continue;
+      const colour = cardById(data, board.card).suit;
+      const tag = named ? { board: board.card } : {};
+      if (colour !== 'dairy') {
+        if (!noticeBoardPowerLegal(data, state, seat, colour, { excludingHandCard: probeFee })) {
+          continue;
+        }
+        if (out === null) return true;
+        for (const fee of hand) out.push({ type: 'visit', seat, host, fee, ...tag });
+        any = true;
+        continue;
+      }
+      for (const fee of hand) {
+        if (!noticeBoardPowerLegal(data, state, seat, colour, { excludingHandCard: fee })) continue;
+        if (out === null) return true;
+        out.push({ type: 'visit', seat, host, fee, ...tag });
+        any = true;
+      }
     }
   }
   return any;
@@ -3681,6 +4016,37 @@ function commonsActionLegal(
    */
   fee2?: CardId,
 ): boolean {
+  // ⭐ A CENTRAL BOARD GRANTS THE SAME PRINTED POWER AS AN OWNED ONE UNDER
+  // DEAN'S UNCLAIMED-BOARDS VARIANT (ruled 11/09/2026 on his standing
+  // principle that there are no rules exceptions). It is the SAME CARD - O3 is
+  // O3 whether it sits in an Orchard seat's farm or in the middle of the table
+  // - and a card prints what it does, so a central Orchard board is *Draw 4*
+  // and not the commons' plain Draw 2, and a central Apiary board is *Sow 2
+  // cards from your hand onto your buildings* (S12 as amended by C89) and not
+  // the commons' GROW substitution.
+  //
+  // ⛔ SO THE GATE IS `noticeBoardPowerLegal` AND NOT `doorActionLegal`, and
+  // the difference is not cosmetic: three of the five powers are WIDER than
+  // the plain action they are named after (the Dairy board waives the crop
+  // requirement, the Wheat board harvests at any stack size and banks a card,
+  // the Vegetable board has a fallback), so asking the plain door gate would
+  // refuse central boards the variant exists to keep alive.
+  //
+  // ⛔ AND IT RESOLVES THE PASSENGER THE DATA PASS FLAGGED, IN THE DIRECTION
+  // THE RULING POINTS. `doorActionForSuit` substitutes
+  // `workers.roster.sow.actionUnderCommons` (the Apiary board's GROW, C3 of the
+  // commons) only while `isCommons` is true, and under this variant the
+  // currency is `'noticeBoardPower'`, so it is FALSE and the Apiary board reads
+  // back its printed SOW. That is the CORRECT answer here rather than a bug to
+  // fix: the GROW substitution is the commons' own rule for a board that grants
+  // a plain door action, and a board that grants a printed power has no door
+  // action to substitute. Nothing below reads `doorActionOf` on this path.
+  if (unclaimedCentre(data)) {
+    return noticeBoardPowerLegal(data, state, seat, board, {
+      excludingHandCard: fee,
+      feeOntoCentral: board,
+    });
+  }
   const action = doorActionOf(data, board);
   if (action === 'harvest') return commonsHarvestLegalAfterFee(data, state, seat, board);
   return doorActionLegal(data, state, seat, action, {
@@ -3705,7 +4071,10 @@ function commonsHarvestLegalAfterFee(
   seat: Seat,
   board: Suit,
 ): boolean {
-  if (player(state, seat).tableau.some((b) => isFull(data, b))) return true;
+  // The HARVEST question, so `isHarvestable` (10/09/2026); commons-only, where
+  // the two predicates are still the same boolean, but the reading has to say
+  // which one it meant.
+  if (player(state, seat).tableau.some((b) => isHarvestable(data, b))) return true;
   // ⭐ UNDER EVERY `commonsTake` VALUE BUT THE SHIPPED ONE THE WHEAT BOARD IS AN
   // ORDINARY BOARD AGAIN, exactly as under commonsHarvestMin (D6 stops
   // holding): Harvest never reaches the centre (D-S4 under 'bonus', 'spend'
@@ -3713,13 +4082,39 @@ function commonsHarvestLegalAfterFee(
   // makes this Harvest legal. Without a full building of their own, this seat
   // has nothing for the wheat board's action to do. Read through the same
   // helper `harvestOptions` uses, so the gate and the action cannot disagree.
-  if (!commonsHarvestReachesCentre(data)) {
-    return false;
-  }
+  return anyCentralHarvestAfterFee(data, state, board);
+}
+
+/**
+ * ⭐ WOULD ANY CENTRAL PILE BE DEEP ENOUGH TO HARVEST ONCE THE FEE HAS LANDED?
+ *
+ * The tail of `commonsHarvestLegalAfterFee`, lifted out on 11/09/2026 because
+ * the Wheat Notice Board's POWER now asks the identical question under Dean's
+ * unclaimed-boards variant (`noticeBoardPowerLegal`, case `'wheat'`). One
+ * helper rather than two copies of a depth test: the commons already paid once
+ * for a gate and its action drifting apart.
+ *
+ * `feeOnto` is the board the fee is about to join, or undefined when the fee is
+ * not going to the centre at all - a visit to a rival's board, or a gate asked
+ * about the position as it stands. It counts for ONE card, because a fee is one
+ * card; the wild pair (two cards onto one pile) is `commonsWildPair`, which is
+ * pinned false under both games that have a centre today, and if it is ever
+ * turned on beside a `commonsHarvestMin` above 1 this is the line to widen.
+ *
+ * Answers false where Harvest cannot reach the centre at all
+ * (`commonsHarvestReachesCentre`), so the four `commonsTake` variants read a
+ * farm bypass of 0% by construction exactly as `harvestOptions` does.
+ */
+function anyCentralHarvestAfterFee(data: GameData, state: GameState, feeOnto?: Suit): boolean {
+  if (!hasCentre(data) || !commonsHarvestReachesCentre(data)) return false;
   const min = commonsHarvestMin(data);
   const boards = commonsBoards(state);
+  // Allocation-free for the reason `centralHarvestTargets` above gives: the
+  // bonus enumerator asks this once per (board, card in hand) pair.
   for (const colour of data.cards.suits) {
-    const depth = (boards[colour]?.length ?? 0) + (colour === board ? 1 : 0);
+    const pile = boards[colour];
+    if (pile === undefined) continue;
+    const depth = pile.length + (colour === feeOnto ? 1 : 0);
     if (depth >= min) return true;
   }
   return false;
@@ -3765,18 +4160,50 @@ function enumerateCommons(
   seat: Seat,
   out: CommonsOption[] | null,
 ): boolean {
-  if (!isCommons(data)) return false;
+  // ⭐ TWO GAMES PRODUCE A `commons` MOVE SINCE 11/09/2026. The commons itself
+  // (all five piles, C1) and Dean's unclaimed-boards variant, where the piles
+  // are the boards of the suits nobody is farming and a play onto a RIVAL's
+  // board is the `visit` move instead. One enumerator for both, deliberately:
+  // the move's shape, its fee, its slot accounting and its pile are identical,
+  // and the manager's ruling of 11/09/2026 was "do NOT invent a third move
+  // shape".
+  if (!hasCentre(data)) return false;
   if (!bonusOpen(data, state, 'commons')) return false;
   const hand = player(state, seat).hand;
   if (hand.length === 0) return false;
   const boards = commonsBoards(state);
   const knobs = commonsKnobs(data);
+  // ⭐ S9's ONE-USE-PER-BOARD LATCH REACHES THE CENTRE (11/09/2026). Under the
+  // variant A Helping Hand's second play must go to a DIFFERENT board, and the
+  // two halves of the slot - a rival's board and a central one - have to share
+  // one latch or a seat could play onto central Wheat and then rival Wheat and
+  // take the same power twice.
+  //
+  // ⛔ THE LATCH IS PER CARD ID, NOT PER SUIT, AND UNDER THIS VARIANT THE TWO
+  // ARE THE SAME PARTITION, WHICH IS WHY THE CHOICE IS SAFE. A suit is EITHER
+  // one seat's or in the centre and never both: `newGame` refuses duplicate
+  // player suits, and `freshCommons` puts exactly the leftovers in the middle.
+  // So "central Wheat then rival Wheat" is not a loophole this closes, it is a
+  // position that cannot exist - there is no rival Wheat board in a game where
+  // Wheat is central. Per card id is kept because that is what
+  // `turn.firedThisTurn` already means ("this card's printed text has fired
+  // this turn") and a Notice Board's power IS its printed text, whichever side
+  // of the table the card is on; a parallel per-suit list would have added a
+  // `TurnState` field and moved every fixture in `packages/sim/fixtures/`.
+  const latched = unclaimedCentre(data);
   let any = false;
   for (const board of data.cards.suits) {
+    // ⭐ AN ABSENT PILE IS A BOARD THAT IS NOT IN THE CENTRE (11/09/2026): some
+    // seat is farming that suit, so their board is a building and the way to it
+    // is the `visit` move. All five keys are present under the commons, so this
+    // skips nothing there and the walk is the one it always was.
+    const pile = boards[board];
+    if (pile === undefined) continue;
     // C10, off by default: a board at its cap refuses the play outright. It is
     // the one thing in the commons that ever refuses anything, which is why it
     // is a knob and not a rule - C4 says a central board never refuses a play.
-    if (knobs.threshold !== null && (boards[board]?.length ?? 0) >= knobs.threshold) continue;
+    if (knobs.threshold !== null && pile.length >= knobs.threshold) continue;
+    if (latched && state.turn.firedThisTurn.includes(commonsBoardCard(data, board))) continue;
     for (const fee of hand) {
       // C10 again: the fee must match the board's colour.
       if (knobs.colourMatch && cardById(data, fee).suit !== board) continue;
@@ -3810,6 +4237,17 @@ function enumerateCommons(
     // holding one matching card AND two off-colour cards has a real choice
     // between paying its good card and paying two junk ones (L5, "your junk is
     // their treasure"). Suppressing it would make that decision for the player.
+    //
+    // ⛔ AND NEVER UNDER DEAN'S UNCLAIMED-BOARDS VARIANT (11/09/2026), which is
+    // a fail-closed guard rather than a rule. `commonsWildPair` is pinned false
+    // in both of that variant's overlays and means nothing without
+    // `commonsColourMatch`, which is pinned false beside it; but the gate this
+    // variant's play is asked through - `noticeBoardPowerLegal` - takes ONE
+    // `excludingHandCard`, so a pair would be priced with its second card still
+    // notionally in hand and could offer a Dairy board the seat cannot then
+    // afford to use. Turning the pair on here is therefore a second change and
+    // not a knob flip: widen the power gate first.
+    if (unclaimedCentre(data)) continue;
     if (!knobs.colourMatch || !commonsWildPair(data)) continue;
     for (let i = 0; i < hand.length; i++) {
       const fee = hand[i] as CardId;
@@ -3829,6 +4267,13 @@ function enumerateCommons(
  * ⭐ THE COMMONS PLAY (C3): one card from your hand onto one of the five central
  * Notice Boards, then that board's action, taken by you.
  *
+ * ⭐ AND SINCE 11/09/2026 IT IS ALSO DEAN'S UNCLAIMED-BOARDS VARIANT'S PLAY,
+ * onto one of the boards of the suits nobody is farming. Same move, same fee,
+ * same slot accounting, same pile - what differs is that the board grants its
+ * PRINTED POWER rather than the plain door action (see the branch at the foot
+ * of this function) and that S9's one-use-per-board latch applies, shared with
+ * `doNoticeBoardVisit` through `turn.firedThisTurn`.
+ *
  * THE ORDER IS LOAD-BEARING and is the card visit's, unchanged since v14: the
  * fee LANDS first, then `afterVisit` fires, then the action runs.
  *
@@ -3844,14 +4289,32 @@ function enumerateCommons(
  * A16 The Beekeeper's Veil does not see a play - `fx.playOnCommons` is a
  * separate primitive from `fx.placeOnBuilding` for that reason alone.
  *
+ * ⚠️ AND UNDER DEAN'S UNCLAIMED-BOARDS VARIANT THAT MAKES AN ASYMMETRY WORTH
+ * FLAGGING RATHER THAN FIXING (11/09/2026): the same bonus slot fires A16 when
+ * the card lands on a RIVAL's board (`doNoticeBoardVisit` places it through
+ * `fx.placeOnBuilding`) and does not when it lands on a CENTRAL one. It is the
+ * physical truth - a central board is in nobody's tableau and A21 The Wax Hall
+ * cannot count it either - and it follows from S16's two rulings rather than
+ * contradicting them, but it does mean A16 quietly prefers cross-table plays.
+ * That is a CARD reading for Dean and a number for the pass to take, not an
+ * engine choice to make here.
+ *
  * Every predicate the enumerator checked is re-checked here, because a
  * re-validation must ask what the move NEEDS and never trust the window the
  * caller consumed.
  */
 export function doCommons(fx: Fx, seat: Seat, board: Suit, fee: CardId, fee2?: CardId): void {
   const { data, state } = fx;
-  if (!isCommons(data)) {
-    throw new Error('There is no commons unless rules.turn.visitCurrency is commons');
+  // ⭐ TWO GAMES, ONE MOVE (11/09/2026). Under Dean's unclaimed-boards variant
+  // a play onto an ownerless board is this same `commons` move; what differs is
+  // what it BUYS (the board's printed S12 power rather than the plain door
+  // action) and that S9's one-use-per-board latch applies to it.
+  const variant = unclaimedCentre(data);
+  if (!hasCentre(data)) {
+    throw new Error(
+      'There is no centre unless rules.turn.visitCurrency is commons, or is ' +
+        'noticeBoardPower with rules.economy.unclaimedBoardsToCentre',
+    );
   }
   if (!bonusOpen(data, state, 'commons')) {
     throw new Error('The bonus slot is shut: spent, or outside its window for this bonusTiming');
@@ -3861,7 +4324,21 @@ export function doCommons(fx: Fx, seat: Seat, board: Suit, fee: CardId, fee2?: C
   }
   const knobs = commonsKnobs(data);
   const pile = commonsBoards(state)[board];
+  // ⚠️ UNDER THE VARIANT THIS IS ALSO THE "IS THAT BOARD OWNED?" CHECK, and it
+  // has to be: a colour with no key in the zone is a colour some SEAT is
+  // farming, whose board is a building in their tableau and is reached by the
+  // `visit` move instead. A missing key is never an empty pile here.
   if (pile === undefined) throw new Error(`There is no ${board} board in the commons`);
+  // S9, ONE USE PER BOARD PER TURN, shared with `doNoticeBoardVisit` through
+  // `turn.firedThisTurn`. Thrown here and FILTERED in the enumerator, which is
+  // this file's standing division of labour.
+  const boardCard = commonsBoardCard(data, board);
+  if (variant && state.turn.firedThisTurn.includes(boardCard)) {
+    throw new Error(`${boardCard} has already been used this turn`);
+  }
+  if (variant && fee2 !== undefined) {
+    throw new Error('There is no wild pair under rules.economy.unclaimedBoardsToCentre');
+  }
   if (knobs.threshold !== null && pile.length >= knobs.threshold) {
     throw new Error(`The ${board} board is at its threshold of ${knobs.threshold}`);
   }
@@ -3906,7 +4383,41 @@ export function doCommons(fx: Fx, seat: Seat, board: Suit, fee: CardId, fee2?: C
   if (fee2 !== undefined) fx.playOnCommons(seat, board, fee2);
   state.turn.bonusUsed.push('commons');
   fireHook(fx, 'afterVisit', { visitor: seat, host: null, self: false, board });
-  performDoorAction(fx, seat, board, 'commons');
+  if (!variant) {
+    performDoorAction(fx, seat, board, 'commons');
+    return;
+  }
+  // ⭐ AND UNDER DEAN'S UNCLAIMED-BOARDS VARIANT THE BOARD GRANTS ITS PRINTED
+  // POWER, NOT THE PLAIN DOOR ACTION (manager's ruling, 11/09/2026, on Dean's
+  // standing principle of no rules exceptions). O3 is O3 wherever it sits, so a
+  // central Orchard board is *Draw 4* and a central Apiary board *Sows 2 from
+  // your hand onto your buildings* - never the commons' Draw 2 and never its
+  // GROW substitution. This is the line that makes a centre worth what a rival's
+  // board is worth, which is the headline risk the overlay names: a central
+  // board is SOCIALLY FREE and a rival's is not, so if the two also differed in
+  // POWER the comparison would be measuring two things at once.
+  //
+  // ⛔ THE LATCH IS SET HERE AND NOT INSIDE THE POWER, exactly as
+  // `doNoticeBoardVisit` sets it, so both halves of the slot write the same
+  // list and A Helping Hand's second play is forced onto a different board.
+  markFiredOnTurn(state.turn, boardCard);
+  // ⭐ `doorUsed` IS EMITTED HERE RATHER THAN INSIDE THE POWER, on D4's
+  // reasoning and word for word as the visit does it: action inflation (a16)
+  // and the door mix (a07) count a bought action off one field and must count
+  // this exactly as they counted a commons play, so `via` stays `'commons'`.
+  // ⚠️ THE ROSTER'S PRINTED ACTION AND NOT `doorActionOf`, for the visit
+  // branch's reason and one of this variant's own: `doorActionForSuit`
+  // substitutes the Apiary GROW only while `isCommons` is true, which it is not
+  // here, so the two agree - and reading it off the override would widen a
+  // field typed `WorkerAction` to `DoorAction` for a sixth value this mode can
+  // never produce.
+  const action = doorOf(data, board).action;
+  fx.emit({ e: 'doorUsed', seat, colour: board, action, via: 'commons' });
+  fireNoticeBoardPower(fx, seat, board, {
+    src: null,
+    deliverLegal: doorActionLegal(data, state, seat, 'deliver'),
+  });
+  fireHook(fx, 'afterWork', { actor: seat, colour: board, action, via: 'commons' });
 }
 
 export type CommonsTakeOption = Extract<Move, { type: 'commonsTake' }>;
@@ -3970,6 +4481,13 @@ function enumerateCommonsTake(
   // in the fail-closed guard and one more mode the plain loop below serves, and
   // K5's "not offered on an empty pile" is the loop's own existing check.
   const toCoins = isCommonsTakeCoins(data);
+  // ⚠️ `isCommons` AND NOT `hasCentre`, DELIBERATELY (11/09/2026). Dean's
+  // unclaimed-boards variant pins `commonsTake: 'harvest'` by name, so all four
+  // flags above are false there and this would fail closed anyway; the narrow
+  // predicate is kept because the four take VARIANTS are rules of the commons
+  // and were each ruled against a centre of five ownerless boards. Pairing one
+  // of them with a centre of two would be a new design rather than a knob, and
+  // it is `hasCentre` here that would make it look like a knob.
   if (!isCommons(data) || (!toHand && !toSpend && !toPaid && !toCoins)) return false;
   if (!bonusOpen(data, state, 'commonsTake')) return false;
   const boards = commonsBoards(state);
@@ -4402,9 +4920,14 @@ export function doCommonsSpendDeliver(
  * Read by `settleTurn` and by the UI's bonus phase.
  */
 export function hasBonusOption(data: GameData, state: GameState, seat: Seat): boolean {
-  // Two options under either currency, and never four: `bonusDrawOpen` is false
+  // Two options under either control and never four: `bonusDrawOpen` is false
   // under the meeple arm and `collectOpen` is false under the card game, so the
   // pair on offer is (Draw 1 | visit) or (Collect | visit).
+  //
+  // ⭐ AND EXACTLY ONE UNDER THE TWO NEWEST DESIGNS. The commons offers the
+  // central play alone (C9), and the notice-board visit offers the visit alone
+  // (S5) - `bonusDrawOpen` closes under both, and `collectOpen` has no meeples
+  // to collect - so the disjunction below is one live term in each.
   return (
     bonusDrawOpen(data, state) ||
     collectOpen(data, state, seat) ||
@@ -4435,12 +4958,22 @@ export function hasBonusOption(data: GameData, state: GameState, seat: Seat): bo
  * fills `meeples` and `colour` and leaves `fee` null. One shape rather than two
  * functions, because everything AFTER the payment - the host-side hook, the
  * `visited` event, the door action - is identical and must stay identical.
+ *
+ * ⭐ `board` IS WHICH OF THE HOST'S NOTICE BOARDS THE FEE LANDS ON, and it is
+ * present only where a host has more than one to choose between - Dean's
+ * two-board fix at two seats (11/09/2026). It is a spend in the strict sense:
+ * it names the building the payment goes to, so it belongs here beside the fee
+ * rather than beside the payoff.
  */
-export type VisitSpend = Pick<VisitOption, 'fee' | 'meeples' | 'colour' | 'toll'>;
+export type VisitSpend = Pick<VisitOption, 'fee' | 'meeples' | 'colour' | 'toll' | 'board'>;
 
 export function doVisit(fx: Fx, visitor: Seat, host: Seat, spend: VisitSpend): void {
   if (isMeepleCurrency(fx.data)) {
     doMeepleVisit(fx, visitor, host, spend);
+    return;
+  }
+  if (isNoticeBoardPower(fx.data)) {
+    doNoticeBoardVisit(fx, visitor, host, spend);
     return;
   }
   const state = fx.state;
@@ -4474,6 +5007,255 @@ export function doVisit(fx: Fx, visitor: Seat, host: Seat, spend: VisitSpend): v
     action: door.action,
   });
   performDoorAction(fx, visitor, colour, 'visit');
+}
+
+/**
+ * ⭐ S17, THE HOST DRAW: **WHEN A NEIGHBOUR VISITS YOU, YOU DRAW 1 CARD.**
+ * (Dean, ruled 11/09/2026, `rules.turn.hostDrawOnVisit`.)
+ *
+ * ⭐ ITS PROVENANCE IS A TABLE AND NOT A SIMULATION, which is rare enough in
+ * this project to be the first thing recorded about it. Dean played the
+ * two-board arm at a two-player table on 11/09/2026, house-ruled this in during
+ * the session, and reported that the visiting worked well, that everyone
+ * visited, that every Notice Board was used at some stage, and that "the rule
+ * that the person who gets visited draws a card led to a lot of extra cards in
+ * play, which relieved the tightness of the game in a useful way".
+ *
+ * ⛔ **IT AMENDS S7** (`docs/notice-board-visit-handoff-2026-09-10-v2.md`),
+ * which said in as many words that the fee resting on the host's board "is the
+ * payment and there is no other". There is now one other and it is paid
+ * INSTANTLY: the host is paid twice, once in a card drawn now and once in
+ * material they must still harvest and then deliver. Do not quote S7 forward
+ * without S17 beside it.
+ *
+ * ⛔ **THE DRAW GOES TO THE HOST, WHO IS NOT THE ACTIVE PLAYER**, and that is
+ * the one bug this rule can have. It is the same class of mistake as the
+ * power-firing-for-the-visitor orientation twenty lines below: the visitor is
+ * paid in the POWER, the host in the CARD, and swapping them turns a payment to
+ * the giver into a second payment to the taker. A self-visit would hide it,
+ * which is one of two reasons the guard below exists.
+ *
+ * ⛔ **AND A SELF-VISIT NEVER PAYS IT.** `selfVisitAllowed` is false on every
+ * arm this rule is measured under, so the guard is unreachable there, and it is
+ * written anyway because the reason is a rule rather than a configuration: a
+ * card drawn for visiting yourself is a pure faucet with no giver, minted by
+ * nobody, and the standing ban on RESTOCK was exactly a ban on that shape. The
+ * knob is an integer and `'card'`-currency overlays can put self-visiting back
+ * on the table, so the guard is the thing that stops the two ever meeting.
+ *
+ * ⭐ **THE HOST DRAWS FROM ANY DECK IN PLAY, EXACTLY AS EVERY OTHER DRAW IN
+ * THIS GAME DOES** (Dean's standing principle of no rules exceptions). So this
+ * pushes the ordinary see-N/keep-N draw TASK, whose answers are deck picks -
+ * the same machinery as the plain Draw action, the bonus Draw and W17's - and
+ * the host makes the choice themselves in the middle of the visitor's turn,
+ * which W17 The Pie Shop has done since 04/09/2026. It is NOT `autoDraw`:
+ * `autoDraw` prefers the seat's own suit, fires no draw reactors, and would be
+ * a sixth kind of draw invented for one rule.
+ *
+ * ⛔ **AND IT DRAWS `hostDrawOnVisit` CARDS AND NEVER `baseDraw`'s.** The plain
+ * Draw action is see 2 / KEEP 2 since v31, so reusing `doDraw` would hand the
+ * host TWO cards where the knob asks for one - the trap the overlay names by
+ * name. `see` and `keep` are both the knob. ⛔ And `rules.turn.bonusDraw` is
+ * NOT this number: it is 1, it is the v31 standalone free Draw 1 deleted on
+ * 04/09/2026, it is subjectless under this currency, and a stray read of it
+ * would look right and be wrong.
+ *
+ * ⚠️ **ONCE PER VISIT AND NOT ONCE PER TURN**, which is the second engine
+ * ruling the overlay left owed. At two seats the single rival holds two boards,
+ * so A Helping Hand can send a SECOND visit to the same owner in one turn and
+ * they are paid for both - because they also receive two fee cards, and the
+ * payment is for the fee rather than for the turn. There is deliberately no
+ * latch on `turn.firedThisTurn` here: a latch belongs to a CARD's text (the
+ * standing rule of 11/08/2026 that no card's text fires twice in a turn) and
+ * this is a rule of the game.
+ *
+ * ⚠️ **W17 THE PIE SHOP IS NOW A DUPLICATE OF THIS RULE IN WORDS** ("Whenever a
+ * neighbour visits you, Draw 1") **AND THE TWO STACK: A W17 OWNER VISITED ONCE
+ * DRAWS TWO.** That is deliberate rather than emergent - the card is a card and
+ * the rule is a rule, they are pushed as two separate tasks, and nothing here
+ * suppresses either. It is also ASYMMETRIC in a way worth knowing before the
+ * retext: W17 carries a once-a-turn latch and this rule does not, so a W17
+ * owner visited twice in one turn draws THREE and not four. ⛔ The retext is a
+ * SHEET decision Dean has not made, so no card changes in this pass; when he
+ * makes it, this note is the reading it needs.
+ *
+ * It degrades gracefully with the table: a draw task with no drawable deck has
+ * no legal answer and `drainTasks` drops it, so a dry table pays nothing rather
+ * than throwing. The `drawableSuits` check below is the same statement made
+ * early, so that no empty task is ever pushed at all.
+ */
+function payHostDrawOnVisit(fx: Fx, visitor: Seat, host: Seat): void {
+  // ⛔ A SELF-VISIT NEVER PAYS IT: a faucet with no giver. See the block above.
+  if (visitor === host) return;
+  const n = hostDrawOnVisit(fx.data);
+  if (n <= 0) return;
+  // ⭐ THE CORRECTNESS GATE IN ONE LINE: at the shipped 0 nothing is pushed, no
+  // task is created, no rng call is consumed and no event is emitted, so the
+  // engine behaves exactly as it did before this rule existed.
+  if (drawableSuits(fx.data, fx.state).length === 0) return;
+  fx.pushTask({ t: 'draw', pid: host, src: null, see: n, keep: n, revealed: [], via: 'hostDraw' });
+}
+
+/**
+ * ⛔ THE NOTICE-BOARD VISIT (S5-S11, Dean 10/09/2026), AND THE ONE BUG THIS
+ * DESIGN CAN HAVE IS IN THESE TWENTY LINES.
+ *
+ * **THE POWER FIRES FOR THE VISITOR AND THE CARD LANDS ON THE HOST.** The
+ * visitor is paid instantly with the power; the host is paid in material they
+ * still have to harvest and deliver, and that is the host's whole payment (S7).
+ * Swap the two seats and the design inverts into paying the giver nothing,
+ * which is the fault the Lopiano lens names in all seven previous versions of
+ * this bonus action - so `fx.placeOnBuilding` is handed `{ seat: host }` and
+ * `fireNoticeBoardPower` is handed `visitor`, and those two arguments are the
+ * design.
+ *
+ * ⚠️ A SELF-VISIT HIDES THE MISTAKE, because both seats are the same, which
+ * is why the test for it is written at THREE seats and asserts all four halves
+ * separately: the host's board gained the card, the host's HAND did not move,
+ * the visitor's hand lost the card, and the visitor got the payoff.
+ *
+ * The ORDER is the v31 branch's, unchanged and load-bearing: the fee LANDS
+ * first, then `afterVisit` fires host-side, then the power runs. So a host-side
+ * reactor (W17 The Pie Shop, alive again now that there is a host) sees the
+ * card on the board, and A16 The Beekeeper's Veil sees the placement that
+ * brought the board to two - which is S16's second ruling and falls out of
+ * `placeOnBuilding` firing `afterPlacement`, where the commons' `playOnCommons`
+ * deliberately did not.
+ *
+ * ⭐ `doorUsed` IS EMITTED HERE RATHER THAN INSIDE THE POWER, on D4's
+ * reasoning: action inflation (a16) and the door mix (a07) count a bought
+ * action off one field, and they must count this exactly as they counted a v31
+ * visit and a commons play. `via` stays `'visit'`, and the ACTION is the
+ * board's own suit verb (`doorActionOf`), which is what each power amplifies -
+ * Orchard draw, Dairy build, Wheat harvest, Apiary sow, Vegetable deliver.
+ *
+ * Every predicate the enumerator applied is re-asked, including S9's latch:
+ * a re-validation must ask what the move NEEDS and never trust the window the
+ * caller consumed.
+ */
+function doNoticeBoardVisit(fx: Fx, visitor: Seat, host: Seat, spend: VisitSpend): void {
+  const state = fx.state;
+  const fee = spend.fee;
+  if (fee === null) throw new Error('A visit costs one card from your hand');
+  if (spend.meeples !== undefined && spend.meeples.length > 0) {
+    throw new Error('There are no meeples under the notice-board visit');
+  }
+  if (visitor === host && !fx.data.rules.turn.selfVisitAllowed) {
+    throw new Error('Self-visiting is switched off');
+  }
+  if (!bonusOpen(fx.data, state, 'visit')) {
+    throw new Error('The bonus slot is shut: spent, or outside its window for this bonusTiming');
+  }
+  // ⭐ WHICH BOARD, AND THE ONE LINE THAT WOULD PUT THE FEE ON THE WRONG
+  // BUILDING IF IT WERE WRONG (Dean's two-board fix, 11/09/2026). `spend.board`
+  // is the move's own answer and `visitTargetOf` refuses a card that is not one
+  // of this host's boards; with the field absent it is the host's own suit's
+  // board, which is every game but the two-board arm.
+  //
+  // ⛔ AND A HOST WITH TWO BOARDS MUST BE TOLD WHICH ONE. Defaulting would
+  // silently send every fee to the seat's own suit's board and leave the second
+  // one empty for the whole game, which is a wrong answer that no test of the
+  // payoff would ever catch - the power would be right, the card would be on
+  // the wrong building, and the owner would harvest the same income either way.
+  if (spend.board === undefined && noticeBoardsOf(fx.data, state, host).length > 1) {
+    throw new Error(`Seat ${host} has more than one Notice Board: the visit must name one`);
+  }
+  const target = visitTargetOf(fx.data, state, host, spend.board);
+  // S9, ONE USE PER BOARD PER TURN. Thrown here and FILTERED in the
+  // enumerator, which is this file's standing division of labour.
+  if (state.turn.firedThisTurn.includes(target.card)) {
+    throw new Error(`${target.card} has already been used this turn`);
+  }
+  // S8: false for a `3+` board however deep the stack, so this bites only
+  // under the `noticeBoardBlocks: true` control.
+  if (isFull(fx.data, target)) throw new Error(`${target.card} is full`);
+  // ⛔ THE BOARD'S SUIT AND NOT THE HOST'S. They are the same for a seat's own
+  // board and differ on every board the two-board fix deals, and this is the
+  // line that decides WHICH POWER IS BOUGHT - see the enumerator, which reads
+  // the same field for the same reason.
+  const colour = cardById(fx.data, target.card).suit;
+  if (!noticeBoardPowerLegal(fx.data, state, visitor, colour, { excludingHandCard: fee })) {
+    throw new Error(`The ${colour} Notice Board has nothing legal to do for seat ${visitor}`);
+  }
+
+  // THE CARD LEAVES THE VISITOR'S HAND AND LANDS ON THE HOST'S BOARD. Read the
+  // two seat arguments together: `visitor` is who is paying, `{ seat: host }`
+  // is whose building it lands on.
+  fx.placeOnBuilding(visitor, { seat: host, card: target.card }, fee);
+  state.turn.bonusUsed.push('visit');
+  markFiredOnTurn(state.turn, target.card);
+  fireHook(fx, 'afterVisit', { visitor, host, self: visitor === host });
+  // ⚠️ THE ROSTER'S PRINTED ACTION AND NOT `doorActionOf`. The two agree
+  // under this mode - the Apiary re-read to GROW is the commons' and only the
+  // commons' (C3) - but `visited.action` is typed `WorkerAction`, the five-door
+  // set, and reading it off the override would widen it to `DoorAction` for a
+  // sixth value this mode can never produce.
+  const action = doorOf(fx.data, colour).action;
+  fx.emit({
+    e: 'visited',
+    seat: visitor,
+    host,
+    self: visitor === host,
+    colour,
+    action,
+  });
+  fx.emit({ e: 'doorUsed', seat: visitor, colour, action, via: 'visit' });
+  // AND THE POWER FIRES FOR THE VISITOR.
+  fireNoticeBoardPower(fx, visitor, colour, {
+    src: null,
+    deliverLegal: doorActionLegal(fx.data, state, visitor, 'deliver'),
+  });
+  fireHook(fx, 'afterWork', { actor: visitor, colour, action, via: 'visit' });
+  // ⭐ S17 IS PAID LAST, AND THE QUEUE POSITION IS THE WHOLE POINT (the probe
+  // truncation defect, found and fixed 11/09/2026).
+  //
+  // ⛔ **THE DEFECT.** S17 pushes a draw TASK for the HOST in the middle of the
+  // VISITOR's turn. Pushed before `fireNoticeBoardPower`, as it was when the
+  // rule was first written, it sat at the HEAD of the queue while the visitor's
+  // own bought power sat behind it - and `probeAt` in `probe.ts` returns
+  // `next: []` and `pending: null` the moment the head task is not the probing
+  // seat's own, deliberately, because a rollout may not answer for a rival. So
+  // a bot evaluating a visit had its rollout cut before the power it had just
+  // paid for was ever walked. Measured over real decisions on the arm against
+  // its paired control:
+  //
+  //     seats   mean rollout value of a visit   probes cut dead   bonus premium
+  //     2p      2.358 -> 0.003                  18.9% -> 99.9%    80.6% -> 0.1%
+  //     3p      3.367 -> 0.115                   2.4% -> 89.4%    96.4% -> 10.6%
+  //     4p      2.806 -> 0.240                  13.3% -> 81.3%    86.4% -> 18.7%
+  //
+  // A visit cost the bot a card plus the gift to the host and earned, in its
+  // books, nothing, so it stopped visiting: every bonus rate, door mix and hook
+  // number taken off the arm before this fix describes the defect and not S17.
+  //
+  // ⭐ **THE FIX, AND THE PRINCIPLE UNDER IT: a visit's rollout must always be
+  // able to see what the visitor bought.** The two payments are independent -
+  // the visitor is paid in the power, the host in a card off a deck - so the
+  // order between them is free, and free order must never be spent on blinding
+  // the seat whose turn it is. The visitor's whole purchase is queued first
+  // (the power's own tasks, and anything `afterWork` adds), then the host's
+  // draw. It is also the more natural table order: nobody waits for the host to
+  // pick a deck before the visitor resolves what they just bought.
+  //
+  // ⛔ **THIS SUPERSEDES THE COMMENT THAT USED TO STAND AT THE OLD CALL SITE**,
+  // which argued S17 belonged immediately after `afterVisit` "so that W17 The
+  // Pie Shop's task keeps the queue position it has always had". That reasoning
+  // was written before the defect was known and it was the wrong trade: it
+  // protected a card's queue position at the cost of every bot valuation of the
+  // move. ⚠️ **W17's OWN TASK HAS NOT MOVED** - it is still pushed inside
+  // `afterVisit`, ahead of the power - so no existing card's behaviour changes
+  // and every control arm stays byte-identical. That leaves W17 truncating the
+  // rollout of a visit to a W17 owner exactly as it always has (9.9% to 13.4%
+  // of probes at three and four seats), which is a REPORTED residue and not an
+  // oversight: moving it would move recorded games in the controls too.
+  //
+  // ⭐ **NOTHING MOVES AT THE SHIPPED 0.** `payHostDrawOnVisit` pushes no task,
+  // emits no event and consumes no rng when the knob is 0, so the correctness
+  // gate in `notice-board-host-draw.test.ts` - the arm at 0 against
+  // `overlays/notice-board-visit-two-boards-v1.overlay.json` - is untouched by
+  // where it is called from. It emits no events at any value either, so the
+  // EVENT stream of a visit is unchanged and only the task order moves.
+  payHostDrawOnVisit(fx, visitor, host);
 }
 
 /**

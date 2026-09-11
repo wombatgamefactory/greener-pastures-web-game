@@ -90,9 +90,9 @@ import type { GameData, Suit } from '@gp/data';
 import { activateTargets, growOptions } from '../actions.js';
 import type { Fx } from '../fx.js';
 import { canTakeCard, cardById, drawableSuits, foreignCropBuildings, player } from '../query.js';
-import { doGrow } from '../runtime.js';
+import { doGrow, markFired } from '../runtime.js';
 import type { BuildingState, CardId, GameState, Seat, TaskAnswer } from '../state.js';
-import { farmsteadHandler } from './farmstead.js';
+import { barnCropScorer, farmsteadHandler } from './farmstead.js';
 import type { CardHandler } from './types.js';
 
 const HIVE_NAME = /\bHive\b/;
@@ -156,13 +156,38 @@ function rivals(state: GameState, seat: Seat): Seat[] {
 export const apiaryBarn: CardHandler = {
   difficulty: {
     score: 1,
-    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
+    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: true },
     asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'No behaviour, and no printed text to have behaviour about. Registered anyway, so ' +
-      'that a Barn with no entry reads as a deliberate blank rather than as a card nobody ' +
-      'implemented.',
+      'No behaviour of its own, and no printed text to have behaviour about. Registered ' +
+      'anyway, so that a Barn with no entry reads as a deliberate blank rather than as a ' +
+      'card nobody implemented. ' +
+      '⭐ ENDGAME IS TRUE SINCE 10/09/2026, AND THE FLAG IS STRUCTURAL RATHER THAN A ' +
+      'taste: the card carries a `gameEnd` now. Under the notice-board visit (S1) the ' +
+      'crop scorer - "Game end: 1 VP for each <CROP> card you have built" - moves off ' +
+      'the Farmstead onto the Barn, which is the starter whose one job is to hold your ' +
+      'harvested cards. `barnCropScorer` answers 0 in every other game, so the printed ' +
+      'behaviour is still nothing at all in the shipped commons and in all four ' +
+      'controls. Every other flag stays false: no prompt, no move, no hook, nothing ' +
+      'cross-table.',
   },
+  /**
+   * ⭐ THE CROP SCORER, WHICH LANDS HERE UNDER THE NOTICE-BOARD VISIT ONLY
+   * (S1, Dean 10/09/2026): *"Game end: 1 VP for each Apiary card you have
+   * built."* Under that rejig each starter does exactly one thing - the Notice
+   * Board prints your suit's power and holds the visit fees, the Barn holds
+   * your harvested cards and prints this line, and the Farmstead holds six
+   * island receipt tokens and prints nothing at all.
+   *
+   * ⚠️ AND IT IS SILENT IN EVERY OTHER GAME. `barnCropScorer` answers 0
+   * unless `rules.turn.visitCurrency` is `'noticeBoardPower'`, so the shipped
+   * commons, the v31 control, the meeple controls and the coins arm all score
+   * exactly as they did - the Farmstead keeps the line in the first four and
+   * loses it with nowhere to go in the fifth (K13). The two are gated by the
+   * same predicate from opposite sides, so the term can never be scored twice
+   * or dropped.
+   */
+  gameEnd: barnCropScorer('apiary'),
 };
 
 /**
@@ -671,7 +696,21 @@ export const beekeepersVeil: CardHandler = {
     notes:
       'Placer-scoped placement reactor (ruling G): stack POSITION 2, any board - your own ' +
       'grow payment or sow, or your visit fee landing on a Notice Board holding one card. ' +
-      'Never fires when a rival brings YOUR building to 2. No per-turn limit. ⚠️ ITS ' +
+      'Never fires when a rival brings YOUR building to 2. ⭐ NO PER-TURN LIMIT, AND THAT ' +
+      'IS A DECISION RE-TAKEN ON 10/09/2026 RATHER THAN AN OMISSION. S9 makes two ' +
+      "placements a turn possible for the first time (A Helping Hand's second bonus is a " +
+      'second play, onto a different board), which is exactly the change that forced a ' +
+      'guard onto A17 The Smoke Pot and O16 The Fruit Store the same day - so the question ' +
+      'was asked of this card too and answered the other way. IT IS A PLACEMENT REACTOR, ' +
+      'NOT A VISIT REACTOR: it already fires an unbounded number of times a turn off ' +
+      'ordinary grow payments and sows (O14 The Conservatory sows a whole hand), it is ' +
+      'keyed to a stack POSITION rather than to anything the bonus slot produces, and ' +
+      'capping it would change the card in every game including the shipped commons. The ' +
+      'two cards guarded that day are guarded because their trigger IS the bonus slot; ' +
+      'this one is not. ' +
+      '⚠️ READ ITS DRAW COUNT IN THE PASS (S16): four boards cycling through two cards ' +
+      'all game is a lot of position-2 placements, and the handoff asks for visit ' +
+      'placements split from ordinary ones. ⚠️ ITS ' +
       'SUPPLY OF TRIGGERS SHRANK ON 19/08/2026 without a word of its own text changing: ' +
       'A13, A14 and A17 all used to place cards and none of them does now (A13 and A17 send ' +
       'theirs to a barn, A14 places nothing at all). What is left inside the suit is A7, ' +
@@ -680,6 +719,9 @@ export const beekeepersVeil: CardHandler = {
       'placement sources and now has five.',
   },
   on: {
+    // ⭐ DELIBERATELY UNGUARDED, re-decided 10/09/2026 - see the notes. It
+    // fires per PLACEMENT and always has; A17 and O16 gained per-turn guards
+    // that day because their trigger is the bonus slot, and this one's is not.
     afterPlacement(fx, event, self) {
       if (event.seat !== self.seat) return;
       if (event.stackSize !== 2) return;
@@ -711,9 +753,17 @@ export const smokePot: CardHandler = {
       '⚠️ IT IS NOW STRONG, AND THE PLAN SAYS SO: a free barn card on every neighbour ' +
       'visit, in a game where freight is most of a winning score. The named alternative ' +
       'price, if it reads too generous, is "discard a card from your hand" - the only ' +
-      'currency left. It is capped at once a turn in practice by the one-bonus-slot rule; ' +
-      'A Helping Hand raises that to twice by granting a second option, but only one of the ' +
-      'two options is a placement, so the cap holds. ' +
+      'currency left. ' +
+      '⛔ AND IT HAS A REAL PER-TURN GUARD SINCE 10/09/2026, WHERE IT HAD NONE. This note ' +
+      'used to argue the cap held for free: "once a turn in practice by the one-bonus-slot ' +
+      'rule; A Helping Hand raises that to twice by granting a second option, but only one ' +
+      'of the two options is a placement". THAT ARGUMENT EXPIRED WITH S9 (Dean, ' +
+      '10/09/2026): under the notice-board visit the slot holds ONE option and A Helping ' +
+      'Hand grants a second play of it, to a different board, so BOTH options are ' +
+      'placements and this card could fire twice in a turn. The standing rule of ' +
+      "11/08/2026 is that no card's text fires twice in a turn, so the guard is now " +
+      'written rather than argued - the shared `turn.firedThisTurn` list through ' +
+      '`markFired`, exactly as W17 The Pie Shop and W16 The Granary already do. ' +
       '⚠️ THE DESTINATION IS THE BARN, NOT A BUILDING, and that is the quiet half of the ' +
       "card: it advances no threshold and feeds the island rather than the suit's own " +
       'clogging engine. The barn is a dead end (barn to island only), so nothing it buys can ' +
@@ -726,6 +776,12 @@ export const smokePot: CardHandler = {
       // "a NEIGHBOUR's Notice Board" - a self-visit is not one. This is the
       // guard the whole card turns on; see the notes.
       if (event.self) return;
+      // ⛔ ONCE A TURN (the standing rule of 11/08/2026), and it is a real
+      // guard now rather than an accident of the slot's shape: S9 (10/09/2026)
+      // makes A Helping Hand's second bonus a second PLACEMENT, so the old
+      // "only one of the two options is a placement" argument is dead.
+      if (fx.state.turn.firedThisTurn.includes(self.card)) return;
+      markFired(fx, self.card);
       // Pushed unconditionally and gated in the enumerator instead of here: the
       // decks can run dry between the hook firing and the task reaching the head
       // of the queue, and an empty answer list is auto-skipped by the drain loop.

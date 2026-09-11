@@ -1,0 +1,21 @@
+{
+  "name": "notice-board-visit-no-self-v1",
+  "description": "⛔ THE HEADLINE CONTROL OF THE WHOLE PASS, AND THE SINGLE MOST IMPORTANT SUB-ARM IN THE PLAN (Dean, 10/09/2026, §5 of docs/notice-board-visit-handoff-2026-09-10-v2.md). ONE LEAF CHANGES against overlays/notice-board-visit-v1.overlay.json and it is rules.turn.selfVisitAllowed, true to FALSE: you may still play a card onto any Notice Board and take that board's power, but never your own. Everything else is the arm, pinned leaf for leaf, so the pair is attributable to that one rule. THE QUESTION IT ANSWERS: S6 ruled self-use back in, reversing the ban of 04/09/2026, and the argument for it is variety - in v31 every Notice Board printed the SAME thing, so a self-visit was strictly better than a visit (same benefit, no gift, no travel) and it took 22.2% OF TURNS and was banned within two days, whereas here the five boards print five DIFFERENT powers, so your own board is one option of five and it is the one that never has what you have not got. ⭐ THE ARGUMENT HAS A SECOND HALF THAT IS WORTH AS MUCH: a power you can use yourself cannot draw the predecessor's single biggest complaint, the \"reverse engine building\" cluster of about ten comments in 887, which is my cards only ever fire for my opponents. ⛔ AND IT IS THE THING MOST LIKELY TO SINK THE DESIGN, WHICH IS WHY THE CONTROL EXISTS RATHER THAN AN ARGUMENT. Paying a card to your OWN board is cheaper than paying it to a rival's, because you harvest it back, so a self-visit is a discount as well as an option. HOW TO READ THE PAIR, and this is the decision rule rather than a list of numbers: IF THE ARM AND THIS CONTROL READ THE SAME ON INTERACTION - visits received per player, the visit spread, the bonus rate on the turn measure, game length - THEN SELF-USE IS FREE AND CAN STAY, because it is costing the table nothing. IF THE ARM'S INTERACTION COLLAPSES RELATIVE TO THIS CONTROL, the variety argument of §2.4 is simply wrong, the interaction is decoration and THE DESIGN HAS FAILED IN THE WAY v31 FAILED. Read the self-visit share by seat count in the arm first: it should be worst at two players, where a neighbour's gift is closest to zero-sum, and v31's 22.2% is the only prior number there is. ⚠️ READ TWO SIDE EFFECTS BEFORE CALLING IT: banning self-use makes the bonus SOMETIMES IMPOSSIBLE at two players in a way it never is in the arm (one rival board, one power), which is a structural gate rather than a price and this project has measured twice that a structure rations far harder than a price and charges tempo for the service; and W17 The Pie Shop, O16 The Fruit Store and A17 The Smoke Pot all key on a visit, so their fire rates move with the rule rather than with the design. ⚠️ HOW TO RUN IT: --overlay= with --watchlist, never --sweep=, always --n=1580 (4,820 games, five mirrors, reference-v15 seeds), paired against the arm on identical seeds. The engine's hand limit of 7 is the simulator's bound and not a rule of the game (C7).",
+  "schemaVersion": 1,
+  "set": {
+    "rules.turn.visitCurrency": "noticeBoardPower",
+    "rules.turn.bonusTiming": "start",
+    "rules.turn.selfVisitAllowed": false,
+    "rules.turn.commonsTake": "harvest",
+    "rules.turn.startingMeeplesPerColour": 0,
+    "rules.turn.meepleAsCard": false,
+    "rules.turn.slotToll": null,
+    "rules.turn.meepleCapPerColour": null,
+    "rules.economy.noticeBoardThreshold": 3,
+    "rules.economy.noticeBoardBlocks": false,
+    "rules.economy.commonsColourMatch": false,
+    "rules.economy.commonsWildPair": false,
+    "rules.economy.endgameCoinCost": null,
+    "rules.economy.farmsteadCoinPower": false
+  }
+}

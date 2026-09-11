@@ -79,10 +79,13 @@ STARTER_SLOT_BY_NUM = {1: "barn", 2: "farmstead", 3: "noticeboard"}
 # --- Pinned mechanical stats ---------------------------------------------
 # The Notice Board prints its threshold and activation type as columns, so both
 # are READ from the sheet; the pin below exists so a silent sheet edit is caught
-# rather than absorbed. v31 set it to 2 (it was 5 through the whole v14 era, and
-# the sheet had already drifted to 2 ahead of the rule - the ledger flagged that
-# gap, and this pin is what closes it).
-NOTICE_BOARD_THRESHOLD = 2
+# rather than absorbed. RE-POINTED 10/09/2026 for the Notice Board visit
+# (S8 of docs/notice-board-visit-handoff-2026-09-10-v2.md, sheet v36). The board
+# is the VISIT TARGET again, and its threshold is the literal text `3+`: three is
+# the MINIMUM before the owner may harvest, never a maximum load, so the face
+# prints the plus sign and the cell is text rather than a number. The previous
+# pin of 2 was a v31 fact and it described a different card.
+NOTICE_BOARD_THRESHOLD = "3+"
 
 # Every Power and Endgame card costs 2 cards of its OWN suit from v31; no coins,
 # no wilds. Pinned for the same reason as the Notice Board threshold.
@@ -259,20 +262,41 @@ def triggers_for(card_type, text, threshold=None, activation=None):
 def check_starter(card, warnings):
     """Check the printed stats of one starter against what the rules require.
 
-    The Notice Board is the only loadable starter (threshold 2 / wild); the Barn
-    and the Farmstead hold no cards, so they must print neither threshold nor
-    activation, and the Barn must print no text at all.
+    ALL THREE ASSERTIONS WERE RE-POINTED ON 10/09/2026 for the Notice Board
+    visit (S1-S4, S8 and S12 of docs/notice-board-visit-handoff-2026-09-10-v2.md,
+    landed on the sheet at v36). Each of them previously encoded a v31 fact, and
+    v31's three starters did three different jobs from these, so every one of
+    them was inverted by the design rather than merely out of date. Left alone
+    they fired on all fifteen starters of a correct sheet.
+
+    The three starters now do exactly one job each:
+
+      * The NOTICE BOARD is the visit target and the only loadable starter. It
+        prints its suit's POWER (S12), a threshold of `3+` (S8) and NO activation
+        cost at all: a visitor pays any card from hand, so there is nothing for an
+        activation cost to say, and the board is never a GROW target (S11).
+        Was: threshold 2 / wild activation, printing a VISITOR line.
+      * The BARN holds harvested cards and prints the end-game scoring line that
+        used to sit on the Farmstead.
+        Was: the Barn prints no text at all (v31, ledger A31).
+      * The FARMSTEAD is inert. It holds the island receipt tokens in six printed
+        slots (S4) and prints no rules text, no threshold and no activation cost.
+        Was: the Farmstead prints its end-game line.
     """
     slot, cid = card["slot"], card["id"]
 
     if slot == "noticeboard":
-        if (card["threshold"], card["activationType"]) != (NOTICE_BOARD_THRESHOLD, "wild"):
+        if str(card["threshold"] or "") != NOTICE_BOARD_THRESHOLD:
             warnings.append(
-                "%s: Notice Board must be threshold %d / wild activation "
-                "(sheet says %r / %r)"
-                % (cid, NOTICE_BOARD_THRESHOLD, card["threshold"], card["activationType"]))
+                "%s: Notice Board must print threshold %r, the floor the owner harvests "
+                "at (sheet says %r)" % (cid, NOTICE_BOARD_THRESHOLD, card["threshold"]))
+        if card["activationType"] is not None:
+            warnings.append(
+                "%s: Notice Board must print NO activation cost - a visitor pays any card "
+                "from hand and the board is never a GROW target (sheet says %r)"
+                % (cid, card["activationType"]))
         if not card["abilityText"]:
-            warnings.append("%s: Notice Board prints no VISITOR line" % cid)
+            warnings.append("%s: Notice Board prints no power line" % cid)
         return
 
     if card["threshold"] is not None or card["activationType"] is not None:
@@ -280,11 +304,12 @@ def check_starter(card, warnings):
                         "no activation type (sheet says %r / %r)"
                         % (cid, slot, card["threshold"], card["activationType"]))
 
-    if slot == "barn" and card["abilityText"]:
-        warnings.append("%s: the Barn prints no text from v31, but the sheet still says %r"
+    if slot == "barn" and not card["abilityText"]:
+        warnings.append("%s: expected the Barn's end-game line, found no text" % cid)
+    if slot == "farmstead" and card["abilityText"]:
+        warnings.append("%s: the Farmstead prints nothing at all - it holds the island "
+                        "receipt tokens and nothing else - but the sheet still says %r"
                         % (cid, card["abilityText"]))
-    if slot == "farmstead" and not card["abilityText"]:
-        warnings.append("%s: expected the Farmstead's end-game line, found no text" % cid)
 
 
 def g_cardnum(ws, card_num_col, r):

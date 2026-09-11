@@ -1,0 +1,21 @@
+{
+  "name": "notice-board-visit-threshold-4-v1",
+  "description": "⭐ THE THRESHOLD SWEEP, HIGH END (Dean, 10/09/2026, §5 of docs/notice-board-visit-handoff-2026-09-10-v2.md). ONE LEAF CHANGES against overlays/notice-board-visit-v1.overlay.json and it is rules.economy.noticeBoardThreshold, 3 to 4: a Notice Board must hold FOUR cards before its owner may harvest it. Everything else is the arm, pinned leaf for leaf, and rules.economy.noticeBoardBlocks stays false, so this is still a MINIMUM and never a maximum - the board keeps accepting cards for ever and nothing refuses a play. THE QUESTION IT ANSWERS, in Dean's own framing: at 4 THE HOST IS PAID TOO LATE. The visitor is paid INSTANTLY with the power and the host is paid in material they must still convert, so the threshold is the length of the host's wait, and a wait long enough turns the payment into a promise. ⭐ THERE IS AN ARGUMENT ON THE OTHER SIDE AND IT IS DEAN'S OWN, CARRIED OVER FROM THE v31 SWEEP: a tile costs 4 cards, so a board at 4 holds exactly one delivery's worth of freight, which is the only version of this number that lines up with anything else in the game. That is why 4 is on the ladder rather than being ruled out at the table. ⚠️ AND THE ARM'S MEASURED RISK RUNS THE OTHER WAY FROM THE LOW END'S: the failure at 2 is a host who cannot be bothered to cash in, the failure at 4 is a host who CANNOT cash in, because a board only reaches four if the table keeps visiting it - and the visit spread says the table does not visit evenly. ⛔ SO READ THIS ARM AT THE QUIETEST BOARD, NOT THE MEAN: a threshold above what a quiet board ever reaches is a payment that never arrives, and the mean will hide it. READ IT IN THIS ORDER: (1) THE VISIT SPREAD - visits received per player and the ratio between the busiest and quietest board - and then the share of games in which some seat NEVER harvested their Notice Board at all, which is the number this arm exists to find. (2) a20, the stall, at two players especially, where two boards share all the traffic. (3) Harvests of a Notice Board per player per game and the median size when harvested, which says whether 4 is above or below what the boards actually reach. (4) THE FARM BYPASS, REDEFINED (what share of barn cards arrived as somebody else's fee): a later harvest means a fatter one, so the flow may be unchanged and merely lumpier, and the conservation reading is what tells those two apart. (5) The bonus rate on the turn measure, game length and the last player as a percentage of the winner - if a slow payment hurts anybody it hurts whoever is behind, and the predecessor's record says paid helping is supposed to be a catch-up valve. ⚠️ HOW TO RUN IT: --overlay= with --watchlist, never --sweep=, always --n=1580 (4,820 games, five mirrors, reference-v15 seeds), paired against the arm and against overlays/notice-board-visit-threshold-2-v1.overlay.json on identical seeds; read the three as a ladder and never a single arm against the shipped commons. The engine's hand limit of 7 is the simulator's bound and not a rule of the game (C7).",
+  "schemaVersion": 1,
+  "set": {
+    "rules.turn.visitCurrency": "noticeBoardPower",
+    "rules.turn.bonusTiming": "start",
+    "rules.turn.selfVisitAllowed": true,
+    "rules.turn.commonsTake": "harvest",
+    "rules.turn.startingMeeplesPerColour": 0,
+    "rules.turn.meepleAsCard": false,
+    "rules.turn.slotToll": null,
+    "rules.turn.meepleCapPerColour": null,
+    "rules.economy.noticeBoardThreshold": 4,
+    "rules.economy.noticeBoardBlocks": false,
+    "rules.economy.commonsColourMatch": false,
+    "rules.economy.commonsWildPair": false,
+    "rules.economy.endgameCoinCost": null,
+    "rules.economy.farmsteadCoinPower": false
+  }
+}

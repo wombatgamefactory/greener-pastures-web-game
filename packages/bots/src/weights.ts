@@ -154,6 +154,98 @@
  * A taste for hoarding coins belongs in a profile the day somebody wants to
  * bracket that reading the way `hermit` and `socialite` bracket the play rate;
  * until then the reference measures the rule.
+ *
+ * ## ⭐ THE NOTICE-BOARD VISIT (11/09/2026): ONE NEW WEIGHT, MEASURED, AND
+ * TWO OLD ONES THAT LOSE THEIR SUBJECT
+ *
+ * `docs/notice-board-visit-handoff-2026-09-10-v2.md`, S1-S16. The five Notice
+ * Boards come home as buildings, the bonus is a card onto ANY player's board -
+ * your own included - for that board's printed power, and the card rests on the
+ * host's board until the host harvests it. **This is the first design in the
+ * project where a move pays somebody else**, so the discipline could not be
+ * "not one number moves" any more than the coins pass could:
+ *
+ *   - **`hostGift` arrives at 1.5**, MEASURED over 32,478 rival placements and
+ *     1,200 complete games, with the sweep of its own consequences at its entry.
+ *     It is the ledger's C64, which has bitten three designs running, and it is
+ *     the only reason a bot can now decline a visit because of who it feeds.
+ *   - **`clogOwnBoard` 6 and `unclogBoard` 6 lose their subject under S8's `3+`
+ *     rule and are guarded off in `terms.ts`, not zeroed here.** A board that
+ *     never blocks has no door to shut and none to reopen. Both numbers stay
+ *     where they are because the v31 control and the `-blocking-v1` sub-arm
+ *     still need them, and a weight zeroed "for the arm" is a weight somebody
+ *     has to put back by hand before the control can be re-run.
+ *
+ * ⛔ **AND `selfVisit`'s 0 IS LOAD-BEARING FOR THE FIRST TIME SINCE
+ * 03/09/2026.** S6 rules self-use back in, so the term has a subject again and
+ * the zero asserts that the bot is INDIFFERENT between its own board and a
+ * rival's, deciding purely on which power it wants. The self-visit share is the
+ * pass's headline risk; the argument for the zero, and the two readings that
+ * would overturn it, are at the term's entry in `terms.ts`.
+ *
+ * ⚠️ **NOTHING ELSE MOVES, AND ALL THREE CONTROLS ARE UNTOUCHED.** `hostGift`
+ * is structurally zero outside `visitCurrency: 'noticeBoardPower'` - including
+ * under the v31 `'card'` game, where it has a genuine subject and is shut
+ * anyway, because that control is what this arm's self-visit share is read
+ * against.
+ *
+ * ## ⛔ S17, THE HOST DRAW (11/09/2026) - ONE NUMBER MOVES AND IT IS THE ONE
+ * THAT HAD TO
+ *
+ * `rules.turn.hostDrawOnVisit`, Dean, from a TABLE rather than from a run:
+ * **when a neighbour visits you, you draw a card.** It amends S7, which said
+ * the fee resting on the host's board was the payment "and there is no other".
+ * There is now one other and it is paid instantly, so a visit hands a rival
+ * strictly more than it did yesterday.
+ *
+ *   - **`hostGift` 1.5 -> 2.7**, MEASURED over 15,288 rival placements and
+ *     14,893 host draws across 450 complete games, with both legs, the band,
+ *     the correction to the obvious sum and the consequence sweep at its own
+ *     entry. It is `harvest` 1.5 plus `drawAction` 1.2: the two zones the two
+ *     halves of the payment land in, each at the price this table already pays
+ *     for a card arriving there.
+ *   - ⛔ **AND IT IS KNOB-SENSITIVE, WHICH IS NEW FOR THIS TERM.** The weight is
+ *     the whole S17 payment and the feature scales it back to the fee half when
+ *     `hostDrawOnVisit` is 0, so **the paired control charges 1.5 exactly as it
+ *     did** and the two overlays still differ in one leaf. The two halves are
+ *     `HOST_GIFT_FEE` and `HOST_GIFT_DRAW` in `terms.ts` and this number must
+ *     stay their sum.
+ *
+ * ⚠️ **NOTHING ELSE MOVES**, and two things that a reader will expect to have
+ * moved deliberately did not: `outcome.ts` still prices a card reaching a
+ * RIVAL's hand at zero (`hostGift` is the one place C64 is charged, and pricing
+ * it twice would break the `hostGift: 0` control), and the charge does not
+ * scale with the host's room in hand even though the host had none on 32.5% of
+ * visits - because that bound is the simulator's and not the game's (C7).
+ *
+ * ## ⛔ DEAN'S UNCLAIMED-BOARDS VARIANT (11/09/2026) - NOT ONE NUMBER IN THIS
+ * FILE MOVES, AND THAT IS THE POINT
+ *
+ * `overlays/notice-board-visit-unclaimed-v1.overlay.json` bans self-visiting and
+ * sends the unfarmed suits' Notice Boards to the centre, so both move kinds are
+ * live at once: a `visit` onto a rival's board and a `commons` play onto an
+ * ownerless central pile, sharing one bonus slot. **The variant is measured
+ * against the same table the no-centre arm was measured on**, which is the whole
+ * of why nothing here is re-tuned - a weight moved in the same pass as a rule
+ * makes every delta a mixture of the two, and this arm's central-versus-rival
+ * split is read against `overlays/notice-board-visit-no-self-v1.overlay.json` on
+ * identical seeds.
+ *
+ * ⭐ **WHAT THAT LEAVES SEPARATING THE TWO KINDS IS EXACTLY ONE WEIGHT:
+ * `hostGift` at 1.5**, charged on a rival visit and structurally zero on a
+ * central play, because a central board has no host. `handSpend` 2.5,
+ * `visitFeeJunk` 0.3, `outcome` 1 and `bonusAction` 2.4 all fire identically on
+ * the two, and `visit` 0 counts them as one thing - so `socialite`'s 8 and
+ * `hermit`'s -100 push on WHETHER the slot is spent and never on WHICH kind.
+ * ⚠️ **So the reference bot carries a standing 1.5-point preference for the
+ * centre, and that is the variant's own headline risk priced honestly** rather
+ * than an instrument artefact. `hostGift: 0` is its control arm.
+ *
+ * ⚠️ **ONE PROFILE-LEVEL WEIGHT WAS RE-POINTED IN `terms.ts` RATHER THAN
+ * HERE**: `magpie`'s `visitFeeOwnCrop: 2` now ranks a central fee as well as a
+ * rival one under this arm, because it fired on one kind and not the other and
+ * the magpie is a mirror whose split would otherwise have carried a +2 thumb.
+ * The number is unchanged; only its subject widened. See the term's entry.
  */
 
 import { TERM_NAMES } from './terms.js';
@@ -575,6 +667,258 @@ export const BALANCED: WeightTable = {
   // no card is spent on a visit; `meepleSpend` becomes the tie-break instead.
   visitFeeJunk: 0.3,
   visitFeeOwnCrop: 0,
+  /**
+   * ⛔ **WHAT A CARD HANDED TO A HOST IS WORTH TO THAT HOST (the ledger's
+   * C64, S7 of the notice-board visit), AND IT IS A MEASURED NUMBER RATHER
+   * THAN AN ARGUED ONE (11/09/2026).** The handoff asked for it in those words
+   * - *"set it by measurement rather than by argument, as `coinWorth` was on
+   * 10/09/2026: price the host's eventual harvest through the rollout and
+   * report the sample size"* - and the method below is that one, re-pointed.
+   *
+   * The subject: under `visitCurrency: 'noticeBoardPower'` the card you pay for
+   * a visit rests on the HOST's Notice Board until the host harvests it into
+   * their barn, and that is the host's entire payment. Nothing in this pricer
+   * has ever known that a move pays somebody else.
+   *
+   * ## ⭐ WHAT THE ROLLOUT ACTUALLY MEASURES (11/09/2026)
+   *
+   * **32,478 rival placements and 19,678 Notice Board harvests, over 1,200
+   * complete games at 2, 3 and 4 seats** under
+   * `overlays/notice-board-visit-v1.overlay.json`, the five suits rotated
+   * through every seat count so no board is measured only in the company of the
+   * same neighbours, the five `BALANCE_PROFILES` seated from the game seed.
+   * ⚠️ **Taken with this weight at 0**, for the reason `coinWorth` was taken
+   * with `coinSpend` at 0: a charge on the thing being counted changes how often
+   * it happens. Every game ended; none crashed.
+   *
+   * The card's whole journey, each leg counted off the event stream:
+   *
+   *     P(the fee reaches the host's barn)          0.836
+   *     P(a barn card is spent on a delivery)       0.893
+   *     what a delivered barn card pays             3.115  (deliver 3 x 5.01 VP / 4.82 cards)
+   *
+   *     (a) TERMINAL   0.836 x 0.893 x 3.115  =  2.32   what the card is finally turned into
+   *     (b) TABLE PRICE 0.836 x harvest 1.5   =  1.25   what this table pays for a card
+   *                                                     arriving in a barn
+   *
+   * ## SO THE NUMBER IS 1.5, AND IT IS A PIN RATHER THAN A FIT
+   *
+   * The measured band is **1.25 to 2.32**, and rather than ship a fitted decimal
+   * this takes `harvest`'s own **1.5** - "one card into a barn" - which lies
+   * between the two ends and states the result in the table's own currency:
+   * **a card you hand a host is worth to them exactly what this table already
+   * pays them for a card arriving in their barn.**
+   *
+   * ⛔ **WHY NOT THE TERMINAL 2.32, WHICH IS THE LARGER AND ARGUABLY TRUER
+   * NUMBER: INTERNAL CONSISTENCY.** This table has never priced a barn card at
+   * its terminal value anywhere else - it pays `harvest` 1.5 on the way in and
+   * charges `barnSpend` 0.5 on the way out - so pricing the GIFT at 2.32 would
+   * assert that a card is worth more in a rival's barn than in your own. The
+   * gap between (a) and (b) is not noise about this term; it is the standing gap
+   * between what this table pays for material and what material is finally worth,
+   * and closing it is a repricing of `harvest` and `barnSpend` rather than of
+   * this line.
+   *
+   * ⚠️ **IT IS A SOFT PIN.** No test asserts the two are equal, and they must
+   * not be hard-pinned: `racer` already overrides `harvest` to 2.5, and a racer
+   * has no reason to think a card is worth more to a RIVAL than a balanced bot
+   * does. If `harvest` ever moves in the reference table, re-read this.
+   *
+   * ## ⭐ WHAT EACH PRICE DOES, SWEPT ON IDENTICAL SEEDS (11/09/2026)
+   *
+   * 600 games, 200 per seat count at 2/3/4, this weight the ONLY thing moved.
+   * Reported as the CONSEQUENCE of the number above rather than as the reason
+   * for it.
+   *
+   *     price   placements   SELF-VISIT SHARE          realisation
+   *             per turn     all      2p     3p     4p  of rival fees
+   *     0        0.882       37.4%   49.5%  38.3%  29.8%   83.6%
+   *     1.2      0.868       42.5%   54.7%  43.7%  34.9%   84.3%
+   *     1.5      0.839       45.3%   59.3%  45.8%  37.3%   84.7%
+   *     2.3      0.824       48.7%   62.5%  50.4%  40.1%   84.2%
+   *     3.5      0.785       52.8%   66.4%  54.4%  44.3%   85.0%
+   *
+   * ⛔ **READ THAT TABLE BEFORE QUOTING THE PASS'S HEADLINE. THIS WEIGHT MOVES
+   * THE SELF-VISIT SHARE BY 15 POINTS ACROSS THE PLAUSIBLE RANGE, AND THE
+   * SELF-VISIT SHARE IS THE HEADLINE RISK OF THE WHOLE DESIGN** (§2.4, §5
+   * reading 2 of the handoff). The direction is the term doing its job - a
+   * charge for feeding a rival makes your own board relatively cheaper - but the
+   * SIZE of the number is this table's opinion and not the rules'. **`hostGift:
+   * 0` is its control arm and it reproduces the blind bot exactly**; run it
+   * beside the arm before anybody rules on the self-visit share, exactly as
+   * `bonusAction: 0` is the control for the action premium.
+   *
+   * ⭐ **ONE CHECK THE SWEEP PASSES, AND IT IS THE ONE THAT MATTERS FOR THE
+   * MEASUREMENT'S HONESTY**: the realisation rate is FLAT at 83.6% to 85.0%
+   * across every price. The quantity being priced does not move when the price
+   * moves, so (a) and (b) are not self-fulfilling and the band above is stable.
+   *
+   * ⚠️ **A SWEEP OF THIS NUMBER IS AN EDIT AND A REBUILD, NOT AN OVERLAY.**
+   * `weightsFor` takes a profile id and nothing else (the ledger's C45).
+   *
+   * ⛔ **STRUCTURALLY ZERO WHEN THE ARM IS OFF**, and deliberately so even
+   * under the v31 `'card'` control, which HAS a host and HAS the same subject.
+   * See the term's own entry in `terms.ts`: a control that moves is not a
+   * control, and 22.2% is the only prior self-visit number this project owns.
+   *
+   * ⭐ **UNCHANGED BY DEAN'S TWO-BOARD FIX, AND CHECKED RATHER THAN
+   * ASSUMED** (11/09/2026). At two seats the one rival now holds TWO Notice
+   * Boards, and the charge is the same on either of them because **it is the
+   * same rival either way**: the fee rests on whichever board it was played to
+   * until that host harvests it into their barn, and both boards are that
+   * host's store. So the term neither DOUBLES because a rival holds two boards
+   * nor HALVES because the traffic splits across them - it reads `act.host` and
+   * that host's standing, and nothing about the board.
+   * `notice-board-two-boards.test.ts` asserts both directions, and reads the
+   * arm's number against the one-board control's to catch the halving that an
+   * "equal on both boards" check alone would miss.
+   *
+   * ## ⛔ S17, THE HOST DRAW (Dean, 11/09/2026): 1.5 BECOMES 2.7, MEASURED
+   *
+   * `rules.turn.hostDrawOnVisit` amends S7: **when a neighbour visits you, you
+   * draw a card, immediately, off a deck**, on top of the fee card that rests
+   * on your board until you harvest it. So a visit hands a rival strictly more
+   * than the 1.5 above priced, and the reasoning that set the 1.5 - "a card
+   * handed to a host is worth what this table pays for a card arriving in their
+   * barn" - is not wrong, it is INCOMPLETE. It now has a second half.
+   *
+   * ⛔ **THE WEIGHT IS THE WHOLE PAYMENT AND THE TERM SCALES IT BACK TO THE FEE
+   * HALF WHEN THE RULE IS OFF.** `HOST_GIFT_FEE` (1.5) and `HOST_GIFT_DRAW`
+   * (1.2) are the two halves, in `terms.ts`, and **this number must stay their
+   * sum** - `notice-board-host-draw.test.ts` asserts it. The control
+   * (`overlays/notice-board-visit-two-boards-v1.overlay.json`, the same design
+   * with `hostDrawOnVisit` 0) therefore still charges 1.5 and its readings do
+   * not move, which is the whole reason a knob-blind 2.7 was refused: **a
+   * control that moves is not a control**, and this pair differ in exactly one
+   * leaf.
+   *
+   * ## ⭐ WHAT THE ROLLOUT MEASURES (11/09/2026), SAME METHOD, RE-POINTED
+   *
+   * **15,288 rival placements and 14,893 host draws over 450 complete games**
+   * at 2, 3 and 4 seats under the host-draw arm, the five suits rotated through
+   * every seat count, 446 of 450 games ended and none crashed. ⚠️ **Taken with
+   * this weight at 0**, for the reason the 1.5 was: a charge on the thing being
+   * counted changes how often it happens.
+   *
+   * The card's whole journey, both legs, each counted off the event stream:
+   *
+   *     P(the fee reaches the host's barn)          0.887
+   *     P(a barn card is spent on a delivery)       0.784
+   *     what a delivered barn card pays             2.99   (deliver 3 x 1.00 VP a card)
+   *     P(the host has ROOM for the drawn card)     0.675
+   *     P(a host-drawn card is ever used)           0.545  (33.6% discarded, 11.9% stranded)
+   *
+   *     THE FEE HALF (S7, unchanged in kind)
+   *     (a) TERMINAL   0.887 x 0.784 x 2.99   =  2.08
+   *     (b) TABLE PRICE 0.887 x harvest 1.5   =  1.33
+   *
+   *     THE DRAW HALF (S17)
+   *     (a) TERMINAL   0.545 x handSpend 2.5  =  1.36   what one card out of a hand buys
+   *     (b) TABLE PRICE 0.675 x keepValue 2
+   *                         x meanCardValue   =  0.73   (0.5411, so 1.08 a card undiscounted)
+   *
+   *     TOTAL          (b) 2.06          (a) 3.44
+   *
+   * ## SO THE NUMBER IS 2.7, AND IT IS A PIN RATHER THAN A FIT
+   *
+   * The measured band is **2.06 to 3.44**, and rather than ship a fitted
+   * decimal this takes **`harvest` 1.5 plus `drawAction` 1.2**, which lies
+   * between the two ends and states the result in the table's own currency:
+   * **a card you hand a host is worth to them what this table already pays them
+   * for a card arriving in their barn, PLUS what it pays for one card of draw.**
+   * That is the same construction the 1.5 used - the undiscounted price of the
+   * zone the card lands in - with one zone added, which is the amendment S17
+   * makes to S7 written as arithmetic.
+   *
+   * ⛔ **AND IT CORRECTS THE OBVIOUS SUM, WHICH BRACKETED 2.7 TO 3.5 AND WAS
+   * HALF WRONG.** The obvious sum reads `keepValue` as 2 and adds it to 1.5 for
+   * 3.5. `keepValue` never stands alone: `cardsToHand` prices a card at
+   * `keepValue x meanCardValue`, and **`meanCardValue` is 0.5411 on this
+   * catalogue**, so a card arriving in a hand is worth **1.08** to this table
+   * and not 2. The measurement puts the hand half at 0.73 discounted and 1.08
+   * undiscounted, against `drawAction`'s 1.2 - so the sum's LOWER end was right
+   * for a reason the sum could not have known, and its upper end prices a hand
+   * card at nearly double what the table pays for one.
+   *
+   * ⚠️ **THE DISCOUNT ON THE DRAW HALF IS TWO THIRDS INSTRUMENT.** The host had
+   * no room for the card on 32.5% of visits and 33.6% of host-drawn cards were
+   * thrown away at a turn boundary, both against the engine's hand bound of
+   * **7, which is the SIMULATOR'S bound and not a rule of the game** (C7). At a
+   * table with no hand limit the draw half is the full 1.08 to 1.2 and the (b)
+   * end of the band is about 2.4 rather than 2.06. Pinning to the undiscounted
+   * 1.2 prices the rule as the table plays it rather than as the instrument
+   * clips it, which is the right way round for the one rule in this project
+   * whose provenance is a table.
+   *
+   * ⭐ **THE HONESTY CHECK PASSES, AND IT IS THE SAME ONE THE 1.5 PASSED**: the
+   * realisation rates are FLAT across every price swept - the fee reaches a barn
+   * 88.3% to 88.7% of the time and the host has room 66.0% to 67.8% of the time
+   * at `hostGift` 0, 1.5, 2.1, 2.7 and 3.5. The quantities being priced do not
+   * move when the price moves, so the band is stable and neither leg is
+   * self-fulfilling.
+   *
+   * ## ⭐ THE CONSEQUENCE SWEEP, IN TWO COLUMNS BECAUSE ONE OF THEM LIES
+   *
+   * 450 games a column, identical seeds, this weight the only thing moved, the
+   * host-draw arm throughout. The control row is the paired arm
+   * (`hostDrawOnVisit` 0) at its own shipped charge.
+   *
+   *     price    bonus slot     visits received    hook
+   *              (turn measure) per player/game
+   *     control       73.6%          16.23         0.886
+   *     0             38.2%          11.32         0.437
+   *     1.5           30.8%          10.01         0.354
+   *     2.1           30.8%          10.01         0.354
+   *     2.7           29.9%           9.89         0.344
+   *     3.5           28.9%           9.77         0.334
+   *
+   * ⛔ **READ THAT TABLE AS AN ARTEFACT BEFORE READING IT AS A RESULT.** Every
+   * arm row sits 35 points of bonus rate and half a hook below its control, and
+   * that gap is NOT the rule: **the engine pushes the host's draw task at the
+   * head of the queue**, so the probing seat's own `next` comes back EMPTY and
+   * the visitor's rollout is cut before the power it just bought resolves.
+   * Measured at two seats: **99.6% of visit probes stop dead under the arm
+   * against 0.0% under the control.** `outcome` therefore prices almost every
+   * visit at nothing and `bonusAction`, which pays only on a strictly positive
+   * rollout, never fires. It is an ENGINE defect - nothing in this package can
+   * step past another seat's task - and it is written up at `pendingDrawValue`
+   * in `outcome.ts`.
+   *
+   * ## ⭐ SO THE SENSITIVITY WAS TAKEN AGAIN ON THE CONTROL RULESET, WHERE THE
+   * ROLLOUT STILL WORKS, AND THE TWO ANSWERS DISAGREE
+   *
+   * Same 450 games, same seeds, the paired control throughout (`hostDrawOnVisit`
+   * 0, so the weight is swept at 1.8x to hold the EFFECTIVE charge at the value
+   * named). This column is a bot that can still see what a visit buys:
+   *
+   *     effective charge   bonus slot      visits received   hook
+   *                        (turn measure)  per player/game
+   *     0                      73.6%           16.23         0.886
+   *     1.5 (shipped)          66.5%           15.71         0.800
+   *     2.7 (this change)      64.6%           15.39         0.770
+   *     3.5                    49.9%           13.56         0.569
+   *
+   * ⛔ **ON A WORKING PRICER THIS WEIGHT IS LOAD-BEARING AGAIN, AND ABOUT AS
+   * LOAD-BEARING AS IT WAS YESTERDAY: 16.6 points of bonus rate and 0.231 of
+   * hook between 1.5 and 3.5**, against the 15 points of self-visit share the
+   * entry above reports for the same range. The flatness of the arm column is
+   * the truncation and not the term - a bot that already declines most visits
+   * is a bot a charge cannot move much - so **that column must be re-run before
+   * its flatness is quoted as anything.**
+   *
+   * ⭐ **WHAT THE CHANGE ACTUALLY COSTS IS SMALL EITHER WAY, AND THAT IS THE
+   * USEFUL SENTENCE.** 1.5 to 2.7 is **1.9 points of bonus rate and 0.030 of
+   * hook** on the working pricer, and 0.9 points and 0.010 on the truncated
+   * one. The cliff is elsewhere: 0 to 1.5 costs 7.1 points on the control
+   * column, which is the term EXISTING rather than its size, and 2.7 to 3.5
+   * costs 14.7, which is where the charge starts refusing visits outright.
+   * **2.7 sits on the flat part of the curve and 3.5 does not**, which is a
+   * second, independent reason not to have taken the terminal end of the band.
+   *
+   * ⚠️ **A SWEEP OF THIS NUMBER IS AN EDIT AND A REBUILD, NOT AN OVERLAY**, as
+   * before (`weightsFor` takes a profile id and nothing else, the ledger's C45).
+   */
+  hostGift: 2.7,
 
   /**
    * A tile that flips from unpayable to payable, converted into score - V5's

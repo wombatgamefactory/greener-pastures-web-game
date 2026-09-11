@@ -1,5 +1,11 @@
 import type { Suit } from '@gp/data';
-import { endgameCoinCost, farmsteadCoinPower, isCommonsTakeCoins } from '@gp/data';
+import type { GameData } from '@gp/data';
+import {
+  endgameCoinCost,
+  farmsteadCoinPower,
+  isCommonsTakeCoins,
+  isNoticeBoardPower,
+} from '@gp/data';
 
 import type { GameMetrics } from '../observe.js';
 import type { Assertion, Measurement, MeasureContext } from './types.js';
@@ -127,7 +133,7 @@ export const coinEconomy: Assertion = {
     'Every coin economy this project has shipped died of exactly that, and adding one would be ' +
     'the old failure repeating rather than a tuning.',
   measure(ctx) {
-    if (!isCommonsTakeCoins(ctx.data)) return noSubject();
+    if (!isCommonsTakeCoins(ctx.data)) return noSubject(ctx.data);
     return coinsMode(ctx);
   },
 };
@@ -350,15 +356,33 @@ function coinsMode({ data, pooled }: MeasureContext): Measurement {
  * mode, so every counter here is a structural zero and printing seven of them
  * would read as findings about an economy nobody built.
  */
-function noSubject(): Measurement {
+/**
+ * ⭐ THE "NO SUBJECT" MEASUREMENT, and since 10/09/2026 it takes the data so it
+ * can point somewhere USEFUL rather than somewhere generic.
+ *
+ * The default sentence points at a17 for the slot and a18 for the centre, which
+ * is right under the commons and under both older controls. It is HALF WRONG
+ * under the notice-board visit, where there is no centre at all, so that mode
+ * gets its own second sentence. A pointer that sends a reader to a page with no
+ * subject of its own is worse than no pointer.
+ */
+function noSubject(data: GameData): Measurement {
+  const elsewhere = isNoticeBoardPower(data)
+    ? 'a17-bonus-mix owns the bonus slot here (the visit, split self against neighbour, ' +
+      "against Dean's band of 30%-60% of TURNS), a18 owns the farm traffic and the host's " +
+      'payment, and a20-board-stall owns whether a board is ever cleared. THERE IS NO CENTRE ' +
+      'UNDER THIS MODE EITHER: S2 deletes the commons and sends the five boards home to their ' +
+      'owners, so the coin arm is doubly subjectless - no currency and no pile to mint one ' +
+      'from. S14 puts the Endgame cards back to two cards of their own suit.'
+    : 'a17-bonus-mix owns the bonus slot here and a18-commons-traffic owns the centre.';
   return {
     value: NaN,
     headline:
       'NO SUBJECT: there are no coins in this game. A coin exists only under ' +
       'rules.turn.commonsTake "coins" (K3, 10/09/2026), which is the arm ' +
       'overlays/commons-coins-v1.overlay.json and nothing else; coins were deleted from the ' +
-      'shipped game with v31 on 02/09/2026 and nothing has minted one since. a17-bonus-mix ' +
-      'owns the bonus slot here and a18-commons-traffic owns the centre.',
+      'shipped game with v31 on 02/09/2026 and nothing has minted one since. ' +
+      elsewhere,
     verdict: 'OBSERVE',
   };
 }

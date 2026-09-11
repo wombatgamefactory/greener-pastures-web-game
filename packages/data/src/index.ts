@@ -67,8 +67,11 @@ export type { Overlay, SweepAxis, SweepCell, SweepFile } from './overlay.js';
  *
  * - the door's THRESHOLD is `rules.economy.noticeBoardThreshold`, an override of
  *   the Notice Board's own printed value. `workers.serviceThreshold` is deleted:
- *   one number in two files is exactly how the old 5-versus-2 drift happened,
- *   and the v31 sheet prints 2, so override and print now agree.
+ *   one number in two files is exactly how the old 5-versus-2 drift happened.
+ *   ⚠️ OVERRIDE AND PRINT AGREED FROM v31 UNTIL 10/09/2026 AND DO NOT NOW: the
+ *   override is 3 (S8's `3+`) and the sheet still prints 2 until
+ *   `Isle-of-Farms-v36.xlsm`. The face is what has to catch up, and the v31
+ *   control pins 2 so its own game is unchanged.
  * - `workers.roster` SURVIVES and is now read by TWO consumers, not one: a suit's
  *   Notice Board grants its action to a visitor, and a MEEPLE of that colour
  *   performs the same action free when spent. It stopped describing a card; it
@@ -194,6 +197,150 @@ export function isMeepleCurrency(data: GameData): boolean {
  */
 export function isCommons(data: GameData): boolean {
   return data.rules.turn.visitCurrency === 'commons';
+}
+
+/**
+ * Is the NOTICE BOARD VISIT live - the arm of 10/09/2026
+ * (`docs/notice-board-visit-handoff-2026-09-10-v2.md`, S1-S16)? Under it the
+ * centre is deleted, the five Notice Board cards go home to their owners' farms
+ * and are BUILDINGS again, and the bonus (still taken FIRST) is to play one card
+ * from your hand onto ANY player's Notice Board, your own included, and take
+ * that board's PRINTED POWER. The card rests on the host's board until the host
+ * harvests it into their barn, which is the host's whole payment.
+ *
+ * ⛔ IT IS A FOURTH CURRENCY AND NOT A REPOINTING OF `'card'`. The v31 control
+ * carries three passengers this design does not want - a blocking board at 2,
+ * the standalone free Draw 1, and the turn-start meeple spend - and one of the
+ * three named controls may never move under an arm it is read against.
+ *
+ * One predicate, in one spelling, exactly as `isCommons` and `isMeepleCurrency`
+ * are: everything gated on which game this is asks one of the three and never
+ * compares the raw string.
+ */
+export function isNoticeBoardPower(data: GameData): boolean {
+  return data.rules.turn.visitCurrency === 'noticeBoardPower';
+}
+
+/**
+ * Does a Notice Board CLOG at its threshold, or is the threshold only a minimum
+ * to harvest at (S8, Dean 10/09/2026)?
+ *
+ * `false` is the shipped value and the `3+` rule: the board is harvestable at or
+ * above `rules.economy.noticeBoardThreshold` and still accepts cards for ever.
+ * `true` is the paired control that makes it an ordinary clogging building.
+ *
+ * ⛔ IT IS THE SEAM WHERE `isFull` AND `canTakeCard` STOP BEING THE SAME
+ * QUESTION, which they have been everywhere in this codebase until now. A board
+ * at five cards is harvestable AND still takes another; a caller that asks
+ * "is it full" when it means "may I place here" will be wrong under the shipped
+ * value and right under the control, which is the worst way round.
+ *
+ * ⚠️ Read only under `isNoticeBoardPower`: no other game has an owned Notice
+ * Board with a threshold on it.
+ */
+export function noticeBoardBlocks(data: GameData): boolean {
+  return data.rules.economy.noticeBoardBlocks;
+}
+
+/**
+ * Do the Notice Boards of the suits NOBODY IS FARMING stand ownerless in the
+ * CENTRE of the table (Dean, ruled 11/09/2026)?
+ *
+ * `false` is the shipped value: every Notice Board belongs to a player, so a
+ * suit nobody has taken has no board on the table at all. `true` puts the
+ * unclaimed ones in the middle with a face-up public pile each, visitable by
+ * anybody.
+ *
+ * ⭐ IT IS RULED TOGETHER WITH A BAN ON SELF-VISITING, and the pair is
+ * arithmetic rather than taste: five boards exist and you may never visit your
+ * own, so EVERY SEAT FACES EXACTLY FOUR TARGETS AT EVERY PLAYER COUNT - four
+ * central at one seat, three at two, two at three, one at four. It also restores
+ * the standing ruling that all five actions exist in every game, which the built
+ * design silently broke: at two players only two Notice Boards are in play.
+ *
+ * ⚠️ A CENTRAL BOARD REUSES THE COMMONS AND IS NOT A THIRD SHAPE. A play
+ * onto a rival's board is the `visit` move; a play onto a central board is the
+ * existing `commons` move, and a central pile is rationed by the commons knobs
+ * (`commonsThreshold`, `commonsHarvestMin`, `commonsHarvestTake`) under
+ * `rules.turn.commonsTake` `'harvest'`, which the two overlays pin by name.
+ *
+ * ⛔ READ ONLY UNDER `isNoticeBoardPower`, exactly as `noticeBoardBlocks` is:
+ * no other game in this codebase has an owned Notice Board to leave unclaimed.
+ * Under `'commons'` all five are in the centre already and none of them is
+ * owned, which is a different rule that reads the same way round.
+ */
+export function unclaimedBoardsToCentre(data: GameData): boolean {
+  return data.rules.economy.unclaimedBoardsToCentre;
+}
+
+/**
+ * How many Notice Boards each player lays out at this seat count (Dean's
+ * two-board fix, ruled 11/09/2026). One accessor, so "how many boards has a
+ * seat got" is asked in exactly one spelling across the engine, the bots and the
+ * sim, exactly as `meeplesDealt` reads `island.slotsBySeats`.
+ *
+ * Shipped at 1 at every seat count, which is the game as built. The arm sets 2
+ * at two seats only: a player's own suit's board, plus one more drawn AT RANDOM
+ * from the suits nobody is farming, with the fifth board unused. At three and
+ * four seats the arm is its own control, so those columns must reproduce
+ * `overlays/notice-board-visit-no-self-v1.overlay.json` on identical seeds and
+ * any difference there is a leak rather than a finding.
+ *
+ * ⭐ EVERY BOARD IT ADDS BELONGS TO A PERSON, which is the difference between
+ * this and `unclaimedBoardsToCentre`: targets go 2 / 2 / 3 by seat count and
+ * every one of them pays its owner, so the hook is not diluted.
+ *
+ * ⛔ READ ONLY UNDER `isNoticeBoardPower` with `rules.turn.selfVisitAllowed`
+ * false: no other game in this codebase has an owned Notice Board to duplicate.
+ *
+ * ⚠️ THE CEILING IS ARITHMETIC AND THIS FUNCTION DOES NOT ENFORCE IT. The suits
+ * nobody is farming number `5 - seats`, so `n` boards each is realisable only
+ * where `seats * (n - 1) <= 5 - seats`: 2 at two seats, 1 at three and four. An
+ * overlay may ask for more, because the knob is a free map; what to do about an
+ * infeasible value is an ENGINE ruling and it has not been made.
+ *
+ * Falls back to 1 for a seat count the map does not name, which is the shipped
+ * rule rather than a guess.
+ */
+export function noticeBoardsPerSeat(data: GameData, seats: number): number {
+  return data.rules.economy.noticeBoardsBySeats[String(seats)] ?? 1;
+}
+
+/**
+ * How many cards the OWNER of a Notice Board draws when somebody else visits it
+ * (S17, Dean, ruled 11/09/2026). One accessor, so "what does a host get" is asked
+ * in exactly one spelling across the engine, the bots and the sim.
+ *
+ * Shipped at 0, which is the game as built and the rule as S7 wrote it: the card
+ * the visitor pays rests on the board until its owner harvests it, and that is
+ * the payment and there is no other. 1 is
+ * `overlays/notice-board-visit-host-draw-v1.overlay.json`, where the host is
+ * ALSO paid instantly, in a card off a deck.
+ *
+ * ⭐ ITS PROVENANCE IS A TABLE RATHER THAN A SIMULATION. Dean played
+ * `overlays/notice-board-visit-two-boards-v1.overlay.json` at a two-player table
+ * on 11/09/2026, house-ruled this in mid-session, and reported that it *"led to
+ * a lot of extra cards in play, which relieved the tightness of the game in a
+ * useful way"*. See `rules.turn.hostDrawOnVisit` for the amendment to S7 and for
+ * the lens argument.
+ *
+ * ⛔ READ ONLY UNDER `isNoticeBoardPower`, exactly as `noticeBoardBlocks` and
+ * `noticeBoardsPerSeat` are: no other game in this codebase has a host at all.
+ * Under the commons a board belongs to nobody, so there is nobody to pay.
+ *
+ * ⛔ AND A SELF-VISIT MUST NEVER PAY IT. This function says how much a host
+ * draws; it is the CALLER's job never to ask it about a visitor visiting
+ * themselves. `turn.selfVisitAllowed` is false on the arm that matters, so the
+ * case has no subject there, but a card drawn for visiting yourself is a pure
+ * faucet paid by nobody and it must not be reachable.
+ *
+ * ⚠️ EVERY VISIT PAID THIS WAY ADDS A CARD TO THE GAME - about 14.4 visits
+ * received per player per game at two seats under the control arm - and the
+ * simulator cannot measure the effect Dean liked, because the engine's hand
+ * limit of 7 is an instrument bound (C7) and the table plays with none.
+ */
+export function hostDrawOnVisit(data: GameData): number {
+  return data.rules.turn.hostDrawOnVisit;
 }
 
 /**
@@ -445,7 +592,15 @@ export function meeplesPerTile(data: GameData): number {
   // branch on purpose - `'commons'` is not a meeple currency, but a future
   // fourth value would fall through to the `'card'` arithmetic below and seed
   // two a tile without a word of warning.
-  if (isCommons(data)) return 0;
+  //
+  // ⭐ AND THE FOURTH VALUE ARRIVED ON 10/09/2026, WHICH IS WHY THE WARNING
+  // ABOVE IS NOW A SECOND CONDITION RATHER THAN A PROPHECY. The notice-board
+  // visit has NO MEEPLES either (§2.6 of the handoff: nothing about the meeples
+  // changes, and there are none), so it answers 0 with the commons. Without this
+  // line it would have fallen through to `deliveriesPerTile * perDeliverySpace`
+  // and seeded two meeples a tile - a passenger the handoff did not name, found
+  // by reading this comment rather than the design.
+  if (isCommons(data) || isNoticeBoardPower(data)) return 0;
   if (isMeepleCurrency(data)) {
     return data.island.meeples.seededSpaces.filter((i) => i >= 0 && i < deliveriesPerTile(data))
       .length;

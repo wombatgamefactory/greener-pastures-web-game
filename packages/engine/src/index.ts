@@ -21,7 +21,7 @@ export * from './query.js';
 export * from './actions.js';
 export { Fx, fireHook, wireHookBus } from './fx.js';
 export type { CardInPlay, FxAudit, HookEvents, HookName } from './fx.js';
-export { doorActionOf, performDoorAction } from './workers.js';
+export { doorActionOf, fireNoticeBoardPower, performDoorAction } from './workers.js';
 export type { DoorVia } from './workers.js';
 export { taskAnswers, resolveTask, drainTasks } from './tasks.js';
 export { handlerFor, registeredCards } from './handlers/registry.js';
@@ -47,6 +47,12 @@ export {
 export type { Applied, GameScore, ScoreBreakdown } from './runtime.js';
 export {
   newGame,
+  // ⭐ Dean's two-board fix (11/09/2026): how many EXTRA Notice Boards a seat
+  // lays out, and the deal itself. Exported for the same reason `meeplePool`
+  // is - the sim and the report banner have to be able to say what the arm
+  // dealt without re-deriving the arithmetic or its ceiling.
+  extraNoticeBoardsPerSeat,
+  dealExtraNoticeBoards,
   islandTilesInPlay,
   demandPool,
   meeplePool,

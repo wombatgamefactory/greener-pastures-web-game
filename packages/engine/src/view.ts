@@ -12,7 +12,7 @@
 
 import type { GameData, Suit } from '@gp/data';
 
-import { cardById, isCardId } from './query.js';
+import { cardById, centralBoardSuits, commonsBoardCard, isCardId } from './query.js';
 import type {
   AerodromeState,
   CardId,
@@ -211,7 +211,18 @@ export function viewFor(data: GameData, state: GameState, seat: Seat): PlayerVie
   }
 
   // Every card face-up on the table, for the fire-once guard below.
-  const onTable = new Set<CardId>(state.players.flatMap((p) => p.tableau.map((b) => b.card)));
+  // ⭐ AND THE CENTRAL BOARDS ARE ON THE TABLE TOO (11/09/2026). Under Dean's
+  // unclaimed-boards variant an OWNERLESS Notice Board is latched into
+  // `turn.firedThisTurn` by S9's one-use-per-board rule, and it is in no
+  // tableau, so without this it would be filtered straight back out of the view
+  // and a client would be told a board it has already used is still free. The
+  // card ids come from the zone's own keys, so under the commons - where
+  // nothing ever latches a board - this adds five ids that never appear in the
+  // list and the view is byte-identical.
+  const onTable = new Set<CardId>([
+    ...state.players.flatMap((p) => p.tableau.map((b) => b.card)),
+    ...centralBoardSuits(data, state).map((colour) => commonsBoardCard(data, colour)),
+  ]);
 
   return {
     seat,

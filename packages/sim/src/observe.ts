@@ -42,6 +42,7 @@ import {
   isCommonsTakeCoins,
   isCommonsTakeToSpend,
   isMeepleCurrency,
+  isNoticeBoardPower,
   meepleIndexForSpace,
 } from '@gp/data';
 import type { CardId, GameEvent, GameState, Move, ScoreBreakdown, Seat, Task } from '@gp/engine';
@@ -51,17 +52,20 @@ import {
   bonusOpen,
   cardById,
   commonsBoards,
+  commonsHarvestMin,
   cropOf,
   doorOf,
   faceOf,
   gameEndScores,
   handlerFor,
+  hasCentre,
   isFull,
+  isHarvestable,
   isOrchardCard,
   meeplesHeld,
   player,
   score,
-  noticeBoardOf,
+  noticeBoardsOf,
   noticeBoardSlots,
   slotBlocked,
   anyVisitOption,
@@ -71,6 +75,13 @@ import type { PolicyId } from '@gp/bots';
 
 import type { Decision } from './driver.js';
 import type { Outcome } from './driver.js';
+
+/**
+ * A16 The Beekeeper's Veil, named once. The only `afterPlacement` handler in the
+ * catalogue (checked 11/09/2026), which is what lets `countA16` reconstruct its
+ * fires off `cardPlaced` without an `abilityFired` event.
+ */
+const A16 = 'A16';
 
 /**
  * Every event kind the fold has been taught to see. A kind mapped to `false`
@@ -882,6 +893,167 @@ export interface GameMetrics {
    */
   commonsPileSizeByRoundThird: number[];
   /**
+   * ⭐ THE NOTICE-BOARD VISIT'S OWN COUNTERS (S5-S11, Dean 10/09/2026), and all
+   * seven of them are read off STATE rather than off an event, exactly as the
+   * commons' pile series above is and for the same reason: the fold holds the
+   * post-move `GameState`, so a stack is counted rather than reconstructed from
+   * a running balance that can drift.
+   *
+   * ⛔ THEY EXIST BECAUSE THE OLD DOOR-CLOG PROBE HAS STOPPED ANSWERING THE
+   * QUESTION. `doorClogTurnsBySeat` asks "is this seat's Notice Board FULL",
+   * and under S8's `3+` rule a Notice Board is never full: three is the MINIMUM
+   * to harvest at and never a maximum load, so `isFull` answers false however
+   * deep the stack goes and a04 reads a GENUINE and permanent 0%. The real
+   * question the predecessor's record asks - does a board sit loaded while its
+   * owner declines to clear it - needs `isHarvestable` and a run length, and
+   * that is what these are. `a20-board-stall` owns them.
+   *
+   * TOTAL CARDS RESTING ON EVERY SEAT'S NOTICE BOARD, sampled at every round
+   * boundary. The farm's answer to `commonsPileSizeByRound`, and a18 reads its
+   * thirds.
+   */
+  noticeBoardCardsByRound: number[];
+  /**
+   * The same series as THREE numbers - the median across this game's first,
+   * middle and last third - computed once in `finish` so games of different
+   * lengths pool. Empty when the game was too short to have thirds.
+   */
+  noticeBoardCardsByRoundThird: number[];
+  /**
+   * ⭐ THE STALL PROBE, AND THE SAMPLING POINT IS THE WHOLE OF ITS MEANING.
+   * Sampled once per seat at THAT SEAT'S OWN turn boundary, not once per seat
+   * at every turn boundary the way the door clog is. So the denominator is the
+   * owner's own turns and a run of k is "k of my own turns went by with my
+   * board sitting harvestable and me not harvesting it", which is the question
+   * S8 exists to answer and the unit a reader can act on.
+   *
+   * ⚠️ IT THEREFORE CANNOT SEE A BOARD THAT FILLED AND WAS CLEARED INSIDE ONE
+   * ROUND, and that is deliberate: a board the owner cleared at the first
+   * opportunity never stalled. The cost is that this is a floor on how often a
+   * board is loaded, never an estimate of it.
+   */
+  boardHarvestableTurnsBySeat: number[];
+  /** The denominator for the line above: the owner's own turn boundaries. */
+  boardSampledTurnsBySeat: number[];
+  /**
+   * COMPLETED stall runs, in owner turns, pooled across the seats of one game.
+   * A run opens at the first of the owner's turn boundaries with the board at
+   * or above its threshold and closes when a later one finds it below - which
+   * under these rules means the owner harvested it.
+   */
+  boardStallRuns: number[];
+  /**
+   * Runs still OPEN when the game ended, which are the boards nobody ever
+   * cleared. Kept apart from the completed ones rather than pooled with them:
+   * an unfinished run is right-censored and a mean over the two together would
+   * quietly understate exactly the failure this reading is looking for.
+   */
+  boardStallRunsOpenAtEnd: number[];
+  /**
+   * The deepest ANY of this seat's boards ever got, sampled at the same
+   * boundary. ⚠️ At two seats under `rules.economy.noticeBoardsBySeats` a seat
+   * has two, so this is the deeper of the pair rather than "the board's"
+   * maximum, and a20 labels it that way.
+   */
+  boardMaxStackBySeat: number[];
+  /**
+   * Cards on ALL of each seat's Notice Boards at game end, summed. Two readings
+   * at once: the cards that died on a board and were never anybody's payment,
+   * and the handoff's reading 9 for A21 The Wax Hall, which counts a building
+   * with a card on it and now counts this one (S16).
+   *
+   * ⛔ SUMMED OVER EVERY BOARD SINCE 11/09/2026 (Dean's two-board fix). It read
+   * the own-suit board alone, which at two seats under the arm is half the
+   * boards on the table.
+   */
+  boardCardsAtEndBySeat: number[];
+  /**
+   * ⭐ THE PER-BOARD POPULATION AT GAME END, kept beside the per-seat total
+   * because A21 The Wax Hall scores a BUILDING holding a card and a seat is not
+   * a building. `boardsAtEnd` is every Notice Board on the table when the game
+   * stopped and `boardsHoldingAtEnd` the ones still carrying at least one card.
+   * Identical to the seat counts in every game that lays out one board each.
+   */
+  boardsAtEnd: number;
+  boardsHoldingAtEnd: number;
+  /**
+   * ⭐ THE COLOURS OF THE EXTRA NOTICE BOARDS EACH SEAT LAID OUT, in tableau
+   * order (Dean's two-board fix, ruled 11/09/2026), captured once off the first
+   * pre-state. EMPTY for every seat in every game this project has shipped.
+   *
+   * ⛔ IT IS WHAT MAKES THE OWN-AGAINST-RANDOM SPLIT READABLE, which is open
+   * risk 1 of the arm: a seat's own suit's board prints a power the seat itself
+   * can never buy but which is at least its OWN suit, and the extra board is
+   * drawn AT RANDOM from the suits nobody is farming, so which one you get is
+   * luck and its power is usable only by your rivals. Without this field a
+   * report can count traffic by board colour and cannot say which kind of board
+   * a colour was.
+   *
+   * A board colour identifies a board uniquely on the table: the own-suit
+   * boards are the seats' own distinct suits and the extras are dealt from the
+   * unfarmed suits without replacement, so no two boards in a game share one.
+   */
+  extraBoardsBySeat: Suit[][];
+
+  // --- THE CENTRE'S HALF OF THE STALL (a20, 11/09/2026) ---------------------
+  //
+  // ⭐ DEAN'S UNCLAIMED-BOARDS VARIANT PUTS TWO KINDS OF LOADED BOARD ON THE
+  // SAME TABLE and a20 has to report them apart, because they are not the same
+  // phenomenon and no single number covers both. An OWNED board sitting at or
+  // above its threshold is one named person declining to bank their own
+  // payment. A CENTRAL pile sitting at or above `commonsHarvestMin` is a
+  // CONTESTED PILE NOBODY HAS CLAIMED YET: anybody at the table may take it,
+  // nobody is failing to, and the same reading that is a sulk on an owned board
+  // is a standing offer in the middle.
+  //
+  // ⛔ AND THE SAMPLING POINT IS DIFFERENT FOR THE SAME REASON. The owned probe
+  // samples ONE seat at that seat's OWN turn boundary, because the question is
+  // the owner's. A central pile has no owner, so it is sampled once per TURN
+  // BOUNDARY - every pile, every turn - and a run is counted in TABLE turns
+  // rather than in one seat's turns. The two run-length units are therefore NOT
+  // comparable with each other and the report says so on the line.
+
+  /** Pile-turn-boundaries sampled: one per central pile per turn boundary. Zero where there is no centre. */
+  centralPileSampledTurns: number;
+  /** Of those, the ones at or above `commonsHarvestMin` - harvestable by anybody and not yet taken. */
+  centralPileHarvestableTurns: number;
+  /** COMPLETED runs, in TABLE turns, of a pile sitting harvestable and unclaimed. */
+  centralPileStallRuns: number[];
+  /** Runs still open when the game ended - piles nobody ever claimed. Right-censored, so kept apart. */
+  centralPileStallRunsOpenAtEnd: number[];
+  /** The deepest each central pile ever got, by board colour, sampled at the same boundary. */
+  centralPileMaxByBoard: Record<string, number>;
+
+  // --- A16 THE BEEKEEPER'S VEIL (11/09/2026) --------------------------------
+  //
+  // ⭐ THE COUNTER THE ENGINE PASS ASKED FOR, AND IT IS A DESIGN READING RATHER
+  // THAN A BOOKKEEPING ONE. A16 fires on a placement that brings a building's
+  // stack to 2 (`afterPlacement`, and it is the ONLY `afterPlacement` handler in
+  // the catalogue). A fee landing on a RIVAL'S Notice Board is such a placement
+  // and fires it; a fee landing on a CENTRAL pile is not, because
+  // `fx.playOnCommons` deliberately does not fire the hook - a central board is
+  // in nobody's tableau and is not a building. ⛔ SO A16 QUIETLY REWARDS THE
+  // CROSS-TABLE PLAY OVER THE CENTRAL ONE, which is a thumb on the scale of the
+  // exact question Dean's variant was ruled to answer.
+  //
+  // ⚠️ HOW IT IS READ, AND THE ONE APPROXIMATION IN IT, STATED RATHER THAN
+  // HIDDEN. There is no `abilityFired` event (see this file's header), so a fire
+  // is reconstructed off `cardPlaced`: the placer holds A16 in their tableau,
+  // and the placed card sits at INDEX 1 of the target building's stack in the
+  // post-state, which is the stack position `afterPlacement` reported. That is
+  // exact unless a card BENEATH it left the same stack inside the same decision
+  // (`fx.spendFromStack` and `fx.discardStack`, both Dairy-only and neither
+  // naming its building in an event), in which case the placement is missed.
+  // A fire can never be invented by it, so every number below is a FLOOR.
+  /** Fires caused by a card landing on a RIVAL's Notice Board - the cross-table fee. */
+  a16FiresRivalBoard: number;
+  /** Fires caused by a card landing on the placer's OWN Notice Board - a self-visit fee. Structurally 0 where self-visiting is banned. */
+  a16FiresOwnBoard: number;
+  /** Fires caused by an ordinary placement - a GROW payment, a sow, a build rider. Every mode has these. */
+  a16FiresOrdinary: number;
+  /** Seats holding A16 at the moment of a placement, summed over placements - the availability denominator, so a low fire count can be told from a card nobody built. */
+  a16PlacementsWhileHeld: number;
+  /**
    * ⭐ THE FARM-BYPASS READING (a18, and the one the handoff names as the
    * question this mode creates): barn cards that came out of the CENTRE against
    * barn cards that came off the seat's OWN buildings, split off the
@@ -897,6 +1069,33 @@ export interface GameMetrics {
    */
   barnFromCommonsBySeat: number[];
   barnFromOwnBySeat: number[];
+  /**
+   * ⭐ THE THIRD SOURCE OF A BARN CARD, AND IT IS NEW ON 11/09/2026 WITH DEAN'S
+   * UNCLAIMED-BOARDS VARIANT: cards a seat harvested off its OWN NOTICE BOARD,
+   * which under `visitCurrency: 'noticeBoardPower'` is the fee material rivals
+   * paid onto it.
+   *
+   * ⛔ IT IS A STRICT SUBSET OF `barnFromOwnBySeat` AND MUST BE SUBTRACTED FROM
+   * IT, never added beside it. A Notice Board is a building in a tableau under
+   * that currency, so the engine carries `source: 'tableau'` on a harvest of it
+   * and the own-buildings column counts it - which is right for the engine and
+   * wrong for a18, whose question is "did this card come off your FARM or out
+   * of somebody else's pocket". `barnFromOwnBySeat` minus this is the farm.
+   *
+   * ⚠️ IT IS NOT THE SAME QUANTITY AS `freight.bankedBySeat`, and the gap is
+   * the reason both exist. `freight.bankedBySeat` counts only cards a RIVAL
+   * paid; this counts every card that came off the board, so the difference is
+   * the owner's OWN self-visit fees coming home. Under
+   * `overlays/notice-board-visit-unclaimed-v1.overlay.json` the ban on
+   * self-visiting makes the two equal by construction, and under
+   * `overlays/notice-board-visit-unclaimed-self-v1.overlay.json` it does not -
+   * which is exactly why the split is folded rather than assumed.
+   *
+   * Zero under the commons and under both controls, where no seat's harvest can
+   * name a Notice Board: under the commons no seat has one (C1), and under
+   * `'card'` and `'meeple'` the board has no stack a harvest reaches.
+   */
+  barnFromOwnBoardBySeat: number[];
   /**
    * ⭐ CARDS STILL STANDING IN THE CENTRE WHEN THE GAME ENDED (Dean's
    * question, 09/09/2026), summed across all five piles off the final state.
@@ -1220,6 +1419,80 @@ export interface GameMetrics {
    * for a number the report prints twice over.
    */
 
+  /**
+   * ⭐ S17, THE HOST DRAW (Dean, ruled 11/09/2026, `rules.turn.hostDrawOnVisit`):
+   * the cards the OWNER of a visited Notice Board took for being visited, by the
+   * HOST whose hand they entered.
+   *
+   * ⭐ COUNTED OFF `cardsToHand` WITH `via === 'hostDraw'`, WHICH IS THE ONE
+   * PLACE THE ENGINE LABELS THEM, and the label is a purely additive field so no
+   * other count moves. ⛔ IT COUNTS CARDS ACTUALLY DRAWN AND NOT VISITS PROMISED,
+   * which is the right quantity and not an approximation of a better one: a draw
+   * task with no drawable deck has no legal answer and is dropped, so A DRY TABLE
+   * PAYS NOTHING, and the gap between this and `visitsReceivedBySeat` is exactly
+   * how often that happened.
+   *
+   * ⛔ A SELF-VISIT NEVER PAYS IT (the engine guards it), so nothing here is a
+   * seat paying itself. A structural zero on every run with
+   * `rules.turn.hostDrawOnVisit` at its shipped 0, which is every game this
+   * project has ever measured before 11/09/2026.
+   */
+  hostDrawCardsBySeat: number[];
+  /**
+   * The same thing counted as PAYMENTS rather than as cards - one per host draw
+   * that actually delivered - so `n` cards a visit and the share of visits that
+   * paid anything can be read apart. Its denominator is `visitsReceivedBySeat`,
+   * which is every non-self visit received.
+   */
+  hostDrawPaymentsBySeat: number[];
+  /**
+   * ⚠️ W17 THE PIE SHOP, COUNTED APART FROM THE RULE, because under S17 the card
+   * and the rule say the same words and BOTH FIRE: a W17 owner visited once
+   * draws two.
+   *
+   * ⛔ IT CANNOT BE READ OFF THE EVENT STREAM, and that is why it is folded off
+   * the TASK instead. W17's cards arrive on an ordinary unlabelled `cardsToHand`
+   * - `via` is S17's label and nothing else sets it - so the only thing that
+   * separates them is the draw task's own `src`, which is `'W17'`. The count is
+   * taken at the `keep` answer, the same moment the card funnel takes `kept`,
+   * and it is EXACT rather than inferred.
+   *
+   * ⚠️ THE TWO ARE ASYMMETRIC AND THE ASYMMETRY IS THE READING: W17 carries the
+   * once-a-turn latch every card's text carries (11/08/2026) and the RULE does
+   * not, so a W17 owner visited twice in one turn draws THREE and not four.
+   */
+  w17DrawCardsBySeat: number[];
+  /** W17 firings that actually delivered a card, by its owner. The same "cards drawn, not draws promised" contract the host draw's count keeps. */
+  w17DrawFiresBySeat: number[];
+  /**
+   * EVERY CARD THAT REACHED A HAND ON A `cardsToHand` EVENT, pooled, and it is
+   * the denominator for "what share of all the cards drawn did this rule add".
+   *
+   * ⚠️ WHAT IT IS NOT: it is not every card that ever entered a hand. A gift
+   * (`cardGifted`), the starting hand and a take of a central pile arrive on
+   * their own events and are deliberately excluded, because the question is what
+   * share of the DRAWING this rule accounts for.
+   */
+  cardsToHandTotal: number;
+  /**
+   * ⛔ HAND SIZE, AND EVERY NUMBER FOLDED HERE IS A READING ABOUT THE INSTRUMENT
+   * AND NOT ABOUT THE DESIGN. The engine bounds the hand at
+   * `rules.turn.handLimit` because it cannot enumerate an unbounded one (C7);
+   * THE TABLE PLAYS WITH NO HAND LIMIT AT ALL. Under S17 that stops being merely
+   * true and becomes load-bearing on the reading, because the rule's principal
+   * effect is more cards in hand: the instrument clips exactly the thing the
+   * table enjoyed, and no report of it may be quoted as evidence about tightness
+   * in either direction.
+   *
+   * Sampled once at the first decision of every turn, on the same clean moment
+   * `buildSampledBySeat` uses.
+   */
+  handSampledTurns: number;
+  handSizeSum: number;
+  /** Turns that began AT the simulator's bound. The clipping, as a number. */
+  handAtBoundTurns: number;
+  handSizeMax: number;
+
   cards: Map<CardId, CardFacts>;
 }
 
@@ -1298,6 +1571,29 @@ export class Fold {
    * route cannot simply be read off the `harvested` event.
    */
   private boughtHarvestPending = new Set<Seat>();
+  /**
+   * The stall run in progress for each NOTICE BOARD, in its owner's own turns,
+   * or 0 while that board is below its threshold. Run state rather than a
+   * metric: only the CLOSED runs reach `boardStallRuns`, and whatever is still
+   * open when the game ends reaches `boardStallRunsOpenAtEnd` instead.
+   *
+   * ⛔ KEYED ON THE BOARD CARD AND NOT ON THE SEAT SINCE 11/09/2026 (Dean's
+   * two-board fix). A seat lays out two boards at two seats under
+   * `rules.economy.noticeBoardsBySeats`, they fill and empty independently, and
+   * one counter per seat would splice two boards' histories into a single run.
+   * Every board card is dealt at most once in a game - the own-suit board comes
+   * with the starters and the extra is drawn from the suits nobody is farming,
+   * without replacement - so the card id is a sound key.
+   */
+  private boardStallRun = new Map<CardId, number>();
+  /**
+   * The unclaimed run in progress for each CENTRAL pile, in TABLE turns, keyed
+   * by board colour, or 0 while the pile is below `commonsHarvestMin`. Run
+   * state rather than a metric, on exactly the contract `boardStallRun` states
+   * of itself: only CLOSED runs reach `centralPileStallRuns`, and whatever is
+   * still open when the game ends reaches `centralPileStallRunsOpenAtEnd`.
+   */
+  private centralPileStallRun = new Map<string, number>();
 
   constructor(data: GameData, spec: FoldSpec, seats: number) {
     this.data = data;
@@ -1413,8 +1709,29 @@ export class Fold {
       commonsHarvestsBoughtBySeat: zeros(),
       commonsPileSizeByRound: [],
       commonsPileSizeByRoundThird: [],
+      noticeBoardCardsByRound: [],
+      noticeBoardCardsByRoundThird: [],
+      boardHarvestableTurnsBySeat: zeros(),
+      boardSampledTurnsBySeat: zeros(),
+      boardStallRuns: [],
+      boardStallRunsOpenAtEnd: [],
+      boardMaxStackBySeat: zeros(),
+      boardCardsAtEndBySeat: zeros(),
+      boardsAtEnd: 0,
+      boardsHoldingAtEnd: 0,
+      extraBoardsBySeat: Array.from({ length: seats }, () => [] as Suit[]),
       barnFromCommonsBySeat: zeros(),
       barnFromOwnBySeat: zeros(),
+      barnFromOwnBoardBySeat: zeros(),
+      centralPileSampledTurns: 0,
+      centralPileHarvestableTurns: 0,
+      centralPileStallRuns: [],
+      centralPileStallRunsOpenAtEnd: [],
+      centralPileMaxByBoard: byColour(),
+      a16FiresRivalBoard: 0,
+      a16FiresOwnBoard: 0,
+      a16FiresOrdinary: 0,
+      a16PlacementsWhileHeld: 0,
       commonsStrandedAtEnd: 0,
       commonsTakesBySeat: zeros(),
       commonsTakesByBoard: byColour(),
@@ -1461,6 +1778,15 @@ export class Fold {
       firstActivationRoundBySeat: Array<number | null>(seats).fill(null),
       activationsOfFullBySeat: zeros(),
       activationsOfForeignBySeat: zeros(),
+      hostDrawCardsBySeat: zeros(),
+      hostDrawPaymentsBySeat: zeros(),
+      w17DrawCardsBySeat: zeros(),
+      w17DrawFiresBySeat: zeros(),
+      cardsToHandTotal: 0,
+      handSampledTurns: 0,
+      handSizeSum: 0,
+      handAtBoundTurns: 0,
+      handSizeMax: 0,
       cards: new Map(),
     };
     for (const card of data.cards.catalogue) {
@@ -1539,13 +1865,26 @@ export class Fold {
     if (this.seeded) return;
     this.seeded = true;
     for (const tile of state.island.tiles) this.dealtCrates.set(tile.tile, [...tile.crates]);
-    for (const p of state.players) {
+    state.players.forEach((p, seat) => {
       for (const id of p.hand) this.facts(id).held = true;
       // Starters arrive pre-built: they are in play in every game, never drawn
       // and never junked. The cut list excludes them for exactly that reason;
       // the funnel still carries a row so the coverage test has one.
       for (const b of p.tableau) this.facts(b.card).played = true;
-    }
+      // ⭐ THE EXTRA NOTICE BOARDS AS DEALT (Dean's two-board fix, 11/09/2026),
+      // captured here because setup is the only place they can be read from:
+      // no event announces them and nothing afterwards distinguishes the board
+      // a seat's starters brought from the board it drew. A board whose suit is
+      // not this seat's own suit is by construction one dealt from the suits
+      // nobody is farming, so the test is the whole of the identification.
+      // Empty in every game that lays out one board a seat, which is every game
+      // this project has shipped.
+      for (const b of p.tableau) {
+        const card = cardById(this.data, b.card);
+        if (card.slot !== 'noticeboard' || card.suit === p.suit) continue;
+        this.m.extraBoardsBySeat[seat]?.push(card.suit);
+      }
+    });
   }
 
   observe(d: Decision): void {
@@ -1665,6 +2004,18 @@ export class Fold {
     if (!anyBuildOption(this.data, s, seat)) {
       this.m.noBuildTurnsBySeat[seat] = (this.m.noBuildTurnsBySeat[seat] ?? 0) + 1;
     }
+    // ⛔ HAND SIZE, AND IT IS A READING ABOUT THE INSTRUMENT (C7). Sampled
+    // here because this is already the one clean moment per turn - no pending
+    // task, nothing spent - and because S17's whole mechanism is cards in hand.
+    // The engine's `rules.turn.handLimit` is the SIMULATOR's bound and the table
+    // plays with none, so `handAtBoundTurns` is the clipping rather than a
+    // finding about hoarding. a21 prints all three with the caveat attached.
+    const held = player(s, seat).hand.length;
+    this.m.handSampledTurns += 1;
+    this.m.handSizeSum += held;
+    const bound = this.data.rules.turn.handLimit;
+    if (bound !== null && held >= bound) this.m.handAtBoundTurns += 1;
+    if (held > this.m.handSizeMax) this.m.handSizeMax = held;
     this.meepleTurnStart(s, seat);
   }
 
@@ -1971,6 +2322,21 @@ export class Fold {
     if (a.kind === 'keep' && task.t === 'draw') {
       for (const id of task.revealed) this.facts(id).surfaced = true;
       for (const id of a.cards) this.facts(id).kept = true;
+      // ⚠️ W17 THE PIE SHOP, SEPARATED FROM S17's RULE HERE AND NOWHERE ELSE
+      // (11/09/2026). The card and the rule print the same words and both fire,
+      // so a W17 owner visited once draws two - but only the RULE's cards carry
+      // `via: 'hostDraw'` on the event, and W17's arrive on an ordinary
+      // unlabelled `cardsToHand`. The draw TASK carries `src: 'W17'`, which is
+      // the one thing that tells them apart, so the count is taken at the keep
+      // answer. It is exact rather than inferred, and it counts CARDS DRAWN: a
+      // firing the decks could not feed reveals nothing, is never offered a keep
+      // and is not counted, which is the same contract the host draw's count
+      // keeps.
+      if (task.src === 'W17' && a.cards.length > 0) {
+        this.m.w17DrawCardsBySeat[task.pid] =
+          (this.m.w17DrawCardsBySeat[task.pid] ?? 0) + a.cards.length;
+        this.m.w17DrawFiresBySeat[task.pid] = (this.m.w17DrawFiresBySeat[task.pid] ?? 0) + 1;
+      }
     }
     if (a.kind === 'build') for (const id of a.payment) this.facts(id).junked = true;
     // ⭐ THE `discard` ANSWER IS BACK, and so is this line (02/09/2026). v31
@@ -2023,9 +2389,24 @@ export class Fold {
       // column of the funnel. There is no currency, so all three go: nothing
       // that used to be paid in coins is paid in anything now except cards and
       // actions, both of which are counted elsewhere.
-      case 'cardsToHand':
+      case 'cardsToHand': {
         for (const id of e.cards) this.facts(id).held = true;
+        // ⭐ THE DENOMINATOR FOR S17'S SHARE OF THE DRAWING, and it is every
+        // card that reached a hand on this event and nothing else: a gift and a
+        // take of a central pile have their own events and are not draws.
+        m.cardsToHandTotal += e.cards.length;
+        // ⭐ S17, THE HOST DRAW (11/09/2026). `via` is the engine's own label
+        // and the ONLY thing that separates these cards from an ordinary draw;
+        // it is absent on every other producer, so this branch is a structural
+        // zero wherever `rules.turn.hostDrawOnVisit` is 0. ⛔ IT COUNTS CARDS
+        // DRAWN AND NEVER VISITS PROMISED: a dry table pushes no task, so the
+        // gap against `visitsReceivedBySeat` is the rule failing to pay.
+        if (e.via === 'hostDraw') {
+          m.hostDrawCardsBySeat[e.seat] = (m.hostDrawCardsBySeat[e.seat] ?? 0) + e.cards.length;
+          m.hostDrawPaymentsBySeat[e.seat] = (m.hostDrawPaymentsBySeat[e.seat] ?? 0) + 1;
+        }
         return;
+      }
       case 'cardGifted':
         this.facts(e.card).held = true;
         m.giftsBySeat[e.from] = (m.giftsBySeat[e.from] ?? 0) + 1;
@@ -2221,6 +2602,20 @@ export class Fold {
           }
         } else {
           m.barnFromOwnBySeat[e.seat] = (m.barnFromOwnBySeat[e.seat] ?? 0) + e.cards.length;
+          // ⭐ AND THE THIRD SOURCE, SPLIT OUT OF THE SECOND (11/09/2026). A
+          // Notice Board is a BUILDING in a tableau under
+          // `visitCurrency: 'noticeBoardPower'`, so the engine correctly carries
+          // `source: 'tableau'` when its owner banks it - and a18's question is
+          // not the engine's. Cards off your own board are fee material
+          // somebody else paid; cards off everything else are your farm. Read
+          // off the catalogue's `slot` rather than off `noticeBoardOf`, which
+          // THROWS on a seat with no board (every seat under the commons), so
+          // this needs no mode guard and reads a structural zero everywhere a
+          // board has no harvestable stack.
+          if (cardById(this.data, e.building).slot === 'noticeboard') {
+            m.barnFromOwnBoardBySeat[e.seat] =
+              (m.barnFromOwnBoardBySeat[e.seat] ?? 0) + e.cards.length;
+          }
         }
         // A HARVEST OF THE OWN NOTICE BOARD BANKS THE RIVAL FEES sitting on it
         // (assertion 2). Counted here rather than at the moment the fee lands,
@@ -2382,24 +2777,114 @@ export class Fold {
         // ⛔ AND UNDER THE COMMONS THE QUESTION HAS NO OBJECT AT ALL (C1,
         // 09/09/2026). No player has a Notice Board: the five boards stand
         // ownerless in the centre, they have no threshold (C4) and nothing can
-        // refuse a play. `noticeBoardOf` THROWS on a seat with no board, so this
+        // refuse a play. `noticeBoardsOf` THROWS on a seat with no board, so this
         // is a guard against a crash as well as against a meaningless number -
         // and NOT SAMPLING is deliberate rather than sampling a zero. A zero
         // denominator reads as "not measured" wherever a05 and a04 print it; a
         // zero numerator over a real denominator would read as "never clogged",
         // which is a finding about a thing that does not exist.
+        //
+        // ⭐ AND DEAN'S TWO-BOARD FIX (11/09/2026) CHANGES THE PREDICATE AND NOT
+        // THE NUMBER, which is worth saying rather than leaving to be
+        // rediscovered. "Clogged" here means THE FARM IS SHUT TO THE TABLE, so
+        // with two boards in front of a seat it is EVERY board full and not the
+        // own-suit one - hence `every` over `noticeBoardsOf`. ⛔ IT IS
+        // BYTE-IDENTICAL EVERYWHERE IT HAS EVER RUN: under `'card'` and the
+        // commons a seat lays out at most one board, so `every` over one board
+        // is that board; and under `'noticeBoardPower'` as shipped
+        // `rules.economy.noticeBoardBlocks` is false, so `thresholdShuts`
+        // answers false and `isFull` is PERMANENTLY FALSE however deep a stack
+        // goes - a04 reads a genuine 0% and a20-board-stall is the assertion
+        // that asks the question this one stopped answering. The change bites
+        // only under the blocking control with two boards, where the honest
+        // answer is that one open board is an open farm.
         const commons = isCommons(this.data);
         const arm = isMeepleCurrency(this.data);
         for (let s2 = 0; s2 < m.seats && !commons; s2++) {
           m.doorClogSampledBySeat[s2] = (m.doorClogSampledBySeat[s2] ?? 0) + 1;
           const shut = arm
             ? this.boardFull(d.post, s2)
-            : isFull(this.data, noticeBoardOf(this.data, d.post, s2));
+            : noticeBoardsOf(this.data, d.post, s2).every((b) => isFull(this.data, b));
           if (shut) m.doorClogTurnsBySeat[s2] = (m.doorClogTurnsBySeat[s2] ?? 0) + 1;
           if (!arm) continue;
           for (const colour of this.data.cards.suits) {
             m.slotsSampledAtBoundary += 1;
             if (slotBlocked(d.post, s2, colour)) m.slotsBlockedAtBoundary += 1;
+          }
+        }
+        // ⭐ THE STALL PROBE (a20, S8, 10/09/2026), and it samples ONE seat
+        // where the loop above samples all of them. The question is the
+        // OWNER's - "did you leave your own board loaded" - so it is asked at
+        // the owner's own turn boundary and the run length below is counted in
+        // the owner's own turns. See `boardHarvestableTurnsBySeat`.
+        //
+        // ⛔ `isHarvestable` AND NOT `isFull`, WHICH IS THE ENTIRE REASON THIS
+        // PROBE EXISTS. Under S8's `3+` rule the two stopped being the same
+        // boolean: a board at five cards is harvestable and is not full, so
+        // the door-clog loop above reads a genuine and permanent 0% and would
+        // report a design that never stalls whatever the table did.
+        //
+        // ⛔⛔ AND IT RUNS PER BOARD SINCE DEAN'S TWO-BOARD FIX (11/09/2026),
+        // WHICH IS OPEN RISK 2 OF THE ARM ARRIVING IN THE INSTRUMENT. It
+        // sampled `noticeBoardOf` - the seat's OWN SUIT'S board - and at two
+        // seats under `rules.economy.noticeBoardsBySeats` that MISSES THE EXTRA
+        // BOARD ENTIRELY. The run state is therefore keyed on the BOARD CARD
+        // and not on the seat: two boards in one tableau fill and empty
+        // independently, so one run counter per seat would splice two boards'
+        // histories into one and report a stall that never happened.
+        //
+        // ⚠️ THE DENOMINATOR IS BOARD-TURNS AND NOT OWNER TURNS, and a20 says
+        // so on its own line. A seat's incoming fee traffic SPLITS across its
+        // boards, so at two seats each board fills at HALF the rate and sits
+        // under its minimum for twice as long: a lower stall share there is
+        // arithmetic before it is ever a finding.
+        if (isNoticeBoardPower(this.data)) {
+          for (const board of noticeBoardsOf(this.data, d.post, seat)) {
+            const depth = board.stack.length;
+            m.boardSampledTurnsBySeat[seat] = (m.boardSampledTurnsBySeat[seat] ?? 0) + 1;
+            if (depth > (m.boardMaxStackBySeat[seat] ?? 0)) m.boardMaxStackBySeat[seat] = depth;
+            if (isHarvestable(this.data, board)) {
+              m.boardHarvestableTurnsBySeat[seat] = (m.boardHarvestableTurnsBySeat[seat] ?? 0) + 1;
+              this.boardStallRun.set(board.card, (this.boardStallRun.get(board.card) ?? 0) + 1);
+            } else {
+              const run = this.boardStallRun.get(board.card) ?? 0;
+              if (run > 0) m.boardStallRuns.push(run);
+              this.boardStallRun.set(board.card, 0);
+            }
+          }
+        }
+        // ⭐ THE CENTRE'S HALF OF THE STALL (a20, 11/09/2026), and it samples
+        // EVERY PILE where the probe above samples one seat. A central pile has
+        // no owner, so there is nobody whose own turn boundary is the right
+        // place to ask: the question is "did this pile sit there, takeable by
+        // anybody, and did nobody take it", and that is a TABLE question asked
+        // once a turn of the whole middle.
+        //
+        // ⛔ IT IS A DIFFERENT PHENOMENON FROM THE OWNED STALL AND NOT A SECOND
+        // MEASUREMENT OF THE SAME ONE. An owned board sitting harvestable is one
+        // named person declining their own payment; a central pile sitting
+        // harvestable is a CONTESTED PILE NOBODY HAS CLAIMED YET, and a long run
+        // there can be a pile the table is watching grow rather than a pile the
+        // table has forgotten. a20 reports them on separate lines for that
+        // reason and pools neither into the other.
+        if (hasCentre(this.data)) {
+          const piles = commonsBoards(d.post);
+          const min = commonsHarvestMin(this.data);
+          for (const colour of this.data.cards.suits) {
+            const pile = piles[colour];
+            if (pile === undefined) continue;
+            m.centralPileSampledTurns += 1;
+            if (pile.length > (m.centralPileMaxByBoard[colour] ?? 0)) {
+              m.centralPileMaxByBoard[colour] = pile.length;
+            }
+            if (pile.length >= min) {
+              m.centralPileHarvestableTurns += 1;
+              this.centralPileStallRun.set(colour, (this.centralPileStallRun.get(colour) ?? 0) + 1);
+            } else {
+              const run = this.centralPileStallRun.get(colour) ?? 0;
+              if (run > 0) m.centralPileStallRuns.push(run);
+              this.centralPileStallRun.set(colour, 0);
+            }
           }
         }
         this.turnsEnded += 1;
@@ -2435,16 +2920,27 @@ export class Fold {
       // 2). Every other `cardPlaced` - a GROW payment, a sow, a self-visit - is
       // still claimed and uninteresting.
       case 'cardPlaced': {
+        this.countA16(d, e);
         if (e.seat === e.onto.seat) return;
         // ⛔ NO SEAT HAS A NOTICE BOARD UNDER THE COMMONS (C1), and
-        // `noticeBoardOf` throws rather than answering null - so this is a crash
+        // `noticeBoardsOf` throws rather than answering null - so this is a crash
         // guard first and a meaning guard second. A cross-table SOW still fires
         // this event under the commons, and the card it places lands on a rival
         // BUILDING, which was never freight. The commons' own transfer is a
         // `commonsPlayed` into a public pile and is counted there; a18 owns it.
+        //
+        // ⛔⛔ AND IT ASKS `noticeBoardsOf` AND NOT `noticeBoardOf` SINCE
+        // 11/09/2026, WHICH IS THE MOST SERIOUS OF THE FIVE SITES DEAN'S
+        // TWO-BOARD FIX TOUCHED. `noticeBoardOf` answers the seat's OWN SUIT'S
+        // board, so a fee landing on a host's EXTRA board - the one drawn from
+        // the unfarmed suits, whose power only rivals can buy - failed this
+        // test and was never recorded as freight. Everything downstream of it
+        // undercounts: `freight.bankedBySeat`, a02's gift tracking and a18's
+        // farm bypass, all at TWO SEATS, which is the one column this variant
+        // exists to move.
         if (isCommons(this.data)) return;
-        const board = noticeBoardOf(this.data, d.post, e.onto.seat);
-        if (board.card !== e.onto.building) return;
+        const boards = noticeBoardsOf(this.data, d.post, e.onto.seat);
+        if (!boards.some((b) => b.card === e.onto.building)) return;
         this.freightOnBoard[e.onto.seat]?.add(e.card);
         return;
       }
@@ -2561,11 +3057,39 @@ export class Fold {
     // than kept as a running balance, for the reason `meeplePoolOf` states of
     // its own. Only under the commons - `commonsBoards` throws where there is no
     // commons zone, which is the seam doing its job.
-    if (isCommons(this.data)) {
+    // ⭐ `hasCentre` AND NOT `isCommons` SINCE 11/09/2026, and it is the gate
+    // Dean's unclaimed-boards variant turned from a synonym into a real
+    // question. There is a centre under the commons (all five piles, C1) AND
+    // under `visitCurrency: 'noticeBoardPower'` with
+    // `rules.economy.unclaimedBoardsToCentre` (the unfarmed suits' piles only),
+    // and a series that went silent on the second would have reported a centre
+    // that never filled on the one arm built to ask whether it does.
+    if (hasCentre(this.data)) {
       const boards = commonsBoards(state);
       let cards = 0;
       for (const colour of this.data.cards.suits) cards += boards[colour]?.length ?? 0;
       m.commonsPileSizeByRound.push(cards);
+    }
+    // ⭐ AND THE FARM'S ANSWER TO THE SAME SERIES (a18, 10/09/2026): every card
+    // resting on every seat's own Notice Board at this instant. Under the
+    // notice-board visit the boards ARE the shared surface - they are just
+    // owned - so the reading a18 takes of the centre under the commons is
+    // taken of the tableau here, and the two are the same shape and are still
+    // not the same quantity: a card on a board has a named owner waiting to
+    // harvest it, and a card in a central pile has not.
+    // ⛔ EVERY BOARD A SEAT HAS LAID OUT AND NOT ITS OWN SUIT'S ALONE
+    // (11/09/2026). Under `rules.economy.noticeBoardsBySeats` a seat holds two
+    // at two seats, both of them collecting fees, and `noticeBoardOf` would
+    // have reported the resting stock of half the table's boards as the whole
+    // of it - on exactly the column a18 reads this series for.
+    if (isNoticeBoardPower(this.data)) {
+      let onBoards = 0;
+      for (let seat = 0; seat < state.players.length; seat++) {
+        for (const board of noticeBoardsOf(this.data, state, seat)) {
+          onBoards += board.stack.length;
+        }
+      }
+      m.noticeBoardCardsByRound.push(onBoards);
     }
     const leader = this.soleLeader(state);
     if (leader !== null && this.leader !== null && leader !== this.leader) m.leadChanges += 1;
@@ -2615,6 +3139,40 @@ export class Fold {
     return v;
   }
 
+  /**
+   * ⭐ A16 THE BEEKEEPER'S VEIL, RECONSTRUCTED (11/09/2026) - see the fields'
+   * own comment for why it matters and what the approximation is.
+   *
+   * A16 fires when a placement brings a building's stack to 2 and the PLACER is
+   * the card's owner. `fx.land` pushes, so the card's index in the post-state
+   * stack is the position it landed at: index 1 is the second card, which is the
+   * `stackSize === 2` the handler tests. The split is by WHERE the card landed
+   * rather than by what the move was called, because the landing site is what
+   * the rule keys on - and because a sow onto a Notice Board is the same
+   * placement as a fee onto one.
+   *
+   * ⛔ THERE IS NO CENTRAL COLUMN HERE AND THAT IS THE FINDING, NOT A GAP.
+   * `fx.playOnCommons` never emits `cardPlaced` and never fires
+   * `afterPlacement`, deliberately: a central board is in nobody's tableau and
+   * is not a building. So a central play cannot reach this function at all, and
+   * a18 prints the central play count beside these three so a reader can see the
+   * zero is structural.
+   */
+  private countA16(d: Decision, e: Extract<GameEvent, { e: 'cardPlaced' }>): void {
+    const holder = player(d.post, e.seat).tableau.some((b) => b.card === A16);
+    if (!holder) return;
+    this.m.a16PlacementsWhileHeld += 1;
+    const building = player(d.post, e.onto.seat).tableau.find((b) => b.card === e.onto.building);
+    if (building === undefined) return;
+    if (building.stack.indexOf(e.card) !== 1) return;
+    if (cardById(this.data, e.onto.building).slot === 'noticeboard') {
+      if (e.seat === e.onto.seat) this.m.a16FiresOwnBoard += 1;
+      else this.m.a16FiresRivalBoard += 1;
+      return;
+    }
+    this.m.a16FiresOrdinary += 1;
+  }
+
   /** The single seat ahead on VP right now, or null while it is tied. */
   private soleLeader(state: GameState): Seat | null {
     const totals = gameEndScores(this.data, state).map((s) => s.total);
@@ -2658,11 +3216,19 @@ export class Fold {
     // end-game trigger fires mid-round and the last sample can be a whole
     // rotation short of the end. It is the third term of a18's conservation
     // line: plays into the centre = cards harvested out + these.
-    if (isCommons(this.data)) {
+    if (hasCentre(this.data)) {
       const boards = commonsBoards(state);
       let left = 0;
       for (const colour of this.data.cards.suits) left += boards[colour]?.length ?? 0;
       m.commonsStrandedAtEnd = left;
+      // ⭐ THE CENTRE'S RIGHT-CENSORED TAIL (a20, 11/09/2026), on exactly the
+      // contract the owned boards' tail below states: a run still open when the
+      // game ends is a pile NOBODY EVER CLAIMED, which is the strongest form of
+      // the finding, so it is banked apart rather than averaged in with the
+      // runs that closed.
+      for (const [, run] of this.centralPileStallRun) {
+        if (run > 0) m.centralPileStallRunsOpenAtEnd.push(run);
+      }
     }
 
     // ⭐ DEAD COINS (K7, 10/09/2026), read off the FINAL state for exactly the
@@ -2676,6 +3242,43 @@ export class Fold {
       state.players.forEach((p, seat) => {
         m.coinsHeldAtEndBySeat[seat] = p.coins ?? 0;
       });
+    }
+
+    // ⭐ THE STALL'S RIGHT-CENSORED TAIL (a20). A run still open when the game
+    // ends is a board NOBODY EVER CLEARED, which is the strongest form of the
+    // finding this reading is looking for - so it is banked in its own list
+    // rather than pushed onto `boardStallRuns`, where a mean over the two
+    // together would quietly average the worst cases away.
+    //
+    // ⛔ THE RUN TAIL IS WALKED PER BOARD AND THE CARDS ARE SUMMED PER SEAT
+    // (11/09/2026). Two boards in one tableau have two open runs, and a seat's
+    // resting stock is what is standing on BOTH of them; `boardsAtEnd` and
+    // `boardsHoldingAtEnd` keep the per-BOARD population beside the per-seat
+    // total, because A21 The Wax Hall scores a BUILDING holding a card (S16)
+    // and a seat is not a building.
+    if (isNoticeBoardPower(this.data)) {
+      for (const [, run] of this.boardStallRun) {
+        if (run > 0) m.boardStallRunsOpenAtEnd.push(run);
+      }
+      for (let seat = 0; seat < state.players.length; seat++) {
+        let cards = 0;
+        for (const board of noticeBoardsOf(this.data, state, seat)) {
+          cards += board.stack.length;
+          m.boardsAtEnd += 1;
+          if (board.stack.length > 0) m.boardsHoldingAtEnd += 1;
+        }
+        m.boardCardsAtEndBySeat[seat] = cards;
+      }
+    }
+
+    if (m.noticeBoardCardsByRound.length >= 3) {
+      const series = m.noticeBoardCardsByRound;
+      const cut = series.length / 3;
+      m.noticeBoardCardsByRoundThird = [
+        medianOf(series.slice(0, Math.ceil(cut))),
+        medianOf(series.slice(Math.ceil(cut), Math.ceil(2 * cut))),
+        medianOf(series.slice(Math.ceil(2 * cut))),
+      ];
     }
 
     if (m.commonsPileSizeByRound.length >= 3) {

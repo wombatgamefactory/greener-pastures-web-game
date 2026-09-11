@@ -121,6 +121,16 @@ export const data: GameData = loadGameData({
     'rules.turn.meepleCapPerColour': 1,
     'rules.turn.bonusTiming': 'end',
     'rules.turn.startingMeeplesPerColour': 1,
+    // ⛔ SEVEN SINCE 10/09/2026, AND THE SEVENTH IS THE BOARD'S OWN
+    // THRESHOLD. The notice-board visit (S8) moved the BASE value of
+    // `rules.economy.noticeBoardThreshold` from 2 to 3, so this pin - which is
+    // this package's own inline copy of `overlays/v31-card-visit.overlay.json`
+    // - silently began reading 3 where the control it names is 2. Under
+    // `'card'` the Notice Board is a BLOCKING building and 2 is not a detail
+    // of that game: it is the brake on the self-visit and what shuts a farm to
+    // the table in two placements. The overlay file pins the same leaf; an
+    // inline copy that does not is exactly the drift this pin exists to stop.
+    'rules.economy.noticeBoardThreshold': 2,
   },
 });
 

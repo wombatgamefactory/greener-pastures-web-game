@@ -232,6 +232,33 @@ export type Act =
       host: Seat;
       fee: CardId | null;
       self: boolean;
+      /**
+       * ⭐ **WHICH OF THE HOST'S NOTICE BOARDS THE FEE LANDS ON, AND
+       * THEREFORE WHICH POWER IS BOUGHT** (Dean's two-board fix, ruled
+       * 11/09/2026, `rules.economy.noticeBoardsBySeats`). At TWO seats a host
+       * lays out two boards - its own suit's, plus one drawn at random from the
+       * suits nobody is farming - so `host` alone stopped naming a building and
+       * stopped naming a power.
+       *
+       * ⛔ **PRESENT ONLY WHEN THE HOST HOLDS MORE THAN ONE**, which is the
+       * engine's own rule (see the `visit` move's `board` field) and is what
+       * keeps this arm's three- and four-seat games byte-identical to
+       * `overlays/notice-board-visit-no-self-v1.overlay.json`. An ABSENT key
+       * means "the host's own suit's board", which is every other game this
+       * package has ever scored.
+       *
+       * ⛔ **AND IT IS THE FIELD `effectKey` PARTITIONS ON.** Until it was
+       * carried here the memo key was `visit:${host}`, so the two boards of one
+       * host collapsed to ONE rollout, scored identically to the last decimal
+       * place, and `bestOf`'s rng tie-break picked between two different powers
+       * at random - which is the instrument unable to demonstrate the very
+       * CHOICE the fix exists to create. See `outcome.ts`'s `effectKey`.
+       *
+       * ⚠️ Nothing else reads it. Which card pays is `visitFeeJunk`'s
+       * question and who is fed is `hostGift`'s, and neither changes with the
+       * board: it is the same rival either way.
+       */
+      board?: CardId;
       meeples: readonly Suit[];
       /**
        * ⭐ THE SLOT TOLL (R6 as amended, `rules.turn.slotToll`): extra meeples
@@ -505,11 +532,18 @@ export function actOf(move: Move): Act {
       // here rather than derived: a wild buys the same door for twice the stock,
       // so a term that could only see "a visit happened" would price the two
       // identically and the bots would burn pairs they should have held.
+      // ⭐ `board` RIDES ACROSS ONLY WHEN THE ENGINE NAMED ONE (Dean's
+      // two-board fix, 11/09/2026), spelled the same way `fee2` and
+      // `commonsTake`'s fee are - present or absent, never null - so every term
+      // and `effectKey` gate on the ACT's shape rather than on the knob that
+      // produced it. Absent is the definite description the engine falls back
+      // on: the host's own suit's board.
       return {
         a: 'visit',
         host: move.host,
         fee: move.fee,
         self: move.host === move.seat,
+        ...(move.board === undefined ? {} : { board: move.board }),
         meeples: move.meeples ?? NO_MEEPLES,
         // R6 as amended: the meeples burned to enter an occupied slot. Absent
         // under v1, where an occupied slot is refused and there is nothing to

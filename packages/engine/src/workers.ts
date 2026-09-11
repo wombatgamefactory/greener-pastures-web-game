@@ -30,10 +30,10 @@
 import type { GameData, Suit } from '@gp/data';
 import { doorActionForSuit, isMeepleCurrency } from '@gp/data';
 
-import { doorOf } from './query.js';
+import { doorOf, unclaimedCentre } from './query.js';
 import type { Fx } from './fx.js';
 import { fireHook } from './fx.js';
-import type { DoorAction, Seat } from './state.js';
+import type { CardId, DoorAction, Seat } from './state.js';
 
 /**
  * What paid for this door action: a card on a rival's Notice Board, a meeple
@@ -67,6 +67,185 @@ export function doorActionOf(data: GameData, colour: Suit): DoorAction {
   const action = doorActionForSuit(data, colour);
   if (action === undefined) throw new Error(`No door action for suit ${colour}`);
   return action;
+}
+
+/**
+ * ⭐ THE FIVE NOTICE BOARD POWERS (S12 of
+ * `docs/notice-board-visit-handoff-2026-09-10-v2.md`, as amended by Dean's
+ * rulings C88 and C89 of the same evening). Live under
+ * `rules.turn.visitCurrency: 'noticeBoardPower'`, where a visitor plays one
+ * card onto ANY player's Notice Board and takes that board's PRINTED POWER -
+ * and under `rules.economy.farmsteadCoinPower`, the superseded coins arm of
+ * that morning, whose Farmstead activates for a coin into the same five.
+ *
+ *   Orchard    "Draw 4."                                        `orchardDraw`
+ *   Dairy      "Build. You may spend cards of any crops."        `dairyWild`
+ *   Wheat      "Harvest one of your buildings, then put 1 card
+ *               from your hand into your barn."                  `wheatBarn`
+ *   Apiary     "Sow 2 cards from your hand onto your buildings." `apiarySows`
+ *   Vegetable  "Deliver. If you cannot, put 2 cards from your
+ *               hand into your barn."                    `vegetableFallback`
+ *
+ * ⭐ EACH IS ITS OWN SUIT'S VERB AMPLIFIED, so a board is guessable from its
+ * colour before it is read, and each is worth roughly two plain actions. S13
+ * fixed AVAILABILITY first and power second: the morning's set was measured
+ * over 6,771 positions and four of the five were dead most of the time (live
+ * rates 63%, 44%, 42%, 19%, 5%), which is why every power below has a leg that
+ * works out of a bare hand.
+ *
+ * ⛔ S13's PRECEDENT BINDS ALL FIVE AND IT KILLED THREE OF THEM ALREADY: a
+ * power that duplicates a card word for word takes that card's identity away.
+ * The morning's Dairy power WAS D4 The Milking Shed (a discount of 1 already
+ * waives crop requirements, see `priceOf`) and its Vegetable power WAS V15 The
+ * International Port (two deliver tasks); ruling C88 then killed S12's own
+ * Wheat power for being W11 The Bakehouse. Read the note on each branch before
+ * moving a number.
+ *
+ * ⚠️ IT LIVES IN THIS FILE AND NOT IN `handlers/farmstead.ts`, WHICH IS A
+ * DELIBERATE MOVE (10/09/2026). This is the file that already answers "perform
+ * a suit's action, bought by something" - `performDoorAction` is its sibling
+ * three functions up - and the power is a bought action rather than card text.
+ * It also cannot live in `actions.ts`, which calls it from `doVisit`, nor in a
+ * handler, which `actions.ts` may not import.
+ *
+ * ⚠️ `deliverLegal` IS ANSWERED BY THE CALLER, AND ONLY THE VEGETABLE
+ * BRANCH READS IT. "Deliver. If you cannot..." is a question about island
+ * claims and balloon moves, and both enumerators live in `actions.ts`, which
+ * this file may not import (it is imported BY it). One boolean in beats a
+ * module cycle, and both call sites answer it with the same
+ * `doorActionLegal(data, state, actor, 'deliver')`.
+ */
+export function fireNoticeBoardPower(
+  fx: Fx,
+  actor: Seat,
+  colour: Suit,
+  opts: {
+    /** The card that granted this: a Farmstead under the coins arm, null for a visit. */
+    src: CardId | null;
+    /** Can `actor` deliver right now - an island claim or a balloon move (DL-12)? */
+    deliverLegal: boolean;
+  },
+): void {
+  const numbers = fx.data.rules.economy.noticeBoardPower;
+  const { src } = opts;
+  switch (colour) {
+    case 'orchard':
+      // "Draw 4." The ordinary plain-draw path - a see-N/keep-N draw task, one
+      // card from any deck in play per card seen, which is what every
+      // card-granted draw in the game pushes. ⭐ THE ONE POWER THAT CAN NEVER
+      // BE DEAD, because the decks are always there, and the only one of the
+      // five S13 raised rather than replaced (3 to 4).
+      fx.pushTask({
+        t: 'draw',
+        pid: actor,
+        src,
+        see: numbers.orchardDraw,
+        keep: numbers.orchardDraw,
+        revealed: [],
+      });
+      return;
+    case 'dairy':
+      // "Build. You may spend cards of any crops." ⭐ A WAIVER, NOT A
+      // DISCOUNT, and that is ruling S13 in one line: a build at a discount of
+      // 1 ALREADY waives the crop requirement (`priceOf` sets the own-suit
+      // minimum to 0 whenever a discount applies), so the morning's
+      // `dairyDiscount` power was D4 The Milking Shed word for word and the
+      // card lost its identity to it. The full card count is still paid here;
+      // only the n-of-suit half goes, through `BuildMods.substitute` - which
+      // has been "a mod with no producer" since the v31 doors went plain and
+      // now has one again.
+      fx.pushTask({
+        t: 'build',
+        pid: actor,
+        src,
+        ...(numbers.dairyWild ? { mods: { substitute: true } } : {}),
+      });
+      return;
+    case 'wheat': {
+      // "Harvest one of your buildings, then put 1 card from your hand into
+      // your barn." ⛔ RULING C88 (Dean, 10/09/2026): S12 printed *"Harvest
+      // any one of your buildings, however many cards are on it"*, which is
+      // W11 The Bakehouse word for word, so the POWER moved and the CARD kept
+      // its identity. ONE building, at any stack size - `filter: 'loaded'` is
+      // that sentence, the same gate W11 and W13 print - and then a card from
+      // the hand into the barn, which is the leg that keeps the power live for
+      // a seat with nothing worth harvesting.
+      //
+      // ⛔ AND IT IS EMPHATICALLY NOT W13 THE BAKERY'S CASCADE. W13 harvests
+      // EVERY loaded building; this harvests exactly one. The coins arm's
+      // Farmstead did the cascade until 10/09/2026 and that was the collision
+      // S13 named.
+      //
+      // ⚠️ A LOADED NOTICE BOARD IS ONE OF "YOUR BUILDINGS" HERE, so this
+      // power can cash a board of your own below the `3+` minimum. That is the
+      // magenta balloon's precedent ("Harvest any building, even if it is not
+      // full") reaching the one building S8 gives a floor to, and it is a
+      // reading the engine had to make rather than one the handoff wrote down.
+      // Flagged for Dean; excluding it would have been the bigger invention.
+      //
+      // ⭐ AND UNDER DEAN'S UNCLAIMED-BOARDS VARIANT IT ALSO REACHES A CENTRAL
+      // PILE (11/09/2026). Dean reaffirmed D1 that day - "a Harvest is a
+      // Harvest" - and his stated reason was "to prevent any rules exceptions",
+      // so the bought Harvest must take one of your buildings OR any central
+      // board at `commonsHarvestMin`, exactly as the MAIN Harvest action does.
+      // ⚠️ THE TWO LEGS KEEP THEIR OWN GATES AND THEY ARE DIFFERENT ON
+      // PURPOSE: a building of yours qualifies at ANY stack size (C88's
+      // `filter: 'loaded'`), a central pile only at the minimum, because the
+      // minimum is the centre's own `3+` rule and not a relaxation this power
+      // is allowed to waive. The flag is `central` rather than a sixth filter
+      // value so that W11, W13 and O7 - the card faces that also print
+      // `'loaded'` and say "YOUR buildings" - are untouched.
+      fx.pushTask({
+        t: 'chooseBuilding',
+        pid: actor,
+        src,
+        filter: 'loaded',
+        ...(unclaimedCentre(fx.data) ? { central: true } : {}),
+        then: 'harvest',
+      });
+      fx.pushTask({ t: 'handToBarn', pid: actor, src, remaining: numbers.wheatBarn });
+      return;
+    }
+    case 'apiary':
+      // "Sow 2 cards from your hand onto your buildings." ⛔ A SOW AND NOT A
+      // GROW (ruling C89, Dean 10/09/2026): nothing is activated and no
+      // ability fires, so the power cannot become a cheaper A12 The Honey Hut
+      // or A5 The Meadow Hive, and it is not the morning's `apiaryGrows`
+      // either. ONE task with a remaining of 2 rather than two tasks, because
+      // the sow task's own counter is the loop and a hand that runs out drops
+      // the remainder through the drain loop.
+      //
+      // ⛔ ONTO YOUR OWN BUILDINGS ONLY (C89). S12 said "onto any buildings",
+      // which read literally reaches across the table; Dean ruled it
+      // self-contained, so every power is solitaire and THE VISIT ITSELF STAYS
+      // THE ONLY CROSS-TABLE ACT IN THE DESIGN. A `sow` task with no `targets`
+      // is exactly "your own buildings" (see `sowTargets`), and S11 takes the
+      // Notice Board itself out of that set through `canSowOnto`.
+      fx.pushTask({ t: 'sow', pid: actor, src, remaining: numbers.apiarySows });
+      return;
+    case 'vegetable':
+      // "Deliver. If you cannot, put 2 cards from your hand into your barn."
+      // ⭐ ONE delivery with a fallback, and NOT the morning's two: delivering
+      // twice was V15 The International Port word for word and S13 killed it.
+      // The fallback is what makes the board never dead - Deliver is worth
+      // nothing to a payer with an empty barn (C53's standing finding), and
+      // this is the one power whose failure case SETS UP the next delivery
+      // rather than making this one.
+      //
+      // ⚠️ THE BRANCH IS TAKEN AT FIRE TIME, not at resolution: "if you
+      // cannot" is a question about the position the power fires into. A
+      // deliver task pushed into a position with no answer would simply be
+      // dropped by the drain loop and the seat would get nothing at all, which
+      // is the reading S13 was fixing.
+      if (opts.deliverLegal) {
+        fx.pushTask({ t: 'deliver', pid: actor, src });
+      } else {
+        fx.pushTask({ t: 'handToBarn', pid: actor, src, remaining: numbers.vegetableFallback });
+      }
+      return;
+    default:
+      return colour satisfies never;
+  }
 }
 
 /**

@@ -19,6 +19,7 @@ import { handlerFor } from './handlers/registry.js';
 import type { CardMove } from './handlers/types.js';
 import { canTakeCard, cardById, coinsOf, faceOf, player } from './query.js';
 import type { CardId, GameEvent, GameState, Seat, Task, TaskAnswer } from './state.js';
+import { markFiredOnTurn } from './state.js';
 import { drainTasks, popTask, resolveTask, taskAnswers } from './tasks.js';
 
 export interface Applied {
@@ -225,8 +226,14 @@ export function doGrow(
  * that was never a GROW target removes nothing.
  */
 export function markFired(fx: Fx, building: CardId): void {
-  const fired = fx.state.turn.firedThisTurn;
-  if (!fired.includes(building)) fired.push(building);
+  // ⚠️ THE DEDUPE MOVED TO `state.ts` ON 10/09/2026 AND THIS IS NOW A
+  // DELEGATE, so that the sentence above stays true. The notice-board visit's
+  // one-use-per-board latch (S9) writes the same list from `actions.ts`, which
+  // may not import this file - `runtime.ts` imports `actions.ts` for `doVisit`
+  // and a value cycle between the two is the thing this codebase refuses.
+  // Every handler still calls THIS function, and there is still exactly one
+  // implementation of the dedupe.
+  markFiredOnTurn(fx.state.turn, building);
 }
 
 /**

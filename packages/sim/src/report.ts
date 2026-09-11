@@ -17,9 +17,14 @@ import type { GameData, Suit } from '@gp/data';
 import {
   endgameCoinCost,
   farmsteadCoinPower,
+  hostDrawOnVisit,
   isCommons,
   isCommonsTakeCoins,
   isMeepleCurrency,
+  isNoticeBoardPower,
+  noticeBoardBlocks,
+  noticeBoardsPerSeat,
+  unclaimedBoardsToCentre,
 } from '@gp/data';
 import { ENGINE_VERSION, RULES_EDITION } from '@gp/engine';
 import { LADDER, POLICY_IDS } from '@gp/bots';
@@ -147,8 +152,45 @@ function boundaryBanner(id: string, data: GameData, overlayName: string | null):
   // comparison this project has. So the boundary banner still says what
   // reference-v15 is, and the arm banner says, immediately underneath, that this
   // particular report is not the shipped game.
-  if (id === 'reference-v15') return [...commonsBanner(), ...coinArmBanner(data, overlayName)];
-  if (id !== 'reference-v10') return coinArmBanner(data, overlayName);
+  //
+  // ⭐ AND THE NOTICE-BOARD ARM RIDES WITH IT ON THE SAME TERMS (10/09/2026).
+  // It is the second arm to run on reference-v15 seeds for the same reason the
+  // first does, and exactly one of the two can ever fire in a single run - the
+  // knobs are mutually exclusive - so they are appended rather than chosen
+  // between.
+  //
+  // ⭐ AND DEAN'S TWO-BOARD FIX RIDES WITH BOTH OF THOSE ON THE SAME TERMS AGAIN
+  // (11/09/2026). It is a VARIANT OF the notice-board arm rather than a rival to
+  // it, so it is appended after that banner rather than replacing it: the arm
+  // banner says what the notice-board visit is and this one says the one thing
+  // that differs, which is what a seat lays out at two players. It runs on
+  // `reference-v15` seeds because it is PAIRED against
+  // `overlays/notice-board-visit-no-self-v1.overlay.json` on them, and that
+  // pairing is the whole of the comparison.
+  // ⭐ AND S17, THE HOST DRAW, RIDES WITH ALL THREE ON THE SAME TERMS AGAIN
+  // (11/09/2026). It is ONE LEAF on top of the two-board arm
+  // (`rules.turn.hostDrawOnVisit`), so it is appended after that banner rather
+  // than replacing it: the arm banner says what the notice-board visit is, the
+  // two-board banner says what a seat lays out, and this one says what a host is
+  // paid. It runs on `reference-v15` seeds because it is PAIRED against
+  // `overlays/notice-board-visit-two-boards-v1.overlay.json` on them.
+  if (id === 'reference-v15') {
+    return [
+      ...commonsBanner(),
+      ...coinArmBanner(data, overlayName),
+      ...noticeBoardArmBanner(data, overlayName),
+      ...twoBoardArmBanner(data, overlayName),
+      ...hostDrawArmBanner(data, overlayName),
+    ];
+  }
+  if (id !== 'reference-v10') {
+    return [
+      ...coinArmBanner(data, overlayName),
+      ...noticeBoardArmBanner(data, overlayName),
+      ...twoBoardArmBanner(data, overlayName),
+      ...hostDrawArmBanner(data, overlayName),
+    ];
+  }
   return [
     '',
     '*** reference-v10: NO NUMBER IN ANY EARLIER REPORT IN reports/ IS COMPARABLE WITH THIS ONE. ***',
@@ -224,6 +266,465 @@ function coinArmBanner(data: GameData, overlayName: string | null): string[] {
   ];
 }
 
+/**
+ * ⭐ DEAN'S TWO-BOARD FIX FOR THE NOTICE-BOARD VISIT (ruled 11/09/2026,
+ * `overlays/notice-board-visit-two-boards-v1.overlay.json`), printed at the top
+ * beside the reference banner and immediately under the notice-board arm's own,
+ * and SILENT under every other run, because a permanent banner is a banner
+ * nobody reads.
+ *
+ * ⛔ IT RIDES WITH THE ARM BANNER RATHER THAN REPLACING IT, which is the
+ * opposite of what the unclaimed-boards variant does and for a stated reason:
+ * that variant reverses the arm banner's own first sentence ("there is NO
+ * CENTRE") and this one does not reverse anything at all. Every word of the arm
+ * banner is still true here; the only thing that changes is WHAT A SEAT LAYS
+ * OUT at two players.
+ *
+ * ⛔ IT IS NOT A NEW REFERENCE AND MUST NOT BECOME ONE while the variant is a
+ * variant. `reference-v15` is the instrument and this is measured against
+ * `overlays/notice-board-visit-no-self-v1.overlay.json` on ITS seeds, which is
+ * the whole reason the comparison is sound. Cut `reference-v16` only when Dean
+ * rules the variant in.
+ */
+function twoBoardArmBanner(data: GameData, overlayName: string | null): string[] {
+  if (!isNoticeBoardPower(data)) return [];
+  const bySeats = [1, 2, 3, 4].map((n) => [n, noticeBoardsPerSeat(data, n)] as const);
+  if (!bySeats.some(([, boards]) => boards > 1)) return [];
+  // TARGETS = the boards a seat may visit = every board on the table that is not
+  // its own. With self-visiting banned that is (seats - 1) rivals times the
+  // boards each of them lays out.
+  const targets = bySeats.map(([n, boards]) => [n, (n - 1) * boards] as const);
+  const map = bySeats.map(([n, boards]) => `${n}p ${boards}`).join('  ');
+  return [
+    '',
+    '*** THIS IS AN ARM AND NOT THE SHIPPED GAME. AT TWO SEATS EVERY PLAYER LAYS OUT TWO BOARDS. ***',
+    '',
+    `    overlay: ${overlayName ?? 'none named - the knobs were set directly'}.  rules.economy.noticeBoardsBySeats = ${map},`,
+    `    with rules.turn.selfVisitAllowed ${data.rules.turn.selfVisitAllowed} and rules.economy.unclaimedBoardsToCentre`,
+    `    ${unclaimedBoardsToCentre(data)}. Everything else is the notice-board visit above, leaf for leaf.`,
+    '',
+    '    THE RULE IN ONE LINE: self-visiting stays BANNED, and at TWO SEATS each player lays out',
+    '    TWO Notice Boards - their own suit’s, plus one more drawn AT RANDOM from the suits',
+    '    nobody is farming - with the fifth board unused. At three and four seats it is one board',
+    '    each and the rest are unused, which is exactly the control.',
+    '',
+    '    THE TARGETS A SEAT MAY VISIT, and every one of them is a PERSON:',
+    '',
+    '        seats   boards each   rivals   TARGETS',
+    ...targets.map(([n, t]) => {
+      const boards = bySeats.find(([s]) => s === n)?.[1] ?? 1;
+      return `        ${n}       ${boards}             ${n - 1}        ${t}`;
+    }),
+    '',
+    '    ⭐ EVERY TARGET IS A PERSON, AND THAT IS THE WHOLE ARGUMENT FOR THIS ARM. It is measured',
+    '    rather than argued. The starve at two players had two proposed cures and they differ in',
+    '    ONE thing: what the extra targets ARE. The unclaimed-boards variant added OWNERLESS',
+    '    central boards, fixed the rate and DESTROYED THE CROSS-TABLE TRAFFIC - at two players',
+    '    ONLY 14.7% OF PLAYS REACHED A PERSON and the hook fell to 0.31. The structural lesson it',
+    '    measured is that there are only ever four targets and EVERY TARGET ADDED THAT IS NOT A',
+    '    PERSON DILUTES THE PERSON. So this arm adds targets that are people, and a08 asserts the',
+    '    cross-table share of every play at 100% at every seat count: with the ban on and no',
+    '    centre, anything else is a leak rather than a taste.',
+    '',
+    '    THE CONTROL IS overlays/notice-board-visit-no-self-v1.overlay.json AND IT IS THE ONLY',
+    '    CORNER OF THE 11/09/2026 2x2 THAT PASSES THE HOOK, at 0.54. Its sole problem is two',
+    '    seats: the bonus slot is used on 28.8% of turns there against Dean’s own 30% floor, and',
+    '    17.9% of two-player turns begin with cards in hand and NO LEGAL VISIT, because with',
+    '    self-visiting banned and one board each THERE IS EXACTLY ONE BOARD A SEAT MAY VISIT.',
+    '    ⛔ IF THIS ARM MOVES THE HOOK DOWN, THE FIX HAS COST THE THING IT WAS PROTECTING, and',
+    '    that is the headline of the run rather than the rate.',
+    '',
+    '    ⛔⛔ AT THREE AND FOUR SEATS THIS IS THE CONTROL, RULE FOR RULE, AND THE ENGINE PROVES',
+    '    IT. rules.economy.noticeBoardsBySeats is 1 at three seats and 1 at four, which is the',
+    '    base value, and the setup code takes no rng call at all where no extra board is dealt -',
+    '    so those columns replay BYTE-IDENTICALLY under both datasets on identical seeds. ONLY THE',
+    '    TWO-SEAT COLUMN CAN MOVE. Any difference at three or four seats is a LEAK and not a',
+    '    finding - a bot term reading the new knob it should not read, a setup draw consuming an',
+    '    rng call it did not consume before, or a report line counting boards where it counted',
+    '    seats - and everything below it is unreadable until it is fixed. Read those two columns',
+    '    against the control FIRST.',
+    '',
+    '    THE EXTRA BOARD IS DRAWN AT RANDOM AND IT PAYS ITS OWNER, which is this design’s core',
+    '    loop arriving on a card whose power its owner can never use. The draw is from the suits',
+    '    nobody is farming, without replacement, so the two seats get different boards and neither',
+    '    can buy its own; but every fee paid onto it RESTS THERE until its owner harvests it into',
+    '    their barn. A POPULAR BOARD IS INCOME. ⚠️ THAT IS AN ARGUMENT AND NOT A READING, AND IT',
+    '    IS OPEN RISK 1: which board you get is LUCK, and at two seats there is one opponent and',
+    '    nowhere for the luck to average out. a18 reading 4d is the number - the busiest-against-',
+    '    quietest board spread SPLIT by whether a board is its owner’s own suit or the one they',
+    '    drew, OBSERVE and with no fail condition.',
+    '',
+    '    ⚠️ AND THE EXTRA BOARD’S SUIT NEED NOT HAVE A DECK IN PLAY. island.decksInPlayBySeats is',
+    '    3 at two seats, so of the three unfarmed suits only ONE has a deck on the table; the draw',
+    '    does not prefer it, deliberately, because a board grants a POWER and never a deck and',
+    '    preferring it would weld the extra board to the neutral-deck choice.',
+    '',
+    '    ⭐ A HELPING HAND COMES ALIVE AT TWO SEATS FOR THE FIRST TIME, AND IT MOVES A HEADLINE',
+    '    NUMBER. S9 is one use per board per turn, latched on the BOARD’S CARD ID, so the second',
+    '    play must land on a DIFFERENT board. Under the control at two seats a seat faces exactly',
+    '    ONE legal board, so the second play CAN NEVER BE TAKEN and the gap between the turn',
+    '    measure and the plays measure is WELDED SHUT AT ZERO. Under this arm the one rival holds',
+    '    two boards, so it can. EXPECT THE TWO MEASURES TO DIVERGE AT TWO SEATS AND NOWHERE ELSE;',
+    '    a17 prints the gap by seat count for exactly that reason.',
+    '',
+    '    ⛔ THE BAND IS STILL A SHARE OF TURNS. Judging it on plays per turn cost this project a',
+    '    re-run of all five arms on 09/09/2026, and a card that grants a second one of the thing',
+    '    being counted is precisely what breaks the denominator. a17 prints both, labelled, and',
+    '    the verdict reads the turn share against Dean’s 30%-60%.',
+    '',
+    '    ⚠️ TWO BOARDS IS TWO HARVESTS, WHICH IS OPEN RISK 2. rules.economy.noticeBoardThreshold',
+    '    applies to EACH board separately, so at two seats a seat’s incoming fee traffic SPLITS',
+    '    and each board fills at HALF the rate and sits under its minimum for twice as long. That',
+    '    may move the BARN GLUT and the GAME LENGTH at two seats and nowhere else, which is the',
+    '    shape of finding this arm is most likely to produce and most likely to have mistaken for',
+    '    a leak. a20-board-stall now samples PER BOARD and its denominator is BOARD-TURNS: a lower',
+    '    stall share at two seats is arithmetic before it is ever a finding.',
+    '',
+    '    THE HAND LIMIT OF 7 IS THE SIMULATOR’S BOUND AND NOT A RULE OF THE GAME (C7). The table',
+    '    plays with NO hand limit and found that positive on 09/09/2026; the engine keeps 7 only',
+    '    because an unbounded hand cannot be enumerated. ANY READING ABOUT HAND SIZE BELOW IS A',
+    '    READING ABOUT THE INSTRUMENT and not about the design.',
+    '',
+    '    NOT A NEW REFERENCE, AND THIS RUNS ON reference-v15 SEEDS ON PURPOSE. The pairing is the',
+    '    only sound comparison this project has, and the pair is',
+    '    overlays/notice-board-visit-no-self-v1.overlay.json on identical seeds, --overlay= with',
+    '    --watchlist and always --n=1580. A bare --watchlist is a 1,580-game pilot and must not be',
+    '    quoted beside a real run. reference-v16 is cut only if Dean rules the variant in.',
+  ];
+}
+
+/**
+ * ⭐ S17, THE HOST DRAW (Dean, ruled 11/09/2026), printed beside the reference
+ * banner and immediately under the two-board arm's own, and SILENT under every
+ * other run, because a permanent banner is a banner nobody reads.
+ *
+ * ⛔ IT RIDES WITH THE OTHER THREE RATHER THAN REPLACING ANY OF THEM. It is ONE
+ * LEAF on top of the two-board arm - `rules.turn.hostDrawOnVisit`, 0 against 1 -
+ * and it reverses nothing any of them says. The arm banner says what the
+ * notice-board visit is, the two-board banner says what a seat lays out, and this
+ * one says what a HOST IS PAID.
+ *
+ * ⭐ ITS PROVENANCE IS A TABLE RATHER THAN A RUN, which is rare enough in this
+ * project to be the first thing the banner records.
+ *
+ * ⛔ IT IS NOT A NEW REFERENCE AND MUST NOT BECOME ONE while the rule is an arm.
+ * `reference-v15` is the instrument and this is measured against
+ * `overlays/notice-board-visit-two-boards-v1.overlay.json` on ITS seeds, which is
+ * the whole reason the comparison is sound.
+ */
+function hostDrawArmBanner(data: GameData, overlayName: string | null): string[] {
+  if (!isNoticeBoardPower(data)) return [];
+  const n = hostDrawOnVisit(data);
+  if (n <= 0) return [];
+  const limit = data.rules.turn.handLimit;
+  return [
+    '',
+    '*** THIS IS AN ARM AND NOT THE SHIPPED GAME. WHEN A NEIGHBOUR VISITS YOU, YOU DRAW A CARD. ***',
+    '',
+    `    overlay: ${overlayName ?? 'none named - the knobs were set directly'}.  rules.turn.hostDrawOnVisit = ${n},`,
+    '    and everything else is the two-board arm above, leaf for leaf.',
+    '',
+    '    THE RULE IN ONE LINE (S17, Dean, 11/09/2026): the owner of a visited Notice Board',
+    '    immediately draws one card off a deck. NEVER on a self-visit, and PER VISIT rather than',
+    '    per turn - so A Helping Hand sending a second visit to the same owner pays them twice,',
+    '    because they also receive two fee cards and the payment is for the fee and not the turn.',
+    '',
+    '    ⭐ ITS PROVENANCE IS A TABLE TEST AND NOT A RUN, WHICH NOTHING ELSE IN THIS REPORT CAN',
+    '    SAY. Dean played overlays/notice-board-visit-two-boards-v1.overlay.json at a two-player',
+    '    table on 11/09/2026 and house-ruled this in during the session. His verdict on that',
+    '    session: the visiting worked well, everyone visited, every Notice Board was used at some',
+    '    stage, and "the rule that the person who gets visited draws a card led to a lot of extra',
+    '    cards in play, which relieved the tightness of the game in a useful way". He has now',
+    '    ruled it in. The simulator is here to find what one session could not see; it is not here',
+    '    to second-guess what the session did see.',
+    '',
+    '    ⛔ IT AMENDS S7, AND S7 SAID THE OPPOSITE IN AS MANY WORDS. S7 reads that the card stays',
+    '    on the board it was played to, its owner harvests it into their barn like any other',
+    '    building, "and that is the payment and there is no other". Under S17 there is now one',
+    '    other and it is paid INSTANTLY: THE HOST IS PAID TWICE, once in a card drawn now and once',
+    '    in material they must still harvest and then deliver. Do not quote S7 forward without S17',
+    '    beside it.',
+    '',
+    '    ⛔⛔ THE MEASUREMENT CAVEAT, AND IT IS THE MOST IMPORTANT SENTENCE IN THIS HEADER: THE',
+    '    SIMULATOR CANNOT MEASURE THE EFFECT DEAN ACTUALLY LIKED. The engine caps hands at',
+    `    ${limit === null ? 'nothing on this run' : limit} as an INSTRUMENT BOUND (C7) while the table plays with NO HAND LIMIT AT ALL,`,
+    "    and this rule's principal effect is MORE CARDS IN HAND - so the instrument clips exactly",
+    '    the thing the table enjoyed. This report can honestly answer: does the bonus rate leave',
+    "    Dean's 30% to 60% band (a17, ON THE SHARE OF TURNS), what happens to the barn glut (a06),",
+    '    to game length, to deliveries per player and to the hook (a08). IT CANNOT ANSWER WHETHER',
+    '    THE GAME FEELS LESS TIGHT. ⛔ NO NUMBER IN THIS REPORT MAY BE QUOTED AS EVIDENCE ABOUT',
+    '    TIGHTNESS, IN EITHER DIRECTION, AND EVERY HAND-SIZE LINE BELOW CARRIES THE SAME CAVEAT',
+    '    AND THE SAME BOUND ON ITS OWN LINE, because a number quoted out of a report loses its',
+    '    header first.',
+    '',
+    '    ⚠️ EXPECT THE BONUS RATE TO RISE, AND IT IS THE READING WITH A VERDICT. A card handed',
+    '    back on every visit makes the NEXT visit easier to afford. The control PASSES at 51.7% of',
+    '    turns pooled (2p 44.0 / 3p 49.2 / 4p 59.9), so FOUR SEATS IS ALREADY ONE TENTH OF A POINT',
+    '    INSIDE THE 60% CEILING. If any seat count leaves the band, that is the finding and the',
+    '    rate is the headline. ⛔ THE VERDICT IS THE SHARE OF TURNS AND NOT PLAYS PER TURN:',
+    "    judging Dean's band on plays cost this project a re-run of five arms on 09/09/2026.",
+    '',
+    '    ⚠️ AND THE COST IS REAL RATHER THAN ARGUED AWAY: EVERY VISIT NOW ADDS A CARD TO THE',
+    '    GAME. At two seats under the control arm there are about 14.4 visits received per player',
+    '    per game, so this is a substantial new faucet, and it is the reason the barn glut (a06)',
+    '    and the game length have to be read BESIDE the rate rather than after it. ⭐ THE SHAPE',
+    '    IS the one this project left open rather than the one it banned: RESTOCK was banned as "a',
+    '    per-interaction bank faucet" and the standing rule beside that ban reads that if a',
+    '    give-cards effect returns, it pays in DRAWS. A host draw comes off a DECK and never off a',
+    '    bank.',
+    '',
+    '    ⚠️ W17 THE PIE SHOP NOW PAYS ITS OWNER TWO CARDS ON BEING VISITED. Its text reads',
+    '    "Whenever a neighbour visits you, Draw 1", which under S17 duplicates the rule in words,',
+    '    and THE TWO STACK: the card is a card and the rule is a rule, they are pushed as two',
+    '    separate tasks and nothing suppresses either. They are ASYMMETRIC - W17 carries the',
+    "    once-a-turn latch every card's text carries and the RULE DOES NOT - so a W17 owner",
+    '    visited TWICE in one turn draws THREE and not four. a21-host-draw separates the two',
+    "    exactly, off the draw task's own src, and the retext is a SHEET decision Dean has not",
+    '    made: no card changes in this pass.',
+    '',
+    '    THE CONTROL IS overlays/notice-board-visit-two-boards-v1.overlay.json AND THE TWO DIFFER',
+    '    IN EXACTLY ONE LEAF: rules.turn.hostDrawOnVisit, 0 against 1. Everything else in the arm',
+    '    is that file pinned leaf for leaf, so EVERY DELTA BETWEEN THE TWO COLUMNS IS THIS RULE',
+    '    AND NOTHING ELSE.',
+    '',
+    '    NOT A NEW REFERENCE, AND THIS RUNS ON reference-v15 SEEDS ON PURPOSE. The pairing is the',
+    '    only sound comparison this project has. --overlay= with --watchlist, never --sweep=, and',
+    '    always --n=1580: a bare --watchlist is a 1,580-game pilot and must not be quoted beside a',
+    '    real run. reference-v16 is cut only if Dean rules the rule in.',
+  ];
+}
+
+/**
+ * ⭐ THE NOTICE-BOARD VISIT (S1-S16, Dean 10/09/2026, plus rulings C88 and C89
+ * of the same evening), printed at the top beside the reference banner and
+ * SILENT under every other run, because a permanent banner is a banner nobody
+ * reads.
+ *
+ * ⛔ IT IS NOT A NEW REFERENCE AND MUST NOT BECOME ONE while the arm is an arm.
+ * `reference-v15` is the instrument and the arm is measured against the shipped
+ * commons on ITS seeds, which is the whole reason the comparison is sound. Cut
+ * `reference-v16` only when Dean rules the arm in.
+ */
+function noticeBoardArmBanner(data: GameData, overlayName: string | null): string[] {
+  if (!isNoticeBoardPower(data)) return [];
+  // ⭐ DEAN'S UNCLAIMED-BOARDS VARIANT GETS ITS OWN BANNER RATHER THAN A
+  // FOOTNOTE ON THIS ONE (11/09/2026), and the reason is that the banner below
+  // opens with "there is NO CENTRE", which is the one sentence the variant
+  // reverses. A banner that contradicted the run it was printed on would be
+  // worse than no banner, so the two are mutually exclusive and the variant's
+  // own text repeats whatever it still needs from this one.
+  if (unclaimedBoardsToCentre(data)) return unclaimedArmBanner(data, overlayName);
+  const threshold = data.rules.economy.noticeBoardThreshold;
+  const blocks = noticeBoardBlocks(data);
+  const self = data.rules.turn.selfVisitAllowed;
+  return [
+    '',
+    '*** THIS IS AN ARM AND NOT THE SHIPPED GAME. THE COMMONS IS GONE AND THE BOARDS ARE OWNED. ***',
+    '',
+    `    overlay: ${overlayName ?? 'none named - the knobs were set directly'}.  rules.turn.visitCurrency = 'noticeBoardPower'`,
+    `    (S5, Dean 10/09/2026), with rules.economy.noticeBoardThreshold ${threshold},`,
+    `    noticeBoardBlocks ${blocks}, rules.turn.selfVisitAllowed ${self} and bonusTiming`,
+    `    '${data.rules.turn.bonusTiming}'.`,
+    '',
+    '    THE RULE IN ONE LINE: there is NO CENTRE. The five Notice Board cards have gone home to',
+    '    the farms that own them and are BUILDINGS again, and the bonus - still FIRST, before the',
+    '    main action - is to play ONE card from your hand onto ANY Notice Board on the table, your',
+    '    own included, and immediately take the PRINTED POWER on it. Orchard Draw 4; Dairy Build,',
+    '    spending cards of any crops; Wheat harvest one of your buildings then 1 card from hand to',
+    '    barn; Apiary Sow 2 from hand onto your OWN buildings; Vegetable Deliver, or 2 cards from',
+    '    hand to barn if you cannot.',
+    '',
+    '    THE CARD IS THE WHOLE OF THE HOST PAYMENT AND THERE IS NO OTHER (S7). It rests on the',
+    '    board it was played to, and the owner harvests it into their barn like any other',
+    '    building. The visitor is paid instantly with the power; the owner is paid in material',
+    '    they still have to convert. That is the Lopiano fault named in all seven previous',
+    '    versions of this bonus action - pay the giver in the same act, or the giver draws the',
+    '    charge - answered the way the predecessor answered it.',
+    '',
+    `    THE THRESHOLD OF ${threshold} IS A MINIMUM AND NEVER A MAXIMUM (S8), which is why the face prints`,
+    `    \`${threshold}+\`. It is the floor before the OWNER may harvest; cards can always be added, no`,
+    '    board is ever full, and NOTHING IN THE GAME REFUSES A PLAY. So a04-door-clog',
+    '    reads a GENUINE 0% here and that is not a bug - a `3+` board cannot clog - and the new',
+    '    a20-board-stall measures the real question instead: how often a board sits loaded and',
+    '    uncleared, and for how long. Read a20 hardest at TWO PLAYERS, where there are two boards.',
+    '',
+    `    SELF-VISITING IS LEGAL AND RULED IN (S6, and it is ${self ? 'ON' : 'OFF in this run'}), reversing the ban of`,
+    '    04/09/2026 deliberately: the five boards print five DIFFERENT powers, so your own board is',
+    '    one option of five and the one that never has what you have not got, where in v31 every',
+    '    board printed the SAME thing and a self-visit was strictly better than a visit.',
+    '    ITS SHARE IS THE HEADLINE RISK OF THE PASS. v31 read 22.2%; much above that here says the',
+    '    variety argument is wrong and the interaction is decoration. a17 splits it by seat count',
+    '    and overlays/notice-board-visit-no-self-v1.overlay.json is the control.',
+    '',
+    '    TWO RULINGS POSTDATE THE HANDOFF AND THE CODE FOLLOWS THEM, NOT S12, so nobody reads a',
+    '    disagreement into it. C88, WHEAT: S12 printed "Harvest any one of your buildings, however',
+    '    many cards are on it", which is W11 The Bakehouse word for word, so Dean ruled that the',
+    '    POWER moves and the CARD keeps its identity - the board harvests plainly and pays 1 card',
+    '    from hand into the barn on top. C89, APIARY: S12 said "onto any buildings", which reads',
+    '    across the table, and Dean ruled it is your OWN buildings only, so every power is',
+    '    self-contained and THE VISIT ITSELF STAYS THE ONLY CROSS-TABLE ACT IN THE DESIGN.',
+    '',
+    '    WHAT MOVED IN THE SUITE, so a reader knows why a familiar line changed: a08-the-hook IS',
+    '    RESTORED and has printed NO SUBJECT since 09/09/2026 - there is a host again, so',
+    '    NEIGHBOUR visits per player per turn is a rate over an event that can happen and its',
+    '    floor of 0.5 is live. a18 CHANGES MEANING rather than going quiet: it carries the FARM',
+    '    traffic here (visits received per player, the busiest-against-quietest board spread,',
+    '    cards resting on boards by game third, and the farm bypass REDEFINED as the share of barn',
+    '    cards that arrived as a fee somebody else paid) and the CENTRE traffic under the',
+    '    commons, still with no fail condition. a20-board-stall IS NEW. a19-coin-economy reports',
+    '    NO SUBJECT and points at a17, which carries the band of 30%-60% OF TURNS that Dean set',
+    '    on 09/09/2026, split self against neighbour.',
+    '',
+    '    THE BAND IS A SHARE OF TURNS AND NOT OF PLAYS. A Helping Hand grants a second visit (S9,',
+    '    to a different board), so visits per turn runs above the share of turns that used the',
+    '    slot. Judging the band on the wrong quantity cost this project a re-run of all five arms',
+    '    on 09/09/2026; a17 prints both, labelled, and the verdict reads the turn share.',
+    '',
+    '    THE HAND LIMIT OF 7 IS THE BOUND ON THE SIMULATOR AND NOT A RULE OF THE GAME. The',
+    '    table plays with NO hand limit and found that positive on 09/09/2026; the engine keeps',
+    '    7 only because an unbounded hand cannot be enumerated. ANY READING ABOUT HAND SIZE',
+    '    BELOW IS A READING ABOUT THE INSTRUMENT and not about the design.',
+    '',
+    '    NOT A NEW REFERENCE. This runs on reference-v15 seeds on purpose: the arm is PAIRED',
+    '    against the shipped commons baseline, against the coins arm and against',
+    '    overlays/v31-card-visit.overlay.json, which is the last design that put a card on a board',
+    '    somebody owned, and the one whose 22.2% self-visit number this must be read against.',
+    '    reference-v16 is cut only if Dean rules the arm in.',
+  ];
+}
+
+/**
+ * ⭐ DEAN'S UNCLAIMED-BOARDS VARIANT OF THE NOTICE-BOARD VISIT (ruled
+ * 11/09/2026, `overlays/notice-board-visit-unclaimed-v1.overlay.json`), printed
+ * at the top beside the reference banner and SILENT under every other run,
+ * because a permanent banner is a banner nobody reads.
+ *
+ * ⛔ IT IS NOT A NEW REFERENCE AND MUST NOT BECOME ONE while the arm is an arm.
+ * `reference-v15` is the instrument and this is measured against the shipped
+ * commons, against the Notice Board visit as built and against its no-self
+ * control on ITS seeds, which is the whole reason the comparison is sound. Cut
+ * `reference-v16` only when Dean rules the variant in.
+ */
+function unclaimedArmBanner(data: GameData, overlayName: string | null): string[] {
+  const threshold = data.rules.economy.noticeBoardThreshold;
+  const self = data.rules.turn.selfVisitAllowed;
+  const min = data.rules.economy.commonsHarvestMin ?? 1;
+  return [
+    '',
+    '*** THIS IS AN ARM AND NOT THE SHIPPED GAME. THE BOARDS ARE OWNED *AND* THERE IS A CENTRE. ***',
+    '',
+    `    overlay: ${overlayName ?? 'none named - the knobs were set directly'}.  rules.turn.visitCurrency = 'noticeBoardPower'`,
+    `    with rules.turn.selfVisitAllowed ${self}, rules.economy.unclaimedBoardsToCentre true,`,
+    `    rules.economy.noticeBoardThreshold ${threshold}, noticeBoardBlocks ${noticeBoardBlocks(data)},`,
+    `    rules.turn.commonsTake '${data.rules.turn.commonsTake}', rules.economy.commonsThreshold ${data.rules.economy.commonsThreshold ?? 'null'},`,
+    `    commonsHarvestMin ${min}, commonsHarvestTake ${data.rules.economy.commonsHarvestTake ?? 'null'} and bonusTiming '${data.rules.turn.bonusTiming}'.`,
+    '',
+    '    THE RULE IN ONE LINE: self-visiting is BANNED, and the Notice Board of every suit NO',
+    '    PLAYER IS FARMING stands in the CENTRE of the table, ownerless, with a face-up public',
+    '    pile that anybody may play onto and that anybody may harvest. Everything else is the',
+    '    Notice Board visit as built: the bonus is still to play ONE card from your hand onto a',
+    '    Notice Board, taken FIRST, and a card played onto a PLAYER\u2019S board still rests there',
+    '    until that player harvests it into their barn, which is their whole payment and there is',
+    '    no other.',
+    '',
+    '    EVERY SEAT FACES EXACTLY FOUR TARGETS AT EVERY PLAYER COUNT, WHICH IS THE WHOLE POINT.',
+    '    Five boards exist, you may never visit your own, and the ones nobody is farming stand in',
+    '    the middle:',
+    '',
+    '        seats   your own   rivals    central   targets',
+    '        1       1          0         4         4',
+    '        2       1          1         3         4',
+    '        3       1          2         2         4',
+    '        4       1          3         1         4',
+    '',
+    '    IT ANSWERS A MEASURED FAILURE AND NOT AN ARGUMENT. The Notice Board visit as built read',
+    '    the bonus slot on 71.2% of turns against Dean\u2019s band of 30% to 60%, out of band at',
+    '    every seat count, with 44.4% of all visits going to the visitor\u2019s OWN board. Banning',
+    '    self-visits fixed the rate and then STARVED TWO PLAYERS TO 29.1%, below Dean\u2019s own 30%',
+    '    floor, because a 2-player seat with the ban and no centre had exactly ONE board it could',
+    '    visit. This variant fixes the starve by arithmetic rather than by price. It also restores',
+    '    a standing Dean ruling the built design silently broke: ALL FIVE ACTIONS MUST EXIST IN',
+    '    EVERY GAME, which failed at two players where only two boards were on the table at all.',
+    '',
+    '    *** THE HEADLINE RISK, AND IT IS THE NUMBER THAT DECIDES THE VARIANT ***',
+    '',
+    '    A CENTRAL BOARD IS SOCIALLY FREE AND A RIVAL\u2019S BOARD IS NOT. The card you pay to a',
+    '    rival\u2019s board is material that rival harvests into their barn, which is the whole of',
+    '    this design\u2019s thesis - PAY THE GIVER IN THE SAME ACT, the fault the Lopiano lens named',
+    '    in all seven previous bonus slots - and the card you pay to a central board is paid to',
+    '    nobody. So there is a STANDING INCENTIVE TO PREFER THE CENTRE at every seat count, and it',
+    '    is strongest at two players, where three of the four targets are central and the one',
+    '    rival board is the only place a gift can land.',
+    '',
+    '    IF CROSS-TABLE VISITS FALL RATHER THAN RISE, THE VARIANT HAS RECREATED THE VILLAGE GREEN',
+    '    WITH AN EXTRA STEP and the neighbour has been designed out for the second time in three',
+    '    days. READ THE OWN / RIVAL / CENTRAL SPLIT OF EVERY PLAY, AND VISITS RECEIVED PER PLAYER,',
+    '    BY SEAT COUNT, BEFORE READING THE BONUS RATE AT ALL: the rate can land inside the band',
+    '    while the design has quietly stopped being about neighbours. a17 carries the four-way',
+    '    tally and the split by seat count; a18 carries the central plays against the rival visits,',
+    '    the visits received, and the three-way farm bypass; a08 prints the central play count',
+    '    beside the hook and credits NONE of it, because a central play has no host.',
+    '',
+    '    TWO KNOBS MOVED AT ONCE, SO THEY ARE MEASURED AS A 2x2. Ruling in a bundle rules in the',
+    '    bundle (05/09/2026), so the ban on self-visiting and the unclaimed boards have to be',
+    '    separable. Each corner differs from its neighbours in ONE thing:',
+    '',
+    '        self-visiting ON,  no centre   overlays/notice-board-visit-v1.overlay.json',
+    '        self-visiting OFF, no centre   overlays/notice-board-visit-no-self-v1.overlay.json',
+    '        self-visiting ON,  centre      overlays/notice-board-visit-unclaimed-self-v1.overlay.json',
+    '        self-visiting OFF, centre      overlays/notice-board-visit-unclaimed-v1.overlay.json',
+    '',
+    `    SELF-VISITING IS ${self ? 'ON in this run - this is the -unclaimed-self-v1 corner' : 'OFF in this run - this is DEAN\u2019S VARIANT'} AND THE CENTRE IS ON.`,
+    '    a17 prints the OWN column under both corners for that reason: a column that appeared and',
+    '    disappeared could not be diffed across the four.',
+    '',
+    '    A CENTRAL BOARD GRANTS THE SAME AMPLIFIED POWER AN OWNED BOARD GRANTS, AND THERE IS NO',
+    '    RULES EXCEPTION EITHER WAY (the manager\u2019s ruling, 11/09/2026). The five S12 powers are',
+    '    what a Notice Board IS, wherever it sits; what changes in the middle is only that nobody',
+    '    is paid for it. So the apiary board buys the same GROW and the orchard board the same',
+    '    Draw, and the choice a player faces is a pure question of whom the fee feeds.',
+    '',
+    `    A HARVEST IS A HARVEST (D1, reaffirmed by Dean on 11/09/2026): one of your full buildings`,
+    `    OR any central board at or above ${min} cards, MAIN ACTION OR BOUGHT THROUGH THE WHEAT NOTICE`,
+    '    BOARD POWER, with no rules exception either way. That is why the Wheat power needs no',
+    `    special case here. The \`${min}+\` on a central pile is spelled with knobs that already`,
+    '    existed and each does a different job: commonsThreshold null is the NEVER BLOCKED half,',
+    '    which caps the INFLOW and means no cap at all, so any number of cards may be added and',
+    `    nothing in the game refuses a play; commonsHarvestMin ${min} is the HARVESTABLE AT ${min} half,`,
+    '    which gates the OUTFLOW, so a pile below it may be taken by nobody and a pile at or above',
+    '    it by ANYBODY; commonsHarvestTake null keeps a harvest taking the WHOLE pile rather than a',
+    "    capped slice of it; and commonsTake 'harvest' is what lets Harvest reach the centre at all.",
+    '',
+    '    WHAT MOVED IN THE SUITE, so a reader knows why a familiar line changed. a17 is FOUR',
+    '    columns as shares of TURNS - visit your OWN board / visit a RIVAL / play the CENTRE / slot',
+    '    unspent - with the split printed by seat count and the verdict still on the share of TURNS',
+    '    that used the slot. a08 IS LIVE and counts NEIGHBOUR visits only; the central plays are',
+    '    printed beside it and credited to nothing, because a central play has no host. a18 carries',
+    '    the decisive split first, then the visits received, the busiest-against-quietest spread',
+    '    across ALL FIVE boards wherever they sit, the two resting stocks side by side, the THREE-way',
+    '    farm bypass and A16 The Beekeeper\u2019s Veil\u2019s fires. a20 covers BOTH kinds of board',
+    '    and reports them apart. a04 is NO SUBJECT: nothing refuses a play on an owned board or in',
+    '    the middle.',
+    '',
+    '    THE BAND IS A SHARE OF TURNS AND NOT OF PLAYS. A Helping Hand grants a second play (S9),',
+    '    and a rival visit and a central play now share the one slot, so plays per turn runs above',
+    '    the share of turns that used it. Judging the band on the wrong quantity cost this project',
+    '    a re-run of all five arms on 09/09/2026; a17 prints both, labelled, and the verdict reads',
+    '    the turn share. Read TWO PLAYERS first and the pooled figure second: the number this',
+    '    variant was ruled to rescue is the 29.1% the no-self control read at two seats.',
+    '',
+    '    THE HAND LIMIT OF 7 IS THE SIMULATOR\u2019S BOUND AND NOT A RULE OF THE GAME (C7). The table',
+    '    plays with NO hand limit and found that positive on 09/09/2026; the engine keeps 7 only',
+    '    because an unbounded hand cannot be enumerated. ANY READING ABOUT HAND SIZE BELOW IS A',
+    '    READING ABOUT THE INSTRUMENT and not about the design.',
+    '',
+    '    NOT A NEW REFERENCE, AND THIS RUNS ON reference-v15 SEEDS ON PURPOSE. The pairing is the',
+    '    only sound comparison this project has: the controls are the shipped commons baseline',
+    '    (reports/watchlist-2026-09-09T16-41-51-reference-v15.txt), the other three corners of the',
+    '    2x2 above, and overlays/v31-card-visit.overlay.json, whose 22.2% is the only prior',
+    '    self-visit number there is. reference-v16 is cut only if Dean rules the variant in.',
+  ];
+}
 /** The commons boundary (09/09/2026), and it is the largest one since v31. */
 function commonsBanner(): string[] {
   return [
@@ -435,6 +936,14 @@ function mirrorLine(row: WatchlistRow, mirrorGames: number): string[] {
 function seriesSection({ data, pooled }: ReportInput): string[] {
   const arm = isMeepleCurrency(data);
   const commons = isCommons(data);
+  // ⭐ THE NOTICE-BOARD VISIT SWAPS THE SAME TWO SLOTS THE COMMONS DOES, and for
+  // the same stated reason: there are no meeples under it either (S15 keeps the
+  // knobs, at zero), so "meeples held at game end" and "meeples spent / gained"
+  // are names for nothing, and a column of zeroes in the table a reader scans
+  // FIRST reads as a finding. What stands in the same place is the surface the
+  // design put the interaction on - the boards - and the two readings the pass
+  // exists to take.
+  const boards = isNoticeBoardPower(data);
   const out = [
     THIN,
     'THE SERIES  (ended games; the [all] column includes stalls, so the bias is visible)',
@@ -470,6 +979,10 @@ function seriesSection({ data, pooled }: ReportInput): string[] {
   if (commons) {
     line('cards in the centre at game end (median)', (g) =>
       num(median(g.flatMap((x) => x.commonsPileSizeByRound.slice(-1))), 1),
+    );
+  } else if (boards) {
+    line('cards on Notice Boards at game end (median)', (g) =>
+      num(median(g.flatMap((x) => x.noticeBoardCardsByRound.slice(-1))), 1),
     );
   } else {
     line('meeples held at game end (median)', (g) =>
@@ -532,6 +1045,33 @@ function seriesSection({ data, pooled }: ReportInput): string[] {
     line('meeples boxed per game', (g) =>
       num(g.length === 0 ? NaN : sum(g.map((x) => sum(x.meeplesBoxedBySeat))) / g.length, 1),
     );
+  } else if (boards) {
+    // The four readings the handoff's own measurement plan asks a scanner to
+    // read first: the rate on the TURN measure (a17), the self share (the
+    // headline risk), the payment that crossed the table (a18) and the stall
+    // (a20). Turns and not visits, for the reason a17's header labours.
+    line('bonus slot used / turn', (g) => {
+      const turns = sum(g.map((x) => sum(x.turnsBySeat)));
+      return pct(turns === 0 ? NaN : sum(g.map((x) => sum(x.bonusTurnsBySeat))) / turns, 0);
+    });
+    line('self-visit share of visits', (g) => {
+      const all = sum(g.map((x) => sum(x.visitsBySeat)));
+      return pct(all === 0 ? NaN : sum(g.map((x) => sum(x.selfVisitsBySeat))) / all, 0);
+    });
+    line('visits received / player / game', (g) => {
+      const seats = sum(g.map((x) => x.seats));
+      return num(seats === 0 ? NaN : sum(g.map((x) => sum(x.freight.receivedBySeat))) / seats, 2);
+    });
+    line('barn cards paid by a RIVAL', (g) => {
+      const banked = sum(g.map((x) => sum(x.freight.bankedBySeat)));
+      const inn = sum(g.map((x) => sum(x.barnInBySeat)));
+      return pct(inn === 0 ? NaN : banked / inn, 0);
+    });
+    line('board loaded and uncleared / turn', (g) => {
+      const sampled = sum(g.map((x) => sum(x.boardSampledTurnsBySeat)));
+      const loaded = sum(g.map((x) => sum(x.boardHarvestableTurnsBySeat)));
+      return pct(sampled === 0 ? NaN : loaded / sampled, 0);
+    });
   } else {
     line('meeples spent / gained', (g) => {
       const got = sum(g.map((x) => sum(x.meeplesGainedBySeat)));

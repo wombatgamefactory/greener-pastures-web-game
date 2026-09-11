@@ -49,15 +49,29 @@ const MEEPLE_DESTINATION_VALUES = new Set(['box', 'board']);
  * The closed value set behind `visitCurrency`, kept here for the same reason as
  * `BONUS_TIMING_VALUES`.
  *
- * ⭐ THREE VALUES SINCE 09/09/2026 AND IT IS NOT A LADDER: `'commons'` is the
+ * ⭐ FOUR VALUES SINCE 10/09/2026 AND IT IS NOT A LADDER: `'commons'` is the
  * shipped game, `'card'` (v31) and `'meeple'` (the loop and the economy) are
- * CONTROLS that must stay bit-reproducible. The comment this replaces said
- * "two values and no third", which is how a closed set drifts - the set is the
- * one place a fourth game has to be declared, and declaring it here is what
- * stops it passing validation on one side of the codebase and failing on the
- * other.
+ * CONTROLS that must stay bit-reproducible, and `'noticeBoardPower'` is the
+ * arm of 10/09/2026 - the boards come home to the farms and each prints a
+ * different power. The comment this replaces said "two values and no third",
+ * which is how a closed set drifts - the set is the one place a further game
+ * has to be declared, and declaring it here is what stops it passing validation
+ * on one side of the codebase and failing on the other.
+ *
+ * ⛔ `'noticeBoardPower'` IS A FOURTH VALUE RATHER THAN A REPOINTING OF
+ * `'card'`, AND THE REASON IS THE PASSENGER LESSON. `'card'` is the v31 control
+ * and carries three things this design does not want: a BLOCKING Notice Board
+ * threshold of 2, the standalone free Draw 1 in the bonus slot, and the
+ * turn-start meeple spend. Repointing it would silently change one of the three
+ * named controls the new arm is read against, which is exactly the failure of
+ * 05/09/2026 in a new costume.
  */
-const VISIT_CURRENCY_VALUES: ReadonlySet<string> = new Set<string>(['card', 'meeple', 'commons']);
+const VISIT_CURRENCY_VALUES: ReadonlySet<string> = new Set<string>([
+  'card',
+  'meeple',
+  'commons',
+  'noticeBoardPower',
+]);
 
 /**
  * The closed value set behind `commonsTake` (Dean's variant, 09/09/2026), kept

@@ -1,3 +1,5 @@
+import { hostDrawOnVisit, isNoticeBoardPower } from '@gp/data';
+
 import type { Assertion } from './types.js';
 import { NO_REMEDY } from './types.js';
 import { thirdMedian } from './lib.js';
@@ -50,7 +52,7 @@ export const barnGlut: Assertion = {
     '2/4/6 moved this assertion 4.00 -> 3.50 and it still FAILs. The live levers all change the ' +
     'SHAPE of the payment: partial delivery, more wilds, fewer suits per tile, or a no-matching ' +
     'sink. Doing nothing is also live and unargued.',
-  measure({ pooled }) {
+  measure({ data, pooled }) {
     const middle = median(
       pooled.ended.map((g) => thirdMedian(g.barnByRound, 'middle')).filter(Number.isFinite),
     );
@@ -72,7 +74,37 @@ export const barnGlut: Assertion = {
       headline: `median barn ${num(middle, 1)} in the middle third, ${num(last, 1)} in the last (${
         value > 0 ? '+' : ''
       }${num(value, 1)})`,
-      detail: [`by seat count, middle -> last: ${bySeat.join('  ')}`],
+      detail: [
+        `by seat count, middle -> last: ${bySeat.join('  ')}`,
+        ...(isNoticeBoardPower(data)
+          ? [
+              '⭐⭐ A TABLE HAS NOW SEEN THIS READING CLEAR ITSELF, AND IT IS THE FIRST TIME IN ' +
+                'THIS PROJECT’S HISTORY THAT A HUMAN OBSERVATION CAN BE SET BESIDE THIS NUMBER. ' +
+                'Dean played overlays/notice-board-visit-two-boards-v1.overlay.json at a ' +
+                'two-player table on 11/09/2026 and reported that a player had a large barn at ' +
+                'one stage and "managed to deliver just about all of them". ⚠️ THE ASSERTION ' +
+                'FAILS AT ABOUT +0.5 ON EVERY ARM IN THIS FAMILY, so read the failure against ' +
+                'that observation rather than in isolation: the shape under test is not "barns ' +
+                'are small", it is "the delivery phase drains them", and a table has now watched ' +
+                'one drain. ⛔ ONE SESSION IS NOT A MEASUREMENT AND DOES NOT RETIRE THE FAILURE ' +
+                '- it is one table, at one seat count, on one arm - but a metric that fails ' +
+                'where the table does not is a metric to re-read before it is a design problem ' +
+                'to fix.',
+              hostDrawOnVisit(data) > 0
+                ? '⚠️ AND S17 THE HOST DRAW IS ON (rules.turn.hostDrawOnVisit ' +
+                  `${hostDrawOnVisit(data)}), WHICH POINTS AT THIS READING FROM BOTH SIDES AT ` +
+                  'ONCE: every visit now adds a card to the game, and more cards in hand is more ' +
+                  'cards reaching a barn as well as more cards to pay a delivery with. Whether ' +
+                  'that DRAINS the barn or FEEDS it is exactly what the pair answers, and the ' +
+                  'pair is overlays/notice-board-visit-two-boards-v1.overlay.json, ONE LEAF ' +
+                  'away, on identical seeds. a21-host-draw carries the faucet.'
+                : '⚠️ S17 THE HOST DRAW IS OFF ON THIS RUN, so this is the column the arm is ' +
+                  'read against. The arm is overlays/notice-board-visit-host-draw-v1.overlay.json ' +
+                  'and it adds a card to the game on every visit, which may drain this barn or ' +
+                  'feed it; the pair on identical seeds is the only thing that can say which.',
+            ]
+          : []),
+      ],
       verdict: !Number.isFinite(value) ? 'OBSERVE' : value > 0 ? 'FAIL' : 'PASS',
     };
   },

@@ -15,6 +15,7 @@ import {
   buildIsland,
   coinPlayerFields,
   commonsZone,
+  dealExtraNoticeBoards,
   demandPool,
   freshTurn,
   meepleLoopPlayerFields,
@@ -48,6 +49,18 @@ export function makeState(data: GameData, suits: Suit[]): GameState {
     0,
     poolSpec?.suits ?? seats + 1,
   );
+  // ⭐ THE EXTRA NOTICE BOARDS of Dean's two-board fix (11/09/2026), dealt in
+  // CATALOGUE ORDER rather than shuffled: `newGame` draws them from the seed
+  // and a scenario has to know which board it got. Empty in every game but that
+  // arm - see `dealExtraNoticeBoards`, which is the one place the deal and its
+  // arithmetic ceiling live, so the testkit and `newGame` cannot disagree about
+  // either.
+  const extraBoards = dealExtraNoticeBoards(
+    data,
+    seats,
+    suits,
+    data.cards.suits.filter((s) => !suits.includes(s)),
+  );
 
   return {
     schema: 1,
@@ -59,7 +72,7 @@ export function makeState(data: GameData, suits: Suit[]): GameState {
     turnPlayer: 0,
     phase: 'playing',
     endTrigger: null,
-    players: suits.map((suit) => ({
+    players: suits.map((suit, seat) => ({
       suit,
       hand: [],
       barn: [],
@@ -76,7 +89,9 @@ export function makeState(data: GameData, suits: Suit[]): GameState {
       // Two starters under the commons and three under the controls - see
       // `starterCardsFor`. The testkit takes every starter whether or not it is
       // enabled, which is the one way it has always differed from `newGame`.
-      tableau: starterCardsFor(data, suit, false).map((card) => ({ card, stack: [] })),
+      tableau: [...starterCardsFor(data, suit, false), ...(extraBoards[seat] ?? [])].map(
+        (card) => ({ card, stack: [] }),
+      ),
       receipts: [],
     })),
     decks,
@@ -91,8 +106,12 @@ export function makeState(data: GameData, suits: Suit[]): GameState {
     aerodrome: suits.includes('vegetable')
       ? parkBalloons(data.aerodrome.balloons.map((b) => b.id))
       : null,
-    // The five central boards, empty - present only under the commons (C1).
-    ...commonsZone(data),
+    // The central boards, empty. All five under the commons (C1); the suits no
+    // seat took under Dean's unclaimed-boards variant (11/09/2026), which is
+    // why `suits` is handed over - it is the SEATS' suits, and the testkit's
+    // `suitsInPlay` below is deliberately all five, so passing that instead
+    // would leave the variant with no centre at all in every test.
+    ...commonsZone(data, suits),
     turn: freshTurn(),
     tasks: [],
     resume: null,
@@ -147,9 +166,317 @@ export function cardVisitGame(): GameData {
       // self-cancellation law, which has a subject only in this game).
       'workers.roster.draw.draw.see': 3,
       'workers.roster.draw.draw.keep': 3,
+      // ⛔ EIGHT SINCE 10/09/2026, AND THE NEW ONE IS THE BOARD'S OWN
+      // THRESHOLD. The notice-board visit moved the BASE value of
+      // `rules.economy.noticeBoardThreshold` from 2 to 3 (S8's `3+`), so a
+      // control that did not pin it silently became a different game: under
+      // `'card'` the board is a BLOCKING building, 2 is the brake on the
+      // self-visit, it is what shuts a farm to the table in two placements,
+      // and every v31 number in reports/ was measured with it.
+      // `overlays/v31-card-visit.overlay.json` pins the same leaf; this is the
+      // engine's own copy of that control and has to agree with it.
+      'rules.economy.noticeBoardThreshold': 2,
     },
   });
   return cardVisitCache;
+}
+
+/**
+ * ⭐ THE NOTICE-BOARD VISIT - the arm of 10/09/2026
+ * (`docs/notice-board-visit-handoff-2026-09-10-v2.md`, S1-S16 plus Dean's
+ * rulings C88 and C89 the same evening). NOT the shipped game: the shipped game
+ * is still the commons, and this is built as a paired arm to be measured
+ * against it on `reference-v15` seeds.
+ *
+ * Every leaf `overlays/notice-board-visit-v1.overlay.json` pins is pinned here
+ * too, for the reason the file above records eight times over: an unpinned
+ * passenger is how a control silently stops being the game it is named after.
+ *
+ * Memoised and lazy for the same reason as `cardVisitGame`.
+ */
+let noticeBoardVisitCache: GameData | null = null;
+export function noticeBoardVisitGame(): GameData {
+  noticeBoardVisitCache ??= loadGameData({
+    name: 'notice-board-visit-v1',
+    schemaVersion: 1,
+    set: {
+      'rules.turn.visitCurrency': 'noticeBoardPower',
+      'rules.turn.bonusTiming': 'start',
+      'rules.turn.selfVisitAllowed': true,
+      'rules.turn.commonsTake': 'harvest',
+      'rules.turn.startingMeeplesPerColour': 0,
+      'rules.turn.meepleAsCard': false,
+      'rules.turn.slotToll': null,
+      'rules.turn.meepleCapPerColour': null,
+      'rules.economy.noticeBoardThreshold': 3,
+      'rules.economy.noticeBoardBlocks': false,
+      'rules.economy.commonsColourMatch': false,
+      'rules.economy.commonsWildPair': false,
+      'rules.economy.endgameCoinCost': null,
+      'rules.economy.farmsteadCoinPower': false,
+    },
+  });
+  return noticeBoardVisitCache;
+}
+
+/**
+ * ⭐ DEAN'S UNCLAIMED-BOARDS VARIANT OF THE NOTICE BOARD VISIT (ruled
+ * 11/09/2026), exactly as `overlays/notice-board-visit-unclaimed-v1.overlay.json`
+ * sets it. NOT the shipped game and not even the arm: it is a corner of a 2x2
+ * built to be measured against the notice-board visit as built and against the
+ * shipped commons on identical `reference-v15` seeds.
+ *
+ * THE RULE IN ONE LINE: self-visiting is BANNED, and the Notice Board of every
+ * suit NO PLAYER IS FARMING stands ownerless in the centre with a face-up public
+ * pile that anybody may play onto and that anybody may harvest at three cards or
+ * more. Five boards exist and you may never visit your own, so EVERY SEAT FACES
+ * EXACTLY FOUR TARGETS AT EVERY PLAYER COUNT, solo included.
+ *
+ * ⛔ ALL EIGHTEEN LEAVES THE OVERLAY PINS ARE PINNED HERE TOO, and the overlay's
+ * own description argues each one. The four that spell the `3+` rule on a
+ * central pile were deliberately left UNPINNED by the no-centre arm - they
+ * ration a pile that arm does not have - so they are load-bearing here and
+ * nowhere else: `commonsTake: 'harvest'` is what lets Harvest reach the centre
+ * at all, `commonsThreshold` null is the inflow half (nothing ever refuses a
+ * play), `commonsHarvestMin` 3 the outflow half (nobody below three, ANYBODY at
+ * three) and `commonsHarvestTake` null keeps a harvest taking the whole pile.
+ *
+ * Memoised and lazy for the same reason as `cardVisitGame`.
+ */
+let noticeBoardUnclaimedCache: GameData | null = null;
+export function noticeBoardUnclaimedGame(): GameData {
+  noticeBoardUnclaimedCache ??= loadGameData({
+    name: 'notice-board-visit-unclaimed-v1',
+    schemaVersion: 1,
+    set: {
+      'rules.turn.visitCurrency': 'noticeBoardPower',
+      'rules.turn.bonusTiming': 'start',
+      'rules.turn.selfVisitAllowed': false,
+      'rules.turn.commonsTake': 'harvest',
+      'rules.turn.startingMeeplesPerColour': 0,
+      'rules.turn.meepleAsCard': false,
+      'rules.turn.slotToll': null,
+      'rules.turn.meepleCapPerColour': null,
+      'rules.economy.noticeBoardThreshold': 3,
+      'rules.economy.noticeBoardBlocks': false,
+      'rules.economy.unclaimedBoardsToCentre': true,
+      'rules.economy.commonsThreshold': null,
+      'rules.economy.commonsHarvestMin': 3,
+      'rules.economy.commonsHarvestTake': null,
+      'rules.economy.commonsColourMatch': false,
+      'rules.economy.commonsWildPair': false,
+      'rules.economy.endgameCoinCost': null,
+      'rules.economy.farmsteadCoinPower': false,
+    },
+  });
+  return noticeBoardUnclaimedCache;
+}
+
+/**
+ * THE OTHER CENTRE CORNER OF THE 2x2: the unclaimed boards WITH self-visiting
+ * still allowed (`overlays/notice-board-visit-unclaimed-self-v1.overlay.json`).
+ *
+ * ⭐ IT EXISTS SO THE BAN AND THE CENTRE CAN BE READ APART. Dean's variant moves
+ * two knobs at once and ruling in a bundle rules in the bundle (05/09/2026), so
+ * each corner of the grid differs from its neighbours in exactly ONE leaf. Here
+ * it is the one place the engine can show that a seat's OWN board is never in
+ * the centre for a reason that has nothing to do with the ban: it is in that
+ * seat's tableau, and it is the ban alone that stops them visiting it.
+ */
+let noticeBoardUnclaimedSelfCache: GameData | null = null;
+export function noticeBoardUnclaimedSelfGame(): GameData {
+  noticeBoardUnclaimedSelfCache ??= loadGameData({
+    name: 'notice-board-visit-unclaimed-self-v1',
+    schemaVersion: 1,
+    set: {
+      'rules.turn.visitCurrency': 'noticeBoardPower',
+      'rules.turn.bonusTiming': 'start',
+      'rules.turn.selfVisitAllowed': true,
+      'rules.turn.commonsTake': 'harvest',
+      'rules.turn.startingMeeplesPerColour': 0,
+      'rules.turn.meepleAsCard': false,
+      'rules.turn.slotToll': null,
+      'rules.turn.meepleCapPerColour': null,
+      'rules.economy.noticeBoardThreshold': 3,
+      'rules.economy.noticeBoardBlocks': false,
+      'rules.economy.unclaimedBoardsToCentre': true,
+      'rules.economy.commonsThreshold': null,
+      'rules.economy.commonsHarvestMin': 3,
+      'rules.economy.commonsHarvestTake': null,
+      'rules.economy.commonsColourMatch': false,
+      'rules.economy.commonsWildPair': false,
+      'rules.economy.endgameCoinCost': null,
+      'rules.economy.farmsteadCoinPower': false,
+    },
+  });
+  return noticeBoardUnclaimedSelfCache;
+}
+
+/**
+ * ⭐ DEAN'S TWO-BOARD FIX (ruled 11/09/2026), exactly as
+ * `overlays/notice-board-visit-two-boards-v1.overlay.json` sets it, all
+ * eighteen pinned leaves included.
+ *
+ * THE RULE IN ONE LINE: self-visiting stays banned, and AT TWO SEATS each
+ * player lays out TWO Notice Boards - their own suit's, plus one more drawn at
+ * random from the suits nobody is farming - with the fifth board unused. At
+ * three and four seats it is one each, which is exactly
+ * `noticeBoardNoSelfGame()` below, so the arm differs from its control AT TWO
+ * SEATS ONLY.
+ *
+ * ⛔ `rules.economy.unclaimedBoardsToCentre` FALSE IS THE MOST IMPORTANT PIN
+ * IN THE SET and the overlay says so: this variant is the ALTERNATIVE to the
+ * unclaimed-boards centre, never an addition to it, because the centre is the
+ * thing that measured 14.7% of plays reaching a person at two seats.
+ *
+ * Memoised and lazy for the same reason as `cardVisitGame`.
+ */
+let noticeBoardTwoBoardsCache: GameData | null = null;
+export function noticeBoardTwoBoardsGame(): GameData {
+  noticeBoardTwoBoardsCache ??= loadGameData({
+    name: 'notice-board-visit-two-boards-v1',
+    schemaVersion: 1,
+    set: {
+      'rules.turn.visitCurrency': 'noticeBoardPower',
+      'rules.turn.bonusTiming': 'start',
+      'rules.turn.selfVisitAllowed': false,
+      'rules.turn.commonsTake': 'harvest',
+      'rules.turn.startingMeeplesPerColour': 0,
+      'rules.turn.meepleAsCard': false,
+      'rules.turn.slotToll': null,
+      'rules.turn.meepleCapPerColour': null,
+      'rules.economy.noticeBoardThreshold': 3,
+      'rules.economy.noticeBoardBlocks': false,
+      'rules.economy.unclaimedBoardsToCentre': false,
+      'rules.economy.noticeBoardsBySeats.2': 2,
+      'rules.economy.noticeBoardsBySeats.3': 1,
+      'rules.economy.noticeBoardsBySeats.4': 1,
+      'rules.economy.commonsColourMatch': false,
+      'rules.economy.commonsWildPair': false,
+      'rules.economy.endgameCoinCost': null,
+      'rules.economy.farmsteadCoinPower': false,
+    },
+  });
+  return noticeBoardTwoBoardsCache;
+}
+
+/**
+ * ⭐ S17, THE HOST DRAW (Dean, ruled 11/09/2026), exactly as
+ * `overlays/notice-board-visit-host-draw-v1.overlay.json` sets it: all
+ * eighteen leaves of the two-board arm above, unchanged, PLUS
+ * `rules.turn.hostDrawOnVisit`.
+ *
+ * THE RULE IN ONE LINE: when a neighbour visits you, you draw a card, off a
+ * deck, immediately. ⛔ **ITS CONTROL IS `noticeBoardTwoBoardsGame()` AND THE
+ * TWO DIFFER IN EXACTLY ONE LEAF**, which is what makes the identity gate at
+ * the bottom of `notice-board-host-draw.test.ts` readable: at `n` 0 the two
+ * datasets must play byte-identical games and at 1 they must not.
+ *
+ * ⭐ ITS PROVENANCE IS A TABLE AND NOT A SIMULATION: Dean played the two-board
+ * arm at a two-player table on 11/09/2026 and house-ruled this in during the
+ * session.
+ *
+ * `n` is a parameter rather than a constant so that the zero column can be
+ * asked for by name. Not memoised for that reason either; the arm itself is
+ * cheap and every caller here builds it once.
+ */
+export function noticeBoardHostDrawGame(n = 1): GameData {
+  return loadGameData({
+    name: `notice-board-visit-host-draw-v1-${n}`,
+    schemaVersion: 1,
+    set: {
+      'rules.turn.visitCurrency': 'noticeBoardPower',
+      'rules.turn.bonusTiming': 'start',
+      'rules.turn.selfVisitAllowed': false,
+      'rules.turn.hostDrawOnVisit': n,
+      'rules.turn.commonsTake': 'harvest',
+      'rules.turn.startingMeeplesPerColour': 0,
+      'rules.turn.meepleAsCard': false,
+      'rules.turn.slotToll': null,
+      'rules.turn.meepleCapPerColour': null,
+      'rules.economy.noticeBoardThreshold': 3,
+      'rules.economy.noticeBoardBlocks': false,
+      'rules.economy.unclaimedBoardsToCentre': false,
+      'rules.economy.noticeBoardsBySeats.2': 2,
+      'rules.economy.noticeBoardsBySeats.3': 1,
+      'rules.economy.noticeBoardsBySeats.4': 1,
+      'rules.economy.commonsColourMatch': false,
+      'rules.economy.commonsWildPair': false,
+      'rules.economy.endgameCoinCost': null,
+      'rules.economy.farmsteadCoinPower': false,
+    },
+  });
+}
+
+/**
+ * ⭐ S17 WITH SELF-VISITING PUT BACK ON, AND IT EXISTS FOR ONE TEST ONLY: that
+ * a self-visit is never paid the host draw.
+ *
+ * ⛔ NOT AN ARM AND NEVER TO BE RUN AS ONE. No overlay sets this pair of leaves
+ * together, deliberately - S17's own file says the ban is what keeps the rule
+ * honest - so the only way to reach the guard in `payHostDrawOnVisit` is to
+ * build the position it guards against and show that nothing is paid. A test
+ * that cannot reach a branch cannot defend it.
+ */
+export function noticeBoardHostDrawSelfGame(): GameData {
+  return loadGameData({
+    name: 'notice-board-visit-host-draw-self-probe',
+    schemaVersion: 1,
+    set: {
+      'rules.turn.visitCurrency': 'noticeBoardPower',
+      'rules.turn.bonusTiming': 'start',
+      'rules.turn.selfVisitAllowed': true,
+      'rules.turn.hostDrawOnVisit': 1,
+      'rules.turn.commonsTake': 'harvest',
+      'rules.turn.startingMeeplesPerColour': 0,
+      'rules.turn.meepleAsCard': false,
+      'rules.turn.slotToll': null,
+      'rules.turn.meepleCapPerColour': null,
+      'rules.economy.noticeBoardThreshold': 3,
+      'rules.economy.noticeBoardBlocks': false,
+      'rules.economy.unclaimedBoardsToCentre': false,
+      'rules.economy.commonsColourMatch': false,
+      'rules.economy.commonsWildPair': false,
+      'rules.economy.endgameCoinCost': null,
+      'rules.economy.farmsteadCoinPower': false,
+    },
+  });
+}
+
+/**
+ * THE CONTROL THE TWO-BOARD ARM IS READ AGAINST
+ * (`overlays/notice-board-visit-no-self-v1.overlay.json`): the notice-board
+ * visit with self-use BANNED, one board each, and nothing else different.
+ *
+ * ⛔ ITS THREE-SEAT AND FOUR-SEAT GAMES ARE THE SAME RULES AS THE ARM'S, NOT
+ * MERELY SIMILAR ONES, which is what `notice-board-two-boards.test.ts` replays
+ * on identical seeds and asserts byte for byte. Every leaf the arm pins is
+ * pinned here bar the three `noticeBoardsBySeats` keys, which are the variant
+ * itself and sit at their base value of 1 here.
+ */
+let noticeBoardNoSelfCache: GameData | null = null;
+export function noticeBoardNoSelfGame(): GameData {
+  noticeBoardNoSelfCache ??= loadGameData({
+    name: 'notice-board-visit-no-self-v1',
+    schemaVersion: 1,
+    set: {
+      'rules.turn.visitCurrency': 'noticeBoardPower',
+      'rules.turn.bonusTiming': 'start',
+      'rules.turn.selfVisitAllowed': false,
+      'rules.turn.commonsTake': 'harvest',
+      'rules.turn.startingMeeplesPerColour': 0,
+      'rules.turn.meepleAsCard': false,
+      'rules.turn.slotToll': null,
+      'rules.turn.meepleCapPerColour': null,
+      'rules.economy.noticeBoardThreshold': 3,
+      'rules.economy.noticeBoardBlocks': false,
+      'rules.economy.commonsColourMatch': false,
+      'rules.economy.commonsWildPair': false,
+      'rules.economy.endgameCoinCost': null,
+      'rules.economy.farmsteadCoinPower': false,
+    },
+  });
+  return noticeBoardNoSelfCache;
 }
 
 /**
