@@ -333,8 +333,22 @@ describe('the watch-list suite', () => {
     // the only assertion in the suite with NO MODE GATE: every currency this
     // codebase has delivers to an island and deals a hand, so it never reports
     // NO SUBJECT.
+    // ⭐ AND 23 AND 24 JOINED ON 12/09/2026 WITH THE VILLAGE STORE PASS, as TWO
+    // ids rather than one, on the rule this test guards. They are two different
+    // questions - a23 asks whether a COMPONENT earns its place (the delivery
+    // meeple, M1 to M8, ledger A151: minted, spent and stranded, with the
+    // stranded count being D8 arriving as a number) and a24 asks whether a RULE
+    // lubricates the deck (Dean's circulation argument, ledger A150: reshuffles
+    // per played deck against 7 / 6 / 4, which FALLS if the Village Store
+    // works). They share no counter and they have opposite mode gates: a23
+    // reports NO SUBJECT wherever rules.turn.deliveryMeepleSpace is null, which
+    // is every mode this project has shipped, and a24 has NO MODE GATE at all,
+    // which it shares only with a22 because every currency this codebase has
+    // shuffles decks and fills barns. They also have different lifetimes: a23
+    // dies with the meeple if Dean drops it a second time, where a24 outlives
+    // every rule in this pass.
     const live = rows.map((r) => r.assertion.id);
-    expect(live).toEqual([2, 4, 5, 6, 7, 8, 9, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22]);
+    expect(live).toEqual([2, 4, 5, 6, 7, 8, 9, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]);
     expect(new Set(live).size, 'a duplicate id').toBe(live.length);
 
     const buried = RETIRED.map((t) => t.id);

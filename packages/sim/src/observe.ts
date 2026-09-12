@@ -325,6 +325,22 @@ export interface GameMetrics {
   meeplesByRound: number[];
   /** Median barn size across players, sampled at every round boundary. */
   barnByRound: number[];
+  /**
+   * ⭐ NEW ON 12/09/2026 (a24): THE BARN EACH SEAT WAS STILL HOLDING WHEN THE
+   * GAME STOPPED, read off the final state.
+   *
+   * ⛔ THIS IS "CARDS THAT ENTER A BARN AND NEVER LEAVE IT", which
+   * `docs/village-store-coins-2026-09-12-v2.md` section 1 puts at about ELEVEN
+   * a player a game and which is the MECHANISM behind the reshuffle reading
+   * rather than a second symptom of it. `barnByRound` is a MEDIAN ACROSS
+   * PLAYERS at a round boundary and cannot be summed into a per-player total;
+   * this is per seat and can.
+   *
+   * ⚠️ It is an upper bound on stranding rather than the parity trap itself. A
+   * card sitting in a barn at the end may have been deliverable and simply not
+   * delivered before the trigger fired.
+   */
+  barnAtEndBySeat: number[];
   leadChanges: number;
   endTriggerRound: number | null;
 
@@ -445,6 +461,68 @@ export interface GameMetrics {
   meeplesSpentByColour: Record<string, number>;
   /** Meeples still in a supply when the game stopped, by seat. Read off the final state. */
   meeplesUnspentBySeat: number[];
+  /**
+   * ⭐ NEW ON 12/09/2026 FOR THE DELIVERY MEEPLE (M1 to M8, ledger A151, a23):
+   * THE STRANDED COUNT BY COLOUR, read off the FINAL STATE and never derived as
+   * gained-by-colour minus spent-by-colour.
+   *
+   * The two agree by construction under this arm - a spent meeple leaves the
+   * game and returns to no pool, and with `meepleCapPerColour` null nothing is
+   * boxed - so reading the state rather than the difference costs nothing and
+   * makes a disagreement between them an engine bug nobody has to go looking
+   * for. That is the same reason `meeplesUnspentBySeat` above is read off the
+   * state, and a23 prints both totals so the identity is visible.
+   *
+   * ⛔ IT IS A DIFFERENT QUANTITY FROM `meeplesBoxedByColour`. A boxed meeple was
+   * refused by the supply cap (R4, the meeple-loop arm); a stranded one was held
+   * and never spent, which is D8 arriving as a number.
+   */
+  meeplesUnspentByColour: Record<string, number>;
+  /**
+   * ⭐ NEW ON 12/09/2026 (M4, M6, M7, ledger A151, a23): WHAT A SPENT MEEPLE
+   * ACTUALLY BOUGHT, off the `meepleSpent` event's own `action` field.
+   *
+   * ⛔ READ THE EVENT AND NEVER RE-DERIVE THE ACTION FROM THE COLOUR. The field
+   * was widened to `DoorAction` at commit `1b60def` precisely because the two
+   * stopped agreeing: under M7 an APIARY meeple buys GROW where the workers
+   * roster's apiary door buys SOW, and under M6 an ORCHARD meeple buys the PLAIN
+   * Draw 2 where the Notice Board power is Draw 4. A colour-derived action here
+   * would report a Sow that never happened.
+   *
+   * ⚠️ IT IS NOT THE SAME POPULATION AS `meepleDoorByColour`, which counts door
+   * uses a meeple paid for under the meeple-loop arm's visit. This counts the
+   * plain action a discarded island meeple bought after the main action.
+   */
+  meeplesSpentByAction: Record<string, number>;
+  /**
+   * ⭐ NEW ON 12/09/2026 (a23): TURNS THE SEAT BEGAN HOLDING AT LEAST ONE MEEPLE.
+   *
+   * The denominator D8 needs. `meepleTurnsBySeat` above asks the same question
+   * and is GATED BEHIND `isMeepleCurrency`, so it is a structural zero under the
+   * delivery meeple, whose currency is `'noticeBoardPower'`. This one is folded
+   * at the same clean turn-start moment with no mode gate at all, which costs
+   * nothing under a currency with no meeples in it: `meeplesHeld` returns an
+   * empty list and the counter never moves.
+   *
+   * ⚠️ IT COUNTS TURNS AND NEVER MEEPLES. A seat holding three meeples for one
+   * turn adds one, which is the right shape for "how many chances to spend did
+   * this seat have" and the wrong one for "how long did a meeple sit".
+   */
+  meepleHeldTurnsBySeat: number[];
+  /**
+   * ⭐ NEW ON 12/09/2026 (a23): the 1-based round of every meeple minted and of
+   * every meeple spent, so "it arrived too late to spend" can be separated from
+   * "nobody wanted it".
+   *
+   * ⚠️ THIS IS THE FAILURE MODE THE DELIVERY MEEPLE IS MOST EXPOSED TO AND IT IS
+   * STRUCTURAL RATHER THAN A TASTE. The meeple's only source is a second
+   * delivery and the game ENDS on a sixth delivery by any player, so the last
+   * meeples a seat earns are minted on the turns it has fewest left. A stranded
+   * share that is mostly final-round mints is the end trigger and not the
+   * component; a stranded share spread evenly across the game is the component.
+   */
+  meepleGainedRounds: number[];
+  meepleSpentRounds: number[];
   /** The seat's own turn number when it first spent a meeple, or null. */
   firstMeepleTurnBySeat: (number | null)[];
   /** Turns the seat began holding cards with no legal visit anywhere. */
@@ -481,6 +559,47 @@ export interface GameMetrics {
    * `suits` and `neutral` without re-running.
    */
   reshufflesByCrop: Record<string, number>;
+  /**
+   * ⭐ NEW ON 12/09/2026 FOR DEAN'S CIRCULATION ARGUMENT (a24): THE CARDS A
+   * RESHUFFLE PUT BACK, summed per crop off the `reshuffled` event's own
+   * `count`, which the engine sets to the deck's length the instant after the
+   * discard was shuffled into it (`fx.ts` `takeDeckTop`).
+   *
+   * ⭐ THAT NUMBER IS THE CIRCULATING POOL MEASURED AT THE ONLY MOMENT IT IS
+   * EXACTLY KNOWABLE, and it is the term Dean's argument turns on. A reshuffle
+   * happens when a deck runs dry, so the count is every card of that crop that
+   * was neither in a hand, nor on a table, nor locked in a barn. `sum / count`
+   * is the mean pool per reshuffle.
+   *
+   * ⛔ IT IS THE DENOMINATOR OF THE RESHUFFLE COUNT AND MUST BE READ BESIDE IT.
+   * Reshuffles are draws divided by pool, so a reshuffle count that moves says
+   * nothing on its own about which of the two moved. `deckTopsTakenByCrop` is
+   * the other term.
+   */
+  reshuffledCardsByCrop: Record<string, number>;
+  /**
+   * ⭐ NEW ON 12/09/2026 (a24): `deckTopsTaken` SPLIT BY CROP, and it is that
+   * scalar split rather than a second sample - the same decision diff, per
+   * suit, before it is summed.
+   *
+   * It is the draw volume, which is the other half of the reshuffle
+   * arithmetic. If reshuffles per played deck fall while this falls with them,
+   * the game got shorter; if reshuffles fall while this holds and
+   * `reshuffledCardsByCrop` rises, the POOL got bigger, which is the only one
+   * of the two that would prove Dean's circulation argument.
+   */
+  deckTopsTakenByCrop: Record<string, number>;
+  /**
+   * ⭐ NEW ON 12/09/2026 (a24): THE DECK AND DISCARD OF EACH CROP ADDED TOGETHER
+   * AT THE FINAL STATE - what is still circulating when the game stops.
+   *
+   * Read beside `reshuffledCardsByCrop` rather than instead of it. The pool at
+   * a reshuffle is the pool in flight and needs a reshuffle to have happened;
+   * this one exists in every game including one where a deck never ran dry, and
+   * it is the complement of the barn line: a crop's 18 cards are in a hand, a
+   * tableau, a barn, a central pile or here.
+   */
+  poolAtEndByCrop: Record<string, number>;
   /**
    * ⭐ THE DOOR MIX (v31): every use of every suit's door, by the door's COLOUR
    * and split by what bought it. Which board the table walks to is the question
@@ -1654,6 +1773,7 @@ export class Fold {
       winner: null,
       meeplesByRound: [],
       barnByRound: [],
+      barnAtEndBySeat: zeros(),
       leadChanges: 0,
       endTriggerRound: null,
       turnsBySeat: zeros(),
@@ -1676,12 +1796,27 @@ export class Fold {
       meeplesGainedByColour: byColour(),
       meeplesSpentByColour: byColour(),
       meeplesUnspentBySeat: zeros(),
+      meeplesUnspentByColour: byColour(),
+      meeplesSpentByAction: {},
+      meepleHeldTurnsBySeat: zeros(),
+      meepleGainedRounds: [],
+      meepleSpentRounds: [],
       firstMeepleTurnBySeat: Array<number | null>(seats).fill(null),
       clogTurnsBySeat: zeros(),
       clogSampledBySeat: zeros(),
       doorClogTurnsBySeat: zeros(),
       doorClogSampledBySeat: zeros(),
       reshufflesByCrop: Object.fromEntries([...spec.suits, ...spec.neutral].map((s) => [s, 0])),
+      // ⭐ THE SAME KEY SET AS `reshufflesByCrop` ON PURPOSE (a24, 12/09/2026):
+      // the three of them are read as one fraction per crop, and a key present
+      // in one and absent from another would turn a ratio into a NaN that reads
+      // like a finding. `poolAtEndByCrop` joins them because a crop's cards are
+      // conserved and the three lines only close if they cover the same crops.
+      reshuffledCardsByCrop: Object.fromEntries(
+        [...spec.suits, ...spec.neutral].map((s) => [s, 0]),
+      ),
+      deckTopsTakenByCrop: Object.fromEntries([...spec.suits, ...spec.neutral].map((s) => [s, 0])),
+      poolAtEndByCrop: Object.fromEntries([...spec.suits, ...spec.neutral].map((s) => [s, 0])),
       doorUsesByColour: byColour(),
       neighbourDoorByColour: byColour(),
       selfDoorByColour: byColour(),
@@ -1967,7 +2102,13 @@ export class Fold {
     for (const suit of this.data.cards.suits) {
       const before = d.pre.decks[suit]?.length ?? 0;
       const after = d.post.decks[suit]?.length ?? 0;
-      this.m.deckTopsTaken += Math.max(0, before - after + (shuffled[suit] ?? 0));
+      const taken = Math.max(0, before - after + (shuffled[suit] ?? 0));
+      this.m.deckTopsTaken += taken;
+      // ⭐ THE SAME DIFF, SPLIT BY CROP (a24, 12/09/2026), so it is this scalar
+      // split and never a second sample. a24 needs the draw volume PER DECK
+      // because reshuffles are draws over pool, and a pooled total cannot tell
+      // a played deck's churn from a neutral one's.
+      this.m.deckTopsTakenByCrop[suit] = (this.m.deckTopsTakenByCrop[suit] ?? 0) + taken;
     }
   }
 
@@ -2069,6 +2210,15 @@ export class Fold {
     }
     if (held === 0) {
       this.m.handEmptyTurnsBySeat[seat] = (this.m.handEmptyTurnsBySeat[seat] ?? 0) + 1;
+    }
+    // ⭐ THE DELIVERY MEEPLE'S OWN DENOMINATOR (a23, 12/09/2026), folded HERE and
+    // ungated. `meepleTurnStart` below is gated behind `isMeepleCurrency` and is
+    // therefore a structural zero under the delivery meeple, whose currency is
+    // `'noticeBoardPower'`. This costs nothing where there are no meeples:
+    // `meeplesHeld` returns an empty list and the counter never moves, so no
+    // control's numbers change.
+    if (meeplesHeld(this.data, s, seat).length > 0) {
+      this.m.meepleHeldTurnsBySeat[seat] = (this.m.meepleHeldTurnsBySeat[seat] ?? 0) + 1;
     }
     this.meepleTurnStart(s, seat);
   }
@@ -2515,10 +2665,24 @@ export class Fold {
       case 'meepleGained':
         m.meeplesGainedBySeat[e.seat] = (m.meeplesGainedBySeat[e.seat] ?? 0) + 1;
         m.meeplesGainedByColour[e.colour] = (m.meeplesGainedByColour[e.colour] ?? 0) + 1;
+        // ⭐ THE ROUND OF THE MINT (a23, 12/09/2026). Under the delivery meeple
+        // the only source is a SECOND delivery and the game ends on a SIXTH
+        // delivery by anybody, so when a meeple arrives decides whether it could
+        // ever have been spent. Without this the stranded count cannot tell the
+        // end trigger from the component.
+        m.meepleGainedRounds.push(this.round());
         return;
       case 'meepleSpent':
         m.meeplesSpentBySeat[e.seat] = (m.meeplesSpentBySeat[e.seat] ?? 0) + 1;
         m.meeplesSpentByColour[e.colour] = (m.meeplesSpentByColour[e.colour] ?? 0) + 1;
+        // ⛔ THE ACTION OFF THE EVENT AND NEVER OFF THE COLOUR (M6, M7, a23).
+        // `meepleSpent.action` was widened to `DoorAction` at commit 1b60def and
+        // carries what was ACTUALLY bought: an apiary meeple buys GROW where the
+        // roster's apiary door buys SOW, and an orchard meeple buys the PLAIN
+        // Draw 2 where the Notice Board power is Draw 4. Re-deriving either from
+        // the colour would report an action that never happened.
+        m.meeplesSpentByAction[e.action] = (m.meeplesSpentByAction[e.action] ?? 0) + 1;
+        m.meepleSpentRounds.push(this.round());
         m.firstMeepleTurnBySeat[e.seat] ??= (m.turnsBySeat[e.seat] ?? 0) + 1;
         return;
       // ⛔ `starterUpgraded` IS GONE (v31): starters have one face and nothing
@@ -2950,6 +3114,11 @@ export class Fold {
         return;
       case 'reshuffled':
         m.reshufflesByCrop[e.suit] = (m.reshufflesByCrop[e.suit] ?? 0) + 1;
+        // ⭐ THE POOL AT THE MOMENT IT IS EXACTLY KNOWABLE (a24, 12/09/2026).
+        // The engine emits `count` as the deck's length the instant after the
+        // discard went in, so it is every card of that crop not in a hand, on a
+        // table or locked in a barn. It is the denominator of the line above.
+        m.reshuffledCardsByCrop[e.suit] = (m.reshuffledCardsByCrop[e.suit] ?? 0) + e.count;
         return;
       // The barn's non-harvest routes (the Orchard rebuild's "poor in freight"
       // claim is a share of these against `harvest`).
@@ -3371,7 +3540,24 @@ export class Fold {
       // returns to no pool), and the report prints both so that a disagreement
       // between them is an engine bug nobody has to go looking for.
       m.meeplesUnspentBySeat[seat] = meepleCount(p.meeples);
+      // ⭐ THE STRANDED COUNT BY COLOUR AND THE BARN THAT NEVER EMPTIED (a23 and
+      // a24, 12/09/2026), both off the final state for the same reason as the
+      // line above: a derived figure and a read figure disagreeing is an engine
+      // bug, and only the read one can show it.
+      for (const [colour, held] of Object.entries(p.meeples)) {
+        if (held > 0)
+          m.meeplesUnspentByColour[colour] = (m.meeplesUnspentByColour[colour] ?? 0) + held;
+      }
+      m.barnAtEndBySeat[seat] = p.barn.length;
     });
+    // ⭐ WHAT IS STILL CIRCULATING (a24): each crop's deck and discard added
+    // together at the stop. The complement of the barn line above, and the one
+    // pool reading that exists even in a game where a deck never ran dry.
+    for (const suit of this.data.cards.suits) {
+      const deck = state.decks[suit]?.length ?? 0;
+      const discard = state.discards[suit]?.length ?? 0;
+      m.poolAtEndByCrop[suit] = deck + discard;
+    }
     return m;
   }
 }

@@ -82,6 +82,39 @@
  * and ⛔ every line of its hand half carries the C7 caveat ON THE LINE: the
  * engine's hand limit is the SIMULATOR'S bound and the table plays with none.
  *
+ * ⭐ AND TWO MORE ARE NEW ON 12/09/2026 WITH THE VILLAGE STORE PASS, and they
+ * are deliberately TWO rather than one because they are two different
+ * questions: `a23-delivery-meeple` asks whether a COMPONENT earns its place and
+ * `a24-deck-circulation` asks whether a RULE lubricates the deck. They share no
+ * counter, they have opposite mode gates, and they have different lifetimes -
+ * a23 dies with the meeple if Dean drops it, where a24 outlives every rule in
+ * this pass. Folding them into one page would put a component decision and a
+ * hypothesis test behind one headline.
+ *
+ * `a23-delivery-meeple` (M1 to M8, ledger A151) is the delivery meeple's own
+ * page: minted, spent and STRANDED at game end, the colour mix of the spends and
+ * of the stranded, and what the spends actually bought read OFF THE EVENT (M6
+ * and M7 mean the action and the colour stopped agreeing). ⛔ Its stranded count
+ * is D8 arriving as a number - a meeple's plain action is subject to the
+ * standing rule that an illegal action is not offered, so a meeple CAN be
+ * undiscardable, and a high stranded share is the rule working as ruled AND the
+ * component not earning its place at once. ⚠️ It reads the same counters as a15,
+ * which is NOT gated away under `'noticeBoardPower'` and applies its `'card'`
+ * floor to them; that floor was written for the v31 island meeple and has not
+ * been ruled onto this component, so a15 carries the verdict, a23 carries the
+ * diagnosis, and the two are never two findings.
+ *
+ * `a24-deck-circulation` (ledger A150) is Dean's circulation argument as a
+ * falsifiable prediction, and it is the cleanest one in the pass: barn-locked
+ * cards are cards out of the pool, played decks reshuffle 7 / 6 / 4 times a game
+ * at 2p / 3p / 4p, and ⛔ IF THE STORE WORKS THAT NUMBER FALLS. Reshuffles are
+ * roughly draws over pool and a stranded card is a card out of the pool, so a
+ * Store that returns cards makes the pool bigger and the reshuffles fewer. It
+ * prints both terms of that ratio beside the headline, because reshuffles
+ * falling because the game got shorter is a different fact from reshuffles
+ * falling because the pool grew. ⭐ It is the second assertion in the suite with
+ * NO MODE GATE, after a22.
+ *
  * ⭐ THE SAME PASS RESTORED a08-the-hook, WHICH HAD PRINTED "NO SUBJECT" SINCE
  * 09/09/2026. The boards are owned again and a visit has a HOST again, so the
  * hook's quantity exists; a08 now asks `isNoticeBoardPower` by name rather than
@@ -90,8 +123,8 @@
  * that mode and the CENTRE traffic under the commons - and a19 reports no
  * subject there and points at a17.
  *
- * Ids are never reused, so the suite is 2, 4-9, 11-13, 15-22 and the gaps are
- * the tombstones. Six carry a threshold and can FAIL; ten are OBSERVE, because
+ * Ids are never reused, so the suite is 2, 4-9, 11-13, 15-24 and the gaps are
+ * the tombstones. Six carry a threshold and can FAIL; twelve are OBSERVE, because
  * the design names no number for them and a snapshot of our own first run is
  * not a threshold. That split is not a gap in the work - it is ticket 11
  * section 2 doing its job.
@@ -126,6 +159,8 @@ import { coinEconomy } from './a19-coin-economy.js';
 import { boardStall } from './a20-board-stall.js';
 import { hostDraw } from './a21-host-draw.js';
 import { cropDiagnosis } from './a22-crop-diagnosis.js';
+import { deliveryMeeple } from './a23-delivery-meeple.js';
+import { deckCirculation } from './a24-deck-circulation.js';
 import type { Assertion } from './types.js';
 
 export const WATCHLIST: readonly Assertion[] = [
@@ -147,6 +182,8 @@ export const WATCHLIST: readonly Assertion[] = [
   boardStall,
   hostDraw,
   cropDiagnosis,
+  deliveryMeeple,
+  deckCirculation,
 ];
 
 export type { Assertion, MeasureContext, Measurement, Verdict } from './types.js';
