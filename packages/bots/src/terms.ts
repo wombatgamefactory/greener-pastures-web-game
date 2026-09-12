@@ -207,7 +207,7 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import { deliveryVp, endgameCoinCost, hostDrawOnVisit } from '@gp/data';
+import { deliveryVp, endgameCoinCost, hostDrawOnVisitAt } from '@gp/data';
 import type { CardId, Move, MoveType } from '@gp/engine';
 import { commonsBoardCard, hasCentre } from '@gp/engine';
 
@@ -2010,7 +2010,11 @@ export const TERMS: readonly Term[] = [
       // leaves no mark on the visitor's own move, so there is no field on the
       // act to gate on. It is read through the accessor, which is the one
       // spelling @gp/data owns.
-      const share = hostDrawOnVisit(s.data) > 0 ? 1 : HOST_GIFT_FEE_SHARE;
+      // ⛔ SEAT-AWARE SINCE 11/09/2026: `hostDrawOnVisitBySeats` can switch the
+      // host draw off at one seat count alone, and a bot that charged for a
+      // payment the host never receives would price visiting too dear at
+      // exactly the seat count the knob exists to change.
+      const share = hostDrawOnVisitAt(s.data, s.view.seats) > 0 ? 1 : HOST_GIFT_FEE_SHARE;
       // CLAMPED AT ZERO so the standing tilt can never turn a cost term into a
       // reward. It cannot at 0, but a tilt above 1 would pay a bot for feeding
       // the last-placed seat, and the two invariants that catch an inverted

@@ -350,6 +350,78 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'under the two-board arm is reachable because the one rival holds two boards.',
   },
   {
+    template: 'rules.turn.hostDrawCapPerRound',
+    type: 'boolean',
+    description:
+      '⭐ THE HOST-DRAW CAP: A HOST IS PAID AT MOST ONCE BETWEEN THEIR OWN TURNS, however many ' +
+      'neighbours visit them in the meantime. SHIPPED false, which changes nothing, and read only ' +
+      'when rules.turn.hostDrawOnVisit is above 0. ' +
+      "⛔ IT IS A SECOND LEAF AND NOT A CHANGE OF hostDrawOnVisit'S MEANING, AND THAT IS " +
+      'DELIBERATE: re-pointing the existing knob at a per-round quantity would silently redefine ' +
+      "every number already published against it - the 17:23 report, a21-host-draw, the host-draw " +
+      "overlay's own description - and this project has twice paid for a quantity that changed " +
+      'underneath a published reading (a17 judged on plays per turn, 09/09/2026; the meeple cap ' +
+      'that shipped as a passenger, 05/09/2026). hostDrawOnVisit keeps meaning CARDS PER PAYMENT. ' +
+      'This says HOW OFTEN A PAYMENT MAY HAPPEN. ' +
+      '⚠️ "PER ROUND" MEANS PER THE HOST\'S OWN TURN CYCLE AND NOT PER THE VISITOR\'S TURN, AND ' +
+      "THE DISTINCTION IS THE WHOLE POINT OF THE KNOB. A cap on the VISITOR'S turn would bite only " +
+      'when one visitor sends TWO visits to the same host in a single turn, which is reachable at ' +
+      'two seats alone (A Helping Hand, against a rival holding two boards), and would leave FOUR ' +
+      "SEATS - the only seat count that breaches - untouched. The latch is cleared when the HOST'S " +
+      'own turn begins, and it therefore lives on the SEAT rather than on TurnState, which turn ' +
+      'end replaces wholesale. ' +
+      '⛔ WHY IT EXISTS: THE FOUR-SEAT BREACH. With hostDrawOnVisit 1 the bonus slot reads 64.9% ' +
+      "of turns at four seats against Dean's 60% ceiling, where its one-leaf control reads 59.9%. " +
+      'The faucet scales with the number of rivals, and a cap per host per round is the shape that ' +
+      'stops it scaling. ' +
+      '⚠️ AND IT IS EXPECTED TO BE INSUFFICIENT ON ITS OWN, WRITTEN DOWN BEFORE THE RUN SO THE ' +
+      'PREDICTION CAN BE SCORED: measured host draws per host per round are 0.489 / 0.553 / 0.787 ' +
+      'by seat count, so a cap of one removes only the rounds that carried two or more - at most ' +
+      '21% / 24% / 31% of the faucet on a Poisson upper bound, and less in truth because bots ' +
+      'spread visits across targets rather than piling on. The faucet buys 5.0 points at four ' +
+      'seats, so a 31% cut returns about 1.5 and lands near 63.4%, still over the ceiling. IF THE ' +
+      'RUN READS MUCH BETTER THAN THAT, the arrival distribution is more clustered than Poisson ' +
+      'and THAT is the finding. ' +
+      'overlays/notice-board-visit-host-draw-capped-v1.overlay.json is the arm and ' +
+      'overlays/notice-board-visit-host-draw-v1.overlay.json is its one-leaf control.',
+  },
+  {
+    template: 'rules.turn.hostDrawOnVisitBySeats.{}',
+    type: 'intOrNull',
+    description:
+      '⭐ THE HOST DRAW BY SEAT COUNT: AN OVERRIDE ON rules.turn.hostDrawOnVisit, KEYED BY SEAT ' +
+      'COUNT, in the idiom of island.decksInPlayBySeats and rules.economy.noticeBoardsBySeats. ' +
+      '⛔ THE PRECEDENCE RULE: a NON-NULL slot wins, a NULL slot DEFERS to the scalar, and every ' +
+      'slot SHIPS NULL - so this changes nothing until a slot is set, and ' +
+      'overlays/notice-board-visit-host-draw-v1.overlay.json (which sets the scalar to 1 and no ' +
+      'slot) still pays 1 at every seat count exactly as it did when it was measured. Ask it ' +
+      'through hostDrawOnVisitAt(data, seats), which is the one spelling every rule must use; a ' +
+      'branch of play that reads the scalar directly is right until somebody sets a slot and ' +
+      'silently wrong after. ' +
+      '⛔ WHY IT EXISTS: THE FOUR-SEAT BREACH, AND EVERY CHEAPER LEVER IS NOW MEASURED AND DEAD. ' +
+      "S17 takes the bonus slot out of Dean's band at FOUR SEATS ALONE - 64.9% of turns against " +
+      'a 60% ceiling, where its control reads 59.9% and two and three seats barely move. THE CAP ' +
+      'WAS BUILT AND RUN ON 11/09/2026 AND IT DID NOT WORK: one payment per host per round ' +
+      'removed 28.7% of the payments at four seats (98.7% of visits paid falling to 70.0%, the ' +
+      'per-turn faucet 0.787 to 0.550) and returned only 0.5 points of rate, landing at 64.4% ' +
+      'and still out of band. ' +
+      '⭐ AND THE FINDING THAT FORCED THIS SHAPE IS WORTH MORE THAN THE KNOB: THE BONUS RATE IS ' +
+      'NEARLY INSENSITIVE TO THE SIZE OF THE FAUCET. Cutting 30% of it bought back a TENTH of ' +
+      'the rise. Extrapolated linearly, removing the faucet entirely recovers about 1.7 of the ' +
+      '5.0 points S17 adds at four seats, so NO VERSION OF "MAKE THE HOST DRAW SMALLER" REACHES ' +
+      '60% AT FOUR SEATS. Pricing this faucet is a dead lever, measured rather than argued. What ' +
+      'is left is turning it OFF where there is no headroom, which is what this map does. ' +
+      "⚠️ THE COST IS A SEAT-COUNT-DEPENDENT RULE AT THE TABLE, against this project's " +
+      'five-minute teach target. It is not unprecedented - noticeBoardsBySeats already shapes ' +
+      'the board count 2/1/1 - but TWO seat-count-dependent rules in one bonus slot is a thing ' +
+      'to look at whole before ruling in, not a thing to notice afterwards. ' +
+      '⚠️ AND THE CONTROL HAS NO HEADROOM EITHER: it reads 59.9% at four seats, one tenth of a ' +
+      'point inside the ceiling, so the honest reading may be that NO card faucet fits at four ' +
+      'seats rather than that this one is mis-sized. ' +
+      'overlays/notice-board-visit-host-draw-by-seats-v1.overlay.json is the arm and ' +
+      'overlays/notice-board-visit-host-draw-v1.overlay.json is its one-leaf control.',
+  },
+  {
     template: 'rules.turn.bonusTiming',
     type: 'bonusTiming',
     description:

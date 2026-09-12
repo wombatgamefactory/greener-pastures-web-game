@@ -387,6 +387,22 @@ export function coinsOf(state: GameState, seat: Seat): number {
 }
 
 /**
+ * ⭐ HAS THIS SEAT ALREADY TAKEN ITS ONE HOST DRAW SINCE ITS OWN LAST TURN -
+ * THE HOST-DRAW CAP ONLY (`rules.turn.hostDrawCapPerRound`).
+ *
+ * ⛔ **THROWS WHEN THE CAP IS ON AND THE FIELD IS MISSING**, in the register
+ * `coinsOf` above is written in: the field is absent under every game that does
+ * not run the cap, so the optionality is real, and routing every read through
+ * one accessor is what stops it reaching a rule as a silent `undefined` that
+ * would read as "not yet paid" for ever and cap nothing at all.
+ */
+export function hostDrewThisRound(state: GameState, seat: Seat): boolean {
+  const drew = player(state, seat).hostDrewThisRound;
+  if (drew === undefined) throw new Error(`Seat ${seat} has no host-draw latch in this game`);
+  return drew;
+}
+
+/**
  * ⭐ IS DEAN'S UNCLAIMED-BOARDS VARIANT LIVE (ruled 11/09/2026,
  * `overlays/notice-board-visit-unclaimed-v1.overlay.json`)?
  *

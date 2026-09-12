@@ -175,6 +175,30 @@ export interface PlayerState {
    * the currency on 02/09/2026 and none of them comes back with it.
    */
   coins?: number;
+  /**
+   * ⭐ HAS THIS SEAT ALREADY BEEN PAID A HOST DRAW SINCE ITS OWN LAST TURN -
+   * THE HOST-DRAW CAP ONLY (`rules.turn.hostDrawCapPerRound`, 11/09/2026).
+   *
+   * ⚠️ **ABSENT UNLESS THE CAP IS ON**, and the absence is the same deliberate
+   * register `noticeBoard` and `coins` above are written in: a key
+   * present-and-false would change every serialised state, every capture and
+   * every fixture replay for a rule the shipped game has no concept of, and six
+   * of the nine fixtures in `packages/sim/fixtures/` replay byte-identically and
+   * depend on that.
+   *
+   * ⛔ **IT LIVES ON THE SEAT AND NOT ON `TurnState`, AND THAT IS THE WHOLE
+   * MECHANISM.** The quantity being capped is "once between the HOST's own
+   * turns", so the latch has to survive every OTHER seat's turn and reset only
+   * when this seat's turn begins - and `turn` is replaced wholesale by
+   * `freshTurn()` at every turn boundary. A latch on `turn.firedThisTurn` would
+   * cap the VISITOR's turn instead, which bites only when one visitor sends two
+   * visits to one host in a single turn (two seats alone, via A Helping Hand)
+   * and would leave four seats, the only breaching seat count, untouched.
+   *
+   * `hostDrewThisRound` in query.ts is the one accessor and it throws when the
+   * cap is on and this is missing, so the optionality never reaches a rule.
+   */
+  hostDrewThisRound?: boolean;
   tableau: BuildingState[];
   /**
    * VP taken from the island, in delivery order - one entry per delivery, so

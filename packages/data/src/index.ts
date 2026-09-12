@@ -344,6 +344,53 @@ export function hostDrawOnVisit(data: GameData): number {
 }
 
 /**
+ * ⭐ IS THE HOST-DRAW CAP ON - is a host paid AT MOST ONCE between their own
+ * turns, however many neighbours visit them in the meantime?
+ * (`rules.turn.hostDrawCapPerRound`, shipped `false`.)
+ *
+ * ⛔ **"PER ROUND" IS THE HOST'S OWN TURN CYCLE AND NOT THE VISITOR'S TURN.**
+ * A cap on the visitor's turn would bite only when one visitor sends two visits
+ * to the same host in one turn, which is reachable at two seats alone, and four
+ * seats is the only seat count that breaches the band. The latch therefore lives
+ * on the SEAT (`PlayerState.hostDrewThisRound`) and is cleared when that seat's
+ * own turn begins, not on `TurnState`, which turn end replaces wholesale.
+ *
+ * ⚠️ It is a SECOND leaf and never a re-pointing of `hostDrawOnVisit`, which
+ * keeps meaning cards per payment. See the knob's own description for why.
+ */
+export function hostDrawCapPerRound(data: GameData): boolean {
+  return data.rules.turn.hostDrawCapPerRound;
+}
+
+/**
+ * ⭐ HOW MANY CARDS A HOST DRAWS AT THIS SEAT COUNT, AND THIS IS THE ONE
+ * SPELLING EVERY RULE MUST ASK IN (the engine, the bots and the sim alike).
+ *
+ * ⛔ **THE PRECEDENCE RULE, WRITTEN ONCE AND NOWHERE ELSE: A NON-NULL SLOT IN
+ * `hostDrawOnVisitBySeats` WINS; A NULL SLOT DEFERS TO THE SCALAR
+ * `hostDrawOnVisit`; AN ABSENT SEAT COUNT DEFERS TO THE SCALAR TOO.** Every slot
+ * ships null, so the map changes nothing until somebody sets one, and
+ * `overlays/notice-board-visit-host-draw-v1.overlay.json` - which sets the
+ * scalar and no slot - still pays 1 at every seat count exactly as it did when
+ * it was measured.
+ *
+ * ⛔ **`hostDrawOnVisit` IS THE BASE AND IS NOT THE ANSWER.** A rule that reads
+ * the scalar directly is asking "what does the map say" with the map switched
+ * off, which is right until the day somebody sets a slot and then silently
+ * wrong. The scalar accessor is kept because the base value is a real thing to
+ * read - a knob description, a report header - but **no branch of play may read
+ * it.**
+ *
+ * ⚠️ Its reason for existing is in the knob's own description: capping the
+ * faucet was measured on 11/09/2026 and failed, because the bonus rate is nearly
+ * insensitive to the faucet's SIZE. Turning it off where there is no headroom is
+ * what is left.
+ */
+export function hostDrawOnVisitAt(data: GameData, seats: number): number {
+  return data.rules.turn.hostDrawOnVisitBySeats[String(seats)] ?? data.rules.turn.hostDrawOnVisit;
+}
+
+/**
  * Is DEAN'S VARIANT of 09/09/2026 live - the commons' Harvest turned into a
  * free draw of a whole pile to hand? See `rules.turn.commonsTake` and
  * `CommonsTake` for the ruling in full.

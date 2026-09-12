@@ -23,6 +23,7 @@ import type { GameData, Suit } from '@gp/data';
 import {
   endgameCoinCost,
   farmsteadCoinPower,
+  hostDrawCapPerRound,
   isCommons,
   isCommonsTakeCoins,
   isMeepleCurrency,
@@ -148,6 +149,23 @@ export function coinEconomy(data: GameData): boolean {
  */
 export function coinPlayerFields(data: GameData): { coins?: number } {
   return coinEconomy(data) ? { coins: 0 } : {};
+}
+
+/**
+ * The player field the HOST-DRAW CAP adds, as a spread - the exact counterpart
+ * of `coinPlayerFields` above and absent for the same reason: the key is
+ * MISSING rather than present-and-false under every game that does not run the
+ * cap, so serialised states, captures and fixtures stay byte-identical.
+ *
+ * ⭐ **STARTS FALSE, AND THE FIRST ROUND IS THEREFORE NOT A SPECIAL CASE**:
+ * every seat is owed its one payment from the moment the game begins, exactly as
+ * it is owed one after each of its own turns.
+ *
+ * ⚠️ Gated on the CAP and not on `hostDrawOnVisit`, so a run with the draw on
+ * and the cap off carries no latch at all and cannot accidentally consult one.
+ */
+export function hostDrawCapPlayerFields(data: GameData): { hostDrewThisRound?: boolean } {
+  return hostDrawCapPerRound(data) ? { hostDrewThisRound: false } : {};
 }
 
 /**
@@ -568,6 +586,7 @@ export function newGame(data: GameData, opts: NewGameOptions): GameState {
     // The coin wallet at 0, present only under the commons-with-coins arm (K7)
     // and ABSENT otherwise - see `coinPlayerFields`.
     ...coinPlayerFields(data),
+    ...hostDrawCapPlayerFields(data),
     // ⭐ THE STARTERS FIRST AND THE EXTRA BOARD(S) AFTER, which is the order
     // `noticeBoardOf` and the report lines both read through: a seat's OWN
     // suit's board is the one its starters brought, and everything appended

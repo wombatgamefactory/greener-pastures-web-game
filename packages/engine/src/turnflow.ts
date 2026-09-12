@@ -26,7 +26,7 @@ import type { Fx } from './fx.js';
 import { player } from './query.js';
 import { standingMoves } from './runtime.js';
 import { freshTurn } from './setup.js';
-import type { GameState } from './state.js';
+import type { GameState, Seat } from './state.js';
 
 /**
  * Advance the turn if there is nothing left for the player to decide. Called
@@ -131,4 +131,29 @@ function finishTurn(data: GameData, draft: GameState, fx: Fx): void {
   }
   draft.turnPlayer = next;
   draft.turn = freshTurn();
+  clearHostDrawLatch(draft, next);
+}
+
+/**
+ * ⭐ THE HOST-DRAW CAP RESETS HERE, AND THIS LINE IS THE WHOLE RULE
+ * (`rules.turn.hostDrawCapPerRound`, 11/09/2026).
+ *
+ * The capped quantity is "one payment between a host's OWN turns", so the latch
+ * is cleared for the seat whose turn is BEGINNING and for nobody else. Every
+ * other seat keeps whatever it has taken since its own last turn.
+ *
+ * ⛔ **IT IS NOT PART OF `freshTurn()` AND MUST NEVER BE FOLDED INTO IT.**
+ * `freshTurn` replaces `TurnState`, which is scoped to the turn being played and
+ * would therefore cap the VISITOR - a cap that bites only when one visitor sends
+ * two visits to one host in a single turn (two seats alone, via A Helping Hand)
+ * and leaves four seats, the only breaching seat count, untouched.
+ *
+ * ⚠️ Written against the field rather than through `hostDrewThisRound` in
+ * query.ts on purpose: the accessor THROWS on a missing latch, and this runs on
+ * every turn boundary of every game including the ones with no latch at all.
+ * The `undefined` check is the "cap is off" case and is not a silent failure.
+ */
+function clearHostDrawLatch(draft: GameState, seat: Seat): void {
+  const p = draft.players[seat];
+  if (p !== undefined && p.hostDrewThisRound !== undefined) p.hostDrewThisRound = false;
 }

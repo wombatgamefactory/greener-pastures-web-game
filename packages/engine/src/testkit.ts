@@ -18,6 +18,7 @@ import {
   dealExtraNoticeBoards,
   demandPool,
   freshTurn,
+  hostDrawCapPlayerFields,
   meepleLoopPlayerFields,
   meeplePool,
   parkBalloons,
@@ -86,6 +87,10 @@ export function makeState(data: GameData, suits: Suit[]): GameState {
       // ABSENT otherwise, exactly as `meepleLoopPlayerFields` is - see
       // `coinPlayerFields`.
       ...coinPlayerFields(data),
+      // ABSENT unless the HOST-DRAW CAP is on, same register again - see
+      // `hostDrawCapPlayerFields`. The testkit must agree with `newGame` about
+      // this or a scenario silently has no latch and the cap caps nothing.
+      ...hostDrawCapPlayerFields(data),
       // Two starters under the commons and three under the controls - see
       // `starterCardsFor`. The testkit takes every starter whether or not it is
       // enabled, which is the one way it has always differed from `newGame`.
@@ -389,6 +394,99 @@ export function noticeBoardHostDrawGame(n = 1): GameData {
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': false,
       'rules.turn.hostDrawOnVisit': n,
+      'rules.turn.commonsTake': 'harvest',
+      'rules.turn.startingMeeplesPerColour': 0,
+      'rules.turn.meepleAsCard': false,
+      'rules.turn.slotToll': null,
+      'rules.turn.meepleCapPerColour': null,
+      'rules.economy.noticeBoardThreshold': 3,
+      'rules.economy.noticeBoardBlocks': false,
+      'rules.economy.unclaimedBoardsToCentre': false,
+      'rules.economy.noticeBoardsBySeats.2': 2,
+      'rules.economy.noticeBoardsBySeats.3': 1,
+      'rules.economy.noticeBoardsBySeats.4': 1,
+      'rules.economy.commonsColourMatch': false,
+      'rules.economy.commonsWildPair': false,
+      'rules.economy.endgameCoinCost': null,
+      'rules.economy.farmsteadCoinPower': false,
+    },
+  });
+}
+
+/**
+ * ⭐ THE HOST-DRAW CAP: S17 WITH A HOST PAID AT MOST ONCE BETWEEN THEIR OWN
+ * TURNS, however many neighbours visit them in the meantime
+ * (`rules.turn.hostDrawCapPerRound`,
+ * `overlays/notice-board-visit-host-draw-capped-v1.overlay.json`).
+ *
+ * ⛔ **ITS CONTROL IS `noticeBoardHostDrawGame()` AND THE TWO DIFFER IN EXACTLY
+ * ONE LEAF**, which is what makes the identity gate readable: with the cap off
+ * the two datasets must play byte-identical games on identical seeds, and with
+ * it on they must not.
+ *
+ * ⚠️ **THE CAP IS PER THE HOST'S OWN TURN CYCLE AND NOT PER THE VISITOR'S
+ * TURN**, which is the distinction the whole knob exists for and the one a test
+ * has to pin: a visitor-side cap bites only at two seats (A Helping Hand) and
+ * would leave four seats, the only breaching seat count, untouched.
+ *
+ * `capped` is a parameter rather than a constant so the off column can be asked
+ * for by name, exactly as `n` is on the builder above.
+ */
+export function noticeBoardHostDrawCappedGame(capped = true, n = 1): GameData {
+  return loadGameData({
+    name: `notice-board-visit-host-draw-capped-v1-${String(capped)}-${n}`,
+    schemaVersion: 1,
+    set: {
+      'rules.turn.visitCurrency': 'noticeBoardPower',
+      'rules.turn.bonusTiming': 'start',
+      'rules.turn.selfVisitAllowed': false,
+      'rules.turn.hostDrawOnVisit': n,
+      'rules.turn.hostDrawCapPerRound': capped,
+      'rules.turn.commonsTake': 'harvest',
+      'rules.turn.startingMeeplesPerColour': 0,
+      'rules.turn.meepleAsCard': false,
+      'rules.turn.slotToll': null,
+      'rules.turn.meepleCapPerColour': null,
+      'rules.economy.noticeBoardThreshold': 3,
+      'rules.economy.noticeBoardBlocks': false,
+      'rules.economy.unclaimedBoardsToCentre': false,
+      'rules.economy.noticeBoardsBySeats.2': 2,
+      'rules.economy.noticeBoardsBySeats.3': 1,
+      'rules.economy.noticeBoardsBySeats.4': 1,
+      'rules.economy.commonsColourMatch': false,
+      'rules.economy.commonsWildPair': false,
+      'rules.economy.endgameCoinCost': null,
+      'rules.economy.farmsteadCoinPower': false,
+    },
+  });
+}
+
+/**
+ * ⭐ THE HOST DRAW SHAPED BY SEAT COUNT: S17 PAYS AT TWO AND THREE SEATS AND NOT
+ * AT FOUR (`rules.turn.hostDrawOnVisitBySeats.4` = 0,
+ * `overlays/notice-board-visit-host-draw-by-seats-v1.overlay.json`).
+ *
+ * ⛔ **ITS CONTROL IS `noticeBoardHostDrawGame()` AND THE TWO DIFFER IN EXACTLY
+ * ONE LEAF.** The 2 and 3 slots are deliberately NOT set: they ship null, null
+ * defers to the scalar, and setting them would make this a three-leaf arm and
+ * break the identity gate that says two and three seats must play byte-identical
+ * games to the control.
+ *
+ * ⛔ **WHY IT EXISTS: PRICING THE FAUCET IS A DEAD LEVER, MEASURED.** The cap
+ * removed 28.7% of the payments at four seats and returned 0.5 points of rate,
+ * so the bonus rate is nearly insensitive to the faucet's SIZE. Only its
+ * PRESENCE is left to change.
+ */
+export function noticeBoardHostDrawBySeatsGame(): GameData {
+  return loadGameData({
+    name: 'notice-board-visit-host-draw-by-seats-v1',
+    schemaVersion: 1,
+    set: {
+      'rules.turn.visitCurrency': 'noticeBoardPower',
+      'rules.turn.bonusTiming': 'start',
+      'rules.turn.selfVisitAllowed': false,
+      'rules.turn.hostDrawOnVisit': 1,
+      'rules.turn.hostDrawOnVisitBySeats.4': 0,
       'rules.turn.commonsTake': 'harvest',
       'rules.turn.startingMeeplesPerColour': 0,
       'rules.turn.meepleAsCard': false,

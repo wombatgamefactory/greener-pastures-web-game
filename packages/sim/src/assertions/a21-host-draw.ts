@@ -1,5 +1,12 @@
 import type { GameData } from '@gp/data';
-import { hostDrawOnVisit, isCommons, isMeepleCurrency, isNoticeBoardPower } from '@gp/data';
+import {
+  hostDrawCapPerRound,
+  hostDrawOnVisit,
+  hostDrawOnVisitAt,
+  isCommons,
+  isMeepleCurrency,
+  isNoticeBoardPower,
+} from '@gp/data';
 
 import type { Assertion, Measurement, MeasureContext } from './types.js';
 import { NO_REMEDY } from './types.js';
@@ -119,6 +126,7 @@ function hostDrawMode({ data, pooled }: MeasureContext): Measurement {
   const games = pooled.ended;
   const turns = totalTurns(games);
   const n = hostDrawOnVisit(data);
+  const capOn = hostDrawCapPerRound(data);
   const bound = data.rules.turn.handLimit;
 
   const cards = sum(games.map((g) => sum(g.hostDrawCardsBySeat)));
@@ -168,7 +176,15 @@ function hostDrawMode({ data, pooled }: MeasureContext): Measurement {
       };
     });
 
-  const off = n <= 0;
+  // ⭐ THE RULE CAN NOW BE ON AT ONE SEAT COUNT AND OFF AT ANOTHER
+  // (`rules.turn.hostDrawOnVisitBySeats`, 11/09/2026), so "is it on" is a
+  // question per seat count and the scalar `n` is only the BASE.
+  const bySeats = [2, 3, 4].map((seats) => ({ seats, n: hostDrawOnVisitAt(data, seats) }));
+  const shaped = bySeats.some((r) => r.n !== n);
+  // ⛔ OFF means off EVERYWHERE. A run that pays at two and three seats and not
+  // at four is emphatically not "the rule off", and reporting it as such would
+  // hide the only arm that reaches the four-seat breach.
+  const off = n <= 0 && bySeats.every((r) => r.n <= 0);
 
   const detail = [
     `⛔⛔ THE MEASUREMENT CAVEAT, FIRST AND NOT LAST, BECAUSE IT IS WHAT THIS PAGE IS MOST ` +
@@ -195,7 +211,21 @@ function hostDrawMode({ data, pooled }: MeasureContext): Measurement {
         'fee resting on the board is the host’s whole payment (S7 unamended). The page is ' +
         'printed anyway so that the pair can be diffed line for line: a column that appeared ' +
         'and disappeared could not be.'
-      : `⭐ THE RULE IS ON: rules.turn.hostDrawOnVisit ${n}. Its control is ` +
+      : `⭐ THE RULE IS ON: rules.turn.hostDrawOnVisit ${n}.${
+          shaped
+            ? ' ⛔⛔ AND IT IS SHAPED BY SEAT COUNT ON THIS RUN ' +
+              `(rules.turn.hostDrawOnVisitBySeats): ${bySeats
+                .map((r) => `${r.seats}p pays ${r.n}`)
+                .join('  ')}. ` +
+              'A SEAT COUNT PAYING 0 CONTRIBUTES NOTHING TO ANY POOLED NUMBER ON THIS PAGE, so ' +
+              'read every pooled figure below as an average over UNLIKE seat counts and quote ' +
+              'the per-seat rows instead. ⭐ THE ARM EXISTS BECAUSE PRICING THE FAUCET IS A DEAD ' +
+              'LEVER, MEASURED: a cap of one payment per host per round removed 28.7% of the ' +
+              'payments at four seats and returned 0.5 points of rate (64.9% to 64.4%, still ' +
+              'out of band), so the rate is nearly insensitive to the faucet’s SIZE and ' +
+              'only its PRESENCE is left to change.'
+            : ''
+        } Its control is ` +
         'overlays/notice-board-visit-two-boards-v1.overlay.json and THE TWO DIFFER IN EXACTLY ' +
         'ONE LEAF, so every delta between the two columns is this rule and nothing else. Run ' +
         'them paired on identical reference-v15 seeds.',
@@ -213,7 +243,22 @@ function hostDrawMode({ data, pooled }: MeasureContext): Measurement {
       'drawable deck has no legal answer and the engine drops the task, so A DRY TABLE PAYS ' +
       'NOTHING. This counter is CARDS ACTUALLY DRAWN and never visits promised, which is the ' +
       'right quantity - a faucet that cannot run is not a faucet - and the shortfall against ' +
-      '100% is exactly how often the decks had nothing left to give. ⚠️ THE DENOMINATOR IS ' +
+      '100% is exactly how often the decks had nothing left to give. ' +
+      (capOn
+        ? '⛔⛔ THE HOST-DRAW CAP IS ON (rules.turn.hostDrawCapPerRound), SO THE SENTENCE ABOVE ' +
+          'IS NO LONGER THE WHOLE STORY AND THIS LINE MUST NOT BE READ AS A DECK READING. A ' +
+          'host is paid AT MOST ONCE between their own turns, so the shortfall now has TWO ' +
+          'causes - a dry table, and a payment the cap refused - and NOTHING IN THE EVENT ' +
+          'STREAM SEPARATES THEM, because a refusal pushes no task and emits nothing. ⭐ THE ' +
+          'SEPARATION IS THE PAIR AND NOT THIS PAGE: the one-leaf control is ' +
+          'overlays/notice-board-visit-host-draw-v1.overlay.json, whose shortfall is dry decks ' +
+          'ALONE, so THE DIFFERENCE BETWEEN THE TWO SHORTFALLS ON IDENTICAL SEEDS IS THE CAP ' +
+          'AND NOTHING ELSE. ⚠️ Read it that way round and never as an absolute. ⛔ AND THE ' +
+          'ORDER INSIDE THE ENGINE IS THE REASON THE PAIRING IS SOUND: a dry table returns ' +
+          'BEFORE the latch is set, so a payment nobody could take never burns the entitlement ' +
+          'and the two causes do not compound. '
+        : '') +
+      '⚠️ THE DENOMINATOR IS ' +
       'NON-SELF VISITS BY CONSTRUCTION: a self-visit never pays the draw (it would be a pure ' +
       'faucet with no giver, the shape the RESTOCK ban closed), so the two populations match ' +
       'and no correction is applied.',

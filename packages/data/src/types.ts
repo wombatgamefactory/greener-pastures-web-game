@@ -1105,6 +1105,83 @@ export interface RulesFile {
      * reachable because the one rival holds two boards.
      */
     readonly hostDrawOnVisit: number;
+    /**
+     * ⭐ THE HOST-DRAW CAP: A HOST IS PAID AT MOST ONCE BETWEEN THEIR OWN TURNS,
+     * however many neighbours visit them in the meantime. Shipped `false`, which
+     * changes nothing, and read only when `hostDrawOnVisit` is above 0.
+     *
+     * ⛔ **IT IS A SECOND LEAF AND NOT A CHANGE OF `hostDrawOnVisit`'s MEANING,
+     * AND THAT IS DELIBERATE.** Re-pointing the existing knob at a per-round
+     * quantity would silently redefine every number already published against
+     * it - the 17:23 report, `a21-host-draw`, the overlay's own description -
+     * and this project has twice paid for a quantity that changed underneath a
+     * published reading (a17 judged on plays per turn, 09/09/2026; the meeple
+     * cap that shipped as a passenger, 05/09/2026). `hostDrawOnVisit` keeps
+     * meaning CARDS PER PAYMENT. This says HOW OFTEN A PAYMENT MAY HAPPEN.
+     *
+     * ⚠️ **"PER ROUND" MEANS PER THE HOST'S OWN TURN CYCLE, NOT PER THE
+     * VISITOR'S TURN, AND THE DISTINCTION IS THE WHOLE POINT OF THE KNOB.** A
+     * cap on the visitor's turn would only ever bite when ONE visitor sends TWO
+     * visits to the same host in a single turn, which is reachable at two seats
+     * alone (A Helping Hand, against a rival holding two boards), and would
+     * leave four seats - the only seat count that breaches - untouched. The
+     * latch is therefore cleared when the HOST's own turn begins.
+     *
+     * ⛔ **WHY IT EXISTS: THE FOUR-SEAT BREACH.** With `hostDrawOnVisit` 1 the
+     * bonus slot reads 64.9% of turns at four seats against Dean's 60% ceiling,
+     * where its one-leaf control reads 59.9%
+     * (`reports/watchlist-2026-09-11T17-23-27-...` against `...T17-20-12-...`).
+     * The faucet scales with the number of rivals, and a cap per host per round
+     * is the shape that stops it scaling.
+     *
+     * ⚠️ **AND IT IS EXPECTED TO BE INSUFFICIENT ON ITS OWN, WHICH IS WRITTEN
+     * DOWN HERE BEFORE THE RUN SO THE PREDICTION CAN BE SCORED.** Measured host
+     * draws per host per round are 0.489 / 0.553 / 0.787 by seat count, so a cap
+     * of one can remove only the rounds that carried two or more: at most
+     * 21% / 24% / 31% of the faucet on a Poisson upper bound, and less than that
+     * in truth because bots spread visits across targets rather than piling on.
+     * The faucet buys 5.0 points at four seats, so a 31% cut returns about 1.5
+     * and lands near 63.4%, still over the ceiling. **If the run reads much
+     * better than that, the arrival distribution is more clustered than Poisson
+     * and THAT is the finding.**
+     */
+    readonly hostDrawCapPerRound: boolean;
+    /**
+     * ⭐ THE HOST DRAW BY SEAT COUNT: an OVERRIDE on `hostDrawOnVisit`, keyed by
+     * seat count, in the idiom of `island.decksInPlayBySeats`,
+     * `island.demandTokensBySeats` and `rules.economy.noticeBoardsBySeats`.
+     *
+     * ⛔ **`null` IN A SLOT MEANS "DEFER TO THE SCALAR", AND EVERY SLOT SHIPS
+     * `null`, SO THIS CHANGES NOTHING UNTIL A SLOT IS SET.** That is what keeps
+     * every number already published against `hostDrawOnVisit` valid, and what
+     * keeps `overlays/notice-board-visit-host-draw-v1.overlay.json` reading
+     * exactly as it did: it sets the scalar to 1 and no slot here, so all three
+     * seat counts still pay 1.
+     *
+     * ⛔ **WHY IT EXISTS: THE FOUR-SEAT BREACH, AND EVERY OTHER LEVER IS NOW
+     * MEASURED AND DEAD.** S17 takes the bonus slot out of Dean's band at four
+     * seats alone (64.9% of turns against a 60% ceiling) where its control reads
+     * 59.9%. **Capping the faucet was built and run on 11/09/2026 and it did not
+     * work**: a cap of one payment per host per round removed 28.7% of the
+     * payments at four seats and returned only 0.5 points of rate, landing at
+     * 64.4% and still out of band
+     * (`reports/watchlist-2026-09-11T21-26-55-...-host-draw-capped-v1.txt`).
+     *
+     * ⭐ **THE FINDING THAT FORCED THIS SHAPE: THE RATE IS NEARLY INSENSITIVE TO
+     * THE SIZE OF THE FAUCET.** Cutting 30% of it bought back a tenth of the
+     * rise. Extrapolated, removing the faucet entirely recovers about 1.7 of the
+     * 5.0 points, so **no version of "make the host draw smaller" reaches 60% at
+     * four seats.** Pricing this faucet is a dead lever, measured rather than
+     * argued. What is left is turning it OFF where there is no headroom, which
+     * is what this map does.
+     *
+     * ⚠️ **AND THE COST IS A SEAT-COUNT-DEPENDENT RULE AT THE TABLE**, which is
+     * a real teach cost against a five-minute target. It is not unprecedented in
+     * this design - `noticeBoardsBySeats` already shapes the board count 2/1/1 -
+     * but two seat-count-dependent rules in one bonus slot is a thing to look at
+     * whole before ruling it in, not a thing to notice afterwards.
+     */
+    readonly hostDrawOnVisitBySeats: Readonly<Record<string, number | null>>;
   };
   readonly economy: {
     /**

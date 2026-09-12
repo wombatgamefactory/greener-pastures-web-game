@@ -23,7 +23,8 @@ import {
   deliveryVp,
   endgameCoinCost,
   farmsteadCoinPower,
-  hostDrawOnVisit,
+  hostDrawCapPerRound,
+  hostDrawOnVisitAt,
   isCommons,
   isCommonsTakeCoins,
   isCommonsTakePaid,
@@ -49,6 +50,7 @@ import {
   faceOf,
   drawableSuits,
   hasCentre,
+  hostDrewThisRound,
   isFull,
   isHarvestable,
   meeplesHeld,
@@ -5087,12 +5089,37 @@ export function doVisit(fx: Fx, visitor: Seat, host: Seat, spend: VisitSpend): v
 function payHostDrawOnVisit(fx: Fx, visitor: Seat, host: Seat): void {
   // ⛔ A SELF-VISIT NEVER PAYS IT: a faucet with no giver. See the block above.
   if (visitor === host) return;
-  const n = hostDrawOnVisit(fx.data);
+  // ⛔ SEAT-AWARE, AND NEVER THE BARE SCALAR: `hostDrawOnVisitBySeats` can
+  // switch the payment off at one seat count and leave it on at the others,
+  // which is the only lever left that reaches the four-seat breach. Reading
+  // `hostDrawOnVisit` here would be right until somebody set a slot.
+  const n = hostDrawOnVisitAt(fx.data, fx.state.seats);
   if (n <= 0) return;
+  // ⭐ THE HOST-DRAW CAP, HALF ONE - THE READ (`rules.turn.hostDrawCapPerRound`,
+  // 11/09/2026): a host is paid AT MOST ONCE between their own turns, however
+  // many neighbours visit them in the meantime. The latch is cleared in
+  // `clearHostDrawLatch` (turnflow.ts) at the moment the HOST's own turn begins,
+  // which is what makes this a cap per ROUND rather than a cap per the VISITOR's
+  // turn - the distinction the knob exists for, because a visitor-side cap bites
+  // at two seats alone and four seats is the only seat count that breaches the
+  // band.
+  const capped = hostDrawCapPerRound(fx.data);
+  if (capped && hostDrewThisRound(fx.state, host)) return;
   // ⭐ THE CORRECTNESS GATE IN ONE LINE: at the shipped 0 nothing is pushed, no
   // task is created, no rng call is consumed and no event is emitted, so the
   // engine behaves exactly as it did before this rule existed.
+  //
+  // ⚠️ AND IT SITS ABOVE THE LATCH-SET DELIBERATELY: A PAYMENT NOBODY COULD TAKE
+  // IS NOT A PAYMENT TAKEN. A dry table pays nothing (the rule degrading
+  // gracefully, which a21 reads as the shortfall from 100%), and it must not
+  // ALSO burn the host's one entitlement for the round - that would make the cap
+  // bite hardest exactly when the decks are thinnest, which is a second rule
+  // nobody asked for.
   if (drawableSuits(fx.data, fx.state).length === 0) return;
+  // ⭐ THE HOST-DRAW CAP, HALF TWO - THE SET. On the task being pushed and never
+  // on its answer: the entitlement is spent when the payment is made, and the
+  // host choosing which deck to draw from is not a thing that can fail.
+  if (capped) player(fx.state, host).hostDrewThisRound = true;
   fx.pushTask({ t: 'draw', pid: host, src: null, see: n, keep: n, revealed: [], via: 'hostDraw' });
 }
 
