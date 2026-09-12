@@ -28,7 +28,7 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import { doorActionForSuit, isMeepleCurrency, meepleSpendTiming } from '@gp/data';
+import { dairyGrowsBuilt, doorActionForSuit, isMeepleCurrency, meepleSpendTiming } from '@gp/data';
 
 import { doorOf, unclaimedCentre } from './query.js';
 import type { Fx } from './fx.js';
@@ -192,6 +192,10 @@ export function fireNoticeBoardPower(
         pid: actor,
         src,
         ...(numbers.dairyWild ? { mods: { substitute: true } } : {}),
+        // ⭐ Dean's Dairy experiment (12/09/2026), shipped 'none'.
+        ...(dairyGrowsBuilt(fx.data) === 'none'
+          ? {}
+          : { thenGrow: dairyGrowsBuilt(fx.data) as 'paid' | 'paidWild' | 'free' }),
       });
       return;
     case 'wheat': {

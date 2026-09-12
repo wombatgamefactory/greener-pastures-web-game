@@ -604,14 +604,22 @@ describe('the notice board visit', () => {
   });
 
   // S12, as amended by rulings C88 (Wheat) and C89 (Apiary) the same evening.
-  // FIVE numbers and not four, and asserted whole rather than key by key: a
-  // sixth arriving unnoticed is exactly the drift this file exists to make loud.
-  it('carries the five renamed Notice Board powers, and offers all five as knobs', () => {
+  // Asserted WHOLE rather than key by key: a new one arriving unnoticed is
+  // exactly the drift this file exists to make loud.
+  //
+  // ⭐ AND IT CAUGHT ONE ON 12/09/2026, WHICH IS WHY IT IS WRITTEN THIS WAY.
+  // `dairyGrowsBuilt` is the SIXTH key and it is Dean's ruling of that date:
+  // the Dairy board reads *Build, using cards of any crops, then you may GROW
+  // the building you just built by spending any card*. The count moved from
+  // five to six DELIBERATELY, and the test failing first is the mechanism
+  // working rather than a nuisance.
+  it('carries the six Notice Board powers, and offers all six as knobs', () => {
     expect(BASE_GAME_DATA.rules.economy.noticeBoardPower).toEqual({
       orchardDraw: 4,
       apiarySows: 2,
       vegetableFallback: 2,
       dairyWild: true,
+      dairyGrowsBuilt: 'paidWild',
       wheatBarn: 1,
     });
 
@@ -621,6 +629,7 @@ describe('the notice board visit', () => {
       'apiarySows',
       'vegetableFallback',
       'dairyWild',
+      'dairyGrowsBuilt',
       'wheatBarn',
     ]) {
       expect(knobs, key).toContain(`rules.economy.noticeBoardPower.${key}`);

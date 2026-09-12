@@ -281,7 +281,10 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
       // ⚠️ K10's `coin` STAYS OUT and needs no filter, because `growOptions`
       // offers the Farmstead only under `mods.mainAction` and this caller does
       // not pass it: a bonus may never buy a suit power (D-C1).
-      const out: TaskAnswer[] = growOptions(data, state, task.pid)
+      const out: TaskAnswer[] = growOptions(data, state, task.pid, {
+        ...(task.target === undefined ? {} : { onlyBuilding: task.target }),
+        ...(task.wildActivation === true ? { anyCrop: true } : {}),
+      })
         .filter((o) => o.payment !== null || o.coinGrow === true)
         .map((o) =>
           o.coinGrow === true
@@ -511,7 +514,13 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
         task.pid,
         answer.building,
         answer.payment,
-        answer.coinGrow === true ? { coinGrow: true } : {},
+        answer.coinGrow === true
+          ? { coinGrow: true }
+          : // Dean's Dairy experiment, 'paidWild': the enumerator offered a wild
+            // activation card, so the re-validation must be told the same thing.
+            task.wildActivation === true
+            ? { anyCrop: true }
+            : {},
       );
       return true;
     }
@@ -537,6 +546,24 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
         buildModsFor(fx.state, task),
         task.src,
       );
+      // ⭐ DEAN'S DAIRY EXPERIMENT (12/09/2026), absent under every shipped
+      // rule. GROW the building this Build just made. ⛔ A card with no
+      // activation type cannot be Grown at all, which is every Power and every
+      // Endgame, a third of the deck, so the clause is simply dead on them.
+      if (task.thenGrow !== undefined && cardById(fx.data, answer.card).activationType !== null) {
+        if (task.thenGrow === 'free') {
+          doGrow(fx, task.pid, answer.card, null, { freeGrow: true });
+        } else {
+          fx.pushTask({
+            t: 'grow',
+            pid: task.pid,
+            src: task.src,
+            optional: true,
+            target: answer.card,
+            ...(task.thenGrow === 'paidWild' ? { wildActivation: true } : {}),
+          });
+        }
+      }
       return true;
     }
 

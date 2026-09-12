@@ -773,6 +773,14 @@ export function paymentSlotTollOf(data: GameData): number {
  * the `'card'` control it is every delivery space times `perDeliverySpace`,
  * exactly as v31 dealt them, which is twice as deep a draw from the same bag.
  */
+/**
+ * ⭐ What the Dairy Notice Board does after its Build (Dean, 12/09/2026).
+ * Shipped 'none'. Read only under visitCurrency 'noticeBoardPower'.
+ */
+export function dairyGrowsBuilt(data: GameData): 'none' | 'paid' | 'paidWild' | 'free' {
+  return data.rules.economy.noticeBoardPower.dairyGrowsBuilt;
+}
+
 export function meeplesPerTile(data: GameData): number {
   return tileMeepleSpaces(data).length;
 }

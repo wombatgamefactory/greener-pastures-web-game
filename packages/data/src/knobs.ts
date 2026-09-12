@@ -184,6 +184,7 @@ export type KnobType =
   | 'visitCurrency'
   | 'meepleDestination'
   | 'meepleSpendTiming'
+  | 'dairyGrowsBuilt'
   | 'paymentHostChoice'
   | 'balloonReward'
   | 'doorAction'
@@ -1276,6 +1277,24 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'after, over 38,012 builds and never re-read since. A large fall says the gate was doing ' +
       'the monoculture work nobody had credited it with; no move at all says the gate was never ' +
       'binding and the power is weaker than it reads. false is the control that answers it.',
+  },
+  {
+    template: 'rules.economy.noticeBoardPower.dairyGrowsBuilt',
+    type: 'dairyGrowsBuilt',
+    description:
+      "⭐⭐ RULED IN BY DEAN, 12/09/2026, AND THE BASE IS NOW 'paidWild'. The Dairy Notice " +
+      "Board reads: BUILD, USING CARDS OF ANY CROPS, THEN YOU MAY GROW THE BUILDING YOU JUST " +
+      "BUILT BY SPENDING ANY CARD. What the leaf selects is what happens after the Build. " +
+      "'paid' immediately GROWs the building " +
+      'just built, paying a matching activation card as normal, so the stack advances and the ' +
+      "clog brake survives; 'paidWild' the same with the activation card wild, which is the " +
+      "AVAILABILITY fix rather than a price cut; 'free' GROWs it placing NOTHING, which is V8's " +
+      'clog bypass narrowed to one virgin target. ⛔ DEAD ON A THIRD OF THE DECK BY ' +
+      'CONSTRUCTION: the 15 Power and 15 Endgame cards have no threshold and no activation ' +
+      'type, so they cannot be Grown at all, which is what stops this becoming the cheap route ' +
+      "to the Power layer. ⚠️ 'free' is the shape measured on 12/09/2026 as the coin-Grow, " +
+      'which re-broke the barn glut and swelled hands; this is far narrower, once per visit on ' +
+      'a building that cannot be full. Read a06 and the Tier 3 harvest rate first.',
   },
   {
     template: 'rules.economy.noticeBoardPower.wheatBarn',

@@ -118,6 +118,7 @@
       "apiarySows": 2,
       "vegetableFallback": 2,
       "dairyWild": true,
+      "dairyGrowsBuilt": "paidWild",
       "wheatBarn": 1
     }
   },

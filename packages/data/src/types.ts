@@ -1954,6 +1954,27 @@ export interface RulesFile {
        */
       readonly dairyWild: boolean;
       /**
+       * ⭐⭐ RULED IN BY DEAN, 12/09/2026. THE BASE IS 'paidWild' AND THE DAIRY
+       * NOTICE BOARD NOW READS: *Build, using cards of any crops, then you may
+       * GROW the building you just built by spending any card.* ⛔ IT IS READ
+       * ONLY UNDER visitCurrency 'noticeBoardPower', which is an ARM and not
+       * the shipped game (C100), so the shipped commons is untouched.
+       * ⚠️ Eighteen overlays measured before the ruling are PINNED at 'none' by
+       * name, because a base value that moves silently changes every arm that
+       * did not pin it. What the leaf selects, after the Build:
+       * 'none' nothing, the shipped waiver alone; 'paid' immediately GROW the
+       * building just built, paying a matching activation card as normal so the
+       * stack advances and the clog brake survives; 'paidWild' the same but the
+       * activation card may be any crop, which is the availability fix rather
+       * than a price cut; 'free' GROW it placing NOTHING, which is the V8 clog
+       * bypass narrowed to one virgin target.
+       * ⛔ 30 of the 90 deck cards have no threshold and no activation type
+       * (every Power and every Endgame), so this clause is DEAD on a third of
+       * the deck by construction. That is a feature: it is what stops the Dairy
+       * board becoming the cheap route to the Power layer.
+       */
+      readonly dairyGrowsBuilt: 'none' | 'paid' | 'paidWild' | 'free';
+      /**
        * Cards the Wheat board puts into your barn AFTER its harvest: *"Harvest
        * one of your buildings, then put 1 card from your hand into your barn."*
        * 1 (Dean, 10/09/2026, ruling C88). ⛔ THE RULING IS WHY THIS KEY EXISTS

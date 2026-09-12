@@ -62,6 +62,17 @@ const MEEPLE_SPEND_TIMING_VALUES: ReadonlySet<string> = new Set<string>([
 ]);
 
 /**
+ * The closed value set behind `noticeBoardPower.dairyGrowsBuilt` (Dean's Dairy
+ * experiment, 12/09/2026). 'none' is the shipped value and changes nothing.
+ */
+const DAIRY_GROWS_BUILT_VALUES: ReadonlySet<string> = new Set<string>([
+  'none',
+  'paid',
+  'paidWild',
+  'free',
+]);
+
+/**
  * The closed value set behind `visitCurrency`, kept here for the same reason as
  * `BONUS_TIMING_VALUES`.
  *
@@ -213,6 +224,8 @@ function typeMatches(type: KnobType, value: Leaf): boolean {
       return typeof value === 'string' && MEEPLE_DESTINATION_VALUES.has(value);
     case 'meepleSpendTiming':
       return typeof value === 'string' && MEEPLE_SPEND_TIMING_VALUES.has(value);
+    case 'dairyGrowsBuilt':
+      return typeof value === 'string' && DAIRY_GROWS_BUILT_VALUES.has(value);
     case 'paymentHostChoice':
       return typeof value === 'string' && PAYMENT_HOST_VALUES.has(value);
     case 'balloonReward':

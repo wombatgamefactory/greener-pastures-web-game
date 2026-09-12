@@ -146,6 +146,11 @@ export interface GrowOptionMods {
    * strength of a Farmstead the task could not then fire.
    */
   mainAction?: boolean;
+  /**
+   * ⭐ DEAN'S DAIRY EXPERIMENT (12/09/2026): the GROW may target ONLY this
+   * building, the one the Dairy board's own Build just made.
+   */
+  onlyBuilding?: CardId;
 }
 
 /**
@@ -179,6 +184,7 @@ export function growOptions(
       ? withoutFee
       : withoutFirst(withoutFee, mods.excludeHandCard2);
   const out: GrowOption[] = [];
+  const only = mods.onlyBuilding;
   const asCard = meepleAsCard(data);
   const onBoard = meepleAsCardGoesToBoard(data);
   const rate = data.rules.turn.paymentSlotToll;
@@ -188,6 +194,8 @@ export function growOptions(
   // is false.
   const farmsteadCoin = farmsteadCoinPower(data) && mods.mainAction === true;
   for (const b of p.tableau) {
+    // Dean's Dairy experiment: one legal target, the building just built.
+    if (only !== undefined && b.card !== only) continue;
     if (cardById(data, b.card).slot === 'noticeboard') continue;
     if (state.turn.firedThisTurn.includes(b.card)) continue;
     if (mods.exclude?.includes(b.card)) continue;

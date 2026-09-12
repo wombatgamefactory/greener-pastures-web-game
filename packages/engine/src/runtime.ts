@@ -89,6 +89,14 @@ export interface GrowMods {
    * coin-Grows a turn is the ceiling and never the same building twice.
    */
   coinGrow?: boolean;
+  /**
+   * ⭐ DEAN'S DAIRY EXPERIMENT, 'free' (12/09/2026). The Dairy Notice Board
+   * GROWs the building its own Build just made, paying NOTHING and placing
+   * NOTHING. ⚠️ It is V8's shape without V8's price and without V9: the target
+   * is a building created this instant, so it can never be full and the
+   * full-building question has no subject here.
+   */
+  freeGrow?: boolean;
 }
 
 /**
@@ -184,6 +192,22 @@ export function doGrow(
   // here and no both-coins check is written: the two economies are pinned apart
   // in every overlay, and if they were ever run together the FARMSTEAD would
   // simply keep its own rule and every other building would get this one.
+  // ⭐ DEAN'S DAIRY EXPERIMENT, 'free'. Same shape as the coin-Grow below and
+  // no coin: the Build that granted it is the price, and the target is the
+  // building that Build just created.
+  if (mods.freeGrow === true) {
+    if (payment !== null || meeples.length > 0) {
+      throw new Error('A free GROW pays no card and no meeple');
+    }
+    const type = faceOf(fx.data, b).activationType;
+    if (type === null) throw new Error(`${building} has no activation type`);
+    if (fx.state.turn.firedThisTurn.includes(building)) {
+      throw new Error(`${building} has already fired this turn`);
+    }
+    markFired(fx, building);
+    handlerFor(building)?.activate?.(fx, { seat, card: building });
+    return;
+  }
   if (mods.coinGrow === true) {
     if (!coinPaysGrow(fx.data)) {
       throw new Error('A coin pays for a GROW only under rules.economy.coinPaysGrow');

@@ -1,0 +1,28 @@
+{
+  "name": "dairy-grow-built-paid-v1",
+  "description": "⭐ DEAN'S DAIRY EXPERIMENT (12/09/2026), arm paid. Build, then immediately GROW the building just built, PAYING a matching activation card as normal. The stack advances, so the clog brake survives and a Tier 3 at threshold 1 jams the instant it is grown. This is a TEMPO rule and not a price cut: nothing about the cost curve moves. ⛔ C100 IS OPEN AND THIS IS AN ARM ON TOP OF AN ARM: the shipped default is still visitCurrency 'commons'. The control is overlays/notice-board-visit-host-draw-by-seats-v1.overlay.json and every one of its twenty passengers is pinned here by name. ⛔ 30 of the 90 deck cards (every Power, every Endgame) have NO threshold and NO activation type, so this clause is DEAD on a third of the deck by construction, which is what stops the Dairy board becoming the cheap route to the Power layer. ⚠️ You may never visit your own board, so a stronger Dairy board is a gift to Dairy's RIVALS; what Dairy gets is traffic, and traffic is fee cards to harvest. ⛔ MAY NOT BE QUOTED: the bonus rate is a share of TURNS and never plays per turn; no level is comparable with a reference-v14 or earlier number; the barn glut reads per-seat, never the pooled median.",
+  "schemaVersion": 1,
+  "set": {
+    "rules.turn.visitCurrency": "noticeBoardPower",
+    "rules.turn.bonusTiming": "start",
+    "rules.turn.selfVisitAllowed": false,
+    "rules.turn.hostDrawOnVisit": 1,
+    "rules.turn.commonsTake": "harvest",
+    "rules.turn.startingMeeplesPerColour": 0,
+    "rules.turn.meepleAsCard": false,
+    "rules.turn.slotToll": null,
+    "rules.turn.meepleCapPerColour": null,
+    "rules.economy.noticeBoardThreshold": 3,
+    "rules.economy.noticeBoardBlocks": false,
+    "rules.economy.unclaimedBoardsToCentre": false,
+    "rules.economy.noticeBoardsBySeats.2": 2,
+    "rules.economy.noticeBoardsBySeats.3": 1,
+    "rules.economy.noticeBoardsBySeats.4": 1,
+    "rules.economy.commonsColourMatch": false,
+    "rules.economy.commonsWildPair": false,
+    "rules.economy.endgameCoinCost": null,
+    "rules.economy.farmsteadCoinPower": false,
+    "rules.turn.hostDrawOnVisitBySeats.4": 0,
+    "rules.economy.noticeBoardPower.dairyGrowsBuilt": "paid"
+  }
+}

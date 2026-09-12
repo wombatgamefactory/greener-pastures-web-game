@@ -608,12 +608,21 @@ export type Task =
       src: CardId | null;
       /** "You may GROW": a skip answer is offered. Nothing passes it today. */
       optional?: boolean;
+      /** Dean's Dairy experiment (12/09/2026): the only legal target. */
+      target?: CardId;
+      /** Dean's Dairy experiment, 'paidWild': the activation card may be any crop. */
+      wildActivation?: boolean;
     }
   | {
       /** A full Build action mid-effect (the Build Worker). Answers come from the same enumerator as the Build move. */
       t: 'build';
       pid: Seat;
       src: CardId | null;
+      /**
+       * ⭐ DEAN'S DAIRY EXPERIMENT (12/09/2026): what happens immediately after
+       * this Build resolves. Absent under every shipped rule.
+       */
+      thenGrow?: 'paid' | 'paidWild' | 'free';
       /**
        * The modifiers this build runs under: the cream balloon's and Dairy's
        * discounts, the Builder's Yard's crop waiver, D7's stack payment. Absent
