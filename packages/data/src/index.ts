@@ -34,6 +34,7 @@ import type {
   DoorAction,
   GameData,
   IslandFile,
+  MeepleSpendTiming,
   RulesFile,
   WorkersFile,
 } from './types.js';
@@ -555,6 +556,138 @@ export function farmsteadCoinPower(data: GameData): boolean {
 }
 
 /**
+ * ⭐ THE VILLAGE STORE'S MINT, AND THERE IS EXACTLY ONE (V1, Dean 12/09/2026,
+ * A150): coins taken per ADDITIONAL barn card spent at a delivery. One accessor,
+ * so "what does a converted card pay" is asked in exactly one spelling across
+ * the engine, the bots and the sim.
+ *
+ * ⛔ 0 IS THE SHIPPED VALUE AND IT IS THE WHOLE OFF SWITCH: nothing in the game
+ * mints a coin. Every coin economy this project has had died of a SECOND faucet
+ * or a pity rate, so this being the only mint is a property to preserve.
+ *
+ * The rule: the cards are spent FROM THE BARN (V2) and the exchange resolves
+ * AFTER the crate is paid (V3), so a player can never convert the cards the
+ * delivery itself needs. ⛔ And it must not be built as a subset enumeration -
+ * see `rules.economy.storeCoinsPerCard` for the power-set trap and the repeated
+ * binary choice that avoids it.
+ *
+ * ⚠️ `coinEconomy()` in `packages/engine/src/setup.ts` must be extended to
+ * include this above 0, or the wallet will not exist when the Store is on.
+ */
+export function storeCoinsPerCard(data: GameData): number {
+  return data.rules.economy.storeCoinsPerCard;
+}
+
+/**
+ * ⭐ THE SHARED COIN SUPPLY, PER SEAT (V4, Dean 12/09/2026, A150). The pool is
+ * this times the number of players: the arm's 5 is 10 coins at two seats and 20
+ * at four, shared, with NO per-player holding cap, and spent coins return to it
+ * (V5).
+ *
+ * Shipped 0, which is inert twice over: there is no pool, and with
+ * `storeCoinsPerCard` also 0 there is nothing to put in one.
+ *
+ * ⭐ THE BOUND IS WHAT MAKES THE MINT SAFE: never more than this times seats
+ * conversions exist in the whole game, however big a barn gets.
+ *
+ * ⚠️ Left as a per-seat number rather than a resolved pool because seats are not
+ * a property of `GameData`; the multiplication belongs to whoever knows the seat
+ * count, exactly as `meeplesDealt(data, seats)` does it.
+ */
+export function coinSupplyPerPlayer(data: GameData): number {
+  return data.rules.economy.coinSupplyPerPlayer;
+}
+
+/**
+ * ⭐ MAY A COIN PAY A BUILD COST (V6, Dean 12/09/2026, A150)? Shipped false, and
+ * meaningless where nothing mints a coin. Power and Endgame cards are included
+ * (V7), so two coins buys one.
+ *
+ * ⛔ SEPARATE FROM `coinPaysGrow` BECAUSE THEY ARE TWO DIFFERENT BETS: Build
+ * converts barn into tableau, Grow converts barn into repeatable abilities. An
+ * arm that bundles them cannot say which one moved the numbers.
+ *
+ * ⚠️ It is the branching risk of the package: coins must enter the payment
+ * enumerator as a COUNT and never as a choice of which coins, because they are
+ * fungible.
+ */
+export function coinPaysBuild(data: GameData): boolean {
+  return data.rules.economy.coinPaysBuild;
+}
+
+/**
+ * ⭐ MAY A COIN PAY A BUILD COST'S n-OF-SUIT REQUIREMENT, and not only its wild
+ * slots (the second half of V6, Dean 12/09/2026)? Shipped false. Three coins
+ * paying "2 apples and a wild" is this leaf and not `coinPaysBuild`.
+ *
+ * ⛔ READ IT WITH `coinPaysBuild`, NEVER INSTEAD OF IT: a coin that pays a suit
+ * requirement but not a build is not a rule anybody has proposed. The split
+ * exists because "coins pay wild costs only" and "coins pay everything" are
+ * meaningfully different games and it is one run to find out.
+ *
+ * ⭐ It is also the first thing proposed that pushes against the monoculture
+ * pull, so the own-crop build share (near 83% since v31) is a reading this leaf
+ * owns rather than a background number.
+ */
+export function coinPaysSuitCost(data: GameData): boolean {
+  return data.rules.economy.coinPaysSuitCost;
+}
+
+/**
+ * ⭐ MAY A COIN PAY A GROW'S ACTIVATION (V8, Dean 12/09/2026, A150)? Shipped
+ * false. ⛔ THE COIN PLACES NOTHING, so the building does not advance toward its
+ * threshold and never clogs, placement triggers do not fire (A16) and A21 does
+ * not count a building held empty this way - but the building's "when activated"
+ * ability DOES fire, because that is the whole point of a Grow (D5).
+ *
+ * ⚠️ Whether a FULL building is a legal target is a second question and a second
+ * leaf: ask `coinGrowReachesFullBuildings`, never `coinGrowOnFullBuilding`.
+ */
+export function coinPaysGrow(data: GameData): boolean {
+  return data.rules.economy.coinPaysGrow;
+}
+
+/**
+ * The BASE value of V9: may a coin-Grow target a full building?
+ * (`rules.economy.coinGrowOnFullBuilding`, shipped false.)
+ *
+ * ⛔ **THIS IS NOT THE ANSWER AND NO BRANCH OF PLAY MAY READ IT.** Ask
+ * `coinGrowReachesFullBuildings(data)`, which carries the precedence. This
+ * accessor is kept for the same reason `hostDrawOnVisit` is kept beside
+ * `hostDrawOnVisitAt`: the base value is a real thing to read in a knob
+ * description or a report header, and nowhere else.
+ */
+export function coinGrowOnFullBuilding(data: GameData): boolean {
+  return data.rules.economy.coinGrowOnFullBuilding;
+}
+
+/**
+ * ⭐ CAN A COIN-GROW REACH A FULL BUILDING RIGHT NOW, AND THIS IS THE ONE
+ * SPELLING EVERY RULE MUST ASK IN (the engine, the bots and the sim alike).
+ *
+ * ⛔ **THE PRECEDENCE RULE, WRITTEN ONCE AND NOWHERE ELSE: V9 IS MEANINGLESS
+ * WITHOUT V8.** A full-building Grow that no coin can pay for is not a rule at
+ * all, so `coinGrowOnFullBuilding` answers true here only when `coinPaysGrow` is
+ * also on. A check that reads the raw leaf is right until somebody runs
+ * `overlays/village-store-coins-build-only-v1.overlay.json` and then silently
+ * wrong, which is the `hostGift` seam of 12/09/2026 - a term reading a rule off
+ * the wrong accessor and pricing a decision that could not happen.
+ *
+ * ⭐ WHAT IT TURNS ON IS THE STRONGEST CLAUSE IN THE PACKAGE: the first clog
+ * bypass in this game since the meeples, ruled in deliberately (Dean,
+ * 12/09/2026). ⚠️ A MEEPLE GROW IS THE OPPOSITE and the two differ on purpose
+ * (M8): it places its activation card as normal and CAN clog.
+ *
+ * ⚠️ `isFull` and `isHarvestable` stopped being the same boolean on 10/09/2026
+ * (S8), so the caller still has to decide which one a Grow's legality wants.
+ * This function answers whether the RULE is on, never whether a given building
+ * qualifies.
+ */
+export function coinGrowReachesFullBuildings(data: GameData): boolean {
+  return data.rules.economy.coinPaysGrow && data.rules.economy.coinGrowOnFullBuilding;
+}
+
+/**
  * Does a `commonsTake` land its pile in the taker's HAND? True under both
  * `'bonus'` (free) and `'paid'` (one card discarded first) - the two values
  * whose take is an uncomplicated whole-pile move to hand, told apart only by
@@ -673,6 +806,125 @@ export function meepleIndexForSpace(data: GameData, space: number): number {
   if (isCommons(data)) return -1;
   if (!isMeepleCurrency(data)) return space;
   return data.island.meeples.seededSpaces.indexOf(space);
+}
+
+/**
+ * The BASE value of M1: which delivery space carries a meeple at setup
+ * (`rules.turn.deliveryMeepleSpace`, shipped `null`).
+ *
+ * ⛔ **THIS IS NOT THE ANSWER AND NO BRANCH OF PLAY MAY READ IT.** Ask
+ * `tileMeepleSpaces(data)`, which carries the precedence. Kept for the same
+ * reason `hostDrawOnVisit` is kept beside `hostDrawOnVisitAt`: a knob
+ * description and a report header are real things to read, and nothing else is.
+ *
+ * ⛔ AND `null` DOES NOT MEAN "NO MEEPLES" - it means "defer to the seeding
+ * already in `meeplesPerTile`". A reader who takes the raw null for "none" has
+ * the rule backwards.
+ */
+export function deliveryMeepleSpace(data: GameData): number | null {
+  return data.rules.turn.deliveryMeepleSpace;
+}
+
+/**
+ * ⭐ WHICH DELIVERY SPACES OF ONE TILE CARRY A MEEPLE AT SETUP, AND THIS IS THE
+ * ONE SPELLING EVERY RULE MUST ASK IN. One entry per meeple, so a space seeded
+ * twice appears twice and `.length` is the count.
+ *
+ * ⛔ **THE PRECEDENCE RULE, WRITTEN ONCE AND NOWHERE ELSE: A NON-NULL
+ * `rules.turn.deliveryMeepleSpace` WINS OUTRIGHT AND SEEDS EXACTLY ONE MEEPLE ON
+ * THAT SPACE; `null` DEFERS ENTIRELY TO THE EXISTING `meeplesPerTile` SEEDING.**
+ * `null` is the shipped value and it is NOT "no meeples": the commons and the
+ * notice-board visit seed none, the v31 control seeds one per delivery space and
+ * the meeple loop seeds `island.meeples.seededSpaces`. M1's `1` is the 3 VP
+ * second delivery and never index 0.
+ *
+ * ⛔ **AN OUT-OF-RANGE OVERRIDE SEEDS NOTHING RATHER THAN THROWING**, matching
+ * the filter `meeplesPerTile` already applies to `seededSpaces`: the knob is a
+ * free integer, and a tile has only `deliveriesPerTile` spaces.
+ *
+ * ⚠️ **IT DOES NOT YET REPLACE `meeplesPerTile` OR `meepleIndexForSpace`, AND
+ * THAT IS DELIBERATE FOR ONE PASS ONLY.** While the knob is null this function
+ * agrees with `meeplesPerTile` by construction (`.length` is the same number),
+ * but it does NOT agree with `meepleIndexForSpace` under
+ * `visitCurrency: 'noticeBoardPower'`, where that function answers `space`
+ * (the identity) for a game `meeplesPerTile` says seeds NOTHING. That
+ * disagreement predates this leaf and is not a thing to fix inside a slice whose
+ * whole claim is inertness; re-pointing both onto this function, and settling
+ * which of the two is right, is engine work owed.
+ */
+export function tileMeepleSpaces(data: GameData): readonly number[] {
+  const spaces = deliveriesPerTile(data);
+  const only = data.rules.turn.deliveryMeepleSpace;
+  if (only !== null) return only >= 0 && only < spaces ? [only] : [];
+  // The null branch reproduces `meeplesPerTile` exactly, asked as "which
+  // spaces" rather than "how many". Its zero cases (the commons and the
+  // notice-board visit) are read off that function rather than re-derived, so a
+  // fifth `visitCurrency` cannot answer one thing here and another there.
+  if (meeplesPerTile(data) === 0) return [];
+  if (isMeepleCurrency(data)) {
+    return data.island.meeples.seededSpaces.filter((i) => i >= 0 && i < spaces);
+  }
+  const seeded: number[] = [];
+  for (let space = 0; space < spaces; space += 1) {
+    for (let n = 0; n < data.island.meeples.perDeliverySpace; n += 1) seeded.push(space);
+  }
+  return seeded;
+}
+
+/**
+ * ⭐ WHEN A HELD MEEPLE MAY BE SPENT (M4, Dean 12/09/2026, A151). One accessor,
+ * so "which phase is the meeple spend" is asked in one spelling.
+ *
+ * ⛔ **`'start'` IS THE SHIPPED VALUE AND IT IS THE CURRENT BEHAVIOUR, NOT AN
+ * OFF SWITCH.** The v31 control spends meeples at the start of the turn
+ * (`meepleOptions` in the engine, and `turnflow.ts`'s own header) and
+ * `packages/sim/fixtures/2p-v31-opening.json` replays against it, so `'none'`
+ * would delete a live phase rather than change nothing. `'afterAction'` is M4's
+ * arm: the spend moves to after the main action, the meeple buys the PLAIN
+ * action of its colour, and it then leaves the game.
+ */
+export function meepleSpendTiming(data: GameData): MeepleSpendTiming {
+  return data.rules.turn.meepleSpendTiming;
+}
+
+/**
+ * ⭐ HOW MANY MEEPLES ONE SEAT MAY SPEND IN A TURN (M5, Dean 12/09/2026, A151),
+ * or `null` for UNLIMITED, which is the shipped value and the game as it plays
+ * today.
+ *
+ * ⛔ **`null` IS "NO RULE HERE" AND `0` WOULD BE "NO SPEND AT ALL".** That is the
+ * established idiom of `commonsThreshold`, `commonsHarvestTake` and
+ * `meepleCapPerColour`, and it is why this ships null rather than the 0 the
+ * build handoff's table asked for: there is no per-turn cap in the game today,
+ * so 0 would delete the v31 control's phase.
+ *
+ * ⚠️ The arm is 1, which is Dean's ruling, and C112 asks for it to be run
+ * against `meepleSpendDistinctColours` instead. The two are orthogonal leaves.
+ */
+export function meepleSpendPerTurn(data: GameData): number | null {
+  return data.rules.turn.meepleSpendPerTurn;
+}
+
+/**
+ * ⭐ C112'S ALTERNATIVE TO THE PER-TURN CAP: may no two meeples spent in one
+ * turn share a colour? Shipped `false`, which is inert because no such
+ * restriction exists today.
+ *
+ * ⛔ A SECOND LEAF RATHER THAN A MAGIC VALUE OF `meepleSpendPerTurn`, because
+ * "no two of the same colour" is not expressible as an integer and because
+ * re-pointing a published quantity at a rule of a different shape is a mistake
+ * this project has paid for twice (a17 on 09/09/2026, the meeple cap on
+ * 05/09/2026). `meepleSpendPerTurn` keeps meaning HOW MANY; this says WHICH ONES
+ * MAY BE COMBINED.
+ *
+ * ⚠️ The two arms C112 wants are one run apart: the rule as ruled is
+ * `meepleSpendPerTurn` 1 with this false, and the variant is
+ * `meepleSpendPerTurn` null with this true. The cap of 1 removes exactly the
+ * combo burst Dean's own table enjoyed on 11/09/2026, which is why the
+ * alternative has to be measured rather than argued.
+ */
+export function meepleSpendDistinctColours(data: GameData): boolean {
+  return data.rules.turn.meepleSpendDistinctColours;
 }
 
 /** Cards actually in the game: the enable flag applied. */

@@ -46,6 +46,22 @@ const PAYMENT_HOST_VALUES = new Set(['perMeeple', 'perPayment']);
 const MEEPLE_DESTINATION_VALUES = new Set(['box', 'board']);
 
 /**
+ * The closed value set behind `meepleSpendTiming` (M4, Dean 12/09/2026), kept
+ * here for the same reason as `BONUS_TIMING_VALUES`.
+ *
+ * ⛔ `'start'` IS THE SHIPPED VALUE AND `'none'` IS NOT THE BASE, which is the
+ * one thing to know before touching this set: the v31 control spends meeples at
+ * the START of the turn and a fixture replays against it, so `'none'` would
+ * delete a live phase rather than change nothing. `'afterAction'` is the
+ * delivery meeple's arm. See `rules.turn.meepleSpendTiming`.
+ */
+const MEEPLE_SPEND_TIMING_VALUES: ReadonlySet<string> = new Set<string>([
+  'none',
+  'start',
+  'afterAction',
+]);
+
+/**
  * The closed value set behind `visitCurrency`, kept here for the same reason as
  * `BONUS_TIMING_VALUES`.
  *
@@ -195,6 +211,8 @@ function typeMatches(type: KnobType, value: Leaf): boolean {
       return typeof value === 'string' && VISIT_CURRENCY_VALUES.has(value);
     case 'meepleDestination':
       return typeof value === 'string' && MEEPLE_DESTINATION_VALUES.has(value);
+    case 'meepleSpendTiming':
+      return typeof value === 'string' && MEEPLE_SPEND_TIMING_VALUES.has(value);
     case 'paymentHostChoice':
       return typeof value === 'string' && PAYMENT_HOST_VALUES.has(value);
     case 'balloonReward':

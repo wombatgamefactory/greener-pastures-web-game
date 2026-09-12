@@ -43,6 +43,12 @@ import {
   SUITS,
   activeCards,
   applyOverlay,
+  coinGrowOnFullBuilding,
+  coinGrowReachesFullBuildings,
+  coinPaysBuild,
+  coinPaysGrow,
+  coinPaysSuitCost,
+  coinSupplyPerPlayer,
   commonsHarvestReachesCentre,
   commonsTakeGoesToHand,
   commonsTakeLeavesTheGame,
@@ -50,6 +56,7 @@ import {
   deadTemplates,
   deliveriesPerTile,
   deliveryCost,
+  deliveryMeepleSpace,
   deliveryVp,
   doorActionForSuit,
   doorForSuit,
@@ -65,10 +72,15 @@ import {
   listKnobs,
   loadGameData,
   meepleAction,
+  meepleSpendDistinctColours,
+  meepleSpendPerTurn,
+  meepleSpendTiming,
   meeplesDealt,
   meeplesPerTile,
   noticeBoardBlocks,
   noticeBoardsPerSeat,
+  storeCoinsPerCard,
+  tileMeepleSpaces,
   unclaimedBoardsToCentre,
   validateOverlay,
 } from './index.js';
@@ -211,6 +223,18 @@ describe('the extract', () => {
 // the guard's job is no longer "no coin may exist" but "the shipped game has
 // none, and the arm's surface is exactly these two leaves and no third" - which
 // is the assertion that would catch a faucet arriving.
+//
+// ⭐ AND THERE ARE NOW TWO COIN ECONOMIES ON THE SURFACE, NOT ONE (12/09/2026,
+// ledger A150, `docs/village-store-coins-2026-09-12-v2.md`). The VILLAGE STORE
+// is a second, separate arm with its own single mint - one coin per additional
+// barn card spent at a delivery (`storeCoinsPerCard`, V1) - its own shared
+// supply (`coinSupplyPerPlayer`, V4) and its own two sinks split into four
+// switches (`coinPaysBuild`, `coinPaysSuitCost`, `coinPaysGrow`,
+// `coinGrowOnFullBuilding`, V6 to V9). ⛔ THE INVARIANT THE LISTS BELOW ENFORCE
+// IS UNCHANGED AND IS THE ONLY ONE THAT MATTERS: every coin leaf is named
+// literally, so a NINTH one cannot creep in behind a passing test, and each
+// economy has EXACTLY ONE MINT. Two arms with one mint each is not the failure;
+// two mints in one arm is, and so is a pity rate.
 describe('coins are an arm, not the shipped game', () => {
   const COIN = /coin/i;
 
@@ -230,20 +254,33 @@ describe('coins are an arm, not the shipped game', () => {
     expect(farmsteadCoinPower(BASE_GAME_DATA)).toBe(false);
     expect(BASE_GAME_DATA.rules.economy.endgameCoinCost).toBeNull();
     expect(endgameCoinCost(BASE_GAME_DATA)).toBeNull();
+    // The Village Store's own mint, supply and four sink switches (A150).
+    expect(storeCoinsPerCard(BASE_GAME_DATA)).toBe(0);
+    expect(coinSupplyPerPlayer(BASE_GAME_DATA)).toBe(0);
+    expect(coinPaysBuild(BASE_GAME_DATA)).toBe(false);
+    expect(coinPaysSuitCost(BASE_GAME_DATA)).toBe(false);
+    expect(coinPaysGrow(BASE_GAME_DATA)).toBe(false);
+    expect(coinGrowReachesFullBuildings(BASE_GAME_DATA)).toBe(false);
   });
 
-  // Listed LITERALLY rather than by count, so a third coin leaf cannot creep in
-  // unnoticed behind a passing test. Two of the three are the arm's switches and
-  // the third is a tombstone pinned at 0.
-  it("names no coin anywhere in the data, bar the tombstone and the arm's two switches", () => {
+  // Listed LITERALLY rather than by count, so a NINTH coin leaf cannot creep in
+  // unnoticed behind a passing test. One is a tombstone pinned at 0, two are the
+  // commons-with-coins arm's switches, and six are the Village Store's.
+  it("names no coin anywhere in the data, bar the tombstone and the two arms' switches", () => {
     const offenders = [...flatten(BASE_GAME_DATA).keys()]
       .filter((path) => COIN.test(path))
       .filter((path) => !path.startsWith(BALLOON_ID))
       .sort();
     expect(offenders).toEqual([
       'island.tileRule.coinsPerDelivery',
+      'rules.economy.coinGrowOnFullBuilding',
+      'rules.economy.coinPaysBuild',
+      'rules.economy.coinPaysGrow',
+      'rules.economy.coinPaysSuitCost',
+      'rules.economy.coinSupplyPerPlayer',
       'rules.economy.endgameCoinCost',
       'rules.economy.farmsteadCoinPower',
+      'rules.economy.storeCoinsPerCard',
     ]);
     // ⛔ THE TOMBSTONE IS STILL PINNED AT 0 AND IS NOT A FAUCET. The v31 plan
     // named the key rather than deleting it; island delivery pays VP and has
@@ -257,13 +294,23 @@ describe('coins are an arm, not the shipped game', () => {
   });
 
   // The registry is the other surface a coin could arrive on, and the same
-  // literal listing applies: these two are SINKS, and there must never be a
-  // third knob here or a knob that MINTS one. The mint is `commonsTake`, which
-  // does not match /coin/i and is asserted above by value.
-  it('offers exactly two coin knobs, and both of them are sinks', () => {
+  // literal listing applies. ⛔ EXACTLY ONE OF THESE EIGHT IS A MINT
+  // (`storeCoinsPerCard`, the Village Store's, V1); one is a supply; and the
+  // other six are SINKS. The commons-with-coins arm's own mint is
+  // `commonsTake: 'coins'`, which does not match /coin/i and is asserted above
+  // by value. A second faucet inside either arm is what every coin economy in
+  // this project has died of, so a ninth entry here needs a ruling and not a
+  // tuning.
+  it('offers eight coin knobs, exactly one of which is a mint', () => {
     expect(KNOB_TEMPLATES.filter((t) => COIN.test(t.template)).map((t) => t.template)).toEqual([
       'rules.economy.endgameCoinCost',
       'rules.economy.farmsteadCoinPower',
+      'rules.economy.storeCoinsPerCard',
+      'rules.economy.coinSupplyPerPlayer',
+      'rules.economy.coinPaysBuild',
+      'rules.economy.coinPaysSuitCost',
+      'rules.economy.coinPaysGrow',
+      'rules.economy.coinGrowOnFullBuilding',
     ]);
   });
 
@@ -1039,6 +1086,200 @@ describe('the host draw on a visit', () => {
     expect(differing).toEqual(['rules.turn.hostDrawOnVisit']);
     expect(controlLeaves.get('rules.turn.hostDrawOnVisit')).toBe(0);
     expect(armLeaves.get('rules.turn.hostDrawOnVisit')).toBe(1);
+  });
+});
+
+/**
+ * ⭐ THE VILLAGE STORE COIN AND THE DELIVERY MEEPLE (Dean, 12/09/2026, ledger
+ * A150 and A151), AS TEN LEAVES AT SHIPPED-OFF VALUES AND NOTHING ELSE.
+ *
+ * ⛔ THE WHOLE CLAIM OF THIS SLICE IS INERTNESS, so these tests assert the
+ * shipped VALUES rather than the rules: nothing in the engine reads any of them
+ * yet, and the thing that would go wrong is a leaf shipping at a value that
+ * quietly changes the game or a named control.
+ *
+ * ⛔ AND THREE OF THE TEN SHIP AT A VALUE THE BUILD HANDOFF GOT WRONG, which is
+ * what most of this block is here to pin. `meepleSpendTiming` ships `'start'`
+ * and not `'none'`, `meepleSpendPerTurn` ships `null` and not `0`, and
+ * `deliveryMeepleSpace`'s `null` means "defer to the existing seeding" and not
+ * "no meeples". The first two would delete the v31 control's turn-start meeple
+ * spend, which `packages/sim/fixtures/2p-v31-opening.json` replays against.
+ */
+describe('the village store coin and the delivery meeple', () => {
+  // Every leaf, its shipped value and its accessor, in one table so a future
+  // edit that flips one has to flip a line here as well.
+  it('ships all ten leaves at the value that changes nothing', () => {
+    expect(BASE_GAME_DATA.rules.economy.storeCoinsPerCard).toBe(0);
+    expect(storeCoinsPerCard(BASE_GAME_DATA)).toBe(0);
+    expect(BASE_GAME_DATA.rules.economy.coinSupplyPerPlayer).toBe(0);
+    expect(coinSupplyPerPlayer(BASE_GAME_DATA)).toBe(0);
+    expect(coinPaysBuild(BASE_GAME_DATA)).toBe(false);
+    expect(coinPaysSuitCost(BASE_GAME_DATA)).toBe(false);
+    expect(coinPaysGrow(BASE_GAME_DATA)).toBe(false);
+    expect(coinGrowOnFullBuilding(BASE_GAME_DATA)).toBe(false);
+
+    expect(deliveryMeepleSpace(BASE_GAME_DATA)).toBeNull();
+    expect(meepleSpendTiming(BASE_GAME_DATA)).toBe('start');
+    expect(meepleSpendPerTurn(BASE_GAME_DATA)).toBeNull();
+    expect(meepleSpendDistinctColours(BASE_GAME_DATA)).toBe(false);
+
+    // The shipped game is still the commons and nothing here moved it.
+    expect(isCommons(BASE_GAME_DATA)).toBe(true);
+  });
+
+  it('registers all ten as knobs of the right type', () => {
+    const byPath = new Map(listKnobs(BASE_GAME_DATA).map((k) => [k.path, k.type]));
+    const expected: Readonly<Record<string, string>> = {
+      'rules.economy.storeCoinsPerCard': 'int',
+      'rules.economy.coinSupplyPerPlayer': 'int',
+      'rules.economy.coinPaysBuild': 'boolean',
+      'rules.economy.coinPaysSuitCost': 'boolean',
+      'rules.economy.coinPaysGrow': 'boolean',
+      'rules.economy.coinGrowOnFullBuilding': 'boolean',
+      'rules.turn.deliveryMeepleSpace': 'intOrNull',
+      'rules.turn.meepleSpendTiming': 'meepleSpendTiming',
+      'rules.turn.meepleSpendPerTurn': 'intOrNull',
+      'rules.turn.meepleSpendDistinctColours': 'boolean',
+    };
+    for (const [path, type] of Object.entries(expected)) {
+      expect(byPath.get(path), path).toBe(type);
+    }
+  });
+
+  // ⭐ AN INT AND NOT A BOOL IN BOTH CASES, so the rate and the pool can be
+  // swept later without another knob.
+  it('takes the arm values through an overlay and refuses the wrong shapes', () => {
+    const armed = loadGameData(
+      overlay({
+        'rules.economy.storeCoinsPerCard': 1,
+        'rules.economy.coinSupplyPerPlayer': 5,
+        'rules.economy.coinPaysBuild': true,
+        'rules.economy.coinPaysSuitCost': true,
+        'rules.economy.coinPaysGrow': true,
+        'rules.economy.coinGrowOnFullBuilding': true,
+      }),
+    );
+    expect(storeCoinsPerCard(armed)).toBe(1);
+    expect(coinSupplyPerPlayer(armed)).toBe(5);
+    expect(coinPaysSuitCost(armed)).toBe(true);
+
+    expect(() =>
+      validateOverlay(overlay({ 'rules.economy.storeCoinsPerCard': true }), BASE_GAME_DATA),
+    ).toThrow(/is int/);
+    expect(() =>
+      validateOverlay(overlay({ 'rules.economy.coinPaysGrow': 1 }), BASE_GAME_DATA),
+    ).toThrow(/is boolean/);
+  });
+
+  // ⛔ THE PRECEDENCE RULE, ASSERTED SO IT CANNOT SILENTLY STOP BEING TRUE: V9
+  // is meaningless without V8, and a branch reading the raw leaf would price a
+  // decision that cannot happen under the build-only arm.
+  it('answers the full-building Grow through one accessor and never the raw leaf', () => {
+    expect(coinGrowReachesFullBuildings(BASE_GAME_DATA)).toBe(false);
+
+    const rawOnly = loadGameData(overlay({ 'rules.economy.coinGrowOnFullBuilding': true }));
+    expect(coinGrowOnFullBuilding(rawOnly)).toBe(true);
+    // The raw leaf says yes and the rule says no, which is the whole point.
+    expect(coinGrowReachesFullBuildings(rawOnly)).toBe(false);
+
+    const both = loadGameData(
+      overlay({
+        'rules.economy.coinPaysGrow': true,
+        'rules.economy.coinGrowOnFullBuilding': true,
+      }),
+    );
+    expect(coinGrowReachesFullBuildings(both)).toBe(true);
+
+    // And a coin-Grow that cannot reach a full building is still a coin-Grow.
+    const growOnly = loadGameData(overlay({ 'rules.economy.coinPaysGrow': true }));
+    expect(coinPaysGrow(growOnly)).toBe(true);
+    expect(coinGrowReachesFullBuildings(growOnly)).toBe(false);
+  });
+
+  // ⛔ null IS "DEFER TO THE EXISTING SEEDING" AND NOT "NO MEEPLES". Checked
+  // against `meeplesPerTile` in every currency, because that is the function the
+  // island actually seeds from and the two must not drift.
+  it('defers to the existing island seeding while deliveryMeepleSpace is null', () => {
+    for (const currency of ['commons', 'card', 'meeple', 'noticeBoardPower'] as const) {
+      const data =
+        currency === 'commons'
+          ? BASE_GAME_DATA
+          : loadGameData(overlay({ 'rules.turn.visitCurrency': currency }));
+      expect(deliveryMeepleSpace(data), currency).toBeNull();
+      expect(tileMeepleSpaces(data).length, currency).toBe(meeplesPerTile(data));
+    }
+
+    // The commons and the notice-board visit seed none; the v31 control seeds
+    // one per delivery space; the meeple loop seeds the 3 VP space alone.
+    expect(tileMeepleSpaces(BASE_GAME_DATA)).toEqual([]);
+    expect(tileMeepleSpaces(loadGameData(overlay({ 'rules.turn.visitCurrency': 'card' })))).toEqual(
+      [0, 1],
+    );
+    expect(
+      tileMeepleSpaces(loadGameData(overlay({ 'rules.turn.visitCurrency': 'meeple' }))),
+    ).toEqual([1]);
+  });
+
+  // M1: exactly one meeple, on delivery space index 1 and never index 0. The
+  // override wins over the currency, which is what makes it a rule rather than
+  // a hint.
+  it('lets M1 override the seeding outright, and seeds nothing off the end of a tile', () => {
+    const m1 = loadGameData(overlay({ 'rules.turn.deliveryMeepleSpace': 1 }));
+    expect(tileMeepleSpaces(m1)).toEqual([1]);
+    expect(
+      tileMeepleSpaces(loadGameData(overlay({ 'rules.turn.deliveryMeepleSpace': 0 }))),
+    ).toEqual([0]);
+    // A tile has `deliveriesPerTile` spaces and the knob is a free integer, so
+    // an out-of-range value seeds nothing rather than throwing - the same filter
+    // `meeplesPerTile` already applies to `island.meeples.seededSpaces`.
+    expect(deliveriesPerTile(BASE_GAME_DATA)).toBe(2);
+    expect(
+      tileMeepleSpaces(loadGameData(overlay({ 'rules.turn.deliveryMeepleSpace': 2 }))),
+    ).toEqual([]);
+  });
+
+  // ⛔ 'start' IS THE CURRENT BEHAVIOUR AND THEREFORE THE INERT VALUE. 'none'
+  // would delete the v31 control's turn-start meeple spend, and a fixture
+  // replays against it.
+  it("ships the meeple spend window at 'start', with 'none' reachable but not shipped", () => {
+    expect(meepleSpendTiming(BASE_GAME_DATA)).toBe('start');
+
+    for (const value of ['none', 'start', 'afterAction'] as const) {
+      expect(() =>
+        validateOverlay(overlay({ 'rules.turn.meepleSpendTiming': value }), BASE_GAME_DATA),
+      ).not.toThrow();
+    }
+    expect(
+      meepleSpendTiming(loadGameData(overlay({ 'rules.turn.meepleSpendTiming': 'afterAction' }))),
+    ).toBe('afterAction');
+
+    // A closed set, so a fourth timing cannot arrive through an overlay.
+    expect(() =>
+      validateOverlay(overlay({ 'rules.turn.meepleSpendTiming': 'later' }), BASE_GAME_DATA),
+    ).toThrow(/is meepleSpendTiming/);
+  });
+
+  // ⛔ null MEANS UNLIMITED, in the idiom of commonsThreshold and
+  // meepleCapPerColour. 0 would mean "no spend at all", which is a different
+  // rule and would delete a live phase.
+  it('caps the meeple spend at null for unlimited, and keeps C112 as its own leaf', () => {
+    expect(meepleSpendPerTurn(BASE_GAME_DATA)).toBeNull();
+    expect(meepleSpendDistinctColours(BASE_GAME_DATA)).toBe(false);
+
+    // The rule as Dean ruled it.
+    const capped = loadGameData(overlay({ 'rules.turn.meepleSpendPerTurn': 1 }));
+    expect(meepleSpendPerTurn(capped)).toBe(1);
+    expect(meepleSpendDistinctColours(capped)).toBe(false);
+
+    // The C112 variant, which the cap alone cannot express.
+    const distinct = loadGameData(
+      overlay({
+        'rules.turn.meepleSpendPerTurn': null,
+        'rules.turn.meepleSpendDistinctColours': true,
+      }),
+    );
+    expect(meepleSpendPerTurn(distinct)).toBeNull();
+    expect(meepleSpendDistinctColours(distinct)).toBe(true);
   });
 });
 

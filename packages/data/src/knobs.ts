@@ -115,6 +115,34 @@
  * the instrument's bound and the table plays with none, so a run of the arm
  * answers the rate, the glut, the length, the deliveries and the hook and
  * answers NOTHING about whether the game feels less tight.
+ *
+ * ⭐ THE VILLAGE STORE COIN AND THE DELIVERY MEEPLE (Dean, 12/09/2026, ledger
+ * A150 and A151) ADD TEN TEMPLATES, RENAME NOTHING AND DELETE NOTHING, AND
+ * EVERY ONE OF THEM SHIPS AT THE VALUE THAT CHANGES NOTHING. Six are the coin -
+ * `rules.economy.storeCoinsPerCard` and `rules.economy.coinSupplyPerPlayer` are
+ * the mint and its shared supply, and `coinPaysBuild`, `coinPaysSuitCost`,
+ * `coinPaysGrow` and `coinGrowOnFullBuilding` are the two sinks split into four
+ * switches. Four are the meeple - `rules.turn.deliveryMeepleSpace`,
+ * `meepleSpendTiming`, `meepleSpendPerTurn` and `meepleSpendDistinctColours`.
+ *
+ * ⛔ THREE OF THE TEN SHIP AT A VALUE THE BUILD HANDOFF GOT WRONG, AND THE
+ * CORRECTION IS THE POINT OF THE SLICE. `docs/village-store-coins-handoff-2026-09-12-v1.md`
+ * section 3 ships `meepleSpendTiming` at `'none'`, `meepleSpendPerTurn` at `0`
+ * and reads `deliveryMeepleSpace`'s null as "no meeples". All three would have
+ * changed the shipped game: `'none'` and `0` delete the v31 control's
+ * turn-start meeple spend, which `packages/sim/fixtures/2p-v31-opening.json`
+ * replays against, and a null that meant "none" would re-point the island's
+ * seeding. `'start'`, `null` and "defer to `meeplesPerTile()`" are the inert
+ * values, and INERT IS THE ONLY THING A SHIPPED VALUE IS FOR.
+ *
+ * ⛔ AND FOUR SWITCHES FOR TWO SINKS IS THE 05/09/2026 LESSON APPLIED BEFORE THE
+ * FACT. Coins-for-Build and coins-for-Grow are two different bets, the
+ * n-of-suit half is a third question and the full-building clause is the
+ * strongest clause in the package; bundled, an arm that reads badly cannot say
+ * which half did it. ⚠️ Nothing here is a second MINT, which is what every coin
+ * economy in this project has died of: `storeCoinsPerCard` is the only faucet,
+ * and if a future session finds itself adding another, that is the failure
+ * repeating rather than a tuning.
  */
 
 import { flatten } from './paths.js';
@@ -137,8 +165,13 @@ import type { Leaf } from './paths.js';
  *
  * Every string type since has kept that shape: a CLOSED set, defined once in
  * `overlay.ts` beside `typeMatches` so it cannot pass validation on one side of
- * the codebase and fail on the other. `doorAction` (09/09/2026) is the newest -
- * the five core actions plus `grow`, which is the commons Apiary board.
+ * the codebase and fail on the other. `doorAction` (09/09/2026) was the five
+ * core actions plus `grow`, which is the commons Apiary board.
+ *
+ * `meepleSpendTiming` (12/09/2026) is the newest: `'none'`, `'start'` and
+ * `'afterAction'`, the window in which a held meeple may be spent. ⛔ Its
+ * shipped value is `'start'` and NOT `'none'`, because the v31 control spends
+ * meeples at the start of the turn and a fixture replays against it.
  */
 export type KnobType =
   | 'int'
@@ -150,6 +183,7 @@ export type KnobType =
   | 'bonusTiming'
   | 'visitCurrency'
   | 'meepleDestination'
+  | 'meepleSpendTiming'
   | 'paymentHostChoice'
   | 'balloonReward'
   | 'doorAction'
@@ -795,6 +829,113 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'else; the arm overlay pins both sinks, the colour gate, the wild pair, the bonus timing ' +
       'and the currency by name, which is the 05/09/2026 passenger lesson applied.',
   },
+  {
+    template: 'rules.turn.deliveryMeepleSpace',
+    type: 'intOrNull',
+    description:
+      '⭐ M1 OF THE DELIVERY MEEPLE (Dean, ruled 12/09/2026, ledger A151, section 5 of ' +
+      "docs/village-store-coins-2026-09-12-v2.md): WHICH OF A TILE'S DELIVERY SPACES CARRIES A " +
+      'MEEPLE AT SETUP. 1 is the rule as ruled - a random meeple on every 3 VP space, index 1 and ' +
+      'never index 0 - and claiming that space’s receipt claims the meeple. ' +
+      '⛔ null IS THE SHIPPED VALUE AND IT DOES NOT MEAN "NO MEEPLES". It means FALL THROUGH TO ' +
+      'THE EXISTING meeplesPerTile() SEEDING, UNCHANGED: the commons and the notice-board visit ' +
+      'seed none, the v31 control seeds one per delivery space and the meeple loop seeds ' +
+      'island.meeples.seededSpaces. That is the whole of its inertness, and a reader who assumes ' +
+      'null means "none" will read this leaf as already doing half the job when it does none of ' +
+      'it. ' +
+      '⛔ NO BRANCH OF PLAY MAY READ THE RAW LEAF: ask tileMeepleSpaces(data), which carries the ' +
+      'precedence (a non-null value wins outright, null defers to the existing seeding) and is the ' +
+      'one spelling every rule must use, exactly as hostDrawOnVisitAt is for the host draw. ' +
+      '⚠️ AN INDEX RATHER THAN A BOOLEAN, so space 0 can be swept if anybody ever asks. ' +
+      '⭐ THE CLAIM HALF IS ALREADY BUILT, WHICH IS WHY THIS IS ONE LEAF AND NOT A SUBSYSTEM: ' +
+      'IslandTileState.meeples is parallel to deliveredBy BY INDEX, so the seat at deliveredBy[i] ' +
+      'took meeples[i], and Dean’s rule is the 04/09/2026 island seed meeple narrowed to ' +
+      'space 1. ' +
+      '⭐ WHY IT EXISTS: THE ISLAND HAS NO DECISION IN IT. Every tile is mechanically identical, ' +
+      'no levels and no ascending VP, so the only island choice is "take 6 before 3" and it is the ' +
+      'same every time. A random reward on the second space makes taking second a real choice ' +
+      'whose value changes over the game, AND IT RESTORES THE ONLY CATCH-UP TERM THIS DESIGN EVER ' +
+      "HAD, deleted with the island's seed meeple on 09/09/2026 and never replaced. " +
+      '⛔ IT IS NOT THE MEEPLE THAT DIED AT A TABLE ON 09/09/2026 AND THERE IS A NUMBER FOR THAT: ' +
+      'second deliveries are 37.5% of receipts and players make about 4.7 deliveries a game, so ' +
+      'this mints roughly 1.8 meeples per player per game, each EARNED by taking second at a tile, ' +
+      'where the rejected version seeded five per player at setup and the complaint was precisely ' +
+      'that the bonus was always available. overlays/delivery-meeple-v1.overlay.json is the arm.',
+  },
+  {
+    template: 'rules.turn.meepleSpendTiming',
+    type: 'meepleSpendTiming',
+    description:
+      '⭐ WHEN A HELD MEEPLE MAY BE SPENT (M4, Dean 12/09/2026, ledger A151). ' +
+      "'afterAction' is the arm: after your main action you may discard one meeple to take the " +
+      'PLAIN action of its colour, and the meeple then leaves the game. ' +
+      "⛔ IT SHIPS 'start' AND NOT 'none', WHICH DIFFERS FROM SECTION 3 OF " +
+      'docs/village-store-coins-handoff-2026-09-12-v1.md DELIBERATELY AND ON INERTNESS GROUNDS. ' +
+      "'none' would DELETE A PHASE THAT IS LIVE IN A NAMED CONTROL: " +
+      'overlays/v31-card-visit.overlay.json sets startingMeeplesPerColour 1 beside visitCurrency ' +
+      "'card', under which meepleOptions (packages/engine/src/actions.ts) returns a real list and " +
+      "the turn-start spend runs, exactly as turnflow.ts's own header documents the v31 turn " +
+      '("spend any number of MEEPLES, one at a time"), and packages/sim/fixtures/2p-v31-opening.json ' +
+      "replays against it. So 'start' IS the current behaviour and is therefore the inert value, " +
+      "and 'none' stays reachable as a third value for anybody who wants the phase gone. A shipped " +
+      'value that silently changes a control is the 05/09/2026 passenger lesson in a new costume, ' +
+      'and a control that moves is not a control. ' +
+      '⛔ THE PLAIN ACTION AND NEVER THE NOTICE BOARD POWER (M6): the Orchard board is Draw 4 ' +
+      'where the plain action is Draw 2, and the two stopped being the same thing on 10/09/2026. ' +
+      'The colour mapping is wheat Harvest, vegetable Deliver, orchard Draw 2 keep both, apiary ' +
+      'GROW and dairy Build (M7) - GROW AND NOT SOW, because Sow is not a core action and orange ' +
+      'meaning one thing in one place and another elsewhere has cost this project a day before. ' +
+      '⚠️ AND THE ARM REVERSES THE REASON THE BONUS SITS AT THE FRONT: the bonus was moved to the ' +
+      'start of the turn on Dean’s own reasoning that a turn visibly ends on the main action ' +
+      '(C2, 09/09/2026). Mild, because most turns will have no meeple to spend, but it is a direct ' +
+      'tension with a deliberate ruling. ' +
+      '⚠️ TWO ENGINE RULINGS ARE OWED AND NEITHER IS A LEAF: whether the spend is legal on a turn ' +
+      'whose main action was PASSED rather than taken (D7), and whether the standing rule that an ' +
+      'illegal action is not offered applies here, which would make a meeple UNDISCARDABLE (D8, ' +
+      '"yes" indicated).',
+  },
+  {
+    template: 'rules.turn.meepleSpendPerTurn',
+    type: 'intOrNull',
+    description:
+      '⭐ HOW MANY MEEPLES ONE SEAT MAY SPEND IN ONE TURN (M5, Dean 12/09/2026, ledger A151). The ' +
+      "arm is 1, which is Dean's ruling. " +
+      '⛔ null MEANS UNLIMITED AND IS THE SHIPPED VALUE, WHICH ALSO DIFFERS FROM THE HANDOFF’S ' +
+      'TABLE DELIBERATELY: it ships 0, and 0 would delete the phase, because there is no per-turn ' +
+      'cap in the game today (turnflow.ts documents the v31 turn as "spend any number of MEEPLES, ' +
+      'one at a time"). null is the established idiom of commonsThreshold, commonsHarvestTake and ' +
+      'meepleCapPerColour, where null is "no rule here" rather than "zero of it". ' +
+      '⚠️ THE CAP OF 1 REMOVES THE THING DEAN’S OWN TABLE ENJOYED, WHICH IS WHY C112 EXISTS. ' +
+      'It was adopted against a branching-explosion worry, and the worry shrank when it was ' +
+      'measured: at about 1.8 meeples a player a game, "as many as you like" almost never means ' +
+      'more than two, while the combo burst is what the 11/09/2026 table liked. ' +
+      '⛔ AND IT CANNOT REACH C112’S ALTERNATIVE ON ITS OWN. "No two of the same colour" is ' +
+      'not an integer, so it is rules.turn.meepleSpendDistinctColours, a second leaf, and the two ' +
+      'are orthogonal: the arm as ruled is 1 with that false, the C112 variant is null with that ' +
+      'true. ⚠️ Read either against actions per turn, which passes at only 1.61 against a target ' +
+      'of 1.5 and to which every meeple spent adds an action.',
+  },
+  {
+    template: 'rules.turn.meepleSpendDistinctColours',
+    type: 'boolean',
+    description:
+      "⭐ C112'S ALTERNATIVE TO THE PER-TURN CAP: MAY NO TWO MEEPLES SPENT IN ONE TURN SHARE A " +
+      'COLOUR? SHIPPED false, which is inert, because no such restriction exists today. ' +
+      '⛔ IT IS A SECOND LEAF RATHER THAN A MAGIC VALUE OF rules.turn.meepleSpendPerTurn, AND THAT ' +
+      'IS DELIBERATE. "No two of the same colour" is not expressible as an integer, so the cap ' +
+      'alone cannot reach it, and re-pointing the cap at a rule of a different shape would ' +
+      'redefine a published quantity underneath its own readings - which this project has paid ' +
+      'for twice (a17 judged on plays per turn, 09/09/2026; the meeple cap that shipped as a ' +
+      'passenger, 05/09/2026). meepleSpendPerTurn keeps meaning HOW MANY; this says WHICH ONES MAY ' +
+      'BE COMBINED. ' +
+      '⭐ THE TWO ARMS C112 ASKS FOR, one run apart: the rule as Dean ruled it is ' +
+      'meepleSpendPerTurn 1 with this false, and the C112 variant is meepleSpendPerTurn null with ' +
+      'this true (overlays/delivery-meeple-distinct-colours-v1.overlay.json). ' +
+      '⚠️ WHY IT HAS TO BE MEASURED RATHER THAN ARGUED: the cap of 1 removes exactly the combo ' +
+      "burst Dean's own table enjoyed on 11/09/2026, and a table finding discarded on a manager's " +
+      'say-so is worth less than a run. ⚠️ Read it beside actions per turn (1.61 against a target ' +
+      'of 1.5) and beside the branching bench, since it is the looser of the two rules.',
+  },
 
   // --- Economy -------------------------------------------------------------
   {
@@ -1204,6 +1345,149 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'how the centre feeds a barn, and at n=1 the centre also becomes a slower faucet for ' +
       'everybody rather than a fat prize for whoever harvests first, which is a different game ' +
       'and not only a different number. overlays/commons-take-1 and -2 are the arms.',
+  },
+  {
+    template: 'rules.economy.storeCoinsPerCard',
+    type: 'int',
+    description:
+      '⭐ THE VILLAGE STORE’S MINT, AND THERE IS EXACTLY ONE (V1, Dean ruled 12/09/2026, ledger ' +
+      'A150, docs/village-store-coins-2026-09-12-v2.md): COINS TAKEN PER ADDITIONAL BARN CARD ' +
+      'SPENT AT A DELIVERY. The arm is 1. ' +
+      '⛔ 0 IS THE SHIPPED VALUE AND IT IS THE WHOLE OFF SWITCH: NOTHING IN THE GAME MINTS A COIN. ' +
+      'Every coin economy this project has had died of a SECOND faucet or a pity rate, so this ' +
+      'being the only mint is a property to preserve rather than a coincidence to tidy. ' +
+      'THE RULE: when you make a delivery you may spend any number of additional cards FROM YOUR ' +
+      'BARN (V2) and take this many coins for each, and the exchange resolves AFTER the crate is ' +
+      'paid (V3), so a player can never convert the cards the delivery itself needs. ' +
+      '⚠️ AN INT RATHER THAN A BOOL, so the rate can be swept without another knob, which is this ' +
+      "project's established preference. " +
+      '⭐ WHY IT EXISTS, AND DEAN’S OWN ARGUMENT IS THE BETTER OF THE TWO: the barn parity trap ' +
+      'strands about 11 cards a player a game (88.8% of the time a player holds barn cards they ' +
+      'cannot afford any open tile, 84% of those one or two cards short), and played decks ' +
+      'reshuffle 7 / 6 / 4 times a game off a 12-card deck, so stranded cards SHRINK THE ' +
+      'CIRCULATING POOL rather than merely sitting there. A converted card goes to the discard and ' +
+      'comes back on the next reshuffle, so RESHUFFLES PER PLAYED DECK is the cleanest falsifiable ' +
+      'prediction in the pass: if the Store works, that number falls. ' +
+      '⛔ DO NOT BUILD THE MINT AS A SUBSET ENUMERATION. "Spend any number of cards from your ' +
+      'barn" is the POWER SET of the barn and an 11-card barn offers 2,048 conversions in one task ' +
+      'at every delivery. Build it as a repeated binary choice, "convert one more card, or stop": ' +
+      'n sequential decisions rather than 2^n, reaching every subset by a different route. A ' +
+      '116,535-move position stopped this project on 02/09/2026 and an 888,030-move one on ' +
+      '05/09/2026, and both were enumerations exactly like this. ' +
+      '⛔ AND coinEconomy() IN packages/engine/src/setup.ts MUST BE EXTENDED to include this above ' +
+      '0 (or coinSupplyPerPlayer above 0), or the wallet will not exist when the Store is on. It ' +
+      'is a serialisation question and never a rules question. ' +
+      '⚠️ THE PLACEMENT IS ON TEST RATHER THAN SETTLED (C113): docs/village-store-2026-08-19-v1.md ' +
+      'section 1 ruled out exactly this rider on Deliver as "no cost, so it is always correct". If ' +
+      'the arm shows every player converting every spare card every time, the August verdict was ' +
+      'right and the PLACEMENT is what to change. overlays/village-store-coins-v1.overlay.json is ' +
+      'the assembled arm and pins every passenger by name.',
+  },
+  {
+    template: 'rules.economy.coinSupplyPerPlayer',
+    type: 'int',
+    description:
+      '⭐ THE SHARED COIN SUPPLY, PER SEAT (V4, Dean 12/09/2026, ledger A150): the pool is this ' +
+      'times the number of players, so the arm’s 5 is 10 coins at two seats and 20 at four. ' +
+      'SHIPPED 0, which is inert twice over: there is no pool, and with storeCoinsPerCard also 0 ' +
+      'there is nothing to put in one. ' +
+      '⛔ SHARED AND CONTESTED, WITH NO PER-PLAYER HOLDING CAP: ONE PLAYER MAY HOLD ALL OF THEM. ' +
+      'Spent coins RETURN to the supply and may be minted again (V5), and an empty supply mints ' +
+      'nothing, so the pool is a recirculating bound on the whole economy rather than a per-seat ' +
+      'allowance. That bound is also what makes the mint safe to enumerate: never more than this ' +
+      'times seats conversions exist in the whole game. ' +
+      '⚠️ THE SNOWBALL RISK IS REAL BUT SMALL, and the reasoning is on the record: a shared supply ' +
+      'with no cap makes minting a race and a hoarded coin denies everybody else, but minting is ' +
+      'keyed to DELIVERIES and the seat delivering most is Orchard, who wins least (17.4% against ' +
+      "Wheat's 41.9%), so the supply flows slightly toward the seat that needs it. " +
+      '⚠️ HOW OFTEN THE SUPPLY IS EMPTY IS ONE OF THE PASS’S OWN READINGS and is C113’s test from ' +
+      'the other side: a supply that never empties is a supply that is rationing nothing. ' +
+      '⚠️ SOLO IS NOT MODELLED AT ALL and would size the pool at 5.',
+  },
+  {
+    template: 'rules.economy.coinPaysBuild',
+    type: 'boolean',
+    description:
+      '⭐ THE FIRST COIN SINK: A COIN IS A WILD CARD FOR BUILD (V6, Dean 12/09/2026, ledger A150). ' +
+      'SHIPPED false, and read only where a coin can exist, which since 12/09/2026 means ' +
+      'rules.economy.storeCoinsPerCard above 0. true lets a coin pay any or all of a build cost, ' +
+      'and POWER AND ENDGAME CARDS ARE INCLUDED (V7): they cost two cards of their own suit, so ' +
+      'two coins buys one. ' +
+      '⛔ A SEPARATE LEAF FROM coinPaysGrow BECAUSE THEY ARE TWO DIFFERENT BETS: Build converts ' +
+      'barn into TABLEAU, Grow converts barn into repeatable ABILITIES and deliberately suppresses ' +
+      'harvesting. If they go in together and the arm reads badly, nobody will know which did it, ' +
+      'which is the 05/09/2026 passenger lesson applied before the fact instead of after it. ' +
+      'overlays/village-store-coins-build-only-v1.overlay.json is the arm that isolates it. ' +
+      '⚠️ IT IS ALSO THE BRANCHING RISK OF THE WHOLE PACKAGE. Build payments are already ' +
+      'C(hand, k), and coins add every split of j coins and k-j cards, so the count becomes a sum ' +
+      'of binomials. ⭐ COINS ARE FUNGIBLE, SO THE ENUMERATOR MUST TREAT THE COIN COMPONENT AS A ' +
+      'COUNT AND NEVER AS A CHOICE OF WHICH COINS - getting that wrong is the single easiest way ' +
+      'to blow the simulator up. Run the branching bench before and after and quote seconds per ' +
+      'game beside both move populations (C99).',
+  },
+  {
+    template: 'rules.economy.coinPaysSuitCost',
+    type: 'boolean',
+    description:
+      '⭐ THE n-OF-SUIT HALF OF V6, SPLIT OFF rules.economy.coinPaysBuild ON PURPOSE (Dean, ' +
+      '12/09/2026, ledger A150). SHIPPED false. true lets a coin pay a build cost’s SUIT ' +
+      'REQUIREMENT and not only its wild slots, so three coins pays "2 apples and a wild". ' +
+      '⛔ TWO LEAVES BECAUSE "COINS PAY WILD COSTS ONLY" AND "COINS PAY EVERYTHING" ARE ' +
+      'MEANINGFULLY DIFFERENT GAMES AND IT IS ONE RUN TO FIND OUT. Read only with coinPaysBuild ' +
+      'on: a coin that pays a suit requirement but not a build is not a rule anybody has proposed. ' +
+      'overlays/village-store-coins-wild-only-v1.overlay.json is the arm that turns this half off ' +
+      'while leaving the rest of the coin standing. ' +
+      '⭐ AND IT IS THE FIRST THING PROPOSED THAT PUSHES AGAINST THE MONOCULTURE PULL: own-crop ' +
+      'build share has sat near 83% (82.6% before v31, 83.3% after), and a wild that pays a suit ' +
+      'requirement is what makes off-crop building and off-suit Powers cheap. THE OWN-CROP BUILD ' +
+      'SHARE IS THEREFORE A READING THIS LEAF OWNS, not a background number.',
+  },
+  {
+    template: 'rules.economy.coinPaysGrow',
+    type: 'boolean',
+    description:
+      '⭐ THE SECOND COIN SINK: A COIN IS A WILD CARD FOR GROW (V8, Dean 12/09/2026, ledger A150). ' +
+      "SHIPPED false. true lets a coin stand in for a building's activation card. " +
+      '⛔ THE COIN PLACES NOTHING, so the building does not advance toward its threshold and never ' +
+      'clogs, cards that trigger on a PLACEMENT do not fire (A16 The Beekeeper’s Veil is the ' +
+      'obvious one) and A21 The Wax Hall does not count a building held empty this way. ⭐ It DOES ' +
+      'fire the building’s "when activated" ability, because that is the whole point of a Grow ' +
+      '(D5), and a reader may assume otherwise precisely because no card lands. ' +
+      '⭐ THE BEST PROPERTY OF THE DESIGN IS THAT IT IS SELF-LIMITING: a building you only ever ' +
+      'coin-Grow never fills, so it is never harvested, so it never puts cards in your barn - and ' +
+      'barn cards are what make coins. Spending coins to dodge clog starves the supply of the ' +
+      'material that makes coins. ⭐ AND COINS CANNOT MULTIPLY ACTIONS: a coin changes what a Grow ' +
+      'COSTS, never how many you get, so with the fire-once-per-turn guard the ceiling is two ' +
+      'coin-Grows a turn and never the same building twice. ' +
+      '⚠️ isFull AND isHarvestable STOPPED BEING THE SAME BOOLEAN ON 10/09/2026 (S8), so whoever ' +
+      'writes the legality check must read which one a Grow actually wants rather than assuming ' +
+      'they still agree. overlays/village-store-coins-grow-only-v1.overlay.json is the arm that ' +
+      'isolates this bet from the Build one.',
+  },
+  {
+    template: 'rules.economy.coinGrowOnFullBuilding',
+    type: 'boolean',
+    description:
+      '⭐ V9, AND IT IS THE STRONGEST SINGLE CLAUSE IN THE PACKAGE (Dean, ruled 12/09/2026, ledger ' +
+      'A150): MAY A COIN-GROW TARGET A FULL BUILDING? SHIPPED false. true is THE FIRST CLOG BYPASS ' +
+      'IN THIS GAME SINCE THE MEEPLES, ruled in deliberately - Dean’s reason is that if you go ' +
+      'through all the effort of getting cards in your barn, the reward should be awesome. ' +
+      '⛔ NO BRANCH OF PLAY MAY READ THE RAW LEAF: ask coinGrowReachesFullBuildings(data), which ' +
+      'carries the precedence that this is MEANINGLESS unless rules.economy.coinPaysGrow is on. A ' +
+      'full-building Grow that no coin can pay for is not a rule, and a check reading this leaf ' +
+      'alone is right until somebody runs the build-only arm and silently wrong after. That is the ' +
+      'hostDrawOnVisitAt precedent of 12/09/2026 and the hostGift seam of the same day, which was ' +
+      'a term reading a rule off the wrong accessor and pricing a decision that could not happen. ' +
+      '⛔ A SEPARATE LEAF FROM coinPaysGrow BECAUSE IT IS THE HALF MOST LIKELY TO BE THE PROBLEM, ' +
+      'and an arm that bundles it cannot say so. Expect the board mix to move with it: the Apiary ' +
+      'board’s bought Grow reaches a full building by the same clause, and Apiary is at 12% of ' +
+      'plays today. ' +
+      '⛔ AND THE TIER 3 LAYER NEEDS RE-PRICING AGAINST IT (C110): the cost/threshold curve is ' +
+      'inverse ON PURPOSE, expensive low-threshold buildings are strong BECAUSE clog is their ' +
+      'brake, and a repeatable currency that removes the brake changes what every Tier 3 is worth. ' +
+      'Card balance, not a reason to reopen the rule and not a reason to hold up the arm. ' +
+      '⚠️ A MEEPLE GROW IS THE OPPOSITE AND THE TWO DIFFER ON PURPOSE (M8): it places its ' +
+      'activation card as normal and CAN clog.',
   },
   {
     template: 'rules.endGame.furtherTurnsEach',
