@@ -408,6 +408,29 @@ export interface TurnState {
    * multi-building cards still pay out once - for a simpler reason.
    */
   firedThisTurn: CardId[];
+  /**
+   * ⭐ THE MEEPLES SPENT THIS TURN, IN ORDER (M5 and C112, Dean 12/09/2026,
+   * A151). The colours are what is stored, because two rules read this list and
+   * they read different things: `meepleSpendPerTurn` reads `.length` (Dean's
+   * "one per turn") and `meepleSpendDistinctColours` reads membership (C112's
+   * "no two of the same colour"), and a bare counter cannot answer the second.
+   *
+   * ⛔ **ABSENT UNLESS ONE OF THOSE TWO RULES IS ON**, and the absence is the
+   * same deliberate register `PlayerState.coins`, `PlayerState.hostDrewThisRound`
+   * and `GameState.commons` are written in: a key present-and-empty would change
+   * every serialised state and every view for a rule the shipped game and all
+   * three named controls have no concept of, and nine fixtures in
+   * `packages/sim/fixtures/` replay byte-identically. `meepleSpendRationed` in
+   * actions.ts is the one predicate that decides whether it is written, and
+   * every reader takes `?? []`, so the optionality never reaches a rule.
+   *
+   * ⚠️ IT LIVES ON `TurnState` AND NOT ON THE SEAT, which is the OPPOSITE of
+   * `hostDrewThisRound` and for the opposite reason: the quantity capped is "in
+   * ONE TURN", and `freshTurn()` replacing the whole object at every boundary is
+   * exactly the reset this rule wants. A latch on the seat would have to be
+   * cleared by hand and would cap the wrong window.
+   */
+  meeplesSpent?: Suit[];
 }
 
 /**
@@ -1548,8 +1571,15 @@ export type GameEvent =
    * no supply to return it to - so `meepleGained` minus `meepleSpent` over a
    * whole game is exactly the meeples that died unspent in players' supplies,
    * which is the dead-component number the v31 plan asks the sim to watch.
+   *
+   * ⭐ `action` IS A `DoorAction` AND NOT A `WorkerAction` SINCE 12/09/2026
+   * (M7, A151): under `meepleSpendTiming: 'afterAction'` an apiary meeple buys
+   * GROW, which is not in the roster's vocabulary. The widening matches
+   * `doorUsed`, which has carried the wider type since the commons bought the
+   * same action on 09/09/2026, and it means a reader tallying the colour mix of
+   * what was spent sees the action that actually happened.
    */
-  | { e: 'meepleSpent'; seat: Seat; colour: Suit; action: WorkerAction }
+  | { e: 'meepleSpent'; seat: Seat; colour: Suit; action: DoorAction }
   /**
    * ⭐ A MEEPLE WAS RETURNED TO THE BOX under the supply cap - the meeple-loop
    * arm's only leak, and the number that says whether the cap is doing work or

@@ -147,11 +147,18 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
   // THE MEEPLE PHASE, then THE BONUS SLOT - the two start-of-turn windows, in
   // the order they are played.
   //
-  // Every option below gates itself (`meepleOpen`, `bonusOpen`), so this block
-  // is offered at the start of the turn only and empties the moment an action is
-  // taken. Nothing here needs to test a window itself. Meeples come first
-  // because they are first in the rule and because taking the bonus SHUTS the
-  // meeple phase - a meeple may not be held back past it.
+  // Every option below gates itself (`meepleSpendOpen`, `bonusOpen`), so this
+  // block is offered at the start of the turn only and empties the moment an
+  // action is taken. Nothing here needs to test a window itself. Meeples come
+  // first because they are first in the rule and because taking the bonus SHUTS
+  // the meeple phase - a meeple may not be held back past it.
+  //
+  // ⚠️ UNDER `meepleSpendTiming: 'afterAction'` (M4, 12/09/2026) THE
+  // MEEPLE LINE IS NOT A START-OF-TURN WINDOW AT ALL: it enumerates only once
+  // the action is spent, so it appears at the END of the turn's menu even though
+  // it is written here. The position in this list is not the rule - the
+  // predicate is - and moving the line would change nothing but the order the
+  // bots see.
   for (const colour of meepleOptions(data, state, seat)) {
     moves.push({ type: 'spendMeeple', seat, colour });
   }

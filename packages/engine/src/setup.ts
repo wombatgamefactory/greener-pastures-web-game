@@ -28,8 +28,8 @@ import {
   isCommonsTakeCoins,
   isMeepleCurrency,
   isNoticeBoardPower,
-  meeplesPerTile,
   noticeBoardsPerSeat,
+  tileMeepleSpaces,
   unclaimedBoardsToCentre,
 } from '@gp/data';
 
@@ -433,18 +433,22 @@ export function buildIsland(
   meeples: Suit[],
 ): IslandTileState[] {
   const crates = data.island.tileRule.crates;
-  // ⭐ HOW MANY MEEPLES A TILE IS SEEDED WITH IS DATA (R12). The shipped game
-  // seeds every delivery space; the meeple-loop arm seeds only the spaces named
-  // in `island.meeples.seededSpaces` - [1], the 3 VP second delivery - so a tile
-  // holds ONE meeple, stored densely, and `meepleIndexForSpace` is what maps a
-  // space back to it.
-  // ⛔ NO MEEPLE ANYWHERE UNDER THE COMMONS (C6). The data pass makes
-  // `meeplesPerTile` answer 0 for the mode; this says so in the engine as well,
-  // so that the island is seedless the moment the knob flips and never depends
-  // on the two packages landing in the same commit. Under `'meeple'` it is the
-  // 3 VP space alone and under `'card'` every delivery space, and those two
-  // branches are the controls.
-  const spaces = isCommons(data) ? 0 : meeplesPerTile(data);
+  // ⭐ HOW MANY MEEPLES A TILE IS SEEDED WITH IS DATA (R12), AND SINCE
+  // 12/09/2026 IT IS ONE FUNCTION (A151). `tileMeepleSpaces` carries the whole
+  // rule: the v31 control seeds every delivery space, the meeple loop seeds only
+  // the spaces named in `island.meeples.seededSpaces` - [1], the 3 VP second
+  // delivery - so a tile holds ONE meeple stored densely, and the commons and
+  // the notice-board visit seed nothing at all (C6, and §2.6 of the notice-board
+  // handoff). `meepleIndexForSpace` is `indexOf` over the same list, so a space
+  // and its dense slot cannot disagree.
+  //
+  // ⭐ AND M1 IS THE SAME LINE (Dean, 12/09/2026): `deliveryMeepleSpace: 1` puts
+  // a random meeple on every tile's 3 VP space in WHATEVER game the arm is
+  // stacked on, which is why the belt-and-braces `isCommons(data) ? 0` that used
+  // to sit here is gone. It said the same thing the accessor says under the
+  // shipped null and the OPPOSITE of what the override says, so keeping it would
+  // have made the knob silently inert under one currency.
+  const spaces = tileMeepleSpaces(data).length;
   let next = 0;
   let nextMeeple = 0;
   return islandTilesInPlay(data, seats).map((tileId) => {

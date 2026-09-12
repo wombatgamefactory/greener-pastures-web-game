@@ -34,6 +34,9 @@ import {
   isNoticeBoardPower,
   meepleAsCardGoesToBoard,
   meepleIndexForSpace,
+  meepleSpendDistinctColours,
+  meepleSpendPerTurn,
+  meepleSpendTiming,
 } from '@gp/data';
 
 import type { Fx } from './fx.js';
@@ -76,7 +79,12 @@ import type {
 } from './state.js';
 import { markFiredOnTurn } from './state.js';
 import { rngInt } from './rng.js';
-import { doorActionOf, fireNoticeBoardPower, performDoorAction } from './workers.js';
+import {
+  doorActionOf,
+  fireNoticeBoardPower,
+  meepleActionOf,
+  performDoorAction,
+} from './workers.js';
 
 /**
  * All k-card subsets, as a list. `k` is a build cost (at most 5 cards) or a hand
@@ -3266,37 +3274,111 @@ export function bonusOpen(data: GameData, state: GameState, option?: BonusOption
 }
 
 /**
- * THE MEEPLE PHASE: the very start of your turn, before the bonus option and
- * before the core action.
+ * ⭐ THE MEEPLE SPEND WINDOW, AND SINCE 12/09/2026 THERE ARE TWO OF THEM
+ * (`rules.turn.meepleSpendTiming`, A151).
  *
- * Both clauses are the rule and neither is redundant. `!actionSpent` is the
+ *   `'start'`        the v31 rule and the shipped value: the very start of your
+ *                    turn, before the bonus option and before the core action.
+ *   `'afterAction'`  M4, the delivery meeple: AFTER your main action, discard
+ *                    one meeple for the PLAIN action of its colour.
+ *   `'none'`         no spend at all. Reachable, unused, and NOT the off switch:
+ *                    `'start'` is what leaves the game alone.
+ *
+ * ⛔ **`'start'` IS THE CURRENT BEHAVIOUR AND MUST STAY BYTE-IDENTICAL.** Both
+ * of its clauses are the rule and neither is redundant. `!actionSpent` is the
  * obvious half; `bonusUsed.length === 0` is the half that stops a meeple being
  * held back and spent after the bonus, which is what would turn the supply into
- * a hand of free reactive actions rather than a decision taken up front.
+ * a hand of free reactive actions rather than a decision taken up front. Under
+ * `bonusTiming: 'end'` that second clause cannot bind, and it stays anyway:
+ * deleting a clause because the shipped knob value makes it unreachable is the
+ * exact mistake `turnflow.ts` documents at its own `bonusOpen` line.
  *
- * ⚠️ THE SHIPPED `bonusTiming: 'end'` MAKES THIS CLAUSE REDUNDANT AND IT STAYS
- * ANYWAY. With the bonus after the action, `bonusUsed` is empty for as long as
- * `!actionSpent` is true, so the second clause can never be the binding one.
- * Under `'any'` it binds again - a seat that takes its bonus late would
- * otherwise keep the meeple phase open behind it - and under `'start'` it is the
- * original rule. Deleting a clause because the shipped knob value makes it
- * unreachable is the exact mistake `turnflow.ts` documents at its own
- * `bonusOpen` line, so it is not deleted here either.
+ * ⭐ **`'afterAction'` IS ONE PREDICATE BECAUSE OF D7, RULED BY DEAN ON
+ * 12/09/2026: the spend is legal on ANY turn once the action window has closed,
+ * whether the main action was taken or PASSED.** `pass` is in `MAIN_ACTIONS`, so
+ * `actionSpent` is exactly "the window has closed" and no second clause is
+ * needed. His reasoning, which is the part worth keeping: gating it on a real
+ * action would create a perverse incentive to take a pointless one first, and D8
+ * already makes a meeple undiscardable whenever its colour's action is illegal,
+ * so stranding is a real risk and not one to compound.
+ *
+ * ⚠️ **IT REVERSES, MILDLY, THE REASON THE BONUS SITS AT THE FRONT.** The
+ * bonus was moved to the start of the turn on Dean's own reading that a turn
+ * visibly ends on the main action; a meeple spend after it means some turns end
+ * on a bonus again (§6.2 of `docs/village-store-coins-2026-09-12-v2.md`).
+ * Recorded, not resolved: most turns have no meeple to spend.
+ *
+ * ⚠️ THE PER-TURN CAP IS CHECKED HERE AND THE DISTINCT-COLOUR RULE IS NOT,
+ * because they are questions of different shapes: the cap closes the WINDOW and
+ * C112's rule only removes COLOURS from it. See `meepleOptions`.
  */
-export function meepleOpen(state: GameState): boolean {
-  return !state.turn.actionSpent && state.turn.bonusUsed.length === 0;
+export function meepleSpendOpen(data: GameData, state: GameState): boolean {
+  if (!meepleSpendsLeft(data, state)) return false;
+  switch (meepleSpendTiming(data)) {
+    case 'none':
+      return false;
+    case 'start':
+      // ⛔ NO MEEPLES AT ALL UNDER THE COMMONS (C6): no starting supply, no
+      // island seed, no spend and no Collect. The supply is all zeros there, so
+      // this changes no answer - it is here because `settleTurn` holds a turn
+      // open while `meepleOptions` is non-empty and "empty by construction" is
+      // exactly the claim that stops being true quietly.
+      // ⚠️ IT IS INSIDE THIS BRANCH AND NOT ABOVE THE SWITCH, since
+      // 12/09/2026. M1 can seed a meeple in ANY game (`tileMeepleSpaces`: a
+      // non-null `deliveryMeepleSpace` wins outright), so a currency-shaped
+      // refusal at the top would strand a meeple the rules had just handed out.
+      // The commons has no meeples only while nothing seeds one, which is the
+      // claim this clause is actually making.
+      if (isCommons(data)) return false;
+      return !state.turn.actionSpent && state.turn.bonusUsed.length === 0;
+    case 'afterAction':
+      return state.turn.actionSpent;
+  }
 }
 
 /**
- * The colours this seat may spend right now: held, and with something legal for
- * that colour's action to do.
+ * ⭐ IS THIS TURN RATIONED AT ALL - does either of the two per-turn rules
+ * apply (M5's cap, or C112's no-two-of-a-colour)?
  *
- * ⭐ A MEEPLE THAT CAN DO NOTHING IS NOT OFFERED, on the same ruling as a dead
- * door (see `workerActionLegal`), and it bites harder here: spending a meeple is
- * FREE, so a meeple spent for nothing is a pure loss of a stored action. The
- * consequence is deliberate and is one of the numbers the v31 plan wants
- * measured - a seat can be left holding meeples it can never legally spend, and
- * `meepleGained` minus `meepleSpent` is exactly that dead-component count.
+ * ⛔ **IT IS THE ONE PREDICATE THAT DECIDES WHETHER `turn.meeplesSpent` IS
+ * WRITTEN**, and that is the whole of the inertness argument: the field is
+ * ABSENT under the shipped game and all three named controls, exactly as
+ * `PlayerState.coins` is, so no serialised state and no view moves for a rule
+ * nothing is running. Nine fixtures depend on that kind of absence.
+ */
+function meepleSpendRationed(data: GameData): boolean {
+  return meepleSpendPerTurn(data) !== null || meepleSpendDistinctColours(data);
+}
+
+/**
+ * M5: has this turn any meeple spends left in it? `null` is UNLIMITED and is the
+ * shipped value, which is why this reads true for the whole of the v31 control's
+ * turn and the arm's cap of 1 is the only thing that ever closes it.
+ */
+function meepleSpendsLeft(data: GameData, state: GameState): boolean {
+  const cap = meepleSpendPerTurn(data);
+  if (cap === null) return true;
+  return (state.turn.meeplesSpent ?? []).length < cap;
+}
+
+/**
+ * The colours this seat may spend right now: held, not shut out by C112, and
+ * with something legal for that colour's action to do.
+ *
+ * ⭐ **D8, INDICATED BY THE HANDOFF AND TAKEN HERE: A MEEPLE THAT CAN DO
+ * NOTHING IS NOT OFFERED**, on the standing ruling that an action you cannot
+ * legally perform right now is not offered (the same rule as a dead door - see
+ * `workerActionLegal` - and it has survived every currency this game has had).
+ * It bites harder here, because spending a meeple is FREE, so a meeple spent for
+ * nothing is a pure loss of a stored action.
+ *
+ * ⛔ **SO A MEEPLE CAN BE UNDISCARDABLE, AND THAT IS THE RULE RATHER THAN A
+ * BUG.** A seat can be left holding meeples it may never legally spend - a
+ * vegetable meeple with an empty barn, a dairy meeple with nothing affordable -
+ * and `meepleGained` minus `meepleSpent` IS the dead-component count. It is a
+ * reading the instrument owes rather than a thing to fix, and it is the reason
+ * D7 does not also require a real main action: two stranding rules would
+ * compound.
  */
 export function meepleOptions(data: GameData, state: GameState, seat: Seat): Suit[] {
   // ⛔ THE TURN-START MEEPLE SPEND IS DELETED BY THE MEEPLE-LOOP ARM (R8), and
@@ -3304,34 +3386,53 @@ export function meepleOptions(data: GameData, state: GameState, seat: Seat): Sui
   // only way a meeple is ever spent, and a spent meeple moves to a neighbour's
   // board rather than leaving the game.
   //
-  // ⚠️ IT ALSO CLOSES THE TURNFLOW GATE. `settleTurn` holds a turn open while
-  // this is non-empty (turnflow.ts, the line after the bonus check); returning
-  // [] here is what stops the arm's turns hanging on a phase that no longer
-  // exists, so the two must never be reasoned about separately.
+  // ⚠️ IT ALSO CLOSES THE TURNFLOW GATE. `settleTurn` holds a turn open
+  // while this is non-empty (turnflow.ts, the line after the bonus check);
+  // returning [] here is what stops the arm's turns hanging on a phase that no
+  // longer exists, so the two must never be reasoned about separately.
+  //
+  // ⚠️ IT IS ALSO THE ONE CURRENCY THE DELIVERY MEEPLE MAY NOT BE STACKED
+  // ON: under `'meeple'` a spend MOVES a meeple to a neighbour's board and never
+  // boxes it, so M4's "the meeple then leaves the game" would be two rules at
+  // once.
   if (isMeepleCurrency(data)) return [];
-  // ⛔ AND NO MEEPLES AT ALL UNDER THE COMMONS (C6): no starting supply, no
-  // island seed, no spend and no Collect. The supply is all zeros there, so this
-  // line changes no answer - it is here for the same reason the line above it
-  // is, because `settleTurn` holds a turn open while this is non-empty and
-  // "empty by construction" is exactly the claim that stops being true quietly.
-  if (isCommons(data)) return [];
-  if (!meepleOpen(state)) return [];
+  if (!meepleSpendOpen(data, state)) return [];
   const held = player(state, seat).meeples;
+  // ⭐ C112's ALTERNATIVE TO THE CAP: no two meeples spent in one turn may
+  // share a colour. Shipped false, so `spent` is read only by the arm that wants
+  // it - and the list itself is absent unless a per-turn rule is on.
+  const distinct = meepleSpendDistinctColours(data);
+  const spent = state.turn.meeplesSpent ?? [];
   return data.cards.suits.filter(
     (colour) =>
-      (held[colour] ?? 0) > 0 && workerActionLegal(data, state, seat, doorOf(data, colour).id),
+      (held[colour] ?? 0) > 0 &&
+      !(distinct && spent.includes(colour)) &&
+      // ⭐ ASKED ON THE MEEPLE'S OWN ACTION AND NOT ON THE DOOR'S ROSTER ID
+      // (M7, 12/09/2026). Under `'afterAction'` an apiary meeple buys a GROW
+      // where the roster prints SOW, and the gate and the action must be handed
+      // the same question or a meeple is offered with nothing to do - the
+      // 19/08/2026 harvest mismatch, arriving through a new door.
+      // `meepleActionOf` is the identity under every other timing, so the v31
+      // control still asks about its Sow.
+      doorActionLegal(data, state, seat, meepleActionOf(data, colour)),
   );
 }
 
 /**
- * Spend one meeple: perform its colour's plain door action, free, and REMOVE IT
- * FROM THE GAME.
+ * Spend one meeple: perform its colour's PLAIN action, free, and REMOVE IT FROM
+ * THE GAME.
  *
- * It returns to no pool, which is the whole economy: the island is the only
- * source, 25 exist in the bag and 24 at most reach the table, so every meeple
- * spent is one fewer action left in the game for anybody. Nothing here spends
- * the bonus slot or the action - a meeple is neither - and `meepleOpen` is what
- * keeps it at the start of the turn.
+ * It returns to no pool, which is the whole economy: under the v31 control the
+ * island is the only source, and under M4 the only source is the 3 VP delivery
+ * space, so every meeple spent is one fewer action left in the game for anybody.
+ * Nothing here spends the bonus slot or the action - a meeple is neither - and
+ * `meepleSpendOpen` is what decides which half of the turn it belongs to.
+ *
+ * ⛔ **THE PLAIN ACTION AND NEVER A NOTICE BOARD POWER (M6).**
+ * `performDoorAction` is the plain path; `fireNoticeBoardPower` is the other one
+ * and no meeple ever reaches it. Under `visitCurrency: 'noticeBoardPower'` the
+ * Orchard BOARD is "Draw 4" and the plain action is Draw 2, so the two are no
+ * longer the same thing and a meeple takes the smaller one.
  *
  * The action is taken as the SPENDER's, on the standing ruling that suit powers
  * apply to actions performed through a door or by a meeple: it is your action,
@@ -3343,15 +3444,30 @@ export function doSpendMeeple(fx: Fx, seat: Seat, colour: Suit): void {
   if (isMeepleCurrency(fx.data)) {
     throw new Error('The turn-start meeple spend is deleted under the meeple visit currency');
   }
-  if (!meepleOpen(fx.state)) {
-    throw new Error('Meeples are spent at the start of your turn, before your bonus and action');
+  if (!meepleSpendOpen(fx.data, fx.state)) {
+    throw new Error(
+      meepleSpendTiming(fx.data) === 'afterAction'
+        ? 'A meeple is spent after your main action, and this turn has none left'
+        : 'Meeples are spent at the start of your turn, before your bonus and action',
+    );
   }
   if (!meepleOptions(fx.data, fx.state, seat).includes(colour)) {
     throw new Error(`Seat ${seat} has no ${colour} meeple that can do anything`);
   }
-  const door = doorOf(fx.data, colour);
   fx.spendMeeple(seat, colour);
-  fx.emit({ e: 'meepleSpent', seat, colour, action: door.action });
+  // ⭐ THE EVENT CARRIES THE ACTION THE COLOUR ACTUALLY BOUGHT, which since
+  // 12/09/2026 is not always the roster's printed one (M7: an apiary meeple buys
+  // GROW). It used to read `doorOf(data, colour).action`, and an instrument
+  // reading that would have reported a Sow that never happened.
+  fx.emit({ e: 'meepleSpent', seat, colour, action: meepleActionOf(fx.data, colour) });
+  // ⛔ RECORDED ONLY WHERE A RULE READS IT (M5, C112). See
+  // `meepleSpendRationed`: the field is absent under every game that does not
+  // ration the turn, which is what keeps the shipped game and all three controls
+  // byte-identical.
+  if (meepleSpendRationed(fx.data)) {
+    const turn = fx.state.turn;
+    turn.meeplesSpent = [...(turn.meeplesSpent ?? []), colour];
+  }
   performDoorAction(fx, seat, colour, 'meeple');
 }
 

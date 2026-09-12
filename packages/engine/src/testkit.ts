@@ -507,6 +507,117 @@ export function noticeBoardHostDrawBySeatsGame(): GameData {
 }
 
 /**
+ * ⭐ THE DELIVERY MEEPLE (M1 to M8, Dean 12/09/2026, ledger A151), exactly as
+ * `overlays/delivery-meeple-v1.overlay.json` sets it.
+ *
+ * THE RULE IN ONE LINE: a random meeple sits on every tile's 3 VP delivery space
+ * (index 1, never index 0), claiming that receipt claims the meeple, and AFTER
+ * your main action you may discard ONE meeple to take the PLAIN action of its
+ * colour - wheat Harvest, vegetable Deliver, orchard Draw 2 keep both, apiary
+ * GROW, dairy Build. The meeple then leaves the game for good.
+ *
+ * ⛔ AN ARM ON TOP OF AN ARM, AND THAT MUST BE SAID EVERY TIME. C100 is open:
+ * no Notice Board configuration is ruled in as the shipped game, so this pins
+ * all twenty leaves of `noticeBoardHostDrawBySeatsGame()` - the best-measured
+ * configuration - and differs from it in exactly THREE meeple leaves. The six
+ * coin leaves are pinned at their off values as well, because A150 is a separate
+ * slice and an unpinned passenger is how a control silently stops being the game
+ * it is named after (05/09/2026).
+ *
+ * ⚠️ `meepleSpendDistinctColours` STAYS FALSE HERE. It is C112's alternative to
+ * Dean's cap of one, and `deliveryMeepleDistinctGame()` below is that arm.
+ */
+export function deliveryMeepleGame(): GameData {
+  return loadGameData({
+    name: 'delivery-meeple-v1',
+    schemaVersion: 1,
+    set: {
+      'rules.turn.visitCurrency': 'noticeBoardPower',
+      'rules.turn.bonusTiming': 'start',
+      'rules.turn.selfVisitAllowed': false,
+      'rules.turn.hostDrawOnVisit': 1,
+      'rules.turn.hostDrawOnVisitBySeats.4': 0,
+      'rules.turn.commonsTake': 'harvest',
+      'rules.turn.startingMeeplesPerColour': 0,
+      'rules.turn.meepleAsCard': false,
+      'rules.turn.slotToll': null,
+      'rules.turn.meepleCapPerColour': null,
+      'rules.economy.noticeBoardThreshold': 3,
+      'rules.economy.noticeBoardBlocks': false,
+      'rules.economy.unclaimedBoardsToCentre': false,
+      'rules.economy.noticeBoardsBySeats.2': 2,
+      'rules.economy.noticeBoardsBySeats.3': 1,
+      'rules.economy.noticeBoardsBySeats.4': 1,
+      'rules.economy.commonsColourMatch': false,
+      'rules.economy.commonsWildPair': false,
+      'rules.economy.endgameCoinCost': null,
+      'rules.economy.farmsteadCoinPower': false,
+      'rules.economy.storeCoinsPerCard': 0,
+      'rules.economy.coinSupplyPerPlayer': 0,
+      'rules.economy.coinPaysBuild': false,
+      'rules.economy.coinPaysSuitCost': false,
+      'rules.economy.coinPaysGrow': false,
+      'rules.economy.coinGrowOnFullBuilding': false,
+      // The three that ARE the rule (M1, M4, M5).
+      'rules.turn.deliveryMeepleSpace': 1,
+      'rules.turn.meepleSpendTiming': 'afterAction',
+      'rules.turn.meepleSpendPerTurn': 1,
+      'rules.turn.meepleSpendDistinctColours': false,
+    },
+  });
+}
+
+/**
+ * ⭐ C112's ALTERNATIVE TO DEAN'S CAP: no per-turn limit, but no two meeples
+ * spent in one turn may share a colour. One leaf apart from
+ * `deliveryMeepleGame()` in each direction (`meepleSpendPerTurn` null,
+ * `meepleSpendDistinctColours` true), which is what makes the pair readable.
+ *
+ * ⚠️ IT EXISTS BECAUSE THE CAP REMOVES THE THING THE TABLE LIKED. Dean's own
+ * 11/09/2026 session reported "some fun, powerful combos", and one-per-turn is
+ * exactly what deletes them; the branching worry that produced the cap shrank
+ * when it was measured (§6.1 of `docs/village-store-coins-2026-09-12-v2.md`).
+ */
+export function deliveryMeepleDistinctGame(): GameData {
+  return loadGameData({
+    name: 'delivery-meeple-distinct-colours-v1',
+    schemaVersion: 1,
+    set: {
+      'rules.turn.visitCurrency': 'noticeBoardPower',
+      'rules.turn.bonusTiming': 'start',
+      'rules.turn.selfVisitAllowed': false,
+      'rules.turn.hostDrawOnVisit': 1,
+      'rules.turn.hostDrawOnVisitBySeats.4': 0,
+      'rules.turn.commonsTake': 'harvest',
+      'rules.turn.startingMeeplesPerColour': 0,
+      'rules.turn.meepleAsCard': false,
+      'rules.turn.slotToll': null,
+      'rules.turn.meepleCapPerColour': null,
+      'rules.economy.noticeBoardThreshold': 3,
+      'rules.economy.noticeBoardBlocks': false,
+      'rules.economy.unclaimedBoardsToCentre': false,
+      'rules.economy.noticeBoardsBySeats.2': 2,
+      'rules.economy.noticeBoardsBySeats.3': 1,
+      'rules.economy.noticeBoardsBySeats.4': 1,
+      'rules.economy.commonsColourMatch': false,
+      'rules.economy.commonsWildPair': false,
+      'rules.economy.endgameCoinCost': null,
+      'rules.economy.farmsteadCoinPower': false,
+      'rules.economy.storeCoinsPerCard': 0,
+      'rules.economy.coinSupplyPerPlayer': 0,
+      'rules.economy.coinPaysBuild': false,
+      'rules.economy.coinPaysSuitCost': false,
+      'rules.economy.coinPaysGrow': false,
+      'rules.economy.coinGrowOnFullBuilding': false,
+      'rules.turn.deliveryMeepleSpace': 1,
+      'rules.turn.meepleSpendTiming': 'afterAction',
+      'rules.turn.meepleSpendPerTurn': null,
+      'rules.turn.meepleSpendDistinctColours': true,
+    },
+  });
+}
+
+/**
  * ⭐ S17 WITH SELF-VISITING PUT BACK ON, AND IT EXISTS FOR ONE TEST ONLY: that
  * a self-visit is never paid the host draw.
  *

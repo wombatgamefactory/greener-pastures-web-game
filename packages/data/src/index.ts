@@ -756,36 +756,25 @@ export function paymentSlotTollOf(data: GameData): number {
 /**
  * How many meeples one tile is seeded with at setup.
  *
- * Under the shipped `'meeple'` it is the length of `island.meeples.seededSpaces`
- * - `[1]`, the 3 VP second delivery - because the rule names WHICH spaces carry
- * one rather than how many each carries, and which is the whole of the design:
- * being first to a tile is 6 VP flat, being second is 3 VP plus a stored action.
- * Under the `'card'` control it is every delivery space times
- * `perDeliverySpace`, exactly as v31 dealt them, which is twice as deep a draw
- * from the same bag.
+ * ⭐ **DERIVED FROM `tileMeepleSpaces` SINCE 12/09/2026 (A151) AND NO LONGER A
+ * RULE OF ITS OWN.** It used to carry the whole seeding rule and
+ * `meepleIndexForSpace` carried a second copy of it, and the two DISAGREED
+ * about `visitCurrency: 'noticeBoardPower'`: this function answered 0 while
+ * that one answered the identity, so a game seeding nothing still claimed a
+ * meeple lived at index 0. It was harmless only while nothing seeded a meeple
+ * under that currency, which is exactly what M1's `deliveryMeepleSpace` changes.
+ * Both are now one line over one list, so a fifth `visitCurrency` cannot answer
+ * one thing here and another there.
+ *
+ * Under `'meeple'` it is the length of `island.meeples.seededSpaces` - `[1]`,
+ * the 3 VP second delivery - because the rule names WHICH spaces carry one
+ * rather than how many each carries, and which is the whole of the design: being
+ * first to a tile is 6 VP flat, being second is 3 VP plus a stored action. Under
+ * the `'card'` control it is every delivery space times `perDeliverySpace`,
+ * exactly as v31 dealt them, which is twice as deep a draw from the same bag.
  */
 export function meeplesPerTile(data: GameData): number {
-  // ⛔ THE COMMONS SEEDS NONE (09/09/2026, C6). There are no meeples in the game
-  // at all, so this is 0 rather than "the island happens to pay none": the whole
-  // `island.meeples` block is read only under the two controls, and returning 0
-  // here is the single seam that keeps it that way. Answered before the meeple
-  // branch on purpose - `'commons'` is not a meeple currency, but a future
-  // fourth value would fall through to the `'card'` arithmetic below and seed
-  // two a tile without a word of warning.
-  //
-  // ⭐ AND THE FOURTH VALUE ARRIVED ON 10/09/2026, WHICH IS WHY THE WARNING
-  // ABOVE IS NOW A SECOND CONDITION RATHER THAN A PROPHECY. The notice-board
-  // visit has NO MEEPLES either (§2.6 of the handoff: nothing about the meeples
-  // changes, and there are none), so it answers 0 with the commons. Without this
-  // line it would have fallen through to `deliveriesPerTile * perDeliverySpace`
-  // and seeded two meeples a tile - a passenger the handoff did not name, found
-  // by reading this comment rather than the design.
-  if (isCommons(data) || isNoticeBoardPower(data)) return 0;
-  if (isMeepleCurrency(data)) {
-    return data.island.meeples.seededSpaces.filter((i) => i >= 0 && i < deliveriesPerTile(data))
-      .length;
-  }
-  return deliveriesPerTile(data) * data.island.meeples.perDeliverySpace;
+  return tileMeepleSpaces(data).length;
 }
 
 /**
@@ -794,18 +783,21 @@ export function meeplesPerTile(data: GameData): number {
  *
  * ⭐ THE ARRAY IS DENSE AND THE SPACES ARE NOT, which is the whole reason this
  * function exists. Under `'card'` every space has a meeple and the mapping is
- * the identity, so nothing changes for the control. Under `'meeple'` only the
- * seeded spaces do, and a tile holding one meeple for space 1 stores it at index
- * 0 - a sparse array would not survive a JSON round-trip through a capture, and
- * a nullable one would push the hole into every reader.
+ * the identity; under `'meeple'` only the seeded spaces do, and a tile holding
+ * one meeple for space 1 stores it at index 0 - a sparse array would not survive
+ * a JSON round-trip through a capture, and a nullable one would push the hole
+ * into every reader.
+ *
+ * ⛔ **IT IS `indexOf` OVER `tileMeepleSpaces` AND NEVER THE IDENTITY AGAIN**
+ * (12/09/2026, A151). The old `if (!isMeepleCurrency(data)) return space;`
+ * answered the identity for the notice-board visit, which seeds NO meeples, so
+ * the two functions described different games; and it would have answered "index
+ * 1" for M1's tile, whose single meeple is stored densely at index 0. The
+ * identity was only ever right at `perDeliverySpace: 1`, and this says so by
+ * construction rather than by coincidence.
  */
 export function meepleIndexForSpace(data: GameData, space: number): number {
-  // -1 everywhere under the commons: no space carries a meeple, which is what
-  // -1 already means to every caller. Without this the `'card'` identity below
-  // would answer "index 0" for a tile that holds nothing.
-  if (isCommons(data)) return -1;
-  if (!isMeepleCurrency(data)) return space;
-  return data.island.meeples.seededSpaces.indexOf(space);
+  return tileMeepleSpaces(data).indexOf(space);
 }
 
 /**
@@ -817,9 +809,9 @@ export function meepleIndexForSpace(data: GameData, space: number): number {
  * reason `hostDrawOnVisit` is kept beside `hostDrawOnVisitAt`: a knob
  * description and a report header are real things to read, and nothing else is.
  *
- * ⛔ AND `null` DOES NOT MEAN "NO MEEPLES" - it means "defer to the seeding
- * already in `meeplesPerTile`". A reader who takes the raw null for "none" has
- * the rule backwards.
+ * ⛔ AND `null` DOES NOT MEAN "NO MEEPLES" - it means "defer to the seeding this
+ * game already does", which is `tileMeepleSpaces`' null branch. A reader who
+ * takes the raw null for "none" has the rule backwards.
  */
 export function deliveryMeepleSpace(data: GameData): number | null {
   return data.rules.turn.deliveryMeepleSpace;
@@ -842,28 +834,35 @@ export function deliveryMeepleSpace(data: GameData): number | null {
  * the filter `meeplesPerTile` already applies to `seededSpaces`: the knob is a
  * free integer, and a tile has only `deliveriesPerTile` spaces.
  *
- * ⚠️ **IT DOES NOT YET REPLACE `meeplesPerTile` OR `meepleIndexForSpace`, AND
- * THAT IS DELIBERATE FOR ONE PASS ONLY.** While the knob is null this function
- * agrees with `meeplesPerTile` by construction (`.length` is the same number),
- * but it does NOT agree with `meepleIndexForSpace` under
- * `visitCurrency: 'noticeBoardPower'`, where that function answers `space`
- * (the identity) for a game `meeplesPerTile` says seeds NOTHING. That
- * disagreement predates this leaf and is not a thing to fix inside a slice whose
- * whole claim is inertness; re-pointing both onto this function, and settling
- * which of the two is right, is engine work owed.
+ * ⭐ **AND SINCE 12/09/2026 IT IS THE ONLY SEEDING RULE IN THE PACKAGE.**
+ * `meeplesPerTile` is `.length` of this and `meepleIndexForSpace` is `indexOf`
+ * over it, so the three cannot drift. They had already drifted: those two
+ * disagreed about `visitCurrency: 'noticeBoardPower'`, one answering "no
+ * meeples" and the other the identity mapping, which was harmless only while
+ * nothing seeded a meeple there - the precise thing M1 changes.
  */
 export function tileMeepleSpaces(data: GameData): readonly number[] {
   const spaces = deliveriesPerTile(data);
   const only = data.rules.turn.deliveryMeepleSpace;
   if (only !== null) return only >= 0 && only < spaces ? [only] : [];
-  // The null branch reproduces `meeplesPerTile` exactly, asked as "which
-  // spaces" rather than "how many". Its zero cases (the commons and the
-  // notice-board visit) are read off that function rather than re-derived, so a
-  // fifth `visitCurrency` cannot answer one thing here and another there.
-  if (meeplesPerTile(data) === 0) return [];
+  // ⛔ THE COMMONS SEEDS NONE (09/09/2026, C6) AND SO DOES THE NOTICE-BOARD
+  // VISIT (10/09/2026, §2.6 of its handoff). Answered before the meeple branch
+  // on purpose: neither is a meeple currency, so a fifth `visitCurrency` falling
+  // through to the `'card'` arithmetic below would seed two a tile without a
+  // word of warning. ⚠️ It is answered AFTER the override, because M1 seeds a
+  // meeple in whatever game the arm is stacked on and the override wins outright.
+  if (isCommons(data) || isNoticeBoardPower(data)) return [];
+  // The meeple loop names WHICH spaces carry one: `[1]`, the 3 VP second
+  // delivery. Out-of-range entries are filtered rather than thrown on, which is
+  // what the count has always done.
   if (isMeepleCurrency(data)) {
     return data.island.meeples.seededSpaces.filter((i) => i >= 0 && i < spaces);
   }
+  // The v31 control: every delivery space, `perDeliverySpace` times each. ⚠️ The
+  // ORDER is what `meepleIndexForSpace` reads, and at the shipped
+  // `perDeliverySpace: 1` it is the identity the old code hardcoded. At 2 it
+  // would be [0, 0, 1, 1] and the identity would be wrong, which is the second
+  // reason the mapping is derived here rather than assumed there.
   const seeded: number[] = [];
   for (let space = 0; space < spaces; space += 1) {
     for (let n = 0; n < data.island.meeples.perDeliverySpace; n += 1) seeded.push(space);

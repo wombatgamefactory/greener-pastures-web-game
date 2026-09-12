@@ -15,8 +15,24 @@
  * Steps 1 and 2 are both start-of-turn, and both are gated inside the
  * `!turn.actionSpent` early return below rather than by a phase field: there is
  * no other thing a turn can have done, so the whole ordering needs two
- * predicates (`meepleOpen`, `bonusOpen`) and no new state. A meeple may not be
- * held back and spent later, which `meepleOpen`'s second clause enforces.
+ * predicates (`meepleSpendOpen`, `bonusOpen`) and no new state. A meeple may not
+ * be held back and spent later, which `meepleSpendOpen`'s second clause
+ * enforces under `'start'`.
+ *
+ * ⭐ **AND SINCE 12/09/2026 THE MEEPLE PHASE CAN SIT AT THE OTHER END OF THE
+ * TURN** (`rules.turn.meepleSpendTiming: 'afterAction'`, M4, ledger A151, the
+ * delivery meeple). Under it step 1 moves BELOW step 3: after your main action
+ * you may discard one meeple for the PLAIN action of its colour, and D7 makes
+ * that legal on any turn once the action window has closed, PASSED included.
+ *
+ * ⚠️ **NOTHING IN THIS FILE HAD TO CHANGE FOR IT, AND THAT IS WORTH
+ * SAYING RATHER THAN LEAVING TO BE REDISCOVERED.** The `!turn.actionSpent` early
+ * return is the window's own opening condition read from the other side: under
+ * `'afterAction'` `meepleOptions` is empty by construction until the action is
+ * spent, and non-empty exactly when the line below must hold the turn open. The
+ * gate that was written for the start-of-turn phase is the same gate the
+ * end-of-turn one needs, and `endTurn` (offered whenever the action is spent) is
+ * how a seat declines.
  */
 
 import type { GameData } from '@gp/data';
@@ -72,8 +88,16 @@ export function settleTurn(data: GameData, draft: GameState, fx: Fx): void {
     // the timing is ever made a constant, delete this line THEN - and note that
     // the constant would now have to be 'end', under which it must NEVER go.
     if (bonusOpen(data, draft) && hasBonusOption(data, draft, draft.turnPlayer)) return;
-    // The same knob reopens the meeple phase, because `meepleOpen` reads
-    // `bonusUsed` and a late bonus leaves it empty. One line, same reasoning.
+    // The same knob reopens the meeple phase, because `meepleSpendOpen` reads
+    // `bonusUsed` under `'start'` and a late bonus leaves it empty. One line,
+    // same reasoning.
+    //
+    // ⭐ AND SINCE 12/09/2026 IT IS THE DELIVERY MEEPLE'S ONLY GATE (M4).
+    // Under `meepleSpendTiming: 'afterAction'` this list is non-empty precisely
+    // when the action is spent and a spendable meeple is held, so this line is
+    // the whole of what holds the turn open for the new window. It was already
+    // written and already load-bearing, which is the second time the note above
+    // it has paid for itself.
     //
     // ⭐ UNDER THE MEEPLE-LOOP ARM THIS LINE IS INERT BY CONSTRUCTION, and it
     // must be: the turn-start meeple spend is DELETED (R8), so `meepleOptions`

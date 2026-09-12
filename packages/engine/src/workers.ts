@@ -28,7 +28,7 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import { doorActionForSuit, isMeepleCurrency } from '@gp/data';
+import { doorActionForSuit, isMeepleCurrency, meepleSpendTiming } from '@gp/data';
 
 import { doorOf, unclaimedCentre } from './query.js';
 import type { Fx } from './fx.js';
@@ -67,6 +67,39 @@ export function doorActionOf(data: GameData, colour: Suit): DoorAction {
   const action = doorActionForSuit(data, colour);
   if (action === undefined) throw new Error(`No door action for suit ${colour}`);
   return action;
+}
+
+/**
+ * ⭐ WHAT A MEEPLE BUYS, AND IT IS THE **PLAIN ACTION** AND NEVER A BOARD POWER
+ * (M6/M7, Dean 12/09/2026, A151, the delivery meeple).
+ *
+ * ⛔ **M6 IS THE WHOLE POINT AND IT IS EASY TO GET WRONG.** Under
+ * `visitCurrency: 'noticeBoardPower'` a VISIT buys the board's printed power -
+ * the Orchard board is "Draw 4" - and a meeple buys the plain Draw 2. They stopped
+ * being the same thing on 10/09/2026 and nothing in the design says so twice.
+ * `performDoorAction` is the plain path (`fireNoticeBoardPower` is the other
+ * one), so a meeple routed through it already gets the plain action for four of
+ * the five colours; this function exists for the fifth.
+ *
+ * ⛔ **THE FIFTH IS THE APIARY, WHICH BUYS A GROW AND NEVER A SOW (M7).** Sow is
+ * not one of the five core actions - it is a keyword granted by card text - and
+ * "orange means Grow here and Sow there" has cost this project a day before. The
+ * roster's `action` for that door is `sow`, so the one mapping is written here:
+ * a sow door buys the GROW its `actionUnderCommons` payload already names. ⭐ M8:
+ * a meeple Grow places its activation card AS NORMAL and CAN clog, which is the
+ * ordinary `grow` task and therefore free - it differs on purpose from V8's
+ * coin-Grow, which places nothing.
+ *
+ * ⚠️ **GATED ON `meepleSpendTiming === 'afterAction'` AND THAT IS DELIBERATE.**
+ * `'start'` is the v31 control's own turn-start spend, whose Apiary meeple has
+ * bought a SOW since v31 and whose four fixtures replay it. M7 belongs to M4's
+ * sentence ("after your main action, discard one meeple for the plain action of
+ * its colour"), so it arrives with M4's timing and not before it.
+ */
+export function meepleActionOf(data: GameData, colour: Suit): DoorAction {
+  const action = doorActionOf(data, colour);
+  if (meepleSpendTiming(data) !== 'afterAction') return action;
+  return action === 'sow' ? 'grow' : action;
 }
 
 /**
@@ -275,7 +308,12 @@ export function performDoorAction(fx: Fx, actor: Seat, colour: Suit, via: DoorVi
   const door = doorOf(fx.data, colour);
   // The commons re-reads one of the five (Apiary sow becomes GROW, C3); under
   // both controls this is exactly `door.action`.
-  const action = doorActionOf(fx.data, colour);
+  // ⭐ AND THE DELIVERY MEEPLE RE-READS THE SAME ONE (M7, 12/09/2026): under
+  // `meepleSpendTiming: 'afterAction'` a meeple buys the PLAIN action of its
+  // colour and the Apiary's is GROW. One dispatch for all three routes, so a
+  // meeple can never be offered one action and handed another - see
+  // `meepleActionOf` for why the two questions differ at all.
+  const action = via === 'meeple' ? meepleActionOf(fx.data, colour) : doorActionOf(fx.data, colour);
   fx.emit({ e: 'doorUsed', seat: actor, colour, action, via });
 
   switch (action) {
