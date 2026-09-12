@@ -21,6 +21,9 @@
 
 import type { GameData, Suit } from '@gp/data';
 import {
+  coinPaysBuild,
+  coinPaysGrow,
+  coinSupplyPerPlayer,
   endgameCoinCost,
   farmsteadCoinPower,
   hostDrawCapPerRound,
@@ -29,6 +32,7 @@ import {
   isMeepleCurrency,
   isNoticeBoardPower,
   noticeBoardsPerSeat,
+  storeCoinsPerCard,
   tileMeepleSpaces,
   unclaimedBoardsToCentre,
 } from '@gp/data';
@@ -137,7 +141,54 @@ export function meepleLoopPlayerFields(data: GameData): { noticeBoard?: NoticeBo
  * three knobs themselves.
  */
 export function coinEconomy(data: GameData): boolean {
-  return isCommonsTakeCoins(data) || farmsteadCoinPower(data) || endgameCoinCost(data) !== null;
+  return (
+    isCommonsTakeCoins(data) ||
+    farmsteadCoinPower(data) ||
+    endgameCoinCost(data) !== null ||
+    // ⭐ THE VILLAGE STORE JOINS THE OR (A150, Dean 12/09/2026, V1 and V4).
+    // Its mint and its supply are two more knobs on the same wallet, and the OR
+    // is why they need no second field: a Store seat holds coins in
+    // `PlayerState.coins` exactly as a K7 seat does. BOTH leaves are named
+    // rather than one, on the same sub-arm reasoning as the three above -
+    // `village-store-coins-grow-only-v1` still mints, and a hypothetical sweep
+    // that set the supply without the rate (or the rate without the supply)
+    // must still HAVE a wallet to read zero out of rather than crash in
+    // `coinsOf`.
+    storeCoinsPerCard(data) > 0 ||
+    coinSupplyPerPlayer(data) > 0 ||
+    // ⚠️ AND ITS TWO SINKS TOO, for the reason this function's docblock
+    // already gives about K7's: an arm that turns a SINK on with no mint behind
+    // it must read zero coins for ever rather than crash in `coinsOf`. Nothing
+    // mints into such a game, so the wallet stays at 0 and no coin option is
+    // ever offered - which is a rules no-op and a serialisation yes.
+    // `coinPaysSuitCost` and `coinGrowOnFullBuilding` are deliberately NOT here:
+    // neither means anything without the sink it modifies, and
+    // `coinGrowReachesFullBuildings` says so in the data layer.
+    coinPaysBuild(data) ||
+    coinPaysGrow(data)
+  );
+}
+
+/**
+ * ⭐ THE VILLAGE STORE'S SHARED SUPPLY, as a spread (V4, Dean 12/09/2026,
+ * ledger A150) - the exact counterpart of `coinPlayerFields` below and absent
+ * for the same reason: the key is MISSING rather than present-and-zero under
+ * every game that has no Store, so serialised states, captures and the nine
+ * fixtures stay byte-identical.
+ *
+ * ⚠️ GATED ON `coinSupplyPerPlayer` ALONE AND NOT ON `coinEconomy`, and the
+ * difference is deliberate: the OTHER coin arm (K7, 10/09/2026) has no supply
+ * at all - its mint conjures coins out of a cleared pile and its sinks send
+ * them nowhere - so giving it a pool would invent a rule nobody ruled. This
+ * field exists for the arms that size one.
+ *
+ * SEATS x the per-player rate: 10 at two seats, 20 at four (V4). Solo is not
+ * modelled at all and would be 5, which the design doc records as an open point
+ * rather than a decision.
+ */
+export function coinSupplyZone(data: GameData, seats: number): { coinSupply?: number } {
+  const per = coinSupplyPerPlayer(data);
+  return per > 0 ? { coinSupply: per * seats } : {};
 }
 
 /**
@@ -647,6 +698,7 @@ export function newGame(data: GameData, opts: NewGameOptions): GameState {
     island,
     aerodrome,
     ...commonsZone(data, playerSuits),
+    ...coinSupplyZone(data, seats),
     turn: freshTurn(),
     tasks: [],
     resume: null,

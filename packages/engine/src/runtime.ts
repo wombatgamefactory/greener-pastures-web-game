@@ -9,7 +9,7 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import { farmsteadCoinPower } from '@gp/data';
+import { coinGrowReachesFullBuildings, coinPaysGrow, farmsteadCoinPower } from '@gp/data';
 
 import { assertPlacementMatches, doVisit, meepleAsCard } from './actions.js';
 import { clonePlain } from './clone.js';
@@ -62,6 +62,33 @@ export interface GrowMods {
    * coin, a Farmstead and an unfired latch.
    */
   coin?: boolean;
+  /**
+   * ⭐ V8/V9 (A150, Dean 12/09/2026): THE PAYMENT IS ONE VILLAGE STORE COIN
+   * AND THE TARGET IS ANY OF THIS SEAT'S BUILDINGS WITH A PRINTED ACTIVATION
+   * TYPE. `payment` is null, `meeples` is empty, NOTHING IS PLACED - so the
+   * stack does not advance, the building never clogs, and under
+   * `coinGrowReachesFullBuildings` a building already at its threshold is a
+   * legal target: the first clog bypass in this game since the meeples, ruled in
+   * deliberately.
+   *
+   * ⛔ IT IS NOT `coin` ABOVE. That is K10, the other coin arm's FARMSTEAD
+   * suit power - a different knob, one legal target and a different sink label.
+   * They are mutually exclusive by construction and each says so, because
+   * merging them would put every coin-Grow into a metric that counts Farmstead
+   * firings.
+   *
+   * ⭐ D5: THE "WHEN ACTIVATED" ABILITY FIRES. That is the whole point of a
+   * Grow. ⚠️ What does not fire is anything keyed on a PLACEMENT (A16 The
+   * Beekeeper's Veil), because a coin places nothing, and A21 The Wax Hall does
+   * not count a building held empty by coin-Grows. Both are ruled in with eyes
+   * open - section 4 of the design doc.
+   *
+   * ⛔ MAIN ACTION OR BOUGHT, EITHER. Unlike K10 there is no `mainAction`
+   * gate: V8 says a coin is a wild card for GROW, and the Apiary board's bought
+   * Grow is a Grow. The fire-once-per-turn guard is what bounds it, so two
+   * coin-Grows a turn is the ceiling and never the same building twice.
+   */
+  coinGrow?: boolean;
 }
 
 /**
@@ -135,6 +162,48 @@ export function doGrow(
     if (coinsOf(fx.state, seat) < 1)
       throw new Error(`Seat ${seat} has no coin to activate ${building}`);
     fx.spendCoins(seat, 'farmstead', 1);
+    markFired(fx, building);
+    handlerFor(building)?.activate?.(fx, { seat, card: building });
+    return;
+  }
+  // ⭐ THE VILLAGE STORE'S COIN-GROW (V8/V9, A150, Dean 12/09/2026). It
+  // returns before every card-and-meeple check below on exactly the shape K10's
+  // branch above uses, and for the same reason: there is no payment card to
+  // match against an activation type and nothing is placed.
+  //
+  // ⚠️ EVERY GATE THE ENUMERATOR APPLIED IS RE-ASKED HERE, which is this
+  // file's standing division of labour - the enumerator FILTERS on these facts
+  // and this THROWS on them - because a re-validation must ask what the move
+  // NEEDS and never trust the window the caller consumed.
+  //
+  // ⛔ THE FULL-BUILDING GATE READS `canTakeCard`, THE CLOG QUESTION, and asks
+  // `coinGrowReachesFullBuildings`, the COMBINING accessor, never the raw
+  // `coinGrowOnFullBuilding` leaf. `growOptions` says why at length.
+  //
+  // ⚠️ K10's BRANCH RETURNS ABOVE THIS ONE, so `mods.coin` cannot also be set
+  // here and no both-coins check is written: the two economies are pinned apart
+  // in every overlay, and if they were ever run together the FARMSTEAD would
+  // simply keep its own rule and every other building would get this one.
+  if (mods.coinGrow === true) {
+    if (!coinPaysGrow(fx.data)) {
+      throw new Error('A coin pays for a GROW only under rules.economy.coinPaysGrow');
+    }
+    if (payment !== null || meeples.length > 0) {
+      throw new Error('A coin-paid GROW pays no card and no meeple');
+    }
+    const type = faceOf(fx.data, b).activationType;
+    if (type === null) throw new Error(`${building} has no activation type`);
+    if (!canTakeCard(fx.data, b) && !coinGrowReachesFullBuildings(fx.data)) {
+      throw new Error(`${building} is full: a coin reaches one only under coinGrowOnFullBuilding`);
+    }
+    if (fx.state.turn.firedThisTurn.includes(building)) {
+      throw new Error(`${building} has already fired this turn`);
+    }
+    if (coinsOf(fx.state, seat) < 1) {
+      throw new Error(`Seat ${seat} has no coin to activate ${building}`);
+    }
+    // V5: the coin goes back to the shared supply, inside `spendCoins`.
+    fx.spendCoins(seat, 'grow', 1);
     markFired(fx, building);
     handlerFor(building)?.activate?.(fx, { seat, card: building });
     return;

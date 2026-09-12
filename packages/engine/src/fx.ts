@@ -14,12 +14,13 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import { isMeepleCurrency } from '@gp/data';
+import { isMeepleCurrency, storeCoinsPerCard } from '@gp/data';
 
 import {
   cardById,
   canTakeCard,
   coinsOf,
+  coinSupplyLeft,
   centralPileSuit,
   commonsHarvestTake,
   commonsBoards,
@@ -833,6 +834,55 @@ export class Fx {
   }
 
   /**
+   * ⭐ THE VILLAGE STORE'S MINT, ONE CARD AT A TIME (V1/V2/V4/V5, Dean
+   * 12/09/2026, ledger A150): one card of `suit` leaves the payer's BARN for
+   * that suit's DISCARD, and `rules.economy.storeCoinsPerCard` coins come OUT OF
+   * THE SHARED SUPPLY into the payer's wallet.
+   *
+   * ⛔ A SUIT AND NOT A CARD ID, because barn identity is inert - see
+   * `spendFromBarn` just above, which has taken "the first matching id" for a
+   * per-suit tally since the barn existed. That is what caps the mint task's
+   * answer list at five suits plus a skip whatever the barn holds, and it is the
+   * reason the exchange is not a power-set enumeration.
+   *
+   * ⛔ D1: TO THE SUIT'S DISCARD AND NEVER OUT OF THE GAME. Returning stranded
+   * cards to circulation is the Store's whole argument - the barn parity trap
+   * strands about eleven cards a player a game and played decks reshuffle 7 / 6
+   * / 4 times off a twelve-card deck - and out-of-game would do the opposite.
+   * `reshuffles per played deck` is the falsifiable prediction: if the Store
+   * works, it FALLS.
+   *
+   * ⛔ AND IT GOES THROUGH `fx.discard` AND NOT THROUGH `divertOrDiscard` OR
+   * `discardOrDivert`. A card lifted back out of the exchange by a divert would
+   * leave its owner holding the coin AND the card: a SECOND MINT, free, once a
+   * turn. O17 The Fruit Basket was restricted to a hand discard on the same day
+   * for the same reason (A150). Every coin economy this project has had died of
+   * a second faucet.
+   *
+   * ⚠️ D4: THE SUPPLY IS A CEILING, NOT A PRECONDITION. It pays what it has -
+   * the last coin of a supply still buys a card at a rate of 1 - and the caller
+   * stops when it is empty rather than refusing the whole exchange. Returns the
+   * coins actually minted, which is 0 only if the caller failed to check.
+   */
+  mintFromBarn(seat: Seat, suit: Suit): number {
+    const rate = storeCoinsPerCard(this.data);
+    if (rate <= 0) throw new Error('There is no Village Store in this game');
+    const left = coinSupplyLeft(this.state);
+    if (left <= 0) throw new Error('The Village Store supply is empty');
+    const barn = player(this.state, seat).barn;
+    const at = barn.findIndex((id) => cardById(this.data, id).suit === suit);
+    if (at < 0) throw new Error(`Seat ${seat}'s barn has no ${suit} card to exchange`);
+    this.touch(seat);
+    const [card] = barn.splice(at, 1) as [CardId];
+    this.discard([card]);
+    const coins = Math.min(rate, left);
+    this.state.coinSupply = left - coins;
+    this.gainCoins(seat, coins);
+    this.emit({ e: 'coinsMinted', seat, board: 'store', coins, card });
+    return coins;
+  }
+
+  /**
    * ⭐ A SINK (K10 or K15): take `n` coins off a seat and say which of the two
    * uses took them. The enumerators have already refused the move if the seat
    * cannot pay - a seat short of coins is never offered the Farmstead as a Grow
@@ -840,12 +890,25 @@ export class Fx {
    * catching a move `legalMoves` never made, which is the discipline the whole
    * file is written on.
    */
-  spendCoins(seat: Seat, on: 'farmstead' | 'endgame', n: number): void {
+  spendCoins(seat: Seat, on: 'farmstead' | 'endgame' | 'build' | 'grow', n: number): void {
     const held = coinsOf(this.state, seat);
     if (n <= 0) throw new Error(`A coin sink costs at least one coin, got ${n}`);
     if (held < n) throw new Error(`Seat ${seat} has ${held} coins, not ${n}`);
     this.touch(seat);
     player(this.state, seat).coins = held - n;
+    // ⭐ V5 (A150, 12/09/2026): A SPENT COIN RETURNS TO THE SHARED SUPPLY AND
+    // MAY BE MINTED AGAIN. So the pool is recirculating rather than a countdown,
+    // and the sum of the supply and every wallet is invariant for the whole
+    // game - which is the identity the tests assert and the reason a run can
+    // read "how often was the supply empty" as a measure of PRESSURE rather
+    // than of exhaustion.
+    //
+    // ⚠️ GATED ON THE FIELD'S PRESENCE, and that is not defensive coding.
+    // The OTHER coin arm (K7, 10/09/2026) has no supply at all: its mint
+    // conjures coins out of a cleared pile and its sinks send them nowhere. A
+    // return there would be inventing a rule nobody ruled, and `coinSupplyLeft`
+    // would throw.
+    if (this.state.coinSupply !== undefined) this.state.coinSupply += n;
     this.emit({ e: 'coinsSpent', seat, on, coins: n });
   }
 
@@ -1146,7 +1209,36 @@ export interface HookEvents {
    * it (null for the plain action), which is how D5 and D6 react to their OWN
    * build while D16 The Ledger reacts to every one.
    */
-  afterBuild: { seat: Seat; card: CardId; payment: CardId[]; src: CardId | null };
+  afterBuild: {
+    seat: Seat;
+    card: CardId;
+    payment: CardId[];
+    src: CardId | null;
+    /**
+     * ⭐ DID THE PAYMENT COME OUT OF THE HAND (A150, Dean 12/09/2026)?
+     *
+     * True for every ordinary build, because `doBuild` takes the payment off
+     * the hand card by card. FALSE for exactly one route: Dean's 'spend'
+     * variant's Dairy leg (`doCommonsSpendBuild`), which pays a build straight
+     * out of a central pile and never touches a hand.
+     *
+     * ⛔ IT EXISTS FOR O17 THE FRUIT BASKET AND FOR THE VILLAGE STORE'S SAKE.
+     * O17 was restricted on 12/09/2026 to *"a card you discard FROM YOUR
+     * HAND"*, because the Store's exchange (V1) spends BARN cards and a card
+     * that could be reclaimed out of an exchange would be a SECOND MINT, once
+     * a turn, free, on every turn its owner delivers. Every coin economy this
+     * project has had died of a second faucet. The exchange does not route
+     * through this hook at all - it discards directly - so the restriction is
+     * belt as well as braces, and the braces are what this flag is: it is the
+     * one live case where a build payment is not a hand spend, and a future
+     * route that pays a build out of a barn would land here and be refused
+     * rather than quietly re-open the loop.
+     *
+     * ⚠️ D5 The Churning Shed and D6 The Trading Shed read the same payment
+     * and are DELIBERATELY NOT gated on it: Dean ruled O17's face, not theirs.
+     */
+    fromHand: boolean;
+  };
 }
 
 export type HookName = keyof HookEvents;

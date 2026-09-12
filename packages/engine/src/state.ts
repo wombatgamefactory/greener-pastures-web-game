@@ -702,6 +702,51 @@ export type Task =
     }
   | {
       /**
+       * ⭐ THE VILLAGE STORE'S EXCHANGE (V1, Dean 12/09/2026, ledger A150):
+       * *"when you make a delivery you may spend any number of ADDITIONAL cards
+       * FROM YOUR BARN, taking £1 each"*.
+       *
+       * ⛔ **IT IS A REPEATED BINARY CHOICE AND IT MUST NEVER BECOME A SUBSET
+       * ENUMERATION.** "Any number of cards from your barn" is the POWER SET of
+       * the barn: an 11-card barn is 2,048 conversions offered in ONE task, at
+       * EVERY delivery, which is the end-of-turn discard's C(n, k) failure
+       * arriving through a new door. This project has been stopped dead twice by
+       * exactly that - a 116,535-move position on 02/09/2026 and an 888,030-move
+       * one on 05/09/2026 - so the task offers "convert ONE more, or stop" and is
+       * re-offered while `remaining` holds. n sequential decisions instead of
+       * 2^n, and it costs NOTHING in expressiveness: every subset is reachable,
+       * by a different route.
+       *
+       * ⭐ **AND THE ANSWER NAMES A SUIT, NOT A CARD, WHICH IS THE SECOND HALF
+       * OF THE BOUND.** Barn identity is inert - `fx.spendFromBarn` says so in
+       * code, taking "the first matching id" for a per-suit tally - so two
+       * wheat cards in a barn differ in nothing a rule or a player can read.
+       * Answering by suit is the same reduction `stackGroupsOf` makes for a
+       * build payment, and it caps the answer list at **FIVE SUITS PLUS ONE
+       * SKIP, six, whatever the barn holds**. That bound is asserted by test.
+       *
+       * `remaining` is min(barn size, coins left in the supply) at the moment
+       * the task is pushed, and it is re-bounded at every answer: V5's supply is
+       * shared and finite, and D4 says an empty supply mid-conversion STOPS
+       * rather than refusing the whole exchange.
+       *
+       * ⚠️ ALWAYS OPTIONAL, so no `optional` flag: D3 says declining is
+       * EXPLICIT, so a `skip` is offered whenever anything is, and the turn
+       * settles cleanly on it.
+       *
+       * ⛔ PUSHED FROM `finishDelivery` AND ONLY FROM THERE, which is V3: the
+       * exchange resolves AFTER the crate is paid, so a player can never convert
+       * the cards the delivery itself needs. That placement is also D2 for free -
+       * every delivery reaches that tail, including one bought by a Notice Board
+       * power - and it keeps the balloon's freight move out, which is a Deliver
+       * ACTION but not a delivery.
+       */
+      t: 'mint';
+      pid: Seat;
+      remaining: number;
+    }
+  | {
+      /**
        * THE END-OF-TURN OVERFLOW DISCARD, down to `rules.turn.handLimit`.
        * `finishTurn` is its only producer, and it is the ONLY enforcement of the
        * hand limit anywhere: a hand may be any size mid-turn, and is checked
@@ -868,7 +913,20 @@ export type TaskAnswer =
    * answer names two things and a different act, so it gets its own kind, on
    * exactly the reasoning written on `activate` just above.
    */
-  | { kind: 'grow'; building: CardId; payment: CardId }
+  /**
+   * ⚠️ `payment` WENT NULLABLE ON 12/09/2026 (V8, A150). A bought Grow may
+   * now be paid with ONE VILLAGE STORE COIN instead of a card, in which case
+   * `payment` is null and `coinGrow` is set: nothing is placed, the stack does
+   * not advance, and a FULL building is a legal target under
+   * `rules.economy.coinGrowOnFullBuilding`. Every other answer of this kind is
+   * unchanged, so a Store-off answer is byte-identical.
+   *
+   * ⭐ WHY A BOUGHT GROW GETS THE SINK AT ALL: V8 says a coin is a wild card
+   * for GROW, and the Apiary board's bought Grow is a Grow. Coins still cannot
+   * multiply ACTIONS - the standing fire-once-per-turn guard means two
+   * coin-Grows a turn is the ceiling and never the same building twice.
+   */
+  | { kind: 'grow'; building: CardId; payment: CardId | null; coinGrow?: true }
   /** `ontoSeat` is absent for the actor's own building - which is every sow but A4's and A14's. */
   | { kind: 'sow'; card: CardId; onto: CardId; ontoSeat?: Seat }
   /** sowFromDeck: which deck top, onto which building. */
@@ -893,6 +951,14 @@ export type TaskAnswer =
        */
       meeples?: Partial<Record<Suit, number>>;
       wildPairs?: number;
+      /**
+       * ⭐ V6 (A150, 12/09/2026): coins in the payment, as a COUNT. It rides
+       * on the answer for exactly the reason `meeples` does above - an answer
+       * that dropped it is an answer that cannot pay, and `doBuild` throws
+       * "costs N cards, got N-j" a long way from the seam that lost it. Every
+       * route into a build has to carry it or none.
+       */
+      coins?: number;
     }
   /**
    * ⛔ `head` / `deckHead` rode on both of these until v31 and are GONE with the
@@ -1006,6 +1072,34 @@ export interface GameState {
    * rather than empty under the two controls.
    */
   commons?: CommonsState;
+  /**
+   * ⭐ THE VILLAGE STORE'S SHARED COIN SUPPLY (V4, Dean 12/09/2026, ledger
+   * A150): how many coins are still IN THE SUPPLY, waiting to be minted.
+   *
+   * `rules.economy.coinSupplyPerPlayer` x seats at setup - 10 at two seats and
+   * 20 at four - SHARED across the table with NO per-player holding cap, so one
+   * player may hold every one of them. Spent coins RETURN here and may be
+   * minted again (V5), which makes this a recirculating pool rather than a
+   * countdown: the sum of this and every seat's `PlayerState.coins` is
+   * invariant for the whole game, and that identity is what the tests assert.
+   * An empty supply mints nothing.
+   *
+   * ⚠️ **ABSENT UNLESS THE STORE IS ON**, in exactly the register `commons`
+   * above and `PlayerState.coins` are written in: a key present-and-zero would
+   * change every serialised state, every capture and every fixture replay for a
+   * rule the shipped game has no concept of, and NINE fixtures in
+   * `packages/sim/fixtures/` replay byte-identically and depend on the absence.
+   * `coinSupplyLeft` in query.ts is the one accessor and it THROWS when the
+   * Store is on and this is missing, so the optionality never reaches a rule.
+   *
+   * ⛔ IT IS NOT THE v31 BANK. There is no wage, no pity rate, no market and
+   * no purchase from it: the ONE way a coin leaves this pool is V1's exchange at
+   * a delivery, and the only two ways one comes back are the Build and Grow
+   * sinks. Every coin economy this project has had died of a second faucet, so
+   * a future session adding a second producer here is repeating that failure
+   * rather than tuning this one.
+   */
+  coinSupply?: number;
   turn: TurnState;
   tasks: Task[];
   resume: Resume | null;
@@ -1087,6 +1181,13 @@ export type Move =
       payment: CardId[];
       meeples?: Partial<Record<Suit, number>>;
       wildPairs?: number;
+      /**
+       * ⭐ V6 (A150, Dean 12/09/2026): coins in the payment, as a COUNT and
+       * never a choice of which coins. Absent when none, so a Store-off move is
+       * byte-identical. See `BuildOption.coins` in actions.ts for the branching
+       * argument, which is the whole reason it is a number.
+       */
+      coins?: number;
     }
   /**
    * GROW: activate one of your own buildings, paying one card that matches its
@@ -1124,6 +1225,17 @@ export type Move =
       meeples?: Suit[];
       /** K10: this GROW is paid with ONE COIN and places nothing. */
       coin?: true;
+      /**
+       * ⭐ V8/V9 (A150, Dean 12/09/2026): this GROW is paid with ONE VILLAGE
+       * STORE COIN, on ANY of the seat's buildings with an activation type, and
+       * PLACES NOTHING - so the stack does not advance, the building never
+       * clogs, and a FULL building is a legal target under
+       * `rules.economy.coinGrowOnFullBuilding`. ⛔ NOT `coin` above, which is
+       * K10's Farmstead power on the other coin arm: `observe.ts` counts
+       * `move.coin === true` as a Farmstead firing, so merging them would put
+       * every coin-Grow into a metric that means something else.
+       */
+      coinGrow?: true;
       /** R17: where the paid meeple(s) land, by seat, and the toll they owed. */
       placements?: Partial<Record<Suit, number>>[];
       paymentToll?: Partial<Record<Suit, number>>;
@@ -1495,7 +1607,25 @@ export type GameEvent =
    * the three take variants of 09/09/2026, all of which put the cards back into
    * a hand or a barn and ran the bonus at 74% to 89% of turns because of it.
    */
-  | { e: 'coinsMinted'; seat: Seat; board: Suit; coins: number }
+  /**
+   * A COIN CAME OUT OF NOWHERE OR OUT OF THE SUPPLY, and the two mints in this
+   * project share the event because everything downstream that prices a coin,
+   * counts one or folds one wants the same three fields.
+   *
+   * ⭐ `board` NAMES WHICH MINT (A150, 12/09/2026). A `Suit` is the
+   * commons-with-coins arm's cleared central pile (K3/K8, 10/09/2026), where
+   * `coins === cards.length` always. `'store'` is the VILLAGE STORE's exchange
+   * (V1): one event per card converted, `coins` is
+   * `rules.economy.storeCoinsPerCard`, and `card` names the barn card that paid
+   * for it and therefore its suit and its discard pile.
+   *
+   * ⚠️ THE TWO MINTS NEVER RUN IN THE SAME GAME and the arms are pinned so
+   * they cannot: `a18` and `a19` are both gated on `isCommonsTakeCoins`, which
+   * is false in every Store arm, so they read `noSubject` there rather than
+   * folding a Store mint into a commons reading. A Store arm's own counters are
+   * the sim's to add, off `board === 'store'`.
+   */
+  | { e: 'coinsMinted'; seat: Seat; board: Suit | 'store'; coins: number; card?: CardId }
   /**
    * ⭐ COINS LEFT A SEAT'S PILE - one of the currency's EXACTLY TWO SINKS (K7,
    * Dean 10/09/2026). `on` says which:
@@ -1510,7 +1640,27 @@ export type GameEvent =
    * coins, which K7 rules out in so many words, so adding one is a design
    * decision and never an implementation detail. a19 reads the split.
    */
-  | { e: 'coinsSpent'; seat: Seat; on: 'farmstead' | 'endgame'; coins: number }
+  /**
+   * A COIN LEFT A WALLET. `on` says which sink took it.
+   *
+   * ⭐ TWO OF THE FOUR ARE THE VILLAGE STORE'S (V6 and V8, A150,
+   * 12/09/2026): `'build'` is a coin paying any part of a build cost, emitted
+   * ONCE for the whole coin component of one payment because coins are fungible
+   * and a payment names a COUNT and never which coins; `'grow'` is a coin-Grow,
+   * always exactly one coin, placing nothing. `'farmstead'` and `'endgame'` are
+   * the separate commons-with-coins arm's two sinks (K10/K15, 10/09/2026) and
+   * no overlay turns both economies on at once.
+   *
+   * ⚠️ UNDER THE STORE THE COIN GOES BACK TO THE SHARED SUPPLY (V5) and may
+   * be minted again; under K7 there is no supply and it simply ceases. That
+   * branch lives in `fx.spendCoins`, gated on the supply's presence.
+   */
+  | {
+      e: 'coinsSpent';
+      seat: Seat;
+      on: 'farmstead' | 'endgame' | 'build' | 'grow';
+      coins: number;
+    }
   /**
    * ⭐ DEAN'S 'spend' VARIANT'S SUMMARY (09/09/2026, `rules.turn.commonsTake:
    * 'spend'`): fires once, for EVERY board, when that board's take finishes

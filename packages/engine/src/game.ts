@@ -74,8 +74,17 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
     if (drawableSuits(data, state).length > 0) moves.push({ type: 'draw', seat });
     for (const o of buildOptions(data, state, seat)) {
       moves.push(
+        // ⭐ V6 (A150, 12/09/2026): the coin count rides on BOTH shapes, so a
+        // coin-paid build with no meeples in it keeps the narrow one. Absent
+        // when zero, which is what keeps a Store-off move list byte-identical.
         o.meeples === undefined
-          ? { type: 'build', seat, card: o.card, payment: o.payment }
+          ? {
+              type: 'build',
+              seat,
+              card: o.card,
+              payment: o.payment,
+              ...(o.coins === undefined ? {} : { coins: o.coins }),
+            }
           : {
               type: 'build',
               seat,
@@ -83,6 +92,7 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
               payment: o.payment,
               meeples: o.meeples,
               ...(o.wildPairs === undefined ? {} : { wildPairs: o.wildPairs }),
+              ...(o.coins === undefined ? {} : { coins: o.coins }),
             },
       );
     }
@@ -95,7 +105,12 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
         o.coin === true
           ? // K10: one coin, nothing placed, the Farmstead's suit power fires.
             { type: 'grow', seat, building: o.building, payment: null, coin: true }
-          : o.meeples === undefined
+          : o.coinGrow === true
+            ? // ⭐ V8/V9 (A150, 12/09/2026): one VILLAGE STORE coin, nothing
+              // placed, the building's own ability fires, and under
+              // `coinGrowOnFullBuilding` a clogged building is a legal target.
+              { type: 'grow', seat, building: o.building, payment: null, coinGrow: true }
+            : o.meeples === undefined
             ? { type: 'grow', seat, building: o.building, payment: o.payment }
             : {
                 type: 'grow',
@@ -283,6 +298,8 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
         payment: move.payment,
         ...(move.meeples === undefined ? {} : { meeples: move.meeples }),
         ...(move.wildPairs === undefined ? {} : { wildPairs: move.wildPairs }),
+        // V6 (A150): a count, re-validated and charged in `doBuild`.
+        ...(move.coins === undefined ? {} : { coins: move.coins }),
       });
       break;
     case 'grow':
@@ -298,7 +315,12 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
         // K10: `coin` is the only mod the ACTION ever carries, and it is the
         // payment rather than a grant - see `GrowMods.coin`. Spread so the
         // object is `{}` in the shipped game, exactly as it always was.
-        move.coin === true ? { coin: true } : {},
+        // ⭐ AND V8's IS THE SECOND (A150, 12/09/2026), spread the same way so
+        // the object is `{}` in the shipped game exactly as it always was.
+        {
+          ...(move.coin === true ? { coin: true } : {}),
+          ...(move.coinGrow === true ? { coinGrow: true } : {}),
+        },
         move.meeples ?? [],
         {
           ...(move.placements === undefined ? {} : { placements: move.placements }),

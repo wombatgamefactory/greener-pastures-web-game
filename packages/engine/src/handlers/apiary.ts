@@ -316,10 +316,24 @@ export const gardenHive: CardHandler = {
   tasks: {
     growAny: {
       answers(data, state, task) {
+        // ⛔ CARD-PAID (AND MEEPLE-PAID) ONLY: A COIN DOES NOT REACH A
+        // CARD-GRANTED GROW (A150, 12/09/2026, and it is a BUILDER DECISION
+        // rather than one of Dean's rulings). V8 says a coin is a wild card for
+        // GROW, and the coin therefore reaches the GROW ACTION and the board's
+        // BOUGHT Grow - one each, capped by the fire-once guard. It stops here
+        // because the design doc's own safety argument for V9 is that "two
+        // coin-Grows a turn is the ceiling, and never the same building twice",
+        // which is what makes the full-building clog bypass safer than it reads
+        // - and O13 The Seed Bank grows EVERY one of your ORCHARDs, so a coin
+        // here would hand a whole tableau the bypass in a single turn and break
+        // that ceiling. A6 The Garden Hive prints "with a card of any crop" and
+        // names the currency on its own face besides.
         return growOptions(data, state, task.pid, {
           anyCrop: true,
           exclude: [task.src],
-        }).map(
+        })
+          .filter((o) => o.coinGrow !== true)
+          .map(
           (o) =>
             ({
               kind: 'card',

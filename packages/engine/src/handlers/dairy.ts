@@ -607,6 +607,13 @@ export const scoutsPost: CardHandler = {
                 // R15: the meeple half of the payment, as a count per colour.
                 ...(pay.meeples === undefined ? {} : { meeples: pay.meeples }),
                 ...(pay.wildPairs === undefined ? {} : { wildPairs: pay.wildPairs }),
+                // ⭐ V6 (A150, 12/09/2026): the COIN half of the payment, a
+                // count and never a choice of which coins. It rides on the
+                // answer for exactly the reason `meeples` does two lines up -
+                // an answer that dropped it is an answer that cannot pay, and
+                // `doBuild` would throw "costs N cards, got N-j" a long way
+                // from the seam that lost it.
+                ...(pay.coins === undefined ? {} : { coins: pay.coins }),
               },
             });
           }
@@ -637,6 +644,9 @@ export const scoutsPost: CardHandler = {
               ...(answer.payload.wildPairs === undefined
                 ? {}
                 : { wildPairs: answer.payload.wildPairs as number }),
+              ...(answer.payload.coins === undefined
+                ? {}
+                : { coins: answer.payload.coins as number }),
             },
             { discount: 2 },
             task.src,

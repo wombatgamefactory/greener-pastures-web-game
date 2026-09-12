@@ -14,6 +14,7 @@ import { seedRng } from './rng.js';
 import {
   buildIsland,
   coinPlayerFields,
+  coinSupplyZone,
   commonsZone,
   dealExtraNoticeBoards,
   demandPool,
@@ -117,6 +118,11 @@ export function makeState(data: GameData, suits: Suit[]): GameState {
     // `suitsInPlay` below is deliberately all five, so passing that instead
     // would leave the variant with no centre at all in every test.
     ...commonsZone(data, suits),
+    // ⭐ THE VILLAGE STORE'S SHARED SUPPLY (V4, A150), present only when the
+    // Store is on and ABSENT otherwise - the same register `commonsZone` is in,
+    // and the testkit must agree with `newGame` about it or a scenario silently
+    // has no pool and `coinSupplyLeft` throws.
+    ...coinSupplyZone(data, seats),
     turn: freshTurn(),
     tasks: [],
     resume: null,
@@ -504,6 +510,106 @@ export function noticeBoardHostDrawBySeatsGame(): GameData {
       'rules.economy.farmsteadCoinPower': false,
     },
   });
+}
+
+/**
+ * ⭐ THE VILLAGE STORE COIN (V1 to V12, Dean 12/09/2026, ledger A150), exactly
+ * as `overlays/village-store-coins-v1.overlay.json` and its three siblings set
+ * it.
+ *
+ * THE RULE IN ONE LINE: when you make a delivery you may spend any number of
+ * ADDITIONAL cards from your BARN, taking £1 each out of a SHARED supply of five
+ * coins per seat; a coin is then a wild card for BUILD (including the n-of-suit
+ * requirement) and for GROW (placing nothing, so a FULL building is a legal
+ * target); it may never pay a visit, a Harvest or a Deliver, it scores nothing
+ * and it breaks no ties; and a spent coin returns to the supply.
+ *
+ * ⛔ AN ARM ON TOP OF AN ARM, AND THAT MUST BE SAID EVERY TIME. C100 is open:
+ * no Notice Board configuration is ruled in as the shipped game. So all twenty
+ * leaves of `noticeBoardHostDrawBySeatsGame()` - the best-measured
+ * configuration, 5 PASS / 1 FAIL / 11 OBSERVE - are pinned by name, and the four
+ * A151 meeple leaves are pinned OFF, because the delivery meeple is a separate
+ * slice and an unpinned passenger is how a control silently stops being the game
+ * it is named after (05/09/2026).
+ *
+ * ⛔ AND TWO OF THE PINNED TWENTY ARE COIN LEAVES ON PURPOSE.
+ * `endgameCoinCost` stays null and `farmsteadCoinPower` stays false: they belong
+ * to the SEPARATE commons-with-coins arm of 10/09/2026 (K7 to K15) and they are
+ * a second mint and a second sink. Keeping them off is what makes
+ * `storeCoinsPerCard` the only faucet in the game, and every coin economy this
+ * project has had died of a second faucet or a pity rate.
+ *
+ * `build` and `grow` turn the two sinks off in turn (the 05/09/2026 lesson
+ * applied before the fact: if they go in together and the arm reads badly nobody
+ * will know which did it), and `wild` is the n-of-suit question with
+ * `coinPaysSuitCost` false.
+ */
+export function villageStoreGame(
+  which: 'both' | 'build' | 'grow' | 'growOpen' | 'wild' = 'both',
+): GameData {
+  const build = which !== 'grow' && which !== 'growOpen';
+  const grow = which === 'both' || which === 'grow' || which === 'growOpen';
+  return loadGameData({
+    name: `village-store-coins-${which}-testkit`,
+    schemaVersion: 1,
+    set: {
+      // The control's twenty, unchanged and in its own order.
+      'rules.turn.visitCurrency': 'noticeBoardPower',
+      'rules.turn.bonusTiming': 'start',
+      'rules.turn.selfVisitAllowed': false,
+      'rules.turn.hostDrawOnVisit': 1,
+      'rules.turn.hostDrawOnVisitBySeats.4': 0,
+      'rules.turn.commonsTake': 'harvest',
+      'rules.turn.startingMeeplesPerColour': 0,
+      'rules.turn.meepleAsCard': false,
+      'rules.turn.slotToll': null,
+      'rules.turn.meepleCapPerColour': null,
+      'rules.economy.noticeBoardThreshold': 3,
+      'rules.economy.noticeBoardBlocks': false,
+      'rules.economy.unclaimedBoardsToCentre': false,
+      'rules.economy.noticeBoardsBySeats.2': 2,
+      'rules.economy.noticeBoardsBySeats.3': 1,
+      'rules.economy.noticeBoardsBySeats.4': 1,
+      'rules.economy.commonsColourMatch': false,
+      'rules.economy.commonsWildPair': false,
+      'rules.economy.endgameCoinCost': null,
+      'rules.economy.farmsteadCoinPower': false,
+      // The six that ARE the rule (V1, V4, V6, V8, V9).
+      'rules.economy.storeCoinsPerCard': 1,
+      'rules.economy.coinSupplyPerPlayer': 5,
+      'rules.economy.coinPaysBuild': build,
+      'rules.economy.coinPaysSuitCost': which !== 'wild' && build,
+      'rules.economy.coinPaysGrow': grow,
+      // ⭐ V9 IS ITS OWN LEAF, and `'growOpen'` is the arm that turns it off
+      // while leaving the Grow sink on: the coin still pays an activation but a
+      // CLOGGED building is out of reach. It is the strongest single clause in
+      // the package, so it must be readable on its own.
+      'rules.economy.coinGrowOnFullBuilding': grow && which !== 'growOpen',
+      // A151's four, pinned off so the delivery meeple cannot ride in.
+      'rules.turn.deliveryMeepleSpace': null,
+      'rules.turn.meepleSpendTiming': 'start',
+      'rules.turn.meepleSpendPerTurn': null,
+      'rules.turn.meepleSpendDistinctColours': false,
+    },
+  });
+}
+
+/** Put coins in a seat's wallet, taken out of the shared supply exactly as a mint would (V4/V5). */
+export function giveCoins(state: GameState, seat: Seat, n: number): void {
+  const p = state.players[seat];
+  if (!p) throw new Error(`No player in seat ${seat}`);
+  if (p.coins === undefined) throw new Error(`Seat ${seat} has no wallet in this game`);
+  if (state.coinSupply === undefined) throw new Error('This game has no Village Store supply');
+  if (state.coinSupply < n) throw new Error(`The supply holds ${state.coinSupply} coins, not ${n}`);
+  state.coinSupply -= n;
+  p.coins += n;
+}
+
+/** Put cards straight into a seat's barn, off their decks, for the exchange's scenarios. */
+export function barnFor(data: GameData, state: GameState, seat: Seat, ...cards: CardId[]): void {
+  for (const card of cards) {
+    state.players[seat]?.barn.push(pullFromDeck(data, state, card));
+  }
 }
 
 /**

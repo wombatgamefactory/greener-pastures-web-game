@@ -387,6 +387,27 @@ export function coinsOf(state: GameState, seat: Seat): number {
 }
 
 /**
+ * ⭐ HOW MANY COINS ARE STILL IN THE VILLAGE STORE'S SHARED SUPPLY (V4/V5,
+ * Dean 12/09/2026, ledger A150).
+ *
+ * ⛔ **THROWS WHEN THE STORE IS ON AND THE FIELD IS MISSING**, in exactly the
+ * register `coinsOf` above is written in, and for a sharper reason than either:
+ * a silent 0 would make the mint a no-op for the whole run and read as "nobody
+ * wanted to convert", which is a DESIGN FINDING rather than the setup bug it
+ * would be. C113 is the question this arm exists to answer and it is read off
+ * the conversion rate, so a zero that means "no supply object" and a zero that
+ * means "the table drained it" must never be the same number.
+ *
+ * `GameState.coinSupply` is absent by design under every game with no Store -
+ * see its comment - so nothing on that path may call this.
+ */
+export function coinSupplyLeft(state: GameState): number {
+  const left = state.coinSupply;
+  if (left === undefined) throw new Error('There is no Village Store supply in this game');
+  return left;
+}
+
+/**
  * ⭐ HAS THIS SEAT ALREADY TAKEN ITS ONE HOST DRAW SINCE ITS OWN LAST TURN -
  * THE HOST-DRAW CAP ONLY (`rules.turn.hostDrawCapPerRound`).
  *

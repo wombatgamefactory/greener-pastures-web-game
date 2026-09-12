@@ -548,8 +548,15 @@ function seedBankGrowOptions(
   seat: Seat,
   done: readonly CardId[],
 ): GrowOption[] {
+  // ⛔ AND NEVER A COIN-PAID ONE (V8, A150, 12/09/2026) - a BUILDER DECISION
+  // rather than one of Dean's rulings. The coin reaches the GROW ACTION and the
+  // board's BOUGHT Grow, one each, capped by the fire-once guard; the design
+  // doc's safety argument for V9's clog bypass is that "two coin-Grows a turn
+  // is the ceiling", and this card grows EVERY ORCHARD you own, so letting a
+  // coin in here would hand a whole tableau the bypass in one turn.
   return growOptions(data, state, seat).filter(
-    (o) => isOrchardCard(data, o.building) && !done.includes(o.building),
+    (o) =>
+      o.coinGrow !== true && isOrchardCard(data, o.building) && !done.includes(o.building),
   );
 }
 
@@ -917,8 +924,15 @@ export const fruitStore: CardHandler = {
 };
 
 /**
- * O17 The Fruit Basket - "Once per turn, instead of discarding a card you spend,
- * put it into your barn."
+ * O17 The Fruit Basket - "Once per turn, instead of discarding a card you spend
+ * FROM YOUR HAND, put it into your barn."
+ *
+ * ⛔ "FROM YOUR HAND" IS NEW AND IT IS A BLOCKING FIX (A150, Dean
+ * 12/09/2026), not a tidy-up. See the guard in `afterBuild` below for the
+ * second-mint loop it closes and for the one arm whose behaviour it changes.
+ * ⚠️ THE CARD SHEET STILL SAYS THE OLD THING: `Isle-of-Farms-v38.xlsm` still prints the
+ * v32 text, so O17 needs a v39 patch and a Qty flag, and the ledger's Table B row for O17 is the
+ * register. No other face moves for the Village Store.
  *
  * ⭐ THE CAP IS THE v32 RULING, AND DEAN TOOK IT INSTEAD OF A PRICE. v31 moved
  * the card off the draw discard onto the build payment and deleted its £1, which
@@ -1002,6 +1016,25 @@ export const fruitBasket: CardHandler = {
     afterBuild(fx, event, self) {
       if (event.seat !== self.seat) return;
       if (event.payment.length === 0) return;
+      // ⛔ FROM YOUR HAND, AND ONLY FROM YOUR HAND (A150, Dean 12/09/2026).
+      // The card now reads "instead of discarding a card you spend FROM YOUR
+      // HAND", and the restriction is blocking rather than tidy: the Village
+      // Store's exchange (V1) spends cards OUT OF THE BARN for coins, and a
+      // card this could lift back out of an exchange would hand its owner the
+      // coin AND the card - a SECOND MINT, once per turn, free, on every turn
+      // it delivers. Every coin economy this project has had died of a second
+      // faucet or a pity rate, and Dean took the restriction rather than a
+      // general "the exchange is not a spend" exemption because a restriction
+      // closes the loop at source and needs no special case anywhere else.
+      //
+      // ⚠️ WHAT IT ACTUALLY CHANGES TODAY IS ONE ARM, not the exchange. The
+      // exchange never reaches this hook (it discards directly, and this
+      // listens to `afterBuild`), so the live case is Dean's 'spend' variant's
+      // Dairy leg, `doCommonsSpendBuild`, which pays a build off a CENTRAL PILE
+      // and whose own docblock used to promise this card fired there. It no
+      // longer does. Cost of getting it wrong: the loop above, silently, the
+      // first time anything pays a build out of a barn.
+      if (event.fromHand !== true) return;
       // ONCE PER TURN (v32). Checked and marked here, before the task is queued,
       // so a second build in the same turn never even opens a prompt.
       if (fx.state.turn.firedThisTurn.includes(self.card)) return;

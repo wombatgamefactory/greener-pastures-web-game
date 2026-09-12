@@ -127,7 +127,11 @@ export function describeAnswer(data: GameData, answer: TaskAnswer, task?: CardTa
     // its own case rather than folded into a `default`, so the next answer kind
     // the engine adds is a compile error here and not a silent sentence.
     case 'grow':
-      return `${cardName(data, answer.building)}, paying ${cardName(data, answer.payment)} (the commons Grow: unsupported in this interface, C59)`;
+      // ⚠️ `payment` IS NULLABLE SINCE 12/09/2026 (V8, A150): a bought Grow
+      // may be paid with one Village Store coin, in which case nothing is
+      // placed. Unreachable in the v31 game this package plays, and unrouted
+      // either way (C59), but the string has to be total.
+      return `${cardName(data, answer.building)}, paying ${answer.payment === null ? 'one coin' : cardName(data, answer.payment)} (the commons Grow: unsupported in this interface, C59)`;
     default:
       return answer satisfies never;
   }
@@ -439,6 +443,14 @@ export function describeTask(data: GameData, task: Task): string {
       return 'Build a card, paid from the central pile (the commons: unsupported in this interface, C59).';
     case 'commonsSpendDeliver':
       return 'Deliver a crate, paid from the central pile (the commons: unsupported in this interface, C59).';
+    /**
+     * ⛔ THE VILLAGE STORE'S EXCHANGE (V1, A150, 12/09/2026), unreachable in
+     * the v31 game this package plays - the same admission as `grow` and the
+     * three `commonsSpend*` tasks below, and for the same reason (C59): an
+     * explicit case, so a genuinely new task kind still fails the build here.
+     */
+    case 'mint':
+      return `You may exchange ${task.remaining} barn card${task.remaining === 1 ? '' : 's'} for coins at the Village Store (unsupported in this interface, C59).`;
     case 'commonsSpendSow':
       return `Sow ${task.cards.length} card${task.cards.length === 1 ? '' : 's'} from the central pile onto your buildings (the commons: unsupported in this interface, C59).`;
     default:
