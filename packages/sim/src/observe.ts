@@ -1492,6 +1492,42 @@ export interface GameMetrics {
   /** Turns that began AT the simulator's bound. The clipping, as a number. */
   handAtBoundTurns: number;
   handSizeMax: number;
+  /**
+   * ⭐ THE SAME THREE SAMPLES, BY SEAT, NEW ON 12/09/2026 FOR C114 - so a hand
+   * reading can be split by the CROP the seat was farming, which is the one link
+   * in the Orchard diagnosis that was inferred rather than measured.
+   *
+   * ⛔ EVERY ONE OF THEM IS A READING ABOUT THE INSTRUMENT AND NOT ABOUT THE
+   * DESIGN, for exactly the reason the game-level fields above carry: the engine
+   * bounds the hand at `rules.turn.handLimit` because it cannot enumerate an
+   * unbounded one (C7) and THE TABLE PLAYS WITH NO HAND LIMIT AT ALL. Splitting
+   * the reading by crop does not make it a reading about the game; it makes it a
+   * reading about how the instrument treats each crop, which is why
+   * `handAtBoundTurnsBySeat` is folded beside the mean rather than under it. A
+   * crop clipped more often than another is a crop measured through a narrower
+   * window, and a22 prints the two together for that reason.
+   *
+   * Folded at the same clean moment as the game-level fields, so the by-seat
+   * sums are the game-level scalars split and never a second sample:
+   * `sum(handSampledTurnsBySeat) === handSampledTurns` in every game.
+   */
+  handSampledTurnsBySeat: number[];
+  handSizeSumBySeat: number[];
+  handAtBoundTurnsBySeat: number[];
+  /**
+   * ⭐ THE LIQUIDITY FLOOR, BY SEAT: turns that began with an EMPTY HAND.
+   *
+   * The sharpest case of "no card the seat could legally spend as a fee", and
+   * the only one that is exact under every mode this codebase has: a fee is a
+   * card from the hand under `'card'`, `'commons'` and `'noticeBoardPower'`
+   * alike, so a hand of nothing cannot pay one whatever the colour rule is. ⚠️
+   * With `rules.economy.commonsColourMatch` on, a NON-empty hand can also fail
+   * to hold a legal fee, so this is a FLOOR on the illiquid turns and never an
+   * estimate of them. It is a floor on the build side too: a Build spends cards
+   * from the hand, so an empty hand is also the sharpest case of "no build
+   * available" that `noBuildTurnsBySeat` counts.
+   */
+  handEmptyTurnsBySeat: number[];
 
   cards: Map<CardId, CardFacts>;
 }
@@ -1787,6 +1823,10 @@ export class Fold {
       handSizeSum: 0,
       handAtBoundTurns: 0,
       handSizeMax: 0,
+      handSampledTurnsBySeat: zeros(),
+      handSizeSumBySeat: zeros(),
+      handAtBoundTurnsBySeat: zeros(),
+      handEmptyTurnsBySeat: zeros(),
       cards: new Map(),
     };
     for (const card of data.cards.catalogue) {
@@ -2016,6 +2056,20 @@ export class Fold {
     const bound = this.data.rules.turn.handLimit;
     if (bound !== null && held >= bound) this.m.handAtBoundTurns += 1;
     if (held > this.m.handSizeMax) this.m.handSizeMax = held;
+    // ⭐ THE SAME THREE, BY SEAT (C114, 12/09/2026), so a22 can split them by the
+    // crop the seat was farming. Folded here and nowhere else, so the by-seat
+    // sums are the scalars above split rather than a second sample - and the
+    // fourth line, the empty hand, is the liquidity FLOOR the crop diagnosis
+    // needs. All four are readings about the INSTRUMENT (C7), which is why every
+    // line a22 prints from them says so on the line itself.
+    this.m.handSampledTurnsBySeat[seat] = (this.m.handSampledTurnsBySeat[seat] ?? 0) + 1;
+    this.m.handSizeSumBySeat[seat] = (this.m.handSizeSumBySeat[seat] ?? 0) + held;
+    if (bound !== null && held >= bound) {
+      this.m.handAtBoundTurnsBySeat[seat] = (this.m.handAtBoundTurnsBySeat[seat] ?? 0) + 1;
+    }
+    if (held === 0) {
+      this.m.handEmptyTurnsBySeat[seat] = (this.m.handEmptyTurnsBySeat[seat] ?? 0) + 1;
+    }
     this.meepleTurnStart(s, seat);
   }
 

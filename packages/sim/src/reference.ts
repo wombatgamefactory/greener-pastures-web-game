@@ -1096,6 +1096,18 @@ export interface NoiseFloor {
  * ⚠️ This floor covers HEADLINE_METRICS only. There is NO measured floor for the
  * a17 play rate, the door mix, the farm-bypass share, the off-crop share or the
  * barn-glut medians, which are the readings the commons pass turns on.
+ *
+ * ⛔ AND THE MOVEMENT TABLE BELOW IS NOW SHORTER THAN THE METRIC LIST, WHICH IS
+ * A FACT ABOUT THIS FLOOR AND NOT A BUG. `HEADLINE_METRICS` gained three entries
+ * on 12/09/2026 for ledger row C115 - `bonus slot used, share of turns`,
+ * `door mix, busiest board share` and `farm bypass share` - and NONE of them has
+ * a recorded movement, because this floor was measured on 09/09/2026 before they
+ * existed. A metric with no key here is simply not quoted by the sweep header or
+ * the report footer, which is the honest behaviour: ⛔ THE ONE THAT MATTERS MOST
+ * IS THE FIRST OF THE THREE, because Dean's 30%-60% band is a share of TURNS and
+ * the entry above it, `visits per turn`, is the PLAYS measure and a different
+ * quantity. Until `--noise` is re-run, the band comparison every arm in this
+ * family is judged on still has nothing to be read against.
  */
 export const NOISE_FLOOR: NoiseFloor | null = {
   reference: 'reference-v15',

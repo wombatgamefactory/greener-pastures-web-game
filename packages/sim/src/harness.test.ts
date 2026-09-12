@@ -325,8 +325,16 @@ describe('the watch-list suite', () => {
     // once more: the rule is a FAUCET, nothing in the suite counted one, and it
     // is the first assertion in this project whose subject came off a TABLE
     // rather than off a run. It reports NO SUBJECT under every other currency.
+    // ⭐ AND 22 JOINED ON 12/09/2026 FOR LEDGER ROW C114, and it joined on a
+    // different rule from the four above it: it measures no new rule at all.
+    // Both of its readings - delivery VALUE by crop, and hand size by crop -
+    // were OWED FROM BEFORE the Village Store coin (A150) was drafted, and they
+    // exist to test whether that coin is aimed at the right fault. ⛔ It is also
+    // the only assertion in the suite with NO MODE GATE: every currency this
+    // codebase has delivers to an island and deals a hand, so it never reports
+    // NO SUBJECT.
     const live = rows.map((r) => r.assertion.id);
-    expect(live).toEqual([2, 4, 5, 6, 7, 8, 9, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21]);
+    expect(live).toEqual([2, 4, 5, 6, 7, 8, 9, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22]);
     expect(new Set(live).size, 'a duplicate id').toBe(live.length);
 
     const buried = RETIRED.map((t) => t.id);

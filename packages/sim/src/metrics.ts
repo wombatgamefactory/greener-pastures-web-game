@@ -10,6 +10,18 @@
  * `label` is the key the noise floor is recorded under in `reference.ts`. Rename
  * one and the recorded floor for it goes stale silently, so treat these strings
  * as data rather than as prose.
+ *
+ * ⭐ THREE WERE ADDED ON 12/09/2026 FOR LEDGER ROW C115 AND NOTHING WAS
+ * RENAMED, which is the rule above applied rather than an oversight:
+ * `bonus slot used, share of turns`, `door mix, busiest board share` and
+ * `farm bypass share`. ⛔ THE FIRST IS A GENUINELY DIFFERENT QUANTITY FROM
+ * `visits per turn`, WHICH IS THE PLAYS MEASURE, and both stay: a card that
+ * grants a second play in one turn breaks the denominator between them (A
+ * Helping Hand, about ten points), Dean's 30%-60% band is a share of TURNS, and
+ * judging it on plays cost this project a re-run of five arms on 09/09/2026.
+ * ⚠️ The three arrive with NO recorded movement, so `--noise` has to be re-run
+ * before any of them has a floor; until then they print in every sweep header
+ * as unquoted, which is correct and is the point.
  */
 
 import type { Pooled } from './run.js';
@@ -57,6 +69,57 @@ export const HEADLINE_METRICS: readonly Metric[] = [
     // self-visit would let a solitaire table report a healthy hook.
     label: 'self-visit share of visits',
     of: selfVisitShare,
+    fmt: (x) => pct(x, 1),
+  },
+  {
+    // ⭐⭐ NEW ON 12/09/2026 FOR LEDGER ROW C115, AND IT IS THE ONE THAT
+    // MATTERS MOST ON THIS LIST. `visits per turn` above is the PLAYS measure;
+    // this is the share of TURNS on which the bonus slot was used, and ⛔ THE
+    // TWO ARE DIFFERENT QUANTITIES rather than two roundings of one. A Helping
+    // Hand puts a SECOND play in one turn, so plays run about ten points above
+    // turns (68.5% against 58.9% on the commons baseline of 09/09/2026), and
+    // Dean's band of 30% to 60% is a share of TURNS. Judging it on plays cost
+    // this project a re-run of five arms on 09/09/2026, and A148's headline is a
+    // one-tenth-of-a-point band comparison at four seats with nothing to read it
+    // against. ⚠️ BOTH LABELS STAY: `visits per turn` is not renamed, because a
+    // rename retires the floor recorded under the old key, and because the plays
+    // measure is still the right denominator for anything asking how much
+    // traffic the slot carries.
+    label: 'bonus slot used, share of turns',
+    of: bonusSlotTurnShare,
+    fmt: (x) => pct(x, 1),
+  },
+  {
+    // ⭐ NEW ON 12/09/2026 FOR C115. ⚠️ THE DOOR MIX IS FIVE NUMBERS AND THIS IS
+    // ONE, SO THE FLOOR IT EARNS IS A FLOOR ON THE SUMMARY AND NOT ON THE
+    // COMPONENTS. The busiest board's share is the scalar chosen because it is
+    // the exact quantity a07 carries its verdict on (FAIL above 35%), so a floor
+    // here bounds the number a reader is actually judging. ⛔ WHAT IT LOSES: a
+    // reshuffle of the mix that leaves the leader's share alone moves this by
+    // zero, and the leader can CHANGE crop between two arms while the share
+    // barely moves - which is a real finding (it happened on the bonus-last
+    // control of 09/09/2026, wheat 35 / apiary 33 against apiary 36 / wheat 30)
+    // and this metric cannot see it. Read a07's own by-colour line for that.
+    label: 'door mix, busiest board share',
+    of: busiestDoorShare,
+    fmt: (x) => pct(x, 1),
+  },
+  {
+    // ⭐ NEW ON 12/09/2026 FOR C115. The share of HARVESTED barn cards that came
+    // from somewhere other than the seat's own buildings: a central pile under
+    // the commons, a rival's fee off your own Notice Board under
+    // `noticeBoardPower`, and a structural zero under the v31 card game and the
+    // meeple loop, where no harvest can reach either. ⚠️ IT IS A SINGLE SCALAR
+    // OVER A SPLIT THAT IS THREE-WAY UNDER ONE MODE (own farm / rival's fee /
+    // the centre), and it pools the second and third: what it loses is WHICH
+    // bypass, which is a18's line and not this one. The bypass SHARE is the
+    // scalar because it is the number the design's own sentence is written
+    // about - "if the centre out-supplies the farm, the building engine is
+    // decoration" - and because it is the one reading in this family with no
+    // fail condition at all, so a floor is the only thing it can ever be read
+    // against.
+    label: 'farm bypass share',
+    of: farmBypassShare,
     fmt: (x) => pct(x, 1),
   },
   {
@@ -113,6 +176,67 @@ export function visitsPerTurn(p: Pooled): number {
   const turns = sum(p.ended.map((g) => sum(g.turnsBySeat)));
   const visits = sum(p.ended.map((g) => sum(g.visitsBySeat) - sum(g.selfVisitsBySeat)));
   return turns === 0 ? NaN : visits / turns;
+}
+
+/**
+ * ⛔ THE SHARE OF TURNS ON WHICH THE BONUS SLOT WAS USED - the quantity Dean's
+ * 30% to 60% band is written in, and NOT the same quantity as `visitsPerTurn`.
+ *
+ * A turn counts once however many plays it carried, which is the whole point:
+ * A Helping Hand's second play inflates the plays measure by about ten points
+ * and cannot inflate this one. Every currency feeds `bonusTurnsBySeat`, so the
+ * reading is mode-independent, and a self-visit counts - the band is about how
+ * often the slot is SPENT, and a17 is where the mix of what it was spent on
+ * lives.
+ */
+export function bonusSlotTurnShare(p: Pooled): number {
+  const turns = sum(p.ended.map((g) => sum(g.turnsBySeat)));
+  return turns === 0 ? NaN : sum(p.ended.map((g) => sum(g.bonusTurnsBySeat))) / turns;
+}
+
+/**
+ * The door mix reduced to ONE number: the busiest board's share of all door
+ * uses, which is the exact quantity a07 fails above 35% on.
+ *
+ * ⚠️ A FLOOR ON THIS IS NOT A FLOOR ON THE MIX. The mix is five shares and
+ * this is their maximum, so it is blind to any reshuffle beneath the leader and
+ * blind to the leader changing crop at a similar share. a07 prints all five.
+ */
+export function busiestDoorShare(p: Pooled): number {
+  const uses = new Map<string, number>();
+  for (const g of p.ended) {
+    for (const [colour, n] of Object.entries(g.doorUsesByColour)) {
+      uses.set(colour, (uses.get(colour) ?? 0) + n);
+    }
+  }
+  const total = sum([...uses.values()]);
+  if (total === 0 || uses.size === 0) return NaN;
+  return Math.max(...uses.values()) / total;
+}
+
+/**
+ * The farm bypass as one number: harvested barn cards that did NOT come off the
+ * seat's own buildings, over every harvested barn card.
+ *
+ * ⛔ THE SUBTRACTION IS LOAD-BEARING AND IT IS a18's. `barnFromOwnBySeat`
+ * counts a Notice Board harvest too, because under `noticeBoardPower` a board IS
+ * a building in a tableau and the engine rightly says `source: 'tableau'` - so
+ * the farm is `barnFromOwnBySeat` MINUS `barnFromOwnBoardBySeat`, and the bypass
+ * is everything else. Under the commons `barnFromOwnBoardBySeat` is a structural
+ * zero and this reduces to the centre share (63.0% on the 09/09/2026 baseline);
+ * under the v31 card game and the meeple loop both bypass terms are structural
+ * zeroes and it reads 0.
+ *
+ * ⚠️ The denominator is HARVESTED cards only, never `barnInBySeat`, which
+ * pools the deck, hand, stack and discard shortcuts as well.
+ */
+export function farmBypassShare(p: Pooled): number {
+  const ownAll = sum(p.ended.map((g) => sum(g.barnFromOwnBySeat)));
+  const ownBoard = sum(p.ended.map((g) => sum(g.barnFromOwnBoardBySeat)));
+  const centre = sum(p.ended.map((g) => sum(g.barnFromCommonsBySeat)));
+  const farm = Math.max(0, ownAll - ownBoard);
+  const harvested = farm + ownBoard + centre;
+  return harvested === 0 ? NaN : (ownBoard + centre) / harvested;
 }
 
 /** Core actions resolved per player per turn, every route pooled (risk 1). */

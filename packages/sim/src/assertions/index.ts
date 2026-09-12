@@ -63,6 +63,25 @@
  * enjoyed; every hand-size line on that page carries the caveat and the bound
  * together, and no report of the arm may be quoted as evidence about tightness.
  *
+ * ⭐ AND ONE MORE IS NEW ON 12/09/2026 FOR LEDGER ROW C114:
+ * `a22-crop-diagnosis`. It is the odd one out of the suite in two ways worth
+ * knowing. First, it measures NOTHING ABOUT A NEW RULE: both of its readings
+ * were OWED FROM BEFORE the Village Store coin (A150) and the delivery meeple
+ * (A151) were drafted, and they exist to test whether that coin is aimed at the
+ * right fault at all. Orchard wins 17.4% against Wheat's 41.9% on an even 36.2%
+ * and it is not the Orchard cards; the standing diagnosis is a LIQUIDITY one,
+ * and it has a hole in it. ⛔ Nobody has measured whether a crop's deliveries
+ * are FIRST to a tile (6 VP) or SECOND (3 VP) - table-wide the split is 62.5% /
+ * 37.5% and it has never been broken down - so if Orchard's harvest-and-clear
+ * loop makes it arrive second more often, the island is where it loses and the
+ * coin is pointed at the wrong thing. And hand size by crop is the one link in
+ * the liquidity chain that is inferred rather than measured. Second, it is the
+ * only assertion in the suite with NO MODE GATE: every currency this codebase
+ * has delivers to an island and deals a hand, so it never reports NO SUBJECT.
+ * It ships with NO FAIL CONDITION for the same reason a18, a19, a20 and a21 do,
+ * and ⛔ every line of its hand half carries the C7 caveat ON THE LINE: the
+ * engine's hand limit is the SIMULATOR'S bound and the table plays with none.
+ *
  * ⭐ THE SAME PASS RESTORED a08-the-hook, WHICH HAD PRINTED "NO SUBJECT" SINCE
  * 09/09/2026. The boards are owned again and a visit has a HOST again, so the
  * hook's quantity exists; a08 now asks `isNoticeBoardPower` by name rather than
@@ -71,20 +90,22 @@
  * that mode and the CENTRE traffic under the commons - and a19 reports no
  * subject there and points at a17.
  *
- * Ids are never reused, so the suite is 2, 4-9, 11-13, 15-21 and the gaps are
- * the tombstones. Six carry a threshold and can FAIL; nine are OBSERVE, because
+ * Ids are never reused, so the suite is 2, 4-9, 11-13, 15-22 and the gaps are
+ * the tombstones. Six carry a threshold and can FAIL; ten are OBSERVE, because
  * the design names no number for them and a snapshot of our own first run is
  * not a threshold. That split is not a gap in the work - it is ticket 11
  * section 2 doing its job.
  *
- * ⚠️ THREE OF THE SEVENTEEN NOW REPORT "NO SUBJECT" UNDER WHICHEVER MODE THEY WERE
+ * ⚠️ SEVERAL OF THE EIGHTEEN NOW REPORT "NO SUBJECT" UNDER WHICHEVER MODE THEY WERE
  * NOT WRITTEN FOR, and the pattern is deliberate rather than a special case:
  * a08 says so under the commons, a18 says so under both controls, a19 says so
  * everywhere but the coin arm, a20 and a21 say so everywhere but the notice-board
  * visit, and a04, a05 and a15 say so under the commons. A branch is never
  * deleted while a control still exercises it; a mode where a reading has
  * nothing to measure says NO SUBJECT and points at whatever owns the question
- * there.
+ * there. ⭐ a22 IS THE ONE THAT NEVER DOES, and it is the only one: every
+ * currency this codebase has delivers to an island and deals a hand, so its two
+ * readings have a subject under all of them.
  */
 
 import { generosity } from './a02-generosity.js';
@@ -104,6 +125,7 @@ import { commonsTraffic } from './a18-commons-traffic.js';
 import { coinEconomy } from './a19-coin-economy.js';
 import { boardStall } from './a20-board-stall.js';
 import { hostDraw } from './a21-host-draw.js';
+import { cropDiagnosis } from './a22-crop-diagnosis.js';
 import type { Assertion } from './types.js';
 
 export const WATCHLIST: readonly Assertion[] = [
@@ -124,6 +146,7 @@ export const WATCHLIST: readonly Assertion[] = [
   coinEconomy,
   boardStall,
   hostDraw,
+  cropDiagnosis,
 ];
 
 export type { Assertion, MeasureContext, Measurement, Verdict } from './types.js';
