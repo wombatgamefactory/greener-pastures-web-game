@@ -44,6 +44,7 @@ import {
   isMeepleCurrency,
   isNoticeBoardPower,
   meepleIndexForSpace,
+  storeCoinsPerCard,
 } from '@gp/data';
 import type { CardId, GameEvent, GameState, Move, ScoreBreakdown, Seat, Task } from '@gp/engine';
 import {
@@ -1357,6 +1358,92 @@ export interface GameMetrics {
   /** ⭐ THE ARC: the 1-based round on which each seat first minted a coin, or null if it never did. The mint is the only faucet, so this is the round the seat's whole coin economy could first have started. */
   firstCoinRoundBySeat: (number | null)[];
 
+  // --- THE VILLAGE STORE COIN, 12/09/2026 (V1 to V12, ledger A150) ---------
+  //
+  // ⚠️ EVERY LINE IN THIS BLOCK IS ZERO UNDER EVERY GAME WITH
+  // `rules.economy.storeCoinsPerCard` AT ITS SHIPPED 0, which is every mode this
+  // project has ever shipped. Read a zero as "there is no Village Store in this
+  // game", never as a finding. a25, a26 and a27 all gate on that leaf and print
+  // NO SUBJECT rather than a page of structural zeroes.
+  //
+  // ⛔ THE TWO COIN ECONOMIES SHARE `coinsMinted`, `coinsSpent` AND THE WALLET,
+  // AND THEY ARE NOT THE SAME ECONOMY. The commons-with-coins arm of 10/09/2026
+  // (K3/K7) mints by clearing a central pile and its `coinsMinted.board` is a
+  // Suit; the Village Store mints one card at a time out of a BARN at a delivery
+  // and its `board` is the literal `'store'`. The four counters above
+  // (`coinsMintedBySeat`, `coinsMintedByBoard`, `firstCoinRoundBySeat`,
+  // `coinsHeldAtEndBySeat`) are folded under BOTH and are safe to read under
+  // either because no overlay turns both economies on at once - a19 is gated on
+  // `isCommonsTakeCoins` and a25 on `storeCoinsPerCard`, and a25 prints a loud
+  // line if it ever finds both. The counters BELOW are the Store's alone.
+  //
+  // ⚠️ AND NONE OF THEM HAS A NOISE FLOOR. `reference-v15` has never had
+  // `--noise` run against a Store arm, and no line here is in `HEADLINE_METRICS`.
+
+  /** ⭐ THE MINT (V1), AS CARDS: barn cards converted at the exchange, by the seat that converted them. One `coinsMinted` event with `board: 'store'` per CARD, so this is the count of cards that left a barn for their suit's discard (D1). */
+  storeCardsConvertedBySeat: number[];
+  /** ...AS COINS. Equal to the cards at `storeCoinsPerCard: 1`, and deliberately kept apart because the leaf is an int so the rate can be swept without another knob. A disagreement at rate 1 is a fold bug. */
+  storeCoinsMintedBySeat: number[];
+  /** ...by the CONVERTED CARD'S OWN SUIT, off the event's `card`. Which crops actually strand in a barn, which is the parity trap named rather than inferred. */
+  storeConvertedByCardSuit: Record<string, number>;
+  /**
+   * ⛔ C113's DENOMINATOR: exchange WINDOWS offered. One per `mint` task pushed,
+   * which is one per delivery where `min(barn after the crate, supply left)` was
+   * above zero - `pushStoreExchange` pushes nothing when either is 0, so a window
+   * is exactly "a delivery at which a conversion was possible".
+   *
+   * ⚠️ COUNTED OFF THE TASK AND NEVER OFF THE `delivered` EVENT, because V14 emits
+   * a SECOND `delivered` with an empty spend for the same payment and a
+   * delivery-keyed count would double it.
+   */
+  storeExchanges: number;
+  /** ...the sum of those windows' CEILINGS, `min(barn, supply)` read off the task's own `remaining` at the moment it was offered. The convertible cards available, which is C113's other denominator. */
+  storeExchangeCeiling: number;
+  /** ...the sum of the BARN SIZES at those moments, so a reader can see whether the ceiling was the barn or the SUPPLY. A ceiling far below the barn is the supply rationing, which is the half of C113 Dean's answer rests on. */
+  storeExchangeBarn: number;
+  /** ⛔ C113's NUMERATOR: windows at which the seat converted AT LEAST ONE card. Near 100% is the August verdict confirmed. */
+  storeExchangesUsed: number;
+  /** ...and windows at which the seat converted EVERY convertible card it had. Nearer to C113's actual sentence than the line above: "every player converts every spare card every time". */
+  storeExchangesEmptied: number;
+  /**
+   * ⛔ DELIVERIES THAT COULD NOT CONVERT AT ALL, counted once per seat per
+   * decision so V14's double `delivered` cannot inflate them. Split by which
+   * side was empty, because they mean opposite things: an empty BARN is a seat
+   * with nothing stranded (the Store had nothing to fix) and an empty SUPPLY is
+   * the cap actually biting, which is the pressure C113 asks about.
+   */
+  storeDeliveriesNoExchange: number;
+  storeDeliveriesNoExchangeEmptySupply: number;
+  storeDeliveriesNoExchangeEmptyBarn: number;
+  /** ⭐ HOW OFTEN THE SUPPLY IS EMPTY (C113), sampled at the first decision of every turn, which is the same clean moment the hand is sampled at. Turns sampled, turns at which the shared supply held nothing, and the running total for a mean. */
+  coinSupplySampledTurns: number;
+  coinSupplyEmptyTurns: number;
+  coinSupplySum: number;
+  /** The shared supply still unspent when the game ended. `coinSupplyAtEnd + sum(coinsHeldAtEndBySeat)` is the whole pool under V5, and a disagreement is a fold bug. */
+  coinSupplyAtEnd: number;
+  /** ⭐ SINK ONE (V6/V7): coins spent on a BUILD, by seat. One `coinsSpent` event per build for the WHOLE coin component, because coins are fungible and a payment names a count, so this is coins and `coinBuildsBySeat` is builds. */
+  coinsSpentBuildBySeat: number[];
+  /** ...the count of BUILDS any part of which was paid in coins. */
+  coinBuildsBySeat: number[];
+  /** ⭐ SINK TWO (V8): coin-Grows, by seat. Always exactly one coin, so this is coins and Grows at once. Folded off the MOVE's `coinGrow` flag and the bought Grow's ANSWER, never off `coinsSpent`, so the two can be checked against each other. */
+  coinGrowsBySeat: number[];
+  /** ...of which were BOUGHT Grows (the Apiary board's, a `grow` task) rather than a main action. Two coin-Grows a turn is the design's stated ceiling and this is the half that makes the second one possible. */
+  coinGrowsBoughtBySeat: number[];
+  /** ⛔ V9, THE STRONGEST SINGLE CLAUSE IN THE PACKAGE: coin-Grows that fired on a building that was already FULL. The first clog bypass in this game since the meeples, and the one line that must be readable on its own. */
+  coinGrowsOfFullBySeat: number[];
+  /** EVERY Grow, by seat, main action and bought alike, so the coin half above has a denominator and card-Grows are the remainder. ⚠️ It is not `activationsBySeat`, which counts a Grow that PLACES NOTHING through the `activate` task and is a different population. */
+  growsBySeat: number[];
+  /**
+   * ⛔ THE BRANCHING CONSEQUENCE OF A SINK THAT PAYS NO CARD (a27), and it is a
+   * reading about the INSTRUMENT. The worst end-of-turn discard enumeration in
+   * the game, and the worst position of any kind. A coin-Grow pays no card, so
+   * cards stop leaving the hand, and the discard task enumerates C(hand, over)
+   * - which is the exact shape that produced a 116,535-move position on
+   * 02/09/2026 when the hand limit went.
+   */
+  maxDiscardMoves: number;
+  maxLegalMovesSeen: number;
+
   // --- The Dairy rebuild, 2026-08-10 ---------------------------------------
   //
   // Four lines its pass conditions need and no previous run recorded. They
@@ -1721,6 +1808,19 @@ export class Fold {
   /** Buildings taken by the Grand Creamery run in progress, or null between runs. */
   private creameryRun: number | null = null;
   /**
+   * ⛔ THE VILLAGE STORE EXCHANGE WINDOW IN PROGRESS (C113, 12/09/2026), or null
+   * between windows. A window is one `mint` task from the moment it is first
+   * faced to the moment it resolves, and it exists as instance state because the
+   * question C113 asks is per-DELIVERY and the engine answers it one card at a
+   * time.
+   *
+   * ⚠️ IT CANNOT BE TRACKED BY TASK IDENTITY. `apply` clones the whole state, so
+   * the task object a decision sees is a different object from the one the next
+   * decision sees. The window is closed instead by the CONTINUATION TEST in
+   * `store` below, which is exact for every case but one it names.
+   */
+  private exchange: { pid: Seat; ceiling: number; barn: number; converted: number } | null = null;
+  /**
    * Seats whose next harvest was BOUGHT through the wheat board, latched on the
    * `doorUsed` that paid for it. See `commonsHarvestsBoughtBySeat` for why the
    * route cannot simply be read off the `harvested` event.
@@ -1924,6 +2024,29 @@ export class Fold {
       endgameBuiltBySeat: zeros(),
       endgameBuiltByCardSuit: byColour(),
       firstCoinRoundBySeat: Array<number | null>(seats).fill(null),
+      storeCardsConvertedBySeat: zeros(),
+      storeCoinsMintedBySeat: zeros(),
+      storeConvertedByCardSuit: byColour(),
+      storeExchanges: 0,
+      storeExchangeCeiling: 0,
+      storeExchangeBarn: 0,
+      storeExchangesUsed: 0,
+      storeExchangesEmptied: 0,
+      storeDeliveriesNoExchange: 0,
+      storeDeliveriesNoExchangeEmptySupply: 0,
+      storeDeliveriesNoExchangeEmptyBarn: 0,
+      coinSupplySampledTurns: 0,
+      coinSupplyEmptyTurns: 0,
+      coinSupplySum: 0,
+      coinSupplyAtEnd: 0,
+      coinsSpentBuildBySeat: zeros(),
+      coinBuildsBySeat: zeros(),
+      coinGrowsBySeat: zeros(),
+      coinGrowsBoughtBySeat: zeros(),
+      coinGrowsOfFullBySeat: zeros(),
+      growsBySeat: zeros(),
+      maxDiscardMoves: 0,
+      maxLegalMovesSeen: 0,
       buildsBySeat: zeros(),
       noBuildTurnsBySeat: zeros(),
       buildSampledBySeat: zeros(),
@@ -2075,6 +2198,8 @@ export class Fold {
     }
     this.deckTops(d);
     this.creamery(d);
+    this.store(d);
+    this.branching(d);
     this.turnStart(d);
     this.bonusWindow(d);
     this.move(d);
@@ -2139,6 +2264,129 @@ export class Fold {
     if (head.kind === 'creameryPick') {
       this.m.creameryRuns.push(this.creameryRun);
       this.creameryRun = null;
+    }
+  }
+
+  /**
+   * ⛔⛔ C113 AS A FOLD: THE VILLAGE STORE EXCHANGE, WINDOW BY WINDOW
+   * (12/09/2026, ledger A150). This is the counter the whole Store pass turns
+   * on, and it is here rather than on an event because the engine emits nothing
+   * when an exchange is OFFERED - only when a card is actually converted.
+   *
+   * ⭐ WHY THE OFFER MATTERS AS MUCH AS THE CONVERSION.
+   * `docs/village-store-2026-08-19-v1.md` section 1 ruled this exact placement
+   * out in August: *"Free / a rider on Deliver. No cost, so it is always
+   * correct. Breaks everything."* Dean's answer of 12/09/2026 is that a valid
+   * delivery is a precondition and a capped shared supply bounds the reward.
+   * ⛔ THE OBJECTION IS A TEST FOR THIS RUN AND NOT HISTORY: if every player
+   * converts every spare card every time, the August verdict was right and the
+   * PLACEMENT is what to change. A conversion count alone cannot say that; it
+   * needs the offers and the ceilings beside it, which is what this fold takes.
+   *
+   * ⚠️ THE CONTINUATION TEST, STATED BECAUSE IT IS THE ONE APPROXIMATION HERE.
+   * `apply` clones the state, so a task cannot be tracked by identity across
+   * decisions. A window is treated as CONTINUING when the post-state's head is
+   * still a `mint` for the same seat with `remaining` exactly one lower and the
+   * task list has not shortened, which is precisely what one conversion does.
+   * ⛔ THE ONE CASE IT MERGES is two mint tasks queued back to back for the same
+   * seat whose second happens to open at exactly the first's `remaining - 1`.
+   * That needs two deliveries resolved with no drain between them, which
+   * `finishDelivery` and `drainTasks` make rare, and it costs one window in the
+   * denominator when it happens. It is recorded rather than defended.
+   */
+  private store(d: Decision): void {
+    if (storeCoinsPerCard(this.data) <= 0) return;
+    this.storeOffers(d);
+    const head = d.pre.tasks[0];
+    if (head?.t !== 'mint') {
+      this.closeExchange();
+      return;
+    }
+    // The ceiling is the task's own `remaining`, which `pushStoreExchange` set
+    // to min(barn after the crate, supply left) - the convertible cards, and
+    // the exact quantity C113's second share is a share of.
+    const window = (this.exchange ??= {
+      pid: head.pid,
+      ceiling: head.remaining,
+      barn: player(d.pre, head.pid).barn.length,
+      converted: 0,
+    });
+    for (const e of d.events) {
+      if (e.e === 'coinsMinted' && e.board === 'store') window.converted += 1;
+    }
+    const post = d.post.tasks[0];
+    const continues =
+      d.post.tasks.length === d.pre.tasks.length &&
+      post?.t === 'mint' &&
+      post.pid === head.pid &&
+      post.remaining === head.remaining - 1;
+    if (!continues) this.closeExchange();
+  }
+
+  /** Bank a finished exchange window. Idempotent, so it can be called on every decision. */
+  private closeExchange(): void {
+    const w = this.exchange;
+    if (w === null) return;
+    this.exchange = null;
+    const m = this.m;
+    m.storeExchanges += 1;
+    m.storeExchangeCeiling += w.ceiling;
+    m.storeExchangeBarn += w.barn;
+    if (w.converted > 0) m.storeExchangesUsed += 1;
+    if (w.converted >= w.ceiling) m.storeExchangesEmptied += 1;
+  }
+
+  /**
+   * ⛔ THE DELIVERIES THAT COULD NOT CONVERT, which is the other half of C113's
+   * denominator and the half that says whether the CAP is doing anything.
+   *
+   * A delivery pushes a `mint` task only when min(barn, supply) is above zero,
+   * so a delivery with no task appended is a delivery the Store could not serve.
+   * The two reasons mean opposite things: an empty BARN is a seat with nothing
+   * stranded, so the Store had no fault to fix; an empty SUPPLY is V4's cap
+   * actually biting, which is exactly the pressure Dean's answer to the August
+   * objection rests on. ⚠️ A supply that never empties is a supply rationing
+   * nothing.
+   *
+   * ⚠️ COUNTED ONCE PER SEAT PER DECISION. V14 emits a SECOND `delivered` with
+   * an empty spend for the same payment, and a per-event count would report one
+   * delivery as two.
+   */
+  private storeOffers(d: Decision): void {
+    const seats = new Set<Seat>();
+    for (const e of d.events) if (e.e === 'delivered') seats.add(e.seat);
+    if (seats.size === 0) return;
+    const mints = (s: GameState, pid: Seat) =>
+      s.tasks.filter((t) => t.t === 'mint' && t.pid === pid).length;
+    for (const pid of seats) {
+      if (mints(d.post, pid) > mints(d.pre, pid)) continue;
+      const m = this.m;
+      m.storeDeliveriesNoExchange += 1;
+      // ⚠️ THE SUPPLY IS REPORTED FIRST WHERE BOTH ARE EMPTY, because a barn
+      // emptied by a crate is an ordinary delivery and an empty supply is the
+      // finding. The two counters therefore partition the total exactly.
+      if ((d.post.coinSupply ?? 0) <= 0) m.storeDeliveriesNoExchangeEmptySupply += 1;
+      else if (player(d.post, pid).barn.length === 0) m.storeDeliveriesNoExchangeEmptyBarn += 1;
+    }
+  }
+
+  /**
+   * ⛔ THE DECISION SPACE, AND IT IS A READING ABOUT THE INSTRUMENT (a27, C7).
+   * Ungated, because it costs one comparison and because the control's numbers
+   * are what the coin arms are read against.
+   *
+   * The end-of-turn discard task enumerates every subset of the overflow, so its
+   * width is C(hand, hand - limit). A coin sink PAYS NO CARD, so cards stop
+   * leaving the hand and that binomial climbs. ⭐ THIS IS THE SHAPE THAT BROKE
+   * THE PROJECT ON 02/09/2026, when deleting the hand limit produced a
+   * 116,535-move position and 91-second two-player games, and it is why the
+   * limit came back the same day as an INSTRUMENT bound.
+   */
+  private branching(d: Decision): void {
+    const n = d.legal.length;
+    if (n > this.m.maxLegalMovesSeen) this.m.maxLegalMovesSeen = n;
+    if (d.pre.tasks[0]?.t === 'discard' && n > this.m.maxDiscardMoves) {
+      this.m.maxDiscardMoves = n;
     }
   }
 
@@ -2210,6 +2458,17 @@ export class Fold {
     }
     if (held === 0) {
       this.m.handEmptyTurnsBySeat[seat] = (this.m.handEmptyTurnsBySeat[seat] ?? 0) + 1;
+    }
+    // ⛔ HOW OFTEN THE SUPPLY IS EMPTY (C113, 12/09/2026), sampled at the same
+    // clean moment for the same reason. `GameState.coinSupply` is ABSENT rather
+    // than zero wherever there is no Village Store - a serialisation question
+    // and not a rules one - so the sample is gated on its presence and a run
+    // without a Store contributes no turns at all rather than a run of zeroes
+    // that would read as a supply permanently exhausted.
+    if (s.coinSupply !== undefined) {
+      this.m.coinSupplySampledTurns += 1;
+      this.m.coinSupplySum += s.coinSupply;
+      if (s.coinSupply <= 0) this.m.coinSupplyEmptyTurns += 1;
     }
     // ⭐ THE DELIVERY MEEPLE'S OWN DENOMINATOR (a23, 12/09/2026), folded HERE and
     // ungated. `meepleTurnStart` below is gated behind `isMeepleCurrency` and is
@@ -2373,6 +2632,13 @@ export class Fold {
           this.m.farmsteadFiresBySeat[move.seat] =
             (this.m.farmsteadFiresBySeat[move.seat] ?? 0) + 1;
         }
+        // ⭐ THE VILLAGE STORE'S SECOND SINK (V8/V9, 12/09/2026), and it is a
+        // DIFFERENT FLAG from `coin` above: `coin` is the other coin arm's
+        // Farmstead power (K10) and `coinGrow` is a Store coin standing in for an
+        // activation card. Merging them would put every coin-Grow into a counter
+        // that means something else, which is what the engine's own comment on
+        // the move field warns about.
+        this.grow(d.pre, move.seat, move.building, move.coinGrow === true, false);
         return;
       }
       case 'build':
@@ -2565,6 +2831,40 @@ export class Fold {
     // ability is about to fire and may harvest, sow or demolish the thing.
     if (task.t === 'activate' && a.kind === 'activate') {
       this.activation(d.pre, task.pid, a.card);
+    }
+
+    // ⭐ A BOUGHT GROW (the Apiary board's), off the ANSWER for the same reason:
+    // a bought Grow is a task and never a `grow` move, so the move branch cannot
+    // see it. V8 reaches it too - the design says so in as many words, because
+    // the Apiary board's bought Grow is a Grow - and it is the half that makes
+    // the design's stated ceiling of TWO coin-Grows a turn possible.
+    if (task.t === 'grow' && a.kind === 'grow') {
+      this.grow(d.pre, task.pid, a.building, a.coinGrow === true, true);
+    }
+  }
+
+  /**
+   * ONE GROW, from either route, split by what paid for it (V8) and by whether
+   * the target was already FULL (V9).
+   *
+   * ⛔ V9 IS THE STRONGEST SINGLE CLAUSE IN THE PACKAGE and this is the line
+   * that makes it readable on its own: a coin-Grow places nothing, so a full
+   * building is a legal target and the game gets its first clog bypass since the
+   * meeples. ⚠️ FULLNESS IS READ OFF THE PRE STATE, which is the only moment it
+   * is still true - the ability is about to fire and may harvest the thing.
+   * ⚠️ AND IT ASKS `isFull` AND NOT `isHarvestable`: the two stopped being the
+   * same boolean on 10/09/2026 (S8), and the clause is about a building that is
+   * SHUT to further cards, which is `isFull`.
+   */
+  private grow(pre: GameState, seat: Seat, target: CardId, coin: boolean, bought: boolean): void {
+    const m = this.m;
+    m.growsBySeat[seat] = (m.growsBySeat[seat] ?? 0) + 1;
+    if (!coin) return;
+    m.coinGrowsBySeat[seat] = (m.coinGrowsBySeat[seat] ?? 0) + 1;
+    if (bought) m.coinGrowsBoughtBySeat[seat] = (m.coinGrowsBoughtBySeat[seat] ?? 0) + 1;
+    const building = pre.players[seat]?.tableau.find((b) => b.card === target);
+    if (building && isFull(this.data, building)) {
+      m.coinGrowsOfFullBySeat[seat] = (m.coinGrowsOfFullBySeat[seat] ?? 0) + 1;
     }
   }
 
@@ -2784,6 +3084,18 @@ export class Fold {
         m.coinsMintedBySeat[e.seat] = (m.coinsMintedBySeat[e.seat] ?? 0) + e.coins;
         m.coinsMintedByBoard[e.board] = (m.coinsMintedByBoard[e.board] ?? 0) + e.coins;
         m.firstCoinRoundBySeat[e.seat] ??= this.round();
+        // ⭐ THE VILLAGE STORE'S MINT (V1, 12/09/2026), told apart from the arm
+        // above by `board === 'store'` and nothing else. ONE EVENT PER CARD
+        // CONVERTED, where the commons mint fires once for a whole pile, so the
+        // two are never the same quantity and a25 counts CARDS here.
+        if (e.board === 'store') {
+          m.storeCardsConvertedBySeat[e.seat] = (m.storeCardsConvertedBySeat[e.seat] ?? 0) + 1;
+          m.storeCoinsMintedBySeat[e.seat] = (m.storeCoinsMintedBySeat[e.seat] ?? 0) + e.coins;
+          if (e.card !== undefined) {
+            const suit = cardById(this.data, e.card).suit;
+            m.storeConvertedByCardSuit[suit] = (m.storeConvertedByCardSuit[suit] ?? 0) + 1;
+          }
+        }
         return;
       }
       // ⭐ THE ARM'S TWO SINKS (K10-K15), and the split is the whole reading: a
@@ -2792,12 +3104,28 @@ export class Fold {
       // `on: 'endgame'` carries `rules.economy.endgameCoinCost` and fires just
       // before a `built` whose payment is empty, so the CARD is counted in the
       // `built` branch and only the price is counted here.
+      //
+      // ⭐ AND TWO MORE JOINED ON 12/09/2026 WITH THE VILLAGE STORE (V6 to V9).
+      // `on: 'build'` fires ONCE for the whole coin component of one payment,
+      // because coins are fungible and a payment names a COUNT and never which
+      // coins - so the coins and the BUILDS are two different tallies and both
+      // are kept. ⚠️ `on: 'grow'` IS DELIBERATELY NOT FOLDED HERE: it is always
+      // exactly one coin, so the event carries nothing the Grow does not, and
+      // `coinGrowsBySeat` is taken off the MOVE and the ANSWER instead, where
+      // the target's fullness (V9) can still be read off the pre state. One
+      // quantity, one counter. ⛔ THE FOUR MEMBERS
+      // ARE TWO SEPARATE ECONOMIES AND NO OVERLAY TURNS BOTH ON: a19 reads the
+      // first pair, a25 the second, and each reports NO SUBJECT where the other
+      // is live.
       case 'coinsSpent': {
         if (e.on === 'farmstead') {
           m.coinsSpentFarmsteadBySeat[e.seat] =
             (m.coinsSpentFarmsteadBySeat[e.seat] ?? 0) + e.coins;
-        } else {
+        } else if (e.on === 'endgame') {
           m.coinsSpentEndgameBySeat[e.seat] = (m.coinsSpentEndgameBySeat[e.seat] ?? 0) + e.coins;
+        } else if (e.on === 'build') {
+          m.coinsSpentBuildBySeat[e.seat] = (m.coinsSpentBuildBySeat[e.seat] ?? 0) + e.coins;
+          m.coinBuildsBySeat[e.seat] = (m.coinBuildsBySeat[e.seat] ?? 0) + 1;
         }
         return;
       }
@@ -3461,11 +3789,24 @@ export class Fold {
     // `PlayerState.coins` is ABSENT under every mode without a coin economy (it
     // is a serialisation question, not a rules one), so this reads the optional
     // field directly rather than through `coinsOf`, which throws by design.
-    if (isCommonsTakeCoins(this.data)) {
+    //
+    // ⭐ WIDENED ON 12/09/2026 FOR THE VILLAGE STORE (V11, ledger A150). There
+    // are two coin economies in this codebase and they never run together, so
+    // the wallet is read wherever EITHER is live and a19 and a25 gate on their
+    // own leaf. ⛔ V11 IS WHY THE LINE MATTERS UNDER THE STORE: coins score
+    // NOTHING at any rate, so a coin held at the end is a card converted for
+    // nothing and the design's own sentence about dead coins is the context a25
+    // prints beside it.
+    if (isCommonsTakeCoins(this.data) || storeCoinsPerCard(this.data) > 0) {
       state.players.forEach((p, seat) => {
         m.coinsHeldAtEndBySeat[seat] = p.coins ?? 0;
       });
     }
+    // ⭐ AND THE OTHER HALF OF V5's INVARIANT: what the shared supply still held.
+    // Spent coins return to it, so the supply plus every wallet is the whole
+    // pool for the entire game, and a25 prints the identity so a disagreement is
+    // legible as a fold bug rather than as an economy that leaks.
+    if (state.coinSupply !== undefined) m.coinSupplyAtEnd = state.coinSupply;
 
     // ⭐ THE STALL'S RIGHT-CENSORED TAIL (a20). A run still open when the game
     // ends is a board NOBODY EVER CLEARED, which is the strongest form of the
