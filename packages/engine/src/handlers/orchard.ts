@@ -555,8 +555,7 @@ function seedBankGrowOptions(
   // is the ceiling", and this card grows EVERY ORCHARD you own, so letting a
   // coin in here would hand a whole tableau the bypass in one turn.
   return growOptions(data, state, seat).filter(
-    (o) =>
-      o.coinGrow !== true && isOrchardCard(data, o.building) && !done.includes(o.building),
+    (o) => o.coinGrow !== true && isOrchardCard(data, o.building) && !done.includes(o.building),
   );
 }
 

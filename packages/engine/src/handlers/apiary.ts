@@ -334,24 +334,24 @@ export const gardenHive: CardHandler = {
         })
           .filter((o) => o.coinGrow !== true)
           .map(
-          (o) =>
-            ({
-              kind: 'card',
-              // R15: `payment` is null and `meeples` carries the payment when a
-              // meeple paid. Both ride, for the reason the build answer's own
-              // comment gives: an answer that drops them cannot pay.
-              payload: {
-                building: o.building,
-                payment: o.payment,
-                ...(o.meeples === undefined ? {} : { meeples: o.meeples }),
-                // R17: where the paid meeple lands. Rides on the answer for the
-                // same reason the meeples themselves do - an answer that drops
-                // it is an answer that cannot pay.
-                ...(o.placements === undefined ? {} : { placements: o.placements }),
-                ...(o.paymentToll === undefined ? {} : { paymentToll: o.paymentToll }),
-              },
-            }) as TaskAnswer,
-        );
+            (o) =>
+              ({
+                kind: 'card',
+                // R15: `payment` is null and `meeples` carries the payment when a
+                // meeple paid. Both ride, for the reason the build answer's own
+                // comment gives: an answer that drops them cannot pay.
+                payload: {
+                  building: o.building,
+                  payment: o.payment,
+                  ...(o.meeples === undefined ? {} : { meeples: o.meeples }),
+                  // R17: where the paid meeple lands. Rides on the answer for the
+                  // same reason the meeples themselves do - an answer that drops
+                  // it is an answer that cannot pay.
+                  ...(o.placements === undefined ? {} : { placements: o.placements }),
+                  ...(o.paymentToll === undefined ? {} : { paymentToll: o.paymentToll }),
+                },
+              }) as TaskAnswer,
+          );
       },
       resolve(fx, task, answer) {
         if (answer.kind !== 'card') throw new Error('growAny expects a card answer');

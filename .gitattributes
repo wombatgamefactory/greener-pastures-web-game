@@ -1,0 +1,29 @@
+# Line endings, and why this file exists (2026-09-12).
+#
+# Prettier is configured with `endOfLine: "lf"` (.prettierrc.json). Git on this
+# machine had `core.autocrlf=true` and there was no .gitattributes, so every
+# file was checked OUT with CRLF and then failed `npm run format:check` - 160
+# files at once, on a clean tree, with no change made. `npm run check` was
+# therefore red permanently, which trains you to stop reading its output.
+#
+# `text=auto eol=lf` normalises to LF in the repository AND in the working tree
+# on every platform, so the checkout matches what prettier wants. Do not set
+# eol=crlf here or the gate goes red again.
+
+* text=auto eol=lf
+
+# Binaries: never touched, never diffed as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.xlsm binary
+*.xlsx binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.zip binary

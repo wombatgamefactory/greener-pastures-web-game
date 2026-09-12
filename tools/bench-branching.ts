@@ -138,7 +138,10 @@ for (let i = 0; i < games; i++) {
         ];
         for (const [name, gate, enumerated] of pairs) {
           if (gate !== enumerated && !disagreements.has(name)) {
-            disagreements.set(name, `${gameSeed} turn ${st.turnPlayer} gate=${gate} enum=${enumerated}`);
+            disagreements.set(
+              name,
+              `${gameSeed} turn ${st.turnPlayer} gate=${gate} enum=${enumerated}`,
+            );
           }
         }
       }
@@ -165,7 +168,8 @@ for (let i = 0; i < games; i++) {
 const elapsed = Number(process.hrtime.bigint() - started) / 1e9;
 
 counts.sort((a, b) => a - b);
-const at = (q: number): number => counts[Math.min(counts.length - 1, Math.floor(q * counts.length))] ?? 0;
+const at = (q: number): number =>
+  counts[Math.min(counts.length - 1, Math.floor(q * counts.length))] ?? 0;
 
 process.stdout.write(
   [
@@ -174,7 +178,10 @@ process.stdout.write(
     `games / seats:          ${games} / ${seats}`,
     `positions:              ${positions}`,
     `WORST LEGAL MOVES:      ${worst}   (at ${worstAt})`,
-    `  by move type:         ${[...byType].sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} ${n}`).join(', ')}`,
+    `  by move type:         ${[...byType]
+      .sort((a, b) => b[1] - a[1])
+      .map(([t, n]) => `${t} ${n}`)
+      .join(', ')}`,
     `WORST TURN MOVES:       ${worstMoves}   (the same positions, tasks excluded)`,
     `WORST HAND:             ${worstHand}   (the other half of every C(n, k) here)`,
     `WORST BUILD PAYMENTS:   ${worstBuild}   (one position's build list)`,

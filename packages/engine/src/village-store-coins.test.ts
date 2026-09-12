@@ -324,9 +324,9 @@ describe('the Village Store coin: the Build sink (V6, V7)', () => {
   it('fills the n-of-suit half only under coinPaysSuitCost', () => {
     expect(w11?.suit).toBeGreaterThan(0);
     expect(builds(arm, builder(arm, 5, ['W11'])).some((m) => m.payment.length === 0)).toBe(true);
-    expect(builds(wildOnly, builder(wildOnly, 5, ['W11'])).some((m) => m.payment.length === 0)).toBe(
-      false,
-    );
+    expect(
+      builds(wildOnly, builder(wildOnly, 5, ['W11'])).some((m) => m.payment.length === 0),
+    ).toBe(false);
   });
 
   /**
@@ -350,9 +350,9 @@ describe('the Village Store coin: the Build sink (V6, V7)', () => {
 
   /** The sink is off in the Grow-only arm, so no build move carries a coin. */
   it('pays no build at all with coinPaysBuild off', () => {
-    expect(builds(growOnly, builder(growOnly, 5, ['W11'])).every((m) => m.coins === undefined)).toBe(
-      true,
-    );
+    expect(
+      builds(growOnly, builder(growOnly, 5, ['W11'])).every((m) => m.coins === undefined),
+    ).toBe(true);
   });
 
   /** D6: a coin is not a card, so a payment of coins alone spends no cards. */

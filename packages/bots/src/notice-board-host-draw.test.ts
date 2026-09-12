@@ -121,7 +121,12 @@ interface Walk {
    * decision the engine handed back**. The rule pushes the host's draw as an
    * ordinary task, so the seat that moves next IS the orientation.
    */
-  readonly afterVisit: { visitor: number; host: number; next: number | null; drawPid: number | null }[];
+  readonly afterVisit: {
+    visitor: number;
+    host: number;
+    next: number | null;
+    drawPid: number | null;
+  }[];
 }
 
 function walk(
@@ -140,8 +145,12 @@ function walk(
   });
   const moves: Move[] = [];
   const hostDraws: { seat: number; cards: number }[] = [];
-  const afterVisit: { visitor: number; host: number; next: number | null; drawPid: number | null }[] =
-    [];
+  const afterVisit: {
+    visitor: number;
+    host: number;
+    next: number | null;
+    drawPid: number | null;
+  }[] = [];
   let idle = 0;
   let crash: string | null = null;
   let firstVisit: ExplainedMove[] | null = null;
@@ -314,7 +323,11 @@ describe('S17, the host draw, as the bots price it', () => {
   // what the charge covers; it did not widen where the charge applies, and the
   // shipped commons has no host for it to reach.
   it('stays silent under the shipped commons', () => {
-    const walked = walk(COMMONS, { seats: 3, seed: 'commons-control', policies: MIXED.slice(0, 3) });
+    const walked = walk(COMMONS, {
+      seats: 3,
+      seed: 'commons-control',
+      policies: MIXED.slice(0, 3),
+    });
     expect(walked.crash).toBeNull();
     expect(walked.moves.filter((m) => m.type === 'commons').length).toBeGreaterThan(0);
     expect(walked.hostDraws).toHaveLength(0);

@@ -359,7 +359,10 @@ function stallMode({ data, pooled }: MeasureContext): Measurement {
     `THE STALL SHARE: ${pct(value)} of ${sampled} BOARD-TURNS ended with that board at or ` +
       `above ${threshold} cards and uncleared. ⭐ BY SEAT COUNT, AND READ THE 2p ROW ` +
       `HARDEST: ${rows
-        .map((r) => `${r.seats}p ${pct(r.share)} (${r.boards} board${r.boards === 1 ? '' : 's'} a seat)`)
+        .map(
+          (r) =>
+            `${r.seats}p ${pct(r.share)} (${r.boards} board${r.boards === 1 ? '' : 's'} a seat)`,
+        )
         .join('  ')}. The corpus records 2-player degeneration in the original, and a ` +
       'stall at two seats costs the table a larger share of its options than a stall at four.' +
       (twoBoards

@@ -499,13 +499,7 @@ export const theHook: Assertion = {
           : ''),
       detail,
       verdict:
-        bug || leak
-          ? 'FAIL'
-          : !Number.isFinite(value)
-            ? 'OBSERVE'
-            : value < 0.5
-              ? 'FAIL'
-              : 'PASS',
+        bug || leak ? 'FAIL' : !Number.isFinite(value) ? 'OBSERVE' : value < 0.5 ? 'FAIL' : 'PASS',
     };
   },
 };

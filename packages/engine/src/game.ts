@@ -111,16 +111,16 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
               // `coinGrowOnFullBuilding` a clogged building is a legal target.
               { type: 'grow', seat, building: o.building, payment: null, coinGrow: true }
             : o.meeples === undefined
-            ? { type: 'grow', seat, building: o.building, payment: o.payment }
-            : {
-                type: 'grow',
-                seat,
-                building: o.building,
-                payment: null,
-                meeples: o.meeples,
-                ...(o.placements === undefined ? {} : { placements: o.placements }),
-                ...(o.paymentToll === undefined ? {} : { paymentToll: o.paymentToll }),
-              },
+              ? { type: 'grow', seat, building: o.building, payment: o.payment }
+              : {
+                  type: 'grow',
+                  seat,
+                  building: o.building,
+                  payment: null,
+                  meeples: o.meeples,
+                  ...(o.placements === undefined ? {} : { placements: o.placements }),
+                  ...(o.paymentToll === undefined ? {} : { paymentToll: o.paymentToll }),
+                },
       );
     }
     for (const building of harvestOptions(data, state, seat)) {

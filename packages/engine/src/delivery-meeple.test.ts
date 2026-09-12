@@ -379,9 +379,9 @@ describe('M6, M7 and M8: the plain action of the colour', () => {
     expect(spendable(arm, s)).toContain('wheat');
     const out = apply(arm, s, spend('wheat'));
     expect(out.state.tasks.some((t) => t.t === 'handToBarn')).toBe(false);
-    expect(out.state.tasks.some((t) => t.t === 'chooseBuilding' && t.filter === 'harvestable')).toBe(
-      true,
-    );
+    expect(
+      out.state.tasks.some((t) => t.t === 'chooseBuilding' && t.filter === 'harvestable'),
+    ).toBe(true);
   });
 
   /**

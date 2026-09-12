@@ -392,7 +392,7 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'when rules.turn.hostDrawOnVisit is above 0. ' +
       "⛔ IT IS A SECOND LEAF AND NOT A CHANGE OF hostDrawOnVisit'S MEANING, AND THAT IS " +
       'DELIBERATE: re-pointing the existing knob at a per-round quantity would silently redefine ' +
-      "every number already published against it - the 17:23 report, a21-host-draw, the host-draw " +
+      'every number already published against it - the 17:23 report, a21-host-draw, the host-draw ' +
       "overlay's own description - and this project has twice paid for a quantity that changed " +
       'underneath a published reading (a17 judged on plays per turn, 09/09/2026; the meeple cap ' +
       'that shipped as a passenger, 05/09/2026). hostDrawOnVisit keeps meaning CARDS PER PAYMENT. ' +
