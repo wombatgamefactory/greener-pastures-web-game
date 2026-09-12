@@ -21,17 +21,42 @@ import { weightsFor } from './weights.js';
 const TIE_EPSILON = 1e-9;
 
 /**
- * The two start-of-turn windows, in the order the rules play them.
+ * The two CLOSING windows, in the order the rules play them.
+ *
+ * ⛔ **THEY WERE BOTH START-OF-TURN WINDOWS UNTIL 12/09/2026 AND THE MEEPLE
+ * ONE NO LONGER IS** (M4, ledger A151, the delivery meeple). The heading and the
+ * first bullet said "start of turn" as a fact about the rules, and under
+ * `rules.turn.meepleSpendTiming: 'afterAction'` that half is simply false: the
+ * spend opens when the main action is SPENT and runs to the turn boundary.
+ * **What did not change is the reason this function exists**, which is that
+ * these options SHUT rather than compete, so an argmax cannot see them - and
+ * that reason covers both timings without a line of new code. Measured during
+ * the 12/09/2026 build: 52 spends over 12 games under `'afterAction'`, so the
+ * mechanism is live and it is the PROSE that was stale.
  *
  * ⭐ WHY THEY NEED SPECIAL HANDLING AT ALL - v31, and this is a structural fix
  * rather than a taste. A term table picks the single highest-scoring move, which
  * is the right shape for options that compete for one resource. **These do not
  * compete: they SHUT.**
  *
- *   - A meeple is spent before anything else and consumes neither the bonus slot
- *     nor the action, so spending one leaves every other move on the menu. The
- *     moment the bot takes a bonus option or an action, `meepleOpen` goes false
- *     and the meeple is stranded until next turn.
+ *   - A meeple is spent in whichever half of the turn its timing names, and it
+ *     consumes neither the bonus slot nor the action, so spending one leaves
+ *     every other move on the menu.
+ *
+ *     Under `'start'` - the v31 control's timing and the shipped value - it is
+ *     spent before anything else, and the moment the bot takes a bonus option or
+ *     an action `meepleSpendOpen` goes false and the meeple is stranded until
+ *     next turn. **Under `'afterAction'` the gate is the other way round**
+ *     (`meepleSpendOpen` reads `turn.actionSpent`), so `spendMeeple` is not even
+ *     enumerated while the main action is unspent and the only thing it competes
+ *     with when it appears is `endTurn`. The window is therefore free insurance
+ *     there rather than load-bearing - but it is the same insurance, and leaving
+ *     it in place is what keeps one code path scoring both timings.
+ *
+ *     ⚠️ **WHAT THE MEEPLE BUYS IS NOT ALWAYS ITS DOOR'S ACTION** (M7): under
+ *     `'afterAction'` an apiary meeple buys a GROW where the roster prints SOW.
+ *     That mapping is priced in `scratch.ts`'s `meepleActionFor`, never here -
+ *     this function decides WHEN a window is taken and never what it is worth.
  *   - The bonus slot (`bonusTiming`) is open only while `!actionSpent` under
  *     taking the main action throws it away.
  *

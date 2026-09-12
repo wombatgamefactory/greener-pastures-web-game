@@ -44,14 +44,15 @@
  * a meeple will produce it whatever the rules do.
  */
 
-import type { Card, GameData, Suit, WorkerAction } from '@gp/data';
+import type { Card, DoorAction, GameData, Suit } from '@gp/data';
 import type { BuildingView, CardId, PlayerView } from '@gp/engine';
 import {
   deliveriesPerTile,
-  doorForSuit,
+  doorActionForSuit,
   isMeepleAsCard,
   isMeepleCurrency,
   isNoticeBoardPower,
+  meepleSpendTiming,
   noticeBoardBlocks,
 } from '@gp/data';
 
@@ -584,6 +585,77 @@ function canDeliverNow(data: GameData, view: PlayerView): boolean {
   return false;
 }
 
+/**
+ * ⛔ **HOW MANY OPEN TILES THIS BARN COULD PAY FOR RIGHT NOW, and the same
+ * arithmetic `canDeliverNow` runs, counted rather than short-circuited** (the
+ * Village Store, A150, 12/09/2026).
+ *
+ * `less` removes ONE card of that suit before counting, which is the whole of
+ * what `mintStrandsDelivery` needs: the Store's exchange takes barn cards one at
+ * a time and the question at every one of them is whether THIS card was spare.
+ */
+function payableTiles(data: GameData, view: PlayerView, less: Suit | null): number {
+  const per = data.island.tileRule.cardsPerCrate;
+  const tally: Partial<Record<Suit, number>> = { ...view.you.barn };
+  if (less !== null) {
+    const held = tally[less] ?? 0;
+    if (held <= 0) return 0;
+    tally[less] = held - 1;
+  }
+  let n = 0;
+  for (const tile of view.island.tiles) {
+    if (tile.deliveredBy.length >= deliveriesPerTile(data)) continue;
+    const { base, wilds } = demandOf(tile, per);
+    if (tallyPays(view.suitsInPlay, tally, base, wilds, per)) n += 1;
+  }
+  return n;
+}
+
+/**
+ * ⛔ **WOULD CONVERTING ONE BARN CARD OF THIS SUIT AT THE VILLAGE STORE COST
+ * THIS SEAT A DELIVERY IT CAN PAY FOR TODAY?** (V1/V2, A150, Dean 12/09/2026.)
+ *
+ * ⭐ **IT IS THE ONE FEATURE THAT DECIDES WHETHER THE STORE'S OWN HEADLINE
+ * READING MEANS ANYTHING.** C113 is the arm's test: *"if the arm shows every
+ * player converting every spare card every time, the August verdict on this
+ * placement was right."* A bot that cannot tell a stranded card from the second
+ * half of a crate converts its whole barn at every delivery, and the answer to
+ * C113 comes back yes - as a fact about this file rather than about the rules.
+ *
+ * ⭐ **AND THE DESIGN'S OWN WORDS NAME EXACTLY THIS FEATURE.** The Store
+ * exists for the barn parity trap: a crate is two cards of one named crop, all
+ * or nothing, so a single odd card is worth exactly zero and 88.8% of the time a
+ * barn cannot afford any open tile. **A card is spare when losing it costs no
+ * payable tile, and dear when it does.** Nothing else about a barn card is worth
+ * reading, which is ticket 51's finding restated: the block is MATCHING under an
+ * all-or-nothing payment, not quantity, and a binary "is this suit demanded"
+ * cannot see the difference.
+ *
+ * ⚠️ **IT IS TICKET 52's PAYABILITY FEATURE, WHICH THAT TICKET NAMED AND
+ * DELIBERATELY DID NOT BUILD.** 52 measured the prize on the exits that existed
+ * then - the island, D8's build leg and the balloon - at 9 tiles of payability
+ * across 215 moves, 0.16 a game, below the floor a paired A/B could resolve, so
+ * it was never written. **The Store is a fourth exit and it is not in that
+ * class**: it is the only one that can empty a barn in a single tail, it fires
+ * on the turn the barn is at its fullest, and it is offered once per card.
+ *
+ * ⚠️ **IT IS A ONE-STEP READ AND NOT A PLAN.** The exchange is a repeated
+ * binary choice, so a seat converting three cards asks this three times, each
+ * against the barn as it then stands; nothing here looks ahead to the third
+ * conversion from the first. That is the same greedy shape every other term in
+ * this package has, and it is safe in the direction that matters: the first
+ * conversion that would break a crate is refused, so the crate survives.
+ *
+ * ⛔ **STRUCTURALLY DEAD WHEN THE STORE IS OFF.** Nothing pushes a `mint`
+ * task outside `rules.economy.storeCoinsPerCard > 0`, so this is never called in
+ * the shipped game or under any control, and the nine fixtures cannot see it.
+ */
+export function mintStrandsDelivery(s: Scratch, suit: Suit): boolean {
+  const before = payableTiles(s.data, s.view, null);
+  if (before === 0) return false;
+  return payableTiles(s.data, s.view, suit) < before;
+}
+
 /** Two differing barn suits and a balloon that is not already on your Aerodrome. */
 function canMoveBalloonNow(view: PlayerView): boolean {
   if (view.aerodrome === null) return false;
@@ -608,11 +680,16 @@ function canMoveBalloonNow(view: PlayerView): boolean {
  * hoarding question (an over-valued meeple gets spent, and a spend the engine
  * refuses is simply not offered) and the wrong direction for the door mix, so
  * it is written down here rather than left to be discovered in a report.
+ *
+ * ⭐ **IT TAKES A `DoorAction` AND NOT A `WorkerAction` SINCE 12/09/2026,
+ * BECAUSE A MEEPLE CAN BUY A GROW (M7, A151).** `grow` is the sixth member and
+ * the only one no v31 door ever bought; every other caller and every other
+ * value is unchanged.
  */
 function doorReady(
   data: GameData,
   view: PlayerView,
-  action: WorkerAction,
+  action: DoorAction,
   buildings: ReadonlyMap<CardId, BuildingView>,
 ): boolean {
   const you = view.you;
@@ -633,6 +710,42 @@ function doorReady(
       }
       return false;
     }
+    // ⭐ M7 (12/09/2026): what an APIARY meeple actually buys under
+    // `meepleSpendTiming: 'afterAction'`. See `meepleActionFor` for why this
+    // branch exists at all.
+    //
+    // ⚠️ IT IS LOOSE IN THE SAME ONE DIRECTION THE BUILD BRANCH IS, and for
+    // a smaller reason: the engine's `growOptions` also needs a hand card whose
+    // suit MATCHES the building's `activationType` ('wild' takes any), and this
+    // asks only that a card is held. Scanning every open building against every
+    // held card is the same per-decision cost the build branch refuses. So a
+    // Grow-buying meeple can be OVER-valued and never under-valued, which is the
+    // safe direction: an over-valued meeple gets spent, and a spend the engine
+    // refuses is simply never offered.
+    //
+    // ⛔ IT IS NOT THE SOW BRANCH WITH A DIFFERENT NAME. A Grow needs a
+    // building with a printed ACTIVATION TYPE, and a sow does not: a building
+    // with `activationType: null` is a legal sow target and can never be grown,
+    // so reusing 'sow' here would have priced a meeple by a target it could not
+    // use.
+    case 'grow': {
+      if (you.hand.length === 0) return false;
+      for (const building of buildings.values()) {
+        const card = cardById(data, building.card);
+        // ⛔ THE TWO GATES `growOptions` OPENS WITH, COPIED RATHER THAN
+        // APPROXIMATED, because both of them turn a "yes" into a "no" and this
+        // branch would otherwise answer yes in nearly every position. A NOTICE
+        // BOARD is never a Grow target (the enumerator's first line, and a seat
+        // holds one or two of them from setup with a threshold of 2 and a wild
+        // activation, so leaving it in would have read LIVE all game); and a
+        // building with no printed ACTIVATION TYPE cannot be grown at all, which
+        // is both remaining starters.
+        if (card.slot === 'noticeboard' || card.activationType === null) continue;
+        const threshold = thresholdOfView(data, building);
+        if (threshold !== null && building.stack.length < threshold) return true;
+      }
+      return false;
+    }
     case 'build':
       // See the warning above: hand-non-empty stands in for the affordability
       // scan, and errs generous.
@@ -646,9 +759,48 @@ function doorReady(
 }
 
 /**
+ * ⛔ **WHAT A MEEPLE OF THIS COLOUR ACTUALLY BUYS (M7, A151, Dean
+ * 12/09/2026), AND IT IS NOT ALWAYS THE ROSTER'S `action`.**
+ *
+ * Under `rules.turn.meepleSpendTiming: 'afterAction'` - the delivery meeple's
+ * own timing - an APIARY meeple buys a **GROW** where the roster prints SOW.
+ * Sow is not one of the five core actions, and "orange means Grow here and Sow
+ * there" has cost this project a day before. Every other colour, and every other
+ * timing, is the identity, so the v31 control keeps asking about its Sow and the
+ * commons keeps reading `actionUnderCommons` exactly as it did.
+ *
+ * ⛔ **THE PRICE AND THE GATE MUST BE ASKED THE SAME QUESTION.** The engine's
+ * `meepleOptions` filters colours on `doorActionLegal(..., meepleActionOf(...))`
+ * - it says so in its own comment - so a bot that priced an apiary meeple by
+ * whether a SOW was legal would be valuing a move the engine never offers and
+ * refusing one it does. That is the `hostGift` seam of 12/09/2026 in a new
+ * place: a term reading a rule off the wrong accessor prices a decision that
+ * cannot happen.
+ *
+ * ⚠️ **IT IS A MIRROR OF THE ENGINE'S `meepleActionOf` AND NOT A CALL TO
+ * IT**, for the reason `commonsPileSize` in `terms.ts` is a mirror: that
+ * function is not on `@gp/engine`'s public surface, and this package's boundary
+ * is the thing that keeps a bot from seeing a `GameState`. The mirror is exact
+ * because both halves read the same two authorities in `@gp/data`,
+ * `doorActionForSuit` (which is where C3's `actionUnderCommons` override lives)
+ * and `meepleSpendTiming`. **If either side moves, move both.**
+ *
+ * `undefined` for a colour with no door at all, which is unreachable in shipped
+ * data and is handled rather than thrown for the reason the caller states.
+ */
+function meepleActionFor(data: GameData, colour: Suit): DoorAction | undefined {
+  const action = doorActionForSuit(data, colour);
+  if (action === undefined || meepleSpendTiming(data) !== 'afterAction') return action;
+  return action === 'sow' ? 'grow' : action;
+}
+
+/**
  * One entry per colour, whatever is at the table - a meeple of a suit NOBODY is
  * farming still works, because the five door actions exist independently of who
  * farms what, so this may never be filtered by `suitsInPlay`.
+ *
+ * ⭐ **IT PRICES WHAT THE MEEPLE BUYS AND NOT WHAT THE DOOR SELLS** (M7,
+ * 12/09/2026) - see `meepleActionFor`.
  */
 function meepleWorthByColour(
   data: GameData,
@@ -666,15 +818,15 @@ function meepleWorthByColour(
   const dead = asCard ? MEEPLE_AS_CARD_FLOOR : MEEPLE_LATENT;
   const out = new Map<Suit, number>();
   for (const colour of data.cards.suits) {
-    const door = doorForSuit(data, colour);
-    if (!door) {
+    const action = meepleActionFor(data, colour);
+    if (action === undefined) {
       // No door at all, which is unreachable in shipped data. Under R15 it is
       // still a CARD of its colour, so the floor applies and only the door
       // premium is lost; under v1 there is nothing left to be worth.
       out.set(colour, asCard ? MEEPLE_AS_CARD_FLOOR : 0);
       continue;
     }
-    out.set(colour, doorReady(data, view, door.action, buildings) ? live : dead);
+    out.set(colour, doorReady(data, view, action, buildings) ? live : dead);
   }
   return out;
 }

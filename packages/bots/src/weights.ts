@@ -439,6 +439,66 @@ export const BALANCED: WeightTable = {
    * outside `rules.turn.commonsTake: 'coins'` and its two sinks, so this weight
    * multiplies a zero in the shipped game and under both controls. That is what
    * lets a nonzero weight land without moving one fixture.
+   *
+   * ## ⛔ AND SINCE 12/09/2026 IT PRICES A SECOND, DIFFERENT COIN. 1.2 IS A
+   * FLOOR THERE AND NOT A MEASUREMENT.
+   *
+   * **The Village Store's coin (V1 to V12, A150) is NOT the coin measured
+   * above**, and every number in that measurement is about a currency this one
+   * only shares a name with. Read the difference before quoting anything:
+   *
+   *                         K7 / K10 (measured)      V1 / V6 / V8 (this arm)
+   *     mint                clear a central pile     a spare BARN card at a delivery
+   *     sink 1              the Farmstead's power    any part of a BUILD cost
+   *     sink 2              an Endgame card          a GROW that places nothing
+   *     what a coin buys    a whole ACTION           one RESOURCE inside an action
+   *                         you were not taking      you were taking anyway
+   *
+   * ⛔ **SO THE 6,771-POSITION MEASUREMENT DOES NOT TRANSFER, AND THE
+   * HANDOFF SAYS SO IN AS MANY WORDS: "a coin is now worth MORE than it was,
+   * because it pays a suit requirement."** The measured coin bought the NET of a
+   * Farmstead power over the plain action it displaced, and four of the five
+   * powers were dead most of the time - which is where the band of 0 to 1.3 came
+   * from. **This coin cannot be dead in the same way.** V6 lets it pay any or all
+   * of a build cost INCLUDING the n-of-suit half, so one coin displaces one card
+   * of a payment the seat was making regardless, and a hand card is `handSpend`
+   * **2.5** in this same table. V8 does the same to a Grow's activation card.
+   *
+   * ⛔ **1.2 IS THEREFORE CARRIED FORWARD AS A FLOOR, DELIBERATELY, AND THE
+   * ARM UNDERSTATES THE STORE BECAUSE OF IT.** It was not re-measured on
+   * 12/09/2026: the method above is a bespoke pass over thousands of positions
+   * with `coinSpend` held at 0, no harness for it survives in the tree, and this
+   * project's rule is that a weight is measured or declared rather than argued
+   * into place. **The arithmetic above says the true value is nearer `handSpend`
+   * 2.5 than 1.2, but that is an ARGUMENT and 2.4 to 3.5 is exactly the kind of
+   * argued number the measurement above was run to refute.** So the floor ships
+   * and the gap is written down.
+   *
+   * ⭐ **THE ERROR IS ONE-DIRECTIONAL AND ITS DIRECTION IS SAFE FOR THIS
+   * PASS, WHICH IS THE WHOLE REASON THE FLOOR IS TOLERABLE.** `coinSpend` is
+   * pinned to this, so an under-priced coin is one the bot SPENDS eagerly (1.2
+   * charged against a 2.5 hand card saved) and MINTS less eagerly. Both sinks
+   * therefore fire, and the failure this slice exists to prevent - an arm whose
+   * new rule is never used, reading exactly like its control - cannot happen
+   * because of this number.
+   *
+   * ⚠️ **WHAT IT DOES BIAS, AND WHAT MAY NOT BE QUOTED OFF IT:**
+   *
+   *   - **the conversion rate and C113.** A cheap coin is minted less often, so
+   *     the Store's "does every player convert every spare card every time"
+   *     reading is a FLOOR on conversion, not an estimate of it. If the arm
+   *     shows heavy conversion at 1.2, C113's answer is safe; if it shows light
+   *     conversion, re-measure before concluding anything.
+   *   - **the build / grow sink split**, for the same reason a19's split was a
+   *     reading of this table rather than of K15's appeal.
+   *   - **the empty-supply share**, which moves with how eagerly coins are minted.
+   *
+   * ⚠️ **A SWEEP OF THIS NUMBER IS STILL AN EDIT AND A REBUILD** (C45):
+   * `weightsFor` takes a profile id and nothing else, so the weight table is not
+   * overlay-addressable and a run at a different coin price is a code change.
+   * That is why a re-measurement is a session of its own and not a knob on an
+   * arm, and it is the first thing to do if Dean wants the Store's numbers
+   * tightened.
    */
   coinWorth: 1.2,
   /**
@@ -481,6 +541,43 @@ export const BALANCED: WeightTable = {
    * unreachable, see `commons.test.ts`). Read a19's dead-coin line knowing that.
    */
   coinSpend: 1.2,
+  /**
+   * ⛔ **THE VILLAGE STORE'S ONE ORDERING TERM (V1/V2, A150, 12/09/2026): DO
+   * NOT CONVERT THE SECOND HALF OF A CRATE.** Charged when the barn card being
+   * exchanged is one a currently payable tile needs, so that a bot converts what
+   * is STRANDED and keeps what is spendable.
+   *
+   * ⛔ **IT IS A THRESHOLD, NOT AN ESTIMATE, AND THE BAND IS ARITHMETIC
+   * RATHER THAN A MEASUREMENT.** The mint's standing net is `coinWorth` 1.2
+   * minus `barnSpend` 0.5 = **+0.7**, against `skip` at **-1.0**, so the whole
+   * job of this number is to push a stranding conversion below the skip:
+   * **anything above 1.7 closes the option and anything below it does nothing at
+   * all.** 3 is the smallest round number in the closed half that is not sitting
+   * on the switch, and it is a number this table already uses twice for "one
+   * whole structural step" (`build` 3, `growCompletes` 3):
+   *
+   *     conversion that strands nothing   +0.7   taken   (skip -1.0)
+   *     conversion that costs a tile      -2.3   refused
+   *
+   * ⚠️ **PINNED TO NOTHING AND MEASURED BY NOTHING, SO SAY SO IN ANY WRITE-UP
+   * THAT QUOTES A CONVERSION RATE.** A payable tile is not a delivery lost - the
+   * barn refills - so 3 is not what a tile is worth. What it buys is that the
+   * bot's conversion rate is a reading about SPARE cards rather than about all
+   * cards, which is what C113 asks for.
+   *
+   * ⛔ **IF `coinWorth` MOVES, RE-READ THIS.** The switch sits at
+   * `coinWorth - barnSpend - skip`, so a re-measured coin raises the floor of the
+   * band; at a coin of 2.5 (the value `coinWorth`'s own note argues this coin is
+   * really nearer) the floor would be 3.0 and this number would be ON the switch
+   * rather than inside it.
+   *
+   * ⛔ **STRUCTURALLY ZERO WHEN THE STORE IS OFF.** Only `finishDelivery`
+   * pushes a `mint` task and only under `rules.economy.storeCoinsPerCard > 0`,
+   * so this multiplies a zero in the shipped game and under all three controls,
+   * which is what lets a new weight land without moving one of the nine
+   * fixtures.
+   */
+  mintStrands: 3,
   /**
    * **A balloon is worth its reward and nothing else** - the same sentence
    * ticket 40 applied to the visit, for the same measured reason (ticket 49).
