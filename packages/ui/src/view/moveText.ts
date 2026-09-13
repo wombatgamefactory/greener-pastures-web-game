@@ -121,17 +121,15 @@ export function describeAnswer(data: GameData, answer: TaskAnswer, task?: CardTa
       return 'decline';
     case 'card':
       return describeCardPayload(data, answer.payload, task);
-    // ⛔ THE COMMONS APIARY DOOR'S GROW (C3, 09/09/2026), and this package does
-    // not draw the commons: it is pinned to the v31 card-visit control and the
-    // answer is on `UNROUTED_TASK_ANSWERS` (ledger C59, the UI debt). Spelled as
-    // its own case rather than folded into a `default`, so the next answer kind
-    // the engine adds is a compile error here and not a silent sentence.
+    // ⛔ A BOUGHT GROW, unreachable in the v31 game this package plays and on
+    // `UNROUTED_TASK_ANSWERS` (ledger C59, the UI debt). Spelled as its own
+    // case rather than folded into a `default`, so the next answer kind the
+    // engine adds is a compile error here and not a silent sentence.
     case 'grow':
       // ⚠️ `payment` IS NULLABLE SINCE 12/09/2026 (V8, A150): a bought Grow
       // may be paid with one Village Store coin, in which case nothing is
-      // placed. Unreachable in the v31 game this package plays, and unrouted
-      // either way (C59), but the string has to be total.
-      return `${cardName(data, answer.building)}, paying ${answer.payment === null ? 'one coin' : cardName(data, answer.payment)} (the commons Grow: unsupported in this interface, C59)`;
+      // placed.
+      return `${cardName(data, answer.building)}, paying ${answer.payment === null ? 'one coin' : cardName(data, answer.payment)} (a bought Grow: unsupported in this interface, C59)`;
     default:
       return answer satisfies never;
   }
@@ -355,33 +353,6 @@ export function describeMove(data: GameData, view: PlayerView, move: Move): stri
     // TODO(meeple-loop): owned by the ui pass.
     case 'collect':
       return 'Collect: take the meeples off your own Notice Board, then Draw 1.';
-    /*
-     * ⛔ THE COMMONS PLAY (C3), AND THIS INTERFACE CANNOT OFFER ONE (ledger C59,
-     * 09/09/2026). Dean ruled the commons in as the engine default that day and
-     * §2.9 of the handoff leaves the UI out of scope, so `session/table.ts` is
-     * still pinned to the v31 card-visit control and there are no central boards
-     * on the table to drag a card onto. `commons` is on `UNROUTED_MOVES`.
-     *
-     * It still gets a SENTENCE rather than a throw: this function is what the
-     * event feed and the capture panel print, and a capture taken under the
-     * commons would white-screen a reader rather than telling them what it saw.
-     * Naming the board and the fee is honest; claiming a click path would not be.
-     */
-    case 'commons':
-      return `Play ${cardName(data, move.fee)} onto the central ${SUIT_META[move.board].label} board (the commons: unsupported in this interface, C59)`;
-    /*
-     * ⭐ DEAN'S VARIANTS' TAKE (09/09/2026, `rules.turn.commonsTake: 'bonus'`,
-     * `'spend'` or `'paid'`), and the same admission as `commons` above for the
-     * same reason: no central boards on the table to drag from. `commonsTake`
-     * is on `UNROUTED_MOVES`.
-     *
-     * `move.fee` is present only under `'paid'`, where the take costs a card -
-     * named here exactly as `commons`'s own fee is named above.
-     */
-    case 'commonsTake':
-      return move.fee === undefined
-        ? `Take the whole ${SUIT_META[move.board].label} pile to hand (the commons: unsupported in this interface, C59)`
-        : `Take the whole ${SUIT_META[move.board].label} pile to hand, paying ${cardName(data, move.fee)} to the discard (the commons: unsupported in this interface, C59)`;
     case 'pass':
       return 'Pass';
     case 'endTurn':
@@ -426,33 +397,20 @@ export function describeTask(data: GameData, task: Task): string {
         : `${task.cards.length} card${task.cards.length === 1 ? '' : 's'} heading for the discard: put one in your barn, or let them go.`;
     case 'card':
       return `${cardName(data, task.src)}: choose.`;
-    // ⛔ The commons Apiary door's Grow (C3, 09/09/2026), unreachable in the v31
-    // game this package plays and unresolvable in its prompt - see
-    // `UNROUTED_TASK_ANSWERS` in `intent.ts` and ledger C59. An explicit case,
-    // so a genuinely new task kind still fails the build here.
+    // ⛔ A bought Grow, unreachable in the v31 game this package plays and
+    // unresolvable in its prompt - see `UNROUTED_TASK_ANSWERS` in `intent.ts`
+    // and ledger C59. An explicit case, so a genuinely new task kind still
+    // fails the build here.
     case 'grow':
-      return 'GROW one of your buildings, paying a matching card (the commons Grow: unsupported in this interface, C59).';
-    /*
-     * ⭐ DEAN'S 'spend' VARIANT'S THREE TASKS (09/09/2026,
-     * `rules.turn.commonsTake: 'spend'`), unreachable in the v31 game this
-     * package plays - the same admission as `grow` above and for the same
-     * reason (C59): explicit cases so a genuinely new task kind still fails
-     * the build here.
-     */
-    case 'commonsSpendBuild':
-      return 'Build a card, paid from the central pile (the commons: unsupported in this interface, C59).';
-    case 'commonsSpendDeliver':
-      return 'Deliver a crate, paid from the central pile (the commons: unsupported in this interface, C59).';
+      return 'GROW one of your buildings, paying a matching card (a bought Grow: unsupported in this interface, C59).';
     /**
      * ⛔ THE VILLAGE STORE'S EXCHANGE (V1, A150, 12/09/2026), unreachable in
-     * the v31 game this package plays - the same admission as `grow` and the
-     * three `commonsSpend*` tasks below, and for the same reason (C59): an
-     * explicit case, so a genuinely new task kind still fails the build here.
+     * the v31 game this package plays - the same admission as `grow` above
+     * (C59): an explicit case, so a genuinely new task kind still fails the
+     * build here.
      */
     case 'mint':
       return `You may exchange ${task.remaining} barn card${task.remaining === 1 ? '' : 's'} for coins at the Village Store (unsupported in this interface, C59).`;
-    case 'commonsSpendSow':
-      return `Sow ${task.cards.length} card${task.cards.length === 1 ? '' : 's'} from the central pile onto your buildings (the commons: unsupported in this interface, C59).`;
     default:
       return task satisfies never;
   }

@@ -29,8 +29,8 @@ import {
 
 /**
  * The v31 card-fee game, as `overlays/v31-card-visit.overlay.json` sets it.
- * The Notice Board is a building only in this game, so anything asserting a
- * threshold on one is asserting about the control.
+ * The Notice Board is a building here and under the shipped Notice Board
+ * visit, but not under the meeple game.
  */
 const control = loadGameData({
   name: 'v31-card-visit',
@@ -42,9 +42,8 @@ const control = loadGameData({
  * ⭐ THE MEEPLE GAME, NAMED RATHER THAN ASSUMED (09/09/2026).
  *
  * These assertions were written against `BASE_GAME_DATA` while the meeple loop
- * WAS the shipped default. Dean ruled the COMMONS in on 09/09/2026
- * (`docs/commons-handoff-2026-09-09-v1.md`), so the default moved out from under
- * them and "under the shipped rules" stopped naming the game they are about.
+ * WAS the shipped default. The default has since moved on, so "under the
+ * shipped rules" stopped naming the game they are about.
  * They are about the meeple loop, so they load it: this is
  * `overlays/meeple-economy-v1.overlay.json`, the arm `reference-v14` was cut
  * against and the game every UI test of this era was written for.
@@ -288,12 +287,10 @@ describe('seatSuits and receiptTotal', () => {
  */
 describe('liveThreshold', () => {
   /*
-   * ⭐ ALL THREE CURRENCIES, NAMED (09/09/2026). It used to read "both", meaning
-   * the shipped meeple game and the v31 control; the commons arrived as a third
-   * and `BASE_GAME_DATA` silently became it. The seam is the same claim in every
-   * one of them - the interface may never contradict the engine about what is
-   * legal - so the honest fix is to sweep all three rather than to re-point the
-   * loop at whichever game happens to be shipped.
+   * ⭐ ALL THREE CURRENCIES, NAMED: the shipped Notice Board visit
+   * (`BASE_GAME_DATA`), the meeple game and the v31 control. The seam is the
+   * same claim in every one of them - the interface may never contradict the
+   * engine about what is legal - so all three are swept.
    */
   it('agrees with the engine on every building on the table, under all three currencies', () => {
     const view = table();
@@ -327,16 +324,13 @@ describe('liveThreshold', () => {
 
   // And in a game where the board is not a building the override is not
   // applied, it is overruled: there is no threshold to override, whatever the
-  // knob says. True of the meeple loop (R5) and of the commons (C4), and the
-  // commons is `BASE_GAME_DATA` since 09/09/2026 - so both are swept.
-  it('nulls the Notice Board outright under the meeple economy and the commons', () => {
-    for (const rules of [meeple, data]) {
-      for (const card of rules.cards.catalogue.filter((c) => c.slot === 'noticeboard')) {
-        expect(liveThreshold(rules, card.id, 99)).toBeNull();
-      }
-      for (const card of rules.cards.catalogue.filter((c) => c.slot !== 'noticeboard')) {
-        expect(liveThreshold(rules, card.id, 99)).toBe(99);
-      }
+  // knob says. True of the meeple loop (R5).
+  it('nulls the Notice Board outright under the meeple economy', () => {
+    for (const card of meeple.cards.catalogue.filter((c) => c.slot === 'noticeboard')) {
+      expect(liveThreshold(meeple, card.id, 99)).toBeNull();
+    }
+    for (const card of meeple.cards.catalogue.filter((c) => c.slot !== 'noticeboard')) {
+      expect(liveThreshold(meeple, card.id, 99)).toBe(99);
     }
   });
 
