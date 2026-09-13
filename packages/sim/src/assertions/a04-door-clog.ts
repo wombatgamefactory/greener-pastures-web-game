@@ -1,11 +1,4 @@
-import type { GameData } from '@gp/data';
-import {
-  isCommons,
-  isMeepleCurrency,
-  isNoticeBoardPower,
-  noticeBoardBlocks,
-  unclaimedBoardsToCentre,
-} from '@gp/data';
+import { isMeepleCurrency, isNoticeBoardPower, noticeBoardBlocks } from '@gp/data';
 
 import type { Assertion, Measurement, MeasureContext } from './types.js';
 import { num, pct } from '../stats.js';
@@ -187,7 +180,6 @@ export const doorClog: Assertion = {
     'used to is rules.economy.commonsThreshold (C10), shipped null, armed by ' +
     'overlays/commons-threshold-2.overlay.json.',
   measure(ctx) {
-    if (isCommons(ctx.data)) return noSubject(ctx.data);
     // ⭐ ASKED ON THE KNOB AND NOT ON THE CURRENCY (10/09/2026), because the two
     // values of `noticeBoardBlocks` put this assertion on opposite sides of the
     // same question. FALSE is S8's `3+`, where a board is never full and this
@@ -195,97 +187,45 @@ export const doorClog: Assertion = {
     // clogs exactly as v31's did and this branch is the right instrument for
     // it. Gating on the currency alone would have silenced the control, which
     // is the one run that needs this line.
-    if (isNoticeBoardPower(ctx.data) && !noticeBoardBlocks(ctx.data)) return noSubject(ctx.data);
+    if (isNoticeBoardPower(ctx.data) && !noticeBoardBlocks(ctx.data)) return noSubject();
     return isMeepleCurrency(ctx.data) ? meepleArm(ctx) : cardGame(ctx);
   },
 };
 
 /**
- * ⛔ NO SUBJECT UNDER THE COMMONS (C1 and C4, 09/09/2026), and it is the fifth
- * re-base of this assertion arriving as a deletion rather than as a re-point.
- *
- * There is no door to clog. No player has a Notice Board - the five stand
- * ownerless in the centre - and a central board has NO THRESHOLD at all (C4):
- * any number of cards, never full, never clogged, and nothing in the game
- * refuses a play. So both readings this assertion has ever carried lose their
- * object at once: there is no "this farm is shut" (no farm has a door) and no
- * slot occupancy (there are no slots).
- *
- * ⚠️ THE COUNTERS ARE NOT SAMPLED UNDER THE COMMONS AT ALL, which is a stronger
- * statement than "they read zero" and is the honest one. `observe.ts` skips the
- * turn-boundary probe outright, because `noticeBoardOf` THROWS on a seat with no
- * board - so the guard is a crash guard as well as a meaning guard - and because
- * a zero numerator over a real denominator would read as "never clogged", which
- * is a finding about a thing that is not in the game.
- *
- * ⛔ NOTHING HERE IS DELETED. Both controls exercise both branches:
- * `overlays/v31-card-visit.overlay.json` runs the threshold and
- * `overlays/meeple-loop-v1.overlay.json` the five slots.
+ * ⛔ NO SUBJECT UNDER THE `3+` NOTICE BOARD (S8, 10/09/2026): a board is never
+ * full, so this probe reads a genuine and permanent 0% and the verdict is
+ * withheld. `-blocking-v1` is the control where it means something.
  */
-function noSubject(data: GameData): Measurement {
-  const boards = isNoticeBoardPower(data);
-  // ⭐ CHECKED BY NAME ON 11/09/2026 AGAINST DEAN'S UNCLAIMED-BOARDS VARIANT,
-  // because that arm puts a second kind of board on the table and a reader is
-  // entitled to know this line covers it. It does, and the answer is still NO
-  // SUBJECT rather than a zero: a central pile's INFLOW knob is
-  // `rules.economy.commonsThreshold`, pinned null by the overlay, so any number
-  // of cards may be added and nothing in the game refuses a play onto one
-  // either. The `3+` on a central pile is `commonsHarvestMin`, which gates the
-  // OUTFLOW and is a20's subject and not this one's.
-  const centre = boards && unclaimedBoardsToCentre(data);
+function noSubject(): Measurement {
   return {
     value: NaN,
-    headline: boards
-      ? 'NO SUBJECT UNDER THE `3+` NOTICE BOARD (S8, 10/09/2026): the threshold is a MINIMUM to ' +
-        'harvest at and never a maximum load, so a board is never FULL however deep the stack ' +
-        'goes and nothing in the game refuses a play. This probe reads a GENUINE and permanent ' +
-        '0% here, which is the correct answer and not a bug - and read against the 8% floor it ' +
-        'would be a FAIL on every run for ever. See a20-board-stall, which asks the question ' +
-        'that replaced it: does a board sit LOADED and UNCLEARED, and for how long.'
-      : 'NO SUBJECT UNDER THE COMMONS: no player has a Notice Board (C1) and a central board has ' +
-        'no threshold (C4), so there is no door to clog and nothing in the game refuses a play.',
+    headline:
+      'NO SUBJECT UNDER THE `3+` NOTICE BOARD (S8, 10/09/2026): the threshold is a MINIMUM to ' +
+      'harvest at and never a maximum load, so a board is never FULL however deep the stack ' +
+      'goes and nothing in the game refuses a play. This probe reads a GENUINE and permanent ' +
+      '0% here, which is the correct answer and not a bug - and read against the 8% floor it ' +
+      'would be a FAIL on every run for ever. See a20-board-stall, which asks the question ' +
+      'that replaced it: does a board sit LOADED and UNCLEARED, and for how long.',
     detail: [
-      boards
-        ? '⭐ `isFull` AND `isHarvestable` STOPPED BEING THE SAME BOOLEAN ON 10/09/2026, and ' +
-          'this line is the first casualty of the split. It asks `isFull` - does this board ' +
-          'refuse a card - and a `3+` board never does. a20 asks `isHarvestable` - is it at or ' +
-          'above its threshold, unharvested - which is the failure S8 was actually written ' +
-          'against: the predecessor stalls when nobody wants to load, and a BLOCKING board can ' +
-          'be shut by an owner who declines to harvest.' +
-          (centre
-            ? ' ⭐ AND THE SAME ANSWER COVERS THE CENTRAL PILES THIS ARM ADDS (11/09/2026): ' +
-              'rules.economy.commonsThreshold is null, which is the INFLOW knob, so a central ' +
-              'pile accepts any number of cards and nothing in the game refuses a play onto ' +
-              'one either. rules.economy.commonsHarvestMin 3 is the OUTFLOW gate and belongs ' +
-              'to a20. ⛔ SO THERE IS NO CLOG ANYWHERE ON THIS TABLE - not on an owned board, ' +
-              'not in the middle - and this line reads NO SUBJECT rather than a misleading 0%.'
-            : '')
-        : 'The turn-boundary probe is not sampled under this mode rather than sampled at zero. ' +
-          'A zero numerator over a real denominator would read as "never clogged", which is a ' +
-          'finding about a thing that does not exist; an empty denominator reads as "not ' +
-          'measured", which is the truth.',
-      boards
-        ? '⛔ THE BRANCH IS ALIVE AND ITS OWN CONTROL EXERCISES IT: ' +
-          'overlays/notice-board-visit-blocking-v1.overlay.json sets ' +
-          'rules.economy.noticeBoardBlocks true, which makes the board an ordinary clogging ' +
-          'building again, and under THAT run this assertion is measured exactly as it is ' +
-          'under "card" - because there a clog and a stall are the same event and this is the ' +
-          'right instrument for it. Reading the two runs side by side is what the control is ' +
-          'for.'
-        : 'Both branches are alive and both controls run them: ' +
-          'overlays/v31-card-visit.overlay.json is the Notice Board threshold and ' +
-          'overlays/meeple-loop-v1.overlay.json the five colour slots.',
-      boards
-        ? '⚠️ AND THE PROBE IS STILL SAMPLED UNDER THIS MODE, unlike under the commons, because ' +
-          'every seat does have a Notice Board and `noticeBoardOf` does not throw. It is the ' +
-          'VERDICT that is withheld and not the counter: the number is real, it is 0%, and a ' +
-          'reader who wants to see it can read it off the blocking control where it means ' +
-          'something.'
-        : 'What replaced the brake under the commons is a knob rather than a rule: ' +
-          'rules.economy.commonsThreshold (C10), shipped null - no cap - with ' +
-          'overlays/commons-threshold-2.overlay.json as the arm that turns it on. If a17 ever ' +
-          "reads above Dean's 60% ceiling on the play rate, that is the number to run, and " +
-          'this assertion is where a clog would then reappear.',
+      '⭐ `isFull` AND `isHarvestable` STOPPED BEING THE SAME BOOLEAN ON 10/09/2026, and ' +
+        'this line is the first casualty of the split. It asks `isFull` - does this board ' +
+        'refuse a card - and a `3+` board never does. a20 asks `isHarvestable` - is it at or ' +
+        'above its threshold, unharvested - which is the failure S8 was actually written ' +
+        'against: the predecessor stalls when nobody wants to load, and a BLOCKING board can ' +
+        'be shut by an owner who declines to harvest.',
+      '⛔ THE BRANCH IS ALIVE AND ITS OWN CONTROL EXERCISES IT: ' +
+        'overlays/notice-board-visit-blocking-v1.overlay.json sets ' +
+        'rules.economy.noticeBoardBlocks true, which makes the board an ordinary clogging ' +
+        'building again, and under THAT run this assertion is measured exactly as it is ' +
+        'under "card" - because there a clog and a stall are the same event and this is the ' +
+        'right instrument for it. Reading the two runs side by side is what the control is ' +
+        'for.',
+      '⚠️ AND THE PROBE IS STILL SAMPLED UNDER THIS MODE, unlike under the commons, because ' +
+        'every seat does have a Notice Board and `noticeBoardOf` does not throw. It is the ' +
+        'VERDICT that is withheld and not the counter: the number is real, it is 0%, and a ' +
+        'reader who wants to see it can read it off the blocking control where it means ' +
+        'something.',
     ],
     verdict: 'OBSERVE',
   };

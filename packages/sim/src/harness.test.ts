@@ -14,7 +14,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { BASE_GAME_DATA, isCommons, isMeepleCurrency } from '@gp/data';
+import { BASE_GAME_DATA, isMeepleCurrency, isNoticeBoardPower } from '@gp/data';
 import { MOVE_TYPES } from '@gp/engine';
 
 import { RETIRED, WATCHLIST } from './assertions/index.js';
@@ -174,44 +174,27 @@ describe('the metric fold', () => {
     expect(games.some((g) => Object.values(g.doorUsesByColour).some((n) => n > 0))).toBe(true);
 
     /**
-     * ⭐ AND THEN THE PER-MODE HALF (09/09/2026), because three of the
-     * quantities this test used to demand are STRUCTURAL ZEROES under the
-     * commons and demanding them would fail the smoke test on a correct engine.
+     * ⭐ AND THEN THE PER-MODE HALF (09/09/2026).
      *
      * The point of the check is unchanged and is worth restating: a zero across
      * a whole smoke run means the fold never saw the mechanism at all, which is
      * a different failure from a bad number. So each mode names the mechanisms
      * it actually HAS, and a mode that stops producing its own is caught exactly
      * as before. What must never happen is a blanket softening to whatever all
-     * three modes share - that would be getting green by asking less.
+     * modes share - that would be getting green by asking less.
      */
-    if (isCommons(data)) {
-      // No visit, no Notice Board, no meeple: C1, C4 and C6. What the commons
-      // has instead is the play, the pile and the harvest of it.
-      expect(
-        games.some((g) => g.commonsPlaysBySeat.some((n) => n > 0)),
-        'no seat ever played a card onto a central board',
-      ).toBe(true);
-      expect(
-        games.some((g) => g.commonsPileSizeByRound.some((n) => n > 0)),
-        'the centre was never sampled with a card in it',
-      ).toBe(true);
-      expect(
-        games.some((g) => Object.values(g.commonsPlaysByFeeSuit).some((n) => n > 0)),
-        'the fee-suit mix was never fed',
-      ).toBe(true);
-      // Barn cards off a seat's own buildings exist under every mode; the
-      // centre column is the one the commons adds, and a18 reads their ratio.
-      expect(
-        games.some((g) => g.barnFromOwnBySeat.some((n) => n > 0)),
-        'nobody ever harvested one of their own buildings',
-      ).toBe(true);
-    } else {
+    {
       expect(games.some((g) => g.visitsBySeat.some((v) => v > 0))).toBe(true);
       expect(games.some((g) => g.doorClogSampledBySeat.some((n: number) => n > 0))).toBe(true);
       expect(games.some((g) => g.meeplesByRound.length > 0)).toBe(true);
       if (isMeepleCurrency(data)) {
         expect(games.some((g) => g.meeplePoolByRound.some((n) => n > 0))).toBe(true);
+      } else if (isNoticeBoardPower(data)) {
+        // No meeples (S14); the boards are the shared surface instead.
+        expect(
+          games.some((g) => g.noticeBoardCardsByRound.some((n) => n > 0)),
+          'no card was ever sampled resting on a Notice Board',
+        ).toBe(true);
       } else {
         expect(games.some((g) => g.meeplesGainedBySeat.some((n) => n > 0))).toBe(true);
       }
@@ -306,16 +289,12 @@ describe('the watch-list suite', () => {
    * claimed by a tombstone and no tombstone may collide with a live assertion.
    */
   it('is numbered without reuse, and every gap has a tombstone', () => {
-    // ⭐ 18 JOINED ON 09/09/2026 with the commons: a08-the-hook lost its subject
-    // (the boards are ownerless, so there is no neighbour to visit) and
-    // a18-commons-traffic carries the interaction readings instead. A NEW id
-    // rather than a re-point of 8, for the reason this test guards: 8 still
-    // measures its own thing under both controls, and re-pointing it would
-    // silently change what every archived report that names it was saying.
-    // ⭐ AND 19 JOINED ON 10/09/2026 with the commons-with-coins arm, on the same
-    // rule: it measures a currency that exists under one knob and nothing else, so
-    // it is a new id rather than a re-point of anything. It reports NO SUBJECT in
-    // every mode this project has ever shipped.
+    // ⭐ 18 JOINED ON 09/09/2026 with the commons: a18-commons-traffic carries
+    // the interaction readings. A NEW id rather than a re-point of 8, for the
+    // reason this test guards: re-pointing it would silently change what every
+    // archived report that names it was saying.
+    // ⭐ 19 JOINED ON 10/09/2026 with the commons-with-coins arm and was RETIRED
+    // on 13/09/2026 with the commons; its tombstone claims the gap.
     // ⭐ AND 20 JOINED ON 10/09/2026 with the notice-board visit, on the same
     // rule again: `a04-door-clog` asks whether a board is FULL, and S8's `3+`
     // board is never full, so a04 reads a genuine and permanent 0% under that
@@ -356,13 +335,9 @@ describe('the watch-list suite', () => {
     // sinks split by name, with V9's full-building coin-Grows on their own line
     // because that clause is the first clog bypass since the meeples) and it is
     // a NEW id rather than a re-point of 19, which is the same rule that gave 18
-    // and 20 theirs: a19 measures the SEPARATE commons-with-coins arm of
-    // 10/09/2026, whose mint clears a central pile, and re-pointing it would
-    // silently change what every archived report naming it was saying. The two
-    // economies share `coinsMinted`, `coinsSpent` and the wallet because the
-    // builder widened the existing events rather than adding new ones, so they
-    // are told apart by `board === 'store'` and by `on`, and each page reports
-    // NO SUBJECT where the other is live. a26 is LEDGER ROW C113 and its subject
+    // and 20 theirs: a19 measured the SEPARATE commons-with-coins arm of
+    // 10/09/2026, and re-pointing it would silently change what every archived
+    // report naming it was saying. a26 is LEDGER ROW C113 and its subject
     // is a PLACEMENT rather than a currency - docs/village-store-2026-08-19-v1.md
     // section 1 ruled a rider on Deliver out in August and the design of
     // 12/09/2026 is a rider on Deliver - so it dies if the exchange ever moves
@@ -373,12 +348,12 @@ describe('the watch-list suite', () => {
     // which is every mode this project has ever shipped.
     const live = rows.map((r) => r.assertion.id);
     expect(live).toEqual([
-      2, 4, 5, 6, 7, 8, 9, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
+      2, 4, 5, 6, 7, 8, 9, 11, 12, 13, 15, 16, 17, 18, 20, 21, 22, 23, 24, 25, 26, 27,
     ]);
     expect(new Set(live).size, 'a duplicate id').toBe(live.length);
 
     const buried = RETIRED.map((t) => t.id);
-    expect(buried).toEqual([1, 3, 10, 14]);
+    expect(buried).toEqual([1, 3, 10, 14, 19]);
     for (const id of buried) expect(live, `id ${id} was reused`).not.toContain(id);
 
     // Every number from 1 to the highest live id is claimed by exactly one of
@@ -421,7 +396,7 @@ describe('the watch-list suite', () => {
     }
   });
 
-  it('marks exactly the twelve taste-sensitive assertions', () => {
+  it('marks exactly the eleven taste-sensitive assertions', () => {
     // Taste-sensitive means "one archetype could produce this number on its
     // own", and the mirrors re-measure it. It was four; v31 made it six, and
     // all three of that pass's new assertions are on the list for the same
@@ -437,11 +412,7 @@ describe('the watch-list suite', () => {
     // archetype could be producing on its own - which is precisely what this
     // flag is for.
     //
-    // ⭐ AND 19 JOINS THEM (10/09/2026) FOR THE SAME REASON, one layer down. Every
-    // coin in the game is minted by a bonus-slot choice, so a hermit that never
-    // clears a pile has no economy at all and a socialite that clears every fat one
-    // has two sinks to spend on: the mint, both sinks and the dead-coin line are all
-    // shares of what one archetype chose to do with a slot.
+    // 19 joined them on 10/09/2026 and was retired with the commons on 13/09/2026.
     //
     // ⭐ AND 20 JOINS THEM (10/09/2026). Every card on a Notice Board was put
     // there by somebody choosing to visit, and every board cleared was somebody
@@ -463,7 +434,7 @@ describe('the watch-list suite', () => {
     // clearest thing a taste produces on its own, since a hermit hoards where a
     // socialite spends.
     expect(rows.filter((r) => r.assertion.taste).map((r) => r.assertion.id)).toEqual([
-      2, 8, 11, 15, 16, 17, 18, 19, 20, 25, 26, 27,
+      2, 8, 11, 15, 16, 17, 18, 20, 25, 26, 27,
     ]);
   });
 

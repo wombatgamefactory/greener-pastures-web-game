@@ -107,29 +107,13 @@ const MEEPLE_WINDOW: readonly MoveType[] = ['spendMeeple'];
  * never outside it either, so each list entry is simply absent where it does not
  * apply.
  *
- * ⭐ **AND SINCE THE COMMONS IT IS NOT INERT AT ALL: IT IS THE SHIPPED PATH**
- * (C2, 09/09/2026). Dean flipped `bonusTiming` to `'start'` - the bonus comes
- * FIRST, so a turn visibly ends on the main action - which reverses the ruling
- * of 03/09/2026 and turns this window on by default for the first time. That
- * makes the insurance load-bearing: under `'start'` the slot shuts the instant
- * the action is spent, and a bot that took its Deliver first would leave a
- * `commons` play on the table it had scored above zero. The play rate is the
- * pass's headline reading against Dean's 30-60% band, so a slot missed by the
- * bot would read as a rule that nobody wants.
- *
- * ⚠️ `commons-bonus-last.overlay.json` is the paired control at `'end'`, where
- * `windowedPick` returns null and the ordinary argmax takes the bonus after the
- * main action - the same path both meeple controls and the v31 control take.
+ * ⭐ **SINCE 09/09/2026 IT IS THE SHIPPED PATH**: `bonusTiming` is `'start'`,
+ * so the slot shuts the instant the main action is spent and a bot that took
+ * its Deliver first would leave a bonus it had scored above zero on the table.
+ * Under `'end'`, `windowedPick` returns null and the ordinary argmax takes the
+ * bonus after the main action.
  */
-const BONUS_WINDOW: readonly MoveType[] = [
-  'visit',
-  'bonusDraw',
-  'collect',
-  'commons',
-  // ⭐ DEAN'S VARIANT (09/09/2026, commonsTake: 'bonus'): the slot's other free
-  // option under that knob, on the same footing as `bonusDraw` and `collect`.
-  'commonsTake',
-];
+const BONUS_WINDOW: readonly MoveType[] = ['visit', 'bonusDraw', 'collect'];
 
 /**
  * The scoring loop. One `Scratch` for the whole decision, one `Outcomes` (which

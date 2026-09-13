@@ -1,5 +1,5 @@
 import type { GameData } from '@gp/data';
-import { isCommons, isMeepleCurrency } from '@gp/data';
+import { isMeepleCurrency } from '@gp/data';
 
 import type { GameMetrics } from '../observe.js';
 import type { Assertion, Measurement, MeasureContext } from './types.js';
@@ -153,54 +153,9 @@ export const meepleEconomy: Assertion = {
     'pins the whole loop rather than one knob of it. Under "commons" there is nothing here to ' +
     'move: there are no meeples at all (C6).',
   measure(ctx) {
-    if (isCommons(ctx.data)) return noSubject();
     return isMeepleCurrency(ctx.data) ? meepleArm(ctx) : cardGame(ctx);
   },
 };
-
-/**
- * ⛔ NO SUBJECT UNDER THE COMMONS (C6, 09/09/2026): THERE ARE NO MEEPLES.
- *
- * Not "no cap" and not "no loop" - none of the component at all. C6 is
- * categorical: no starting meeples, no meeple on the island's 3 VP space, no
- * spend, no Collect, no supply. `startingMeeplesPerColour` is 0 and
- * `meeplesPerTile()` returns 0, so every counter this assertion reads - gained,
- * spent, boxed, the pool, the supply by third - is a structural zero.
- *
- * ⚠️ AND A STRUCTURAL ZERO IS EXACTLY WHAT THIS ASSERTION IS WRITTEN TO CALL A
- * FAILURE. Its "card" branch FAILS below half of all meeples gained ever being
- * spent, and 0 gained would divide to NaN while 0 spent of any gained would read
- * as the deadest component the suite can describe. That is why it says NO
- * SUBJECT rather than falling through to either arm.
- *
- * ⛔ THE MEEPLE CODE STAYS, and so does every branch below. The project's
- * standing rule is that a branch whose only producer is a knob at its shipped
- * value is not deleted, and both meeple branches have a live control:
- * `overlays/meeple-loop-v1.overlay.json` (the loop before R15) and
- * `overlays/meeple-economy-v1.overlay.json` (the reference-v14 game, R15 and
- * R17 together).
- */
-function noSubject(): Measurement {
-  return {
-    value: NaN,
-    headline:
-      'NO SUBJECT UNDER THE COMMONS: there are no meeples in this game at all (C6) - no ' +
-      'starting five, no island seed, no spend, no Collect and no supply.',
-    detail: [
-      'Every counter this assertion reads is a structural zero, which is precisely the reading ' +
-        'its own threshold calls a dead component - so it reports no subject rather than ' +
-        'failing on the absence of the thing it measures.',
-      'The meeple branches are alive and are exercised by two controls: ' +
-        'overlays/meeple-loop-v1.overlay.json is the loop of 04/09/2026 and ' +
-        'overlays/meeple-economy-v1.overlay.json reproduces the reference-v14 game, where a ' +
-        'meeple is a card of its colour and is placed on a neighbour’s board.',
-      'What the commons put in the meeple’s place is a CARD, and the readings that used to be ' +
-        'about a circulating currency are now about a circulating card: a18-commons-traffic ' +
-        'carries the fee-suit mix, the pile depth and the barn-source split.',
-    ],
-    verdict: 'OBSERVE',
-  };
-}
 
 /**
  * ⭐⭐ THE STALE-STRING BUG, AND WHY IT MATTERED (fixed 04/09/2026, recorded in

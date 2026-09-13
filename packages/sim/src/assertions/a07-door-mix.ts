@@ -1,4 +1,4 @@
-import { isCommons, isMeepleCurrency } from '@gp/data';
+import { isMeepleCurrency } from '@gp/data';
 
 import type { Assertion } from './types.js';
 import { num, pct, sum } from '../stats.js';
@@ -82,34 +82,6 @@ import { num, pct, sum } from '../stats.js';
  * hand, the pricer still cannot see the second card, and the arm does not
  * pretend to fix the two card-spending doors - see assertion 15's dead-colour
  * line, which is the same problem seen from the meeple side.
- *
- * ## ⭐ THE COMMONS (C3, 09/09/2026): THE SAME MIX, ONE ROUTE, AND ONE DOOR CHANGED
- *
- * Under `visitCurrency: 'commons'` a door is bought by playing a card onto that
- * colour's CENTRAL board (C3), so the question is again "which of the five
- * ACTIONS does the table buy" and the arithmetic is untouched: the engine emits
- * `doorUsed` with `via: 'commons'` (D4) and this assertion counts it exactly as
- * it counted a card fee and a meeple, from the one field that has always carried
- * every route. The 35% band is carried unchanged for the third time, because it
- * is a claim about the five actions being worth roughly comparable amounts and
- * that claim does not depend on what buys them.
- *
- * ⛔ ONE DOOR IS NOT THE SAME ACTION ANY MORE, AND IT IS THE APIARY. Under the
- * commons the Apiary board buys **GROW** rather than Sow (C3): pay the
- * building's activation card into its stack as normal and gain the ability, fee
- * extra, no clog bypass. ⭐ **THAT RETIRES THE APIARY CAVEAT THIS FILE HAS
- * CARRIED SINCE v31** - the pricer defect was that a sow from hand and a sow
- * from a deck top emit the same event, so the visitor was never charged the
- * second card; a GROW's payment is priced by `growSpend` and always has been.
- * The caveat is still printed under the two controls, where Sow is still the
- * Apiary door and the defect is still real.
- *
- * ⛔ AND THE WILD SHARE HAS NO SUBJECT. R10's wild pair is a MEEPLE rule and
- * there are no meeples (C6). The route split collapses to one route again, for a
- * different reason from the arm's: there is no self-play and no meeple, so every
- * door use arrives by a commons play, and the rival / self / meeple columns are
- * printed as zeroes only so that a non-zero one would be noticed as the engine
- * bug it would be.
  */
 const MONOPOLY = 0.35;
 
@@ -164,18 +136,10 @@ export const doorMix: Assertion = {
     'so a Draw 2 board hands back 2 for 1 where every other board hands back a whole action.',
   measure({ data, pooled }) {
     const arm = isMeepleCurrency(data);
-    const commons = isCommons(data);
     const uses = new Map<string, number>();
     const neighbour = new Map<string, number>();
     const self = new Map<string, number>();
     const meeple = new Map<string, number>();
-    // ⭐ THE COMMONS ROUTE, taken off the PLAYS rather than off a fourth
-    // `via` table. One play emits exactly one `doorUsed` of that board's colour
-    // (C3, D4), so `commonsPlaysByBoard` and the commons half of
-    // `doorUsesByColour` are the same number by construction - and a
-    // disagreement between the two columns below is therefore a fold bug, which
-    // is worth being able to see.
-    const commonsRoute = new Map<string, number>();
     const add = (m: Map<string, number>, table: Record<string, number>) => {
       for (const [colour, n] of Object.entries(table)) m.set(colour, (m.get(colour) ?? 0) + n);
     };
@@ -184,7 +148,6 @@ export const doorMix: Assertion = {
       add(neighbour, g.neighbourDoorByColour);
       add(self, g.selfDoorByColour);
       add(meeple, g.meepleDoorByColour);
-      add(commonsRoute, g.commonsPlaysByBoard);
     }
     const total = [...uses.values()].reduce((a, b) => a + b, 0);
     const ranked = [...uses.entries()].sort((a, b) => b[1] - a[1]);
@@ -198,32 +161,6 @@ export const doorMix: Assertion = {
     // choices a player made, not of the actions that resulted.
     const wild = sum(pooled.ended.map((g) => sum(g.wildVisitsBySeat)));
     const spends = sum(pooled.ended.map((g) => sum(g.visitsBySeat)));
-
-    const commonsDetail = commons
-      ? [
-          '⛔ THE WILD SHARE HAS NO SUBJECT UNDER THE COMMONS. R10’s wild pair is a MEEPLE ' +
-            'rule and there are no meeples at all (C6). What replaced the colour-keying ' +
-            'question is rules.economy.commonsColourMatch (C10, shipped false): any card pays ' +
-            'for any board today, and overlays/commons-colour-match-v1.overlay.json is the arm ' +
-            'that makes the fee match the board. a18 carries the fee-suit mix that would ' +
-            'decide it.',
-          '⛔ THE APIARY BOARD BUYS GROW, NOT SOW (C3), SO THE APIARY CAVEAT BELOW DOES NOT ' +
-            'APPLY TO THIS RUN. The pricer defect was that a sow from hand and a sow from a ' +
-            'deck top emit the same event, so the visitor was never charged the second card; a ' +
-            "GROW's payment is priced by growSpend and always has been. Read the apiary row " +
-            'here as trustworthy for the first time - and NOT comparable with the apiary row ' +
-            'in any earlier report, because it is a different action.',
-          '⚠️ THE ROUTE SPLIT IS A TAUTOLOGY AGAIN, for a new reason: there is no ' +
-            'self-play and no meeple, so every door use arrives by a commons play. The rival / ' +
-            'self / meeple columns are printed as zeroes only so that a non-zero one would be ' +
-            'noticed as the engine bug it would be.',
-          '⚠️ THE ORCHARD DOOR IS DRAW 2 BY DEAN’S CHOICE (C3) AND DRAW 3 IS THE ARM. ' +
-            'The self-cancellation law has no subject - there is no free Draw 1 for a Draw 2 ' +
-            'door to be worth exactly as much as - but a play does cost a CARD, so a Draw 2 ' +
-            'board hands back 2 for 1 where every other board hands back a whole action. If ' +
-            'orchard reads low, overlays/commons-draw-three.overlay.json is the run.',
-        ]
-      : [];
 
     const armDetail = arm
       ? [
@@ -254,38 +191,26 @@ export const doorMix: Assertion = {
           .map(
             ([colour]) =>
               `${colour} rival ${neighbour.get(colour) ?? 0} / self ${self.get(colour) ?? 0}` +
-              ` / meeple ${meeple.get(colour) ?? 0}` +
-              (commons ? ` / commons ${commonsRoute.get(colour) ?? 0}` : ''),
+              ` / meeple ${meeple.get(colour) ?? 0}`,
           )
           .join('   ')}`,
         `door uses per ended game: ${num(
           pooled.ended.length === 0 ? NaN : total / pooled.ended.length,
           2,
         )}`,
-        ...commonsDetail,
         ...armDetail,
-        commons
-          ? '⚠️ (The Apiary caveat below is printed for the controls and does NOT apply ' +
-            'to this run: under the commons that board buys GROW, not Sow.)'
-          : '⚠️ DO NOT TRUST THE APIARY ROW. A sow from hand and a sow from a deck top emit the ' +
-            'same event, so the pricer never charges the visitor the SECOND card the Apiary door ' +
-            'costs. The design says that door should be the weakest here by some distance; if it ' +
-            'reads as normal, that is the instrument.',
-        commons
+        '⚠️ DO NOT TRUST THE APIARY ROW. A sow from hand and a sow from a deck top emit the ' +
+          'same event, so the pricer never charges the visitor the SECOND card the Apiary door ' +
+          'costs. The design says that door should be the weakest here by some distance; if it ' +
+          'reads as normal, that is the instrument.',
+        arm
           ? 'The band is the line between a magnet and a monopoly, not a claim that the doors ' +
-            'should be even. Under the commons no door carries a printed exception at all - ' +
-            'Orchard is plain Draw 2 by C3 - so a colour leading here leads on its own merits, ' +
-            'and the two to watch are vegetable (Deliver took 8% of door uses under the ' +
-            'meeples, and Deliver is the scoring action) and orchard (whether Draw 2 for a card ' +
-            'is a trade anybody makes).'
-          : arm
-            ? 'The band is the line between a magnet and a monopoly, not a claim that the doors ' +
-              'should be even - but the reason Orchard was EXPECTED to lead is gone under this ' +
-              'arm, because its Draw 3 exception is gone. A colour leading here now leads on ' +
-              'its own merits.'
-            : 'The Orchard door is Draw 3 by design and is expected to lead. The band is the ' +
-              'line between a magnet and a monopoly, not a claim that the doors should be ' +
-              'even.',
+            'should be even - but the reason Orchard was EXPECTED to lead is gone under this ' +
+            'arm, because its Draw 3 exception is gone. A colour leading here now leads on ' +
+            'its own merits.'
+          : 'The Orchard door is Draw 3 by design and is expected to lead. The band is the ' +
+            'line between a magnet and a monopoly, not a claim that the doors should be ' +
+            'even.',
       ],
       verdict: !Number.isFinite(value) ? 'OBSERVE' : value > MONOPOLY ? 'FAIL' : 'PASS',
     };

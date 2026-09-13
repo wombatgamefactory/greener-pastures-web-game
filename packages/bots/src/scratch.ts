@@ -122,9 +122,7 @@ export function cardById(data: GameData, id: CardId): Card {
  *
  * ⛔ **AND IT MOVES NO CONTROL.** `overlays/v31-card-visit.overlay.json` pins
  * the override to 2, which is the printed value, so the v31 game reads the same
- * number by both routes; the meeple arm returns null one line above; and under
- * the commons no Notice Board is dealt into a tableau at all, so nothing here
- * is ever asked about one.
+ * number by both routes, and the meeple arm returns null one line above.
  */
 export function thresholdOfView(data: GameData, building: BuildingView): number | null {
   const card = cardById(data, building.card);
@@ -281,18 +279,9 @@ export interface Scratch {
    * spelling in this package, because a missed gate does not throw or fail a
    * type check, it silently moves a CONTROL.
    *
-   * Read by `hostGift` and, since 11/09/2026, by `visitFeeOwnCrop` - and by
-   * nothing else. Every other term this arm touches can gate on the ACT's own
+   * Read by `hostGift` and by nothing else. Every other term this arm touches can gate on the ACT's own
    * shape - a `visit` with a non-null `fee`, a `self` flag - and should, because
    * that gate is the rule's shape and cannot drift from it.
-   *
-   * ⭐ **WHY `visitFeeOwnCrop` NEEDS IT AND COULD NOT GATE ON THE ACT (Dean's
-   * unclaimed-boards variant, 11/09/2026).** Under that variant a play onto a
-   * CENTRAL board is a `commons` act, which is the same act the SHIPPED COMMONS
-   * produces - so the act's own shape cannot tell the arm from the control, and
-   * the magpie's disposal lane has to be open in one and shut in the other. That
-   * is exactly the case this flag was written for: a subject that appears under
-   * the arm and must not appear under a control.
    */
   readonly noticeBoardArm: boolean;
   /**
@@ -380,17 +369,13 @@ export interface Scratch {
    *
    * ⛔ **IT CANNOT SIMPLY CALL THE ENGINE'S.** `noticeBoardsOf` takes a
    * `GameState` and this package deliberately never sees one (see `index.ts` -
-   * a policy gets a `PlayerView` and a `Prober`), which is exactly the problem
-   * `centralPileSuitOfView` in `terms.ts` solved for central piles on the same
-   * day. So it is mirrored here off the one authority the view carries, the
+   * a policy gets a `PlayerView` and a `Prober`). So it is mirrored here off the one authority the view carries, the
    * seat's own tableau, in tableau order.
    *
    * A SET rather than an array because every reader asks the same question -
    * "is this building one of mine?" - and none of them cares which.
    *
-   * ⚠️ **ONE ENTRY IN EVERY GAME BUT THE TWO-SEAT ARM**, and EMPTY
-   * under the commons, where no Notice Board is dealt into a tableau at all
-   * (C1). So a reader that swapped an `=== s.noticeBoard.card` test for
+   * ⚠️ **ONE ENTRY IN EVERY GAME BUT A TWO-BOARD ONE.** So a reader that swapped an `=== s.noticeBoard.card` test for
    * `s.noticeBoards.has(...)` answers identically everywhere the old test was
    * right, which is what keeps all three controls still.
    */
@@ -766,8 +751,7 @@ function doorReady(
  * own timing - an APIARY meeple buys a **GROW** where the roster prints SOW.
  * Sow is not one of the five core actions, and "orange means Grow here and Sow
  * there" has cost this project a day before. Every other colour, and every other
- * timing, is the identity, so the v31 control keeps asking about its Sow and the
- * commons keeps reading `actionUnderCommons` exactly as it did.
+ * timing, is the identity, so the v31 control keeps asking about its Sow.
  *
  * ⛔ **THE PRICE AND THE GATE MUST BE ASKED THE SAME QUESTION.** The engine's
  * `meepleOptions` filters colours on `doorActionLegal(..., meepleActionOf(...))`
@@ -778,12 +762,10 @@ function doorReady(
  * cannot happen.
  *
  * ⚠️ **IT IS A MIRROR OF THE ENGINE'S `meepleActionOf` AND NOT A CALL TO
- * IT**, for the reason `commonsPileSize` in `terms.ts` is a mirror: that
- * function is not on `@gp/engine`'s public surface, and this package's boundary
+ * IT**: that function is not on `@gp/engine`'s public surface, and this package's boundary
  * is the thing that keeps a bot from seeing a `GameState`. The mirror is exact
  * because both halves read the same two authorities in `@gp/data`,
- * `doorActionForSuit` (which is where C3's `actionUnderCommons` override lives)
- * and `meepleSpendTiming`. **If either side moves, move both.**
+ * `doorActionForSuit` and `meepleSpendTiming`. **If either side moves, move both.**
  *
  * `undefined` for a colour with no door at all, which is unreachable in shipped
  * data and is handled rather than thrown for the reason the caller states.

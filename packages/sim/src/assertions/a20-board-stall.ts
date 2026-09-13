@@ -1,11 +1,9 @@
 import type { GameData } from '@gp/data';
 import {
-  isCommons,
   isMeepleCurrency,
   isNoticeBoardPower,
   noticeBoardBlocks,
   noticeBoardsPerSeat,
-  unclaimedBoardsToCentre,
 } from '@gp/data';
 
 import type { Assertion, Measurement, MeasureContext } from './types.js';
@@ -115,8 +113,7 @@ import { mean, median, num, pct, sum } from '../stats.js';
  *
  * ## No subject under every other mode
  *
- * Under `'commons'` no player has a board and a central pile has no threshold
- * (C1, C4). Under `'meeple'` the Notice Board is not a building and has no
+ * Under `'meeple'` the Notice Board is not a building and has no
  * threshold at all (R5); what shuts a farm there is five blocked colour slots,
  * which a04 already reads. Under `'card'` the board is an ordinary CLOGGING
  * building, so a full board refuses cards and a04's door clog is exactly the
@@ -228,28 +225,6 @@ function stallMode({ data, pooled }: MeasureContext): Measurement {
   // line fires on a run that produced no two-seat games as well - a banner that
   // depends on the sample is a banner that disappears when the sample is thin.
   const twoBoards = [1, 2, 3, 4].some((n) => noticeBoardsPerSeat(data, n) > 1);
-  // ⭐ THE SECOND KIND OF LOADED BOARD (Dean's variant, 11/09/2026), and it is a
-  // DIFFERENT PHENOMENON rather than more of the same one. Under
-  // `rules.economy.unclaimedBoardsToCentre` the Notice Board of every unfarmed
-  // suit stands ownerless in the middle with a public pile, and
-  // `rules.economy.commonsHarvestMin` puts a `3+` minimum on it too - but
-  // ANYBODY may take it. So an owned board sitting harvestable is one named
-  // person declining to bank their own payment, and a central pile sitting
-  // harvestable is A CONTESTED PILE NOBODY HAS CLAIMED YET. The two are
-  // reported apart and neither is pooled into the other.
-  const withCentre = unclaimedBoardsToCentre(data);
-  const centreMin = data.rules.economy.commonsHarvestMin ?? 1;
-  const centreSampled = sum(games.map((g) => g.centralPileSampledTurns));
-  const centreLoaded = sum(games.map((g) => g.centralPileHarvestableTurns));
-  const centreRuns = games.flatMap((g) => g.centralPileStallRuns);
-  const centreOpen = games.flatMap((g) => g.centralPileStallRunsOpenAtEnd);
-  // ⚠️ ONLY THE PILES THAT EXIST. `centralPileMaxByBoard` is keyed by all five
-  // colours and initialised to 0, so the farmed suits - which have no central
-  // pile at all - would otherwise contribute a 0 apiece and pull the median of
-  // this line to zero on arithmetic alone. `neutral` is the suits nobody is
-  // farming, which under this variant is exactly the set standing in the middle.
-  const centreDeepest = games.flatMap((g) => g.neutral.map((s) => g.centralPileMaxByBoard[s] ?? 0));
-  const centreStranded = sum(games.map((g) => g.commonsStrandedAtEnd));
 
   // ⭐ BY SEAT COUNT, AND THE 2-PLAYER ROW IS THE ONE TO READ. The handoff says
   // so and the corpus is why: two seats means two boards, so a stall costs the
@@ -264,9 +239,6 @@ function stallMode({ data, pooled }: MeasureContext): Measurement {
       const o = slice.ended.flatMap((g) => g.boardStallRunsOpenAtEnd);
       const ba = sum(slice.ended.map((g) => g.boardsAtEnd));
       const bh = sum(slice.ended.map((g) => g.boardsHoldingAtEnd));
-      const cs = sum(slice.ended.map((g) => g.centralPileSampledTurns));
-      const cl = sum(slice.ended.map((g) => g.centralPileHarvestableTurns));
-      const cr = slice.ended.flatMap((g) => g.centralPileStallRuns);
       return {
         seats: slice.seats,
         // ⭐ BOARDS PER SEAT, WHICH IS THE DIVISOR ON EVERY LINE BELOW AND NOT A
@@ -279,73 +251,10 @@ function stallMode({ data, pooled }: MeasureContext): Measurement {
         maxRun: r.length === 0 ? NaN : Math.max(...r),
         openPerGame: slice.ended.length === 0 ? NaN : o.length / slice.ended.length,
         holding: ba === 0 ? NaN : bh / ba,
-        centreShare: cs === 0 ? NaN : cl / cs,
-        centreMeanRun: mean(cr),
-        centreMaxRun: cr.length === 0 ? NaN : Math.max(...cr),
       };
     });
 
-  const centreDetail = withCentre
-    ? [
-        `⛔ THIS PAGE NOW COVERS TWO KINDS OF BOARD AND THEY ARE NOT THE SAME PHENOMENON ` +
-          `(11/09/2026). Under rules.economy.unclaimedBoardsToCentre the Notice Board of every ` +
-          `suit nobody is farming stands OWNERLESS in the middle with a public pile, and ` +
-          `rules.economy.commonsHarvestMin puts a \`${centreMin}+\` minimum on it too - but ` +
-          'ANYBODY may take it. So an OWNED board sitting harvestable is one named person ' +
-          'declining to bank their own payment, which is the failure S8 was written against; ' +
-          'a CENTRAL pile sitting harvestable is A CONTESTED PILE NOBODY HAS CLAIMED YET, ' +
-          'which is a standing offer rather than a sulk. The two are reported apart below and ' +
-          'neither is pooled into the other.',
-        `THE CENTRAL PILE'S UNCLAIMED SHARE: ${pct(centreSampled === 0 ? NaN : centreLoaded / centreSampled)} ` +
-          `of ${centreSampled} pile-turns ended with a central pile at or above ` +
-          `${centreMin} cards and unclaimed. By seat count: ${rows
-            .map((r) => `${r.seats}p ${pct(r.centreShare)}`)
-            .join('  ')}. ⚠️ THE DENOMINATOR IS NOT THE OWNED PROBE'S AND THE TWO SHARES MUST ` +
-          'NOT BE DIFFED. An owned board is sampled once at ITS OWN OWNER’S turn ' +
-          'boundary, because the question is that owner’s; a central pile has no owner, ' +
-          'so every pile is sampled at EVERY turn boundary and the run below is counted in ' +
-          'TABLE turns rather than in one seat’s turns. ⚠️ AND THE SHARE RISES WITH SEAT ' +
-          'COUNT FOR A REASON THAT IS NOT TASTE: there are four central piles at one player ' +
-          'and one at four, so the population itself changes.',
-        `THE LENGTH OF AN UNCLAIMED RUN, in TABLE turns, over ${centreRuns.length} completed ` +
-          `runs: mean ${num(mean(centreRuns), 2)}, median ${num(median(centreRuns), 1)}, p90 ` +
-          `${num(percentile(centreRuns, 0.9), 1)}, max ` +
-          `${centreRuns.length === 0 ? '-' : Math.max(...centreRuns)}. By seat count ` +
-          `(mean / max): ${rows
-            .map((r) => `${r.seats}p ${num(r.centreMeanRun, 2)} / ${num(r.centreMaxRun, 0)}`)
-            .join('  ')}. ⭐ A LONG RUN HERE IS AMBIGUOUS IN A WAY THE OWNED RUN IS NOT, and ` +
-          'that is stated rather than resolved: a pile the whole table is watching grow and a ' +
-          'pile the whole table has forgotten produce the same number, and nothing in this ' +
-          'instrument can tell them apart. What a table can: watch whether anybody ever ' +
-          'declines to fatten a pile because of who would take it.',
-        `⭐ CENTRAL PILES STILL SITTING CLAIMABLE WHEN THE GAME ENDED - piles NOBODY EVER ` +
-          `TOOK: ${centreOpen.length} over ${games.length} games ` +
-          `(${num(games.length === 0 ? NaN : centreOpen.length / games.length, 2)} a game), ` +
-          `running mean ${num(mean(centreOpen), 2)} and max ` +
-          `${centreOpen.length === 0 ? '-' : Math.max(...centreOpen)} table turns when the ` +
-          `game stopped; ${centreStranded} cards were left standing in the middle in all. Kept ` +
-          'apart from the completed runs because they are right-censored, on exactly the ' +
-          'contract the owned boards’ open runs are.',
-        `HOW DEEP A CENTRAL PILE EVER GOT: mean of each pile's own maximum ` +
-          `${num(mean(centreDeepest), 2)} cards, median ${num(median(centreDeepest), 1)}, ` +
-          `worst ${centreDeepest.length === 0 ? '-' : Math.max(...centreDeepest)}. ` +
-          `⚠️ rules.economy.commonsThreshold IS NULL ON THIS RUN, so nothing caps the INFLOW ` +
-          `and nothing in the game refuses a play onto a pile; \`${centreMin}\` gates the ` +
-          'OUTFLOW alone. ⚠️ AND THE COMMONS READ A MEDIAN PILE OF 2.0 AT HARVEST ON ' +
-          '09/09/2026, which is BELOW this minimum - the cap-of-two lesson of 05/09/2026 ' +
-          'pointing the other way, and the single most likely reason for a central pile to sit ' +
-          'unclaimed here. a18 carries the pile sizes at harvest.',
-        '⛔ OBSERVE, NO FAIL CONDITION, ON BOTH KINDS. The design names no number for either, ' +
-          'and one taken from the first run of an arm nobody has played would be a snapshot ' +
-          'test. The 2x2 of 11/09/2026 is what makes these lines readable: ' +
-          'overlays/notice-board-visit-no-self-v1.overlay.json is the same ban with NO centre, ' +
-          'so the central lines there have no subject and the owned ones are directly ' +
-          'comparable on identical seeds.',
-      ]
-    : [];
-
   const detail = [
-    ...centreDetail,
     `⭐ WHY THIS PAGE EXISTS, IN ONE SENTENCE: S8 prints \`${threshold}+\` on the Notice Board ` +
       'because a documented failure in the predecessor is that the game stalls when nobody ' +
       'wants to load, and a BLOCKING board can be shut by an owner who declines to harvest. ' +
@@ -446,19 +355,13 @@ function stallMode({ data, pooled }: MeasureContext): Measurement {
       (twoBoards
         ? ' ⚠️ AND TWO BOARDS A SEAT AT TWO SEATS, so the traffic splits and each board fills ' +
           'at HALF the rate: a lower share there is arithmetic before it is a finding'
-        : '') +
-      (withCentre
-        ? `. CENTRAL, AND A DIFFERENT PHENOMENON - a contested pile nobody has claimed yet: ` +
-          `${pct(centreSampled === 0 ? NaN : centreLoaded / centreSampled)} of ` +
-          `${centreSampled} pile-turns sat claimable at ${centreMin}+, mean unclaimed run ` +
-          `${num(mean(centreRuns), 2)} TABLE turns, ${centreOpen.length} never taken at all`
         : ''),
     detail,
     verdict: 'OBSERVE',
   };
 }
 
-/** p-th percentile by nearest rank, the same one a18 uses on its pile sizes. */
+/** p-th percentile by nearest rank. */
 function percentile(xs: readonly number[], p: number): number {
   if (xs.length === 0) return NaN;
   const sorted = [...xs].sort((a, b) => a - b);
@@ -470,26 +373,20 @@ function percentile(xs: readonly number[], p: number): number {
  * ⭐ NO SUBJECT, and it names the mode and points somewhere rather than printing
  * a blank - the pattern a08, a18 and a19 all use.
  *
- * The three other modes are subjectless for three DIFFERENT reasons, and saying
- * which one applies is the whole value of the line: under the commons nobody
- * owns a board at all, under the meeple loop the board is not a building, and
- * under the v31 card game a loaded board is a CLOG and a04 is exactly the right
- * instrument for it. Only the last of the three is a case where the question is
- * still live and simply belongs somewhere else.
+ * The two other modes are subjectless for two DIFFERENT reasons, and saying
+ * which one applies is the whole value of the line: under the meeple loop the
+ * board is not a building, and under the v31 card game a loaded board is a
+ * CLOG and a04 is exactly the right instrument for it.
  */
 function noSubject(data: GameData): Measurement {
-  const why = isCommons(data)
-    ? 'NO SUBJECT UNDER THE COMMONS: the five boards are ownerless (C1) and a central pile has ' +
-      'no threshold at all (C4), so there is no owner to decline a harvest and nothing that ' +
-      'can sit loaded against the table. a18-commons-traffic carries the pile depth instead.'
-    : isMeepleCurrency(data)
-      ? 'NO SUBJECT UNDER THE MEEPLE LOOP: the Notice Board is not a building there (R5) and ' +
-        'has no threshold, so it cannot be at one. What shuts a farm under that arm is five ' +
-        'blocked colour slots, and a04-door-clog already reads it.'
-      : 'NO SUBJECT UNDER THE v31 CARD GAME: the Notice Board is an ordinary CLOGGING building ' +
-        'there, so a loaded board refuses cards and a stall and a clog are the same event. ' +
-        'a04-door-clog is the right instrument for it, and measuring it here as well would ' +
-        'report one finding twice.';
+  const why = isMeepleCurrency(data)
+    ? 'NO SUBJECT UNDER THE MEEPLE LOOP: the Notice Board is not a building there (R5) and ' +
+      'has no threshold, so it cannot be at one. What shuts a farm under that arm is five ' +
+      'blocked colour slots, and a04-door-clog already reads it.'
+    : 'NO SUBJECT UNDER THE v31 CARD GAME: the Notice Board is an ordinary CLOGGING building ' +
+      'there, so a loaded board refuses cards and a stall and a clog are the same event. ' +
+      'a04-door-clog is the right instrument for it, and measuring it here as well would ' +
+      'report one finding twice.';
   return {
     value: NaN,
     headline: why,

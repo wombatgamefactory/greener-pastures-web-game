@@ -1,12 +1,6 @@
-import {
-  isCommons,
-  isMeepleCurrency,
-  isNoticeBoardPower,
-  noticeBoardsPerSeat,
-  unclaimedBoardsToCentre,
-} from '@gp/data';
+import { isMeepleCurrency, isNoticeBoardPower, noticeBoardsPerSeat } from '@gp/data';
 
-import type { Assertion, Measurement } from './types.js';
+import type { Assertion } from './types.js';
 import { NO_REMEDY } from './types.js';
 import { totalBonusTurns, totalTurns, visitsPerTurnBySuit } from './lib.js';
 import { num, pct, sum } from '../stats.js';
@@ -67,33 +61,6 @@ import { num, pct, sum } from '../stats.js';
  * pass or a fail beside assertion 15's spends per meeple-turn, which is the
  * number that says whether the supply could have funded more.
  *
- * ## ⛔⛔ AND UNDER THE COMMONS THERE IS NO NEIGHBOUR AT ALL (C1, 09/09/2026)
- *
- * The five Notice Boards stand OWNERLESS in the centre of the table. Nobody has
- * a board, so a play has no host: `visited` never fires, `visitsBySeat` is a
- * structural zero, and "NEIGHBOUR visits per player per turn" is a rate over an
- * event that cannot happen. **This assertion therefore reports NO SUBJECT under
- * the commons and carries no verdict.**
- *
- * ⚠️ **THAT IS A STATEMENT ABOUT THE INSTRUMENT AND NOT ABOUT THE DESIGN, AND
- * THE DIFFERENCE MATTERS MORE HERE THAN ANYWHERE ELSE IN THIS SUITE.** The hook
- * has not been abandoned - the commons is an attempt at the same hook by a
- * different route, a shared pile everybody feeds and everybody may harvest - and
- * a zero on this line is not evidence the table plays solitaire. What it means
- * is that the QUANTITY this assertion was built to count (a visit to a named
- * rival's farm) no longer exists, and a floor of 0.5 read against a structural
- * zero would print a FAIL every run for ever, which measures nothing and would
- * train a reader to ignore the most important line in the report.
- *
- * ⭐ **`a18-commons-traffic` CARRIES THE INTERACTION READINGS INSTEAD**, and it
- * ships as OBSERVE in this pass because the design names no number for any of
- * them: plays per player per turn, central harvests per player per game, the
- * pile depth at harvest, and the share of barn cards sourced from the centre
- * rather than from a seat's own buildings. Read a18 wherever this line would
- * have been read. Neither this assertion nor that one may borrow the other's
- * threshold: 0.5 was derived from a spare card funding one visit a turn, and
- * there is nothing in the commons for it to be a floor ON.
- *
  * ## ⭐⭐ AND ON 10/09/2026 THE HOOK GOT ITS SUBJECT BACK (S2, S5, S7)
  *
  * The notice-board visit deletes the centre and sends the five Notice Board
@@ -105,15 +72,10 @@ import { num, pct, sum } from '../stats.js';
  * `visitsReceivedBySeat` are real counts again, and "NEIGHBOUR visits per
  * player per turn" is a rate over an event that happens.
  *
- * ⛔ **SO THIS ASSERTION IS RESTORED FOR THAT MODE, AND IT IS RESTORED
- * EXPLICITLY RATHER THAN BY FALLING THROUGH.** Before 10/09/2026 the only
- * guard here was `isCommons`, so a fourth currency would have landed on the
- * `cardGame` path by accident and read correctly by luck. Reading correctly by
- * luck is the state this project has twice paid for: a branch nobody chose is a
- * branch nobody checked. `isNoticeBoardPower` is now asked by name, the
- * restoration is printed in the report so a reader is told rather than left to
- * notice a line that used to say NO SUBJECT, and the mode's own sentences ride
- * with it.
+ * ⛔ **SO THIS ASSERTION IS RESTORED FOR THAT MODE, BY NAME.**
+ * `isNoticeBoardPower` is asked explicitly, and the restoration is printed in
+ * the report so a reader is told rather than left to notice a line that used to
+ * say NO SUBJECT.
  *
  * ⚠️ **THE FLOOR OF 0.5 IS CARRIED UNCHANGED AND ITS CLOCK IS NOT.** It was
  * derived from a spare card funding one visit a turn, which is EXACTLY the
@@ -212,32 +174,13 @@ export const theHook: Assertion = {
     'paired control for the headline risk rather than a fix, because S6 rules self-visiting IN.',
   measure({ data, pooled }) {
     const games = pooled.ended;
-    if (isCommons(data)) return noSubject(pooled.ended.length);
-    // ⭐ ASKED BY NAME, AND THAT IS THE POINT OF THE LINE. Before 10/09/2026
-    // the only guard here was `isCommons`, so the notice-board visit would have
-    // landed on the `cardGame` path by falling through and read correctly by
-    // luck. The counters ARE the right ones - `visited` fires, the host is a
-    // real seat, the fee is a card - so the arithmetic below is unchanged; what
-    // this flag buys is that the restoration is a decision somebody made and
-    // that the report can SAY the hook is back rather than leaving a reader to
-    // notice a line that stopped saying NO SUBJECT.
+    // ⭐ ASKED BY NAME, so the report can SAY the hook is back.
     const restored = isNoticeBoardPower(data);
     const arm = isMeepleCurrency(data);
     const turns = totalTurns(games);
     const all = sum(games.map((g) => sum(g.visitsBySeat)));
     const selves = sum(games.map((g) => sum(g.selfVisitsBySeat)));
     const neighbours = all - selves;
-    // ⭐ THE CENTRAL PLAY, COUNTED HERE AND DELIBERATELY NEVER CREDITED
-    // (11/09/2026). Dean's unclaimed-boards variant puts ownerless piles on the
-    // table beside the owned boards, and both are bought out of the same bonus
-    // slot - so this assertion has a second population in front of it for the
-    // first time and has to say what it does with it. It does nothing with it,
-    // and the reason is the assertion's own definition: the hook counts
-    // NEIGHBOUR visits, a central play has NO HOST, and crediting one would let
-    // the design pass the hook while nobody ever visits a person. That is
-    // precisely the failure mode the variant was built to be tested for.
-    const centre = sum(games.map((g) => sum(g.commonsPlaysBySeat)));
-    const withCentre = restored && unclaimedBoardsToCentre(data);
     const bonus = totalBonusTurns(games);
     const own = sum(games.map((g) => sum(g.ownCropBuildsBySeat)));
     const foreign = sum(games.map((g) => sum(g.foreignCropBuildsBySeat)));
@@ -257,25 +200,23 @@ export const theHook: Assertion = {
       .map((slice) => {
         const v = sum(slice.ended.map((g) => sum(g.visitsBySeat)));
         const s = sum(slice.ended.map((g) => sum(g.selfVisitsBySeat)));
-        const c = sum(slice.ended.map((g) => sum(g.commonsPlaysBySeat)));
         const t = totalTurns(slice.ended);
         return {
           seats: slice.seats,
-          share: v + c === 0 ? NaN : (v - s) / (v + c),
-          plays: v + c,
+          share: v === 0 ? NaN : (v - s) / v,
+          plays: v,
           hook: t === 0 ? NaN : (v - s) / t,
         };
       });
-    const crossTable = all + centre === 0 ? NaN : neighbours / (all + centre);
+    const crossTable = all === 0 ? NaN : neighbours / all;
     // ⛔ THE INVARIANT, AND IT IS A FAIL AND NOT AN OBSERVATION. With
-    // self-visiting banned and no centre on the table, every target the slot can
-    // buy is a rival's board, so every play crosses the table by construction. A
-    // self-visit or a central play under those knobs is an ENGINE BUG - a ban
-    // that leaked or a centre that was not turned off - and it would inflate the
-    // one reading this arm exists to protect. It is asserted rather than
-    // assumed, on exactly the contract the meeple arm's X5 zero is asserted on.
-    const everyTargetIsAPerson = restored && !data.rules.turn.selfVisitAllowed && !withCentre;
-    const leak = everyTargetIsAPerson && (selves > 0 || centre > 0);
+    // self-visiting banned, every target the slot can buy is a rival's board, so
+    // every play crosses the table by construction. A self-visit under that knob
+    // is an ENGINE BUG - a ban that leaked - and it would inflate the one reading
+    // this arm exists to protect. It is asserted rather than assumed, on exactly
+    // the contract the meeple arm's X5 zero is asserted on.
+    const everyTargetIsAPerson = restored && !data.rules.turn.selfVisitAllowed;
+    const leak = everyTargetIsAPerson && selves > 0;
 
     // The self-visit line reads as a share under the control and as an
     // INVARIANT under the arm, because that is what it is in each. Same
@@ -328,12 +269,8 @@ export const theHook: Assertion = {
     const restoredLine =
       '⭐⭐ THE HOOK HAS A SUBJECT AGAIN (S2, S5, S7, Dean 10/09/2026), AND THIS LINE HAS ' +
       'PRINTED "NO SUBJECT" SINCE 09/09/2026. ' +
-      (withCentre
-        ? 'The Notice Board of every suit somebody IS farming has gone home to its owner as a ' +
-          'BUILDING (the rest stand ownerless in the middle, and the line above counts those ' +
-          'separately), '
-        : 'The commons is deleted, the five Notice Board cards have gone home to their owners ' +
-          'as BUILDINGS again, ') +
+      'The commons is deleted, the five Notice Board cards have gone home to their owners ' +
+      'as BUILDINGS again, ' +
       "and the bonus is to play one card from your hand onto ANY player's board for that " +
       "board's printed power. So there is " +
       'a HOST once more, `visited` fires again, and NEIGHBOUR visits per player per turn is a ' +
@@ -361,37 +298,14 @@ export const theHook: Assertion = {
     const meanRounds =
       games.length === 0 ? NaN : games.reduce((a, g) => a + g.rounds, 0) / games.length;
 
-    // ⛔ THE LINE THAT STOPS A READER CONCLUDING THE TRAFFIC VANISHED. Without
-    // it a hook value that fell when the centre opened is indistinguishable
-    // from a table that stopped using the bonus slot at all, and the two have
-    // opposite remedies. Printed only where there IS a centre, because a
-    // permanent banner is a banner nobody reads.
-    const centreLine =
-      `⛔ CENTRAL PLAYS EXIST UNDER THIS ARM AND NONE OF THEM IS CREDITED ABOVE: ${centre} ` +
-      `plays onto an OWNERLESS central pile, ${num(turns === 0 ? NaN : centre / turns, 2)} per ` +
-      `player per turn, against ${neighbours} neighbour visits at ${num(value, 2)}. Of the ` +
-      `${all + centre} plays the bonus slot bought, ` +
-      `${pct(all + centre === 0 ? NaN : neighbours / (all + centre))} CROSSED THE TABLE to a ` +
-      'named person. ⭐ THE EXCLUSION IS THE RULING AND NOT AN OVERSIGHT (11/09/2026): a ' +
-      'central board belongs to nobody, so a play onto it has no host, pays no host and is not ' +
-      'a visit to a neighbour under any reading of the word. ⛔ CREDITING IT WOULD LET THIS ' +
-      'DESIGN PASS THE HOOK WHILE NOBODY EVER VISITS A PERSON, which is exactly the failure ' +
-      'the variant is being tested for: a central board is socially free and a rival board is ' +
-      'not, so the standing incentive is to prefer the centre, strongest at two players where ' +
-      'three of the four targets are central. ⚠️ BUT A FALLING VALUE ABOVE IS THEREFORE TWO ' +
-      'DIFFERENT FINDINGS AND THIS LINE SEPARATES THEM: traffic that moved to the centre reads ' +
-      'as a high number here, and traffic that stopped reads as a low one. a17 carries the OWN ' +
-      '/ RIVAL / CENTRAL split by seat count and a18 the visits received per player; read both ' +
-      'before acting on the verdict on this page.';
-
     // ⭐⭐ THE LINE DEAN'S TWO-BOARD FIX IS JUDGED ON, printed under
     // `noticeBoardPower` and under nothing else. Everything else on this page
     // asks how MUCH traffic there was; this asks how much of it reached a
     // PERSON, which is the quantity the last three days of design have been
-    // spent on and the one the unclaimed-boards variant destroyed.
+    // spent on.
     const crossLine =
       `⭐⭐ THE CROSS-TABLE SHARE OF EVERY PLAY THE SLOT BOUGHT: ${pct(crossTable)} of ` +
-      `${all + centre} plays reached a NAMED PERSON. By seat count: ${crossRows
+      `${all} plays reached a NAMED PERSON. By seat count: ${crossRows
         .map((r) => `${r.seats}p ${pct(r.share)} of ${r.plays}`)
         .join('  ')}. ` +
       (everyTargetIsAPerson
@@ -399,7 +313,7 @@ export const theHook: Assertion = {
           'FINDING. Self-visiting is banned (rules.turn.selfVisitAllowed false) and there is no ' +
           'centre (rules.economy.unclaimedBoardsToCentre false), so EVERY TARGET THE BONUS SLOT ' +
           'CAN BUY IS A RIVAL’S BOARD and every play crosses the table by construction. ' +
-          `Self-visits read ${selves} and central plays read ${centre}; ` +
+          `Self-visits read ${selves} and central plays read 0; ` +
           (leak
             ? '⛔⛔ ONE OF THEM IS NON-ZERO, WHICH IS A BAN THAT LEAKED OR A CENTRE THAT WAS ' +
               'NOT TURNED OFF, and it inflates the very reading this arm exists to protect. ' +
@@ -428,7 +342,6 @@ export const theHook: Assertion = {
     const detail = [
       ...(restored ? [restoredLine] : []),
       ...(restored ? [crossLine] : []),
-      ...(withCentre ? [centreLine] : []),
       selfLine,
       `⭐ RIVAL VISITS PER GAME (ledger C52, read beside the per-turn rate above): ` +
         `${num(perGame, 2)} over a mean ${num(meanRounds, 1)} rounds (${neighbours} visits ` +
@@ -478,10 +391,6 @@ export const theHook: Assertion = {
         (restored ? '⭐ THE HOOK HAS A SUBJECT AGAIN (S5, 10/09/2026): ' : '') +
         `${num(value, 2)} NEIGHBOUR visits per player per turn ` +
         `(${neighbours} of ${all} visits over ${turns} turns)` +
-        (withCentre
-          ? `; PLUS ${centre} CENTRAL plays (${num(turns === 0 ? NaN : centre / turns, 2)} per ` +
-            'turn) which have NO HOST and are deliberately NOT credited'
-          : '') +
         (restored
           ? data.rules.turn.selfVisitAllowed
             ? `; self-visits take a further ${pct(all === 0 ? NaN : selves / all)} of all ` +
@@ -495,7 +404,7 @@ export const theHook: Assertion = {
         (bug ? ` ⛔ AND ${selves} SELF-VISITS UNDER AN ARM THAT FORBIDS THEM (X5)` : '') +
         (leak
           ? ` ⛔ AND THE CROSS-TABLE SHARE IS NOT 100% WHERE EVERY TARGET IS A PERSON: ` +
-            `${selves} self-visits and ${centre} central plays under knobs that forbid both`
+            `${selves} self-visits and 0 central plays under knobs that forbid both`
           : ''),
       detail,
       verdict:
@@ -503,41 +412,3 @@ export const theHook: Assertion = {
     };
   },
 };
-
-/**
- * ⭐ THE "NO SUBJECT" MEASUREMENT (the commons, 09/09/2026), and the pattern this
- * suite uses wherever a mode leaves a reading with nothing to measure.
- *
- * It is NOT an unmeasured value dressed up. `unmeasured()` in `types.ts` says
- * "we tried and could not"; this says "the event this counts cannot occur under
- * these rules", which is a different fact and needs a different sentence in the
- * report. Value NaN, verdict OBSERVE, and a pointer at the assertion that owns
- * the question now - because a reader who scans the suite for the hook must be
- * sent somewhere rather than left with a blank.
- */
-function noSubject(games: number): Measurement {
-  return {
-    value: NaN,
-    headline:
-      'NO SUBJECT UNDER THE COMMONS: the five Notice Boards are ownerless (C1), so a play has ' +
-      'no host and a visit to a NEIGHBOUR cannot happen. See a18-commons-traffic.',
-    detail: [
-      `⛔ THE QUANTITY IS GONE, NOT THE DESIGN. Over ${games} ended games nothing here was ` +
-        'measured, and that is a structural zero rather than a solitaire table: there is no ' +
-        'neighbour to visit, so a floor of 0.5 read against it would FAIL every run for ever ' +
-        'and train a reader to skip the most important line in the report.',
-      '⭐ a18-commons-traffic CARRIES THE INTERACTION READINGS: plays per player per turn, ' +
-        'central harvests per player per game, the pile depth at harvest, and the share of ' +
-        'barn cards sourced from the CENTRE against a seat’s own buildings. It ships as ' +
-        'OBSERVE, because the design names no number for any of them in this pass.',
-      '⚠️ NEITHER ASSERTION MAY BORROW THE OTHER’S THRESHOLD. The 0.5 floor was derived from a ' +
-        'spare card funding one visit a turn; there is nothing in the commons for it to be a ' +
-        'floor ON, and a number taken from the first commons run would be a snapshot test.',
-      'The branches above are alive and are exercised by both controls: ' +
-        'overlays/v31-card-visit.overlay.json runs the card game and ' +
-        'overlays/meeple-loop-v1.overlay.json the meeple loop, where the self-visit invariant ' +
-        '(X5) is still the only thing in the project that would notice it breaking.',
-    ],
-    verdict: 'OBSERVE',
-  };
-}

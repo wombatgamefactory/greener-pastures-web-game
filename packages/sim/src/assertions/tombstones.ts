@@ -85,4 +85,18 @@ export const RETIRED: readonly Tombstone[] = [
       'a capped option that spikes early and then stops is a PASS shape, which is why the ' +
       'early/late split exists at all.',
   },
+  {
+    id: 19,
+    title: 'The coin economy',
+    retired: '13/09/2026 (the commons deleted)',
+    why:
+      'The balance sheet of the commons-with-coins arm of 10/09/2026 (K3-K15): one mint, ' +
+      'clearing a central pile for one coin per card, and two sinks, the Farmstead suit power ' +
+      'and the Endgame cards, with the coins left dead in a wallet at game end. It printed NO ' +
+      'SUBJECT under every mode this project ever shipped. THE SUBJECT IS GONE: Dean deleted ' +
+      'the commons outright on 13/09/2026, and with it rules.turn.commonsTake and its only ' +
+      'mint. The lesson it carried is a25-village-store-coin’s now: every coin economy ' +
+      'this project has shipped died of a second faucet or a pity rate, so a currency owes the ' +
+      'reader its whole balance sheet on one page.',
+  },
 ];

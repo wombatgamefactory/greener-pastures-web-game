@@ -167,17 +167,6 @@ export interface GameMetrics {
    *   visit SELF    `selfVisitsBySeat`     - your own board, your own action
    *   SLOT UNSPENT  `turnsBySeat - bonusTurnsBySeat`, derived, never stored
    *
-   * ⭐ AND UNDER THE COMMONS (09/09/2026) THERE ARE **TWO** COLUMNS, NOT FOUR,
-   * because the slot holds exactly one option (C9): there is no free Draw 1, no
-   * Collect and no self-visit, so the tally is
-   *
-   *   COMMONS PLAY  `commonsPlaysBySeat` - a card onto a central board
-   *   SLOT UNSPENT  `turnsBySeat - bonusTurnsBySeat`, derived as always
-   *
-   * and the verdict on it is a BAND rather than the solitaire law, because there
-   * is no solitaire option left in the slot to lose to. Dean, 09/09/2026:
-   * "30%-60% of the time... earned, not automatic." a17 owns that number.
-   *
    * ⛔ THE FIVE-WAY COIN TALLY IT REPLACES IS GONE, and with it every column
    * that named a currency: visit-coin and visit-power (there is one visit and
    * it pays an action), own-power (there is no Service to run for GBP 1) and
@@ -408,7 +397,7 @@ export interface GameMetrics {
    * a reshuffle is the pool in flight and needs a reshuffle to have happened;
    * this one exists in every game including one where a deck never ran dry, and
    * it is the complement of the barn line: a crop's 18 cards are in a hand, a
-   * tableau, a barn, a central pile or here.
+   * tableau, a barn or here.
    */
   poolAtEndByCrop: Record<string, number>;
   /**
@@ -675,157 +664,10 @@ export interface GameMetrics {
   /** 1-based round the pool first read zero, or null if it never did in this game. */
   poolEmptyRound: number | null;
 
-  // --- THE COMMONS, 09/09/2026 ---------------------------------------------
-  //
-  // ⚠️ EVERY LINE IN THIS BLOCK IS ZERO OR EMPTY UNDER BOTH CONTROLS
-  // (`visitCurrency: 'card'` and `'meeple'`), and that is the same contract the
-  // two blocks above state of themselves: the v31 card visit and the meeple loop
-  // are now the controls, their numbers have to stay comparable with the reports
-  // that measured them, and nothing here is allowed to move a counter either of
-  // them already had. Read a zero as "the commons was off", never as a finding.
-  //
-  // ⚠️ AND NONE OF THEM HAS A NOISE FLOOR. `reference-v15` has not had
-  // `--noise` run against it, so a movement in any of these is not yet a result.
-
-  /**
-   * ⭐ PLAYS ONTO A CENTRAL BOARD (C3), by the seat that played them.
-   * The commons' whole bonus slot, and the numerator of the ONE number a17
-   * carries a verdict on under this mode: the share of turns that pay for an
-   * action. One count per `commons` MOVE, so A Helping Hand's second play (C8)
-   * counts twice and a turn can therefore contribute two plays.
-   *
-   * ⛔ THREE QUANTITIES LIVE HERE AND THEY ARE NEVER THE SAME NUMBER, which is
-   * the correction of 10/09/2026 and the second time this project has been bitten
-   * by exactly this denominator:
-   *
-   *   TURNS THAT USED THE SLOT  `bonusTurnsBySeat` - THE VERDICT QUANTITY,
-   *                             Dean's 30-60% band, one per turn at most
-   *   PLAYS                     THIS COUNTER - one per `commons` MOVE; A Helping
-   *                             Hand can put two in one turn
-   *   CARDS INTO THE CENTRE     `commonsCardsIntoCentreBySeat` - one per
-   *                             `commonsPlayed` EVENT; the wild pair (K3) puts
-   *                             TWO cards in for ONE play
-   *
-   * ⚠️ IT MOVED FROM THE EVENT TO THE MOVE ON 10/09/2026. It was folded off
-   * `commonsPlayed`, which was correct while a play was always exactly one card;
-   * `rules.economy.commonsWildPair` made that false and a 30-game smoke run of
-   * the coin arm printed a17's "plays per turn" as cards per turn. Under every
-   * knob but the pair the two counts are identical, so nothing moved at the
-   * shipped default - and under the pair they must never be conflated again.
-   */
-  commonsPlaysBySeat: number[];
-  /**
-   * ⭐ CARDS PUT INTO THE CENTRE by a play, by the seat that paid them (K3,
-   * 10/09/2026). One per `commonsPlayed` EVENT, so it equals `commonsPlaysBySeat`
-   * under every knob except the wild pair, where a two-card fee counts twice for
-   * one play.
-   *
-   * ⭐ IT IS THE QUANTITY a18'S CONSERVATION IDENTITY HAS TO BALANCE, and that
-   * is the whole reason it exists as its own counter: the centre is a closed
-   * system counted in CARDS - in by a play's fee, out by a harvest, a take or a
-   * coin take's discard, plus whatever is stranded at game end - and a play count
-   * cannot balance a card count once one play can carry two cards.
-   */
-  commonsCardsIntoCentreBySeat: number[];
-  /**
-   * ⭐ PLAYS PAID WITH A WILD PAIR (K3, 10/09/2026), by the seat that paid them.
-   * Zero under `rules.economy.commonsWildPair: false`, which is every arm before
-   * this one and the shipped default. It is the reconciliation term between the
-   * two counters above: cards into the centre = plays + wild-pair plays, exactly,
-   * because a pair is the only thing in the game that puts a second card on a
-   * board for one play.
-   */
-  commonsWildPairPlaysBySeat: number[];
-  /**
-   * ...by the BOARD played on, which is the colour and therefore the ACTION
-   * bought (wheat Harvest, vegetable Deliver, orchard Draw 2, apiary Grow,
-   * dairy Build). It is deliberately not the same table as `doorUsesByColour`:
-   * that one counts every door use by every route and is what a07 reads, this
-   * one counts the PLAYS and is what a17's by-board breakdown reads. Under the
-   * commons the two happen to agree, and a disagreement between them would be a
-   * fold bug rather than a design reading.
-   *
-   * ⚠️ IT COUNTS PLAYS, NOT CARDS, and it moved to the `commons` MOVE on
-   * 10/09/2026 with `commonsPlaysBySeat` for the same reason: a wild pair buys
-   * ONE board action however many cards land on the pile, so counting the event
-   * here would have double-counted every paired play in the board mix and left
-   * the mix's own denominator (`plays`) disagreeing with its rows.
-   */
-  commonsPlaysByBoard: Record<string, number>;
-  /**
-   * ...by the SUIT OF THE FEE CARD. Any card may pay for any board (C3), so
-   * what the table actually burns is a free choice and L5's question - are
-   * players paying junk? - is asked of exactly this table.
-   *
-   * ⭐ IT READS CARD IDENTITY, AND THAT IS ALLOWED HERE AND NOWHERE ELSE. The
-   * bots' pricer rule is "never read card identity"; the fold is not a pricer,
-   * it holds the whole `GameData`, and the catalogue is what says which suit a
-   * fee belonged to. `doorUsesByColour` cannot answer this: it names the board,
-   * which is the action bought, not the card spent.
-   *
-   * ⚠️ IT IS A TABLE OF **CARDS**, NOT OF PLAYS, and it stays folded off the
-   * `commonsPlayed` EVENT for that reason: the question it answers is "what did
-   * the table burn", and a wild pair (K3) burns two cards. Its rows and its own
-   * total are therefore both in cards, so every share read off it is sound; what
-   * must not happen is a reader dividing it by `commonsPlaysBySeat`, which is a
-   * different quantity from 10/09/2026 onward.
-   */
-  commonsPlaysByFeeSuit: Record<string, number>;
-  /**
-   * Of those, the FEE CARDS that were not the payer's own crop. The off-crop
-   * share is L5's reading in one number: a farm feeding the centre with its own
-   * suit is burning its engine, a farm feeding it with somebody else's is
-   * clearing junk, and the two are opposite verdicts on the same rule. ⚠️ Cards
-   * rather than plays, on the same footing as the table above - both halves of a
-   * wild pair are tested and counted separately.
-   */
-  commonsPlaysOffCrop: number;
-  /**
-   * ⭐ HARVESTS OF A CENTRAL PILE (C5), by the harvester. Main action or bought
-   * through W3 - the two are the same event and are deliberately not split,
-   * because C5 rules both legal in the same sentence and the question a18 asks
-   * is how often the centre is emptied at all.
-   */
-  commonsHarvestsBySeat: number[];
-  /** How many cards each of those harvests took. The median, p90 and the histogram are a18's. */
-  commonsPileSizeAtHarvest: number[];
-  /**
-   * ⭐ OF THOSE, THE ONES BOUGHT THROUGH THE WHEAT BOARD (Dean's question,
-   * 09/09/2026): a central harvest reached either by the MAIN Harvest action or
-   * by playing a card onto W3 and taking the Harvest it buys. The second is the
-   * one D6 makes free, so the split says how much of the centre's outflow is the
-   * bonus slot eating itself and how much is a seat spending its whole turn on
-   * the middle of the table.
-   *
-   * ⚠️ IT IS ATTRIBUTED, NOT CARRIED ON THE EVENT, and the heuristic is
-   * worth knowing before quoting it. A bought Harvest resolves through a
-   * `chooseBuilding` task, so the `harvested` event arrives in a LATER decision
-   * than the `doorUsed` that paid for it and carries no route of its own. The
-   * fold latches the seat on `doorUsed { action: 'harvest', via: 'commons' }`
-   * and spends the latch on that seat's next harvest of any kind - so a bought
-   * Harvest that chose a BUILDING correctly consumes the latch and is counted
-   * nowhere here, and a latch can only ever be spent by the same seat inside the
-   * same turn, because the door's task must be answered before the turn can
-   * move on.
-   */
-  commonsHarvestsBoughtBySeat: number[];
-  /**
-   * TOTAL CARDS STANDING IN THE CENTRE, all five piles, sampled at every round
-   * boundary exactly as `barnByRound` samples a barn. Read directly off state
-   * for the reason `meeplePoolByRound` states of itself: the fold holds the
-   * post-turn `GameState`, so the pile is counted rather than reconstructed.
-   */
-  commonsPileSizeByRound: number[];
-  /**
-   * The same series as THREE numbers - the median centre size in this game's
-   * first, middle and last third - computed once in `finish` so that games of
-   * different lengths pool. Empty when the game was too short to have thirds.
-   */
-  commonsPileSizeByRoundThird: number[];
   /**
    * ⭐ THE NOTICE-BOARD VISIT'S OWN COUNTERS (S5-S11, Dean 10/09/2026), and all
-   * seven of them are read off STATE rather than off an event, exactly as the
-   * commons' pile series above is and for the same reason: the fold holds the
+   * seven of them are read off STATE rather than off an event, for one reason:
+   * the fold holds the
    * post-move `GameState`, so a stack is counted rather than reconstructed from
    * a running balance that can drift.
    *
@@ -839,8 +681,7 @@ export interface GameMetrics {
    * that is what these are. `a20-board-stall` owns them.
    *
    * TOTAL CARDS RESTING ON EVERY SEAT'S NOTICE BOARD, sampled at every round
-   * boundary. The farm's answer to `commonsPileSizeByRound`, and a18 reads its
-   * thirds.
+   * boundary. a18 reads its thirds.
    */
   noticeBoardCardsByRound: number[];
   /**
@@ -925,46 +766,13 @@ export interface GameMetrics {
    */
   extraBoardsBySeat: Suit[][];
 
-  // --- THE CENTRE'S HALF OF THE STALL (a20, 11/09/2026) ---------------------
-  //
-  // ⭐ DEAN'S UNCLAIMED-BOARDS VARIANT PUTS TWO KINDS OF LOADED BOARD ON THE
-  // SAME TABLE and a20 has to report them apart, because they are not the same
-  // phenomenon and no single number covers both. An OWNED board sitting at or
-  // above its threshold is one named person declining to bank their own
-  // payment. A CENTRAL pile sitting at or above `commonsHarvestMin` is a
-  // CONTESTED PILE NOBODY HAS CLAIMED YET: anybody at the table may take it,
-  // nobody is failing to, and the same reading that is a sulk on an owned board
-  // is a standing offer in the middle.
-  //
-  // ⛔ AND THE SAMPLING POINT IS DIFFERENT FOR THE SAME REASON. The owned probe
-  // samples ONE seat at that seat's OWN turn boundary, because the question is
-  // the owner's. A central pile has no owner, so it is sampled once per TURN
-  // BOUNDARY - every pile, every turn - and a run is counted in TABLE turns
-  // rather than in one seat's turns. The two run-length units are therefore NOT
-  // comparable with each other and the report says so on the line.
-
-  /** Pile-turn-boundaries sampled: one per central pile per turn boundary. Zero where there is no centre. */
-  centralPileSampledTurns: number;
-  /** Of those, the ones at or above `commonsHarvestMin` - harvestable by anybody and not yet taken. */
-  centralPileHarvestableTurns: number;
-  /** COMPLETED runs, in TABLE turns, of a pile sitting harvestable and unclaimed. */
-  centralPileStallRuns: number[];
-  /** Runs still open when the game ended - piles nobody ever claimed. Right-censored, so kept apart. */
-  centralPileStallRunsOpenAtEnd: number[];
-  /** The deepest each central pile ever got, by board colour, sampled at the same boundary. */
-  centralPileMaxByBoard: Record<string, number>;
-
   // --- A16 THE BEEKEEPER'S VEIL (11/09/2026) --------------------------------
   //
   // ⭐ THE COUNTER THE ENGINE PASS ASKED FOR, AND IT IS A DESIGN READING RATHER
   // THAN A BOOKKEEPING ONE. A16 fires on a placement that brings a building's
   // stack to 2 (`afterPlacement`, and it is the ONLY `afterPlacement` handler in
   // the catalogue). A fee landing on a RIVAL'S Notice Board is such a placement
-  // and fires it; a fee landing on a CENTRAL pile is not, because
-  // `fx.playOnCommons` deliberately does not fire the hook - a central board is
-  // in nobody's tableau and is not a building. ⛔ SO A16 QUIETLY REWARDS THE
-  // CROSS-TABLE PLAY OVER THE CENTRAL ONE, which is a thumb on the scale of the
-  // exact question Dean's variant was ruled to answer.
+  // and fires it.
   //
   // ⚠️ HOW IT IS READ, AND THE ONE APPROXIMATION IN IT, STATED RATHER THAN
   // HIDDEN. There is no `abilityFired` event (see this file's header), so a fire
@@ -984,24 +792,15 @@ export interface GameMetrics {
   /** Seats holding A16 at the moment of a placement, summed over placements - the availability denominator, so a low fire count can be told from a card nobody built. */
   a16PlacementsWhileHeld: number;
   /**
-   * ⭐ THE FARM-BYPASS READING (a18, and the one the handoff names as the
-   * question this mode creates): barn cards that came out of the CENTRE against
-   * barn cards that came off the seat's OWN buildings, split off the
-   * `harvested` event's `source`.
-   *
-   * ⚠️ BOTH ARE FED UNDER BOTH CONTROLS TOO, and `barnFromCommonsBySeat` is
-   * simply 0 there: the engine carries `source: 'tableau'` on every harvest
-   * under `'card'` and `'meeple'` rather than making the field optional, so the
-   * own-buildings column is a real reading under all three modes and only the
-   * centre column has no subject. They are a SUBSET of `barnInBySeat`, which
-   * pools every route into a barn including the deck, hand, stack and discard
-   * shortcuts - so the two do not sum to it and are not meant to.
+   * ⭐ THE FARM-BYPASS READING (a18): barn cards a HARVEST took off the seat's
+   * own buildings. A SUBSET of `barnInBySeat`, which pools every route into a
+   * barn including the deck, hand, stack and discard shortcuts - so the two do
+   * not sum and are not meant to.
    */
-  barnFromCommonsBySeat: number[];
   barnFromOwnBySeat: number[];
   /**
-   * ⭐ THE THIRD SOURCE OF A BARN CARD, AND IT IS NEW ON 11/09/2026 WITH DEAN'S
-   * UNCLAIMED-BOARDS VARIANT: cards a seat harvested off its OWN NOTICE BOARD,
+   * ⭐ THE SECOND SOURCE OF A BARN CARD (11/09/2026): cards a seat harvested off
+   * its OWN NOTICE BOARD,
    * which under `visitCurrency: 'noticeBoardPower'` is the fee material rivals
    * paid onto it.
    *
@@ -1015,157 +814,21 @@ export interface GameMetrics {
    * ⚠️ IT IS NOT THE SAME QUANTITY AS `freight.bankedBySeat`, and the gap is
    * the reason both exist. `freight.bankedBySeat` counts only cards a RIVAL
    * paid; this counts every card that came off the board, so the difference is
-   * the owner's OWN self-visit fees coming home. Under
-   * `overlays/notice-board-visit-unclaimed-v1.overlay.json` the ban on
-   * self-visiting makes the two equal by construction, and under
-   * `overlays/notice-board-visit-unclaimed-self-v1.overlay.json` it does not -
-   * which is exactly why the split is folded rather than assumed.
+   * the owner's OWN self-visit fees coming home. A ban on self-visiting makes
+   * the two equal by construction, which is exactly why the split is folded
+   * rather than assumed.
    *
-   * Zero under the commons and under both controls, where no seat's harvest can
-   * name a Notice Board: under the commons no seat has one (C1), and under
-   * `'card'` and `'meeple'` the board has no stack a harvest reaches.
+   * Zero under both controls, where under `'card'` and `'meeple'` the board has
+   * no stack a harvest reaches.
    */
   barnFromOwnBoardBySeat: number[];
   /**
-   * ⭐ CARDS STILL STANDING IN THE CENTRE WHEN THE GAME ENDED (Dean's
-   * question, 09/09/2026), summed across all five piles off the final state.
-   *
-   * ⭐ IT IS THE THIRD TERM OF THE CONSERVATION LINE, and that line is why it
-   * exists: the centre is a closed system - cards enter only by a play (C3) and
-   * leave only by a harvest (D3) - so PLAYS = HARVESTED OUT + STRANDED, exactly,
-   * in every game. a18 prints all three so a reader can check the arithmetic
-   * rather than trust it, and so that a knob which moves the centre's share of
-   * barn cards by STRANDING cards is legible as such rather than reading as a
-   * change in how the centre feeds a barn during play.
-   */
-  commonsStrandedAtEnd: number;
-
-  // --- DEAN'S VARIANT, 09/09/2026 (`rules.turn.commonsTake: 'bonus'`) -------
-  //
-  // ⚠️ EVERY LINE HERE IS ZERO OR EMPTY UNDER `commonsTake: 'harvest'` (the
-  // shipped rule) AND UNDER BOTH CONTROLS, on the same contract as the block
-  // above: read a zero as "the variant was off", never as a finding.
-
-  /**
-   * ⭐ TAKES OF A CENTRAL PILE TO HAND (Dean's variant), by the seat that took
-   * them. The variant's other free bonus option, and the numerator a17's
-   * three-way tally reads under `commonsTake: 'bonus'` - PLAY (`commonsPlaysBySeat`
-   * above) against TAKE against SLOT UNSPENT. One event per take, and A Helping
-   * Hand's second use (which the take carries too, see `BonusOption`) counts
-   * twice.
-   */
-  commonsTakesBySeat: number[];
-  /** ...by the BOARD taken from - the colour, and therefore which pile emptied. */
-  commonsTakesByBoard: Record<string, number>;
-  /** How many cards each take carried. The 1/2/3/4/5+ histogram, mean, median, p90 and max are a18's. */
-  commonsTakeSizes: number[];
-  /** Cards moved to a hand by a take, by the SEAT that took them - the hand-share half of the farm-bypass reading under this variant. */
-  commonsTakenCardsBySeat: number[];
-
-  // --- DEAN'S 'spend' VARIANT, 09/09/2026 (`rules.turn.commonsTake: 'spend'`)
-  //
-  // ⚠️ EVERY LINE HERE IS ZERO OR EMPTY UNDER `commonsTake: 'harvest'` OR
-  // `'bonus'`, on the same contract as the block above. `commonsTakesBySeat` /
-  // `commonsTakesByBoard` / `commonsTakeSizes` / `commonsTakenCardsBySeat`
-  // above are STILL POPULATED under `'spend'`, off the SAME `commonsTaken`
-  // event - but only for the orchard and wheat legs, the two uncomplicated
-  // whole-pile moves, which is why they are not repeated here. Everything
-  // below is `'spend'`-only accounting, off `commonsTake` MOVES (which board
-  // was chosen) and off `commonsSpent` EVENTS (what the chosen action did
-  // with what it took).
-
-  /** How many `commonsTake` MOVES chose each board, under `'spend'` - every board, not only orchard/wheat. */
-  commonsSpendTakesByBoard: Record<string, number>;
-  /** Off `commonsSpent`: cards a take's pile held when it began, by BOARD. */
-  commonsSpendTakenByBoard: Record<string, number>;
-  /** Off `commonsSpent`: cards the chosen action actually spent, by BOARD - a build's payment, a crate, cards sown before a target ran out. */
-  commonsSpendUsedByBoard: Record<string, number>;
-  /** Off `commonsSpent`: cards no action wanted (D-S2), by BOARD - the pile's own discard sink, `taken - used`. */
-  commonsSpendDiscardedByBoard: Record<string, number>;
-  /** How many `commonsSpent { deliveredFromCentre: true }` events fired - deliveries paid straight from the vegetable pile rather than the barn. */
-  commonsSpendDeliveriesFromCentre: number;
-  /** Cards that reached a BARN via the wheat leg's take rather than a Harvest, by the SEAT that took them - the farm-bypass reading's subject under `'spend'`. */
-  commonsSpendBarnBySeat: number[];
-
-  // --- DEAN'S 'paid' VARIANT, 09/09/2026 (`rules.turn.commonsTake: 'paid'`)
-  //
-  // ⚠️ ZERO UNDER EVERY OTHER VALUE OF `commonsTake`, on the same contract as
-  // the two blocks above. `commonsTakesBySeat` / `commonsTakesByBoard` /
-  // `commonsTakeSizes` / `commonsTakenCardsBySeat` are STILL POPULATED under
-  // `'paid'`, off the SAME `commonsTaken` event every take fires - a take is
-  // still a take. This is the one line `'paid'` adds: the fee, which neither
-  // `'bonus'` nor `'spend'` ever charges.
-
-  /**
-   * ⭐ THE FIRST PER-USE SINK IN THE COMMONS LINE (Dean, 09/09/2026): one card
-   * discarded per `commonsTake` under `'paid'`, off `commonsTaken.fee`. By the
-   * SEAT that paid it. Read beside `commonsTakesBySeat`: every take under
-   * `'paid'` pays exactly one fee, so the two counts move together by
-   * construction - this exists so a18 can print the sink as its own line
-   * rather than a reader inferring it from the take count.
-   */
-  commonsTakeFeesBySeat: number[];
-
-  // --- THE COMMONS WITH COINS, 10/09/2026 (`rules.turn.commonsTake: 'coins'`)
-  //
-  // ⚠️ EVERY LINE IN THIS BLOCK IS ZERO OR EMPTY UNDER EVERY OTHER VALUE OF
-  // `commonsTake` AND UNDER BOTH CONTROLS, on exactly the contract the four
-  // blocks above state of themselves: read a zero here as "there are no coins in
-  // this game", never as a finding. `commonsTakesBySeat` / `commonsTakesByBoard`
-  // / `commonsTakeSizes` are STILL POPULATED under `'coins'`, off the same
-  // `commonsTaken` event every take fires - a take is still a take, and the
-  // arm's only novelty is where the cards go (their suits' discards, out of the
-  // game, K4) and what the taker gets instead (one coin per card, K3).
-  // `commonsTakenCardsBySeat` is populated too and means "cards this seat
-  // cleared OUT of the centre" here rather than "cards this seat took to hand",
-  // which is why a18's coin branch reads it as the discarded column.
-  //
-  // ⛔ ONE MINT, TWO SINKS, AND NOTHING ELSE (K7). Every counter below is one of
-  // the three, or a reading taken beside one. If a future session finds itself
-  // adding a fourth, that is a third use or a second mint arriving, which is the
-  // old coin failure repeating rather than a tuning.
-  //
-  // ⚠️ AND NONE OF THEM HAS A NOISE FLOOR, for the reason the commons block
-  // above gives: `reference-v15` has never had `--noise` run against it.
-
-  /** ⭐ THE MINT (K3): coins minted by clearing a central pile, by the seat that took them. `coins === cards.length` on every event, so this is also the cards that LEFT THE GAME. */
-  coinsMintedBySeat: number[];
-  /** ...by the BOARD cleared - which pile was worth emptying, and the only thing in the arm that says so. */
-  coinsMintedByBoard: Record<string, number>;
-  /** ⭐ SINK ONE (K10-K14): coins spent on the Farmstead's coin-paid GROW, by seat. Always one coin per event, so this equals `farmsteadFiresBySeat` by construction and is kept apart from it so the two currencies (coins, firings) each have their own line. */
-  coinsSpentFarmsteadBySeat: number[];
-  /** ⭐ SINK TWO (K15): coins spent buying an Endgame card, by seat. `rules.economy.endgameCoinCost` per event, so this is NOT the count of cards - `endgameBuiltBySeat` is. */
-  coinsSpentEndgameBySeat: number[];
-  /**
    * ⭐ DEAD COINS: coins still held when the game ended, read off the FINAL state
    * rather than derived as minted minus spent, on exactly the reasoning
-   * `meeplesHeldAtEnd` states of itself - the two agree by construction and the
-   * report prints both, so a disagreement is a fold bug and not a reading.
-   *
-   * ⚠️ IT IS THE FLOOD READING AND THE HANDOFF NAMES A SHAPE FOR IT: "if dead
-   * coins exceed about two a player the sinks are too dear". That is CONTEXT and
-   * not a threshold - a19 prints it and cannot fail on it (see a19's own note).
+   * `meeplesHeldAtEnd` states of itself.
    */
   coinsHeldAtEndBySeat: number[];
-  /**
-   * ⭐ FARMSTEAD FIRES (K10), by seat - the coin-paid GROW that takes a seat's
-   * whole main action and buys its suit power. Folded off the `grow` MOVE's
-   * `coin: true` flag, which is the only thing that separates it from an ordinary
-   * activation.
-   *
-   * ⭐ THE READING DEAN RAISED BY NAME IS THIS COUNTER **BY SUIT**, and it is
-   * derived in a19 off `suits` rather than folded here as a second table, on the
-   * `visitsPerTurnBySuit` precedent: a seat's suit is fixed for the whole game, so
-   * seat is a strictly finer key than suit and folding both would let the two
-   * drift. Dean's sentence: if one suit fires twice as often as another, the
-   * POWERS are mispriced rather than the coins.
-   */
-  farmsteadFiresBySeat: number[];
-  /** ⭐ ENDGAME CARDS BUILT (K15), by the seat that built them - the count of CARDS, where `coinsSpentEndgameBySeat` is the count of coins. Folded off `built` under every mode, because an Endgame card is an Endgame card whether it cost coins or two cards of its own suit, and the whole point of the pairing with `commons-coins-endgame-cards-v1` is to compare the two prices. */
-  endgameBuiltBySeat: number[];
-  /** ...by the CARD's own suit, which is the half of the reading that says WHOSE Endgame cards get bought. Read beside `ownCropBuildsBySeat`: K15 is the only one of the two monoculture pulls that actually leaves under the arm, because K13 moves the Farmstead's own-crop scorer to the Barn rather than deleting it. */
-  endgameBuiltByCardSuit: Record<string, number>;
-  /** ⭐ THE ARC: the 1-based round on which each seat first minted a coin, or null if it never did. The mint is the only faucet, so this is the round the seat's whole coin economy could first have started. */
+  /** ⭐ THE ARC: the 1-based round on which each seat first minted a coin, or null if it never did. */
   firstCoinRoundBySeat: (number | null)[];
 
   // --- THE VILLAGE STORE COIN, 12/09/2026 (V1 to V12, ledger A150) ---------
@@ -1175,17 +838,6 @@ export interface GameMetrics {
   // project has ever shipped. Read a zero as "there is no Village Store in this
   // game", never as a finding. a25, a26 and a27 all gate on that leaf and print
   // NO SUBJECT rather than a page of structural zeroes.
-  //
-  // ⛔ THE TWO COIN ECONOMIES SHARE `coinsMinted`, `coinsSpent` AND THE WALLET,
-  // AND THEY ARE NOT THE SAME ECONOMY. The commons-with-coins arm of 10/09/2026
-  // (K3/K7) mints by clearing a central pile and its `coinsMinted.board` is a
-  // Suit; the Village Store mints one card at a time out of a BARN at a delivery
-  // and its `board` is the literal `'store'`. The four counters above
-  // (`coinsMintedBySeat`, `coinsMintedByBoard`, `firstCoinRoundBySeat`,
-  // `coinsHeldAtEndBySeat`) are folded under BOTH and are safe to read under
-  // either because no overlay turns both economies on at once - a19 is gated on
-  // `isCommonsTakeCoins` and a25 on `storeCoinsPerCard`, and a25 prints a loud
-  // line if it ever finds both. The counters BELOW are the Store's alone.
   //
   // ⚠️ AND NONE OF THEM HAS A NOISE FLOOR. `reference-v15` has never had
   // `--noise` run against a Store arm, and no line here is in `HEADLINE_METRICS`.
@@ -1496,8 +1148,7 @@ export interface GameMetrics {
    * the denominator for "what share of all the cards drawn did this rule add".
    *
    * ⚠️ WHAT IT IS NOT: it is not every card that ever entered a hand. A gift
-   * (`cardGifted`), the starting hand and a take of a central pile arrive on
-   * their own events and are deliberately excluded, because the question is what
+   * (`cardGifted`) and the starting hand arrive on their own events and are deliberately excluded, because the question is what
    * share of the DRAWING this rule accounts for.
    */
   cardsToHandTotal: number;
@@ -1546,11 +1197,8 @@ export interface GameMetrics {
    *
    * The sharpest case of "no card the seat could legally spend as a fee", and
    * the only one that is exact under every mode this codebase has: a fee is a
-   * card from the hand under `'card'`, `'commons'` and `'noticeBoardPower'`
-   * alike, so a hand of nothing cannot pay one whatever the colour rule is. ⚠️
-   * With `rules.economy.commonsColourMatch` on, a NON-empty hand can also fail
-   * to hold a legal fee, so this is a FLOOR on the illiquid turns and never an
-   * estimate of them. It is a floor on the build side too: a Build spends cards
+   * card from the hand under `'card'` and `'noticeBoardPower'` alike, so a hand
+   * of nothing cannot pay one. It is a floor on the build side too: a Build spends cards
    * from the hand, so an empty hand is also the sharpest case of "no build
    * available" that `noBuildTurnsBySeat` counts.
    */

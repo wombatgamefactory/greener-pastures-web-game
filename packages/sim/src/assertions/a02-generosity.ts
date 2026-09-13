@@ -1,4 +1,4 @@
-import { isCommons, isMeepleCurrency } from '@gp/data';
+import { isMeepleCurrency } from '@gp/data';
 import type { PolicyId } from '@gp/bots';
 
 import type { Assertion, Measurement, MeasureContext } from './types.js';
@@ -127,57 +127,9 @@ export const generosity: Assertion = {
     'meeple control is overlays/meeple-loop-v1.overlay.json, which pins the whole loop. Under ' +
     '"commons" there is no transfer of this shape at all, so there is nothing to lever.',
   measure(ctx) {
-    if (isCommons(ctx.data)) return noSubject();
     return isMeepleCurrency(ctx.data) ? meepleArm(ctx) : cardGame(ctx);
   },
 };
-
-/**
- * ⛔ NO SUBJECT UNDER THE COMMONS (C1, 09/09/2026), and this is a DECISION the
- * handoff did not make: its section 2.7 lists a02 as "unchanged". It is branched
- * anyway, because leaving it unbranched is not neutral.
- *
- * Unbranched, this assertion falls into its `'card'` path and reads
- * `freight.paidBySeat`, which counts a fee landing on a RIVAL'S Notice Board. No
- * rival owns a board under the commons, so that counter is a structural zero and
- * the report would print "0.00 fees a game land on a rival's board" - a sentence
- * that reads as a finding about generosity when it is a statement about which
- * game is being played. The suite's own convention is that a mode where a
- * reading has nothing to measure says NO SUBJECT and points at what owns the
- * question there.
- *
- * ⭐ AND SOMETHING REAL DOES REPLACE IT, WHICH IS WHY THE POINTER MATTERS. A
- * card played onto a central board is given to nobody in particular and to
- * everybody at once: it sits in a public pile until SOMEBODY harvests it (C5),
- * and that somebody need not be the payer. So the commons has a transfer, it is
- * the largest one in the design, and `a18-commons-traffic` measures it as the
- * barn-source split - the share of harvested barn cards that came out of the
- * centre rather than off a seat's own buildings.
- *
- * ⛔ NOTHING IS DELETED: both branches below have a live control.
- */
-function noSubject(): Measurement {
-  return {
-    value: NaN,
-    headline:
-      'NO SUBJECT UNDER THE COMMONS: the five boards are ownerless (C1), so nothing is given ' +
-      'to a named rival. See a18-commons-traffic for the transfer that replaces it.',
-    detail: [
-      'A card played onto a central board is given to nobody in particular and to everybody at ' +
-        'once - it sits in a public pile until SOMEBODY harvests it (C5), and that somebody ' +
-        'need not be the payer. That is a real transfer and the largest one in the design; a18 ' +
-        'measures it as the share of harvested barn cards sourced from the centre.',
-      'This assertion is branched rather than left to fall through to its "card" path, which ' +
-        'would have printed "0.00 fees a game land on a rival’s board" - a sentence that ' +
-        'reads as a finding about generosity when it is a statement about which game is being ' +
-        'played.',
-      'Both branches below are alive and both controls run them: ' +
-        'overlays/v31-card-visit.overlay.json is the card fee and ' +
-        'overlays/meeple-loop-v1.overlay.json the meeple gift.',
-    ],
-    verdict: 'OBSERVE',
-  };
-}
 
 /** The shipped v31 game, unchanged since 02/09/2026. */
 function cardGame({ pooled }: MeasureContext): Measurement {

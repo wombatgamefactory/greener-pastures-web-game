@@ -1,11 +1,9 @@
-import type { GameData } from '@gp/data';
 import {
   coinGrowReachesFullBuildings,
   coinPaysBuild,
   coinPaysGrow,
   coinPaysSuitCost,
   coinSupplyPerPlayer,
-  isCommonsTakeCoins,
   isNoticeBoardPower,
   storeCoinsPerCard,
 } from '@gp/data';
@@ -20,7 +18,7 @@ import { mean, median, num, pct, sum } from '../stats.js';
  * and it is the BALANCE SHEET: one mint, two sinks, one shared supply, and what
  * is left dead in a wallet at the end.
  *
- * ## ⛔ WHY IT IS A PAGE AND NOT A LINE, WHICH IS a19's ARGUMENT ARRIVING AGAIN
+ * ## ⛔ WHY IT IS A PAGE AND NOT A LINE
  *
  * Every coin economy this project has shipped died of a SECOND FAUCET or a pity
  * rate: the visit wage the bank minted from nothing, the GBP 5 = 1 VP rate, the
@@ -33,26 +31,12 @@ import { mean, median, num, pct, sum } from '../stats.js';
  * have returned a card paid into the exchange to its owner's barn while they
  * kept the coin, a second mint, once a turn, free.
  *
- * ## ⛔ THE TWO COIN ECONOMIES IN THIS CODEBASE ARE NOT THE SAME ECONOMY
+ * ## THE STORE'S EVENTS
  *
- * `coinsMinted` and `coinsSpent` are shared, and the sharing is deliberate: the
- * builder widened the existing events rather than adding new ones, because a new
- * event name breaks `observe.ts`'s exhaustive `Record<GameEvent['e'], boolean>`.
- * So the split has to be read off the fields.
- *
- *  - **The Village Store (V1, this page)** mints ONE CARD AT A TIME out of a
- *    BARN at a delivery: `coinsMinted.board === 'store'`, one event per card,
- *    with `card` naming the barn card that paid. Its sinks are
- *    `coinsSpent.on === 'build'` and `'grow'`.
- *  - **The commons with coins (K3, a19)** mints by clearing a central PILE:
- *    `coinsMinted.board` is a `Suit`. Its sinks are `'farmstead'` and
- *    `'endgame'`.
- *
- * ⛔ NO OVERLAY TURNS BOTH ON, and the two arms pin each other's leaves off by
- * name. a19 is gated on `isCommonsTakeCoins` and this page on
- * `storeCoinsPerCard`, so each says NO SUBJECT where the other is live. ⚠️ If
- * both ever read live at once, this page says so in its first line and every
- * number under it is a fold of two economies.
+ * `coinsMinted` and `coinsSpent` are shared events, so the Store is read off
+ * the fields: `coinsMinted.board === 'store'`, one event per card, with `card`
+ * naming the barn card that paid; its sinks are `coinsSpent.on === 'build'` and
+ * `'grow'`.
  *
  * ## ⛔ NO FAIL CONDITION ANYWHERE, AND NONE WILL BE TAKEN FROM THIS RUN
  *
@@ -138,7 +122,7 @@ export const villageStoreCoin: Assertion = {
     'died of exactly that, and O17 The Fruit Basket had already opened one loop before the ' +
     'rule was a day old.',
   measure(ctx) {
-    if (storeCoinsPerCard(ctx.data) <= 0) return noSubject(ctx.data);
+    if (storeCoinsPerCard(ctx.data) <= 0) return noSubject();
     return storeMode(ctx);
   },
 };
@@ -153,15 +137,11 @@ export const villageStoreCoin: Assertion = {
  * structural zero and printing a dozen of them would read as findings about an
  * economy nobody built.
  */
-function noSubject(data: GameData): Measurement {
-  const other = isCommonsTakeCoins(data)
-    ? '⚠️ THERE ARE COINS IN THIS GAME BUT THEY ARE NOT THESE ONES: ' +
-      'rules.turn.commonsTake is "coins", which is the SEPARATE commons-with-coins arm of ' +
-      '10/09/2026 (K3/K7) whose mint clears a central pile and whose sinks are the Farmstead ' +
-      'and the Endgame cards. a19-coin-economy owns that whole balance sheet.'
-    : 'There is no currency in this game at all. Coins were deleted from the shipped game with ' +
-      'v31 on 02/09/2026 and the only two things that have minted one since are arms: ' +
-      'rules.turn.commonsTake "coins" (a19) and this one.';
+function noSubject(): Measurement {
+  const other =
+    'There is no currency in this game at all. Coins were deleted from the shipped game with ' +
+    'v31 on 02/09/2026 and the only two things that have minted one since are arms: ' +
+    'rules.turn.commonsTake "coins" (a19) and this one.';
   return {
     value: NaN,
     headline:
@@ -289,19 +269,7 @@ function storeMode({ data, pooled }: MeasureContext): Measurement {
   const seatLine = (f: (x: Totals) => number) =>
     bySeat.map((s) => `${s.seats}p ${num(s.t.seatGames === 0 ? NaN : f(s.t), 2)}`).join('  ');
 
-  const bothEconomies = isCommonsTakeCoins(data);
-
   const detail = [
-    ...(bothEconomies
-      ? [
-          '⛔⛔ BOTH COIN ECONOMIES ARE LIVE IN THIS RUN AND THAT IS NOT A CONFIGURATION ANY ' +
-            'OVERLAY SHIPS. rules.economy.storeCoinsPerCard is above 0 AND rules.turn.commonsTake ' +
-            'is "coins", so `coinsMinted` and the wallet are carrying two different mints at ' +
-            'once. a19 and this page are both reading, and every shared counter below (the dead ' +
-            'coins above all) is a fold of two economies. DO NOT QUOTE ANY NUMBER ON EITHER PAGE ' +
-            'UNTIL THE OVERLAY IS FIXED.',
-        ]
-      : []),
     `⭐ 1. THE MINT (V1), AND IT IS THE ONLY FAUCET IN THE GAME: ${t.cards} barn cards ` +
       `converted over ${games.length} ended games, ${num(per(t.cards), 2)} per player per ` +
       `game, paying ${num(per(t.coins), 2)} coins per player per game at ` +

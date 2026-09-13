@@ -83,42 +83,6 @@
  *     under R15 that is what it is. It is set by ARGUMENT, like `MEEPLE_LATENT`
  *     and `meepleGain` before it, and it is not overlay-addressable.
  *
- * ## ⭐ THE COMMONS (09/09/2026) - ONE CLAIM ADDED TO FIVE TERMS, NO NEW TERM
- *
- * `rules.turn.visitCurrency: 'commons'` is the shipped default and it is the
- * FIRST of these passes that is not an arm: the meeple game and the v31 card
- * visit are the controls now. The bonus slot holds one option, a card from hand
- * onto one of the five central boards (C3), and the striking thing from this
- * file's side is how little it asks for. A commons play is a v31 visit with the
- * host deleted: a card leaves the hand, a door runs, and the whole-extra-action
- * premium is due. So the terms that priced THAT price this, by claiming one more
- * move type:
- *
- *   - **`handSpend`** charges the fee, at the same 2.5 it charged a v31 visit's.
- *   - **`visitFeeJunk`** orders WHICH card pays it. "Your junk is their
- *     treasure" becomes "your junk is the table's treasure", which is a better
- *     fit than it was: the pile is public and anybody may harvest it (C5).
- *   - **`outcome`** rolls the board's action out, which is the only way to tell
- *     a Harvest board from a Draw board.
- *   - **`bonusAction`** pays the action premium when the board resolves
- *     something.
- *   - **`visit`** claims it, at weight 0 in the reference and moved only by the
- *     `hermit` and `socialite` controls - see `weights.ts`.
- *
- * ⭐ **AND `harvest` LEARNED TO SEE THE CENTRE, WHICH IS THE ONE CHANGE THE
- * HANDOFF DID NOT ASK FOR.** A harvest may now take a whole central pile (C5),
- * and `stackOf` reads the seat's own tableau - so without a fallback every
- * central harvest scored a flat 0, the bots would never have taken one, and
- * a18's "barn cards from the centre" would have read zero as a fact about the
- * instrument. `commonsPileSize` is that fallback and it is gated by the engine's
- * own `commonsBoardSuit`, which answers null outside the commons, so both
- * controls are untouched.
- *
- * ⛔ **THREE TERMS LOSE THEIR SUBJECT AND ARE LEFT EXACTLY AS THEY ARE**:
- * `selfVisit` (no host, so no solitaire branch to separate), `clogOwnBoard` (no
- * board is yours and none can ever fill, C4) and `visitFeeOwnCrop` (the
- * magpie's disposal lane - see its own entry, because that one is a real cost).
- *
  * ## ⭐ THE NOTICE-BOARD VISIT (11/09/2026) - ONE NEW TERM, AND IT IS THE FIRST
  * TIME THIS PACKAGE HAS PRICED SOMETHING A RIVAL GETS
  *
@@ -140,8 +104,7 @@
  *
  * ⭐ **`visitFeeOwnCrop` IS RE-OPENED**, which is a comment change and not a
  * code one: it never stopped claiming `'visit'`, it simply had no fee to rank
- * under the meeple arm and was deliberately not extended to the commons. See
- * its own entry.
+ * under the meeple arm. See its own entry.
  *
  * ⛔ **`clogOwnBoard` AND `unclogBoard` ARE GUARDED OFF BY S8, AND THAT IS A
  * REAL CHANGE.** The Notice Board's threshold is `3+`: three is the minimum
@@ -158,58 +121,11 @@
  * is the ledger's C64, and it has bitten three designs running. Its weight is
  * MEASURED and not argued; the method and the sample are at its entry in
  * `weights.ts`.
- *
- * ## ⭐ DEAN'S UNCLAIMED-BOARDS VARIANT (ruled 11/09/2026) - NO NEW TERM, NO
- * NEW WEIGHT, AND ONE REAL BUG FIXED IN EACH OF TWO FILES
- *
- * `overlays/notice-board-visit-unclaimed-v1.overlay.json`:
- * `rules.turn.selfVisitAllowed` false AND
- * `rules.economy.unclaimedBoardsToCentre` true. Self-visiting is banned, and the
- * Notice Board of every suit NO PLAYER IS FARMING stands ownerless in the middle
- * with a public pile, so **every seat faces exactly FOUR targets at every player
- * count** - (seats - 1) rivals' boards plus (5 - seats) central ones.
- *
- * ⛔ **THE ONE THING THAT MAKES THIS PASS DIFFERENT FROM YESTERDAY'S IS THAT
- * BOTH MOVE KINDS ARE LIVE AT ONCE**, sharing one bonus slot: a play onto a
- * RIVAL's board is the v31 `visit` move, and a play onto a CENTRAL board is the
- * `commons` move that has been in the engine since 09/09/2026. A central board
- * grants the same amplified printed S12 power its owned twin grants (the
- * manager's ruling of 11/09/2026: same card, same power, no rules exception),
- * and any seat may Harvest a central pile at `commonsHarvestMin` (3) or more.
- *
- * ⭐ **SO THE DECISIVE NUMBER OF THE WHOLE PASS IS THE CENTRAL-VERSUS-RIVAL
- * SPLIT, AND THIS FILE IS WHERE IT IS PRICED.** Five terms fire identically on
- * the two kinds and are what makes them comparable at all - `handSpend` (2.5 for
- * the one card either way; a wild pair cannot exist here, `doCommons` throws),
- * `visitFeeJunk` (0.3, which card pays), `outcome` (the power, rolled out),
- * `bonusAction` (2.4, and only on a rollout that resolves something) and `visit`
- * (0 in the reference, and it counts BOTH kinds as one, so `socialite` at 8 and
- * `hermit` at -100 push on the slot rather than on the split). **The only term
- * that separates them is `hostGift`, at -1.5 on a rival visit and structurally
- * zero on a central play, because a central board has no host and nothing is
- * handed to anybody.** That is the honest arithmetic of the variant's own
- * headline risk - a central board is socially free and a rival's board is not -
- * and it is left standing rather than neutered. See its entry.
- *
- * ⛔ **THE ONE GENUINE BUG IN THIS FILE WAS `commonsPileSize`**, which asked a
- * `data`-only question and therefore priced every central pile at ZERO under
- * this variant. See its own entry: it is the 09/09/2026 village-green defect
- * returning in a new place, and **every reading about the centre in this pass
- * depends on the fix.** Its twin in `outcome.ts` is the `harvested` event's
- * unclog leg, which was paying 6 for an owner's harvest of a board that cannot
- * clog - guarded there on the same `noticeBoardClogs` boolean this file's two
- * move terms already read.
- *
- * ⚠️ **`selfVisit` AND `clogOwnBoard` HAVE NO SUBJECT AND ARE NOT TOUCHED**:
- * the ban means the engine never enumerates a self-visit, so `act.self` is false
- * for every visit in the game, and `clogOwnBoard` is off the `noticeBoardClogs`
- * boolean as it is under the whole notice-board family.
  */
 
 import type { GameData, Suit } from '@gp/data';
 import { deliveryVp, endgameCoinCost, hostDrawOnVisitAt } from '@gp/data';
 import type { CardId, Move, MoveType } from '@gp/engine';
-import { commonsBoardCard, hasCentre } from '@gp/engine';
 
 import type { Act } from './acts.js';
 import { spendSize } from './acts.js';
@@ -264,76 +180,6 @@ function stackOf(s: Scratch, building: CardId): number {
   return s.buildings.get(building)?.stack.length ?? 0;
 }
 
-/**
- * ⭐ **CARDS ON A CENTRAL PILE, OR 0 FOR ANYTHING THAT IS NOT ONE** (C5,
- * 09/09/2026) - the commons' half of `stackOf`, kept separate from it because
- * only ONE term may read it.
- *
- * A central board is not in anybody's tableau, so `stackOf` answers 0 for all
- * five and every term built on it (`fillsBuilding`, `growCompletes`,
- * `sowCompletes`) stays correct by construction: nothing is ever sown onto a
- * central board and none of them has a threshold to fill (C4). The one term that
- * WOULD be wrong is `harvest`, because a harvest may take a whole pile, and a
- * flat 0 there is not a small mispricing - it is a bot that never harvests the
- * centre at all, reporting the centre as unused when the instrument simply could
- * not see it.
- *
- * ⛔ **IT USED TO ASK THE ENGINE'S `commonsBoardSuit`, WHICH IS `data`-ONLY AND
- * ANSWERS NULL OUTSIDE `visitCurrency: 'commons'` - AND THAT WENT BLIND ON
- * 11/09/2026.** Under Dean's unclaimed-boards variant there is a centre under
- * `'noticeBoardPower'` as well, so every central pile priced at a flat 0 and
- * **the bots would never have harvested one**: the farm-bypass split, the
- * central piles' median size at harvest and a20's stall would all have read the
- * instrument rather than the rules. ⚠️ **This is the EXACT defect that was
- * found and fixed for the village green on 09/09/2026, returning in a new
- * place** - the bots knew how to value emptying their own building and had
- * never seen a pile with no owner.
- *
- * ⭐ **IT IS NOW THE VIEW-SIDE TWIN OF THE ENGINE'S `centralPileSuit`
- * (query.ts, 11/09/2026), WHICH IS THE STATE-AWARE QUESTION AND THE ONE EVERY
- * RULE SHOULD ASK.** It cannot simply CALL it: that function takes a
- * `GameState`, and this package may not see one (see `index.ts` - a policy gets
- * a `PlayerView` and a `Prober` and nothing else). So the logic is mirrored
- * here off the one authority both halves agree on, **the commons zone's own
- * keys**, which is exactly what `centralPileSuit` reads rather than
- * re-deriving which suits are unfarmed:
- *
- *   - under the commons the zone carries all five colours (C1), so walking its
- *     keys gives the same answer `commonsBoardSuit` gave, id for id;
- *   - under the unclaimed-boards variant it carries only the suits NO SEAT IS
- *     FARMING, so W3 answers `wheat` when nobody farms Wheat and **null when
- *     somebody does** - because then it is that seat's own building and a
- *     harvest of it must stay a tableau harvest priced off the tableau;
- *   - under every other currency there is no zone at all (`commonsZone` returns
- *     `{}`), so `view.commons` is absent and this answers null for every id,
- *     which is what keeps the v31 and meeple controls byte-identical.
- *
- * `hasCentre` is belt and braces rather than the gate - the zone's presence is
- * already the same predicate - and it is read anyway so that the question this
- * asks has the engine's own spelling.
- *
- * The piles are fully public in the view (they were played face up), so there
- * is no sight question either.
- */
-function centralPileSuitOfView(s: Scratch, building: CardId): Suit | null {
-  const boards = s.view.commons?.boards;
-  if (boards === undefined || !hasCentre(s.data)) return null;
-  // The catalogue's order, so the walk is identical for every seat and every
-  // run, exactly as `centralBoardSuits` is. An ABSENT key is a board that is
-  // not in the centre at all; the two are never conflated.
-  for (const colour of s.data.cards.suits) {
-    if (boards[colour] === undefined) continue;
-    if (commonsBoardCard(s.data, colour) === building) return colour;
-  }
-  return null;
-}
-
-function commonsPileSize(s: Scratch, building: CardId): number {
-  const colour = centralPileSuitOfView(s, building);
-  if (colour === null) return 0;
-  return s.view.commons?.boards[colour]?.length ?? 0;
-}
-
 function thresholdOf(s: Scratch, building: CardId): number | null {
   const view = s.buildings.get(building);
   return view ? thresholdOfView(s.data, view) : null;
@@ -377,13 +223,6 @@ function cardMoveSpend(payload: Record<string, unknown>): CardId | null {
  * the coin branch, so **every visit is now worth exactly what its door does**
  * and every one of them is rolled out.
  *
- * ⭐ `commons` IS ON IT FOR EXACTLY THE VISIT'S REASON (09/09/2026). A commons
- * play buys a DOOR ACTION, and a Harvest board, a Draw 2 board and a Build board
- * are three completely different moves wearing one label. It is the ONLY bonus
- * option the shipped game has (C9), so the whole of the bonus slot's arithmetic
- * now runs through this rollout - which also makes `outcome` the one term that
- * can tell a board worth playing to from a board that would do nothing.
- *
  * ⭐ `spendMeeple` IS ON THIS LIST FOR THE SAME REASON, and it is the single
  * most important entry for the v31 report. A meeple is a stored action; what it
  * is worth is what that action does in this position, and nothing else. A flat
@@ -422,17 +261,10 @@ function cardMoveSpend(payload: Record<string, unknown>): CardId | null {
  * meeple as a move term and `priceEvent` prices the same meeple as an event, and
  * only the fact that a delivery is never probed keeps those two from both firing.
  */
-// ⭐ DEAN'S VARIANT (09/09/2026, commonsTake: 'bonus') PUTS `commonsTake` ON
-// THIS LIST TOO: what a take is worth is a fact about the position - which
-// cards sit in that pile right now - not a fixed count the way
-// `rules.turn.bonusDraw` is, so it rolls out through the same `outcome` term
-// rather than a flat feature.
 function isProbed(act: Act): boolean {
   switch (act.a) {
     case 'grow':
     case 'visit':
-    case 'commons':
-    case 'commonsTake':
     case 'spendMeeple':
     case 'cardMove':
     case 'balloon':
@@ -592,27 +424,6 @@ function cardsLeavingHand(act: Act): number {
     // the two can never disagree.
     case 'visit':
       return act.fee === null ? 0 : 1;
-    // ⭐ THE COMMONS FEE (C3): always exactly one card, never null, and the fee
-    // is EXTRA in every case - a Build board still pays the build's own cost on
-    // top, which arrives through the rollout as the `built` event's payment.
-    //
-    // ⭐ **UNLESS IT IS A WILD PAIR, WHICH IS TWO (K3, 10/09/2026).** This line
-    // hard-coded `return 1` until the pair was built, and the comment beside
-    // `commonsPlayed` in `outcome.ts` said the fee was "charged once by the
-    // `handSpend` MOVE term" - both were right about a slot that could only ever
-    // take one card. Two cards of any colours now stand in for one of the
-    // board's colour and BOTH leave the hand, so a pair that read 1 here would
-    // be half price to the bot and it would take pairs it should have refused.
-    // Gated on the ACT's shape (`fee2` present) rather than on the two knobs, so
-    // the two can never disagree.
-    case 'commons':
-      return act.fee2 === undefined ? 1 : 2;
-    // ⭐ DEAN'S 'paid' VARIANT (09/09/2026): `fee` is present only under that
-    // value, exactly as `visit`'s fee is present only under 'card' - gated on
-    // the ACT rather than on the knob so the two can never disagree. `'bonus'`
-    // and `'spend'` pay no fee, so a take there spends no hand card.
-    case 'commonsTake':
-      return act.fee !== undefined ? 1 : 0;
     case 'sow':
       return 1;
     case 'cardMove':
@@ -691,10 +502,9 @@ const HOST_GIFT_LEADER_TILT = 0;
  * ⚠️ **THE CONTROL'S CHARGE IS 1.5 TO FIFTEEN DECIMAL PLACES AND NOT TO
  * SIXTEEN** (`(1.5 / 2.7) * 2.7` is 1.4999999999999998), which is stated rather
  * than hidden. Nothing in this project asserts a notice-board number byte for
- * byte - the nine @gp/sim fixtures are the shipped commons, the v31 card visit
- * and the meeple arms, where this whole term is structurally zero - so the
- * residue reaches no fixture. If a notice-board fixture is ever minted, mint it
- * after this line and not before.
+ * byte except the notice-board opening fixtures in @gp/sim, which were minted
+ * after this line; the v31 card visit and meeple fixtures are structurally zero
+ * here.
  */
 const HOST_GIFT_FEE = 1.5;
 const HOST_GIFT_DRAW = 1.2;
@@ -762,11 +572,7 @@ export const TERMS: readonly Term[] = [
      * and what a Power card costs. Everything the bot spends, it spends here.
      */
     name: 'handSpend',
-    // ⭐ `commonsTake` JOINS THE LIST (09/09/2026, `commonsTake: 'paid'`): the
-    // only thing that prices the fee's cost, exactly as it does `commons`'s -
-    // `cardsLeavingHand` reads 0 for a take under `'bonus'`/`'spend'`, so this
-    // is a no-op there.
-    claims: ['build', 'grow', 'visit', 'commons', 'commonsTake', 'cardMove', ...ACTION_AND_TASK],
+    claims: ['build', 'grow', 'visit', 'cardMove', ...ACTION_AND_TASK],
     feature: (act, s) => -handSpendCost(s, cardsLeavingHand(act)),
     cost: true,
   },
@@ -861,22 +667,7 @@ export const TERMS: readonly Term[] = [
      * profile goes blind to three of the five things v31 changed.
      */
     name: 'outcome',
-    claims: [
-      'grow',
-      'visit',
-      // ⭐ THE COMMONS (09/09/2026). Under the shipped default this term is the
-      // ONLY thing that can see what the bonus slot buys, because the slot holds
-      // exactly one option and its whole value is the board's action.
-      'commons',
-      // ⭐ DEAN'S VARIANT'S TAKE (09/09/2026, commonsTake: 'bonus'): the only
-      // thing that can see what a take is actually worth, on the same footing
-      // as `commons` above - a rollout, priced through `cardsToHand`.
-      'commonsTake',
-      'spendMeeple',
-      'cardMove',
-      'moveBalloon',
-      ...ACTION_AND_TASK,
-    ],
+    claims: ['grow', 'visit', 'spendMeeple', 'cardMove', 'moveBalloon', ...ACTION_AND_TASK],
     feature: (act, _s, move, o) => (isProbed(act) ? o.value(move) : 0),
   },
 
@@ -1093,48 +884,26 @@ export const TERMS: readonly Term[] = [
     cost: true,
   },
 
-  // --- the coins (the commons-with-coins arm, K7-K15, 10/09/2026) -----------
+  // --- the coins (K7-K15, 10/09/2026, and the Village Store) ----------------
   {
     /**
-     * ⭐ **WHAT A COIN IS WORTH, AND THIS TERM'S MOVE-SIDE FEATURE IS ZERO ON
-     * PURPOSE** (K3/K8, Dean 10/09/2026).
+     * ⭐ **WHAT A COIN IS WORTH** (K8, Dean 10/09/2026; the Village Store, V1,
+     * A150, 12/09/2026).
      *
-     * The only mint in the game is clearing a central pile: `commonsTake` under
-     * `rules.turn.commonsTake: 'coins'` discards the whole pile to its suits'
-     * discards and pays one coin per card. That move is on `isProbed`, so what
-     * it is worth arrives INSIDE THE ROLLOUT as `coinsMinted`, priced at this
-     * weight by `outcome.ts`. Charging it here as well would pay the seat twice
-     * for one pile - which is the exact trap `meepleSpent` names in that file,
-     * and the same probed / unprobed split `meeplesLeavingSupply` is built on.
-     *
-     * So why does the term exist at all? Because `checkWeightTable` holds both
-     * ways: every weight must name a real term and every term must have a
-     * weight, and the pricer reads its numbers out of the same table by term
-     * name (`weight(w, 'coinWorth')`). A term is how a number gets INTO that
-     * table. It claims `commonsTake` rather than nothing, because that is the
-     * move the number is about, and a reader who greps for where a coin is
-     * earned should land on the mint's own move type.
+     * `checkWeightTable` holds both ways: every weight must name a real term and
+     * every term must have a weight, and the pricer reads its numbers out of the
+     * same table by term name (`weight(w, 'coinWorth')`), including for a
+     * `coinsMinted` event reached inside a rollout.
      *
      * ⚠️ **IF A SECOND MINT IS EVER ADDED, THIS IS WHERE IT GOES** - and read
      * K7 first, because every earlier coin economy in this project died of a
      * second faucet.
      *
-     * ## ⭐ AND ONE WAS - THE VILLAGE STORE (V1, A150, Dean 12/09/2026)
-     *
-     * It is a different economy and not a second faucet in the same one: no
-     * overlay turns `storeCoinsPerCard` and `commonsTake: 'coins'` on together,
-     * and the arms pin each other's leaves off by name. **Its mint is the only
-     * source of a coin in every Store arm.**
-     *
-     * ⛔ **AND IT IS THE FIRST MINT IN THIS PROJECT THAT IS NOT PROBED, WHICH
-     * IS WHY THIS FEATURE STOPPED BEING ZERO.** K3's mint rides on a
-     * `commonsTake`, an act on `isProbed`, so its coin arrives inside the
-     * rollout as `coinsMinted` and charging it here as well would pay the seat
-     * twice. The Store's mint is a `mint` TASK, answered one card at a time - a
-     * repeated binary choice rather than the power set of the barn - and a task
-     * answer is not probed, so **`coinsMinted` never reaches a pricer for it and
-     * this is the only place left to credit it.** The two routes are disjoint in
-     * the same way `coinSpend`'s two are: no decision can see both.
+     * ⛔ **THE STORE'S MINT IS NOT PROBED, WHICH IS WHY THIS FEATURE IS NOT
+     * ZERO.** It is a `mint` TASK, answered one card at a time - a repeated
+     * binary choice rather than the power set of the barn - and a task answer is
+     * not probed, so **`coinsMinted` never reaches a pricer for it and this is
+     * the only place to credit it.**
      *
      * ⛔ **A MINT ANSWER SCORED +1 AGAINST A SKIP AT -1 BEFORE THIS**, on
      * `cardTask`'s flat taste for taking an optional offer, so every bot
@@ -1146,7 +915,7 @@ export const TERMS: readonly Term[] = [
      * `barnSpend` for the card, `mintStrands` for the card that was not spare.
      */
     name: 'coinWorth',
-    claims: ['commonsTake', ...ACTION_AND_TASK],
+    claims: ACTION_AND_TASK,
     // Exactly one coin per answer, by rule: V1's exchange is one card for GBP 1
     // and the task is re-bounded at every answer against the shared supply (D4).
     feature: (act, s) => (mintSuit(act, s) === null ? 0 : 1),
@@ -1308,34 +1077,11 @@ export const TERMS: readonly Term[] = [
   // --- the barn supply line -------------------------------------------------
   {
     /**
-     * Cards into the barn, and since 09/09/2026 from either of two places.
-     *
-     * ⭐ **A CENTRAL PILE COUNTS EXACTLY AS A STACK DOES (C5)**, which is the
-     * ruling stated in the bots' own currency: a harvest is worth the cards it
-     * moves, and where they came from changes nothing about how many arrive. The
-     * fallback runs only when `stackOf` finds nothing, so a building in the
-     * seat's own tableau can never be double-read, and `commonsPileSize` is null
-     * outside the commons so both controls price this line exactly as they did.
-     *
-     * ⚠️ **IT DELIBERATELY DOES NOT PREFER THE CENTRE, OR THE FARM.** A18 asks
-     * whether the centre out-supplies the farm ("if the centre out-supplies the
-     * building engine, the building engine is decoration"), and an instrument
-     * with a taste either way would answer its own question. What separates the
-     * two here is only the pile sizes, which is the rule.
-     *
-     * ⭐ **AND SINCE 11/09/2026 THE FALLBACK RUNS UNDER DEAN'S UNCLAIMED-BOARDS
-     * VARIANT TOO, WHICH IS THE WHOLE REASON `commonsPileSize` WAS RE-POINTED.**
-     * A central pile there may only be taken at `commonsHarvestMin` (3) or more,
-     * by ANYBODY, so the engine simply does not offer a shallower one and this
-     * feature never has to know the floor - it prices what the harvest moves,
-     * which at three or more is three or more. ⚠️ **An owned Notice Board is
-     * still a tableau harvest priced off `stackOf`**, and the two can never
-     * collide: a suit is either one seat's or central, never both.
+     * Cards into the barn: a harvest is worth the cards it moves.
      */
     name: 'harvest',
     claims: ['harvest', ...ACTION_AND_TASK],
-    feature: (act, s) =>
-      act.a === 'harvest' ? stackOf(s, act.building) || commonsPileSize(s, act.building) : 0,
+    feature: (act, s) => (act.a === 'harvest' ? stackOf(s, act.building) : 0),
   },
   {
     /**
@@ -1368,8 +1114,7 @@ export const TERMS: readonly Term[] = [
     // `s.noticeBoard` when that field named the only board there was; that
     // field now names the seat's OWN SUIT'S board specifically, so left alone
     // this term would have paid 6 for one of the two and nothing for the other.
-    // `noticeBoards` holds one entry in every other game and none under the
-    // commons, so no control moves.
+    // `noticeBoards` holds one entry in every other game, so no control moves.
     feature: (act, s) =>
       s.noticeBoardClogs && act.a === 'harvest' && s.noticeBoards.has(act.building) ? 1 : 0,
   },
@@ -1800,18 +1545,8 @@ export const TERMS: readonly Term[] = [
      * board grants, and whether the card clogs a board you need.
      */
     name: 'visit',
-    // ⭐ IT CLAIMS THE COMMONS PLAY TOO (09/09/2026), and the claim is what
-    // makes `hermit` and `socialite` mean anything under the shipped default.
-    // A commons play is this term's subject in every sense that survived the
-    // host: it is the cross-table half of the bonus slot, it is the move
-    // `a18-commons-traffic` counts, and it is the only thing a profile with a
-    // taste for using the table could have a taste FOR.
-    claims: ['visit', 'commons'],
-    // ⚠️ `!act.self` HAS NO COMMONS TWIN AND NEEDS NONE. There is no host, so
-    // there is no solitaire branch sharing the slot to exclude - the whole of
-    // C9 is that the slot holds one option. A commons play is therefore always
-    // "the cross-table one" and always scores 1.
-    feature: (act) => (act.a === 'commons' || (act.a === 'visit' && !act.self) ? 1 : 0),
+    claims: ['visit'],
+    feature: (act) => (act.a === 'visit' && !act.self ? 1 : 0),
   },
   {
     /**
@@ -1837,9 +1572,8 @@ export const TERMS: readonly Term[] = [
      * ## ⛔ THE ZERO IS LOAD-BEARING AGAIN (11/09/2026), AND THIS IS WHAT IT
      * ASSERTS
      *
-     * It was a dead knob under the commons: no board belongs to anybody, so
-     * "your own board" named nothing and `act.self` was false for every visit
-     * the engine could enumerate. S6 rules self-use back IN - you may play your
+     * It was a dead knob under the commons of 09/09/2026, where no board belonged
+     * to anybody. S6 rules self-use back IN - you may play your
      * card onto your OWN Notice Board and take your own board's power - so the
      * term has a subject for the first time since 03/09/2026, and a weight of 0
      * is now an assertion about how the arm's headline number gets made.
@@ -1972,17 +1706,7 @@ export const TERMS: readonly Term[] = [
      * that moves under it.
      */
     name: 'bonusAction',
-    claims: ['visit', 'commons'],
-    // ⭐ AND IT IS DUE ON A COMMONS PLAY (09/09/2026), for the reason it is due
-    // on a visit: the board buys a whole core action, the fee is EXTRA in every
-    // case (C3), and a one-ply rollout prices the goods an action produces and
-    // never the fact that it IS one. The guard is the same and does the same
-    // work - a Harvest board with nothing full, a Deliver board with an empty
-    // barn and a Build board with nothing affordable roll out at zero or less,
-    // earn nothing, and stay untaken. ⚠️ That guard is now load-bearing on
-    // Dean's own verdict band (a17 FAILs outside 30-60% of turns): this is the
-    // one weight in the table that could manufacture a play rate, and 0 is its
-    // control arm.
+    claims: ['visit'],
     // ⭐ UNCHANGED BY THE MEEPLE-LOOP ARM, ON PURPOSE. A visit still buys a
     // whole core action, whatever paid for it, so the premium still fires and
     // still only on a door that resolves something. It does NOT fire on Collect:
@@ -1991,7 +1715,7 @@ export const TERMS: readonly Term[] = [
     // an action premium on the arm's solitaire line would hand the bonus mix
     // back the answer it was built to measure.
     feature: (act, _s, move, o) =>
-      (act.a === 'visit' || act.a === 'commons') && isProbed(act) && o.value(move) > 0 ? 1 : 0,
+      act.a === 'visit' && isProbed(act) && o.value(move) > 0 ? 1 : 0,
   },
   {
     /**
@@ -2128,44 +1852,6 @@ export const TERMS: readonly Term[] = [
      * Say so in the write-up. Re-arming it for `'card'` is one `||` away the
      * day somebody wants the control re-cut deliberately.
      *
-     * ## ⛔ WHAT IT DOES ON EACH OF THE TWO MOVE KINDS UNDER DEAN'S
-     * UNCLAIMED-BOARDS VARIANT (11/09/2026), STATED EXACTLY
-     *
-     * Both kinds are live at once under
-     * `overlays/notice-board-visit-unclaimed-v1.overlay.json` and they share one
-     * bonus slot, so this is the term that decides the pass's headline split:
-     *
-     *   - **on a `visit` move (a play onto a RIVAL's board): it charges -1.5,
-     *     exactly once, on every one of them.** `s.noticeBoardArm` is true
-     *     (`isNoticeBoardPower`), `act.self` is false for every visit the engine
-     *     will ever enumerate because `rules.turn.selfVisitAllowed` is false, and
-     *     `act.fee` is non-null because a notice-board visit always pays a card.
-     *     So the self-visit branch, which was half of this term's shape
-     *     yesterday, has **no subject** here and the term reduces to a flat
-     *     charge per rival visit.
-     *   - **on a `commons` move (a play onto a CENTRAL board): it reads exactly
-     *     ZERO, on the `act.a !== 'visit'` line, and that is the RULE rather
-     *     than a guard.** A central board is in nobody's tableau, belongs to
-     *     nobody and is harvestable by anybody at three or more, so the card is
-     *     handed to no seat and there is nothing for a gift term to price. ⚠️
-     *     `claims` is deliberately NOT widened to `'commons'`: claims are a
-     *     documentation contract asserted against `MOVE_TYPES`, not a runtime
-     *     gate (every feature runs on every move, see `evaluator.ts`), and a
-     *     claim for a move type this term scores zero on would be a lie in the
-     *     one place a reader checks first.
-     *
-     * ⭐ **AND IT MUST NOT BE NEUTERED TO MAKE THE DESIGN LOOK BETTER.** The
-     * -1.5 asymmetry IS the variant's headline risk expressed as arithmetic: a
-     * central board is socially free and a rival's board is not, so a bot with
-     * this term standing has a 1.5-point standing preference for the centre.
-     * **That is the incentive the rules create and the instrument's job is to
-     * feel it**, not to be talked out of it - and `hostGift: 0` is its control
-     * arm, which reproduces the blind bot exactly, for anybody who wants the
-     * split read with the thumb removed. ⚠️ Read the sweep table in
-     * `weights.ts` before quoting any split: that table was taken on the
-     * self-visit share of a design with no centre, so its numbers do not
-     * transfer, but its lesson does - this weight moves the reading it prices.
-     *
      * ⭐ **AND IT IS THE SAME CHARGE ON EITHER OF A HOST'S TWO BOARDS**
      * (Dean's two-board fix, 11/09/2026, `rules.economy.noticeBoardsBySeats`).
      * At two seats the one rival lays out two, and this term reads `act.host`
@@ -2228,9 +1914,6 @@ export const TERMS: readonly Term[] = [
     claims: ['visit'],
     feature: (act, s) => {
       if (!s.noticeBoardArm) return 0;
-      // ⛔ THE `act.a !== 'visit'` CLAUSE IS WHAT ZEROES A CENTRAL PLAY UNDER
-      // THE UNCLAIMED-BOARDS VARIANT, and it is the first of the three tests
-      // for that reason: a `commons` act never reaches the charge below.
       if (act.a !== 'visit' || act.self || act.fee === null) return 0;
       // ⭐ **S17, AND IT IS THE ONE LINE IN THIS FILE THAT READS THE RULE**
       // (Dean, 11/09/2026, `rules.turn.hostDrawOnVisit`). A visit under the
@@ -2262,18 +1945,7 @@ export const TERMS: readonly Term[] = [
     // take the one that pays with the card you least want. An ordering term and
     // nothing more - `handSpend` charges the card itself.
     name: 'visitFeeJunk',
-    // ⭐ AND IT IS THE COMMONS' FEE ORDERING TOO (09/09/2026, L5). "Your junk is
-    // their treasure" becomes "your junk is the TABLE's treasure", and the idea
-    // survives the loss of the host intact: of two plays worth the same, pay
-    // with the card you least want. It matters more here than it did under v31,
-    // because the fee-suit mix is one of the readings the pass asks for - are
-    // players paying junk? - and an instrument with no ordering at all would
-    // answer that question with a random tie-break.
-    // ⭐ AND `commonsTake` JOINS IT (09/09/2026, `commonsTake: 'paid'`): the
-    // same "pay with the card you least want" ordering, for the one fee the
-    // take can carry. `'bonus'` and `'spend'` pay no fee, so this is a no-op
-    // there (`act.fee` is `undefined`).
-    claims: ['visit', 'commons', 'commonsTake'],
+    claims: ['visit'],
     // ⛔ NO FEE, NO ORDERING (the meeple-loop arm, R1). "Your junk is their
     // treasure" was a statement about a CARD changing hands and the arm stops
     // any card changing hands, so this term loses its subject outright rather
@@ -2281,26 +1953,7 @@ export const TERMS: readonly Term[] = [
     // equal visits is `meepleSpend`: of two doors worth the same, take the one
     // that costs the meeple you can least use. That is the same idea in the new
     // currency, and it needed no new term.
-    // ⭐ AND IT RANKS **BOTH** CARDS OF A WILD PAIR (K3, 10/09/2026). A pair is
-    // one fee paid with two cards, so "pay with the card you least want" becomes
-    // "pay with the two cards you least want" - and it has to, because without
-    // the second card in the rank the bot would pay its junk and then whichever
-    // card enumeration happened to put beside it. The engine offers every
-    // C(hand, 2) pair per board, so this term is the only thing that separates
-    // them: `handSpend` charges a pair by COUNT (2) and prices every pair the
-    // same, and `outcome`'s memo collapses them to one rollout per board
-    // deliberately (see `effectKey`), which leaves this ordering carrying the
-    // whole of the choice.
-    feature: (act, s) => {
-      if (act.a === 'commons') {
-        const first = cardValue(s.data, act.fee);
-        return act.fee2 === undefined ? -first : -(first + cardValue(s.data, act.fee2));
-      }
-      if (act.a === 'commonsTake') {
-        return act.fee !== undefined ? -cardValue(s.data, act.fee) : 0;
-      }
-      return act.a === 'visit' && act.fee !== null ? -cardValue(s.data, act.fee) : 0;
-    },
+    feature: (act, s) => (act.a === 'visit' && act.fee !== null ? -cardValue(s.data, act.fee) : 0),
     cost: true,
   },
   {
@@ -2316,52 +1969,19 @@ export const TERMS: readonly Term[] = [
      * it wants to hand over, and this term must never quietly say otherwise.
      */
     name: 'visitFeeOwnCrop',
-    claims: ['visit', 'commons'],
+    claims: ['visit'],
     // ⭐ **RE-OPENED FOR THE NOTICE-BOARD VISIT (11/09/2026), AND THE OPENING
-    // COST NO CODE.** The comment that stood here said the lane was shut on the
-    // commons handoff's explicit instruction (§2.6) so that the commons' first
-    // measurement was taken with a KNOWN-WEAK magpie: the term was never
-    // extended to claim `'commons'`, so a magpie paying a central pile ranked
-    // its fee by plain junk value like everybody else, and every magpie number
-    // off the commons has to be read knowing it. **That instruction has expired
-    // with its design.** The notice-board visit reuses the `'visit'` move, the
-    // fee lands on a person's Notice Board and the host harvests it into their
-    // barn (S7), so "your junk is their treasure" - L5, and this term is its
-    // only executable half - HAS A SUBJECT AGAIN and the magpie is a real
-    // control once more. VERIFIED by running the arm: the claim and the
-    // feature already fired for a `'visit'` act with a non-null fee, so nothing
-    // below needed changing and only this note did.
-    // ⚠️ **IT STILL DOES NOT CLAIM `'commons'`**, deliberately. The commons is
-    // a shipped control now, and re-arming a magpie lane inside it would move a
-    // control in the same pass as a rule - which is the one thing this project's
-    // paired-arm method depends on not happening. The weakness recorded above
-    // stands for every commons number ever taken.
+    // COST NO CODE.** The notice-board visit reuses the `'visit'` move, the fee
+    // lands on a person's Notice Board and the host harvests it into their barn
+    // (S7), so "your junk is their treasure" - L5, and this term is its only
+    // executable half - has a subject and the magpie is a real control.
     // ⛔ Null fee under the meeple-loop arm, so the magpie's disposal lane is
     // shut with the rest of the fee terms. ⚠️ THE MAGPIE IS THEREFORE A WEAKER
     // CONTROL UNDER THE ARM than it is under the shipped game: it can still
     // acquire a target crop and still refuses to build its own, but it has lost
     // the one move that let it dump own-crop cards for value. Read a magpie
     // number off the arm knowing that, or do not read one.
-    // ⭐ **AND IT REACHES A CENTRAL PLAY UNDER DEAN'S UNCLAIMED-BOARDS VARIANT,
-    // GATED ON `noticeBoardArm`, WHICH IS THE ONE CODE CHANGE THAT PASS MADE TO
-    // A FEE TERM (11/09/2026).** Left as it stood it fired on a play onto a
-    // RIVAL's board and not on a play onto a CENTRAL one, and under that
-    // variant the two kinds share ONE bonus slot and their split is the
-    // decisive number of the whole pass - so a magpie mirror would have carried
-    // a +2 thumb toward the rival side of exactly the reading being taken. The
-    // lane is symmetric by the rules' own logic: an own-crop card is worthless
-    // to a magpie wherever it goes, and "spend the card you can least use" does
-    // not care who ends up harvesting it.
-    // ⛔ **IT STILL DOES NOT FIRE ON A `commons` PLAY UNDER THE SHIPPED COMMONS
-    // ITSELF**, which is what the `noticeBoardArm` gate buys: the commons is a
-    // shipped control, re-arming a magpie lane inside it would move a control in
-    // the same pass as a rule, and the known weakness recorded above stands for
-    // every commons number ever taken. ⚠️ A wild pair cannot exist under the
-    // variant (`doCommons` throws on `fee2`), so one card is the whole fee.
-    feature: (act, s) => {
-      if (act.a === 'commons') return s.noticeBoardArm ? countOwnCrop(s, [act.fee]) : 0;
-      return act.a === 'visit' && act.fee !== null ? countOwnCrop(s, [act.fee]) : 0;
-    },
+    feature: (act, s) => (act.a === 'visit' && act.fee !== null ? countOwnCrop(s, [act.fee]) : 0),
   },
 
   // --- positional, and the turn boundary ------------------------------------

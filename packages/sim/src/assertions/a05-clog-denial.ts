@@ -1,4 +1,4 @@
-import { isCommons, isMeepleCurrency } from '@gp/data';
+import { isMeepleCurrency } from '@gp/data';
 
 import type { Assertion, Measurement, MeasureContext } from './types.js';
 import { NO_REMEDY } from './types.js';
@@ -129,50 +129,9 @@ export const clogDenial: Assertion = {
     'which pins the whole loop rather than one knob of it. Under "commons" there is no lever ' +
     'and none is wanted: nothing refuses a play.',
   measure(ctx) {
-    if (isCommons(ctx.data)) return noSubject();
     return isMeepleCurrency(ctx.data) ? meepleArm(ctx) : cardGame(ctx);
   },
 };
-
-/**
- * ⛔ NO SUBJECT UNDER THE COMMONS (C4, 09/09/2026).
- *
- * Denial was the question "I hold something to spend and there is nowhere to
- * spend it". Under the commons the five central boards have no threshold, hold
- * any number of cards and never clog, so **nothing in the game refuses a play**
- * - the sentence C4 ends on, and the reason this assertion has no object.
- *
- * ⚠️ ONE THING CAN STILL STOP A PLAY AND IT IS NOT DENIAL: a board whose
- * ACTION is illegal for you right now is not offered, which is Dean's standing
- * ruling from the day the doors were introduced and is a statement about your
- * own farm rather than about a rival's. Counting it here would report a seat
- * with an empty barn and no full building as having been DENIED the commons,
- * which is exactly the conflation the "usable" gate exists to prevent under the
- * meeple arm. `observe.ts` therefore does not sample the probe at all under this
- * mode rather than sampling it against the wrong predicate.
- *
- * ⛔ NOTHING IS DELETED: both controls exercise both branches above.
- */
-function noSubject(): Measurement {
-  return {
-    value: NaN,
-    headline:
-      'NO SUBJECT UNDER THE COMMONS: nothing in the game refuses a play (C4). A central board ' +
-      'has no threshold, holds any number of cards and can never clog.',
-    detail: [
-      'A board whose ACTION is illegal for you right now is still not offered, but that is a ' +
-        'statement about your own farm - an empty barn, no full building - and not denial by ' +
-        'the table. Counting it here would report a seat that had nothing to do as a seat that ' +
-        'was shut out, which is the conflation the "usable" gate prevents under the meeple arm.',
-      'The probe is not sampled under this mode rather than sampled against the wrong ' +
-        'predicate, so both the numerator and the denominator are empty and this line reads as ' +
-        '"not measured" rather than as a healthy 0%.',
-      'Both branches above are alive and both controls run them: ' +
-        'overlays/v31-card-visit.overlay.json and overlays/meeple-loop-v1.overlay.json.',
-    ],
-    verdict: 'OBSERVE',
-  };
-}
 
 /** The shipped v31 game, unchanged since 02/09/2026. */
 function cardGame({ pooled }: MeasureContext): Measurement {

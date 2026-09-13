@@ -4,16 +4,15 @@
  * the v31 control the arm must not have moved.
  *
  * ⚠️ **THIS FILE WALKS WHOLE GAMES, WHICH THE REST OF THIS PACKAGE'S TESTS
- * DELIBERATELY DO NOT.** The same argument `commons.test.ts` makes at its own
- * head applies here for a sharper reason: the arm reuses the v31 `visit` move,
+ * DELIBERATELY DO NOT.** The arm reuses the v31 `visit` move,
  * so almost every term in `terms.ts` fires for it WITHOUT ANY CHANGE - and a
  * claim that something already works is worth nothing until something has run
- * it. The loop below is the minimal copy of `runGame` that file already keeps.
+ * it. The loop below is a minimal copy of @gp/sim's `runGame`.
  *
  * ⛔ Nothing here may name the engine's truth type, and nothing does.
  *
- * ⚠️ **THE ARM IS RESTATED INLINE RATHER THAN READ OFF ITS OVERLAY**, exactly
- * as `commons.test.ts` restates `bonusTiming: 'end'`, because this package is
+ * ⚠️ **THE ARM IS RESTATED INLINE RATHER THAN READ OFF ITS OVERLAY**, because
+ * this package is
  * platform-free and may not do file I/O. That makes it a COPY OF A PIN, which
  * this project has learned stops being a pin the moment a default moves under
  * it - so it sets only the leaves these cases actually depend on and names them,
@@ -235,11 +234,8 @@ describe('the notice-board visit, the arm', () => {
       const visits = visitsIn(walked.moves);
       expect(visits.self).toBeGreaterThan(0);
       expect(visits.rival).toBeGreaterThan(0);
-      // The centre is deleted (S2) and there are no meeples (S14 carries the
-      // commons' C6 forward), so a stray move of any of these types would mean
-      // a mode gate leaked.
-      expect(walked.moves.filter((m) => m.type === 'commons')).toHaveLength(0);
-      expect(walked.moves.filter((m) => m.type === 'commonsTake')).toHaveLength(0);
+      // There are no meeples (S14), so a stray move of either of these types
+      // would mean a mode gate leaked.
       expect(walked.moves.filter((m) => m.type === 'spendMeeple')).toHaveLength(0);
       expect(walked.moves.filter((m) => m.type === 'collect')).toHaveLength(0);
     });

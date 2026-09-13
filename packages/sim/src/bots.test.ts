@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { BASE_GAME_DATA as data, isCommons, loadGameData } from '@gp/data';
+import { BASE_GAME_DATA as data, isMeepleCurrency, loadGameData } from '@gp/data';
 import type { Overlay, Suit } from '@gp/data';
 import type { CardId, GameState, Move, PlayerView, Seat } from '@gp/engine';
 import { apply, legalMoves, makeProber, newGame, tileLevel, viewFor } from '@gp/engine';
@@ -35,8 +35,8 @@ const OVERLAY_DIR = fileURLToPath(new URL('../../../overlays', import.meta.url))
  * the v31 card visit, the meeple loop - and both are live pinned arms rather
  * than history. They are loaded from disk rather than restated inline for the
  * reason `fixtures.test.ts` records at length: a copy of a pin stops being a pin
- * the moment the default moves under it, and the commons flip moved four leaves
- * at once. `overlays.test.ts` validates that every path in them still addresses
+ * the moment the default moves under it, and the flips of 09/09/2026 and
+ * 13/09/2026 moved several leaves at once. `overlays.test.ts` validates that every path in them still addresses
  * a real knob.
  */
 function control(file: string) {
@@ -48,12 +48,11 @@ function control(file: string) {
  *
  * The archetype cases below are all about the same behaviour - does this bot
  * reach the bonus slot and does it spend it on the table or on itself - and that
- * behaviour has had three spellings in a week: a `visit` card fee (v31), a
- * `visit` meeple onto a rival's slot (the loop), and a `commons` play onto a
- * central board. The CLAIM is mode-independent, so the cases assert it against
- * whichever move type the mode has rather than being duplicated per mode.
+ * behaviour has had several spellings, and since the commons was deleted on
+ * 13/09/2026 every surviving mode spells it `visit`: a card fee (v31), a meeple
+ * onto a rival's slot (the loop), or a card onto a Notice Board.
  */
-const TABLE_MOVE: Move['type'] = isCommons(data) ? 'commons' : 'visit';
+const TABLE_MOVE: Move['type'] = 'visit';
 
 /** A build in either spelling: the main move or its task-answer twin. */
 interface BuildAct {
@@ -185,20 +184,6 @@ function cardIdsIn(move: Move, catalogue: ReadonlySet<CardId>): CardId[] {
   }
 }
 
-/**
- * The five central board CARDS (W3/V3/O3/A3/D3), derived from the catalogue
- * rather than listed, so a renumbered starter cannot desync this test from the
- * engine. Empty under the two controls, where every Notice Board sits in a
- * tableau and is already knowable through it.
- */
-const COMMONS_BOARD_IDS: Record<string, CardId> = isCommons(data)
-  ? Object.fromEntries(
-      data.cards.catalogue
-        .filter((c) => c.slot === 'noticeboard')
-        .map((c) => [c.suit, c.id] as const),
-    )
-  : {};
-
 /** Everything the acting seat is entitled to name: its own, or public. */
 function knowableIds(view: PlayerView): Set<CardId> {
   const ok = new Set<CardId>(view.you.hand);
@@ -207,19 +192,6 @@ function knowableIds(view: PlayerView): Set<CardId> {
     for (const b of rival.tableau) ok.add(b.card);
   }
   for (const pile of Object.values(view.discards)) for (const id of pile) ok.add(id);
-  // ⭐ THE FIVE CENTRAL PILES ARE FULLY PUBLIC (C1, 09/09/2026): "each central
-  // board's pile is face up and public", so every card in one is knowable by
-  // every seat, and so is the board CARD itself - which is what a harvest of the
-  // centre names (C5). Without this the walk failed on
-  // `{type:'harvest',building:'O3'}`, a seat correctly offered the orchard
-  // board it can see sitting in the middle of the table.
-  //
-  // ⚠️ IT IS ADDED HERE RATHER THAN LOOSENING THE CHECK. `view.commons` is
-  // present only under the commons, and the ids it adds are exactly the ones the
-  // rules make public - so the guard is as tight under this mode as under the
-  // other two.
-  for (const pile of Object.values(view.commons?.boards ?? {})) for (const id of pile) ok.add(id);
-  for (const id of Object.values(COMMONS_BOARD_IDS)) ok.add(id);
   // Your own in-flight draw: you have seen these, and `keep` answers name them.
   // Same for your own divert - cards in limbo on their way to a discard, off
   // your own reveal or out of your own hand, which its answers name.
@@ -679,8 +651,7 @@ describe('the decision budget', () => {
       }
 
       /**
-       * ⭐ RE-READ ON 09/09/2026 AGAINST THE COMMONS, AND DELIBERATELY NOT
-       * RE-CUT.
+       * ⭐ RE-READ ON 09/09/2026, AND DELIBERATELY NOT RE-CUT.
        *
        * The two constants are Dean's ten-minute stop line expressed in the two
        * things this test can measure, and **his sentence is about a wall clock,
@@ -690,22 +661,17 @@ describe('the decision budget', () => {
        *
        * ⚠️ WHAT IS STALE IS THE WARNING BAND'S BASELINE, AND IT IS STALE IN
        * THE SAFE DIRECTION. `GAME_SHIPPED` and `DECISION_SHIPPED` are the
-       * 05/09/2026 readings of the MEEPLE ECONOMY, and the commons is expected
-       * to be CHEAPER: it removes the meeple visit enumeration (rival hosts x 5
-       * colours x wild pairs) and adds at most five boards x hand size in the
-       * bonus slot, so the handoff's own instruction is that branching should
-       * FALL and that a rise of more than 2x is a stop-and-look. A baseline
+       * 05/09/2026 readings of the MEEPLE ECONOMY, which was the most expensive
+       * game this project has simulated. A baseline
        * that is too HIGH makes the warning quieter, never louder, so it cannot
        * hide a regression behind a false alarm - it can only fail to shout as
        * early as it might.
        *
-       * ⛔ THEY ARE NOT RE-CUT FROM THIS RUN. A baseline taken from the first
-       * commons run is a snapshot of one machine on one afternoon, and this
+       * ⛔ THEY ARE NOT RE-CUT FROM THIS RUN. A baseline taken from one run is a
+       * snapshot of one machine on one afternoon, and this
        * file's own history is emphatic that a guard which is firing correctly is
        * not a stale constant. The number to re-cut them against is the SUITE
-       * wall clock on `reference-v15` plus `tools/bench-branching.ts`, both of
-       * which are steps 1 and 8 of the handoff's measurement plan and neither of
-       * which has been run.
+       * wall clock on the current reference plus `tools/bench-branching.ts`.
        */
       expect.soft(gameInApplies, `whole game, in applies`).toBeLessThan(GAME_STOP);
       expect
@@ -769,19 +735,15 @@ describe('the archetypes', () => {
        * declines to use it on the table.** Both halves have to hold, and each
        * has been spelled differently three times:
        *
-       *   v31         no visit to a NEIGHBOUR / at least one SELF-visit
-       *   the loop    no visit at all (X5 deletes the self-visit) / one COLLECT
-       *   the commons no commons PLAY at all / ...and there is nothing else
+       *   v31              no visit to a NEIGHBOUR / at least one SELF-visit
+       *   the loop         no visit at all (X5 deletes the self-visit) / one COLLECT
+       *   the notice board no visit at all (self-visiting banned) / ...nothing else
        *
-       * ⛔ THE SECOND HALF CANNOT BE ASSERTED UNDER THE COMMONS, and it is worth
-       * writing down why rather than quietly dropping it. The slot holds exactly
-       * ONE option (C9): no free Draw 1, no Collect, no self-visit. So "reaches
-       * the slot and declines the hook" and "never spends the slot" are the same
-       * event here, and a hermit at `visit: -100` correctly does neither. What
-       * stands in for it is the OFFER: the slot must have been open and legal
-       * for this seat at least once, or the veto is being proved by a bot that
-       * never got the choice - which is the exact weakness the second half
-       * exists to rule out.
+       * ⛔ THE SECOND HALF CANNOT BE ASSERTED WHERE THE SLOT HOLDS ONE OPTION:
+       * under the shipped notice-board visit with self-visiting banned there is
+       * no free Draw 1, no Collect and no self-visit. What stands in for it is
+       * the OFFER: a visit must have been legal for this seat at least once, or
+       * the veto is being proved by a bot that never got the choice.
        */
       let solitaireSlots = 0;
       let offered = 0;
@@ -794,29 +756,28 @@ describe('the archetypes', () => {
           policies: mirror('hermit', seats),
           maxMoves: 1500,
         });
-        // The veto, in whichever spelling this mode uses. Every visit is a
-        // neighbour visit since the loop, and every commons play is a play onto
-        // a shared pile, so in both cases this is the whole of it.
+        // The veto. Every visit is a neighbour visit where self-visiting is
+        // banned, so this is the whole of it.
         expect(
           result.moves.filter((m) => m.type === TABLE_MOVE),
           `${seats} seats`,
         ).toEqual([]);
         solitaireSlots += result.moves.filter((m) => m.type === 'collect').length;
 
-        if (isCommons(data)) {
+        if (!isMeepleCurrency(data)) {
           // Replay and count the decisions at which the slot was actually on
           // offer. A veto nobody was ever asked to exercise is not a control.
           let state = newGame(data, { seed: `hermit-${seats}`, seats, suits });
           for (const move of result.moves) {
-            if (legalMoves(data, state).some((m) => m.type === 'commons')) offered += 1;
+            if (legalMoves(data, state).some((m) => m.type === TABLE_MOVE)) offered += 1;
             state = apply(data, state, move).state;
           }
         }
       }
-      if (isCommons(data)) {
+      if (!isMeepleCurrency(data)) {
         expect(
           offered,
-          'a hermit that was never OFFERED the slot is not a control (C9: the slot holds one ' +
+          'a hermit that was never OFFERED the slot is not a control (the slot holds one ' +
             'option, so there is no solitaire half to assert instead)',
         ).toBeGreaterThan(0);
       } else {
@@ -1027,10 +988,7 @@ describe('the archetypes', () => {
    * ⭐ THE SAME CLAIM IN WHICHEVER SPELLING THE MODE USES (re-pointed
    * 09/09/2026). The socialite's whole identity is that it reaches across the
    * table more than the reference does; what "across the table" IS has changed
-   * three times, and the taste has not. Under the commons it is a card played
-   * onto a central board - `weights.ts` maps the `visit` profile weight onto the
-   * commons move for exactly this reason - so the case reads `TABLE_MOVE` rather
-   * than being duplicated per mode.
+   * several times, and the taste has not, so the case reads `TABLE_MOVE`.
    *
    * ⚠️ It is a SHARE of all moves, not a count, so a mode that resolves more
    * decisions per turn cannot inflate it. And it is deliberately a strict
@@ -1054,9 +1012,9 @@ describe('the archetypes', () => {
    * still points the right way, but socialite won only 6 of 12 same-seed games -
    * a coin flip. ⛔ SO THE EFFECT HAS SHRUNK TO NEAR NOISE, AND THAT IS A DESIGN
    * SIGNAL, NOT A BOT BUG: the likeliest cause is that the one-card balloon
-   * flight, now in every game, competes with the commons play for the same job
-   * of buying an extra action. Read a17 and a18 before trusting the commons'
-   * traffic under the new rules. The strict inequality with no margin is kept,
+   * flight, now in every game, competes with the bonus play for the same job
+   * of buying an extra action. Read a17 and a18 before trusting the traffic
+   * under the new rules. The strict inequality with no margin is kept,
    * for the reason the comment above gives.
    */
   it('makes the socialite reach across the table more than balanced', { timeout: 300_000 }, () => {
@@ -1113,19 +1071,12 @@ describe('the archetypes', () => {
  * instead of borrowing the evaluator's own list and agreeing with it by
  * construction.
  *
- * ⭐ `commons` JOINED ON 09/09/2026 and it is the whole slot under the shipped
- * game (C9). Without it the explain case below failed as "commons scored 1.94
- * against a best of 2.4" - which is the windowed pick working exactly as
- * designed, taking a closing slot over a bigger action that will still be there
- * afterwards, and being reported as a violation because the list this test
- * checks against had not been told the slot had a new name.
- *
  * ⚠️ `collect` IS ON THE LIST TOO, for the meeple controls. The list is every
  * mode's slot pooled, deliberately: a move type that is not legal under the
  * current rules simply never appears, and pooling is what lets one contract
  * sentence cover all three.
  */
-const WINDOW_MOVES: readonly string[] = ['visit', 'bonusDraw', 'collect', 'commons'];
+const WINDOW_MOVES: readonly string[] = ['visit', 'bonusDraw', 'collect'];
 
 describe('explain', () => {
   it('breaks a decision down into terms that sum to its total', () => {

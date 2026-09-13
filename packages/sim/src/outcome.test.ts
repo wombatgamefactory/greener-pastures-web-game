@@ -263,11 +263,6 @@ describe('a pending draw', () => {
    * `'card'` game is a live control (`overlays/v31-card-visit.overlay.json`, and
    * it is that file that still pins `workers.roster.draw.draw` at 3/3), so the
    * case runs there and goes on guarding the same regression.
-   *
-   * ⚠️ AND IT IS NOT THE ONLY PLACE THE TRAP CAN BE SET. The commons Orchard
-   * board is Draw 2 today and `overlays/commons-draw-three.overlay.json` is the
-   * arm that puts it back to 3; if that arm is ever ruled in, this case wants a
-   * commons twin rather than a re-point, for the same reason a08 kept its id.
    */
   const v31 = control('v31-card-visit.overlay.json');
 

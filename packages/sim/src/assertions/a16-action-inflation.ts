@@ -1,4 +1,4 @@
-import { isCommons, isMeepleCurrency } from '@gp/data';
+import { isMeepleCurrency } from '@gp/data';
 
 import type { Assertion } from './types.js';
 import { NO_REMEDY } from './types.js';
@@ -82,36 +82,6 @@ import { num, pct, sum } from '../stats.js';
  * the control's own reading moves under this re-cut exactly as the arm's does,
  * for the same reason - Collect does not exist under `'card'`, but the free
  * Draw 1 (`bonusDrawBySeat`) is excluded there in its place.
- *
- * ## ⭐ THE COMMONS (09/09/2026): THE SAME TWO COUNTERS, AND THE EXCLUDED LINE
- * IS EMPTY
- *
- * A play onto a central board emits `doorUsed` with `via: 'commons'` (D4), so
- * `boughtDoorActionsBySeat` counts it exactly as it counted a card fee and a
- * meeple visit, and NOT ONE LINE OF THE ARITHMETIC HERE CHANGES. That is the
- * whole of what D4 buys: the handoff's own reason for emitting two events rather
- * than one is that action inflation and the door mix go on reading a single
- * field.
- *
- * ⭐ WHAT DOES CHANGE IS THE EXCLUDED LINE, AND IT GOES TO ZERO. There is no
- * Collect and no free Draw 1 under the commons (C9: the slot holds one option),
- * so the "reported apart, never folded in" line has nothing to report. **That
- * makes this the first mode in which the action count and the turn's whole
- * bonus ledger are the same thing**, and it is worth knowing when comparing the
- * number against a control: under `'card'` and `'meeple'` a real slice of bonus
- * activity sits outside this number by design, and under the commons none does.
- *
- * ⚠️ AND THE 1.5 FLOOR IS NOT a08's FLOOR ANY MORE. The whole "why 1.5" argument
- * above is 1.0 (one main action, by rule) plus a08's 0.5 hook floor, and a08 has
- * NO SUBJECT under the commons - there is no neighbour to visit. So the two are
- * no longer the same number seen from two sides, and a FAIL here under the
- * commons is a finding in its own right rather than a08's restated. The number
- * that stands where a08's floor stood is Dean's play-rate band in a17 (30%-60%),
- * and 1.0 + that band is 1.3 to 1.6 - which brackets this assertion's 1.5 target
- * rather than deriving it. ⛔ THE 1.5 IS DELIBERATELY NOT RE-DERIVED FROM THE
- * BAND: it was set on 04/09/2026 for the meeple economy, it is carried unchanged
- * so that the arms stay comparable, and re-cutting it against a17 would make two
- * assertions one.
  */
 const TARGET = 1.5;
 const FAT = 2.5;
@@ -157,7 +127,6 @@ export const actionInflation: Assertion = {
     'remedy belongs to a08 - the door rate is the design, not a knob on this assertion.',
   measure({ data, pooled }) {
     const arm = isMeepleCurrency(data);
-    const commons = isCommons(data);
     const games = pooled.ended;
     const turns = sum(games.map((g) => sum(g.turnsBySeat)));
     const mainActions = sum(games.map((g) => sum(g.mainActionsBySeat)));
@@ -165,20 +134,10 @@ export const actionInflation: Assertion = {
     const actions = mainActions + doorActions;
     // Collect (the arm) or the free Draw 1 (the control) - printed apart, per
     // the handoff's own instruction, never summed into `actions` above.
-    // ⭐ AND IT IS ZERO UNDER THE COMMONS BY CONSTRUCTION (C9), not by
-    // accident: the slot holds one option, so there is no Collect and no free
-    // Draw 1 to hold apart. The label below says so rather than printing a bare
-    // 0 beside a name for a thing that is not in the game.
-    const draws = commons
-      ? 0
-      : arm
-        ? sum(games.map((g) => sum(g.collectsWithMeeplesBySeat) + sum(g.collectsEmptyBySeat)))
-        : sum(games.map((g) => sum(g.bonusDrawBySeat)));
-    const drawLabel = commons
-      ? 'Collects or free Draw 1s (there are neither under the commons - C9)'
-      : arm
-        ? 'collects'
-        : 'free Draw 1s';
+    const draws = arm
+      ? sum(games.map((g) => sum(g.collectsWithMeeplesBySeat) + sum(g.collectsEmptyBySeat)))
+      : sum(games.map((g) => sum(g.bonusDrawBySeat)));
+    const drawLabel = arm ? 'collects' : 'free Draw 1s';
     const value = turns === 0 ? NaN : actions / turns;
 
     const bySeatCount = pooled.bySeats.map((slice) => {
@@ -210,24 +169,17 @@ export const actionInflation: Assertion = {
           'population. 1.0 + a08’s own 0.5 floor is 1.5, so this assertion FAILING is not a ' +
           'second finding - it is a08’s shortfall restated through the turn ledger, and the two ' +
           'should always agree. Read them together; a disagreement between them is a fold bug.',
-        commons
-          ? '⭐ UNDER THE COMMONS A BOUGHT DOOR IS A CARD PLAYED ONTO A CENTRAL BOARD (C3), ' +
-            'counted through doorUsed via "commons" exactly as a card fee and a meeple visit ' +
-            'were counted (D4) - not one line of this arithmetic changed. The EXCLUDED line is ' +
-            'empty for the first time: there is no Collect and no free Draw 1 (C9), so this ' +
-            'number and the turn’s whole bonus ledger are the same thing here, where under ' +
-            'both controls a real slice of bonus activity sits outside it by design.'
-          : arm
-            ? '⚠️ THE UNCAPPED TERM v31 HAD IS GONE UNDER THIS ARM AND STAYS GONE UNDER THIS ' +
-              'RE-CUT. R8 deletes the turn-start meeple spend, so a meeple is only ever spent by ' +
-              'visiting, which this line already counts as a bought door. There is no third route ' +
-              'left to inflate the total, so the 2.5 ceiling is kept as a bug detector rather than ' +
-              'a live concern: reaching it needs A Helping Hand (R11, a second bonus option) on an ' +
-              'implausible share of turns, or a fold error double-counting a door.'
-            : 'Under "card" the free Draw 1 is the excluded line, the same way Collect is ' +
-              'excluded under the arm - the bonus slot can still buy a door (a card fee, or a ' +
-              'self-visit) and that is what is counted; a Draw 1 never was a core action and ' +
-              're-cutting this assertion is what stopped it reading as one.',
+        arm
+          ? '⚠️ THE UNCAPPED TERM v31 HAD IS GONE UNDER THIS ARM AND STAYS GONE UNDER THIS ' +
+            'RE-CUT. R8 deletes the turn-start meeple spend, so a meeple is only ever spent by ' +
+            'visiting, which this line already counts as a bought door. There is no third route ' +
+            'left to inflate the total, so the 2.5 ceiling is kept as a bug detector rather than ' +
+            'a live concern: reaching it needs A Helping Hand (R11, a second bonus option) on an ' +
+            'implausible share of turns, or a fold error double-counting a door.'
+          : 'Under "card" the free Draw 1 is the excluded line, the same way Collect is ' +
+            'excluded under the arm - the bonus slot can still buy a door (a card fee, or a ' +
+            'self-visit) and that is what is counted; a Draw 1 never was a core action and ' +
+            're-cutting this assertion is what stopped it reading as one.',
         '⚠️ THIS IS A REDEFINITION, NOT A RE-DERIVATION. `actionsBySeat` in observe.ts (and the ' +
           'reading `report.ts` prints from it) is untouched and still pools the main action, ' +
           'every door, every Collect and every free Draw 1 - this assertion simply no longer ' +
@@ -237,19 +189,6 @@ export const actionInflation: Assertion = {
         '⚠️ READ THIS WITH GAME LENGTH. A high rate with a shorter game is the change working ' +
           'as designed; a high rate with an unchanged length means the extra actions went ' +
           'somewhere other than the island, which is the more worrying reading.',
-        ...(commons
-          ? [
-              '⚠️ AND UNDER THE COMMONS THE 1.5 FLOOR IS NOT a08’S FLOOR ANY MORE. The ' +
-                '"why 1.5" argument is 1.0 by rule plus a08’s 0.5 hook floor, and a08 has ' +
-                'NO SUBJECT here - there is no neighbour to visit. A FAIL on this line is ' +
-                'therefore a finding in its own right rather than a08’s restated. What ' +
-                'stands where that floor stood is Dean’s play-rate band in a17 (30%-60%), ' +
-                'and 1.0 plus that band is 1.3 to 1.6 - which BRACKETS the 1.5 target rather ' +
-                'than deriving it. The 1.5 is carried unchanged from 04/09/2026 so the arms ' +
-                'stay comparable, and is deliberately not re-cut against a17: that would make ' +
-                'two assertions one.',
-            ]
-          : []),
       ],
       verdict: !Number.isFinite(value)
         ? 'OBSERVE'

@@ -3,7 +3,6 @@ import {
   hostDrawCapPerRound,
   hostDrawOnVisit,
   hostDrawOnVisitAt,
-  isCommons,
   isMeepleCurrency,
   isNoticeBoardPower,
 } from '@gp/data';
@@ -352,25 +351,21 @@ function hostDrawMode({ data, pooled }: MeasureContext): Measurement {
 
 /**
  * ⭐ NO SUBJECT, naming the mode and pointing somewhere rather than printing a
- * blank - the pattern a08, a18, a19 and a20 all use.
+ * blank - the pattern a08, a18 and a20 all use.
  *
  * The rule pays a HOST, and only one game in this codebase has one. Under the
- * commons every board is ownerless (C1), so there is nobody to pay; under the
  * meeple loop the host is paid in meeples collected back off their own board;
  * under the v31 card game the fee rides to the host's barn on their Harvest,
  * which is the S7 shape S17 amends and not a thing S17 was ever written against.
  */
 function noSubject(data: GameData): Measurement {
-  const why = isCommons(data)
-    ? 'NO SUBJECT UNDER THE COMMONS: the five boards are ownerless (C1), so a play is paid to ' +
-      'nobody and there is no host to draw. a18-commons-traffic carries the centre’s flows.'
-    : isMeepleCurrency(data)
-      ? 'NO SUBJECT UNDER THE MEEPLE LOOP: the host is paid in the meeples they Collect back ' +
-        'off their own board, which is a different payment in a different currency. ' +
-        'a15-meeple-economy carries it.'
-      : 'NO SUBJECT UNDER THE v31 CARD GAME: the fee rides to the host’s barn on their own ' +
-        'Harvest, which is the S7 shape S17 amends rather than a thing S17 competes with. ' +
-        'a02-generosity carries that transfer.';
+  const why = isMeepleCurrency(data)
+    ? 'NO SUBJECT UNDER THE MEEPLE LOOP: the host is paid in the meeples they Collect back ' +
+      'off their own board, which is a different payment in a different currency. ' +
+      'a15-meeple-economy carries it.'
+    : 'NO SUBJECT UNDER THE v31 CARD GAME: the fee rides to the host’s barn on their own ' +
+      'Harvest, which is the S7 shape S17 amends rather than a thing S17 competes with. ' +
+      'a02-generosity carries that transfer.';
   return {
     value: NaN,
     headline: why,

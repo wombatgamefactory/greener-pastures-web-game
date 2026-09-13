@@ -56,9 +56,9 @@ const OVERLAY_DIR = fileURLToPath(new URL('../../../overlays', import.meta.url))
  *
  * ## ⭐⭐ IT HAPPENED A THIRD TIME ON 09/09/2026, AND THIS TIME IT BROKE THE TEST
  *
- * Dean ruled THE COMMONS in as the default. Both controls survive, so both sets
+ * Dean ruled the commons in as the default. Both controls survive, so both sets
  * of logs are still logs of runnable games - but the flip moved FOUR leaves at
- * once (`visitCurrency` to `'commons'`, `bonusTiming` to `'start'`,
+ * once (`visitCurrency`, `bonusTiming` to `'start'`,
  * `startingMeeplesPerColour` to 0, and the Orchard door's printed draw to 2/2),
  * and the two control datas below were built INLINE from a hand-written `set`
  * that named only the knobs the 04/09 and 05/09 flips had moved.
@@ -80,19 +80,12 @@ const OVERLAY_DIR = fileURLToPath(new URL('../../../overlays', import.meta.url))
  * and this test follows for free; a fixture that then fails is a real
  * regression, which is the only thing it was ever supposed to say.
  *
- * ⚠️ **THE SHIPPED RULES STILL HAVE NO FIXTURE OF THEIR OWN, and now there are
- * two versions of that debt.** No `-meeple-economy-` log was ever recorded for
- * the `reference-v14` game, and no `-commons-` log exists for this one.
- * Recording the commons openings needs the bots to enumerate the new move type,
- * so it belongs to the integration step rather than here. The command, for
- * whoever takes it:
+ * ## ⭐ THE COMMONS WAS DELETED ON 13/09/2026
  *
- *     npm run sim -- --replay=<capture> --fixture="a whole {2,3,4}p commons opening"
- *
- * and the file must be named `{2,3,4}p-commons-opening.json` so that `dataFor`
- * below leaves it on `BASE_GAME_DATA`, which IS the commons. Until then the
- * commons is covered by `packages/engine/src/commons.test.ts`, the whole-game
- * walks in `game.test.ts` and the `--audit` bench.
+ * Its six fixtures went with it: a log of a game that can no longer be run is
+ * not a guard. The shipped default is now the Notice Board visit, and the three
+ * unmarked `-notice-board-opening` fixtures record it, captured with
+ * `npm run sim -- --replay=<capture> --fixture="<why>"`.
  */
 function overlayData(file: string) {
   const overlay = JSON.parse(readFileSync(join(OVERLAY_DIR, file), 'utf8')) as Overlay;
@@ -109,25 +102,15 @@ function overlayData(file: string) {
 const V31_CONTROL = overlayData('v31-card-visit.overlay.json');
 const MEEPLE_LOOP_V1 = overlayData('meeple-loop-v1.overlay.json');
 /**
- * ⭐ THE COMMONS BEFORE THE BALLOON AND VILLAGE STORE RULING (12/09/2026). The
- * three `-commons-opening` fixtures were captured against that game; when Dean
- * ruled the new balloons and the Store into the shipped default, that game
- * became an ARM, so - by this file's own convention - its fixtures gained the
- * `-commons-pre-balloons-` marker and replay here, byte-identically, while fresh
- * unmarked `-commons-opening` fixtures record the new shipped game.
- */
-const COMMONS_PRE_BALLOONS = overlayData('commons-pre-balloons-v1.overlay.json');
-
-/**
  * ⚠️ A FILE WITH NO MARKER REPLAYS AGAINST THE SHIPPED DEFAULT, whatever the
  * shipped default currently is. That is the convention and it is deliberate: a
  * fixture belongs to the game of the day it was captured, and a marker is added
- * only when that game becomes an arm. There are no unmarked fixtures today.
+ * only when that game becomes an arm. The `-notice-board-opening` fixtures are
+ * the unmarked ones today.
  */
 function dataFor(file: string) {
   if (file.includes('-v31-')) return V31_CONTROL;
   if (file.includes('-meeple-loop-')) return MEEPLE_LOOP_V1;
-  if (file.includes('-commons-pre-balloons-')) return COMMONS_PRE_BALLOONS;
   return BASE_GAME_DATA;
 }
 

@@ -23,7 +23,7 @@
  * turned into an assertion.
  *
  * ⚠️ **THE ARM IS RESTATED INLINE RATHER THAN READ OFF ITS OVERLAY**, on the
- * same grounds as `notice-board.test.ts` and `commons.test.ts`: this package is
+ * same grounds as `notice-board.test.ts`: this package is
  * platform-free and may not do file I/O. It is therefore A COPY OF A PIN, so it
  * sets only the leaves these cases depend on and names them, and
  * `overlays.test.ts` in @gp/sim is what validates the real overlay.
@@ -83,7 +83,6 @@ const ARM: GameData = loadGameData({
     'rules.turn.selfVisitAllowed': false,
     'rules.economy.noticeBoardThreshold': 3,
     'rules.economy.noticeBoardBlocks': false,
-    'rules.economy.unclaimedBoardsToCentre': false,
     'rules.economy.noticeBoardsBySeats.2': 2,
     'rules.economy.noticeBoardsBySeats.3': 1,
     'rules.economy.noticeBoardsBySeats.4': 1,
@@ -119,7 +118,8 @@ const CONTROL: GameData = loadGameData({
     'rules.turn.selfVisitAllowed': false,
     'rules.economy.noticeBoardThreshold': 3,
     'rules.economy.noticeBoardBlocks': false,
-    'rules.economy.unclaimedBoardsToCentre': false,
+    // Pinned since the 13/09/2026 default flip gave two seats two boards.
+    'rules.economy.noticeBoardsBySeats.2': 1,
   },
 });
 

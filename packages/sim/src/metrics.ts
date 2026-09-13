@@ -77,7 +77,7 @@ export const HEADLINE_METRICS: readonly Metric[] = [
     // this is the share of TURNS on which the bonus slot was used, and ⛔ THE
     // TWO ARE DIFFERENT QUANTITIES rather than two roundings of one. A Helping
     // Hand puts a SECOND play in one turn, so plays run about ten points above
-    // turns (68.5% against 58.9% on the commons baseline of 09/09/2026), and
+    // turns (68.5% against 58.9% on the 09/09/2026 baseline), and
     // Dean's band of 30% to 60% is a share of TURNS. Judging it on plays cost
     // this project a re-run of five arms on 09/09/2026, and A148's headline is a
     // one-tenth-of-a-point band comparison at four seats with nothing to read it
@@ -106,13 +106,10 @@ export const HEADLINE_METRICS: readonly Metric[] = [
   },
   {
     // ⭐ NEW ON 12/09/2026 FOR C115. The share of HARVESTED barn cards that came
-    // from somewhere other than the seat's own buildings: a central pile under
-    // the commons, a rival's fee off your own Notice Board under
-    // `noticeBoardPower`, and a structural zero under the v31 card game and the
-    // meeple loop, where no harvest can reach either. ⚠️ IT IS A SINGLE SCALAR
-    // OVER A SPLIT THAT IS THREE-WAY UNDER ONE MODE (own farm / rival's fee /
-    // the centre), and it pools the second and third: what it loses is WHICH
-    // bypass, which is a18's line and not this one. The bypass SHARE is the
+    // from somewhere other than the seat's own buildings: a rival's fee off your
+    // own Notice Board under `noticeBoardPower`, and a structural zero under the
+    // v31 card game and the meeple loop, where no harvest can reach one. The
+    // bypass SHARE is the
     // scalar because it is the number the design's own sentence is written
     // about - "if the centre out-supplies the farm, the building engine is
     // decoration" - and because it is the one reading in this family with no
@@ -222,10 +219,8 @@ export function busiestDoorShare(p: Pooled): number {
  * counts a Notice Board harvest too, because under `noticeBoardPower` a board IS
  * a building in a tableau and the engine rightly says `source: 'tableau'` - so
  * the farm is `barnFromOwnBySeat` MINUS `barnFromOwnBoardBySeat`, and the bypass
- * is everything else. Under the commons `barnFromOwnBoardBySeat` is a structural
- * zero and this reduces to the centre share (63.0% on the 09/09/2026 baseline);
- * under the v31 card game and the meeple loop both bypass terms are structural
- * zeroes and it reads 0.
+ * is everything else. Under the v31 card game and the meeple loop the bypass
+ * term is a structural zero and it reads 0.
  *
  * ⚠️ The denominator is HARVESTED cards only, never `barnInBySeat`, which
  * pools the deck, hand, stack and discard shortcuts as well.
@@ -233,10 +228,9 @@ export function busiestDoorShare(p: Pooled): number {
 export function farmBypassShare(p: Pooled): number {
   const ownAll = sum(p.ended.map((g) => sum(g.barnFromOwnBySeat)));
   const ownBoard = sum(p.ended.map((g) => sum(g.barnFromOwnBoardBySeat)));
-  const centre = sum(p.ended.map((g) => sum(g.barnFromCommonsBySeat)));
   const farm = Math.max(0, ownAll - ownBoard);
-  const harvested = farm + ownBoard + centre;
-  return harvested === 0 ? NaN : (ownBoard + centre) / harvested;
+  const harvested = farm + ownBoard;
+  return harvested === 0 ? NaN : ownBoard / harvested;
 }
 
 /** Core actions resolved per player per turn, every route pooled (risk 1). */

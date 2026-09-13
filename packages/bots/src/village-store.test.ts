@@ -16,8 +16,8 @@
  * host-draw arm and differ from it only in their own rules' leaves.
  *
  * ⚠️ **IT WALKS WHOLE GAMES IN THREE CASES, WHICH THIS PACKAGE OTHERWISE LEAVES
- * TO @gp/sim.** `commons.test.ts` states the exception and this file takes it
- * for the same reason: "does a bot ever use the rule" is this package's own
+ * TO @gp/sim.** `notice-board.test.ts` takes the same exception for the same
+ * reason: "does a bot ever use the rule" is this package's own
  * correctness, and the loop is the same deliberately minimal copy of `runGame`.
  *
  * ⛔ **AND NOTHING HERE NAMES THE ENGINE'S TRUTH TYPE**, which `boundary.test.ts`
@@ -279,7 +279,7 @@ interface Walked {
   readonly bypasses: number;
 }
 
-/** One game, driven by the reference bot - the same minimal loop `commons.test.ts` uses. */
+/** One game, driven by the reference bot - a deliberately minimal loop. */
 function walk(data: GameData, seats: number, seed: string): Walked {
   const suits = SEAT_SUITS.slice(0, seats);
   const policies = Array.from({ length: seats }, () => makePolicy('balanced'));

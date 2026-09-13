@@ -88,7 +88,6 @@ const ARM: GameData = loadGameData({
     'rules.turn.hostDrawOnVisit': 1,
     'rules.economy.noticeBoardThreshold': 3,
     'rules.economy.noticeBoardBlocks': false,
-    'rules.economy.unclaimedBoardsToCentre': false,
     'rules.economy.noticeBoardsBySeats.2': 2,
     'rules.economy.noticeBoardsBySeats.3': 1,
     'rules.economy.noticeBoardsBySeats.4': 1,
@@ -124,18 +123,17 @@ const CONTROL: GameData = loadGameData({
     'rules.turn.selfVisitAllowed': false,
     'rules.economy.noticeBoardThreshold': 3,
     'rules.economy.noticeBoardBlocks': false,
-    'rules.economy.unclaimedBoardsToCentre': false,
     'rules.economy.noticeBoardsBySeats.2': 2,
     'rules.economy.noticeBoardsBySeats.3': 1,
     'rules.economy.noticeBoardsBySeats.4': 1,
   },
 });
 
-/** The shipped commons, where this whole term has no subject and must stay at zero. */
-const COMMONS: GameData = loadGameData({
-  name: 'commons-control-test',
+/** The v31 card visit, where this whole term is shut and must stay at zero. */
+const CARD_VISIT: GameData = loadGameData({
+  name: 'card-visit-control-test',
   schemaVersion: 1,
-  set: { 'rules.turn.visitCurrency': 'commons', 'rules.turn.bonusTiming': 'start' },
+  set: { 'rules.turn.visitCurrency': 'card', 'rules.turn.selfVisitAllowed': true },
 });
 
 const TABLE: Record<number, Suit[]> = {
@@ -359,15 +357,15 @@ describe('S17, the host draw, as the bots price it', () => {
 
   // ⛔ AND THE TERM IS STILL STRUCTURALLY ZERO WHERE IT ALWAYS WAS. S17 widened
   // what the charge covers; it did not widen where the charge applies, and the
-  // shipped commons has no host for it to reach.
-  it('stays silent under the shipped commons', () => {
-    const walked = walk(COMMONS, {
+  // v31 card visit is outside the notice-board family.
+  it('stays silent under the v31 card visit', () => {
+    const walked = walk(CARD_VISIT, {
       seats: 3,
-      seed: 'commons-control',
+      seed: 'card-visit-control',
       policies: MIXED.slice(0, 3),
     });
     expect(walked.crash).toBeNull();
-    expect(walked.moves.filter((m) => m.type === 'commons').length).toBeGreaterThan(0);
+    expect(walked.moves.filter((m) => m.type === 'visit').length).toBeGreaterThan(0);
     expect(walked.hostDraws).toHaveLength(0);
     for (const row of walked.firstVisit ?? []) expect(row.terms['hostGift']).toBeUndefined();
   });

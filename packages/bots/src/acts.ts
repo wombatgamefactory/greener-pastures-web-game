@@ -64,56 +64,13 @@
  * ACT's own shape rather than a knob read - which is the rule `Scratch.meepleArm`
  * states and the only gate that cannot drift from the rule it stands for.
  *
- * ## ⭐ THE COMMONS (09/09/2026) - ONE NEW ACT, AND THE `grow` ANSWER ARRIVES
+ * ## ⭐ THE COIN-ACTIVATED FARMSTEAD (10/09/2026) - NO NEW ACT, ONE NEW FIELD
  *
- * `rules.turn.visitCurrency: 'commons'` is the SHIPPED DEFAULT since Dean ruled
- * it in, and it empties the bonus slot of everything that was in it: no meeple
- * spend, no Collect, no free Draw 1, no host. What is left is `commons` - play
- * ONE card from your hand onto one of the five central Notice Boards and take
- * that board's action (C3).
- *
- * ⭐ **IT IS ITS OWN ACT AND NOT A `visit` WITH A NULL HOST**, which is the one
- * shape decision in this file's commons pass. A visit's whole vocabulary is
- * about WHOSE board it is - `self`, the toll on an occupied slot, the host who
- * collects - and none of those has a subject when the board belongs to nobody.
- * Folding the two would have every visit term learn `host === null` to keep
- * doing what it already does, and would leave `selfVisit` scoring a game that
- * cannot self-visit. So the acts are separate and the TERMS claim both, which is
- * the same trade the meeple arm made in the other direction (one act, two
- * currencies) and for the same reason: keep the collapse where the arithmetic is
- * shared and the split where it is not.
- *
- * `grow` needs no new act either - a Grow is still a Grow - but the ANSWER
- * spelling of one is new (the Apiary board's door pushes a `grow` task, C3), so
- * `actOfAnswer` gains the case that `build` and `deliver` have always had.
- *
- * ⚠️ **BOTH CONTROLS ARE UNTOUCHED BY EVERY LINE OF IT.** The engine cannot
- * enumerate a `commons` move outside `'commons'` and cannot push a `grow` task
- * outside it either, so the v31 card visit and the meeple economy reduce to
- * exactly the pre-09/09/2026 arithmetic - which is what the sim's `-v31-` and
- * `-meeple-` fixtures assert.
- *
- * ## ⭐ THE COMMONS WITH COINS (10/09/2026) - NO NEW ACT, TWO NEW FIELDS
- *
- * `docs/commons-coins-handoff-2026-09-10-v2.md`, rules K3 and K10, built as a
- * PAIRED ARM and not as the default. Neither half of it is a new kind of thing a
- * seat can DO - a commons play is still a commons play and a Grow is still a
- * Grow - so neither gets an act, exactly as R15's meeple-as-a-card did not:
- *
- *   - `commons.fee2` - the WILD PAIR (K3). Two cards of any colours stand in for
- *     one card of the board's colour and both land on the pile.
  *   - `grow.coin` - the COIN-ACTIVATED FARMSTEAD (K10). A main-action Grow that
  *     places nothing and costs one coin instead of a card.
  *
- * ⚠️ **THE COIN TAKE NEEDS NOTHING AT ALL**, which is worth saying so nobody
- * goes looking: `rules.turn.commonsTake: 'coins'` mints one coin per card off a
- * cleared pile, and the move it rides on is the `commonsTake` that already
- * exists, with no fee under that value. What the take is WORTH arrives through
- * the rollout as `coinsMinted`, priced in `outcome.ts`.
- *
- * ⚠️ **BOTH FIELDS ARE ABSENT OR FALSE UNTIL THE ARM'S KNOBS ARE ON**, so the
- * shipped commons and both controls reduce to exactly the pre-10/09/2026
- * arithmetic - which the nine fixtures in @gp/sim assert byte for byte.
+ * ⚠️ **ABSENT OR FALSE UNTIL ITS KNOB IS ON**, so every other game reduces to
+ * exactly the pre-10/09/2026 arithmetic, which the fixtures in @gp/sim assert.
  *
  * ## ⭐ THE VILLAGE STORE (12/09/2026) - NO NEW ACT, TWO NEW FIELDS
  *
@@ -268,7 +225,7 @@ export type Act =
    * card, a meeple (R15) and K10's Farmstead coin.
    *
    * ⛔ **IT IS NOT `coin` ABOVE AND THE TWO MUST NEVER BE MERGED.** K10's
-   * `coin` is the commons-with-coins arm's Farmstead suit power, a main action
+   * `coin` is the coin-activated Farmstead suit power, a main action
    * on ONE named building, and `observe.ts` counts `move.coin === true` as a
    * Farmstead firing; folding V8's coin-Grow into it would put every coin-Grow
    * in the game into a metric that means something else. The two knobs are
@@ -385,57 +342,6 @@ export type Act =
    * terms and not one.
    */
   | { a: 'collect' }
-  /**
-   * ⭐ **THE WHOLE OF THE BONUS SLOT UNDER THE COMMONS (C3, 09/09/2026):** one
-   * card from your hand onto one of the five central Notice Boards, then that
-   * board's action - wheat Harvest, vegetable Deliver, orchard Draw 2, apiary
-   * GROW, dairy Build. The fee is extra in every case (Dean, 09/09/2026).
-   *
-   * Two fields and no third. `board` is the COLOUR, which is the whole of what
-   * the play buys, and `fee` is the card it costs - never null, because a
-   * commons play with no card is not a move the engine can offer. There is no
-   * `self` and no `toll`: the boards belong to nobody, so there is no solitaire
-   * branch to separate and no occupied slot to price (C4, "never full, never
-   * clogged").
-   *
-   * ⭐ IT IS ON `isProbed`, for the reason every door is: a Harvest board, a
-   * Draw board and a Build board are three completely different moves wearing
-   * one label, and only a rollout can tell them apart. `handSpend` charges the
-   * fee, `visitFeeJunk` orders WHICH card pays it, and `bonusAction` pays the
-   * whole-extra-action premium when the board actually resolves something.
-   *
-   * ⭐ **`fee2` IS THE WILD PAIR (K3, Dean 10/09/2026), AND IT IS PRESENT ONLY
-   * UNDER `rules.economy.commonsColourMatch` AND `rules.economy.commonsWildPair`
-   * TOGETHER.** Two cards of ANY colours stand in for one card of the board's
-   * colour, and BOTH land on the pile - so a pair costs twice what a single fee
-   * costs and buys exactly the same action. That count is the whole reason the
-   * second card is carried here rather than derived: `cardsLeavingHand` must
-   * read 2, and `visitFeeJunk` must rank BOTH cards, or the bot pays its worst
-   * card and one at random. Absent under the shipped default, where the pair
-   * cannot be enumerated at all.
-   */
-  | { a: 'commons'; board: Suit; fee: CardId; fee2?: CardId }
-  /**
-   * ⭐ DEAN'S VARIANT'S OTHER HALF (09/09/2026, `rules.turn.commonsTake:
-   * 'bonus'`): take the whole of one central pile straight to hand. No fee, no
-   * action, so there is nothing here for `handSpend` or `bonusAction` to price
-   * - see `isProbed` and the `outcome` term, which is what prices the cards
-   * that come out. Carries only `board`: the pile size is public state
-   * (`Scratch.view.commons`), not a fact about the move, so it is read where
-   * it is needed rather than duplicated onto the act - the same choice
-   * `harvest` makes about a stack's size.
-   *
-   * ⭐ ON `isProbed`, for the same reason a door is: what comes out is a fact
-   * about the position (which cards sit in that pile right now), not
-   * something a flat feature can price without rolling the move out.
-   *
-   * ⭐ `fee` (09/09/2026, `rules.turn.commonsTake: 'paid'`) IS PRESENT ONLY
-   * UNDER THAT VALUE: the card the take costs, so `handSpend` and
-   * `visitFeeJunk` have something to price and order, exactly as `commons`'s
-   * own `fee` above. Absent under `'bonus'` and `'spend'`, where the take is
-   * free.
-   */
-  | { a: 'commonsTake'; board: Suit; fee?: CardId }
   | { a: 'cardMove'; card: CardId; kind: string; payload: Record<string, unknown> }
   | { a: 'pass' }
   | { a: 'endTurn' }
@@ -535,33 +441,12 @@ function actOfAnswer(answer: TaskAnswer): Act {
         meeples: NO_MEEPLES,
         coins: answer.coins ?? 0,
       };
-    // ⭐ THE COMMONS APIARY BOARD'S DOOR (C3, 09/09/2026), and the same
-    // collapse `build` and `deliver` above have always had: a Grow bought
-    // through a board is the same act as a Grow played as a move, so it gets the
-    // same shape and `grow`, `growCompletes` and `growSpend` price it without
-    // knowing where it came from.
+    // A Grow answered through a task is the same act as a Grow played as a
+    // move. `meeples` is always empty and `coin` is false by rule (K10: the
+    // coin-activated Farmstead is a main action only).
     //
-    // ⚠️ `payment` IS NEVER NULL HERE AND `meeples` IS ALWAYS EMPTY, and both
-    // are the engine's shape rather than an omission: the `grow` task takes
-    // card-paid options only (there are no meeples at all under the commons,
-    // C6), so R15's meeple-paid Grow - the priced clog bypass - cannot arrive
-    // down this line. If a mode ever pushes this task with `meepleAsCard` live,
-    // this is the line that has to learn about it, exactly as the `build` answer
-    // above says of its own riders.
-    //
-    // ⭐ AND `coin` IS FALSE HERE BY RULE (K10, 10/09/2026), not by omission.
-    // The coin-activated Farmstead is your MAIN action: `growOptions` offers it
-    // only when the caller passes `mods.mainAction`, and the `grow` task's
-    // enumerator does not, so a bonus may never buy a suit power and this line
-    // can never see one.
-    //
-    // ⭐ AND `coinGrow` RIDES ACROSS HERE, WHICH `coin` DOES NOT (V8, A150,
-    // 12/09/2026). The Apiary board's bought Grow IS coin-payable - V8 says a
-    // coin is a wild card for GROW, and the design's own safety argument for V9
-    // is "two coin-Grows a turn is the ceiling, and never the same building
-    // twice", which counts the main action AND the bought one. `payment` went
-    // nullable on the answer for exactly this, so the null is read the same way
-    // it is on the move.
+    // ⭐ `coinGrow` RIDES ACROSS HERE, WHICH `coin` DOES NOT (V8, A150,
+    // 12/09/2026): a task-bought Grow IS coin-payable.
     case 'grow':
       return {
         a: 'grow',
@@ -645,8 +530,7 @@ export function actOf(move: Move): Act {
       // so a term that could only see "a visit happened" would price the two
       // identically and the bots would burn pairs they should have held.
       // ⭐ `board` RIDES ACROSS ONLY WHEN THE ENGINE NAMED ONE (Dean's
-      // two-board fix, 11/09/2026), spelled the same way `fee2` and
-      // `commonsTake`'s fee are - present or absent, never null - so every term
+      // two-board fix, 11/09/2026) - present or absent, never null - so every term
       // and `effectKey` gate on the ACT's shape rather than on the knob that
       // produced it. Absent is the definite description the engine falls back
       // on: the host's own suit's board.
@@ -664,26 +548,6 @@ export function actOf(move: Move): Act {
       };
     case 'collect':
       return { a: 'collect' };
-    // ⭐ THE COMMONS PLAY (C3). Nothing is derived and nothing is normalised:
-    // the move already carries the only two things the play IS, and there is no
-    // `host === seat` to read off it because there is no host at all.
-    // ⭐ K3 (10/09/2026): `fee2` rides across ONLY when the engine offered a
-    // wild pair, and the optional field is spelled the same way `commonsTake`'s
-    // fee is below - present or absent, never null - so `cardsLeavingHand` and
-    // `visitFeeJunk` gate on the ACT's shape rather than on the two knobs that
-    // produced it.
-    case 'commons':
-      return move.fee2 === undefined
-        ? { a: 'commons', board: move.board, fee: move.fee }
-        : { a: 'commons', board: move.board, fee: move.fee, fee2: move.fee2 };
-    // ⭐ DEAN'S VARIANTS (09/09/2026): the take buys no action under any of
-    // them, so there is nothing to normalise beyond the board itself - except
-    // under `'paid'`, where `move.fee` is the card the take costs and
-    // `handSpend`/`visitFeeJunk` need it on the act to price and order it.
-    case 'commonsTake':
-      return move.fee === undefined
-        ? { a: 'commonsTake', board: move.board }
-        : { a: 'commonsTake', board: move.board, fee: move.fee };
     case 'pass':
       return { a: 'pass' };
     case 'endTurn':

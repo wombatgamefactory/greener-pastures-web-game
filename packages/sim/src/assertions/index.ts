@@ -15,24 +15,14 @@
  * measured) and `a17-bonus-mix` (the four-way tally, with self-visits counted
  * apart).
  *
- * ⭐ ONE MORE IS NEW ON 09/09/2026 WITH THE COMMONS: `a18-commons-traffic`. It
- * is not a re-point and not a replacement - `a08-the-hook` keeps every branch it
- * has, because both controls still exercise them - but under
- * `visitCurrency: 'commons'` the boards are ownerless (C1), a08 has no
- * neighbour to count, and the interaction readings have to live somewhere. a18
- * is where, and it ships with NO FAIL CONDITION: the design names no number for
- * any of its lines, and one taken off the first commons run would be a snapshot
- * test.
+ * ⭐ ONE MORE IS NEW ON 09/09/2026: `a18-commons-traffic`, the interaction
+ * readings (the commons it was written for was deleted on 13/09/2026, and a18
+ * now carries the farm traffic under the notice-board visit). It ships with NO
+ * FAIL CONDITION: the design names no number for any of its lines.
  *
- * ⭐ AND ONE MORE IS NEW ON 10/09/2026 WITH THE COMMONS-WITH-COINS ARM:
- * `a19-coin-economy`. It exists because the arm puts a CURRENCY back in a game
- * that deleted one eight days earlier, and every coin economy this project has
- * shipped died of a second faucet or a pity rate - so the whole balance sheet
- * (one mint, two sinks, what is left dead in a wallet) belongs on one page where
- * a third use arriving in a later pass is visible as one. It ships with NO FAIL
- * CONDITION for the same reason a18 does, and it reports NO SUBJECT under every
- * value of `rules.turn.commonsTake` but `'coins'`, which is every mode this
- * project has ever shipped.
+ * `a19-coin-economy` was DELETED on 13/09/2026 with the commons-with-coins arm
+ * it measured; under every surviving mode it printed NO SUBJECT. Its id is not
+ * reused.
  *
  * ⭐ AND ONE MORE IS NEW ON 10/09/2026 WITH THE NOTICE-BOARD VISIT:
  * `a20-board-stall`. It exists because S8 writes a rule - the Notice Board's
@@ -42,8 +32,8 @@
  * board is never full, so a04 now reads a GENUINE and permanent 0% under this
  * mode. The question S8 was written against is a different one - does a board
  * sit LOADED AND UNCLEARED, and for how long - which needs `isHarvestable` and a
- * run length. It ships with NO FAIL CONDITION for the same reason a18 and a19
- * do, and with one addition: the design names no number here because it ships a
+ * run length. It ships with NO FAIL CONDITION for the same reason a18
+ * does, and with one addition: the design names no number here because it ships a
  * paired CONTROL instead (`noticeBoardBlocks: true`), so the reading that
  * decides anything is a delta and not a level.
  *
@@ -56,7 +46,7 @@
  * say: Dean played the two-board arm at two players on 11/09/2026, house-ruled
  * it in mid-session, and reported that it "led to a lot of extra cards in play,
  * which relieved the tightness of the game in a useful way". It ships with NO
- * FAIL CONDITION for the same reason a18, a19 and a20 do, and with one addition
+ * FAIL CONDITION for the same reason a18 and a20 do, and with one addition
  * that matters more than the rest of the page: ⛔ THE SIMULATOR CANNOT MEASURE
  * THE EFFECT DEAN LIKED. The engine's hand limit is an INSTRUMENT bound (C7) and
  * the table plays with none, so the instrument clips exactly the thing the table
@@ -78,7 +68,7 @@
  * the liquidity chain that is inferred rather than measured. Second, it is the
  * only assertion in the suite with NO MODE GATE: every currency this codebase
  * has delivers to an island and deals a hand, so it never reports NO SUBJECT.
- * It ships with NO FAIL CONDITION for the same reason a18, a19, a20 and a21 do,
+ * It ships with NO FAIL CONDITION for the same reason a18, a20 and a21 do,
  * and ⛔ every line of its hand half carries the C7 caveat ON THE LINE: the
  * engine's hand limit is the SIMULATOR'S bound and the table plays with none.
  *
@@ -120,20 +110,16 @@
  * questions with three different lifetimes, on the a23/a24 precedent set the
  * same day.
  *
- * `a25-village-store-coin` is the BALANCE SHEET, in the register a19 and a21
- * use: one mint (barn cards converted at a delivery), one shared recirculating
+ * `a25-village-store-coin` is the BALANCE SHEET, in the register a21 uses: one mint (barn cards converted at a delivery), one shared recirculating
  * supply and how often it holds nothing, and TWO sinks split by name - coins on
  * a build (V6/V7) and coin-GROWS split from card-Grows (V8) with ⛔ the ones
  * that fired on a FULL building (V9) on their own line, because V9 is the
  * strongest single clause in the package and is the first clog bypass in this
- * game since the meeples. It exists as a page for a19's reason: every coin
- * economy this project has shipped died of a second faucet or a pity rate, and
- * O17 The Fruit Basket had already opened one loop before the rule was a day
- * old. ⚠️ IT SHARES `coinsMinted`, `coinsSpent` AND THE WALLET WITH a19, because
- * the builder widened the existing events rather than adding new ones (a new
- * event name breaks `observe.ts`'s exhaustive Record), so the split is read off
- * `board === 'store'` and off `on` being `'build'` or `'grow'`. The two arms pin
- * each other off by name and a25 prints a loud line if it ever finds both live.
+ * game since the meeples. It exists as a page because every coin economy this
+ * project has shipped died of a second faucet or a pity rate, and O17 The Fruit
+ * Basket had already opened one loop before the rule was a day old. The Store's
+ * events are read off `board === 'store'` and off `on` being `'build'` or
+ * `'grow'`.
  *
  * `a26-store-conversion` is LEDGER ROW C113 and it is the single most important
  * line in the pass: ⛔ DOES EVERY PLAYER CONVERT EVERY SPARE CARD EVERY TIME?
@@ -168,21 +154,20 @@
  * hook's quantity exists; a08 now asks `isNoticeBoardPower` by name rather than
  * falling through to its `'card'` path and reading correctly by luck. a18
  * changed meaning rather than going quiet - it carries the FARM traffic under
- * that mode and the CENTRE traffic under the commons - and a19 reports no
- * subject there and points at a17.
+ * that mode.
  *
- * Ids are never reused, so the suite is 2, 4-9, 11-13, 15-27 and the gaps are
- * the tombstones. Six carry a threshold and can FAIL; fifteen are OBSERVE, because
+ * Ids are never reused, so the suite is 2, 4-9, 11-13, 15-18, 20-27 and the gaps
+ * are the tombstones and a19. Six carry a threshold and can FAIL; fourteen are
+ * OBSERVE, because
  * the design names no number for them and a snapshot of our own first run is
  * not a threshold. That split is not a gap in the work - it is ticket 11
  * section 2 doing its job.
  *
- * ⚠️ SEVERAL OF THE TWENTY-THREE NOW REPORT "NO SUBJECT" UNDER WHICHEVER MODE THEY WERE
- * NOT WRITTEN FOR, and the pattern is deliberate rather than a special case:
- * a08 says so under the commons, a18 says so under both controls, a19 says so
- * everywhere but the commons-with-coins arm, a20 and a21 say so everywhere but
- * the notice-board visit, a25, a26 and a27 say so everywhere but a Village
- * Store arm, and a04, a05 and a15 say so under the commons. A branch is never
+ * ⚠️ SEVERAL OF THE TWENTY-TWO REPORT "NO SUBJECT" UNDER WHICHEVER MODE THEY
+ * WERE NOT WRITTEN FOR, and the pattern is deliberate rather than a special
+ * case: a18 says so under both controls, a20 and a21 say so everywhere but the
+ * notice-board visit, and a25, a26 and a27 say so everywhere but a Village
+ * Store arm. A branch is never
  * deleted while a control still exercises it; a mode where a reading has
  * nothing to measure says NO SUBJECT and points at whatever owns the question
  * there. ⭐ a22 IS THE ONE THAT NEVER DOES, and it is the only one: every
@@ -204,7 +189,6 @@ import { meepleEconomy } from './a15-meeple-economy.js';
 import { actionInflation } from './a16-action-inflation.js';
 import { bonusMix } from './a17-bonus-mix.js';
 import { commonsTraffic } from './a18-commons-traffic.js';
-import { coinEconomy } from './a19-coin-economy.js';
 import { boardStall } from './a20-board-stall.js';
 import { hostDraw } from './a21-host-draw.js';
 import { cropDiagnosis } from './a22-crop-diagnosis.js';
@@ -230,7 +214,6 @@ export const WATCHLIST: readonly Assertion[] = [
   actionInflation,
   bonusMix,
   commonsTraffic,
-  coinEconomy,
   boardStall,
   hostDraw,
   cropDiagnosis,
