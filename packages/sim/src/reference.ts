@@ -1027,8 +1027,54 @@ export const REFERENCE_V16: ReferenceConfig = {
   seed: 'reference-v16',
 };
 
+/**
+ * ⭐ reference-v17, cut 13/09/2026 when Dean ruled the commons dead and its code
+ * was deleted (commits 5781679, cbad33d, f7e0cde).
+ *
+ * The shipped game is the two-board Notice Board visit with no host draw:
+ *
+ *  - `visitCurrency: 'noticeBoardPower'`: the Notice Boards are BUILDINGS on
+ *    their owners' farms again, and the bonus (first, before the main action) is
+ *    one card from hand onto a RIVAL's board for that board's printed power.
+ *    `selfVisitAllowed` false; `noticeBoardsBySeats` {2: 2, 3: 1, 4: 1}, so every
+ *    target is a person; `hostDrawOnVisit` 0.
+ *  - Board threshold 3 as a harvest MINIMUM, never blocking, with the enhanced
+ *    powers and `dairyGrowsBuilt: 'paidWild'`.
+ *  - The one-card `plainAction` balloons, the Aerodrome in every game, and
+ *    `flightMints` true.
+ *  - The Village Store coin live, and `cropScorerOnBarn` true.
+ *
+ * ⛔ A level from `reference-v16` or earlier is not comparable: the visit, the
+ * seed and half the metric subjects all changed at once. The three historical
+ * controls now pin `selfVisitAllowed` and `noticeBoardsBySeats.2` as well, so
+ * they still replay their own games.
+ */
+export const REFERENCE_V17: ReferenceConfig = {
+  ...REFERENCE_V16,
+  id: 'reference-v17',
+  description:
+    'THE TWO-BOARD NOTICE BOARD VISIT, NO HOST DRAW (Dean, 13/09/2026, when the commons was ruled ' +
+    'dead and deleted). The Notice Boards are buildings on their owners’ farms; the bonus comes ' +
+    'FIRST and is one card from your hand onto a RIVAL’s board for that board’s printed power ' +
+    '(visitCurrency "noticeBoardPower", selfVisitAllowed false, hostDrawOnVisit 0). Boards per ' +
+    'seat are 2 at two players and 1 at three and four (noticeBoardsBySeats), so every target is ' +
+    'a person. A board’s threshold of 3 is a harvest minimum and never blocks; the powers are ' +
+    'the enhanced set, and the Dairy board may GROW what it just built with a card of any crop ' +
+    '(dairyGrowsBuilt "paidWild"). THE BALLOONS each give one plain core action for one barn ' +
+    'card, the Aerodrome is in every game and a flight mints. THE VILLAGE STORE COIN IS LIVE. ' +
+    'THE BARN PRINTS THE OWN-CROP SCORER (cropScorerOnBarn). ' +
+    '⚠️ THE HAND LIMIT OF 7 IS THE SIMULATOR’S BOUND AND NOT A RULE OF THE GAME: the ' +
+    'table plays with none, and any reading about hand size is a reading about the instrument. ' +
+    'The historical controls, each now also pinning selfVisitAllowed and noticeBoardsBySeats.2: ' +
+    'overlays/v31-card-visit.overlay.json, overlays/meeple-loop-v1.overlay.json and ' +
+    'overlays/meeple-economy-v1.overlay.json. ' +
+    '⛔ THE NOISE FLOOR IS RE-MEASURED FOR THIS REFERENCE (13/09/2026) AND DOES NOT CARRY FROM ' +
+    'v16. NO NUMBER IN ANY reference-v16 OR EARLIER REPORT IS COMPARABLE AS A LEVEL.',
+  seed: 'reference-v17',
+};
+
 /** The instrument every current number is defined against. */
-export const REFERENCE = REFERENCE_V16;
+export const REFERENCE = REFERENCE_V17;
 
 /**
  * The noise floor, measured once and quoted constantly.
@@ -1173,28 +1219,41 @@ export interface NoiseFloor {
  * against about 57% under v15, which is a much bigger gap between the winner and
  * the last seat. Both are what a longer game with a stronger engine loop does.
  */
+/*
+ * The v16 values, for the record and NOT for use (measured 12/09/2026 on the
+ * commons): actions per turn 0.004, bonus slot used 0.004, door mix 0, farm
+ * bypass 0.002, winning score 1, last as % of winner 0.008, tied top score
+ * 0.002, deck reshuffles 1, seat deviation 4.781, every other line 0 or NaN.
+ *
+ * ⭐ reference-v17's FLOOR, measured 13/09/2026 at n=1580 per seat count, two
+ * seeds, from `reports/noise-2026-09-13T09-15-27-reference-v17.txt`. Seat
+ * deviation moved 0.388 points, against 4.781 under v16, so the +/-3 seat band
+ * is back inside the instrument's reach. `farm bypass share` is the rival-fee
+ * share of HARVESTED barn cards under this game and is not the commons ratio.
+ * `meeple spend rate` is NaN: there are no meeples, so no subject, not zero.
+ */
 export const NOISE_FLOOR: NoiseFloor | null = {
-  reference: 'reference-v16',
+  reference: 'reference-v17',
   games: 1580,
-  measured: '2026-09-12',
+  measured: '2026-09-13',
   movement: {
     'meeples held at game end': 0,
     'barn at game end': 0,
-    'game length, rounds': 0,
-    'visits per turn': 0,
-    'actions per turn': 0.004,
+    'game length, rounds': 1,
+    'visits per turn': 0.004,
+    'actions per turn': 0.005,
     'meeple spend rate': NaN,
-    'self-visit share of visits': NaN,
-    'bonus slot used, share of turns': 0.004,
-    'door mix, busiest board share': 0,
-    'farm bypass share': 0.002,
-    'unfinished games': 0,
-    'winning score': 1,
-    'last as % of winner': 0.008,
-    'tied top score': 0.002,
-    'deck reshuffles per game': 1,
+    'self-visit share of visits': 0,
+    'bonus slot used, share of turns': 0.001,
+    'door mix, busiest board share': 0.002,
+    'farm bypass share': 0.001,
+    'unfinished games': 0.001,
+    'winning score': 0,
+    'last as % of winner': 0.006,
+    'tied top score': 0.006,
+    'deck reshuffles per game': 0,
     'reshuffles, played crop': 0,
-    'seat deviation': 4.781,
+    'seat deviation': 0.388,
   },
 };
 /**
