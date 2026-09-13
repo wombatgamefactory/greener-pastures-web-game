@@ -174,8 +174,10 @@ describe('the Wheat Farmstead (W2) - the own-crop end-game scorer', () => {
     // ...and the Wheat DOOR, reached by a self-visit, offers nothing either.
     // Before v31 the door printed a flat 2+ gate and W7 would have been legal
     // here; that rider went with the flat doors.
+    // (Since 13/09/2026 the shipped game offers visits onto a RIVAL's board,
+    // which buy that board's power; only the self-visit is the Wheat door here.)
     dealTo(data, s, WHEAT, 'W20');
-    const visits = legalMoves(data, s).filter((m) => m.type === 'visit');
+    const visits = legalMoves(data, s).filter((m) => m.type === 'visit' && m.host === WHEAT);
     expect(visits).toEqual([]);
 
     // The same position for the apiary seat, which never had a suit power: both

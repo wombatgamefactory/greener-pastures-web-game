@@ -52,7 +52,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { GameData, Suit } from '@gp/data';
-import { BASE_GAME_DATA, hostDrawOnVisit, loadGameData } from '@gp/data';
+import { BASE_GAME_DATA, applyOverlay, hostDrawOnVisit } from '@gp/data';
 
 import {
   apply,
@@ -67,6 +67,7 @@ import { rngInt, seedRng } from './rng.js';
 import type { CardId, GameEvent, GameState, Move, Seat, Task } from './state.js';
 import {
   buildFor,
+  cardVisitGame,
   dealTo,
   makeState,
   noticeBoardHostDrawGame,
@@ -607,19 +608,21 @@ describe('⛔ the correctness gate: `hostDrawOnVisit` 0 changes nothing at all',
     }
   });
 
-  it('⛔ and it has NO SUBJECT under the shipped commons, at 1 as much as at 0', () => {
+  it('⛔ and it has NO SUBJECT under the v31 card control, at 1 as much as at 0', () => {
     // `rules.turn.hostDrawOnVisit` is read only under `visitCurrency:
-    // 'noticeBoardPower'`, which the shipped game is not. The knob at 1 on top
-    // of BASE_GAME_DATA must therefore be the shipped game, move for move.
-    const shippedAtOne = loadGameData({
-      name: 'commons-with-host-draw-probe',
+    // 'noticeBoardPower'`. The knob at 1 on top of the v31 control must
+    // therefore be that control, move for move. (It was asserted against the
+    // shipped commons until the commons was deleted on 13/09/2026.)
+    const v31 = cardVisitGame();
+    const v31AtOne = applyOverlay(v31, {
+      name: 'v31-with-host-draw-probe',
       schemaVersion: 1,
       set: { 'rules.turn.hostDrawOnVisit': 1 },
     });
     expect(hostDrawOnVisit(BASE_GAME_DATA)).toBe(0);
     for (const seats of [2, 3]) {
-      expect(transcript(playout(shippedAtOne, seats, 'gate-1')), `${seats} seats`).toBe(
-        transcript(playout(BASE_GAME_DATA, seats, 'gate-1')),
+      expect(transcript(playout(v31AtOne, seats, 'gate-1')), `${seats} seats`).toBe(
+        transcript(playout(v31, seats, 'gate-1')),
       );
     }
   });

@@ -10,13 +10,9 @@ import {
   balloonMoveOptions,
   bonusDrawOpen,
   buildOptions,
-  commonsOptions,
-  commonsTakeOptions,
   deliverOptions,
   doBonusDraw,
   doBuild,
-  doCommons,
-  doCommonsTake,
   doDeliver,
   doDraw,
   doMoveBalloon,
@@ -183,21 +179,6 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
   if (bonusDrawOpen(data, state)) moves.push({ type: 'bonusDraw', seat });
   moves.push(...collectOptions(data, state, seat));
   moves.push(...visitOptions(data, state, seat));
-  // THE COMMONS (C3): the whole of the bonus slot under `visitCurrency:
-  // 'commons'`, and empty under both controls. It sits in this block rather
-  // than beside the main actions because it IS a bonus option - it spends
-  // `turn.bonusUsed` and never `turn.actionSpent` - and `bonusOpen` gates it,
-  // so under the commons' own `bonusTiming: 'start'` these moves are on offer
-  // exactly while the action is unspent, which is C2.
-  moves.push(...commonsOptions(data, state, seat));
-  // ⭐ DEAN'S VARIANTS (`rules.turn.commonsTake: 'bonus'`, `'spend'` or
-  // `'paid'`, 09/09/2026, and `'coins'`, 10/09/2026): the slot's OTHER option
-  // under any of those knob values, empty under the shipped `'harvest'` rule
-  // and under both controls - `commonsTakeOptions` fails closed on the same
-  // checks `commonsOptions` does, and dispatches its own resolution
-  // (`doCommonsTake`), by board under `'spend'` and to the discards for coins
-  // under `'coins'`.
-  moves.push(...commonsTakeOptions(data, state, seat));
   moves.push(...standingMoves(data, state, seat));
   if (turn.actionSpent) moves.push({ type: 'endTurn', seat });
 
@@ -215,11 +196,6 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
  * and no legal move at all.
  */
 const MAIN_ACTIONS = new Set<Move['type']>([
-  // ⚠️ `commons` IS NOT HERE EITHER, on the same rule as the three above it: it
-  // spends the bonus slot, and adding it would suppress `pass` for a seat whose
-  // only remaining option is a commons play. `commonsTake` (Dean's variant,
-  // 09/09/2026) is the same case again: it spends `turn.bonusUsed`, never
-  // `turn.actionSpent`.
   'draw',
   'build',
   'grow',
@@ -236,12 +212,7 @@ const MAIN_ACTIONS = new Set<Move['type']>([
  * named stopped existing.)
  */
 function resumeFor(type: Move['type']): Resume {
-  return type === 'visit' ||
-    type === 'bonusDraw' ||
-    type === 'collect' ||
-    type === 'commons' ||
-    type === 'commonsTake' ||
-    type === 'spendMeeple'
+  return type === 'visit' || type === 'bonusDraw' || type === 'collect' || type === 'spendMeeple'
     ? 'bonus'
     : 'main';
 }
@@ -359,19 +330,6 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
       break;
     case 'collect':
       doCollect(fx, move.seat);
-      break;
-    case 'commons':
-      // One card onto one central board, then that board's action (C3). No
-      // host, so nothing here names a second seat. `fee2` is the wild pair's
-      // second card (K3, 10/09/2026) and is undefined in the shipped game.
-      doCommons(fx, move.seat, move.board, move.fee, move.fee2);
-      break;
-    case 'commonsTake':
-      // Dean's variants: the whole of one central pile. No action is ever
-      // bought; under 'paid' `move.fee` is the card it costs, discarded before
-      // the pile moves, and under 'coins' (K3/K8, 10/09/2026) the pile goes to
-      // the discards and pays one coin per card.
-      doCommonsTake(fx, move.seat, move.board, move.fee);
       break;
     case 'endTurn':
       if (!turn.actionSpent) throw new Error('End turn requires the action spent (or passed)');

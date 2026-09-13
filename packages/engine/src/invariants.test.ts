@@ -33,21 +33,18 @@ import { describe, expect, it } from 'vitest';
 import { player } from './query.js';
 import { cardVisitGame, makeState } from './testkit.js';
 
-// ⭐ TWO starters since the commons (C1, 09/09/2026): the five Notice Boards
-// stand in the centre and nobody owns one, so a farm is a Farmstead and a Barn.
-// It was THREE from change 6 (20/08/2026), when the Service merged into the
-// Notice Board, and the v31 and meeple-loop controls still deal three - which is
-// what the second case below pins, because "the boards left the tableaux" is a
-// claim worth failing on from both sides.
+// ⭐ THREE starters in every game since the commons was deleted (13/09/2026):
+// Farmstead, Barn and Notice Board. At three seats the shipped two-board rule
+// deals no extra board, so the shipped game and the v31 control agree here.
 describe('every seat keeps its starters', () => {
-  it('deals exactly one Farmstead and one Barn per seat, and no Notice Board', () => {
+  it('deals exactly one Farmstead, one Barn and one Notice Board per seat at three seats', () => {
     const state = makeState(data, ['dairy', 'wheat', 'orchard']);
     for (const seat of [0, 1, 2]) {
       const slots = player(state, seat)
         .tableau.map((b) => data.cards.catalogue.find((c) => c.id === b.card)?.slot)
         .filter((slot) => slot !== undefined)
         .sort();
-      expect(slots, `seat ${seat}`).toEqual(['barn', 'farmstead']);
+      expect(slots, `seat ${seat}`).toEqual(['barn', 'farmstead', 'noticeboard']);
     }
   });
 

@@ -31,36 +31,17 @@
  * nothing. What the deletion measured is on the template below, and it is the
  * most useful paragraph in this file to read before touching a draw knob.
  *
- * ⭐ THE COMMONS (09/09/2026) ADDED FIVE TEMPLATES AND DELETED NONE, WHICH IS
- * THE SHAPE THIS REGISTRY IS SUPPOSED TO HAVE. `rules.economy.commonsThreshold`
- * and `rules.economy.commonsColourMatch` are the two fallback knobs the new
- * bonus ships OFF (C10), `workers.roster.{}.actionUnderCommons` is the
- * Apiary board's Grow, and `rules.economy.commonsHarvestMin` and
- * `rules.economy.commonsHarvestTake` are the two harvest knobs Dean asked for
- * later the same day - the three commons knobs now ration three different
- * things, and the descriptions say which is which so nobody sweeps two at once. Every meeple template stays, at a value that is now
+ * Every meeple template stays, at a value that is now
  * subjectless, because the standing rule of this project is that A BRANCH WHOSE
  * ONLY PRODUCER IS A KNOB AT ITS SHIPPED VALUE IS NOT DELETED: the meeple loop
  * and the meeple economy are controls, and the knobs are how they are reached.
  * A description that says "read only under X" is doing the work a deletion would
  * have done, and it keeps the reasoning.
  *
- * ⭐ THE COMMONS WITH COINS (Dean, 10/09/2026) ADDS SEVEN TEMPLATES AND DELETES
- * NONE, and every one of them ships at the value that turns the arm OFF.
- * `rules.economy.commonsWildPair` is D5/D7 of the commons pass finally built,
- * `rules.economy.endgameCoinCost` and `rules.economy.farmsteadCoinPower` are the
- * arm's only two coin SINKS, and the four `rules.economy.farmsteadPower.*`
- * numbers are the suit powers behind the second of them. ⚠️ THAT BLOCK WAS
- * RENAMED `rules.economy.noticeBoardPower.*` ON 10/09/2026, SO THE COINS ARM'S
- * HANDLER READS A BLOCK THAT HAS MOVED; see the note below on the notice-board
- * visit. ⛔ SOME OF THE FOURTEEN
- * TEMPLATES v31 DELETED ARE THEREFORE ADJACENT AGAIN, AND THE DIFFERENCE MATTERS:
- * `startingCoins`, `buyCost`, `marketCost`, `coinPityDivisor` and the four
- * `visitPayout` branches were FAUCETS AND A PITY RATE, which is what every coin
- * economy in this project has died of. Nothing added here mints a coin at all -
- * the only mint is `rules.turn.commonsTake` at `'coins'`, and these are two
- * sinks and four numbers. If a future session finds itself adding a second mint
- * or a third use, that is the failure repeating, not a tuning.
+ * ⭐ THE COMMONS AND ITS EIGHT TEMPLATES (the six `commons*` knobs,
+ * `unclaimedBoardsToCentre` and `actionUnderCommons`) WERE DELETED ON 13/09/2026
+ * (Dean). `rules.economy.endgameCoinCost` and `rules.economy.farmsteadCoinPower`,
+ * the coins arm's two sinks, survive because a Village Store coin can pay them.
  *
  * ⭐ THE NOTICE BOARD VISIT (Dean, 10/09/2026) ADDS ONE TEMPLATE, RENAMES FOUR
  * AND DELETES NONE. `rules.economy.noticeBoardBlocks` is the new one and it is
@@ -78,18 +59,6 @@
  * `rules.economy.noticeBoardThreshold` is 3 where it was 2, so
  * `overlays/v31-card-visit.overlay.json` pins 2 by name and `data.test.ts` has
  * the regression test that says it still does.
- *
- * ⭐ DEAN'S UNCLAIMED-BOARDS VARIANT (11/09/2026) ADDS ONE TEMPLATE, RENAMES
- * NOTHING AND DELETES NOTHING. `rules.economy.unclaimedBoardsToCentre` sends the
- * Notice Board of every suit nobody is farming to the CENTRE of the table,
- * ownerless, so that with self-visiting banned every seat faces exactly FOUR
- * targets at every player count. ⭐ AND IT IS ONE TEMPLATE RATHER THAN FOUR
- * BECAUSE IT REUSES THE COMMONS: a central pile's `3+` rule is already
- * expressible as `commonsThreshold` null, `commonsHarvestMin` 3 and
- * `commonsHarvestTake` null under `rules.turn.commonsTake` `'harvest'`, so the
- * two new overlays PIN those four rather than adding leaves that would say the
- * same thing twice. A new knob that duplicates an old one is a defect, and the
- * check that it does not is in `data.test.ts`.
  *
  * ⭐ DEAN'S TWO-BOARD FIX (11/09/2026) ADDS ONE TEMPLATE AND IT IS THE FIRST
  * PER-SEAT-COUNT MAP THIS FILE HAS OUTSIDE `island.*`.
@@ -165,8 +134,7 @@ import type { Leaf } from './paths.js';
  *
  * Every string type since has kept that shape: a CLOSED set, defined once in
  * `overlay.ts` beside `typeMatches` so it cannot pass validation on one side of
- * the codebase and fail on the other. `doorAction` (09/09/2026) was the five
- * core actions plus `grow`, which is the commons Apiary board.
+ * the codebase and fail on the other.
  *
  * `meepleSpendTiming` (12/09/2026) is the newest: `'none'`, `'start'` and
  * `'afterAction'`, the window in which a held meeple may be spent. ⛔ Its
@@ -186,9 +154,7 @@ export type KnobType =
   | 'meepleSpendTiming'
   | 'dairyGrowsBuilt'
   | 'paymentHostChoice'
-  | 'balloonReward'
-  | 'doorAction'
-  | 'commonsTake';
+  | 'balloonReward';
 
 export interface KnobTemplate {
   /** Dotted path, `{}` for a wildcard segment. */
@@ -298,6 +264,8 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     template: 'rules.turn.selfVisitAllowed',
     type: 'boolean',
     description:
+      '⭐ SHIPPED false SINCE 13/09/2026, ruled the default when the commons was deleted; ' +
+      'overlays that relied on the old true now pin it. ' +
       '⭐ ALIVE AGAIN AND RULED ON (Dean, 10/09/2026, S6 of ' +
       'docs/notice-board-visit-handoff-2026-09-10-v2.md), WHICH REVERSES THE BAN OF 04/09/2026. ' +
       "Under visitCurrency 'noticeBoardPower' every player owns a Notice Board again and true " +
@@ -493,6 +461,8 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     template: 'rules.turn.visitCurrency',
     type: 'visitCurrency',
     description:
+      "⭐ SHIPPED 'noticeBoardPower' SINCE 13/09/2026, ruled the default when the commons was " +
+      "deleted outright; 'card' and 'meeple' remain as controls. " +
       "⭐ FOUR VALUES SINCE 10/09/2026, AND 'noticeBoardPower' IS THE NEW ARM (Dean, " +
       'docs/notice-board-visit-handoff-2026-09-10-v2.md, rules S1-S16). THE CENTRE IS DELETED ' +
       "AND THE NOTICE BOARDS COME HOME: the five Notice Board cards go back to their owners' " +
@@ -518,24 +488,8 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'by name; -no-self-v1, -blocking-v1, -threshold-2-v1 and -threshold-4-v1 are its ' +
       "sub-arms. ⚠️ THE READING THAT DECIDES IT IS THE SELF-VISIT SHARE, against v31's 22.2%, " +
       'and the bonus rate on the TURN measure against 30-60%. The 09/09/2026 note follows, ' +
-      'unchanged, and its "three games" is now four. ' +
-      "⭐ WHICH OF THREE GAMES THIS IS, AND 'commons' IS THE SHIPPED ONE SINCE 09/09/2026 " +
-      '(Dean, docs/commons-handoff-2026-09-09-v1.md, rules C1-C10). THE FIVE NOTICE BOARDS SIT ' +
-      'OWNERLESS IN THE CENTRE OF THE TABLE, all five whatever suits are in play, and the bonus ' +
-      "is to play any ONE card from your hand onto one of them and take that board's action: " +
-      'wheat Harvest, vegetable Deliver, orchard Draw 2, apiary GROW, dairy Build. Any card, no ' +
-      'colour matching, the fee EXTRA in every case, taken FIRST, and a board whose action you ' +
-      'cannot legally perform is not offered. No player has a Notice Board; a farm is a ' +
-      'Farmstead and a Barn. A central pile has NO THRESHOLD, so nothing is ever refused, and ' +
-      'HARVEST may take a whole pile into your barn including one you fed this turn. THERE ARE ' +
-      'NO MEEPLES ANYWHERE. ' +
-      '⭐ WHY IT EXISTS, AND IT IS THE ONLY READING IN THIS PROJECT THAT CAME FROM A TABLE ' +
-      'RATHER THAN FROM THE SIMULATOR: the meeple visit FAILED at the table. Dean, 09/09/2026 - ' +
-      '"with a meeple always available the bonus was basically free". A bonus that is always ' +
-      'affordable is not a decision, and the simulator had been reporting that as a healthy ' +
-      "visit rate. ⚠️ SO READ THE NEW RATE AGAINST DEAN'S BAND, 30% to 60% of turns, and treat " +
-      'a high number as the FAILURE MODE and not as the hook working. ' +
-      "⛔ THE OTHER TWO VALUES ARE CONTROLS AND THEIR CODE IS NOT DEAD. 'card' is the v31 game " +
+      '(The commons, the shipped game of 09/09 to 13/09/2026, is deleted.) ' +
+      "⛔ 'card' AND 'meeple' ARE CONTROLS AND THEIR CODE IS NOT DEAD. 'card' is the v31 game " +
       '(overlays/v31-card-visit.overlay.json); ' +
       "'meeple' is the loop (overlays/meeple-loop-v1.overlay.json) and, with meepleAsCard on, " +
       'the meeple ECONOMY that reference-v14 was cut against ' +
@@ -720,117 +674,6 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'alone.',
   },
   {
-    template: 'rules.turn.commonsTake',
-    type: 'commonsTake',
-    description:
-      "⭐ DEAN'S VARIANT (Dean, 09/09/2026), READ ONLY UNDER visitCurrency 'commons' and SHIPPED " +
-      'AT harvest, the C5 rule, WHICH MUST STAY BIT-REPRODUCIBLE. His words to the engine ' +
-      'session: "Your bonus action can be to place 1 card in the centre [and take that board\'s ' +
-      'action], OR take all the cards on one pile (without playing a card). If you take the ' +
-      'pile of cards, instead of going into the barn, they go into your HAND. So we remove the ' +
-      'rule that a harvest takes the cards from one central card. Effectively we change the ' +
-      'bonus action into a draw instead of a harvest." ' +
-      "'harvest' is the shipped game: a central pile is reached only through the Harvest " +
-      'action (own full building, or any non-empty pile per C5), whole pile into the ' +
-      "harvester's BARN, rationed by commonsHarvestMin and commonsHarvestTake. " +
-      "'bonus' is the variant, unrun before this pass, at " +
-      'overlays/commons-take-to-hand-v1.overlay.json. TWO CHANGES, NOT ONE: (1) Harvest never ' +
-      'reaches the centre - harvestOptions returns own full buildings only, so the wheat board ' +
-      'is offered only when the seat already has one, and commonsHarvestMin / commonsHarvestTake ' +
-      'have no subject; (2) a NEW bonus move, commonsTake { seat, board }, takes the WHOLE of one ' +
-      "central pile straight to the taker's HAND, no card played, no action bought, no fee. It is " +
-      "the bonus slot's other free half under 'bonus', on the same shape as bonusDraw under " +
-      "'card' and collect under 'meeple': it counts as a bonus use exactly as a commons play " +
-      "does, so A Helping Hand's second slot lets a seat play twice, take twice, or one of " +
-      'each, never three, and under bonusTiming "start" it is only offered before the main ' +
-      'action. ⭐ WHY IT EXISTS: a17 now has to watch THREE shares of a turn - PLAY (paid), TAKE ' +
-      '(free) and SLOT UNSPENT - because commonsTake is a free option sharing the slot with the ' +
-      'paid commons play, which is the solitaire law this project has measured under every ' +
-      'currency it has shipped (a free option in the bonus slot crowds out the paid one). Watch ' +
-      "the free option's share of USED slots (play + take), not of all turns, for that reading. " +
-      "'spend' IS THE THIRD VALUE (Dean, 09/09/2026), READ ONLY UNDER visitCurrency 'commons' and " +
-      'unrun before this pass, at overlays/commons-take-to-spend-v1.overlay.json. It REUSES THE ' +
-      "SAME commonsTake MOVE as 'bonus' - no fee, no card played - but the resolution now depends " +
-      'on WHICH BOARD is taken, because Dean\'s own words describe five fates, not one: "You can ' +
-      'play a card to a centre card to do the bonus action. OR, you can take all the cards from a ' +
-      'central pile and then use those cards to pay for a bonus action of the matching type. So, ' +
-      'if you take all the cards from the Draw card, they go into your hand. All the cards on the ' +
-      'Harvest go into your barn. All the cards on the Build action can be spent to do a Build. ' +
-      'All the cards on the Deliver action can immediately be used to deliver (this is one to ' +
-      'watch, this could be crazy). All the cards on the Grow action are used to SOW (not grow, ' +
-      'that would be crazy). Any cards that cannot be used are discarded. So, if there are 3 cards ' +
-      'on the build action and you build a card that costs 1, the excess are discarded - they ' +
-      "don't go into your hand.\" Orchard to HAND (as 'bonus'); wheat to BARN instead of hand, " +
-      'still no Harvest (D-S4); dairy ONE card from hand, paid FROM THE PILE ONLY (D-S1); ' +
-      'vegetable ONE crate to a tile with room, paid FROM THE PILE ONLY, the wild substitution ' +
-      'applying within the pile (D-S1 again); apiary the WHOLE pile SOWN, one card at a time in ' +
-      "pile order onto the taker's own non-full buildings, a card with no legal building discarded. " +
-      "Every card the chosen action does not use is DISCARDED to its own suit's pile (D-S2), never " +
-      "kept, never boxed. THE FOUR BUILDER DEFAULTS, none of them Dean's ruling, named so a future " +
-      'session does not mistake them for rulings: D-S1 a dairy/vegetable spend never tops up from ' +
-      'hand or barn, pile only; D-S2 every unusable card is discarded, per its own suit; D-S3 a ' +
-      'board is offered only if it can do something (the standing "a door that can do nothing is ' +
-      'not offered" ruling) - orchard/wheat whenever non-empty, dairy only if some hand card is ' +
-      'payable from the pile, vegetable only if the pile can pay a crate for a tile with a free ' +
-      'space, apiary only if the taker has a non-full building; D-S4 Harvest, main or bought, ' +
-      "never reaches the centre under 'spend', exactly as under 'bonus'. ⭐ EVENTS: commonsTaken " +
-      "fires for the orchard and wheat legs exactly as it does under 'bonus' (board tells hand from " +
-      'barn); every board, including those two, ALSO emits commonsSpent { seat, board, taken, used, ' +
-      'discarded, deliveredFromCentre } once its resolution completes, which is what a17 and a18 ' +
-      'read for the three-way tally and the taken/used/discarded accounting. ⚠️ BOT BLINDNESS, ' +
-      'named rather than fixed: the dairy/vegetable/apiary legs reuse the plain build/deliver/sow ' +
-      'task-answer kinds so their gain is priced through the normal built/delivered/cardPlaced ' +
-      'events, but the SAME reuse means handSpend and barnSpend cannot tell a pile-sourced payment ' +
-      'from a hand- or barn-sourced one and charge it as if it were - the same admitted ' +
-      'over-valuation this file already carries for a sow from hand against a sow from a deck top. ' +
-      'The wheat leg is priced correctly (the harvest rate, off commonsTaken) because it has no ' +
-      'task to hide behind. ' +
-      "'paid' IS THE FOURTH VALUE (Dean, 09/09/2026, dated), READ ONLY UNDER visitCurrency " +
-      "'commons' and unrun before this pass, at overlays/commons-take-paid-v1.overlay.json. " +
-      'Dean\'s own words: "Play a card to take a bonus action. Then play a card to take all the ' +
-      'cards from a pile. The take-a-pile action just gives you all the cards on a pile into your ' +
-      "hand. The card you pay goes to the discard pile.\" It is 'bonus' EXACTLY - Harvest never " +
-      "reaches the centre, a take always lands the whole pile in the taker's HAND - with ONE " +
-      "change: the commonsTake move now carries an optional fee, and under 'paid' that fee is " +
-      "REQUIRED. One card from the hand is discarded to ITS OWN suit's pile BEFORE the take " +
-      'resolves, never onto the pile it is paying to take and never boxed - so the fee can never ' +
-      'be one of the taken cards, and enumerateCommonsTake offers one move per (non-empty board, ' +
-      'card in hand) pair, the same shape enumerateCommons walks for the paid play. ⭐ WHY IT ' +
-      "MATTERS: it is the FIRST PER-USE SINK anywhere in the commons line. 'bonus' keeps the take " +
-      "free and 'spend' keeps everything the pile itself pays for, so neither ever removes a card " +
-      "that was not already headed to the centre; 'paid' is the first value to burn a card that " +
-      'never touches a central pile at all, on every single take. a17 keeps its PLAY / TAKE / ' +
-      "SLOT UNSPENT tally (the take is still the free half's shape, just no longer free of " +
-      'charge - "the take is PAID (one card to the discard) so there is no free option in the ' +
-      "slot\" replaces the 'bonus' detail line about a free option), and a18 gains a TAKE FEES " +
-      'DISCARDED reading and a second conservation identity: cards paid as take fees = discarded. ' +
-      "Farm bypass reads 0% by construction, exactly as under 'bonus', because Harvest still " +
-      'never reaches the centre. ' +
-      "'coins' IS THE FIFTH VALUE (Dean, 10/09/2026, K3/K4 of " +
-      "docs/commons-coins-handoff-2026-09-10-v2.md), READ ONLY UNDER visitCurrency 'commons' and " +
-      'UNBUILT AND UNRUN BEFORE THIS PASS, at overlays/commons-coins-v1.overlay.json. The rule: ' +
-      "the bonus slot's second option is DISCARD EVERY CARD ON ONE CENTRAL PILE to their suits' " +
-      'discard piles and TAKE ONE COIN PER CARD. No card is paid, and a coin take is not offered ' +
-      'on an empty pile (K5, the standing door ruling). Harvest never reaches the centre (K4, ' +
-      "reversing C5), exactly as under 'bonus', 'spend' and 'paid', so commonsHarvestMin and " +
-      'commonsHarvestTake have no subject and the farm bypass reads 0% by construction. ' +
-      '⭐ WHY IT IS DIFFERENT FROM THE OTHER THREE TAKES, WHICH IS THE WHOLE REASON IT EXISTS. ' +
-      "'bonus', 'spend' and 'paid' all sent the pile's cards somewhere a player could use them, " +
-      'and every one of them ran the bonus at 74% to 89% of turns, because the cards taken paid ' +
-      'for the next play. This take sends the cards OUT OF THE GAME and hands back a currency ' +
-      'that cannot buy a play at all, which is the one shape none of the four measured variants ' +
-      'had. Read the PLAY / COIN TAKE / SLOT UNSPENT tally a17 prints, on TURNS, against ' +
-      "Dean's 30-60% band. ⛔ IT IS ALSO THE ONLY KNOB IN THIS REGISTRY THAT MINTS A CURRENCY, " +
-      'and coins were deleted from this game on 02/09/2026 because every coin economy this ' +
-      'project has had died of a second faucet or a pity rate. So the arm ships with EXACTLY ONE ' +
-      'MINT (this) and EXACTLY TWO SINKS (rules.economy.farmsteadCoinPower and ' +
-      'rules.economy.endgameCoinCost); coins score nothing, break no ties, buy no ordinary card, ' +
-      'and leftover coins are dead. ⚠️ NEVER SET THIS ALONE. On its own it mints a currency ' +
-      'with nothing to spend it on, which measures a slot with a free option in it and nothing ' +
-      'else; the arm overlay pins both sinks, the colour gate, the wild pair, the bonus timing ' +
-      'and the currency by name, which is the 05/09/2026 passenger lesson applied.',
-  },
-  {
     template: 'rules.turn.deliveryMeepleSpace',
     type: 'intOrNull',
     description:
@@ -994,62 +837,15 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'it changes exactly this one leaf against the main arm.',
   },
   {
-    template: 'rules.economy.unclaimedBoardsToCentre',
-    type: 'boolean',
-    description:
-      "⭐ DEAN'S VARIANT OF THE NOTICE BOARD VISIT (Dean, ruled 11/09/2026), SHIPPED false AND " +
-      "READ ONLY UNDER visitCurrency 'noticeBoardPower', exactly as noticeBoardBlocks beside it " +
-      'is. false is the shipped value: every Notice Board belongs to a player, so a suit nobody ' +
-      'is farming has no board on the table at all. true SENDS THE UNCLAIMED ONES TO THE CENTRE: ' +
-      'the Notice Board of every suit no player is farming sits in the middle of the table, ' +
-      'ownerless, with a face-up public pile, and any seat may play a card onto it. ' +
-      '⭐ IT IS RULED TOGETHER WITH A BAN ON SELF-VISITING (rules.turn.selfVisitAllowed false) ' +
-      'AND THE PAIR IS ARITHMETIC RATHER THAN TASTE: five boards exist, you may never visit your ' +
-      'own, so EVERY SEAT FACES EXACTLY FOUR TARGETS AT EVERY PLAYER COUNT, solo included - ' +
-      "1 player 1 own / 0 rivals' / 4 central, 2 players 1 / 1 / 3, 3 players 1 / 2 / 2, " +
-      '4 players 1 / 3 / 1. ' +
-      '⭐ WHY IT EXISTS, MEASURED RATHER THAN ARGUED. The notice board visit was measured on ' +
-      '10/09/2026 at 4,820 games per arm and the bonus slot was used on 71.2% OF TURNS against ' +
-      "Dean's band of 30% to 60%, OUT OF BAND AT EVERY SEAT COUNT, with 44.4% of all visits " +
-      "going to the visitor's OWN board (58.4% at two players) against v31's 22.2%. The control " +
-      'that bans self-visiting fixes exactly that - 46.4% pooled, and cross-table traffic nearly ' +
-      'doubles - but STARVES AT TWO PLAYERS at 29.1% of turns, below the 30% floor, because with ' +
-      'self-visiting banned and only two suits in play there is exactly ONE board a seat may ' +
-      'visit. This knob is the fix for the starve and it fixes it by arithmetic. ' +
-      '⭐ AND IT RESTORES A STANDING DEAN RULING THE BUILT DESIGN SILENTLY BROKE: all five ' +
-      'actions must exist in every game, which fails today because at two players only two ' +
-      'Notice Boards are in play at all. ' +
-      '⛔ THE HEADLINE RISK, AND IT IS THE NUMBER THAT DECIDES THE VARIANT: A CENTRAL BOARD ' +
-      "IS SOCIALLY FREE AND A RIVAL'S BOARD IS NOT, so there is a standing incentive to prefer " +
-      "the centre, and this design's whole thesis is that YOU PAY THE GIVER. If cross-table " +
-      'visits FALL rather than rise, the variant has recreated the village green with an extra ' +
-      'step. Read visits received per player and the own/rival/central split of every play, by ' +
-      'seat count, before reading the rate. ' +
-      "⚠️ IT ADDS NO CENTRE MACHINERY, WHICH IS THE POINT. A play onto a rival's board " +
-      'stays the visit move and a play onto a central board is the EXISTING commons move, so the ' +
-      '`3+` rule on a central pile is spelled with the commons knobs already here: ' +
-      'commonsThreshold null (no cap, nothing ever refuses a play), commonsHarvestMin 3 (any ' +
-      'player may harvest a pile of three cards or more and nobody may touch it below that), ' +
-      "commonsHarvestTake null (the whole pile) and rules.turn.commonsTake 'harvest' (Harvest " +
-      'reaches the centre at all). A HARVEST IS A HARVEST (D1, reaffirmed 11/09/2026): main ' +
-      'action or bought through the Wheat board, no rules exception either way, which was ' +
-      "Dean's explicit reason. " +
-      '⚠️ NEVER SET IT ALONE. overlays/notice-board-visit-unclaimed-v1.overlay.json is ' +
-      "Dean's variant (self-visiting OFF) and " +
-      'overlays/notice-board-visit-unclaimed-self-v1.overlay.json is its paired arm (self-visiting ' +
-      'ON): the variant moves TWO knobs at once, ruling in a bundle rules in the bundle ' +
-      '(05/09/2026), and the four overlays form a 2x2 with notice-board-visit-v1 and ' +
-      '-no-self-v1 so the two can be separated.',
-  },
-  {
     template: 'rules.economy.noticeBoardsBySeats.{}',
     type: 'int',
     description:
+      '⭐ SHIPPED {"2": 2, "3": 1, "4": 1} SINCE 13/09/2026, ruled the default when the commons ' +
+      'was deleted; overlays that relied on the old "2": 1 now pin it. ' +
       "⭐ DEAN'S TWO-BOARD FIX (ruled 11/09/2026): HOW MANY NOTICE BOARDS EACH PLAYER LAYS OUT, " +
       "keyed by SEAT COUNT. Read only under visitCurrency 'noticeBoardPower' with " +
-      'rules.turn.selfVisitAllowed false, exactly as noticeBoardBlocks and ' +
-      'unclaimedBoardsToCentre beside it are. SHIPPED AT ONE EACH AT EVERY SEAT COUNT, so the ' +
-      'base changes nothing; the arm sets {"2": 2, "3": 1, "4": 1}. At 2 each player lays out ' +
+      'rules.turn.selfVisitAllowed false, exactly as noticeBoardBlocks beside it is. ' +
+      'The arm set {"2": 2, "3": 1, "4": 1}. At 2 each player lays out ' +
       "TWO boards - their own suit's, plus one more drawn AT RANDOM from the suits nobody is " +
       'farming - and the fifth board is not used. At three and four seats the arm IS ' +
       'overlays/notice-board-visit-no-self-v1.overlay.json, so the pair differs AT TWO SEATS ' +
@@ -1094,81 +890,15 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'overlays/notice-board-visit-no-self-v1.overlay.json is its control.',
   },
   {
-    template: 'rules.economy.commonsThreshold',
-    type: 'intOrNull',
-    description:
-      '⭐ THE FIRST FALLBACK KNOB OF THE COMMONS (Dean, 09/09/2026, C10), SHIPPED OFF AT null AND ' +
-      "READ ONLY UNDER visitCurrency 'commons'. null is NO CAP: a central pile takes any number " +
-      'of cards, is never full, never clogs, and NOTHING IN THE GAME REFUSES A PLAY. A number n ' +
-      'refuses a play onto a board already holding n cards, which makes this the only rule in ' +
-      'the commons that can refuse anything - so turning it on is a real change to C4 and not a ' +
-      'tuning. ⭐ WHY IT EXISTS UNRUN, WHICH IS THE WHOLE POINT OF IT: the failure the commons is ' +
-      'most likely to repeat is the one the meeple visit died of at the table - the bonus reading ' +
-      'AUTOMATIC. A meeple visit at least needed a meeple; a card play needs a card, and a hand ' +
-      "almost always has one. Dean's band is 30% to 60% of turns, so if a17 reads above 60% - at " +
-      'TWO PLAYERS first, which is where every rate in this game runs hottest - this is the ' +
-      'number that answers it without redesigning the slot. ' +
-      'overlays/commons-threshold-2.overlay.json is the arm. ⚠️ IT IS NOT THE v31 CLOG COMING ' +
-      'BACK: a full central board shuts one of five boards to EVERYBODY including whoever filled ' +
-      'it, and any player may empty it with a Harvest, which is the opposite of a board its owner ' +
-      'sat on to deny the table. Sweep it with the bonus rate and the door mix together, never ' +
-      'with commonsColourMatch in the same overlay - the two ration different things and a joint ' +
-      'move is unattributable.',
-  },
-  {
-    template: 'rules.economy.commonsColourMatch',
-    type: 'boolean',
-    description:
-      '⭐ THE SECOND FALLBACK KNOB OF THE COMMONS (Dean, 09/09/2026, C10), SHIPPED OFF AND READ ' +
-      "ONLY UNDER visitCurrency 'commons'. false is the shipped rule: ANY card from your hand " +
-      'pays for ANY board, which is the sentence that makes the bonus one line of teach. true ' +
-      "demands the card MATCH the board's suit, with two cards of any suits standing in for one " +
-      "of the board's colour - the island's wild substitution rate reused rather than re-rated " +
-      '(D5). ⭐ IT RATIONS A DIFFERENT THING FROM commonsThreshold, and that is why there are ' +
-      'two: a threshold rations HOW OFTEN the centre can be used, matching rations WHICH BOARD a ' +
-      "given hand can afford. So this is the one to reach for if the bonus RATE is inside Dean's " +
-      'band but the DOOR MIX is not - today a hand of Wheat buys any board, so the mix is a taste ' +
-      'rather than a constraint, and the door mix has been the reading this project has moved ' +
-      'most often. ⚠️ IT PUSHES HARD ON THE MONOCULTURE FINDING (v31 risk 3): under matching, an ' +
-      'own-suit hand can only ever afford its own board, so an own-crop build share already at ' +
-      '83% would be the first thing to re-read. overlays/commons-colour-match-v1.overlay.json is ' +
-      'the arm.',
-  },
-  {
-    template: 'rules.economy.commonsWildPair',
-    type: 'boolean',
-    description:
-      '⭐ THE WILD PAIR, BUILT AT LAST (Dean, 10/09/2026, K3), SHIPPED OFF AND READ ONLY UNDER ' +
-      "visitCurrency 'commons' WITH commonsColourMatch ON. It means nothing on its own: with any " +
-      'card paying for any board there is no colour to stand in for. false is the shipped value ' +
-      'AND it is how the colour-match arm was actually measured on 09/09/2026 - D5 said two ' +
-      "cards of any colours count as one card of the board's colour at the island's own " +
-      'substitution rate, and D7 recorded that the arm shipped WITHOUT it, so the 34.4% of turns ' +
-      'that arm read is that rule AT ITS HARSHEST and the rule Dean would write reads somewhere ' +
-      'between 34.4% and the shipped 58.9%. true builds it: two cards of any colours pay one ' +
-      "board of any colour and BOTH land on that board's pile, so the pile grows by two and the " +
-      'payer is down two cards. ⭐ IT IS THE HIGHEST-VALUE SINGLE RUN ON THE LIST AND HAS BEEN ' +
-      'SINCE 09/09/2026: it is the only way anybody has of landing the bonus rate in the MIDDLE ' +
-      "of the band rather than at one end of it. ⚠️ READ THE PAIR'S SHARE OF ALL PLAYS as the " +
-      'pressure gauge rather than the rate alone - under about a fifth and the colour keying is ' +
-      'doing its work, over about half and the matching rule is a tax everybody is paying ' +
-      "around. ⚠️ AND WATCH BRANCHING: pairs are C(h,2) per board, so at the engine's hand " +
-      'bound of 7 that is 21 per board and 105 a turn, well under the build enumerator but not ' +
-      'nothing. overlays/commons-coins-v1.overlay.json turns it on and ' +
-      'overlays/commons-coins-no-wild-v1.overlay.json is the paired arm that says what it is ' +
-      'worth.',
-  },
-  {
     template: 'rules.economy.endgameCoinCost',
     type: 'intOrNull',
     description:
-      "⭐ THE FIRST OF THE ARM'S TWO COIN SINKS (Dean, 10/09/2026, K15), SHIPPED OFF AT null AND " +
-      "READ ONLY UNDER commonsTake 'coins', which is the only thing that mints a coin. null is " +
+      "⭐ THE FIRST OF THE COINS ARM'S TWO COIN SINKS (Dean, 10/09/2026, K15), SHIPPED OFF AT null. " +
+      'Its commons mint was deleted on 13/09/2026; a Village Store coin can still pay it. null is ' +
       'the shipped rule: the fifteen Endgame cards cost two cards of their own suit, exactly as ' +
       'v31 priced them and exactly as the fifteen Power cards still do, so each currency ends up ' +
       'with one kind of card. A number n prices an Endgame card at n COINS and no cards at all; ' +
-      "the arm sets 3, which is Dean's proposed starting price rather than a measured one, and " +
-      'overlays/commons-coins-endgame-price.sweep.json prices it at 2, 3 and 4. ' +
+      "the arm set 3, which is Dean's proposed starting price rather than a measured one. " +
       '⛔ THE PRICE IS A RULES KNOB AND NEVER A CARD FIELD. cards.catalogue.{}.buildCost has ' +
       'exactly suit and wild and must keep having exactly those two - the coin third of it went ' +
       'with the currency on 02/09/2026, and putting it back would mean a coin price could arrive ' +
@@ -1177,8 +907,7 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       "it. K13 moves the Farmstead's own-crop scorer to the BARN rather than deleting it, so " +
       'this cost is the ONLY pull that goes and the prediction is a SMALL move off the 82.6% to ' +
       '83.3% own-crop build share, not a large one; a large move means the coin economy did it ' +
-      'rather than the price. overlays/commons-coins-endgame-cards-v1.overlay.json is the paired ' +
-      'arm that turns it back off.',
+      'rather than the price.',
   },
   {
     template: 'rules.economy.cropScorerOnBarn',
@@ -1197,7 +926,8 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     type: 'boolean',
     description:
       "⭐ THE SECOND OF THE ARM'S TWO COIN SINKS AND THE BIGGER RULES CHANGE (Dean, 10/09/2026, " +
-      "K10-K14), SHIPPED OFF AND READ ONLY UNDER commonsTake 'coins'. false is the shipped rule: " +
+      'K10-K14), SHIPPED OFF. Its commons mint was deleted on 13/09/2026; a Village Store coin can ' +
+      'still pay it. false is the shipped rule: ' +
       'the Farmstead is an ordinary starter that prints "Game end: 1 VP for each <CROP> card you ' +
       'have built" and does nothing during play. true makes it a BUILDING WITH NO THRESHOLD ' +
       'whose activation cost is ONE COIN - thresholdOf returns null, it is never full and never ' +
@@ -1324,58 +1054,6 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'something for its card, which is the same job D6 did for the commons wheat board and the ' +
       'reason no power in this set can be dead. ⚠️ It is a barn faucet that needs no building, ' +
       'so read it beside the barn glut and the farm-bypass share.',
-  },
-  {
-    template: 'rules.economy.commonsHarvestMin',
-    type: 'intOrNull',
-    description:
-      "⭐ DEAN'S QUESTION OF 09/09/2026, HALF ONE, AND THE BUILDING SEMANTIC OF A CENTRAL PILE. " +
-      "Read only under visitCurrency 'commons' and SHIPPED OFF at null. His words: \"Can we " +
-      'measure how many cards are taken when the Harvest is done against the centre cards? ' +
-      "I'm interested to see if we place a threshold on the centre cards if it will reduce the " +
-      'number of cards going from the centre to the barns - my target is about 30-40% of barn ' +
-      'cards should come from the middle." The centre share reads 63.1% on the shipped rules. ' +
-      'null IS THE SHIPPED RULE (C5): any central pile holding at least one card may be ' +
-      'harvested, whole, by whoever is playing. A number n makes a pile harvestable ONLY at n ' +
-      'cards or more - a pile is "full" at n exactly as a building is full at its threshold, and ' +
-      'nothing may take it before then. ' +
-      '⚠️ IT IS NOT commonsThreshold AND THE TWO ARE EASY TO CONFUSE: that knob caps the ' +
-      'INFLOW (a pile at its cap refuses a play), this one gates the OUTFLOW (a pile below n ' +
-      'refuses a harvest). The inflow cap MEASURED NO CHANGE at 2 - a centre share of 63.1% ' +
-      'against 63.0% - because a central harvest already takes a median of two cards, and ' +
-      'because every card played into the centre reaches a barn eventually anyway. ' +
-      '⛔ D6 STOPS HOLDING UNDER THIS KNOB, which is the one behaviour change to name before a ' +
-      'run. D6 is "the wheat board can never be dead": the fee lands on the pile before the ' +
-      'action runs, so the fee is itself harvestable and the floor of the bonus slot is one card ' +
-      'from hand into barn. Under commonsHarvestMin that holds only if the pile the fee lands on ' +
-      'REACHES n, so at 3 a play onto an empty wheat board would buy a Harvest of nothing and ' +
-      'the board is simply not offered unless some pile is already deep enough or the seat has a ' +
-      'full building. overlays/commons-harvest-min-2, -3 and -4 are the arms.',
-  },
-  {
-    template: 'rules.economy.commonsHarvestTake',
-    type: 'intOrNull',
-    description:
-      "⭐ DEAN'S QUESTION OF 09/09/2026, HALF TWO, AND THE ONLY ONE OF THE THREE COMMONS KNOBS " +
-      "THAT CAN REDUCE THE CENTRE'S OUTFLOW WITHOUT REDUCING PLAYS. Read only under " +
-      "visitCurrency 'commons' and SHIPPED OFF at null. The target it is aimed at is Dean's, " +
-      '09/09/2026: "my target is about 30-40% of barn cards should come from the middle", ' +
-      'against a shipped 63.1%. ' +
-      'null IS THE SHIPPED RULE (C5): a central harvest takes the WHOLE pile. A number n takes ' +
-      'at most the most recently played n cards - the TOP of the pile - and leaves the rest ' +
-      'standing in the centre. A pile holding fewer than n gives up all of it, so the rule is ' +
-      '"at most n" and never a minimum. ' +
-      '⭐ WHY THIS IS THE ONE THAT CAN WORK. The centre is a closed system: cards enter only by ' +
-      'a play (C3) and leave only by a harvest (D3), so plays into the centre = cards harvested ' +
-      'out + cards stranded at game end. Capping the plays (commonsThreshold) or gating when a ' +
-      'pile may be taken (commonsHarvestMin) changes WHEN cards leave, not how many; leaving ' +
-      'cards behind is the only rule that moves the ratio itself, because the remainder stays in ' +
-      'the centre where it can be taken later or stranded at the end. ' +
-      '⚠️ SO READ IT AGAINST THE CONSERVATION LINE a18 PRINTS and not off the share alone: a knob ' +
-      'that hits the target by STRANDING cards has changed where the cards end up rather than ' +
-      'how the centre feeds a barn, and at n=1 the centre also becomes a slower faucet for ' +
-      'everybody rather than a fat prize for whoever harvests first, which is a different game ' +
-      'and not only a different number. overlays/commons-take-1 and -2 are the arms.',
   },
   {
     template: 'rules.economy.storeCoinsPerCard',
@@ -1586,30 +1264,9 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'the Orchard slot takes an implausible share of visits.',
   },
   {
-    template: 'workers.roster.{}.actionUnderCommons',
-    type: 'doorAction',
-    description:
-      '⭐ THE APIARY BOARD BUYS A GROW, NOT A SOW (Dean, 09/09/2026, C3), and it is the one door ' +
-      "whose ACTION the commons changed. Read only under visitCurrency 'commons'. It is a SECOND " +
-      'PRINTED PAYLOAD beside `action`, exactly as drawUnderMeepleCurrency sits beside draw, and ' +
-      'that shape is load-bearing: `action` is NOT in this registry, so if the commons had simply ' +
-      'overwritten it the v31 and meeple controls could not have pinned their Sow back. A knob is ' +
-      'how a control keeps what the default moved - the 05/09/2026 passenger lesson, one level ' +
-      'down. ⭐ WHY GROW: a Sow through the door was the weakest thing on the table (a visitor ' +
-      'paid a card onto the board and a SECOND card into the sow, for one threshold step), and ' +
-      'the Grow at least hands back an ability for its activation card. The fee is still extra ' +
-      'and there is NO clog bypass - that was the meeple-paid Grow of R15 and it went with the ' +
-      'meeples. It also settles, for the commons only, the disagreement CLAUDE.md carries ' +
-      'between the player aid (orange buys GROW) and the engine (orange bought SOW). ' +
-      "Setting it back to 'sow' is the paired arm and nobody has run one.",
-  },
-  {
     template: 'workers.roster.{}.sow.amount',
     type: 'int',
     description:
-      '⚠️ READ ONLY BY THE TWO CONTROLS SINCE 09/09/2026: under the commons the Apiary board buys ' +
-      'a GROW (workers.roster.{}.actionUnderCommons), so nothing in the shipped game sows through ' +
-      'a door at all. ' +
       'Cards the Apiary door sows. It sows FROM THE HAND in v31, so a visitor pays 2 cards for 1 ' +
       'threshold step and this is the weakest door on the table by some distance - ruled that way ' +
       'knowingly. If the Apiary board takes no traffic, the fix is the source (back to a deck top), ' +

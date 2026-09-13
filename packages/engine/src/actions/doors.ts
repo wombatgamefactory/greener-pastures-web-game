@@ -48,41 +48,30 @@ export function workerActionLegal(
   state: GameState,
   seat: Seat,
   workerId: string,
-  opts?: { excludingHandCard?: CardId; excludingHandCard2?: CardId },
+  opts?: { excludingHandCard?: CardId },
 ): boolean {
   return doorActionLegal(data, state, seat, workerData(data, workerId).action, opts);
 }
 
 /**
- * The same gate keyed on the ACTION rather than on a roster id, because the
- * commons buys one action the roster does not name (GROW, C3).
+ * The same gate keyed on the ACTION rather than on a roster id, because an
+ * afterAction apiary meeple buys one action the roster does not name (GROW, M7).
  *
  * `workerActionLegal` above is this function with the roster lookup in front of
- * it and is still the only way the two visit routes ask the question; the
- * commons asks here, through `commonsDoorAction`. One switch, so a door can
- * never be offered by one route and refused by the other.
+ * it. One switch, so a door can never be offered by one route and refused by
+ * the other.
  */
 export function doorActionLegal(
   data: GameData,
   state: GameState,
   seat: Seat,
   action: DoorAction,
-  /**
-   * ⭐ `excludingHandCard2` IS THE WILD PAIR'S SECOND FEE (K3, 10/09/2026) and
-   * nothing else ever sets it. Two optional fields rather than one `CardId[]`,
-   * because every shipped call site passes exactly one card and must keep
-   * passing one: an array would rewrite four call sites and both visit routes
-   * for a knob that ships off.
-   */
-  opts?: { excludingHandCard?: CardId; excludingHandCard2?: CardId },
+  opts?: { excludingHandCard?: CardId },
 ): boolean {
   const door = doorForAction(data, action);
-  const withoutFee = opts?.excludingHandCard
+  const hand = opts?.excludingHandCard
     ? withoutFirst(player(state, seat).hand, opts.excludingHandCard)
     : player(state, seat).hand;
-  const hand = opts?.excludingHandCard2
-    ? withoutFirst(withoutFee, opts.excludingHandCard2)
-    : withoutFee;
   switch (action) {
     case 'draw':
       return drawableSuits(data, state).length > 0;
@@ -104,19 +93,15 @@ export function doorActionLegal(
     case 'build':
       return anyBuildOption(data, state, seat, hand);
     case 'grow':
-      // ⭐ THE COMMONS APIARY BOARD (C3). The Grow ACTION's own enumerator, with
-      // the fee taken out of the hand first - which is what `excludeHandCard`
-      // is for, and why it had to be added to `GrowOptionMods`: a hand of one
-      // card cannot both pay the board and pay the activation.
+      // The Grow ACTION's own enumerator, with any fee taken out of the hand
+      // first: a hand of one card cannot both pay a fee and pay the activation.
       return (
-        growOptions(data, state, seat, {
-          ...(opts?.excludingHandCard === undefined
-            ? {}
-            : { excludeHandCard: opts.excludingHandCard }),
-          ...(opts?.excludingHandCard2 === undefined
-            ? {}
-            : { excludeHandCard2: opts.excludingHandCard2 }),
-        }).length > 0
+        growOptions(
+          data,
+          state,
+          seat,
+          opts?.excludingHandCard === undefined ? {} : { excludeHandCard: opts.excludingHandCard },
+        ).length > 0
       );
     case 'deliver':
       // Island or freight: a balloon move IS the Deliver action (DL-12).
@@ -128,7 +113,7 @@ export function doorActionLegal(
 
 /**
  * The roster entry behind a door action. GROW has no entry of its own - it is
- * the commons re-reading the Apiary board's printed SOW (C3) - so it borrows
+ * the afterAction apiary meeple re-reading the Apiary door's printed SOW (M7) - so it borrows
  * that one; the only thing `doorActionLegal` reads off an entry is the sow's
  * size and source, which a Grow never asks about.
  *

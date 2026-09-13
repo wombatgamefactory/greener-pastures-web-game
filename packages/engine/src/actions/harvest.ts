@@ -1,21 +1,13 @@
 /**
- * HARVEST: one of your full buildings, OR the whole pile from a central board.
+ * HARVEST: one of your full buildings.
  *
  * Split out of actions.ts on 2026-09-12; the code is unchanged.
  */
 
 import type { Fx } from '../fx.js';
-import {
-  commonsBoardCard,
-  commonsBoards,
-  commonsHarvestMin,
-  hasCentre,
-  isHarvestable,
-  player,
-} from '../query.js';
+import { isHarvestable, player } from '../query.js';
 import type { CardId, GameState, Seat } from '../state.js';
 import type { GameData } from '@gp/data';
-import { commonsHarvestReachesCentre } from '@gp/data';
 
 // --- Harvest ---------------------------------------------------------------
 
@@ -76,99 +68,7 @@ export function harvestOptions(
   const own = player(state, seat)
     .tableau.filter((b) => isHarvestable(data, b) || b.stack.length >= relaxedMin)
     .map((b) => b.card);
-  // ⭐ AND, UNDER THE COMMONS, EVERY CENTRAL PILE DEEP ENOUGH TO TAKE (C5).
-  // Not your buildings and not anybody's: a pile with a card on it is
-  // harvestable by whoever's turn it is, into THEIR barn, and the whole pile
-  // comes.
-  //
-  // ⭐ "DEEP ENOUGH" IS ONE CARD UNLESS `commonsHarvestMin` SAYS OTHERWISE
-  // (Dean, 09/09/2026). At null - the shipped rule - the gate is >= 1 and this
-  // is byte-identical to the rule as ruled; a number n imports the BUILDING
-  // semantic into the centre, so a pile is "full" at n and refuses a harvest
-  // below it. `commonsHarvestTake` is the other half of the same question and
-  // lives in `fx.harvest`, because it changes what comes out rather than
-  // whether anything may.
-  //
-  // ⭐ INCLUDING THE PILE YOU JUST FED THIS TURN, which is Dean's ruling and
-  // not an accident of ordering: the commons play lands the fee BEFORE the
-  // action it buys, so buying a Harvest through the wheat board can take back
-  // the card that paid for it plus everything under it. "A good turn, not a
-  // loop" - the fee is only ever ONE card and the pile it joins is whatever the
-  // table left there.
-  //
-  // ⚠️ `relaxedMin` IS IRRELEVANT HERE (D2). A central pile has no threshold,
-  // so it is never "not full"; the magenta balloon's harvest-any and the plain
-  // action see exactly the same central targets, and the union above is where
-  // the two gates still differ for BUILDINGS.
-  // ⭐ TWO GAMES HAVE A CENTRE SINCE 11/09/2026, AND A HARVEST IS A HARVEST IN
-  // BOTH (D1, reaffirmed by Dean that day, in his words "to prevent any rules
-  // exceptions"). The commons puts all five piles in the middle; Dean's
-  // unclaimed-boards variant puts the unfarmed suits' boards there and leaves
-  // the rest as owned buildings. The gate is the same either way and so is the
-  // minimum, which is why this reads `hasCentre` rather than growing a second
-  // branch: the variant's overlay pins `commonsHarvestMin` to 3, so a pile
-  // below three may be taken by nobody and a pile at three or more by ANYBODY.
-  if (!hasCentre(data)) return own;
-  // ⭐ DEAN'S VARIANTS: HARVEST NEVER REACHES THE CENTRE AT ALL under any
-  // `commonsTake` value but the shipped `'harvest'`. Under 'bonus', 'spend'
-  // and 'paid' (09/09/2026) a central pile is taken by the `commonsTake` bonus
-  // move instead - to hand, to barn or per-board (D-S4); under 'coins'
-  // (10/09/2026, K4, reversing C5) it is DISCARDED for one coin per card and
-  // nothing playable comes back at all. In every one of the four the Harvest
-  // action stops at own full buildings, commonsHarvestMin and
-  // commonsHarvestTake have no subject, and the farm-bypass share reads 0% BY
-  // CONSTRUCTION - which is why this returns before either knob is read.
-  //
-  // ⭐ ONE HELPER RATHER THAN A DISJUNCTION THAT GROWS BY ONE TERM PER VARIANT
-  // (10/09/2026). `commonsHarvestReachesCentre` is written in @gp/data against
-  // the shipped value, so a FIFTH `commonsTake` gets this rule right by
-  // default instead of by somebody remembering to widen an `||` in two files.
-  if (!commonsHarvestReachesCentre(data)) {
-    return own;
-  }
-  return [...own, ...centralHarvestTargets(data, state)];
-}
-
-/**
- * ⭐ EVERY CENTRAL PILE DEEP ENOUGH FOR ANYBODY TO TAKE, as board card ids.
- *
- * Split out of `harvestOptions` on 11/09/2026 because a SECOND route now needs
- * exactly the same set: the Wheat Notice Board's power, which Dean ruled must
- * reach the centre under the unclaimed-boards variant "to prevent any rules
- * exceptions". A second copy of the depth test in `tasks.ts` is how a gate and
- * the action it gates come to disagree, which this file has already paid for
- * once (19/08/2026, five call sites).
- *
- * ⛔ IT WALKS `centralBoardSuits` AND NOT `data.cards.suits`. Under the commons
- * those are the same five; under the variant only the unfarmed suits have a
- * pile at all, and a colour with no board must not be offered as a pile of zero
- * - `commonsBoardCard` would happily hand back a card id that is sitting in a
- * rival's tableau.
- *
- * ⚠️ `relaxedMin` HAS NO SUBJECT HERE (D2). A central pile has no threshold, so
- * it is never "not full": the magenta balloon's harvest-any and the plain action
- * see exactly the same central targets, and the only gate is
- * `commonsHarvestMin`.
- */
-export function centralHarvestTargets(data: GameData, state: GameState): CardId[] {
-  if (!hasCentre(data) || !commonsHarvestReachesCentre(data)) return [];
-  const boards = commonsBoards(state);
-  const min = commonsHarvestMin(data);
-  const out: CardId[] = [];
-  // ⚠️ ONE WALK AND ONE ARRAY, RATHER THAN `centralBoardSuits().filter().map()`.
-  // This runs through `hasMainOption` on every settle and through the bots'
-  // speculative applies on top of that, and three throwaway arrays a call is
-  // exactly the per-decision allocation ticket 28 went hunting for. An ABSENT
-  // pile is a board that is not in the centre at all (a seat is farming that
-  // suit); an EMPTY one is a board with nothing on it, and `>= min` refuses it
-  // anyway - but the two are still checked separately, because conflating them
-  // is how a rival's board would come to be offered as a harvest target.
-  for (const colour of data.cards.suits) {
-    const pile = boards[colour];
-    if (pile === undefined || pile.length < min) continue;
-    out.push(commonsBoardCard(data, colour));
-  }
-  return out;
+  return own;
 }
 
 /**

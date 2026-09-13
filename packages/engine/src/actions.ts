@@ -59,7 +59,7 @@ export {
 export { doDraw } from './actions/draw.js';
 export type { GrowOption, GrowOptionMods } from './actions/grow.js';
 export { activateTargets, growOptions, meeplePairs } from './actions/grow.js';
-export { centralHarvestTargets, doHarvestAction, harvestOptions } from './actions/harvest.js';
+export { doHarvestAction, harvestOptions } from './actions/harvest.js';
 export type { BalloonMoveOption, DeliverOption, DemandRef } from './actions/deliver.js';
 export {
   anyBalloonMoveOption,
@@ -80,34 +80,16 @@ export {
   tileHasRoom,
 } from './actions/deliver.js';
 export { doorActionLegal, workerActionLegal } from './actions/doors.js';
-export type {
-  CollectOption,
-  CommonsOption,
-  CommonsTakeOption,
-  VisitOption,
-  VisitSpend,
-} from './actions/bonus.js';
+export type { CollectOption, VisitOption, VisitSpend } from './actions/bonus.js';
 export {
-  anyCommonsOption,
-  anyCommonsSpendBuildOption,
-  anyCommonsSpendDeliverOption,
-  anyCommonsTakeOption,
   anyVisitOption,
   bonusDrawOpen,
   bonusOpen,
   bonusSlotsFor,
   collectOpen,
   collectOptions,
-  commonsOptions,
-  commonsSpendBuildOptions,
-  commonsSpendDeliverOptions,
-  commonsTakeOptions,
   doBonusDraw,
   doCollect,
-  doCommons,
-  doCommonsSpendBuild,
-  doCommonsSpendDeliver,
-  doCommonsTake,
   doSpendMeeple,
   doVisit,
   hasBonusOption,

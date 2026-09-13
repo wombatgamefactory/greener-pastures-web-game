@@ -5,13 +5,7 @@
  */
 
 import type { Card, GameData, Suit, SuitDoor } from '@gp/data';
-import {
-  isCommons,
-  isMeepleCurrency,
-  isNoticeBoardPower,
-  noticeBoardBlocks,
-  unclaimedBoardsToCentre,
-} from '@gp/data';
+import { isMeepleCurrency, isNoticeBoardPower, noticeBoardBlocks } from '@gp/data';
 
 import type { BuildingState, CardId, GameState, PlayerState, Seat, WorkerState } from './state.js';
 
@@ -108,13 +102,6 @@ export function faceOf(data: GameData, building: BuildingState): Card {
  * untouched - they refused it before the arm and they refuse it after.
  */
 function noticeBoardIsBuilding(data: GameData): boolean {
-  // ⭐ THE COMMONS ANSWERS FALSE TOO (C4, 09/09/2026), and for a second reason
-  // on top of the meeple loop's: a central board has NO THRESHOLD, so it is
-  // never full, never clogged and refuses nothing. It is also not in anybody's
-  // tableau, so in practice the seam is belt and braces - but the two halves
-  // must agree, because A21 The Wax Hall counts "a building with a card on it"
-  // through `thresholdOf` and a central pile is deliberately not one (C8).
-  //
   // ⭐ TWO VALUES ANSWER TRUE SINCE 10/09/2026, AND THE SECOND IS THE WHOLE
   // POINT OF THE NOTICE-BOARD VISIT (S2, S16). `'card'` is the v31 control, and
   // `'noticeBoardPower'` brings the five boards home to their owners' farms as
@@ -122,7 +109,7 @@ function noticeBoardIsBuilding(data: GameData): boolean {
   // the board and lets a visit fee land through `fx.placeOnBuilding` so that
   // A16 The Beekeeper's Veil sees it. Answering false here would have silently
   // undone both of S16's rulings.
-  return !isMeepleCurrency(data) && !isCommons(data);
+  return !isMeepleCurrency(data);
 }
 
 export function thresholdOf(data: GameData, building: BuildingState): number | null {
@@ -165,9 +152,6 @@ export function thresholdOf(data: GameData, building: BuildingState): number | n
  * (`overlays/notice-board-visit-blocking-v1.overlay.json`) and turns the board
  * back into an ordinary clogging building, so that "does a board stall?" is
  * measured rather than argued.
- *
- * ⚠️ IT IS NEVER ASKED OF A CENTRAL PILE. Under the commons a board has no
- * threshold at all (`thresholdOf` answers null), so nothing reaches here.
  */
 function thresholdShuts(data: GameData, building: BuildingState): boolean {
   if (!isNoticeBoardPower(data)) return true;
@@ -183,7 +167,7 @@ function thresholdShuts(data: GameData, building: BuildingState): boolean {
  * above). Every caller that meant "may this be harvested / is it at its printed
  * number" reads this; every caller that meant "does this refuse a card" reads
  * `isFull`. Under every mode but the notice-board visit the two are the same
- * boolean, so the split moves nothing for the commons or for either control.
+ * boolean, so the split moves nothing for either control.
  */
 export function isHarvestable(data: GameData, building: BuildingState): boolean {
   const threshold = thresholdOf(data, building);
@@ -371,10 +355,10 @@ export function slotBlocked(state: GameState, seat: Seat, colour: Suit): boolean
 }
 
 /**
- * A SEAT'S COINS, under the commons-with-coins arm (K7, Dean 10/09/2026).
+ * A SEAT'S COINS, under the Village Store (and the deleted coins arm's K7 sinks).
  *
- * Throws rather than returning 0, for exactly the reason `noticeBoardSlots` and
- * `commonsBoards` do: a coin game with no wallet is a setup that never ran, and
+ * Throws rather than returning 0, for exactly the reason `noticeBoardSlots`
+ * does: a coin game with no wallet is a setup that never ran, and
  * a silent 0 would quietly make every Endgame card unbuildable and every
  * Farmstead power unusable for the whole run, which reads as a design finding
  * rather than as the bug it is. `PlayerState.coins` is absent by design under
@@ -424,221 +408,31 @@ export function hostDrewThisRound(state: GameState, seat: Seat): boolean {
 }
 
 /**
- * ⭐ IS DEAN'S UNCLAIMED-BOARDS VARIANT LIVE (ruled 11/09/2026,
- * `overlays/notice-board-visit-unclaimed-v1.overlay.json`)?
- *
- * TWO knobs, read as one predicate and never separately, because either on its
- * own is a different game: the currency has to be `'noticeBoardPower'` (so the
- * five boards are OWNED buildings printing the S12 powers) AND
- * `rules.economy.unclaimedBoardsToCentre` has to be true (so the boards of the
- * suits no player is farming stand ownerless in the middle with a public pile).
- * Under `'commons'` all five are central already and none of them is owned,
- * which is a different rule that reads the same way round - so this is
- * deliberately FALSE there, and `hasCentre` below is the question a caller asks
- * when it means "is there a centre at all".
- *
- * ⚠️ IT IS RULED TOGETHER WITH `rules.turn.selfVisitAllowed` false, and the
- * pair is arithmetic rather than taste: five boards exist, you may never visit
- * your own, so every seat faces exactly FOUR targets at every player count. The
- * ban is enforced in `enumerateNoticeBoardVisits` and is NOT read here, because
- * the 2x2 of `overlays/notice-board-visit-unclaimed-self-v1.overlay.json` needs
- * the two knobs separable (the 05/09/2026 passenger lesson: ruling in a bundle
- * rules in the bundle).
- */
-export function unclaimedCentre(data: GameData): boolean {
-  return isNoticeBoardPower(data) && unclaimedBoardsToCentre(data);
-}
-
-/**
- * IS THERE A CENTRE ON THE TABLE AT ALL - ownerless piles that a card can be
- * played onto and a Harvest can reach?
- *
- * True under the commons (all five piles, C1) and under Dean's unclaimed-boards
- * variant (the unfarmed suits' piles only, 11/09/2026). One spelling, so that
- * every gate which used to read `isCommons` because the commons was the only
- * game with a centre now reads the QUESTION it actually meant. Where a gate
- * genuinely means "is this the commons" - the `commonsTake` variants, the free
- * Draw 1, the meeple phase - it still asks `isCommons` and must keep doing so.
- */
-export function hasCentre(data: GameData): boolean {
-  return isCommons(data) || unclaimedCentre(data);
-}
-
-/**
- * ⭐ WHICH SUITS HAVE A CENTRAL PILE, in catalogue order.
- *
- * Five under the commons (C1: all five whatever suits are in play). Under the
- * unclaimed-boards variant it is the suits NO PLAYER IS FARMING, which is what
- * `freshCommons` put in the zone at setup, so this reads the zone's own keys
- * rather than recomputing the selection: the seats cannot change mid-game, but
- * a second copy of a selection rule is how two halves of an engine come to
- * disagree about the same table.
- *
- * Filtered out of `data.cards.suits` rather than handed back as `Object.keys`,
- * so the order is the catalogue's and therefore identical for every seat,
- * every run and every serialisation - enumeration order is move order, and move
- * order is what a seeded bot's choice is indexed against.
- *
- * Empty (never throwing) outside a game with a centre, so a caller may loop it
- * unguarded.
- *
- * ⚠️ IT ALLOCATES, SO THE TWO HOT PATHS DO NOT CALL IT. `harvestOptions` runs
- * through `hasMainOption` on every settle and `anyCentralHarvestAfterFee` is
- * asked once per (board, card in hand) pair by the bonus enumerator; both walk
- * `data.cards.suits` and skip a colour whose pile is absent, which is this
- * function inlined and allocation-free. Memoising here was tried and is NOT
- * worth it: `clonePlain` builds a fresh zone object for every speculative
- * probe, so a cache keyed on it would miss exactly where the cost is. This is
- * for setup, the view and the tests, where one array is nothing.
- */
-export function centralBoardSuits(data: GameData, state: GameState): Suit[] {
-  const boards = state.commons?.boards;
-  if (boards === undefined) return [];
-  return data.cards.suits.filter((colour) => boards[colour] !== undefined);
-}
-
-/**
- * THE CENTRAL PILES. Throws rather than defaulting, for exactly the
- * reason `noticeBoardSlots` does: a commons game with no commons zone is a setup
- * that never ran, and an empty default would silently offer five boards that
- * cannot be harvested and corrupt the traffic metric invisibly.
- *
- * ⚠️ FIVE KEYS UNDER THE COMMONS AND FEWER UNDER THE UNCLAIMED-BOARDS
- * VARIANT (11/09/2026), where only the unfarmed suits have a pile: a missing
- * key means THERE IS NO SUCH BOARD, which is a different thing from a pile of
- * zero cards, and `boards[colour]?.length ?? 0` cannot tell them apart. Ask
- * `centralBoardSuits` above for the set; this hands back the piles themselves.
- */
-export function commonsBoards(state: GameState): Record<Suit, CardId[]> {
-  const zone = state.commons;
-  if (!zone) throw new Error('There is no commons in this game');
-  return zone.boards;
-}
-
-/**
- * The BOARD CARD for a colour: that colour's Notice Board starter (W3/V3/O3/A3/
- * D3). Indexed per GameData for the same reason `cardById` is - `harvestOptions`
- * asks for all five on every call and it is on the hot path through
- * `hasMainOption` and `workerActionLegal`.
+ * The Notice Board card for a colour: that colour's Notice Board starter
+ * (W3/V3/O3/A3/D3). Indexed per GameData for the same reason `cardById` is.
  *
  * Derived from the catalogue's `slot === 'noticeboard'` rather than from a list
  * of ids, so the five faces are named in exactly one place in the project (the
  * sheet) and a renumbered starter cannot desync the engine from it.
  */
-const COMMONS_BOARD_INDEX = new WeakMap<GameData, Map<Suit, CardId>>();
+const NOTICE_BOARD_INDEX = new WeakMap<GameData, Map<Suit, CardId>>();
 
-function commonsBoardIndex(data: GameData): Map<Suit, CardId> {
-  let index = COMMONS_BOARD_INDEX.get(data);
+function noticeBoardIndex(data: GameData): Map<Suit, CardId> {
+  let index = NOTICE_BOARD_INDEX.get(data);
   if (index === undefined) {
     index = new Map<Suit, CardId>();
     for (const card of data.cards.catalogue) {
       if (card.slot === 'noticeboard' && !index.has(card.suit)) index.set(card.suit, card.id);
     }
-    COMMONS_BOARD_INDEX.set(data, index);
+    NOTICE_BOARD_INDEX.set(data, index);
   }
   return index;
 }
 
-export function commonsBoardCard(data: GameData, colour: Suit): CardId {
-  const card = commonsBoardIndex(data).get(colour);
+export function noticeBoardCardForSuit(data: GameData, colour: Suit): CardId {
+  const card = noticeBoardIndex(data).get(colour);
   if (card === undefined) throw new Error(`No Notice Board card for suit ${colour}`);
   return card;
-}
-
-/**
- * Which central board an id names, or null for anything else.
- *
- * ⚠️ IT ANSWERS NULL OUTSIDE THE COMMONS, whatever the id. W3 is a building in
- * a Wheat seat's tableau under both controls, and a harvest of it there must
- * stay a tableau harvest - so the mode is part of the question and not a check
- * every caller has to remember to make first.
- */
-export function commonsBoardSuit(data: GameData, id: CardId): Suit | null {
-  if (!isCommons(data)) return null;
-  for (const [colour, card] of commonsBoardIndex(data)) {
-    if (card === id) return colour;
-  }
-  return null;
-}
-
-/**
- * ⭐ WHICH CENTRAL PILE AN ID NAMES IN THE GAME ON THE TABLE, or null for
- * anything else - the STATE-AWARE question, and the one every rule should ask
- * (11/09/2026).
- *
- * ⛔ IT EXISTS BECAUSE UNDER DEAN'S UNCLAIMED-BOARDS VARIANT THE SAME CARD ID
- * IS A CENTRAL PILE IN ONE GAME AND A SEAT'S OWN BUILDING IN THE NEXT. W3 is
- * ownerless in the middle when nobody farms Wheat and is the Wheat seat's own
- * Notice Board when somebody does, so `data` alone cannot answer it and
- * `commonsBoardSuit` above - which is `data`-only, and correct for the commons,
- * where all five are always central - would say "central" for a card sitting in
- * a tableau. The zone's own keys are the authority, which is why this reads
- * them rather than re-deriving which suits are unfarmed.
- *
- * ⚠️ `commonsBoardSuit` IS DELIBERATELY LEFT AS IT STANDS rather than given a
- * state parameter. It is public API, `packages/bots/src/terms.ts` calls it, and
- * this pass may not touch that package; it is right for the commons and answers
- * null under every other currency, so nothing it tells anybody is wrong - it is
- * simply BLIND to the variant's centre, which is reported to the bots pass
- * rather than patched from here.
- */
-export function centralPileSuit(data: GameData, state: GameState, id: CardId): Suit | null {
-  if (isCommons(data)) return commonsBoardSuit(data, id);
-  if (!unclaimedCentre(data)) return null;
-  const boards = state.commons?.boards;
-  if (boards === undefined) return null;
-  for (const [colour, card] of commonsBoardIndex(data)) {
-    if (card === id) return boards[colour] === undefined ? null : colour;
-  }
-  return null;
-}
-
-/**
- * ⭐ HOW DEEP A CENTRAL PILE HAS TO BE BEFORE ANYBODY MAY HARVEST IT
- * (`rules.economy.commonsHarvestMin`, Dean 09/09/2026). 1 is the shipped C5
- * rule - any non-empty pile - and a number above it is the BUILDING semantic: a
- * pile is "full" at n and refuses a harvest below it.
- *
- * Answers 1 outside the commons, so a caller may compare against it unguarded;
- * no control has a central pile to gate.
- *
- * ⭐ AND IT IS READ UNDER DEAN'S UNCLAIMED-BOARDS VARIANT TOO (11/09/2026),
- * where `overlays/notice-board-visit-unclaimed-v1.overlay.json` pins it to 3:
- * that is the OUTFLOW half of the `3+` rule on a central pile - a pile below
- * three may be taken by nobody, a pile at three or more by ANYBODY - and the
- * INFLOW half is `commonsThreshold` null, which is what makes the plus sign
- * mean "and it still accepts cards". ⚠️ The variant's overlay pins it BY NAME
- * on purpose: an unpinned knob would have handed the centre the shipped
- * commons rule (any pile of one, harvestable by anybody), which is a different
- * game from the one Dean ruled.
- */
-export function commonsHarvestMin(data: GameData): number {
-  if (!hasCentre(data)) return 1;
-  const n = data.rules.economy.commonsHarvestMin;
-  return n === null || n < 1 ? 1 : n;
-}
-
-/**
- * ⭐ HOW MANY CARDS A CENTRAL HARVEST TAKES
- * (`rules.economy.commonsHarvestTake`, Dean 09/09/2026). null is the shipped C5
- * rule - the whole pile - and a number n takes at most the most recently played
- * n, the TOP of the pile, leaving the rest standing.
- *
- * "At most" is the whole of the rule for a short pile: a pile of one under
- * n = 2 gives up its one card, because n caps the take and never demands a
- * depth. `commonsHarvestMin` is the knob that demands a depth, and the two are
- * deliberately independent so that "may only be taken at 3, and then only 1
- * comes" is expressible.
- *
- * Answers null outside the commons for the same reason as `commonsHarvestMin`,
- * and is read under the unclaimed-boards variant for the same reason as well
- * (11/09/2026): that overlay pins it null by name, so a central harvest there
- * takes the WHOLE pile rather than a capped slice of it.
- */
-export function commonsHarvestTake(data: GameData): number | null {
-  if (!hasCentre(data)) return null;
-  const n = data.rules.economy.commonsHarvestTake;
-  return n === null || n < 1 ? null : n;
 }
 
 /** Meeples of every colour a seat is holding, in colour order. Duplicates are impossible under the cap. */

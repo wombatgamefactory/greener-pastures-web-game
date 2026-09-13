@@ -60,46 +60,9 @@ export interface NoticeBoardState {
 }
 
 /**
- * ⭐ THE COMMONS (C1, 09/09/2026): the five Notice Boards standing OWNERLESS in
- * the centre of the table, one per colour, each with a face-up public pile.
- *
- * All five keys are always present regardless of `suitsInPlay`, which is the
- * whole of C1's "so every action is available in every game" - the wheat board
- * grants Harvest to a table with no Wheat seat on it. The board CARD for a
- * colour is that colour's Notice Board starter (W3/V3/O3/A3/D3) and is derived
- * rather than stored, so the key is the suit and nothing has to keep an id in
- * step with it (`commonsBoardCard` in query.ts is the one lookup).
- *
- * ⚠️ PRESENT ONLY UNDER `visitCurrency: 'commons'`, exactly as
- * `PlayerState.noticeBoard` is present only under `'meeple'`, and for the same
- * reason: the v31 card game and the meeple loop are the CONTROLS and their
- * serialised states, captures and fixtures have to stay byte-identical. A key
- * present-and-empty would move every one of them for a zone those games have no
- * concept of. `commonsBoards` in query.ts is the one accessor and it throws if
- * the mode is on and this is missing, so the optionality never reaches a rule.
- *
- * ⭐ AND SINCE 11/09/2026 IT IS PRESENT UNDER A SECOND GAME WITH A DIFFERENT
- * KEY SET (Dean's unclaimed-boards variant,
- * `rules.economy.unclaimedBoardsToCentre` under `'noticeBoardPower'`). There
- * the zone holds ONLY the suits NO PLAYER IS FARMING - two keys at three
- * seats, one at four - because the rest of the boards are owned buildings in
- * their seats' tableaux. ⛔ SO A MISSING KEY MEANS "THERE IS NO SUCH CENTRAL
- * BOARD" AND IS NOT THE SAME THING AS AN EMPTY PILE, and the idiom
- * `boards[colour]?.length ?? 0` cannot tell the two apart. Anything that
- * enumerates the centre asks `centralBoardSuits` (query.ts) for the set; the
- * `Record` type is kept rather than made `Partial` because
- * `noUncheckedIndexedAccess` already forces every read to handle the absence
- * and every existing caller already does.
- */
-export interface CommonsState {
-  boards: Record<Suit, CardId[]>;
-}
-
-/**
  * What a DOOR buys, re-exported from the data package so the engine's events and
  * hooks name the same type the roster does: the five printed door actions plus
- * GROW, which only the commons Apiary board buys (C3,
- * `workers.roster.sow.actionUnderCommons`).
+ * GROW, which an afterAction meeple and the Dairy board's follow-up buy.
  *
  * ⚠️ `grow` IS NOT A `WorkerAction`, deliberately - see the type's own note in
  * `@gp/data`. Under the `'card'` and `'meeple'` controls a door action is
@@ -149,10 +112,11 @@ export interface PlayerState {
   noticeBoard?: NoticeBoardState;
   /**
    * ⭐ COINS HELD - THE COMMONS-WITH-COINS ARM ONLY (K7, Dean 10/09/2026,
-   * `docs/commons-coins-handoff-2026-09-10-v2.md`).
+   * `docs/commons-coins-handoff-2026-09-10-v2.md`), and since 12/09/2026 the
+   * Village Store.
    *
    * ⚠️ ABSENT UNDER THE SHIPPED GAME, and the absence is the same deliberate
-   * register `noticeBoard` above and `GameState.commons` are written in: a key
+   * register `noticeBoard` above is written in: a key
    * present-and-zero would change every serialised state, every capture and
    * every fixture replay for a currency the shipped game has no concept of. Six
    * of the nine fixtures in `packages/sim/fixtures/` replay byte-identically and
@@ -305,23 +269,8 @@ export interface AerodromeState {
  * `bonusUsed` records which have gone, so a card that grants a SECOND bonus
  * option (A Helping Hand: "you may take both") gives one of each rather than
  * two of the same.
- *
- * ⭐ `commons` IS THE EXCEPTION TO THAT LAST SENTENCE (C8, 09/09/2026). The
- * commons slot holds ONE option, so "one of each" would make A Helping Hand
- * grant nothing at all; under it the rule is "up to `bonusSlotsFor` plays", so
- * the card buys a SECOND play onto a central board and never a third. The
- * exemption is in `bonusOpen` and is keyed on the option, not on the mode.
- *
- * ⭐ `commonsTake` JOINS IT UNDER DEAN'S VARIANT (`rules.turn.commonsTake:
- * 'bonus'`, 09/09/2026): a free draw of one whole central pile to hand, the
- * variant's other half of the slot beside `commons`. It carries the SAME
- * exemption as `commons` and for the same reason - a seat may play twice,
- * take twice, or one of each with A Helping Hand, never three - so
- * `bonusOpen` treats both options as "up to `bonusSlotsFor` uses" rather than
- * "one of each". Never produced under `commonsTake: 'harvest'`, the shipped
- * rule.
  */
-export type BonusOption = 'draw' | 'visit' | 'collect' | 'commons' | 'commonsTake';
+export type BonusOption = 'draw' | 'visit' | 'collect';
 
 /**
  * Everything scoped to the current turn. Turn end replaces the whole object,
@@ -416,8 +365,8 @@ export interface TurnState {
    * "no two of the same colour"), and a bare counter cannot answer the second.
    *
    * ⛔ **ABSENT UNLESS ONE OF THOSE TWO RULES IS ON**, and the absence is the
-   * same deliberate register `PlayerState.coins`, `PlayerState.hostDrewThisRound`
-   * and `GameState.commons` are written in: a key present-and-empty would change
+   * same deliberate register `PlayerState.coins` and `PlayerState.hostDrewThisRound`
+   * are written in: a key present-and-empty would change
    * every serialised state and every view for a rule the shipped game and all
    * three named controls have no concept of, and nine fixtures in
    * `packages/sim/fixtures/` replay byte-identically. `meepleSpendRationed` in
@@ -531,29 +480,6 @@ export type Task =
        */
       filter: 'full' | 'notFull' | 'harvestable' | 'loaded';
       /**
-       * ⭐ `'loaded'` ONLY, AND ONLY UNDER DEAN'S UNCLAIMED-BOARDS VARIANT
-       * (11/09/2026): union in every CENTRAL pile at or above
-       * `rules.economy.commonsHarvestMin`, on top of the actor's own loaded
-       * buildings.
-       *
-       * Its one producer is the WHEAT Notice Board's power
-       * (`fireNoticeBoardPower`), and it exists because Dean reaffirmed D1 that
-       * day - "a Harvest is a Harvest", in his words "to prevent any rules
-       * exceptions" - so a Harvest BOUGHT through the Wheat board must reach a
-       * central pile exactly as the main Harvest action does, under exactly the
-       * same minimum. `'harvestable'` needs no equivalent flag: it runs through
-       * `harvestOptions`, which already unions the centre in.
-       *
-       * ⛔ IT IS A FLAG AND NOT A SIXTH `filter` VALUE, deliberately. The three
-       * OTHER producers of `filter: 'loaded'` are card faces - W11 The
-       * Bakehouse, W13 The Bakery and O7 - whose texts say "your buildings",
-       * and a new filter value would have tempted the next reader to repoint
-       * one of them. ⚠️ ABSENT rather than present-and-false everywhere else,
-       * so every serialised task, capture and fixture outside this variant is
-       * byte-identical.
-       */
-      central?: boolean;
-      /**
        * `harvestable` only: buildings holding at least this many cards count
        * even when not full. The Wheat SERVICE passes 2 and nothing else passes
        * anything - since the W2/W3 swap of 19/08/2026 the relaxed harvest is
@@ -586,8 +512,8 @@ export type Task =
     }
   | {
       /**
-       * ⭐ A FULL GROW ACTION MID-EFFECT - the commons Apiary board's door (C3),
-       * and its only producer today.
+       * ⭐ A FULL GROW ACTION MID-EFFECT - the Dairy board's follow-up Grow and
+       * the afterAction apiary meeple (M7).
        *
        * Answers come from the same enumerator as the Grow move (`growOptions`),
        * so a door-bought Grow targets exactly what a played Grow targets: your
@@ -597,8 +523,8 @@ export type Task =
        *
        * ⚠️ CARD PAYMENTS ONLY. `growOptions` also enumerates meeple-paid Grows
        * (R15) and those carry placement riders that would have to ride on the
-       * answer; the commons has no meeples at all (C6), so the enumerator here
-       * takes the card-paid options and the rider never has to exist. If a mode
+       * answer; the enumerator here takes the card-paid options and the rider
+       * never has to exist. If a mode
        * ever pushes this task with `meepleAsCard` live, that is the line to
        * revisit - see the `build` answer's note on riders that must not be
        * dropped.
@@ -828,66 +754,6 @@ export type Task =
       src: CardId;
       kind: string;
       riders: Record<string, unknown>;
-    }
-  | {
-      /**
-       * ⭐ DEAN'S 'spend' VARIANT (09/09/2026, `rules.turn.commonsTake:
-       * 'spend'`): the DAIRY board's take - build ONE card from hand, paid
-       * FROM THE PILE ONLY (D-S1). Its own task rather than the plain `build`
-       * task above, because that one's enumerator reads the hand for payment
-       * and this one must read `board`'s central pile instead - the built
-       * card is the only thing still drawn from the hand.
-       *
-       * Answers reuse the plain `build` TaskAnswer kind (card + payment): the
-       * SHAPE of a payment is the same whichever pool it came out of, only the
-       * SOURCE differs, and `resolveTask` is what knows to spend the pile
-       * rather than the hand. Whatever the payment does not use is discarded
-       * (D-S2) when the task resolves.
-       */
-      t: 'commonsSpendBuild';
-      pid: Seat;
-      src: CardId | null;
-      board: Suit;
-    }
-  | {
-      /**
-       * ⭐ DEAN'S 'spend' VARIANT: the VEGETABLE board's take - deliver ONE
-       * crate to a tile with a free space, paid FROM THE PILE ONLY (D-S1; the
-       * wild substitution applies within the pile). Answers reuse the plain
-       * `deliver` TaskAnswer kind's `{ tile, spend }` shape - never `balloon`,
-       * which this task's own enumerator never offers - and the delivery
-       * scores exactly as a barn delivery once resolved. Unused pile cards are
-       * discarded (D-S2); nothing reaches the barn.
-       */
-      t: 'commonsSpendDeliver';
-      pid: Seat;
-      src: CardId | null;
-      board: Suit;
-    }
-  | {
-      /**
-       * ⭐ DEAN'S 'spend' VARIANT: the APIARY board's take - every card in the
-       * pile SOWN, one at a time in PILE ORDER, onto one of the taker's own
-       * non-full buildings; a card with no legal building is discarded. The
-       * whole pile is taken out of the centre and held here in LIMBO at push
-       * time - `cards`, oldest (pile-order) first - following the `divert`
-       * task's precedent for a card that is out of any zone while a
-       * multi-step choice resolves. `taken` is the pile's original size;
-       * `used` and `discarded` accumulate as each card is resolved, so the one
-       * `commonsSpent` event can be emitted once, when the task finishes.
-       *
-       * Answers reuse the plain `sow` TaskAnswer kind, restricted to the
-       * task's own HEAD card (`cards[0]`) and the taker's own tableau - never
-       * a neighbour's, and never `ontoSeat`.
-       */
-      t: 'commonsSpendSow';
-      pid: Seat;
-      src: CardId | null;
-      board: Suit;
-      cards: CardId[];
-      taken: number;
-      used: number;
-      discarded: number;
     };
 
 /**
@@ -1076,12 +942,6 @@ export interface GameState {
   island: IslandState;
   aerodrome: AerodromeState | null;
   /**
-   * THE FIVE CENTRAL NOTICE BOARDS (C1). Present only under
-   * `visitCurrency: 'commons'` - see `CommonsState` for why the key is absent
-   * rather than empty under the two controls.
-   */
-  commons?: CommonsState;
-  /**
    * ⭐ THE VILLAGE STORE'S SHARED COIN SUPPLY (V4, Dean 12/09/2026, ledger
    * A150): how many coins are still IN THE SUPPLY, waiting to be minted.
    *
@@ -1093,8 +953,8 @@ export interface GameState {
    * invariant for the whole game, and that identity is what the tests assert.
    * An empty supply mints nothing.
    *
-   * ⚠️ **ABSENT UNLESS THE STORE IS ON**, in exactly the register `commons`
-   * above and `PlayerState.coins` are written in: a key present-and-zero would
+   * ⚠️ **ABSENT UNLESS THE STORE IS ON**, in exactly the register
+   * `PlayerState.coins` is written in: a key present-and-zero would
    * change every serialised state, every capture and every fixture replay for a
    * rule the shipped game has no concept of, and NINE fixtures in
    * `packages/sim/fixtures/` replay byte-identically and depend on the absence.
@@ -1381,69 +1241,6 @@ export type Move =
    * it is the line the free Draw 1 used to be.
    */
   | { type: 'collect'; seat: Seat }
-  /**
-   * ⭐ THE COMMONS PLAY (C3, 09/09/2026) - the whole of the bonus slot under
-   * `visitCurrency: 'commons'`: put ONE card from your hand face up on one of
-   * the five central Notice Boards and immediately take that board's action.
-   *
-   * `board` is the COLOUR, which is what decides the action (wheat Harvest,
-   * vegetable Deliver, orchard Draw, apiary GROW, dairy Build), and `fee` is the
-   * card played. Any card onto any board by default: the fee is a fee, not a
-   * payment in kind, and `rules.economy.commonsColourMatch` is the knob that
-   * makes it one (C10).
-   *
-   * ⛔ THERE IS NO HOST. The boards belong to nobody, so nothing here names a
-   * seat but the actor: no self-visit to gate, no clog to route around and no
-   * host-side payment. The fee is not lost either - it sits in the pile until
-   * SOMEBODY harvests the pile (C5), which is what makes the centre a shared
-   * barn faucet rather than a sink.
-   *
-   * A bonus-slot move, never a main action: it is in neither `MAIN_ACTIONS` nor
-   * `hasMainOption`.
-   */
-  /**
-   * ⭐ `fee2` IS THE WILD PAIR (D5/D7 of the commons pass, ruled back in by K3
-   * on 10/09/2026, `rules.economy.commonsWildPair`): TWO cards of any colours
-   * standing in as one card of the board's colour, and BOTH land on the pile.
-   *
-   * ⭐ BUILDER DEFAULT D-C3, Dean 10/09/2026: it is an OPTIONAL SECOND FEE ON
-   * THE EXISTING MOVE, never a change of shape to `fee` (which could have
-   * become `CardId | [CardId, CardId]`). An absent key is what keeps every
-   * commons fixture byte-identical, exactly as `noticeBoard?` and `commons?`
-   * do on the state side, and it means a reader that has never heard of the
-   * pair reads `fee` and is right about the shipped game.
-   *
-   * ⚠️ MEANINGLESS WITHOUT `commonsColourMatch`. With any card already paying
-   * for any board there is no colour for a pair to stand in for, so
-   * `enumerateCommons` offers pairs only when BOTH knobs are on and `doCommons`
-   * refuses one otherwise.
-   */
-  | { type: 'commons'; seat: Seat; board: Suit; fee: CardId; fee2?: CardId }
-  /**
-   * ⭐ DEAN'S VARIANT (09/09/2026, `rules.turn.commonsTake: 'bonus'`): the
-   * bonus slot's OTHER half under that knob, and never producible under the
-   * shipped `'harvest'` rule.
-   *
-   * Take the WHOLE of one central board's pile, straight into the taker's
-   * HAND. No card is played, no fee is paid, no action is bought - it is a
-   * free draw of a known, chosen pile, in Dean's own words *"we change the
-   * bonus action into a draw instead of a harvest"*. `board` names the pile;
-   * it must be non-empty, exactly as a Harvest of it would have to be under
-   * the shipped rule.
-   *
-   * It counts as a bonus use exactly as a `commons` play does (`BonusOption`
-   * carries the same "up to `bonusSlotsFor` uses" exemption for both), so A
-   * Helping Hand's second slot lets a seat play twice, take twice, or one of
-   * each - never three. Under `bonusTiming: 'start'` it is only ever offered
-   * before the main action, the same window `commons` plays live in.
-   *
-   * ⭐ `fee` (09/09/2026, `rules.turn.commonsTake: 'paid'`) IS PRESENT ONLY
-   * UNDER THAT VALUE: one card from the taker's own hand, discarded to its own
-   * suit's discard pile before the take resolves - Dean's own words, "the
-   * card you pay goes to the discard pile". Absent (never optional-but-set)
-   * under `'bonus'` and `'spend'`, where the take is still free.
-   */
-  | { type: 'commonsTake'; seat: Seat; board: Suit; fee?: CardId }
   /** Legal only when no main action is: spends the action, keeps the bonus slot. */
   | { type: 'pass'; seat: Seat }
   /** Decline whatever options are still live and end the turn. Legal once the action is spent. */
@@ -1473,8 +1270,6 @@ const MOVE_TYPE_KEYS = {
   moveBalloon: true,
   visit: true,
   collect: true,
-  commons: true,
-  commonsTake: true,
   pass: true,
   endTurn: true,
 } satisfies Record<MoveType, true>;
@@ -1523,118 +1318,30 @@ export type GameEvent =
    * A HARVEST TOOK A STACK INTO A BARN. `seat` is always the HARVESTER, whose
    * barn the cards went into.
    *
-   * ⭐ TWO FIELDS ADDED WITH THE COMMONS (C5, 09/09/2026), because the harvest
-   * stopped being a purely private act. `source` says whether the stack came
-   * off a building in a tableau or off one of the five central piles, and
-   * `owner` says whose building it was - NULL for a central pile, which belongs
-   * to nobody. Under the `'card'` and `'meeple'` controls they are constants
-   * ('tableau' and the harvester's own seat), and they are carried there too
-   * rather than made optional: the sim's barn-source reading (a18) partitions
-   * every harvest by them, and a field that is absent half the time is a field
-   * every reader has to guess a default for.
+   * `source` and `owner` were added with the commons (C5, 09/09/2026), when a
+   * harvest could take a central pile. The commons was deleted on 13/09/2026, so
+   * they are constants now ('tableau' and the harvester's own seat), kept so
+   * serialised events stay identical.
    */
   | {
       e: 'harvested';
       seat: Seat;
       building: CardId;
       cards: CardId[];
-      source: 'tableau' | 'commons';
-      owner: Seat | null;
-      /**
-       * ⭐ CARDS LEFT BEHIND, PRESENT ONLY ON A CENTRAL HARVEST (Dean,
-       * 09/09/2026). `rules.economy.commonsHarvestTake` caps a central harvest
-       * at the most recently played n cards, so a pile can survive being
-       * harvested; this is what was still standing when it did.
-       *
-       * ⚠️ OPTIONAL ON PURPOSE, AND ABSENT UNDER BOTH CONTROLS. `source` and
-       * `owner` were made required in the commons pass because the sim
-       * partitions EVERY harvest by them; this one has no meaning for a
-       * tableau harvest (a building always gives up its whole stack) and
-       * carrying a 0 there would invite a reader to compare it with a real
-       * remainder. It is 0 whenever `commonsHarvestTake` is null, which is the
-       * shipped rule, so the field is a knob's readout and not a new fact
-       * about the shipped game.
-       */
-      left?: number;
+      source: 'tableau';
+      owner: Seat;
     }
   /**
-   * ⭐ A CARD WAS PLAYED ONTO A CENTRAL NOTICE BOARD (C3). The bonus slot's one
-   * option under the commons, and the event the sim counts plays and the fee-suit
-   * mix off. `pileSize` is the pile AFTER the card lands, so a harvest of that
-   * pile in the same turn (C5) can be read against the play that fed it.
+   * A COIN CAME OUT OF THE SUPPLY.
    *
-   * The door action it bought is `doorUsed` with `via: 'commons'`, emitted
-   * immediately after this - two events rather than one, so that action
-   * inflation (a16) and the door mix (a07) go on reading a single field (D4).
-   */
-  | { e: 'commonsPlayed'; seat: Seat; board: Suit; card: CardId; pileSize: number }
-  /**
-   * ⭐ A WHOLE CENTRAL PILE WAS TAKEN TO HAND (Dean's variant, 09/09/2026,
-   * `rules.turn.commonsTake: 'bonus'`). The bonus slot's other free option
-   * under that knob: no fee, no action, the pile empties into `seat`'s hand.
-   * `cards` is the whole pile as it stood, oldest first, so the sim can price
-   * the take by what came out exactly as it would a draw.
-   *
-   * Never emitted under `commonsTake: 'harvest'`, the shipped rule, where a
-   * central pile is reached only through `harvested` with `source: 'commons'`.
-   *
-   * ⭐ ALSO FIRES UNDER `commonsTake: 'spend'` (09/09/2026), for the orchard and
-   * wheat legs ONLY, where a take is still an uncomplicated whole-pile move: to
-   * `seat`'s HAND for orchard (exactly as under `'bonus'`) or to `seat`'s BARN
-   * for wheat (`fx.takeCommonsToBarn`). The two are told apart by `board`,
-   * which is fixed by the door table (C3) - a caller that knows the mode
-   * already knows which destination a given board means. The dairy, vegetable
-   * and apiary legs never emit this: they resolve through a task and their own
-   * `commonsSpent` event carries their accounting instead.
-   *
-   * ⭐ `fee` (09/09/2026, `rules.turn.commonsTake: 'paid'`) IS PRESENT ONLY
-   * UNDER THAT VALUE: the card discarded to pay for this take (D-P1),
-   * already gone from `seat`'s hand and already in its own suit's discard
-   * pile by the time this event fires - `fx.discardFromHand` runs first.
-   * Folded onto this event rather than split into a second one (`fee` alone
-   * would otherwise need its own `commonsTakeFeePaid`), so a reader watching
-   * for "a pile was taken" never has to join two events to see the whole of
-   * it. Absent under `'bonus'` and `'spend'`, where the take is free.
-   */
-  | { e: 'commonsTaken'; seat: Seat; board: Suit; cards: CardId[]; fee?: CardId }
-  /**
-   * ⭐ A CENTRAL PILE WAS CLEARED FOR COINS - THE ONE MINT IN THE GAME (K3/K8,
-   * Dean 10/09/2026, `rules.turn.commonsTake: 'coins'`). One coin per card, the
-   * cards to their OWN suits' discard piles (a pile holds any colours, so this
-   * is never the board's suit), no fee paid and no action bought.
-   *
-   * ⭐ IT RIDES BESIDE `commonsTaken`, NOT INSTEAD OF IT, and the pairing is
-   * deliberate: `commonsTaken` already means "a whole pile left the centre" and
-   * every reader of the centre's outflow - the conservation identity above all -
-   * counts off it, so a coin take must not be invisible to them. This event
-   * carries only the half that is new, which is the currency: `coins` is the
-   * number minted and is always `cards.length` on the paired `commonsTaken`.
-   *
-   * ⛔ A COIN TAKE HANDS BACK NO CARDS. `commonsTaken` here reports the pile
-   * that was DISCARDED rather than one that went anywhere playable, which is
-   * `commonsTakeLeavesTheGame` in @gp/data - the difference between this and
-   * the three take variants of 09/09/2026, all of which put the cards back into
-   * a hand or a barn and ran the bonus at 74% to 89% of turns because of it.
-   */
-  /**
-   * A COIN CAME OUT OF NOWHERE OR OUT OF THE SUPPLY, and the two mints in this
-   * project share the event because everything downstream that prices a coin,
-   * counts one or folds one wants the same three fields.
-   *
-   * ⭐ `board` NAMES WHICH MINT (A150, 12/09/2026). A `Suit` is the
-   * commons-with-coins arm's cleared central pile (K3/K8, 10/09/2026), where
-   * `coins === cards.length` always. `'store'` is the VILLAGE STORE's exchange
+   * ⭐ `board` IS ALWAYS `'store'` SINCE 13/09/2026: the other mint (the
+   * commons-with-coins arm's cleared central pile) was deleted with the
+   * commons, and the field is kept so events stay identical. `'store'` is the VILLAGE STORE's exchange
    * (V1): one event per card converted, `coins` is
    * `rules.economy.storeCoinsPerCard`, and `card` names the barn card that paid
    * for it and therefore its suit and its discard pile.
-   *
-   * ⚠️ THE TWO MINTS NEVER RUN IN THE SAME GAME and the arms are pinned so
-   * they cannot: `a18` and `a19` are both gated on `isCommonsTakeCoins`, which
-   * is false in every Store arm, so they read `noSubject` there rather than
-   * folding a Store mint into a commons reading. A Store arm's own counters are
-   * the sim's to add, off `board === 'store'`.
    */
-  | { e: 'coinsMinted'; seat: Seat; board: Suit | 'store'; coins: number; card?: CardId }
+  | { e: 'coinsMinted'; seat: Seat; board: 'store'; coins: number; card?: CardId }
   /**
    * ⭐ COINS LEFT A SEAT'S PILE - one of the currency's EXACTLY TWO SINKS (K7,
    * Dean 10/09/2026). `on` says which:
@@ -1671,30 +1378,6 @@ export type GameEvent =
       coins: number;
     }
   /**
-   * ⭐ DEAN'S 'spend' VARIANT'S SUMMARY (09/09/2026, `rules.turn.commonsTake:
-   * 'spend'`): fires once, for EVERY board, when that board's take finishes
-   * resolving - immediately for orchard and wheat (alongside `commonsTaken`),
-   * or when the pushed task completes for dairy, vegetable and apiary. `taken`
-   * is the pile's size when the take began; `used` is how much of it the
-   * chosen action actually spent (a build's payment, a delivery's crate, cards
-   * sown before a target ran out); `discarded` is `taken - used`, the cards no
-   * action wanted (D-S2) - for orchard and wheat, `used` is always `taken` and
-   * `discarded` is always 0, since nothing is left over. `deliveredFromCentre`
-   * is true only for a vegetable take that completed a delivery, which is the
-   * a18 farm-bypass reading's new subject on the vegetable side.
-   *
-   * Never emitted under `commonsTake: 'harvest'` or `'bonus'`.
-   */
-  | {
-      e: 'commonsSpent';
-      seat: Seat;
-      board: Suit;
-      taken: number;
-      used: number;
-      discarded: number;
-      deliveredFromCentre: boolean;
-    }
-  /**
    * A DOOR ACTION RAN. `colour` is whose door it is (which is also what a meeple
    * of that colour does), `action` is what it did, and `via` is what paid for
    * it - a card on a Notice Board, or a meeple leaving the game.
@@ -1719,7 +1402,7 @@ export type GameEvent =
        * field is how a reader splits them; it produces nothing at all while
        * every balloon reward is a sized one, which is the shipped data.
        */
-      via: 'visit' | 'meeple' | 'commons' | 'balloon';
+      via: 'visit' | 'meeple' | 'balloon';
     }
   /**
    * A MEEPLE WAS CLAIMED off an island delivery space and is now in a player's

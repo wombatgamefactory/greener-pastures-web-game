@@ -130,10 +130,9 @@ export function meepleAction(data: GameData, colour: string) {
 }
 
 /**
- * ⭐ WHAT A SUIT'S DOOR BUYS IN THE GAME CURRENTLY LOADED, which is not always
- * `door.action` any more: under the commons the Apiary board buys a GROW
- * (`workers.roster.sow.actionUnderCommons`, Dean 09/09/2026, C3) where the v31
- * door and the meeple both bought a SOW.
+ * ⭐ WHAT A SUIT'S DOOR BUYS IN THE GAME CURRENTLY LOADED. Since the commons
+ * (and its Apiary GROW override) was deleted on 13/09/2026 this is always
+ * `door.action`.
  *
  * One function, so "which action is this door" is answered in one spelling
  * across the engine, the bots and the sim, exactly as `meepleAction` did for the
@@ -146,7 +145,7 @@ export function meepleAction(data: GameData, colour: string) {
 export function doorActionForSuit(data: GameData, suit: string): DoorAction | undefined {
   const door = doorForSuit(data, suit);
   if (!door) return undefined;
-  return (isCommons(data) ? door.actionUnderCommons : undefined) ?? door.action;
+  return door.action;
 }
 
 /**
@@ -180,24 +179,11 @@ export function meeplesDealt(data: GameData, seats: number): number {
  * tidied away: they are the baselines every future delta is read against, and
  * the only things exercising them at scale are those overlays. ⚠️ AND A FALSE
  * HERE NO LONGER MEANS "the v31 game" - it means "not the meeple game", which
- * under the shipped default is the commons. Ask `isCommons` when the question is
+ * under the shipped default is the notice-board visit. Ask `isNoticeBoardPower` when the question is
  * which game, and this only when the question is meeples.
  */
 export function isMeepleCurrency(data: GameData): boolean {
   return data.rules.turn.visitCurrency === 'meeple';
-}
-
-/**
- * Is the COMMONS live - the bonus slot of 09/09/2026? Under `'commons'` the five
- * Notice Boards sit ownerless in the centre of the table, the bonus (taken
- * FIRST) is to play any one card from hand onto one of them and take that
- * board's action, Harvest may take any non-empty central pile into the
- * harvester's barn, and there are no meeples anywhere. The `'card'` (v31) and
- * `'meeple'` (04-05/09/2026) branches are the controls and must not be tidied
- * away. See `docs/commons-handoff-2026-09-09-v1.md`.
- */
-export function isCommons(data: GameData): boolean {
-  return data.rules.turn.visitCurrency === 'commons';
 }
 
 /**
@@ -214,7 +200,7 @@ export function isCommons(data: GameData): boolean {
  * the standalone free Draw 1, and the turn-start meeple spend - and one of the
  * three named controls may never move under an arm it is read against.
  *
- * One predicate, in one spelling, exactly as `isCommons` and `isMeepleCurrency`
+ * One predicate, in one spelling, exactly as `isMeepleCurrency`
  * are: everything gated on which game this is asks one of the three and never
  * compares the raw string.
  */
@@ -244,43 +230,12 @@ export function noticeBoardBlocks(data: GameData): boolean {
 }
 
 /**
- * Do the Notice Boards of the suits NOBODY IS FARMING stand ownerless in the
- * CENTRE of the table (Dean, ruled 11/09/2026)?
- *
- * `false` is the shipped value: every Notice Board belongs to a player, so a
- * suit nobody has taken has no board on the table at all. `true` puts the
- * unclaimed ones in the middle with a face-up public pile each, visitable by
- * anybody.
- *
- * ⭐ IT IS RULED TOGETHER WITH A BAN ON SELF-VISITING, and the pair is
- * arithmetic rather than taste: five boards exist and you may never visit your
- * own, so EVERY SEAT FACES EXACTLY FOUR TARGETS AT EVERY PLAYER COUNT - four
- * central at one seat, three at two, two at three, one at four. It also restores
- * the standing ruling that all five actions exist in every game, which the built
- * design silently broke: at two players only two Notice Boards are in play.
- *
- * ⚠️ A CENTRAL BOARD REUSES THE COMMONS AND IS NOT A THIRD SHAPE. A play
- * onto a rival's board is the `visit` move; a play onto a central board is the
- * existing `commons` move, and a central pile is rationed by the commons knobs
- * (`commonsThreshold`, `commonsHarvestMin`, `commonsHarvestTake`) under
- * `rules.turn.commonsTake` `'harvest'`, which the two overlays pin by name.
- *
- * ⛔ READ ONLY UNDER `isNoticeBoardPower`, exactly as `noticeBoardBlocks` is:
- * no other game in this codebase has an owned Notice Board to leave unclaimed.
- * Under `'commons'` all five are in the centre already and none of them is
- * owned, which is a different rule that reads the same way round.
- */
-export function unclaimedBoardsToCentre(data: GameData): boolean {
-  return data.rules.economy.unclaimedBoardsToCentre;
-}
-
-/**
  * How many Notice Boards each player lays out at this seat count (Dean's
  * two-board fix, ruled 11/09/2026). One accessor, so "how many boards has a
  * seat got" is asked in exactly one spelling across the engine, the bots and the
  * sim, exactly as `meeplesDealt` reads `island.slotsBySeats`.
  *
- * Shipped at 1 at every seat count, which is the game as built. The arm sets 2
+ * Shipped at 2 at two seats and 1 otherwise since 13/09/2026. The arm set 2
  * at two seats only: a player's own suit's board, plus one more drawn AT RANDOM
  * from the suits nobody is farming, with the fifth board unused. At three and
  * four seats the arm is its own control, so those columns must reproduce
@@ -288,7 +243,7 @@ export function unclaimedBoardsToCentre(data: GameData): boolean {
  * any difference there is a leak rather than a finding.
  *
  * ⭐ EVERY BOARD IT ADDS BELONGS TO A PERSON, which is the difference between
- * this and `unclaimedBoardsToCentre`: targets go 2 / 2 / 3 by seat count and
+ * this and the deleted central-boards variant: targets go 2 / 2 / 3 by seat count and
  * every one of them pays its owner, so the hook is not diluted.
  *
  * ⛔ READ ONLY UNDER `isNoticeBoardPower` with `rules.turn.selfVisitAllowed`
@@ -392,138 +347,6 @@ export function hostDrawOnVisitAt(data: GameData, seats: number): number {
 }
 
 /**
- * Is DEAN'S VARIANT of 09/09/2026 live - the commons' Harvest turned into a
- * free draw of a whole pile to hand? See `rules.turn.commonsTake` and
- * `CommonsTake` for the ruling in full.
- *
- * ⭐ DEFAULTS FALSE. Meaningless outside the commons, but this does not gate on
- * `isCommons` itself, on the same reasoning as `isMeepleAsCard`: the knob can
- * never be `'bonus'` while `visitCurrency` is anything but `'commons'` in
- * practice, because only `overlays/commons-take-to-hand-v1.overlay.json`
- * touches it and it sets `visitCurrency: 'commons'` in the same breath.
- * Callers that already know they are in the commons may read this directly;
- * callers that do not should check `isCommons` first.
- */
-export function isCommonsTakeToHand(data: GameData): boolean {
-  return data.rules.turn.commonsTake === 'bonus';
-}
-
-/**
- * Is DEAN'S 'spend' VARIANT of 09/09/2026 live - the SAME free `commonsTake`
- * move as `isCommonsTakeToHand`, but resolved per-board (orchard to hand,
- * wheat to barn, dairy/vegetable/apiary paid or sown from the pile) rather
- * than always to hand? See `rules.turn.commonsTake` and `CommonsTake` for the
- * ruling in full.
- *
- * ⭐ DEFAULTS FALSE, on the same reasoning `isCommonsTakeToHand` gives: only
- * `overlays/commons-take-to-spend-v1.overlay.json` touches this knob and it
- * sets `visitCurrency: 'commons'` in the same breath, so the knob can never be
- * `'spend'` while `visitCurrency` is anything but `'commons'` in practice.
- * Callers that already know they are in the commons may read this directly;
- * callers that do not should check `isCommons` first. Kept as its own helper
- * rather than folded into `isCommonsTakeToHand` so a caller can tell the two
- * apart without re-reading the knob's raw string.
- */
-export function isCommonsTakeToSpend(data: GameData): boolean {
-  return data.rules.turn.commonsTake === 'spend';
-}
-
-/**
- * Is DEAN'S 'paid' VARIANT of 09/09/2026 live - the SAME free-shaped
- * `commonsTake` move as `isCommonsTakeToHand` (a whole pile, straight to
- * hand), except the take now costs one card of the taker's own, discarded to
- * its own suit's pile? See `rules.turn.commonsTake` and `CommonsTake` for the
- * ruling in full.
- *
- * ⭐ DEFAULTS FALSE, on the same reasoning the other two give: only
- * `overlays/commons-take-paid-v1.overlay.json` touches this knob and it sets
- * `visitCurrency: 'commons'` in the same breath. Callers that already know
- * they are in the commons may read this directly; callers that do not should
- * check `isCommons` first.
- */
-export function isCommonsTakePaid(data: GameData): boolean {
-  return data.rules.turn.commonsTake === 'paid';
-}
-
-/**
- * Is DEAN'S 'coins' VARIANT of 10/09/2026 live - the commons with coins, K3/K4
- * of `docs/commons-coins-handoff-2026-09-10-v2.md`? Under it the bonus slot's
- * second option is *"discard every card on one central pile to their suits'
- * discard piles and take ONE COIN PER CARD"*: no card is paid, the pile leaves
- * the game rather than reaching anybody, and Harvest never reaches the centre
- * (K4, reversing C5).
- *
- * ⭐ DEFAULTS FALSE, on the same reasoning the other three give: only
- * `overlays/commons-coins-v1.overlay.json` and its two sub-arms touch this
- * knob and each of them sets `visitCurrency: 'commons'` in the same breath.
- * Callers that already know they are in the commons may read this directly;
- * callers that do not should check `isCommons` first.
- *
- * ⛔ IT IS THE ONLY `commonsTake` VALUE THAT MINTS A CURRENCY, so it is also
- * the gate on the arm's two coin sinks: `farmsteadCoinPower` and
- * `endgameCoinCost` are meaningless without it, because nothing else in the
- * game produces a coin.
- */
-export function isCommonsTakeCoins(data: GameData): boolean {
-  return data.rules.turn.commonsTake === 'coins';
-}
-
-/**
- * Does a `commonsTake` send the pile OUT OF THE GAME rather than to a player?
- * True under `'coins'` alone, where the pile is discarded to its cards' own
- * suit discards and the taker is paid in a currency instead.
- *
- * ⭐ IT IS THE COUNTERPART OF `commonsTakeGoesToHand` AND DELIBERATELY NOT PART
- * OF IT. Every earlier take handed the cards to somebody - `'bonus'` and
- * `'paid'` to the hand, `'spend'` to whatever the board's action used - and all
- * three ran the bonus at 74% to 89% of turns, because the cards taken paid for
- * the next play. This one hands back nothing playable, which is the whole
- * design difference, so a caller asking "where do the cards go" must be able to
- * tell the two apart in one read.
- */
-export function commonsTakeLeavesTheGame(data: GameData): boolean {
-  return isCommonsTakeCoins(data);
-}
-
-/**
- * Does HARVEST still reach the centre? False under every `commonsTake` value
- * but the shipped `'harvest'`, which is C5 - own full building OR any non-empty
- * central pile, into the barn.
- *
- * ⭐ ONE SPELLING FOR "the wheat board is offered only when the seat already has
- * a full building", which four separate rules now say and which the farm-bypass
- * reading depends on: under `'bonus'`, `'spend'` and `'paid'` the centre empties
- * through the `commonsTake` move instead (D-S4), and under `'coins'` it empties
- * to the discards (K4). In every one of those the centre-to-barn share reads 0%
- * BY CONSTRUCTION, and a reader who does not know that will mistake a structural
- * zero for a fixed problem.
- *
- * ⚠️ `commonsHarvestMin` and `commonsHarvestTake` have no subject whenever this
- * is false: there is no central harvest left for either of them to ration.
- */
-export function commonsHarvestReachesCentre(data: GameData): boolean {
-  return data.rules.turn.commonsTake === 'harvest';
-}
-
-/**
- * Is the WILD PAIR built (D5/D7 of the commons pass, ruled back in by K3 on
- * 10/09/2026) - two cards of any colours paying for one board of any colour,
- * both landing on its pile?
- *
- * ⭐ DEFAULTS FALSE, AND THAT IS ALSO HOW THE COLOUR-MATCH ARM WAS MEASURED. D5
- * described the pair and D7 recorded that the 09/09/2026 arm shipped without it,
- * so that arm's 34.4% of turns is the colour rule at its HARSHEST and the rule
- * Dean would write reads somewhere between it and the shipped 58.9%.
- *
- * ⚠️ MEANINGLESS WITHOUT `rules.economy.commonsColourMatch`, unlike the
- * `commonsTake` predicates above: with any card already paying for any board
- * there is no colour for a pair to stand in for. A caller must read both.
- */
-export function commonsWildPair(data: GameData): boolean {
-  return data.rules.economy.commonsWildPair;
-}
-
-/**
  * What an Endgame card costs in COINS, or null for the shipped card price of two
  * cards of its own suit (K15, Dean 10/09/2026). The arm sets 3.
  *
@@ -532,8 +355,8 @@ export function commonsWildPair(data: GameData): boolean {
  * 02/09/2026, and a coin price arriving from a re-extract rather than from a
  * ruling is exactly the drift `data.test.ts` guards against.
  *
- * ⚠️ Read only under `isCommonsTakeCoins`, which is the only thing that mints a
- * coin: a price in a currency nobody can earn is a card nobody can build.
+ * ⚠️ Its original mint (the commons coin take) was deleted on 13/09/2026; a
+ * Village Store coin can still pay it.
  */
 export function endgameCoinCost(data: GameData): number | null {
   return data.rules.economy.endgameCoinCost;
@@ -547,9 +370,8 @@ export function endgameCoinCost(data: GameData): number | null {
  *
  * ⛔ NO RENT (K14): a rival can never use your Farmstead.
  *
- * ⚠️ Read only under `isCommonsTakeCoins`, for the same reason
- * `endgameCoinCost` is: it is the second of the arm's two sinks and nothing
- * else in the game produces a coin to spend on it.
+ * ⚠️ Its original mint (the commons coin take) was deleted on 13/09/2026; a
+ * Village Store coin can still pay it.
  */
 export function farmsteadCoinPower(data: GameData): boolean {
   return data.rules.economy.farmsteadCoinPower;
@@ -697,29 +519,6 @@ export function coinGrowReachesFullBuildings(data: GameData): boolean {
 }
 
 /**
- * Does a `commonsTake` land its pile in the taker's HAND? True under both
- * `'bonus'` (free) and `'paid'` (one card discarded first) - the two values
- * whose take is an uncomplicated whole-pile move to hand, told apart only by
- * whether it costs anything. FALSE under `'spend'`, where the destination
- * depends on which board is taken (orchard to hand, wheat to barn, the rest
- * elsewhere) and no single answer is correct.
- *
- * ⛔ AND FALSE UNDER `'coins'` (10/09/2026), WHICH IS THE ONE A FUTURE SESSION
- * IS MOST LIKELY TO ADD BY REFLEX. A coin take hands back no cards at all: the
- * pile is discarded to its cards' own suit piles and the taker is paid in a
- * currency, so nothing arrives in the hand and adding `'coins'` here would put
- * cards into a hand that never got any. `commonsTakeLeavesTheGame` is its
- * predicate.
- *
- * Use this where the DESTINATION is what a caller cares about; use
- * `isCommonsTakeToHand` or `isCommonsTakePaid` directly where the caller
- * needs to tell the two apart (for instance, whether a fee is owed).
- */
-export function commonsTakeGoesToHand(data: GameData): boolean {
-  return isCommonsTakeToHand(data) || isCommonsTakePaid(data);
-}
-
-/**
  * Is R15 live - a meeple spendable as a card of its colour? See
  * `rules.turn.meepleAsCard`.
  *
@@ -862,13 +661,12 @@ export function tileMeepleSpaces(data: GameData): readonly number[] {
   const spaces = deliveriesPerTile(data);
   const only = data.rules.turn.deliveryMeepleSpace;
   if (only !== null) return only >= 0 && only < spaces ? [only] : [];
-  // ⛔ THE COMMONS SEEDS NONE (09/09/2026, C6) AND SO DOES THE NOTICE-BOARD
-  // VISIT (10/09/2026, §2.6 of its handoff). Answered before the meeple branch
+  // ⛔ THE NOTICE-BOARD VISIT SEEDS NONE (10/09/2026, §2.6 of its handoff). Answered before the meeple branch
   // on purpose: neither is a meeple currency, so a fifth `visitCurrency` falling
   // through to the `'card'` arithmetic below would seed two a tile without a
   // word of warning. ⚠️ It is answered AFTER the override, because M1 seeds a
   // meeple in whatever game the arm is stacked on and the override wins outright.
-  if (isCommons(data) || isNoticeBoardPower(data)) return [];
+  if (isNoticeBoardPower(data)) return [];
   // The meeple loop names WHICH spaces carry one: `[1]`, the 3 VP second
   // delivery. Out-of-range entries are filtered rather than thrown on, which is
   // what the count has always done.

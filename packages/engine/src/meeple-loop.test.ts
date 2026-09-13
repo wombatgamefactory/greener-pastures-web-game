@@ -63,6 +63,8 @@ const arm: GameData = loadGameData({
     'rules.economy.coinPaysGrow': false,
     'rules.economy.coinGrowOnFullBuilding': false,
     'rules.turn.visitCurrency': 'meeple',
+    'rules.turn.selfVisitAllowed': true, // pinned 13/09/2026: the default flipped
+    'rules.economy.noticeBoardsBySeats.2': 1, // pinned 13/09/2026: the default flipped
     // ⚠️ PINNED WITH THE COMMONS (09/09/2026). The shipped turn takes its bonus
     // FIRST (C2) and deals no starting meeples (C6), and neither arm is that
     // game: an unpinned leaf is how a control silently stops being the thing it
@@ -100,6 +102,8 @@ const control: GameData = loadGameData({
     'rules.economy.coinPaysGrow': false,
     'rules.economy.coinGrowOnFullBuilding': false,
     'rules.turn.visitCurrency': 'card',
+    'rules.turn.selfVisitAllowed': true, // pinned 13/09/2026: the default flipped
+    'rules.economy.noticeBoardsBySeats.2': 1, // pinned 13/09/2026: the default flipped
     // ⚠️ PINNED WITH THE COMMONS (09/09/2026). The shipped turn takes its bonus
     // FIRST (C2) and deals no starting meeples (C6), and neither arm is that
     // game: an unpinned leaf is how a control silently stops being the thing it
@@ -472,18 +476,18 @@ describe('A Helping Hand under the arm (R11)', () => {
  * other side, which is worth keeping for exactly the reason it was written -
  * "the flag is where I think it is" is a claim worth failing on.
  */
-describe('the shipped default is the COMMONS, and both controls still reproduce their own game', () => {
+describe('the shipped default is the NOTICE-BOARD VISIT, and both controls still reproduce their own game', () => {
   /**
    * ⛔ NARROWED TWICE, AND THE SECOND TIME IT CHANGED SIDES. It said "the base
    * data IS the arm" until 05/09/2026, when the meeple ECONOMY was ruled in on
    * top of the loop; it said "the base data is the meeple CURRENCY" until
    * 09/09/2026, when the commons replaced it (C1, C6). So what it pins now is
    * the ABSENCE: no seat holds a meeple, no tile carries one, and this whole
-   * file is about an arm rather than about the shipped game. The commons' own
-   * setup is asserted in `commons.test.ts`.
+   * file is about an arm rather than about the shipped game. (The commons was
+   * deleted on 13/09/2026; the shipped notice-board visit seeds no meeple either.)
    */
   it('the base data has no meeples in it at all, and the arm deals them as R3 does', () => {
-    expect(BASE_GAME_DATA.rules.turn.visitCurrency).toBe('commons');
+    expect(BASE_GAME_DATA.rules.turn.visitCurrency).toBe('noticeBoardPower');
     const shipped = newGame(BASE_GAME_DATA, { seats: 2, seed: 'shipped' });
     for (const p of shipped.players) {
       for (const colour of BASE_GAME_DATA.cards.suits) expect(p.meeples[colour]).toBe(0);

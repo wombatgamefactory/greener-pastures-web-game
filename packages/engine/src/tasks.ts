@@ -18,13 +18,8 @@ import type { GameData, Suit } from '@gp/data';
 
 import {
   buildOptions,
-  centralHarvestTargets,
-  commonsSpendBuildOptions,
-  commonsSpendDeliverOptions,
   deliverAnswers,
   doBuild,
-  doCommonsSpendBuild,
-  doCommonsSpendDeliver,
   doDeliver,
   doMoveBalloon,
   growOptions,
@@ -215,35 +210,13 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
 
     case 'chooseBuilding': {
       const p = player(state, task.pid);
-      // ⭐ CARD IDS RATHER THAN BUILDINGS, AND THAT IS THE COMMONS (C5). This
-      // used to look each `harvestable` id back up in the actor's tableau, which
-      // was total while every harvest target was a building of theirs. A central
-      // pile is in NO tableau and is harvestable by anybody, so the lookup
-      // returned undefined and the answer list crashed on its `.card`. The other
-      // three filters are still tableau-only and simply hand over their ids.
       let ids: CardId[] =
         task.filter === 'harvestable'
           ? harvestOptions(data, state, task.pid, task.relaxedMin)
           : task.filter === 'full'
             ? fullBuildings(data, state, task.pid).map((b) => b.card)
             : task.filter === 'loaded'
-              ? [
-                  ...p.tableau.filter((b) => b.stack.length >= 1).map((b) => b.card),
-                  // ⭐ AND THE CENTRE, ON THE `central` FLAG ALONE (11/09/2026,
-                  // Dean's unclaimed-boards variant). Its only producer is the
-                  // WHEAT Notice Board's power, because Dean reaffirmed D1 that
-                  // day - a Harvest is a Harvest, "to prevent any rules
-                  // exceptions" - so a Harvest bought through the Wheat board
-                  // reaches a central pile exactly as the main action does and
-                  // under exactly the same `commonsHarvestMin`.
-                  // ⛔ THE CARD FACES THAT ALSO USE `'loaded'` (W11, W13, O7)
-                  // DO NOT SET THE FLAG and therefore do not reach the centre:
-                  // their printed texts say "your buildings", and widening the
-                  // filter itself would have changed three cards nobody ruled
-                  // on. `centralHarvestTargets` is the same helper
-                  // `harvestOptions` uses, so the two routes cannot drift.
-                  ...(task.central === true ? centralHarvestTargets(data, state) : []),
-                ]
+              ? p.tableau.filter((b) => b.stack.length >= 1).map((b) => b.card)
               : // 'notFull' is a PLACEMENT filter, so S11's exclusion applies to it
                 // exactly as it does to a sow (10/09/2026).
                 p.tableau.filter((b) => canSowOnto(data, b)).map((b) => b.card);
@@ -322,46 +295,6 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
       const out = deliverAnswers(data, state, task.pid);
       if (task.optional === true && out.length > 0) out.push({ kind: 'skip' });
       return out;
-    }
-
-    // ⭐ DEAN'S 'spend' VARIANT'S DAIRY LEG (09/09/2026, commonsTake: 'spend'):
-    // the same `build` TaskAnswer kind the plain `build` task uses above - a
-    // payment's SHAPE does not change, only its SOURCE, and `resolveTask` is
-    // what knows to spend `task.board`'s pile rather than the hand. Never
-    // optional: `commonsSpendTakeLegal` (D-S3) guarantees at least one answer
-    // exists before this task is ever pushed.
-    case 'commonsSpendBuild': {
-      return commonsSpendBuildOptions(data, state, task.pid, task.board).map(
-        (o) => ({ kind: 'build', card: o.card, payment: o.payment }) as TaskAnswer,
-      );
-    }
-
-    // ⭐ DEAN'S 'spend' VARIANT'S VEGETABLE LEG: the same `deliver` TaskAnswer
-    // kind's `{ tile, spend }` shape, read against the pile rather than the
-    // barn. Never `balloon` - a pile pays only island crates (D-S1) - and
-    // never optional, for the same reason as the dairy leg above.
-    case 'commonsSpendDeliver': {
-      return commonsSpendDeliverOptions(data, state, task.pid, task.board).map(
-        (o) => ({ kind: 'deliver', tile: o.tile, spend: o.spend }) as TaskAnswer,
-      );
-    }
-
-    // ⭐ DEAN'S 'spend' VARIANT'S APIARY LEG: the same `sow` TaskAnswer kind,
-    // restricted to the task's own HEAD card (pile order, D-S) and the
-    // taker's own non-full buildings - never a neighbour's. The invariant
-    // that keeps this from ever needing a `skip`: `resolveTask`'s
-    // `commonsSpendSow` case auto-discards every remaining card the moment
-    // no building can take another, so a live task always has somewhere for
-    // its head card to go.
-    case 'commonsSpendSow': {
-      const head = task.cards[0];
-      if (head === undefined) return [];
-      // Commons-only, where a Notice Board is not in anybody's tableau at all,
-      // so `canSowOnto` and `canTakeCard` cannot differ here. Asked through the
-      // sow predicate anyway, because this IS a sow and the next mode should
-      // inherit S11 rather than have to remember it.
-      const targets = player(state, task.pid).tableau.filter((b) => canSowOnto(data, b));
-      return targets.map((b) => ({ kind: 'sow', card: head, onto: b.card }) as TaskAnswer);
     }
 
     case 'sowFromDeck': {
@@ -581,66 +514,6 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
         return true;
       }
       throw new Error('deliver expects a deliver or balloon answer');
-    }
-
-    // ⭐ DEAN'S 'spend' VARIANT'S DAIRY LEG (09/09/2026): a build paid from
-    // `task.board`'s pile rather than the hand. Never optional.
-    case 'commonsSpendBuild': {
-      if (answer.kind !== 'build') throw new Error('commonsSpendBuild expects a build answer');
-      doCommonsSpendBuild(fx, task.pid, task.board, answer.card, answer.payment);
-      return true;
-    }
-
-    // ⭐ DEAN'S 'spend' VARIANT'S VEGETABLE LEG: a delivery paid from
-    // `task.board`'s pile rather than the barn. Never `balloon`, never
-    // optional.
-    case 'commonsSpendDeliver': {
-      if (answer.kind !== 'deliver') {
-        throw new Error('commonsSpendDeliver expects a deliver answer');
-      }
-      doCommonsSpendDeliver(fx, task.pid, task.board, answer.tile, answer.spend);
-      return true;
-    }
-
-    // ⭐ DEAN'S 'spend' VARIANT'S APIARY LEG: sow the task's HEAD card onto one
-    // of the taker's own buildings, off the SAME `placeHeldCard` landing tail
-    // `placeOnBuilding` uses (so `afterPlacement` fires exactly as a real
-    // sow's does) but with no hand to remove the card from - it is already
-    // held by the task, out of the pile since the task was pushed.
-    //
-    // ⭐ THE AUTO-DISCARD (D-S2): once every one of the taker's buildings is
-    // full, NO remaining card in `task.cards` has anywhere to go - sow never
-    // un-fulls a building, so that condition, once true, stays true for the
-    // rest of this resolution. Rather than surface a hollow "nothing to pick"
-    // step per card, the whole remainder is discarded in one go, right here,
-    // the moment it is discovered - which is also the only way the invariant
-    // `taskAnswers`'s `commonsSpendSow` case relies on (a live task's head
-    // card always has a legal target) stays true between one answer and the
-    // next.
-    case 'commonsSpendSow': {
-      if (answer.kind !== 'sow') throw new Error('commonsSpendSow expects a sow answer');
-      fx.placeHeldCard(task.pid, { seat: task.pid, card: answer.onto }, answer.card);
-      task.cards = task.cards.filter((c) => c !== answer.card);
-      task.used += 1;
-      const stillOpen = player(fx.state, task.pid).tableau.some((b) => canSowOnto(fx.data, b));
-      if (!stillOpen && task.cards.length > 0) {
-        fx.discard([...task.cards]);
-        task.discarded += task.cards.length;
-        task.cards = [];
-      }
-      if (task.cards.length === 0) {
-        fx.emit({
-          e: 'commonsSpent',
-          seat: task.pid,
-          board: task.board,
-          taken: task.taken,
-          used: task.used,
-          discarded: task.discarded,
-          deliveredFromCentre: false,
-        });
-        return true;
-      }
-      return false;
     }
 
     case 'sowFromDeck': {

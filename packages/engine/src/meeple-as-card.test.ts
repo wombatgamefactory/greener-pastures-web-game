@@ -58,6 +58,8 @@ const arm: GameData = loadGameData({
     'rules.economy.coinPaysGrow': false,
     'rules.economy.coinGrowOnFullBuilding': false,
     'rules.turn.visitCurrency': 'meeple',
+    'rules.turn.selfVisitAllowed': true, // pinned 13/09/2026: the default flipped
+    'rules.economy.noticeBoardsBySeats.2': 1, // pinned 13/09/2026: the default flipped
     // Pinned with the commons (C2, 09/09/2026): the shipped turn now takes its
     // bonus FIRST and deals no starting meeples, and this arm is neither.
     'rules.turn.bonusTiming': 'end',
@@ -98,6 +100,8 @@ const v1: GameData = loadGameData({
     'rules.economy.coinPaysGrow': false,
     'rules.economy.coinGrowOnFullBuilding': false,
     'rules.turn.visitCurrency': 'meeple',
+    'rules.turn.selfVisitAllowed': true, // pinned 13/09/2026: the default flipped
+    'rules.economy.noticeBoardsBySeats.2': 1, // pinned 13/09/2026: the default flipped
     // Pinned with the commons (C2, 09/09/2026): the shipped turn now takes its
     // bonus FIRST and deals no starting meeples, and this arm is neither.
     'rules.turn.bonusTiming': 'end',
@@ -340,7 +344,7 @@ describe('the v1 loop - with the knobs off, nothing of v2 exists', () => {
    * description claims.
    */
   it('names the knobs at their shipped defaults, and the two meeple arms as one flag away', () => {
-    expect(BASE_GAME_DATA.rules.turn.visitCurrency).toBe('commons');
+    expect(BASE_GAME_DATA.rules.turn.visitCurrency).toBe('noticeBoardPower');
     expect(BASE_GAME_DATA.rules.turn.meepleAsCard).toBe(false);
     expect(BASE_GAME_DATA.rules.turn.slotToll).toBeNull();
     expect(BASE_GAME_DATA.rules.turn.startingMeeplesPerColour).toBe(0);

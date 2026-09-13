@@ -15,7 +15,6 @@ import {
   buildIsland,
   coinPlayerFields,
   coinSupplyZone,
-  commonsZone,
   dealExtraNoticeBoards,
   demandPool,
   freshTurn,
@@ -84,16 +83,15 @@ export function makeState(data: GameData, suits: Suit[]): GameState {
       // would be testing a position no real game reaches.
       meeples: startingMeeples(data),
       ...meepleLoopPlayerFields(data),
-      // The coin wallet, present only under the commons-with-coins arm (K7) and
-      // ABSENT otherwise, exactly as `meepleLoopPlayerFields` is - see
+      // The coin wallet, present only when a coin knob is on and ABSENT
+      // otherwise, exactly as `meepleLoopPlayerFields` is - see
       // `coinPlayerFields`.
       ...coinPlayerFields(data),
       // ABSENT unless the HOST-DRAW CAP is on, same register again - see
       // `hostDrawCapPlayerFields`. The testkit must agree with `newGame` about
       // this or a scenario silently has no latch and the cap caps nothing.
       ...hostDrawCapPlayerFields(data),
-      // Two starters under the commons and three under the controls - see
-      // `starterCardsFor`. The testkit takes every starter whether or not it is
+      // Three starters - see `starterCardsFor`. The testkit takes every starter whether or not it is
       // enabled, which is the one way it has always differed from `newGame`.
       tableau: [...starterCardsFor(data, suit, false), ...(extraBoards[seat] ?? [])].map(
         (card) => ({ card, stack: [] }),
@@ -112,14 +110,8 @@ export function makeState(data: GameData, suits: Suit[]): GameState {
     aerodrome: suits.includes('vegetable')
       ? parkBalloons(data.aerodrome.balloons.map((b) => b.id))
       : null,
-    // The central boards, empty. All five under the commons (C1); the suits no
-    // seat took under Dean's unclaimed-boards variant (11/09/2026), which is
-    // why `suits` is handed over - it is the SEATS' suits, and the testkit's
-    // `suitsInPlay` below is deliberately all five, so passing that instead
-    // would leave the variant with no centre at all in every test.
-    ...commonsZone(data, suits),
     // ⭐ THE VILLAGE STORE'S SHARED SUPPLY (V4, A150), present only when the
-    // Store is on and ABSENT otherwise - the same register `commonsZone` is in,
+    // Store is on and ABSENT otherwise,
     // and the testkit must agree with `newGame` about it or a scenario silently
     // has no pool and `coinSupplyLeft` throws.
     ...coinSupplyZone(data, seats),
@@ -191,6 +183,10 @@ export function cardVisitGame(): GameData {
       'rules.economy.coinPaysGrow': false,
       'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'card',
+      // Pinned 13/09/2026, when the shipped default flipped to false.
+      'rules.turn.selfVisitAllowed': true,
+      // Pinned 13/09/2026, when the shipped default flipped to 2.
+      'rules.economy.noticeBoardsBySeats.2': 1,
       'rules.turn.bonusTiming': 'end',
       'rules.turn.startingMeeplesPerColour': 1,
       'rules.turn.meepleAsCard': false,
@@ -219,9 +215,8 @@ export function cardVisitGame(): GameData {
 /**
  * ⭐ THE NOTICE-BOARD VISIT - the arm of 10/09/2026
  * (`docs/notice-board-visit-handoff-2026-09-10-v2.md`, S1-S16 plus Dean's
- * rulings C88 and C89 the same evening). NOT the shipped game: the shipped game
- * is still the commons, and this is built as a paired arm to be measured
- * against it on `reference-v15` seeds.
+ * rulings C88 and C89 the same evening), with one board each and self-visits
+ * allowed - NOT the shipped two-board game of 13/09/2026.
  *
  * Every leaf `overlays/notice-board-visit-v1.overlay.json` pins is pinned here
  * too, for the reason the file above records eight times over: an unpinned
@@ -260,163 +255,21 @@ export function noticeBoardVisitGame(): GameData {
       'rules.economy.coinPaysGrow': false,
       'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
+      // Pinned 13/09/2026, when the shipped default flipped to 2.
+      'rules.economy.noticeBoardsBySeats.2': 1,
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': true,
-      'rules.turn.commonsTake': 'harvest',
       'rules.turn.startingMeeplesPerColour': 0,
       'rules.turn.meepleAsCard': false,
       'rules.turn.slotToll': null,
       'rules.turn.meepleCapPerColour': null,
       'rules.economy.noticeBoardThreshold': 3,
       'rules.economy.noticeBoardBlocks': false,
-      'rules.economy.commonsColourMatch': false,
-      'rules.economy.commonsWildPair': false,
       'rules.economy.endgameCoinCost': null,
       'rules.economy.farmsteadCoinPower': false,
     },
   });
   return noticeBoardVisitCache;
-}
-
-/**
- * ⭐ DEAN'S UNCLAIMED-BOARDS VARIANT OF THE NOTICE BOARD VISIT (ruled
- * 11/09/2026), exactly as `overlays/notice-board-visit-unclaimed-v1.overlay.json`
- * sets it. NOT the shipped game and not even the arm: it is a corner of a 2x2
- * built to be measured against the notice-board visit as built and against the
- * shipped commons on identical `reference-v15` seeds.
- *
- * THE RULE IN ONE LINE: self-visiting is BANNED, and the Notice Board of every
- * suit NO PLAYER IS FARMING stands ownerless in the centre with a face-up public
- * pile that anybody may play onto and that anybody may harvest at three cards or
- * more. Five boards exist and you may never visit your own, so EVERY SEAT FACES
- * EXACTLY FOUR TARGETS AT EVERY PLAYER COUNT, solo included.
- *
- * ⛔ ALL EIGHTEEN LEAVES THE OVERLAY PINS ARE PINNED HERE TOO, and the overlay's
- * own description argues each one. The four that spell the `3+` rule on a
- * central pile were deliberately left UNPINNED by the no-centre arm - they
- * ration a pile that arm does not have - so they are load-bearing here and
- * nowhere else: `commonsTake: 'harvest'` is what lets Harvest reach the centre
- * at all, `commonsThreshold` null is the inflow half (nothing ever refuses a
- * play), `commonsHarvestMin` 3 the outflow half (nobody below three, ANYBODY at
- * three) and `commonsHarvestTake` null keeps a harvest taking the whole pile.
- *
- * Memoised and lazy for the same reason as `cardVisitGame`.
- */
-let noticeBoardUnclaimedCache: GameData | null = null;
-export function noticeBoardUnclaimedGame(): GameData {
-  noticeBoardUnclaimedCache ??= loadGameData({
-    name: 'notice-board-visit-unclaimed-v1',
-    schemaVersion: 1,
-    set: {
-      'rules.economy.cropScorerOnBarn': false,
-      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
-      // Store ruling moved sixteen shipped leaves at once. Every helper here
-      // reproduces a game that predates it, so each leaf is pinned BY NAME at
-      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
-      // overlays, and `fixtures.test.ts` already records why that is dangerous:
-      // a copy of a pin stops being a pin. Adding the leaves in both places is
-      // the price of the copy.
-      'aerodrome.moveCost.barnCards': 2,
-      'aerodrome.alwaysInPlay': false,
-      'aerodrome.flightMints': false,
-      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
-      'aerodrome.balloons.balloonDraw.reward.amount': 4,
-      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
-      'aerodrome.balloons.balloonBuild.reward.amount': 4,
-      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
-      'aerodrome.balloons.balloonSow.reward.amount': 4,
-      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
-      'rules.economy.storeCoinsPerCard': 0,
-      'rules.economy.coinSupplyPerPlayer': 0,
-      'rules.economy.coinPaysBuild': false,
-      'rules.economy.coinPaysSuitCost': false,
-      'rules.economy.coinPaysGrow': false,
-      'rules.economy.coinGrowOnFullBuilding': false,
-      'rules.turn.visitCurrency': 'noticeBoardPower',
-      'rules.turn.bonusTiming': 'start',
-      'rules.turn.selfVisitAllowed': false,
-      'rules.turn.commonsTake': 'harvest',
-      'rules.turn.startingMeeplesPerColour': 0,
-      'rules.turn.meepleAsCard': false,
-      'rules.turn.slotToll': null,
-      'rules.turn.meepleCapPerColour': null,
-      'rules.economy.noticeBoardThreshold': 3,
-      'rules.economy.noticeBoardBlocks': false,
-      'rules.economy.unclaimedBoardsToCentre': true,
-      'rules.economy.commonsThreshold': null,
-      'rules.economy.commonsHarvestMin': 3,
-      'rules.economy.commonsHarvestTake': null,
-      'rules.economy.commonsColourMatch': false,
-      'rules.economy.commonsWildPair': false,
-      'rules.economy.endgameCoinCost': null,
-      'rules.economy.farmsteadCoinPower': false,
-    },
-  });
-  return noticeBoardUnclaimedCache;
-}
-
-/**
- * THE OTHER CENTRE CORNER OF THE 2x2: the unclaimed boards WITH self-visiting
- * still allowed (`overlays/notice-board-visit-unclaimed-self-v1.overlay.json`).
- *
- * ⭐ IT EXISTS SO THE BAN AND THE CENTRE CAN BE READ APART. Dean's variant moves
- * two knobs at once and ruling in a bundle rules in the bundle (05/09/2026), so
- * each corner of the grid differs from its neighbours in exactly ONE leaf. Here
- * it is the one place the engine can show that a seat's OWN board is never in
- * the centre for a reason that has nothing to do with the ban: it is in that
- * seat's tableau, and it is the ban alone that stops them visiting it.
- */
-let noticeBoardUnclaimedSelfCache: GameData | null = null;
-export function noticeBoardUnclaimedSelfGame(): GameData {
-  noticeBoardUnclaimedSelfCache ??= loadGameData({
-    name: 'notice-board-visit-unclaimed-self-v1',
-    schemaVersion: 1,
-    set: {
-      'rules.economy.cropScorerOnBarn': false,
-      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
-      // Store ruling moved sixteen shipped leaves at once. Every helper here
-      // reproduces a game that predates it, so each leaf is pinned BY NAME at
-      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
-      // overlays, and `fixtures.test.ts` already records why that is dangerous:
-      // a copy of a pin stops being a pin. Adding the leaves in both places is
-      // the price of the copy.
-      'aerodrome.moveCost.barnCards': 2,
-      'aerodrome.alwaysInPlay': false,
-      'aerodrome.flightMints': false,
-      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
-      'aerodrome.balloons.balloonDraw.reward.amount': 4,
-      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
-      'aerodrome.balloons.balloonBuild.reward.amount': 4,
-      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
-      'aerodrome.balloons.balloonSow.reward.amount': 4,
-      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
-      'rules.economy.storeCoinsPerCard': 0,
-      'rules.economy.coinSupplyPerPlayer': 0,
-      'rules.economy.coinPaysBuild': false,
-      'rules.economy.coinPaysSuitCost': false,
-      'rules.economy.coinPaysGrow': false,
-      'rules.economy.coinGrowOnFullBuilding': false,
-      'rules.turn.visitCurrency': 'noticeBoardPower',
-      'rules.turn.bonusTiming': 'start',
-      'rules.turn.selfVisitAllowed': true,
-      'rules.turn.commonsTake': 'harvest',
-      'rules.turn.startingMeeplesPerColour': 0,
-      'rules.turn.meepleAsCard': false,
-      'rules.turn.slotToll': null,
-      'rules.turn.meepleCapPerColour': null,
-      'rules.economy.noticeBoardThreshold': 3,
-      'rules.economy.noticeBoardBlocks': false,
-      'rules.economy.unclaimedBoardsToCentre': true,
-      'rules.economy.commonsThreshold': null,
-      'rules.economy.commonsHarvestMin': 3,
-      'rules.economy.commonsHarvestTake': null,
-      'rules.economy.commonsColourMatch': false,
-      'rules.economy.commonsWildPair': false,
-      'rules.economy.endgameCoinCost': null,
-      'rules.economy.farmsteadCoinPower': false,
-    },
-  });
-  return noticeBoardUnclaimedSelfCache;
 }
 
 /**
@@ -430,11 +283,6 @@ export function noticeBoardUnclaimedSelfGame(): GameData {
  * three and four seats it is one each, which is exactly
  * `noticeBoardNoSelfGame()` below, so the arm differs from its control AT TWO
  * SEATS ONLY.
- *
- * ⛔ `rules.economy.unclaimedBoardsToCentre` FALSE IS THE MOST IMPORTANT PIN
- * IN THE SET and the overlay says so: this variant is the ALTERNATIVE to the
- * unclaimed-boards centre, never an addition to it, because the centre is the
- * thing that measured 14.7% of plays reaching a person at two seats.
  *
  * Memoised and lazy for the same reason as `cardVisitGame`.
  */
@@ -471,19 +319,15 @@ export function noticeBoardTwoBoardsGame(): GameData {
       'rules.turn.visitCurrency': 'noticeBoardPower',
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': false,
-      'rules.turn.commonsTake': 'harvest',
       'rules.turn.startingMeeplesPerColour': 0,
       'rules.turn.meepleAsCard': false,
       'rules.turn.slotToll': null,
       'rules.turn.meepleCapPerColour': null,
       'rules.economy.noticeBoardThreshold': 3,
       'rules.economy.noticeBoardBlocks': false,
-      'rules.economy.unclaimedBoardsToCentre': false,
       'rules.economy.noticeBoardsBySeats.2': 2,
       'rules.economy.noticeBoardsBySeats.3': 1,
       'rules.economy.noticeBoardsBySeats.4': 1,
-      'rules.economy.commonsColourMatch': false,
-      'rules.economy.commonsWildPair': false,
       'rules.economy.endgameCoinCost': null,
       'rules.economy.farmsteadCoinPower': false,
     },
@@ -544,19 +388,15 @@ export function noticeBoardHostDrawGame(n = 1): GameData {
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': false,
       'rules.turn.hostDrawOnVisit': n,
-      'rules.turn.commonsTake': 'harvest',
       'rules.turn.startingMeeplesPerColour': 0,
       'rules.turn.meepleAsCard': false,
       'rules.turn.slotToll': null,
       'rules.turn.meepleCapPerColour': null,
       'rules.economy.noticeBoardThreshold': 3,
       'rules.economy.noticeBoardBlocks': false,
-      'rules.economy.unclaimedBoardsToCentre': false,
       'rules.economy.noticeBoardsBySeats.2': 2,
       'rules.economy.noticeBoardsBySeats.3': 1,
       'rules.economy.noticeBoardsBySeats.4': 1,
-      'rules.economy.commonsColourMatch': false,
-      'rules.economy.commonsWildPair': false,
       'rules.economy.endgameCoinCost': null,
       'rules.economy.farmsteadCoinPower': false,
     },
@@ -616,19 +456,15 @@ export function noticeBoardHostDrawCappedGame(capped = true, n = 1): GameData {
       'rules.turn.selfVisitAllowed': false,
       'rules.turn.hostDrawOnVisit': n,
       'rules.turn.hostDrawCapPerRound': capped,
-      'rules.turn.commonsTake': 'harvest',
       'rules.turn.startingMeeplesPerColour': 0,
       'rules.turn.meepleAsCard': false,
       'rules.turn.slotToll': null,
       'rules.turn.meepleCapPerColour': null,
       'rules.economy.noticeBoardThreshold': 3,
       'rules.economy.noticeBoardBlocks': false,
-      'rules.economy.unclaimedBoardsToCentre': false,
       'rules.economy.noticeBoardsBySeats.2': 2,
       'rules.economy.noticeBoardsBySeats.3': 1,
       'rules.economy.noticeBoardsBySeats.4': 1,
-      'rules.economy.commonsColourMatch': false,
-      'rules.economy.commonsWildPair': false,
       'rules.economy.endgameCoinCost': null,
       'rules.economy.farmsteadCoinPower': false,
     },
@@ -685,19 +521,15 @@ export function noticeBoardHostDrawBySeatsGame(): GameData {
       'rules.turn.selfVisitAllowed': false,
       'rules.turn.hostDrawOnVisit': 1,
       'rules.turn.hostDrawOnVisitBySeats.4': 0,
-      'rules.turn.commonsTake': 'harvest',
       'rules.turn.startingMeeplesPerColour': 0,
       'rules.turn.meepleAsCard': false,
       'rules.turn.slotToll': null,
       'rules.turn.meepleCapPerColour': null,
       'rules.economy.noticeBoardThreshold': 3,
       'rules.economy.noticeBoardBlocks': false,
-      'rules.economy.unclaimedBoardsToCentre': false,
       'rules.economy.noticeBoardsBySeats.2': 2,
       'rules.economy.noticeBoardsBySeats.3': 1,
       'rules.economy.noticeBoardsBySeats.4': 1,
-      'rules.economy.commonsColourMatch': false,
-      'rules.economy.commonsWildPair': false,
       'rules.economy.endgameCoinCost': null,
       'rules.economy.farmsteadCoinPower': false,
     },
@@ -769,19 +601,15 @@ export function villageStoreGame(
       'rules.turn.selfVisitAllowed': false,
       'rules.turn.hostDrawOnVisit': 1,
       'rules.turn.hostDrawOnVisitBySeats.4': 0,
-      'rules.turn.commonsTake': 'harvest',
       'rules.turn.startingMeeplesPerColour': 0,
       'rules.turn.meepleAsCard': false,
       'rules.turn.slotToll': null,
       'rules.turn.meepleCapPerColour': null,
       'rules.economy.noticeBoardThreshold': 3,
       'rules.economy.noticeBoardBlocks': false,
-      'rules.economy.unclaimedBoardsToCentre': false,
       'rules.economy.noticeBoardsBySeats.2': 2,
       'rules.economy.noticeBoardsBySeats.3': 1,
       'rules.economy.noticeBoardsBySeats.4': 1,
-      'rules.economy.commonsColourMatch': false,
-      'rules.economy.commonsWildPair': false,
       'rules.economy.endgameCoinCost': null,
       'rules.economy.farmsteadCoinPower': false,
       // The six that ARE the rule (V1, V4, V6, V8, V9).
@@ -877,19 +705,15 @@ export function deliveryMeepleGame(): GameData {
       'rules.turn.selfVisitAllowed': false,
       'rules.turn.hostDrawOnVisit': 1,
       'rules.turn.hostDrawOnVisitBySeats.4': 0,
-      'rules.turn.commonsTake': 'harvest',
       'rules.turn.startingMeeplesPerColour': 0,
       'rules.turn.meepleAsCard': false,
       'rules.turn.slotToll': null,
       'rules.turn.meepleCapPerColour': null,
       'rules.economy.noticeBoardThreshold': 3,
       'rules.economy.noticeBoardBlocks': false,
-      'rules.economy.unclaimedBoardsToCentre': false,
       'rules.economy.noticeBoardsBySeats.2': 2,
       'rules.economy.noticeBoardsBySeats.3': 1,
       'rules.economy.noticeBoardsBySeats.4': 1,
-      'rules.economy.commonsColourMatch': false,
-      'rules.economy.commonsWildPair': false,
       'rules.economy.endgameCoinCost': null,
       'rules.economy.farmsteadCoinPower': false,
       // The three that ARE the rule (M1, M4, M5).
@@ -946,19 +770,15 @@ export function deliveryMeepleDistinctGame(): GameData {
       'rules.turn.selfVisitAllowed': false,
       'rules.turn.hostDrawOnVisit': 1,
       'rules.turn.hostDrawOnVisitBySeats.4': 0,
-      'rules.turn.commonsTake': 'harvest',
       'rules.turn.startingMeeplesPerColour': 0,
       'rules.turn.meepleAsCard': false,
       'rules.turn.slotToll': null,
       'rules.turn.meepleCapPerColour': null,
       'rules.economy.noticeBoardThreshold': 3,
       'rules.economy.noticeBoardBlocks': false,
-      'rules.economy.unclaimedBoardsToCentre': false,
       'rules.economy.noticeBoardsBySeats.2': 2,
       'rules.economy.noticeBoardsBySeats.3': 1,
       'rules.economy.noticeBoardsBySeats.4': 1,
-      'rules.economy.commonsColourMatch': false,
-      'rules.economy.commonsWildPair': false,
       'rules.economy.endgameCoinCost': null,
       'rules.economy.farmsteadCoinPower': false,
       'rules.turn.deliveryMeepleSpace': 1,
@@ -1009,19 +829,17 @@ export function noticeBoardHostDrawSelfGame(): GameData {
       'rules.economy.coinPaysGrow': false,
       'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
+      // Pinned 13/09/2026, when the shipped default flipped to 2.
+      'rules.economy.noticeBoardsBySeats.2': 1,
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': true,
       'rules.turn.hostDrawOnVisit': 1,
-      'rules.turn.commonsTake': 'harvest',
       'rules.turn.startingMeeplesPerColour': 0,
       'rules.turn.meepleAsCard': false,
       'rules.turn.slotToll': null,
       'rules.turn.meepleCapPerColour': null,
       'rules.economy.noticeBoardThreshold': 3,
       'rules.economy.noticeBoardBlocks': false,
-      'rules.economy.unclaimedBoardsToCentre': false,
-      'rules.economy.commonsColourMatch': false,
-      'rules.economy.commonsWildPair': false,
       'rules.economy.endgameCoinCost': null,
       'rules.economy.farmsteadCoinPower': false,
     },
@@ -1070,17 +888,16 @@ export function noticeBoardNoSelfGame(): GameData {
       'rules.economy.coinPaysGrow': false,
       'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
+      // Pinned 13/09/2026, when the shipped default flipped to 2.
+      'rules.economy.noticeBoardsBySeats.2': 1,
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': false,
-      'rules.turn.commonsTake': 'harvest',
       'rules.turn.startingMeeplesPerColour': 0,
       'rules.turn.meepleAsCard': false,
       'rules.turn.slotToll': null,
       'rules.turn.meepleCapPerColour': null,
       'rules.economy.noticeBoardThreshold': 3,
       'rules.economy.noticeBoardBlocks': false,
-      'rules.economy.commonsColourMatch': false,
-      'rules.economy.commonsWildPair': false,
       'rules.economy.endgameCoinCost': null,
       'rules.economy.farmsteadCoinPower': false,
     },
@@ -1132,6 +949,10 @@ export function meepleEconomyGame(): GameData {
       'rules.economy.coinPaysGrow': false,
       'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'meeple',
+      // Pinned 13/09/2026, when the shipped default flipped to false.
+      'rules.turn.selfVisitAllowed': true,
+      // Pinned 13/09/2026, when the shipped default flipped to 2.
+      'rules.economy.noticeBoardsBySeats.2': 1,
       'rules.turn.bonusTiming': 'end',
       'rules.turn.startingMeeplesPerColour': 1,
       'rules.turn.meepleAsCard': true,
@@ -1256,6 +1077,10 @@ export function meepleLoopGame(): GameData {
       'rules.economy.coinPaysGrow': false,
       'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'meeple',
+      // Pinned 13/09/2026, when the shipped default flipped to false.
+      'rules.turn.selfVisitAllowed': true,
+      // Pinned 13/09/2026, when the shipped default flipped to 2.
+      'rules.economy.noticeBoardsBySeats.2': 1,
       // Pinned with the commons (09/09/2026): the default turn is bonus-FIRST
       // and deals no starting meeples, and this arm is neither.
       'rules.turn.bonusTiming': 'end',

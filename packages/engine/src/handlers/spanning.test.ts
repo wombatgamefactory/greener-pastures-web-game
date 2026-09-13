@@ -521,9 +521,9 @@ describe('6. The Wheat Exchange (W19) - end-game scoring', () => {
     buildFor(data, s, WHEAT, 'W19');
     // W19's 2 for wheat, plus W2's 1 for W19 itself being a Wheat card.
     expect(gameEndScores(data, s)[WHEAT]!.endgame).toBe(3);
-    // TWO Wheat starters sit in the tableau and contribute to neither line - it
-    // was three until the commons put every Notice Board in the centre (C1).
-    expect(player(s, WHEAT).tableau).toHaveLength(3);
+    // THREE Wheat starters plus the shipped second Notice Board at two seats
+    // (13/09/2026) sit in the tableau and contribute to neither line.
+    expect(player(s, WHEAT).tableau).toHaveLength(5);
   });
 });
 

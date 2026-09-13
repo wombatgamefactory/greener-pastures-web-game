@@ -106,10 +106,9 @@ describe('newGame', () => {
       // meeple CONTROLS need it - and `meeple-loop.test.ts` is where the deal
       // itself is now asserted.
       expect(Object.values(p.meeples)).toEqual([0, 0, 0, 0, 0]);
-      // TWO starters since the commons (C1): Barn and Farmstead. It was THREE
-      // from change 6 (20/08/2026), when the Service's door merged into the
-      // Notice Board; the boards now stand in the centre and nobody owns one.
-      expect(p.tableau).toHaveLength(2);
+      // THREE starters (Barn, Farmstead, Notice Board) plus, at two seats since
+      // 13/09/2026, a second Notice Board drawn from an unfarmed suit.
+      expect(p.tableau).toHaveLength(4);
       // Own deck holds 14 after dealing the hand; nothing else is dealt.
       expect(state.decks[p.suit]).toHaveLength(14);
       for (const id of p.hand) expect(cardById(data, id).suit).toBe(p.suit);
@@ -310,18 +309,17 @@ describe('main actions through apply', () => {
     const open = base();
     dealTo(data, open, WHEAT, 'W4');
     expect(open.turn.bonusUsed).toEqual([]);
-    expect(legalMoves(data, open).some((m) => m.type === 'commons')).toBe(true);
+    expect(legalMoves(data, open).some((m) => m.type === 'visit')).toBe(true);
 
     const shut = base();
     dealTo(data, shut, WHEAT, 'W4');
     shut.turn.actionSpent = true;
-    expect(legalMoves(data, shut).some((m) => m.type === 'commons')).toBe(false);
-    // ⛔ AND THE THREE OPTIONS IT REPLACED ARE GONE IN BOTH POSITIONS (C6, C9):
-    // no turn-start meeple phase, no card visit, no Collect and no free Draw 1.
+    expect(legalMoves(data, shut).some((m) => m.type === 'visit')).toBe(false);
+    // ⛔ AND THE OTHER OPTIONS ARE GONE IN BOTH POSITIONS (S5): no turn-start
+    // meeple phase, no Collect and no free Draw 1.
     for (const state of [open, shut]) {
       const types = new Set(legalMoves(data, state).map((m) => m.type));
       expect(types.has('spendMeeple')).toBe(false);
-      expect(types.has('visit')).toBe(false);
       expect(types.has('collect')).toBe(false);
       expect(types.has('bonusDraw')).toBe(false);
     }
@@ -329,7 +327,7 @@ describe('main actions through apply', () => {
 
   /**
    * THE PAIRED CONTROLS: `bonusTiming: 'end'` is the rule the engine carried
-   * from 03/09/2026 to 09/09/2026 (`overlays/commons-bonus-last`), and `'any'`
+   * from 03/09/2026 to 09/09/2026, and `'any'`
    * is v14's once-per-turn-at-any-point. Asserted so that an arm switching the
    * knob cannot silently stop switching the rule.
    */
@@ -340,18 +338,18 @@ describe('main actions through apply', () => {
     };
     const top = base();
     dealTo(data, top, WHEAT, 'W4');
-    expect(legalMoves(endRules, top).some((m) => m.type === 'commons')).toBe(false);
+    expect(legalMoves(endRules, top).some((m) => m.type === 'visit')).toBe(false);
     const acted = base();
     dealTo(data, acted, WHEAT, 'W4');
     acted.turn.actionSpent = true;
-    expect(legalMoves(endRules, acted).some((m) => m.type === 'commons')).toBe(true);
+    expect(legalMoves(endRules, acted).some((m) => m.type === 'visit')).toBe(true);
 
     const anyRules = {
       ...data,
       rules: { ...data.rules, turn: { ...data.rules.turn, bonusTiming: 'any' as const } },
     };
-    expect(legalMoves(anyRules, top).some((m) => m.type === 'commons')).toBe(true);
-    expect(legalMoves(anyRules, acted).some((m) => m.type === 'commons')).toBe(true);
+    expect(legalMoves(anyRules, top).some((m) => m.type === 'visit')).toBe(true);
+    expect(legalMoves(anyRules, acted).some((m) => m.type === 'visit')).toBe(true);
   });
 
   /**
@@ -1036,21 +1034,20 @@ describe('the meeple phase - the v31 control', () => {
  * Collect. A move type leaking across that line is the failure this pins.
  */
 describe('the two bonus slots are disjoint', () => {
-  it('the shipped game offers the commons play alone, and nothing from either meeple game', () => {
+  it('the shipped game offers the notice-board visit alone, and nothing from either meeple game', () => {
     const s = base();
     dealTo(data, s, WHEAT, 'W4'); // the fee, and the whole of the bonus slot
     const types = new Set(legalMoves(data, s).map((m) => m.type));
-    // ⭐ ONE OPTION, WHICH IS C9 IN ONE ASSERTION: no free Draw 1, no Collect,
-    // no self-visit, and an unspent slot is a turn that chose not to pay.
-    expect(types.has('commons')).toBe(true);
-    expect(types.has('visit')).toBe(false);
+    // ⭐ ONE OPTION (S5): no free Draw 1, no Collect, and an unspent slot is a
+    // turn that chose not to pay.
+    expect(types.has('visit')).toBe(true);
     expect(types.has('collect')).toBe(false);
     expect(types.has('bonusDraw')).toBe(false);
     expect(types.has('spendMeeple')).toBe(false);
     // And with an empty hand there is nothing to pay with, so the slot is simply
     // not offered - it is never dead by rule, only by position.
     const empty = base();
-    expect(legalMoves(data, empty).some((m) => m.type === 'commons')).toBe(false);
+    expect(legalMoves(data, empty).some((m) => m.type === 'visit')).toBe(false);
   });
 
   it('the v31 control offers bonusDraw and a card visit, and no collect', () => {
@@ -1078,11 +1075,11 @@ describe('the turn boundary', () => {
   /**
    * ⛔ REVERSED TWICE, AND THIS IS THE CLEAREST SINGLE STATEMENT OF THE TURN
    * ORDER EACH TIME. It asserted the turn ENDING itself under `'start'`
-   * (19/08/2026 to 03/09/2026), then HOLDING OPEN under `'end'`, and the commons
-   * puts it back (C2, 09/09/2026): the bonus is taken first, so by the time the
-   * action is spent there is nothing left to wait for and the turn settles on
-   * its own. `endTurn` exists to decline options that are still live, and after
-   * a commons turn's action there are none.
+   * (19/08/2026 to 03/09/2026), then HOLDING OPEN under `'end'`, and the
+   * bonus-first turn puts it back (C2, 09/09/2026): the bonus is taken first, so
+   * by the time the action is spent there is nothing left to wait for and the
+   * turn settles on its own. `endTurn` exists to decline options that are still
+   * live, and after the action there are none.
    *
    * ⚠️ The `settleTurn` hold this used to prove is now unreachable and MUST
    * STAY - `turnflow.ts` carries the tombstone explaining why deleting a line
@@ -1092,14 +1089,16 @@ describe('the turn boundary', () => {
   it('ends the turn on the action, because the slot was open before it', () => {
     const state = base();
     dealTo(data, state, WHEAT, 'W4');
-    // The bonus first, while it is open: a card onto the orchard board.
-    let s = apply(data, state, { type: 'commons', seat: WHEAT, board: 'orchard', fee: 'W4' }).state;
+    // The bonus first, while it is open: a card onto a rival's Notice Board.
+    const visit = legalMoves(data, state).find((m) => m.type === 'visit');
+    expect(visit).toBeDefined();
+    let s = apply(data, state, visit as Move).state;
     while (s.tasks.length > 0) {
       const moves = legalMoves(data, s);
       s = apply(data, s, moves[0] as Move).state;
     }
     expect(s.turnPlayer).toBe(WHEAT);
-    expect(s.turn.bonusUsed).toEqual(['commons']);
+    expect(s.turn.bonusUsed).toEqual(['visit']);
 
     // Then the action, which ends the turn with no `endTurn` needed.
     const acted = apply(data, s, { type: 'draw', seat: WHEAT });
@@ -1240,20 +1239,6 @@ describe('views and redaction', () => {
     expect(view.rivals[0]?.meeples.dairy).toBe(3);
   });
 
-  it('the five central piles are public to every seat (C1)', () => {
-    const state = base();
-    dealTo(data, state, WHEAT, 'W4');
-    const played = apply(data, state, {
-      type: 'commons',
-      seat: WHEAT,
-      board: 'orchard',
-      fee: 'W4',
-    }).state;
-    for (const seat of [WHEAT, ORCHARD]) {
-      expect(viewFor(data, played, seat).commons?.boards.orchard).toEqual(['W4']);
-    }
-  });
-
   /**
    * A face-down demand token is PUBLIC. It sits on the board as a visible blank,
    * so it must cross the view boundary unredacted for every seat - and the
@@ -1279,8 +1264,8 @@ describe('views and redaction', () => {
     const events: GameEvent[] = [
       { e: 'cardsToHand', seat: ORCHARD, cards: ['O5'] },
       { e: 'cardPlaced', seat: ORCHARD, onto: { seat: WHEAT, building: 'W3' }, card: 'O6' },
-      // `source` and `owner` are the commons' two additions (C5) and are carried
-      // by every harvest, tableau ones included - see the event's own note.
+      // `source` and `owner` are constants since the commons was deleted - see
+      // the event's own note.
       {
         e: 'harvested',
         seat: WHEAT,

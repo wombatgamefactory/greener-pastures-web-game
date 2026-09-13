@@ -1,76 +1,42 @@
 /**
- * THE BONUS SLOT, THE COMMONS (C1-C10) and Dean's 'spend' variant.
+ * THE BONUS SLOT.
  *
- * ⛔ THESE THREE CANNOT BE SEPARATED and it was measured rather than assumed
- * (tools/map-cycles.py, 12/09/2026): bonus needs `anyCentralHarvestAfterFee`
- * from the commons while the commons needs `bonusOpen` and
- * `noticeBoardPowerLegal` back, and the commons and 'spend' trade five symbols
- * in both directions. Splitting them means real runtime import cycles.
- *
- * Split out of actions.ts on 2026-09-12; the code is unchanged.
+ * Split out of actions.ts on 2026-09-12. The commons (C1-C10) and Dean's
+ * 'spend' variant, which shared this module because of import cycles, were
+ * deleted on 13/09/2026.
  */
 
 import type { Fx } from '../fx.js';
 import { fireHook } from '../fx.js';
 import {
   canSowOnto,
-  canTakeCard,
   cardById,
-  commonsBoardCard,
-  commonsBoards,
-  commonsHarvestMin,
   doorOf,
   drawableSuits,
-  hasCentre,
   hostDrewThisRound,
   isFull,
-  isHarvestable,
   meeplesHeld,
   noticeBoardOf,
   noticeBoardSlots,
   noticeBoardsOf,
   player,
-  unclaimedCentre,
   visitTargetOf,
   workerData,
 } from '../query.js';
 import type { BonusOption, CardId, GameState, Move, Seat } from '../state.js';
 import { markFiredOnTurn } from '../state.js';
-import {
-  doorActionOf,
-  fireNoticeBoardPower,
-  meepleActionOf,
-  performDoorAction,
-} from '../workers.js';
+import { fireNoticeBoardPower, meepleActionOf, performDoorAction } from '../workers.js';
 import type { GameData, Suit } from '@gp/data';
 import {
-  commonsHarvestReachesCentre,
-  commonsWildPair,
   hostDrawCapPerRound,
   hostDrawOnVisitAt,
-  isCommons,
-  isCommonsTakeCoins,
-  isCommonsTakePaid,
-  isCommonsTakeToHand,
-  isCommonsTakeToSpend,
   isMeepleCurrency,
   isNoticeBoardPower,
   meepleSpendDistinctColours,
   meepleSpendPerTurn,
   meepleSpendTiming,
 } from '@gp/data';
-import { anyBuildOption, divertOrDiscard, paymentsFor, placeBuilt, priceOf } from './build.js';
-import {
-  deliverDemands,
-  finishDelivery,
-  matchedAgainst,
-  namedDemand,
-  spendKey,
-  substitutedSpends,
-  tallyTotal,
-  tileHasRoom,
-  wildFills,
-} from './deliver.js';
+import { anyBuildOption } from './build.js';
 import { doorActionLegal, workerActionLegal } from './doors.js';
 import { meepleFills, slotTollOf } from './meeples.js';
 import { withoutFirst } from './shared.js';
@@ -138,53 +104,16 @@ export function bonusSlotsFor(data: GameData, state: GameState, seat: Seat): num
 export function bonusOpen(data: GameData, state: GameState, option?: BonusOption): boolean {
   const turn = state.turn;
   if (turn.bonusUsed.length >= bonusSlotsFor(data, state, state.turnPlayer)) return false;
-  // ⭐ THE COMMONS IS EXEMPT FROM "ONE OF EACH" (C8, 09/09/2026), and it has to
-  // be: its slot holds ONE option, so refusing a second use of it would make A
-  // Helping Hand grant a seat nothing at all. Under the commons the rule is "up
-  // to `bonusSlotsFor` plays" - two with the card, one without, never three -
-  // and the count above is the whole of the bound.
-  //
-  // ⭐ `commonsTake` CARRIES THE SAME EXEMPTION (Dean's variant, 09/09/2026):
-  // under `commonsTake: 'bonus'` the slot holds ONE free option (the take)
-  // beside the paid `commons` play, so a seat may play twice, take twice, or
-  // one of each with A Helping Hand - never three - on exactly the reasoning
-  // above.
-  //
-  // Keyed on the OPTION and not on the mode, because `'commons'` and
-  // `'commonsTake'` are each producible only under their own knob; the
-  // two-option slot the controls play keeps the per-option refusal that stops
-  // a seat taking Draw 1 twice.
-  //
-  // ⭐ AND THE NOTICE-BOARD VISIT CARRIES IT TOO (S9, 10/09/2026), for
-  // exactly the commons' reason: its slot holds ONE option, the visit, so
+  // ⭐ THE NOTICE-BOARD VISIT IS EXEMPT FROM "ONE OF EACH" (S9, 10/09/2026):
+  // its slot holds ONE option, the visit, so
   // refusing a second use of it would make A Helping Hand grant a seat nothing
   // at all. What stops the two plays being the same play is not this rule but
   // S9's ONE-USE-PER-BOARD latch in `enumerateNoticeBoardVisits`, which sends
   // the second bonus to a DIFFERENT board. The exemption is keyed on the mode
   // as well as the option, because `'visit'` is producible under three
   // currencies and only this one widens the slot.
-  //
-  // ⛔ AND SINCE 11/09/2026 BOTH EXEMPTIONS CAN BE LIVE AT ONCE, WHICH IS THE
-  // ONE CASE TO REASON ABOUT BEFORE TOUCHING THIS FUNCTION. Under Dean's
-  // unclaimed-boards variant a seat may produce a `visit` (onto a rival's
-  // board) AND a `commons` play (onto an ownerless one) in the same turn, so
-  // for the first time two exempt options share one slot.
-  //
-  // ⭐ THEY DO NOT ADD UP TO TWO SLOTS, AND THE LINE THAT GUARANTEES IT IS THE
-  // COUNT AT THE TOP OF THIS FUNCTION, NOT THE EXEMPTION BELOW.
-  // `turn.bonusUsed.length >= bonusSlotsFor(...)` is a count of PLAYS and is
-  // blind to which kind each one was: one slot means one play, whichever kind;
-  // A Helping Hand means two, of any mix; and there is never a third. The
-  // exemption only ever says "a second play may be the same KIND as the first",
-  // which is what makes the card grant anything at all. What stops the two
-  // plays being the same BOARD is S9's latch, and under the variant that latch
-  // is written by `doNoticeBoardVisit` and `doCommons` into the same
-  // `turn.firedThisTurn` list, so it spans both halves of the slot.
-  // `notice-board-unclaimed.test.ts` asserts all four of those separately.
   if (
     option !== undefined &&
-    option !== 'commons' &&
-    option !== 'commonsTake' &&
     !(option === 'visit' && isNoticeBoardPower(data)) &&
     turn.bonusUsed.includes(option)
   ) {
@@ -247,18 +176,6 @@ export function meepleSpendOpen(data: GameData, state: GameState): boolean {
     case 'none':
       return false;
     case 'start':
-      // ⛔ NO MEEPLES AT ALL UNDER THE COMMONS (C6): no starting supply, no
-      // island seed, no spend and no Collect. The supply is all zeros there, so
-      // this changes no answer - it is here because `settleTurn` holds a turn
-      // open while `meepleOptions` is non-empty and "empty by construction" is
-      // exactly the claim that stops being true quietly.
-      // ⚠️ IT IS INSIDE THIS BRANCH AND NOT ABOVE THE SWITCH, since
-      // 12/09/2026. M1 can seed a meeple in ANY game (`tileMeepleSpaces`: a
-      // non-null `deliveryMeepleSpace` wins outright), so a currency-shaped
-      // refusal at the top would strand a meeple the rules had just handed out.
-      // The commons has no meeples only while nothing seeds one, which is the
-      // claim this clause is actually making.
-      if (isCommons(data)) return false;
       return !state.turn.actionSpent && state.turn.bonusUsed.length === 0;
     case 'afterAction':
       return state.turn.actionSpent;
@@ -416,11 +333,6 @@ export function bonusDrawOpen(data: GameData, state: GameState): boolean {
   // The NUMBER survives - `doCollect` draws `rules.turn.bonusDraw` - so the knob
   // still prices the solitaire line, which is now "collect an empty board".
   if (isMeepleCurrency(data)) return false;
-  // ⛔ AND CLOSED UNDER THE COMMONS (C9): the slot holds one option, the
-  // commons play, and an unspent slot is a turn that chose not to pay. The
-  // number survives here too, unread - there is no Collect under the commons
-  // for it to price either.
-  if (isCommons(data)) return false;
   // ⛔ AND CLOSED UNDER THE NOTICE-BOARD VISIT (S5, 10/09/2026), which is a
   // PASSENGER THE HANDOFF DID NOT PIN and had to be named rather than
   // inherited. S5 says the bonus action IS the visit, one per turn, optional -
@@ -429,7 +341,7 @@ export function bonusDrawOpen(data: GameData, state: GameState): boolean {
   // is also the thing that killed v31: the free Draw ate the slot at 67.6%,
   // and leaving it open here would have measured that failure a second time
   // under a different name. The NUMBER survives, unread, exactly as it does
-  // under the commons and the meeple loop.
+  // under the meeple loop.
   if (isNoticeBoardPower(data)) return false;
   if (!bonusOpen(data, state, 'draw')) return false;
   if (data.rules.turn.bonusDraw <= 0) return false;
@@ -507,22 +419,7 @@ function enumerateVisits(
   out: VisitOption[] | null,
 ): boolean {
   if (!bonusOpen(data, state, 'visit')) return false;
-  // ⛔ THERE IS NO `visit` MOVE UNDER THE COMMONS (C6/C9). A play onto a
-  // central board IS the visit for every card that keys on the word (C8), but
-  // it is its own move with no host, so the visit enumerator answers nothing -
-  // and it must answer BEFORE the card branch below, which would otherwise ask
-  // `noticeBoardOf` for a board that is not in anybody's tableau and throw from
-  // inside `legalMoves`.
-  if (isCommons(data)) return false;
   if (isMeepleCurrency(data)) return enumerateMeepleVisits(data, state, seat, out);
-  // ⛔ AND A CENTRAL BOARD IS NEVER A `visit` TARGET UNDER DEAN'S
-  // UNCLAIMED-BOARDS VARIANT (11/09/2026). A play onto an OWNERLESS board is
-  // the `commons` move; a `visit` names a HOST SEAT, which is the whole of what
-  // the two moves are for - the visit's fee rests on a person's board as
-  // material they must harvest (S7, "pay the giver in the same act"), and a
-  // central fee is paid to nobody. It falls out of the enumerator below looping
-  // `state.players` rather than needing a filter: a board with no owner has no
-  // seat index to be `host`, so it cannot be produced here at all.
   if (isNoticeBoardPower(data)) return enumerateNoticeBoardVisits(data, state, seat, out);
   const hand = player(state, seat).hand;
   if (hand.length === 0) return false;
@@ -595,20 +492,6 @@ export function noticeBoardPowerLegal(
   colour: Suit,
   opts?: {
     excludingHandCard?: CardId;
-    /**
-     * ⭐ THE CENTRAL BOARD THE FEE IS ABOUT TO LAND ON, under Dean's
-     * unclaimed-boards variant (11/09/2026). Present only on the `commons`
-     * route - a play onto an OWNERLESS board - and never on the `visit` route,
-     * where the fee lands on a rival's building instead and no pile moves.
-     *
-     * ⛔ ONLY THE WHEAT BRANCH READS IT, and it is the same question
-     * `commonsHarvestLegalAfterFee` asks under the commons: the fee joins the
-     * pile BEFORE the power runs, so a play onto the wheat board can be what
-     * takes its own pile to `commonsHarvestMin`. Asking the position as it
-     * stands rather than as the fee makes it is how an enumerator and its
-     * funnel come to disagree.
-     */
-    feeOntoCentral?: Suit;
   },
 ): boolean {
   const p = player(state, seat);
@@ -629,19 +512,8 @@ export function noticeBoardPowerLegal(
       // your barn." EITHER leg makes it live: a building with a card on it
       // (`filter: 'loaded'`, any stack size), or a card left in hand for the
       // barn. That second leg is ruling C88's whole purpose.
-      //
-      // ⭐ AND A THIRD LEG SINCE 11/09/2026, UNDER DEAN'S UNCLAIMED-BOARDS
-      // VARIANT: ANY CENTRAL PILE AT `commonsHarvestMin`. "A Harvest is a
-      // Harvest" (D1, reaffirmed that day, and his explicit reason was "to
-      // prevent any rules exceptions"), so the Wheat power reaches the centre
-      // exactly as the main Harvest action does and under exactly the same
-      // minimum. Without this leg the bought Harvest would be the one Harvest
-      // in the game that could not take a pile, which is the rules exception
-      // the ruling forbids.
       return (
-        p.tableau.some((b) => b.stack.length >= 1) ||
-        anyCentralHarvestAfterFee(data, state, opts?.feeOntoCentral) ||
-        (numbers.wheatBarn > 0 && hand.length > 0)
+        p.tableau.some((b) => b.stack.length >= 1) || (numbers.wheatBarn > 0 && hand.length > 0)
       );
     case 'apiary':
       // "Sow 2 cards from your hand onto your buildings." A card to sow and
@@ -950,8 +822,8 @@ export type CollectOption = Extract<Move, { type: 'collect' }>;
  * `rules.turn.bonusDraw`, however many came back.
  */
 export function collectOpen(data: GameData, state: GameState, seat: Seat): boolean {
-  // Already false under the commons (C6) and under the v31 card game: Collect is
-  // the meeple loop's own half of the slot and has no subject in either. One
+  // False under the v31 card game and the notice-board visit: Collect is the
+  // meeple loop's own half of the slot and has no subject in either. One
   // predicate rather than three, so the two modes that have no Collect cannot
   // drift apart.
   if (!isMeepleCurrency(data)) return false;
@@ -984,988 +856,6 @@ export function doCollect(fx: Fx, seat: Seat): void {
   }
 }
 
-// --- THE COMMONS (C1-C10, 09/09/2026) --------------------------------------
-
-/**
- * C10's TWO FALLBACK KNOBS, both OFF by default, so that if the bonus reads
- * automatic at the table the cap is one number away.
- *
- * `commonsThreshold` (int or null): a board holding at least this many cards
- * refuses further plays. `commonsColourMatch` (boolean): the fee must be a card
- * of the board's own colour.
- *
- * ⭐ THE OTHER TWO COMMONS KNOBS ARE NOT HERE, AND THAT IS THE SEAM RATHER
- * THAN AN OVERSIGHT. `commonsHarvestMin` and `commonsHarvestTake` (Dean,
- * 09/09/2026) ration the HARVEST rather than the play, so they are read where a
- * harvest is decided - `harvestOptions` and `fx.harvest` - through
- * `query.ts`'s two helpers. The only place all four meet is
- * `commonsActionLegal`, because the wheat board buys a Harvest and a board
- * whose action can do nothing is not offered.
- */
-interface CommonsKnobs {
-  threshold: number | null;
-  colourMatch: boolean;
-}
-
-function commonsKnobs(data: GameData): CommonsKnobs {
-  const { commonsThreshold, commonsColourMatch } = data.rules.economy;
-  return { threshold: commonsThreshold, colourMatch: commonsColourMatch };
-}
-
-export type CommonsOption = Extract<Move, { type: 'commons' }>;
-
-/**
- * ⭐ CAN THIS BOARD'S ACTION DO ANYTHING, GIVEN THAT THE FEE LANDS FIRST?
- *
- * The order in `doCommons` is load-bearing (C3, and the card visit's own order
- * since v14): the fee leaves the hand and joins the pile BEFORE the action runs.
- * So the gate has to be asked of the position AFTER it lands, or the enumerator
- * and the funnel disagree - which is the exact failure `workerActionLegal`'s
- * warning describes, arriving from a new direction.
- *
- * Two consequences, and both are rules rather than implementation:
- *
- *  - the hand-reading actions (Build and GROW, plus Sow if a roster ever prints
- *    one here) are asked WITHOUT the fee, so a hand of one card can pay the
- *    board or pay the build, never both;
- *  - ⭐ THE WHEAT BOARD CAN NEVER BE DEAD, WHICH IS D6 - AND `commonsHarvestMin`
- *    IS THE ONE KNOB THAT TAKES IT AWAY. Its action is Harvest and every
- *    central pile deep enough to take is a target (C5), so under the shipped
- *    rules the fee that buys the Harvest is itself a legal thing to harvest: a
- *    seat with no full building can still play a card onto the wheat board and
- *    take it, and anything under it, straight into their barn. That is Dean's
- *    "a good turn, not a loop" read literally, and it makes the floor of the
- *    bonus slot "one card from hand to barn" rather than "nothing".
- *
- * ⛔ UNDER `commonsHarvestMin` (Dean, 09/09/2026) THE WHEAT BOARD IS AN
- * ORDINARY BOARD AGAIN. A pile below the minimum refuses a harvest, so the fee
- * only makes its OWN pile harvestable if that pile REACHES the minimum once the
- * fee has landed - which is why the probe below counts the fee onto the board
- * being played and asks the rest of the position as it stands. At n = 3 a play
- * onto an empty wheat board buys a Harvest of nothing, so the board is not
- * offered at all unless some other pile is already deep enough or the seat has
- * a full building of its own. That is a real change of rule, not a tuning, and
- * it is named on the knob's own description.
- */
-function commonsActionLegal(
-  data: GameData,
-  state: GameState,
-  seat: Seat,
-  board: Suit,
-  fee: CardId,
-  /**
-   * ⭐ THE WILD PAIR'S SECOND CARD (K3, 10/09/2026). It lands on the pile
-   * exactly as `fee` does, so it has to leave the hand for this probe exactly as
-   * `fee` does: a hand of two cards can pay a pair OR pay a build, never both.
-   * Leaving it in would offer a dairy board the seat cannot then afford to use,
-   * which is the enumerator-and-funnel disagreement `workerActionLegal`'s own
-   * warning describes, arriving from a third direction.
-   */
-  fee2?: CardId,
-): boolean {
-  // ⭐ A CENTRAL BOARD GRANTS THE SAME PRINTED POWER AS AN OWNED ONE UNDER
-  // DEAN'S UNCLAIMED-BOARDS VARIANT (ruled 11/09/2026 on his standing
-  // principle that there are no rules exceptions). It is the SAME CARD - O3 is
-  // O3 whether it sits in an Orchard seat's farm or in the middle of the table
-  // - and a card prints what it does, so a central Orchard board is *Draw 4*
-  // and not the commons' plain Draw 2, and a central Apiary board is *Sow 2
-  // cards from your hand onto your buildings* (S12 as amended by C89) and not
-  // the commons' GROW substitution.
-  //
-  // ⛔ SO THE GATE IS `noticeBoardPowerLegal` AND NOT `doorActionLegal`, and
-  // the difference is not cosmetic: three of the five powers are WIDER than
-  // the plain action they are named after (the Dairy board waives the crop
-  // requirement, the Wheat board harvests at any stack size and banks a card,
-  // the Vegetable board has a fallback), so asking the plain door gate would
-  // refuse central boards the variant exists to keep alive.
-  //
-  // ⛔ AND IT RESOLVES THE PASSENGER THE DATA PASS FLAGGED, IN THE DIRECTION
-  // THE RULING POINTS. `doorActionForSuit` substitutes
-  // `workers.roster.sow.actionUnderCommons` (the Apiary board's GROW, C3 of the
-  // commons) only while `isCommons` is true, and under this variant the
-  // currency is `'noticeBoardPower'`, so it is FALSE and the Apiary board reads
-  // back its printed SOW. That is the CORRECT answer here rather than a bug to
-  // fix: the GROW substitution is the commons' own rule for a board that grants
-  // a plain door action, and a board that grants a printed power has no door
-  // action to substitute. Nothing below reads `doorActionOf` on this path.
-  if (unclaimedCentre(data)) {
-    return noticeBoardPowerLegal(data, state, seat, board, {
-      excludingHandCard: fee,
-      feeOntoCentral: board,
-    });
-  }
-  const action = doorActionOf(data, board);
-  if (action === 'harvest') return commonsHarvestLegalAfterFee(data, state, seat, board);
-  return doorActionLegal(data, state, seat, action, {
-    excludingHandCard: fee,
-    ...(fee2 === undefined ? {} : { excludingHandCard2: fee2 }),
-  });
-}
-
-/**
- * Would a Harvest have a target, in the position the fee makes?
- *
- * The one gate in the file that has to look at the position AFTER a card it has
- * not yet played, and it exists because `harvestOptions` cannot be asked the
- * question: the fee is still in the hand when the enumerator runs, and the
- * board being played on is one card shallower than it will be. Counting the fee
- * here rather than mutating a copy of the state keeps the probe cheap enough to
- * run five times per card in hand.
- */
-function commonsHarvestLegalAfterFee(
-  data: GameData,
-  state: GameState,
-  seat: Seat,
-  board: Suit,
-): boolean {
-  // The HARVEST question, so `isHarvestable` (10/09/2026); commons-only, where
-  // the two predicates are still the same boolean, but the reading has to say
-  // which one it meant.
-  if (player(state, seat).tableau.some((b) => isHarvestable(data, b))) return true;
-  // ⭐ UNDER EVERY `commonsTake` VALUE BUT THE SHIPPED ONE THE WHEAT BOARD IS AN
-  // ORDINARY BOARD AGAIN, exactly as under commonsHarvestMin (D6 stops
-  // holding): Harvest never reaches the centre (D-S4 under 'bonus', 'spend'
-  // and 'paid'; K4 under 'coins'), so the fee just played can never be what
-  // makes this Harvest legal. Without a full building of their own, this seat
-  // has nothing for the wheat board's action to do. Read through the same
-  // helper `harvestOptions` uses, so the gate and the action cannot disagree.
-  return anyCentralHarvestAfterFee(data, state, board);
-}
-
-/**
- * ⭐ WOULD ANY CENTRAL PILE BE DEEP ENOUGH TO HARVEST ONCE THE FEE HAS LANDED?
- *
- * The tail of `commonsHarvestLegalAfterFee`, lifted out on 11/09/2026 because
- * the Wheat Notice Board's POWER now asks the identical question under Dean's
- * unclaimed-boards variant (`noticeBoardPowerLegal`, case `'wheat'`). One
- * helper rather than two copies of a depth test: the commons already paid once
- * for a gate and its action drifting apart.
- *
- * `feeOnto` is the board the fee is about to join, or undefined when the fee is
- * not going to the centre at all - a visit to a rival's board, or a gate asked
- * about the position as it stands. It counts for ONE card, because a fee is one
- * card; the wild pair (two cards onto one pile) is `commonsWildPair`, which is
- * pinned false under both games that have a centre today, and if it is ever
- * turned on beside a `commonsHarvestMin` above 1 this is the line to widen.
- *
- * Answers false where Harvest cannot reach the centre at all
- * (`commonsHarvestReachesCentre`), so the four `commonsTake` variants read a
- * farm bypass of 0% by construction exactly as `harvestOptions` does.
- */
-function anyCentralHarvestAfterFee(data: GameData, state: GameState, feeOnto?: Suit): boolean {
-  if (!hasCentre(data) || !commonsHarvestReachesCentre(data)) return false;
-  const min = commonsHarvestMin(data);
-  const boards = commonsBoards(state);
-  // Allocation-free for the reason `centralHarvestTargets` above gives: the
-  // bonus enumerator asks this once per (board, card in hand) pair.
-  for (const colour of data.cards.suits) {
-    const pile = boards[colour];
-    if (pile === undefined) continue;
-    const depth = pile.length + (colour === feeOnto ? 1 : 0);
-    if (depth >= min) return true;
-  }
-  return false;
-}
-
-/**
- * EVERY COMMONS PLAY ON OFFER (C3): one move per (central board, card in hand)
- * whose board's action this seat can legally perform right now.
- *
- * Any card onto any board is the printed rule - the fee is a fee and not a
- * payment in kind - so the list is (5 boards x hand), which is where the bonus
- * slot's whole branching factor now lives. It REPLACES the meeple visit's
- * (rival hosts x 5 colours x wild pairs), so the count should fall rather than
- * rise.
- *
- * ⛔ A BOARD WHOSE ACTION YOU CANNOT PERFORM IS NOT OFFERED, which is Dean's
- * standing ruling and unchanged since the doors were introduced. Under the
- * commons it bites less often than it ever has: the wheat board is always live
- * (see `commonsActionLegal`) and the orchard board is live whenever a deck has a
- * card, so a seat is essentially never locked out of the slot - which matters,
- * because the commons has no free Draw 1 to backstop it (C9).
- */
-export function commonsOptions(data: GameData, state: GameState, seat: Seat): CommonsOption[] {
-  const out: CommonsOption[] = [];
-  enumerateCommons(data, state, seat, out);
-  return out;
-}
-
-/** Is ANY commons play on offer? The same walk, stopping at the first hit. */
-export function anyCommonsOption(data: GameData, state: GameState, seat: Seat): boolean {
-  return enumerateCommons(data, state, seat, null);
-}
-
-/**
- * The one walk behind both, exactly as `enumerateVisits` is for the visit:
- * `out === null` means "stop at the first legal play". A predicate COPIED out of
- * an enumerator silently stops agreeing with it, and `settleTurn` asks the
- * question after every apply.
- */
-function enumerateCommons(
-  data: GameData,
-  state: GameState,
-  seat: Seat,
-  out: CommonsOption[] | null,
-): boolean {
-  // ⭐ TWO GAMES PRODUCE A `commons` MOVE SINCE 11/09/2026. The commons itself
-  // (all five piles, C1) and Dean's unclaimed-boards variant, where the piles
-  // are the boards of the suits nobody is farming and a play onto a RIVAL's
-  // board is the `visit` move instead. One enumerator for both, deliberately:
-  // the move's shape, its fee, its slot accounting and its pile are identical,
-  // and the manager's ruling of 11/09/2026 was "do NOT invent a third move
-  // shape".
-  if (!hasCentre(data)) return false;
-  if (!bonusOpen(data, state, 'commons')) return false;
-  const hand = player(state, seat).hand;
-  if (hand.length === 0) return false;
-  const boards = commonsBoards(state);
-  const knobs = commonsKnobs(data);
-  // ⭐ S9's ONE-USE-PER-BOARD LATCH REACHES THE CENTRE (11/09/2026). Under the
-  // variant A Helping Hand's second play must go to a DIFFERENT board, and the
-  // two halves of the slot - a rival's board and a central one - have to share
-  // one latch or a seat could play onto central Wheat and then rival Wheat and
-  // take the same power twice.
-  //
-  // ⛔ THE LATCH IS PER CARD ID, NOT PER SUIT, AND UNDER THIS VARIANT THE TWO
-  // ARE THE SAME PARTITION, WHICH IS WHY THE CHOICE IS SAFE. A suit is EITHER
-  // one seat's or in the centre and never both: `newGame` refuses duplicate
-  // player suits, and `freshCommons` puts exactly the leftovers in the middle.
-  // So "central Wheat then rival Wheat" is not a loophole this closes, it is a
-  // position that cannot exist - there is no rival Wheat board in a game where
-  // Wheat is central. Per card id is kept because that is what
-  // `turn.firedThisTurn` already means ("this card's printed text has fired
-  // this turn") and a Notice Board's power IS its printed text, whichever side
-  // of the table the card is on; a parallel per-suit list would have added a
-  // `TurnState` field and moved every fixture in `packages/sim/fixtures/`.
-  const latched = unclaimedCentre(data);
-  let any = false;
-  for (const board of data.cards.suits) {
-    // ⭐ AN ABSENT PILE IS A BOARD THAT IS NOT IN THE CENTRE (11/09/2026): some
-    // seat is farming that suit, so their board is a building and the way to it
-    // is the `visit` move. All five keys are present under the commons, so this
-    // skips nothing there and the walk is the one it always was.
-    const pile = boards[board];
-    if (pile === undefined) continue;
-    // C10, off by default: a board at its cap refuses the play outright. It is
-    // the one thing in the commons that ever refuses anything, which is why it
-    // is a knob and not a rule - C4 says a central board never refuses a play.
-    if (knobs.threshold !== null && pile.length >= knobs.threshold) continue;
-    if (latched && state.turn.firedThisTurn.includes(commonsBoardCard(data, board))) continue;
-    for (const fee of hand) {
-      // C10 again: the fee must match the board's colour.
-      if (knobs.colourMatch && cardById(data, fee).suit !== board) continue;
-      if (!commonsActionLegal(data, state, seat, board, fee)) continue;
-      if (out === null) return true;
-      out.push({ type: 'commons', seat, board, fee });
-      any = true;
-    }
-    // ⭐ THE WILD PAIR (D5 of the commons pass, left unbuilt on 09/09/2026 by
-    // D7, ruled back in by K3 on 10/09/2026): TWO cards of ANY colours pay for
-    // one board of any colour, and BOTH land on its pile.
-    //
-    // ⚠️ ONLY UNDER COLOUR MATCHING, and the guard is a rule rather than an
-    // optimisation: with any card already paying for any board there is no
-    // colour for a pair to stand in for, so every pair would be a strictly
-    // dominated way to pay - two cards out for what one buys - and offering
-    // them would multiply the bonus slot's branching by C(hand, 2) for a choice
-    // no player would ever make.
-    //
-    // ⚠️ BRANCHING: C(h, 2) MORE OPTIONS PER BOARD, which at the engine's
-    // hand bound of 7 (C7, an instrument bound and not a rule of the game) is 21
-    // a board and 105 a turn, well under the build enumerator. Unordered and
-    // distinct - `j` starts at `i + 1` - because a pair is a pair whichever card
-    // is named first and both go to the same place, so (a, b) and (b, a) are the
-    // same move.
-    //
-    // ⭐ AND THE PAIR IS OFFERED WHEREVER IT IS LEGAL, never only as a last
-    // resort. That is the OPPOSITE of the meeple wild pair's rule in
-    // `paymentsFor` and `growOptions`, and deliberately so: a meeple pair was
-    // strictly dominated by spending the exact colour singly, whereas a seat
-    // holding one matching card AND two off-colour cards has a real choice
-    // between paying its good card and paying two junk ones (L5, "your junk is
-    // their treasure"). Suppressing it would make that decision for the player.
-    //
-    // ⛔ AND NEVER UNDER DEAN'S UNCLAIMED-BOARDS VARIANT (11/09/2026), which is
-    // a fail-closed guard rather than a rule. `commonsWildPair` is pinned false
-    // in both of that variant's overlays and means nothing without
-    // `commonsColourMatch`, which is pinned false beside it; but the gate this
-    // variant's play is asked through - `noticeBoardPowerLegal` - takes ONE
-    // `excludingHandCard`, so a pair would be priced with its second card still
-    // notionally in hand and could offer a Dairy board the seat cannot then
-    // afford to use. Turning the pair on here is therefore a second change and
-    // not a knob flip: widen the power gate first.
-    if (unclaimedCentre(data)) continue;
-    if (!knobs.colourMatch || !commonsWildPair(data)) continue;
-    for (let i = 0; i < hand.length; i++) {
-      const fee = hand[i] as CardId;
-      for (let j = i + 1; j < hand.length; j++) {
-        const fee2 = hand[j] as CardId;
-        if (!commonsActionLegal(data, state, seat, board, fee, fee2)) continue;
-        if (out === null) return true;
-        out.push({ type: 'commons', seat, board, fee, fee2 });
-        any = true;
-      }
-    }
-  }
-  return any;
-}
-
-/**
- * ⭐ THE COMMONS PLAY (C3): one card from your hand onto one of the five central
- * Notice Boards, then that board's action, taken by you.
- *
- * ⭐ AND SINCE 11/09/2026 IT IS ALSO DEAN'S UNCLAIMED-BOARDS VARIANT'S PLAY,
- * onto one of the boards of the suits nobody is farming. Same move, same fee,
- * same slot accounting, same pile - what differs is that the board grants its
- * PRINTED POWER rather than the plain door action (see the branch at the foot
- * of this function) and that S9's one-use-per-board latch applies, shared with
- * `doNoticeBoardVisit` through `turn.firedThisTurn`.
- *
- * THE ORDER IS LOAD-BEARING and is the card visit's, unchanged since v14: the
- * fee LANDS first, then `afterVisit` fires, then the action runs.
- *
- *  - the fee first, so a Harvest bought through the wheat board can take the
- *    pile it has just fed (C5) - the one place the order is visible in the rules
- *    rather than only in a hook;
- *  - `afterVisit` before the action, so O16 The Fruit Store and A17 The Smoke
- *    Pot fire off a play with no host at all (C8), which is what `host: null` on
- *    that hook is for. W17 The Pie Shop compares the host to its own seat and
- *    can never match, so it is dead under the commons exactly as C8 says.
- *
- * ⛔ `afterPlacement` IS NOT FIRED (C8). A central board is not a building, so
- * A16 The Beekeeper's Veil does not see a play - `fx.playOnCommons` is a
- * separate primitive from `fx.placeOnBuilding` for that reason alone.
- *
- * ⚠️ AND UNDER DEAN'S UNCLAIMED-BOARDS VARIANT THAT MAKES AN ASYMMETRY WORTH
- * FLAGGING RATHER THAN FIXING (11/09/2026): the same bonus slot fires A16 when
- * the card lands on a RIVAL's board (`doNoticeBoardVisit` places it through
- * `fx.placeOnBuilding`) and does not when it lands on a CENTRAL one. It is the
- * physical truth - a central board is in nobody's tableau and A21 The Wax Hall
- * cannot count it either - and it follows from S16's two rulings rather than
- * contradicting them, but it does mean A16 quietly prefers cross-table plays.
- * That is a CARD reading for Dean and a number for the pass to take, not an
- * engine choice to make here.
- *
- * Every predicate the enumerator checked is re-checked here, because a
- * re-validation must ask what the move NEEDS and never trust the window the
- * caller consumed.
- */
-export function doCommons(fx: Fx, seat: Seat, board: Suit, fee: CardId, fee2?: CardId): void {
-  const { data, state } = fx;
-  // ⭐ TWO GAMES, ONE MOVE (11/09/2026). Under Dean's unclaimed-boards variant
-  // a play onto an ownerless board is this same `commons` move; what differs is
-  // what it BUYS (the board's printed S12 power rather than the plain door
-  // action) and that S9's one-use-per-board latch applies to it.
-  const variant = unclaimedCentre(data);
-  if (!hasCentre(data)) {
-    throw new Error(
-      'There is no centre unless rules.turn.visitCurrency is commons, or is ' +
-        'noticeBoardPower with rules.economy.unclaimedBoardsToCentre',
-    );
-  }
-  if (!bonusOpen(data, state, 'commons')) {
-    throw new Error('The bonus slot is shut: spent, or outside its window for this bonusTiming');
-  }
-  if (!player(state, seat).hand.includes(fee)) {
-    throw new Error(`Card ${fee} is not in seat ${seat}'s hand`);
-  }
-  const knobs = commonsKnobs(data);
-  const pile = commonsBoards(state)[board];
-  // ⚠️ UNDER THE VARIANT THIS IS ALSO THE "IS THAT BOARD OWNED?" CHECK, and it
-  // has to be: a colour with no key in the zone is a colour some SEAT is
-  // farming, whose board is a building in their tableau and is reached by the
-  // `visit` move instead. A missing key is never an empty pile here.
-  if (pile === undefined) throw new Error(`There is no ${board} board in the commons`);
-  // S9, ONE USE PER BOARD PER TURN, shared with `doNoticeBoardVisit` through
-  // `turn.firedThisTurn`. Thrown here and FILTERED in the enumerator, which is
-  // this file's standing division of labour.
-  const boardCard = commonsBoardCard(data, board);
-  if (variant && state.turn.firedThisTurn.includes(boardCard)) {
-    throw new Error(`${boardCard} has already been used this turn`);
-  }
-  if (variant && fee2 !== undefined) {
-    throw new Error('There is no wild pair under rules.economy.unclaimedBoardsToCentre');
-  }
-  if (knobs.threshold !== null && pile.length >= knobs.threshold) {
-    throw new Error(`The ${board} board is at its threshold of ${knobs.threshold}`);
-  }
-  // ⭐ THE WILD PAIR (K3, 10/09/2026): two cards of ANY colours in place of one
-  // card of the board's colour, both landing on the pile. Everything the
-  // enumerator checked is re-checked here, on the file's standing discipline -
-  // a re-validation asks what the move NEEDS and never trusts the window the
-  // caller consumed - and the colour gate is the one predicate the pair
-  // REPLACES rather than adds to, which is exactly what the pair is.
-  if (fee2 !== undefined) {
-    if (!knobs.colourMatch || !commonsWildPair(data)) {
-      throw new Error(
-        'A second fee is a wild pair and needs both commonsColourMatch and commonsWildPair',
-      );
-    }
-    if (fee2 === fee) throw new Error('A wild pair is two DIFFERENT cards');
-    if (!player(state, seat).hand.includes(fee2)) {
-      throw new Error(`Card ${fee2} is not in seat ${seat}'s hand`);
-    }
-  } else if (knobs.colourMatch && cardById(data, fee).suit !== board) {
-    throw new Error(`The ${board} board takes a ${board} card under commonsColourMatch`);
-  }
-  if (!commonsActionLegal(data, state, seat, board, fee, fee2)) {
-    throw new Error(`The ${board} board has nothing legal to do for seat ${seat}`);
-  }
-
-  // ⭐ ONE `commonsPlayed` PER CARD, which is builder's choice and is recorded
-  // as one: `fx.playOnCommons` is called twice for a pair, so `pileSize` is
-  // right on each event and the count of cards ENTERING the centre is simply
-  // the number of `commonsPlayed` events - never a field somebody has to
-  // remember to add. That keeps a18's conservation identity (in = discarded by
-  // takes + stranded) exact arithmetic rather than a special case, and it keeps
-  // the fee-suit mix reading one row per card, which is what the pair is FOR
-  // (two junk cards instead of one matching one, L5).
-  //
-  // ⚠️ IT ALSO MEANS PLAYS PER TURN AND CARDS INTO THE CENTRE STOP BEING THE
-  // SAME NUMBER under this arm, exactly as A Helping Hand made plays per turn
-  // and the share of turns that used the slot stop being the same number on
-  // 09/09/2026 - which cost a re-run. a17 counts TURNS, a18 counts CARDS, and
-  // under the pair one bonus can put two cards in.
-  fx.playOnCommons(seat, board, fee);
-  if (fee2 !== undefined) fx.playOnCommons(seat, board, fee2);
-  state.turn.bonusUsed.push('commons');
-  fireHook(fx, 'afterVisit', { visitor: seat, host: null, self: false, board });
-  if (!variant) {
-    performDoorAction(fx, seat, board, 'commons');
-    return;
-  }
-  // ⭐ AND UNDER DEAN'S UNCLAIMED-BOARDS VARIANT THE BOARD GRANTS ITS PRINTED
-  // POWER, NOT THE PLAIN DOOR ACTION (manager's ruling, 11/09/2026, on Dean's
-  // standing principle of no rules exceptions). O3 is O3 wherever it sits, so a
-  // central Orchard board is *Draw 4* and a central Apiary board *Sows 2 from
-  // your hand onto your buildings* - never the commons' Draw 2 and never its
-  // GROW substitution. This is the line that makes a centre worth what a rival's
-  // board is worth, which is the headline risk the overlay names: a central
-  // board is SOCIALLY FREE and a rival's is not, so if the two also differed in
-  // POWER the comparison would be measuring two things at once.
-  //
-  // ⛔ THE LATCH IS SET HERE AND NOT INSIDE THE POWER, exactly as
-  // `doNoticeBoardVisit` sets it, so both halves of the slot write the same
-  // list and A Helping Hand's second play is forced onto a different board.
-  markFiredOnTurn(state.turn, boardCard);
-  // ⭐ `doorUsed` IS EMITTED HERE RATHER THAN INSIDE THE POWER, on D4's
-  // reasoning and word for word as the visit does it: action inflation (a16)
-  // and the door mix (a07) count a bought action off one field and must count
-  // this exactly as they counted a commons play, so `via` stays `'commons'`.
-  // ⚠️ THE ROSTER'S PRINTED ACTION AND NOT `doorActionOf`, for the visit
-  // branch's reason and one of this variant's own: `doorActionForSuit`
-  // substitutes the Apiary GROW only while `isCommons` is true, which it is not
-  // here, so the two agree - and reading it off the override would widen a
-  // field typed `WorkerAction` to `DoorAction` for a sixth value this mode can
-  // never produce.
-  const action = doorOf(data, board).action;
-  fx.emit({ e: 'doorUsed', seat, colour: board, action, via: 'commons' });
-  fireNoticeBoardPower(fx, seat, board, {
-    src: null,
-    deliverLegal: doorActionLegal(data, state, seat, 'deliver'),
-  });
-  fireHook(fx, 'afterWork', { actor: seat, colour: board, action, via: 'commons' });
-}
-
-export type CommonsTakeOption = Extract<Move, { type: 'commonsTake' }>;
-
-/**
- * ⭐ DEAN'S VARIANTS' SHARED MOVE (`rules.turn.commonsTake: 'bonus'`, `'spend'`
- * or `'paid'`, 09/09/2026, and `'coins'`, 10/09/2026): every legal
- * `commonsTake` move, one per central pile this seat may legally take right now
- * (or, under `'paid'`, one per (pile, fee card) pair).
- *
- * Never producible under the shipped `'harvest'` rule - `enumerateCommonsTake`
- * checks the knob first, exactly as `enumerateCommons` checks `isCommons`
- * first, so the two enumerators fail closed the same way. Under `'bonus'`
- * every non-empty pile qualifies; under `'spend'` a board also has to have
- * something for its action to do (D-S3), which is `commonsSpendTakeLegal`;
- * under `'paid'` a board qualifies whenever it is non-empty AND the seat has
- * at least one card in hand to pay with (D-P1's other half - see
- * `enumerateCommonsTake`); under `'coins'` (K3/K5) every non-empty pile
- * qualifies and nothing else is asked, because a coin take buys no action.
- */
-export function commonsTakeOptions(
-  data: GameData,
-  state: GameState,
-  seat: Seat,
-): CommonsTakeOption[] {
-  const out: CommonsTakeOption[] = [];
-  enumerateCommonsTake(data, state, seat, out);
-  return out;
-}
-
-/** Is ANY commonsTake on offer? The same walk, stopping at the first hit. */
-export function anyCommonsTakeOption(data: GameData, state: GameState, seat: Seat): boolean {
-  return enumerateCommonsTake(data, state, seat, null);
-}
-
-/**
- * The one walk behind both, exactly as `enumerateCommons` is for the play:
- * `out === null` means "stop at the first legal take".
- *
- * ⭐ UNDER `'paid'` (09/09/2026) THE SHAPE CHANGES: `enumerateCommons` walks
- * (board, fee) pairs because a commons PLAY needs a fee card, and a paid take
- * now needs one too, so this branch walks the same product - one move per
- * non-empty board per card in hand. The fee can never be one of the taken
- * cards: it comes out of the hand, the taken cards come out of the pile, and
- * the two pools never overlap.
- */
-function enumerateCommonsTake(
-  data: GameData,
-  state: GameState,
-  seat: Seat,
-  out: CommonsTakeOption[] | null,
-): boolean {
-  const toHand = isCommonsTakeToHand(data);
-  const toSpend = isCommonsTakeToSpend(data);
-  const toPaid = isCommonsTakePaid(data);
-  // ⭐ THE COIN TAKE (K3 second half / K8, Dean 10/09/2026): "discard every card
-  // on one central pile and take one coin per card". It needs NO branch of its
-  // own down the walk - no fee to choose (unlike 'paid') and no per-board
-  // legality to ask (unlike 'spend', whose action has to have something to do,
-  // D-S3) - because a coin take buys no action at all. So it is one more term
-  // in the fail-closed guard and one more mode the plain loop below serves, and
-  // K5's "not offered on an empty pile" is the loop's own existing check.
-  const toCoins = isCommonsTakeCoins(data);
-  // ⚠️ `isCommons` AND NOT `hasCentre`, DELIBERATELY (11/09/2026). Dean's
-  // unclaimed-boards variant pins `commonsTake: 'harvest'` by name, so all four
-  // flags above are false there and this would fail closed anyway; the narrow
-  // predicate is kept because the four take VARIANTS are rules of the commons
-  // and were each ruled against a centre of five ownerless boards. Pairing one
-  // of them with a centre of two would be a new design rather than a knob, and
-  // it is `hasCentre` here that would make it look like a knob.
-  if (!isCommons(data) || (!toHand && !toSpend && !toPaid && !toCoins)) return false;
-  if (!bonusOpen(data, state, 'commonsTake')) return false;
-  const boards = commonsBoards(state);
-  let any = false;
-  if (toPaid) {
-    const hand = player(state, seat).hand;
-    if (hand.length === 0) return false;
-    for (const board of data.cards.suits) {
-      if ((boards[board]?.length ?? 0) === 0) continue;
-      for (const fee of hand) {
-        if (out === null) return true;
-        out.push({ type: 'commonsTake', seat, board, fee });
-        any = true;
-      }
-    }
-    return any;
-  }
-  for (const board of data.cards.suits) {
-    if ((boards[board]?.length ?? 0) === 0) continue;
-    if (toSpend && !commonsSpendTakeLegal(data, state, seat, board)) continue;
-    if (out === null) return true;
-    out.push({ type: 'commonsTake', seat, board });
-    any = true;
-  }
-  return any;
-}
-
-/**
- * ⭐ DEAN'S 'spend' VARIANT'S LEGALITY (D-S3, 09/09/2026): "a door that can do
- * nothing is not offered", the standing ruling, read per board. Orchard and
- * wheat are the uncomplicated whole-pile legs and are legal whenever their
- * pile is non-empty (already checked by the caller); dairy, vegetable and
- * apiary each ask whether their action has anything to do.
- */
-function commonsSpendTakeLegal(data: GameData, state: GameState, seat: Seat, board: Suit): boolean {
-  switch (board) {
-    case 'orchard':
-    case 'wheat':
-      return true;
-    case 'dairy':
-      return anyCommonsSpendBuildOption(data, state, seat, board);
-    case 'vegetable':
-      return anyCommonsSpendDeliverOption(data, state, seat, board);
-    case 'apiary':
-      return player(state, seat).tableau.some((b) => canTakeCard(data, b));
-    default:
-      return board satisfies never;
-  }
-}
-
-/**
- * ⭐ DEAN'S VARIANTS' TAKE, DISPATCHED BY commonsTake: take the whole of one
- * central pile. Under `'bonus'` and `'paid'` it always goes straight to hand
- * (`Fx.takeCommons`); under `'spend'` its fate depends on `board` -
- * `doCommonsSpendTake` is where the five legs live; under `'coins'` (K3/K8,
- * 10/09/2026) it goes to the suits' DISCARDS and pays one coin per card, which
- * is the one value where the pile leaves the game rather than reaching anybody.
- *
- * Every predicate the enumerator checked is re-checked here, on the same
- * discipline `doCommons` follows. `fee` is read only under `'paid'`, where it
- * is required; it is ignored (and should be `undefined`, as `legalMoves`
- * never sets it) under the other three.
- */
-export function doCommonsTake(fx: Fx, seat: Seat, board: Suit, fee?: CardId): void {
-  const { data, state } = fx;
-  const toHand = isCommonsTakeToHand(data);
-  const toSpend = isCommonsTakeToSpend(data);
-  const toPaid = isCommonsTakePaid(data);
-  const toCoins = isCommonsTakeCoins(data);
-  if (!isCommons(data) || (!toHand && !toSpend && !toPaid && !toCoins)) {
-    throw new Error(
-      "commonsTake is legal only under rules.turn.commonsTake: 'bonus', 'spend', 'paid' or 'coins'",
-    );
-  }
-  if (!bonusOpen(data, state, 'commonsTake')) {
-    throw new Error('The bonus slot is shut: spent, or outside its window for this bonusTiming');
-  }
-  const pile = commonsBoards(state)[board];
-  if (pile === undefined) throw new Error(`There is no ${board} board in the commons`);
-  if (pile.length === 0) throw new Error(`The ${board} board is empty`);
-
-  if (toCoins) {
-    // ⭐ THE MINT (K3/K8, Dean 10/09/2026): NO FEE IS PAID, so `fee` is ignored
-    // here exactly as it is under 'bonus' and 'spend' - `legalMoves` never sets
-    // it under this value. The pile goes to its cards' OWN suits' discard piles
-    // (a pile holds any colours, and the wild pair puts two of any colours on
-    // one board) and the taker is paid one coin per card. Marked spent BEFORE
-    // the resolution, on the same rule `'spend'` states: the slot goes the
-    // moment the board is chosen.
-    state.turn.bonusUsed.push('commonsTake');
-    fx.clearCommonsForCoins(seat, board);
-    return;
-  }
-
-  if (toPaid) {
-    if (fee === undefined) {
-      throw new Error("commonsTake needs a fee card under rules.turn.commonsTake: 'paid'");
-    }
-    if (!player(state, seat).hand.includes(fee)) {
-      throw new Error(`Card ${fee} is not in seat ${seat}'s hand`);
-    }
-    // ⭐ DEAN'S 'paid' VARIANT (09/09/2026): the fee is discarded FIRST, to its
-    // OWN suit's discard pile - "the card you pay goes to the discard pile",
-    // never onto the pile it is paying to take and never boxed. Only once it
-    // is gone does the pile move, so the fee can never be counted among the
-    // cards taken.
-    fx.discardFromHand(seat, fee);
-    fx.takeCommons(seat, board, fee);
-    state.turn.bonusUsed.push('commonsTake');
-    return;
-  }
-
-  if (toSpend) {
-    if (!commonsSpendTakeLegal(data, state, seat, board)) {
-      throw new Error(`The ${board} board has nothing legal to take right now`);
-    }
-    // Marked BEFORE the resolution, exactly as `doCommons` marks `'commons'`
-    // before `performDoorAction` pushes its task: the slot is spent the
-    // moment the board is chosen, not when its (possibly multi-step)
-    // resolution finishes.
-    state.turn.bonusUsed.push('commonsTake');
-    doCommonsSpendTake(fx, seat, board);
-    return;
-  }
-
-  fx.takeCommons(seat, board);
-  state.turn.bonusUsed.push('commonsTake');
-}
-
-// --- Dean's 'spend' variant (09/09/2026, commonsTake: 'spend') -------------
-//
-// One pile, five fates, dispatched by board (C3's door table): orchard to
-// hand, wheat to barn (both uncomplicated whole-pile moves, resolved inline),
-// dairy/vegetable/apiary each a multi-step choice resolved through its own
-// task. See `CommonsTake` in @gp/data for Dean's words and the four builder
-// defaults D-S1 to D-S4.
-
-/** How many cards of each suit sit on a central pile - the payment pool for the dairy and vegetable legs. */
-function pileTally(data: GameData, pile: readonly CardId[]): Partial<Record<Suit, number>> {
-  const tally: Partial<Record<Suit, number>> = {};
-  for (const id of pile) {
-    const suit = cardById(data, id).suit;
-    tally[suit] = (tally[suit] ?? 0) + 1;
-  }
-  return tally;
-}
-
-function doCommonsSpendTake(fx: Fx, seat: Seat, board: Suit): void {
-  switch (board) {
-    case 'orchard': {
-      const taken = commonsBoards(fx.state)[board]?.length ?? 0;
-      fx.takeCommons(seat, board);
-      fx.emit({
-        e: 'commonsSpent',
-        seat,
-        board,
-        taken,
-        used: taken,
-        discarded: 0,
-        deliveredFromCentre: false,
-      });
-      return;
-    }
-    case 'wheat': {
-      const taken = commonsBoards(fx.state)[board]?.length ?? 0;
-      fx.takeCommonsToBarn(seat, board);
-      fx.emit({
-        e: 'commonsSpent',
-        seat,
-        board,
-        taken,
-        used: taken,
-        discarded: 0,
-        deliveredFromCentre: false,
-      });
-      return;
-    }
-    case 'dairy':
-      fx.pushTask({ t: 'commonsSpendBuild', pid: seat, src: null, board });
-      return;
-    case 'vegetable':
-      fx.pushTask({ t: 'commonsSpendDeliver', pid: seat, src: null, board });
-      return;
-    case 'apiary': {
-      const cards = fx.clearCommonsPile(board);
-      fx.pushTask({
-        t: 'commonsSpendSow',
-        pid: seat,
-        src: null,
-        board,
-        cards,
-        taken: cards.length,
-        used: 0,
-        discarded: 0,
-      });
-      return;
-    }
-    default:
-      board satisfies never;
-  }
-}
-
-/**
- * ⭐ THE DAIRY LEG'S PAYMENTS (D-S1): every (hand card, pile payment) pair,
- * reusing `paymentsFor` exactly as `paymentOptions` does for D10's revealed
- * deck top - the built card is priced against the pile as its payment pool
- * instead of the hand, with no stacks and no meeples (there are none under
- * the commons, C6), so the default `fills`/`supply`/`place` arguments already
- * say the right thing.
- */
-export function commonsSpendBuildOptions(
-  data: GameData,
-  state: GameState,
-  seat: Seat,
-  board: Suit,
-): { card: CardId; payment: CardId[] }[] {
-  const pile = commonsBoards(state)[board];
-  if (pile === undefined || pile.length === 0) return [];
-  const hand = player(state, seat).hand;
-  const out: { card: CardId; payment: CardId[] }[] = [];
-  for (const id of hand) {
-    const price = priceOf(data, id, {});
-    if (!price) continue;
-    for (const option of paymentsFor(data, id, pile, [], price)) {
-      out.push({ card: option.card, payment: option.payment });
-    }
-  }
-  return out;
-}
-
-export function anyCommonsSpendBuildOption(
-  data: GameData,
-  state: GameState,
-  seat: Seat,
-  board: Suit,
-): boolean {
-  const pile = commonsBoards(state)[board];
-  if (pile === undefined || pile.length === 0) return false;
-  const hand = player(state, seat).hand;
-  return hand.some((id) => {
-    const price = priceOf(data, id, {});
-    if (!price) return false;
-    return paymentsFor(data, id, pile, [], price).length > 0;
-  });
-}
-
-/**
- * ⭐ THE DAIRY LEG'S RESOLUTION: build ONE card from hand, paid FROM THE PILE
- * ONLY. `payment` is validated against `board`'s pile exactly as `doBuild`
- * validates a hand payment - same cost arithmetic, same own-suit minimum -
- * and then taken out of the pile rather than the hand. Whatever the pile does
- * not use is discarded (D-S2), the payment itself included, on the SAME
- * divert seam a normal build payment uses (so O17's "put a spent card in your
- * barn instead" still fires here).
- */
-export function doCommonsSpendBuild(
-  fx: Fx,
-  seat: Seat,
-  board: Suit,
-  card: CardId,
-  payment: readonly CardId[],
-): void {
-  const { data, state } = fx;
-  const p = player(state, seat);
-  if (!p.hand.includes(card)) throw new Error(`${card} is not in seat ${seat}'s hand`);
-  const price = priceOf(data, card, {});
-  if (!price) throw new Error(`${card} has no build cost`);
-  const pile = commonsBoards(state)[board];
-  if (pile === undefined) throw new Error(`There is no ${board} board in the commons`);
-  if (payment.includes(card)) throw new Error(`${card} cannot pay for itself`);
-  if (new Set(payment).size !== payment.length) throw new Error('Duplicate payment card');
-  for (const id of payment) {
-    if (!pile.includes(id)) throw new Error(`${id} is not on the ${board} pile`);
-  }
-  if (payment.length !== price.cardsNeeded) {
-    throw new Error(`${card} costs ${price.cardsNeeded} cards, got ${payment.length}`);
-  }
-  const suit = cardById(data, card).suit;
-  const own = payment.filter((id) => cardById(data, id).suit === suit).length;
-  if (own < price.ownSuitMin) {
-    throw new Error(`${card} needs ${price.ownSuitMin} ${suit} cards in payment`);
-  }
-
-  fx.removeFromHand(seat, card);
-  fx.takeFromCommonsPile(board, payment);
-  divertOrDiscard(fx, seat, [...payment]);
-  const leftover = fx.clearCommonsPile(board);
-  fx.discard(leftover);
-  // ⛔ `fromHand: false` (A150, 12/09/2026). THIS PAYMENT CAME OFF A CENTRAL
-  // PILE AND NEVER OUT OF A HAND, and O17 The Fruit Basket was restricted to a
-  // card discarded FROM YOUR HAND on the same day, so it no longer fires here.
-  // That is a real behaviour change to this variant and it is the ruling
-  // arriving rather than a side effect: the sentence in the docblock above -
-  // "so O17's put a spent card in your barn instead still fires here" - is what
-  // Dean's O17 ruling withdrew. D5 and D6 are untouched and still reach these
-  // cards through `divertOrDiscard` above.
-  placeBuilt(fx, seat, card, [...payment], null, false);
-  fx.emit({
-    e: 'commonsSpent',
-    seat,
-    board,
-    taken: payment.length + leftover.length,
-    used: payment.length,
-    discarded: leftover.length,
-    deliveredFromCentre: false,
-  });
-}
-
-/**
- * ⭐ THE VEGETABLE LEG'S CRATES (D-S1): every (tile, spend) pair payable out
- * of `board`'s pile, read as a tally exactly as a barn would be - the wild
- * substitution (`substitutedSpends`) and the demand machinery
- * (`deliverDemands`/`namedDemand`) neither know nor care which pool they are
- * reading. There are no meeples under the commons (C6), so this is the plain
- * card arithmetic `deliverOptions` runs before R15 ever joins it.
- */
-export function commonsSpendDeliverOptions(
-  data: GameData,
-  state: GameState,
-  seat: Seat,
-  board: Suit,
-  /** Stop after this many. `anyCommonsSpendDeliverOption` passes 1. */
-  limit: number = Infinity,
-): { tile: string; spend: Partial<Record<Suit, number>> }[] {
-  const pile = commonsBoards(state)[board];
-  if (pile === undefined || pile.length === 0) return [];
-  const tally = pileTally(data, pile);
-  const demands = deliverDemands(data, state, seat);
-  const fillerSuits = [
-    ...state.suitsInPlay,
-    ...data.cards.suits.filter((x) => !state.suitsInPlay.includes(x)),
-  ];
-  const out: { tile: string; spend: Partial<Record<Suit, number>> }[] = [];
-  const seen = new Set<string>();
-  demandLoop: for (const demand of demands) {
-    const affordable = (Object.entries(demand.spend) as [Suit, number][]).every(
-      ([s, n]) => (tally[s] ?? 0) >= n,
-    );
-    const spends = affordable
-      ? [demand.spend]
-      : substitutedSpends(data, fillerSuits, demand.spend, tally);
-    for (const spend of spends) {
-      const key = spendKey(demand.tile, spend);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({ tile: demand.tile, spend });
-      if (out.length >= limit) break demandLoop;
-    }
-  }
-  return out;
-}
-
-export function anyCommonsSpendDeliverOption(
-  data: GameData,
-  state: GameState,
-  seat: Seat,
-  board: Suit,
-): boolean {
-  return commonsSpendDeliverOptions(data, state, seat, board, 1).length > 0;
-}
-
-/**
- * ⭐ THE VEGETABLE LEG'S RESOLUTION: deliver ONE crate to `tileId`, paid FROM
- * THE PILE ONLY. Validated against the same wild-substitution arithmetic
- * `doDeliver` uses; the specific cards are then picked off the pile (deepest
- * first is not a rule - any matching cards will do, since barn identity is
- * inert the same way `spendFromBarn`'s is) and discarded, exactly what a barn
- * payment's cards would have done. Scores through the shared `finishDelivery`
- * tail, so a pile-paid crate reads on the board exactly as a barn-paid one
- * does. Unused pile cards are discarded (D-S2); nothing reaches the barn.
- */
-export function doCommonsSpendDeliver(
-  fx: Fx,
-  seat: Seat,
-  board: Suit,
-  tileId: string,
-  spend: Partial<Record<Suit, number>>,
-): void {
-  const { data, state } = fx;
-  const pile = commonsBoards(state)[board];
-  if (pile === undefined) throw new Error(`There is no ${board} board in the commons`);
-  const tile = state.island.tiles.find((t) => t.tile === tileId);
-  if (!tile) throw new Error(`Tile ${tileId} is not in play`);
-  if (!tileHasRoom(data, tile)) throw new Error(`Tile ${tileId} has no delivery slots left`);
-
-  const { base, wilds, cardsPerCrate } = namedDemand(data, tile);
-  const rate = data.island.cardsPerSubstitution;
-  const paid = tallyTotal(spend);
-  const legal = wildFills(data.cards.suits, wilds).some((fill) => {
-    const need: Partial<Record<Suit, number>> = { ...base };
-    for (const s of fill) need[s] = (need[s] ?? 0) + cardsPerCrate;
-    const matched = matchedAgainst(need, spend);
-    const substituted = tallyTotal(need) - matched;
-    if (substituted === 0) return paid === matched;
-    if (rate === null) return false;
-    return paid - matched === rate * substituted;
-  });
-  if (!legal) {
-    throw new Error(
-      rate === null
-        ? `Spend does not pay ${tileId}: a crate is ${cardsPerCrate} cards of ONE suit`
-        : `Spend does not pay ${tileId}: unmatched cards cost ${rate} of any crop each`,
-    );
-  }
-
-  const used: CardId[] = [];
-  for (const [suit, count] of Object.entries(spend) as [Suit, number][]) {
-    let taken = 0;
-    for (let i = pile.length - 1; i >= 0 && taken < count; i--) {
-      if (cardById(data, pile[i] as CardId).suit === suit) {
-        used.push(...pile.splice(i, 1));
-        taken += 1;
-      }
-    }
-    if (taken < count) throw new Error(`The ${board} pile has no ${suit} card left to spend`);
-  }
-  const leftover = fx.clearCommonsPile(board);
-  fx.discard(used);
-  finishDelivery(fx, seat, tile, tileId, spend, used, 1);
-  fx.discard(leftover);
-  fx.emit({
-    e: 'commonsSpent',
-    seat,
-    board,
-    taken: used.length + leftover.length,
-    used: used.length,
-    discarded: leftover.length,
-    deliveredFromCentre: true,
-  });
-}
-
 /**
  * Is ANY bonus-slot option legal right now? Two of them since v31, and the
  * shrinking is the point: the slot held five options on 19/08/2026 (two visit
@@ -1979,16 +869,13 @@ export function hasBonusOption(data: GameData, state: GameState, seat: Seat): bo
   // under the meeple arm and `collectOpen` is false under the card game, so the
   // pair on offer is (Draw 1 | visit) or (Collect | visit).
   //
-  // ⭐ AND EXACTLY ONE UNDER THE TWO NEWEST DESIGNS. The commons offers the
-  // central play alone (C9), and the notice-board visit offers the visit alone
-  // (S5) - `bonusDrawOpen` closes under both, and `collectOpen` has no meeples
-  // to collect - so the disjunction below is one live term in each.
+  // ⭐ AND EXACTLY ONE UNDER THE NOTICE-BOARD VISIT, which offers the visit
+  // alone (S5) - `bonusDrawOpen` closes under it and `collectOpen` has no
+  // meeples to collect.
   return (
     bonusDrawOpen(data, state) ||
     collectOpen(data, state, seat) ||
-    anyVisitOption(data, state, seat) ||
-    anyCommonsOption(data, state, seat) ||
-    anyCommonsTakeOption(data, state, seat)
+    anyVisitOption(data, state, seat)
   );
 }
 
@@ -2199,13 +1086,12 @@ function payHostDrawOnVisit(fx: Fx, visitor: Seat, host: Seat): void {
  * reactor (W17 The Pie Shop, alive again now that there is a host) sees the
  * card on the board, and A16 The Beekeeper's Veil sees the placement that
  * brought the board to two - which is S16's second ruling and falls out of
- * `placeOnBuilding` firing `afterPlacement`, where the commons' `playOnCommons`
- * deliberately did not.
+ * `placeOnBuilding` firing `afterPlacement`.
  *
  * ⭐ `doorUsed` IS EMITTED HERE RATHER THAN INSIDE THE POWER, on D4's
  * reasoning: action inflation (a16) and the door mix (a07) count a bought
  * action off one field, and they must count this exactly as they counted a v31
- * visit and a commons play. `via` stays `'visit'`, and the ACTION is the
+ * visit. `via` stays `'visit'`, and the ACTION is the
  * board's own suit verb (`doorActionOf`), which is what each power amplifies -
  * Orchard draw, Dairy build, Wheat harvest, Apiary sow, Vegetable deliver.
  *
@@ -2265,11 +1151,9 @@ function doNoticeBoardVisit(fx: Fx, visitor: Seat, host: Seat, spend: VisitSpend
   state.turn.bonusUsed.push('visit');
   markFiredOnTurn(state.turn, target.card);
   fireHook(fx, 'afterVisit', { visitor, host, self: visitor === host });
-  // ⚠️ THE ROSTER'S PRINTED ACTION AND NOT `doorActionOf`. The two agree
-  // under this mode - the Apiary re-read to GROW is the commons' and only the
-  // commons' (C3) - but `visited.action` is typed `WorkerAction`, the five-door
-  // set, and reading it off the override would widen it to `DoorAction` for a
-  // sixth value this mode can never produce.
+  // ⚠️ THE ROSTER'S PRINTED ACTION AND NOT `doorActionOf`: `visited.action`
+  // is typed `WorkerAction`, the five-door set, and `doorActionOf` returns the
+  // wider `DoorAction`.
   const action = doorOf(fx.data, colour).action;
   fx.emit({
     e: 'visited',

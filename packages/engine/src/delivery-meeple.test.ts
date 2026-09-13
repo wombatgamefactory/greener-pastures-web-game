@@ -540,7 +540,7 @@ describe('inertness: nothing moves at the shipped values', () => {
     expect(spendable(v31, s)).toEqual([]);
   });
 
-  /** The shipped game is still the commons, which has no meeples at all (C6). */
+  /** The shipped notice-board visit has no meeples at all. */
   it('seeds no meeple in the shipped game', () => {
     expect(meeplesPerTile(BASE_GAME_DATA)).toBe(0);
     expect(tileMeepleSpaces(BASE_GAME_DATA)).toEqual([]);

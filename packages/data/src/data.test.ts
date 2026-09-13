@@ -30,8 +30,6 @@ import noSelfJson from '../../../overlays/notice-board-visit-no-self-v1.overlay.
 import blockingJson from '../../../overlays/notice-board-visit-blocking-v1.overlay.json' with { type: 'json' };
 import threshold2Json from '../../../overlays/notice-board-visit-threshold-2-v1.overlay.json' with { type: 'json' };
 import threshold4Json from '../../../overlays/notice-board-visit-threshold-4-v1.overlay.json' with { type: 'json' };
-import unclaimedJson from '../../../overlays/notice-board-visit-unclaimed-v1.overlay.json' with { type: 'json' };
-import unclaimedSelfJson from '../../../overlays/notice-board-visit-unclaimed-self-v1.overlay.json' with { type: 'json' };
 import twoBoardsJson from '../../../overlays/notice-board-visit-two-boards-v1.overlay.json' with { type: 'json' };
 import hostDrawJson from '../../../overlays/notice-board-visit-host-draw-v1.overlay.json' with { type: 'json' };
 
@@ -49,10 +47,6 @@ import {
   coinPaysGrow,
   coinPaysSuitCost,
   coinSupplyPerPlayer,
-  commonsHarvestReachesCentre,
-  commonsTakeGoesToHand,
-  commonsTakeLeavesTheGame,
-  commonsWildPair,
   deadTemplates,
   deliveriesPerTile,
   deliveryCost,
@@ -65,8 +59,6 @@ import {
   farmsteadCoinPower,
   flatten,
   hostDrawOnVisit,
-  isCommons,
-  isCommonsTakeCoins,
   isMeepleCurrency,
   isNoticeBoardPower,
   listKnobs,
@@ -81,7 +73,6 @@ import {
   noticeBoardsPerSeat,
   storeCoinsPerCard,
   tileMeepleSpaces,
-  unclaimedBoardsToCentre,
   validateOverlay,
 } from './index.js';
 import type { Overlay, SweepFile } from './index.js';
@@ -253,11 +244,8 @@ describe('coins are an arm, not the shipped game', () => {
   // in behind a passing test. There is exactly one mint in this game and it is
   // `storeCoinsPerCard`.
   it('ships the Village Store ON and every OTHER coin route shut', () => {
-    // The mint.
-    expect(BASE_GAME_DATA.rules.turn.commonsTake).toBe('harvest');
-    expect(isCommonsTakeCoins(BASE_GAME_DATA)).toBe(false);
-    expect(commonsTakeLeavesTheGame(BASE_GAME_DATA)).toBe(false);
-    // Both sinks.
+    // The commons coin take (the coins arm's mint) is deleted, 13/09/2026.
+    // Both of that arm's sinks.
     expect(BASE_GAME_DATA.rules.economy.farmsteadCoinPower).toBe(false);
     expect(farmsteadCoinPower(BASE_GAME_DATA)).toBe(false);
     expect(BASE_GAME_DATA.rules.economy.endgameCoinCost).toBeNull();
@@ -359,130 +347,103 @@ describe('the turn', () => {
     expect(BASE_GAME_DATA.rules.setup.startingBarnCards).toBe(0);
   });
 
-  it('arms the self-visit, which is risk 2 and must be visible in the data', () => {
-    expect(BASE_GAME_DATA.rules.turn.selfVisitAllowed).toBe(true);
-    const solitaire = loadGameData(overlay({ 'rules.turn.selfVisitAllowed': false }));
-    expect(solitaire.rules.turn.selfVisitAllowed).toBe(false);
+  // ⭐ 13/09/2026: shipped false since the commons was deleted.
+  it('bans the self-visit in the shipped data, and offers it as a knob', () => {
+    expect(BASE_GAME_DATA.rules.turn.selfVisitAllowed).toBe(false);
+    const self = loadGameData(overlay({ 'rules.turn.selfVisitAllowed': true }));
+    expect(self.rules.turn.selfVisitAllowed).toBe(true);
   });
 });
 
 /**
- * ⭐ THE COMMONS IS THE SHIPPED GAME (Dean, 09/09/2026,
- * docs/commons-handoff-2026-09-09-v1.md, C1-C10).
+ * ⭐ THE SHIPPED GAME SINCE 13/09/2026 (Dean): the commons is dead and its code
+ * deleted, and the game is the two-board Notice Board visit with no host draw.
  *
- * These assertions are the passenger guard. The flip moved four leaves at once -
- * the currency, the bonus window, the starting meeples and the Orchard door -
- * and the 05/09/2026 lesson is that an arm which does not PIN what the default
- * moved silently stops being the arm it is called. So each control is loaded
- * here as the overlay file loads it and asked which game it is.
+ * These assertions are the passenger guard. The flip moved three leaves -
+ * the currency, the self-visit and the two-seat board count - so each control
+ * is loaded here as the overlay file loads it and asked which game it is.
  */
-describe('the commons', () => {
-  it('ships as the default game, with every meeple leaf at its no-subject value', () => {
-    expect(BASE_GAME_DATA.rules.turn.visitCurrency).toBe('commons');
-    expect(isCommons(BASE_GAME_DATA)).toBe(true);
+describe('the shipped game', () => {
+  it('ships the two-board notice-board visit, with every meeple leaf at its no-subject value', () => {
+    expect(BASE_GAME_DATA.rules.turn.visitCurrency).toBe('noticeBoardPower');
+    expect(isNoticeBoardPower(BASE_GAME_DATA)).toBe(true);
     expect(isMeepleCurrency(BASE_GAME_DATA)).toBe(false);
-    // C2: the bonus is taken FIRST, reversing the 03/09/2026 ruling.
+    expect(BASE_GAME_DATA.rules.turn.selfVisitAllowed).toBe(false);
+    expect(BASE_GAME_DATA.rules.economy.noticeBoardsBySeats).toEqual({ '2': 2, '3': 1, '4': 1 });
+    expect(BASE_GAME_DATA.rules.turn.hostDrawOnVisit).toBe(0);
+    expect(hostDrawOnVisit(BASE_GAME_DATA)).toBe(0);
     expect(BASE_GAME_DATA.rules.turn.bonusTiming).toBe('start');
-    // C6: no meeples anywhere.
     expect(BASE_GAME_DATA.rules.turn.startingMeeplesPerColour).toBe(0);
     expect(BASE_GAME_DATA.rules.turn.meepleAsCard).toBe(false);
     expect(BASE_GAME_DATA.rules.turn.slotToll).toBeNull();
     expect(BASE_GAME_DATA.rules.turn.meepleCapPerColour).toBeNull();
-    // C7: the limit stays 7, and it is the simulator's bound rather than a rule.
+    // The limit stays 7, and it is the simulator's bound rather than a rule.
     expect(BASE_GAME_DATA.rules.turn.handLimit).toBe(7);
   });
 
-  // C10. Both off, so the shipped bonus refuses nothing and matches no colour.
-  // They exist so that a bonus reading AUTOMATIC at the table is one number away
-  // rather than a design pass away - which is exactly how the meeple visit died.
-  it('ships both fallback knobs off, and offers both as knobs', () => {
-    expect(BASE_GAME_DATA.rules.economy.commonsThreshold).toBeNull();
-    expect(BASE_GAME_DATA.rules.economy.commonsColourMatch).toBe(false);
-
+  // ⛔ THE COMMONS IS DELETED, NOT MERELY OFF: its currency word and every one
+  // of its knobs must now fail validation loudly.
+  it("rejects 'commons' and every deleted commons knob", () => {
+    expect(() =>
+      validateOverlay(overlay({ 'rules.turn.visitCurrency': 'commons' }), BASE_GAME_DATA),
+    ).toThrow(/visitCurrency/);
+    for (const [path, value] of [
+      ['rules.turn.commonsTake', 'harvest'],
+      ['rules.economy.commonsThreshold', null],
+      ['rules.economy.commonsColourMatch', false],
+      ['rules.economy.commonsWildPair', false],
+      ['rules.economy.commonsHarvestMin', null],
+      ['rules.economy.commonsHarvestTake', null],
+      ['rules.economy.unclaimedBoardsToCentre', false],
+      ['workers.roster.sow.actionUnderCommons', 'grow'],
+    ] as const) {
+      expect(() => validateOverlay(overlay({ [path]: value }), BASE_GAME_DATA), path).toThrow(
+        OverlayError,
+      );
+    }
     const knobs = listKnobs(BASE_GAME_DATA).map((k) => k.path);
-    expect(knobs).toContain('rules.economy.commonsThreshold');
-    expect(knobs).toContain('rules.economy.commonsColourMatch');
-
-    const capped = loadGameData(overlay({ 'rules.economy.commonsThreshold': 2 }));
-    expect(capped.rules.economy.commonsThreshold).toBe(2);
-    const matched = loadGameData(overlay({ 'rules.economy.commonsColourMatch': true }));
-    expect(matched.rules.economy.commonsColourMatch).toBe(true);
-  });
-
-  // Dean's question of 09/09/2026: does a threshold on the centre reduce the
-  // cards going from the centre to the barns, target 30-40%? commonsThreshold
-  // measured no change at 2, so the other two semantics are knobs too. Both
-  // ship off, so the shipped harvest is C5 exactly: any non-empty pile, whole.
-  it('ships both harvest knobs off, and offers both as knobs', () => {
-    expect(BASE_GAME_DATA.rules.economy.commonsHarvestMin).toBeNull();
-    expect(BASE_GAME_DATA.rules.economy.commonsHarvestTake).toBeNull();
-
-    const knobs = listKnobs(BASE_GAME_DATA).map((k) => k.path);
-    expect(knobs).toContain('rules.economy.commonsHarvestMin');
-    expect(knobs).toContain('rules.economy.commonsHarvestTake');
-
-    const gated = loadGameData(overlay({ 'rules.economy.commonsHarvestMin': 3 }));
-    expect(gated.rules.economy.commonsHarvestMin).toBe(3);
-    const capped = loadGameData(overlay({ 'rules.economy.commonsHarvestTake': 1 }));
-    expect(capped.rules.economy.commonsHarvestTake).toBe(1);
+    expect(knobs.filter((k) => /commons|unclaimed/i.test(k))).toEqual([]);
   });
 
   // ⚠️ THE CONTROLS ARE THE POINT OF THE FLIP. Neither the v31 nor the meeple
-  // branch may become unreachable, and neither may quietly become the commons.
-  it('leaves both controls reachable, and neither of them is the commons', () => {
+  // branch may become unreachable.
+  it('leaves both controls reachable', () => {
     const v31 = loadGameData(overlay({ 'rules.turn.visitCurrency': 'card' }, 'v31-card-visit'));
-    expect(isCommons(v31)).toBe(false);
+    expect(isNoticeBoardPower(v31)).toBe(false);
     expect(isMeepleCurrency(v31)).toBe(false);
 
     const loop = loadGameData(overlay({ 'rules.turn.visitCurrency': 'meeple' }, 'meeple-loop-v1'));
-    expect(isCommons(loop)).toBe(false);
+    expect(isNoticeBoardPower(loop)).toBe(false);
     expect(isMeepleCurrency(loop)).toBe(true);
   });
 
-  // C3. The one door whose ACTION the commons changed, carried as a second
-  // printed payload beside `action` so the controls keep their Sow without
-  // pinning a leaf - `action` is not in the registry and could not be pinned.
-  it('buys a GROW at the Apiary board, and a SOW under the controls', () => {
-    expect(doorActionForSuit(BASE_GAME_DATA, 'apiary')).toBe('grow');
-    const loop = loadGameData(overlay({ 'rules.turn.visitCurrency': 'meeple' }, 'meeple-loop-v1'));
-    expect(doorActionForSuit(loop, 'apiary')).toBe('sow');
-    // The other four are the same action in every game.
-    for (const suit of ['wheat', 'vegetable', 'orchard', 'dairy']) {
+  // The Apiary door's commons GROW override went with the commons: every door
+  // buys its printed action in every game.
+  it('buys every door action as printed', () => {
+    for (const suit of ['wheat', 'vegetable', 'orchard', 'apiary', 'dairy']) {
       expect(doorActionForSuit(BASE_GAME_DATA, suit), suit).toBe(
         doorForSuit(BASE_GAME_DATA, suit)?.action,
       );
     }
+    expect(doorActionForSuit(BASE_GAME_DATA, 'apiary')).toBe('sow');
   });
 
-  // ⭐ THE COMMONS WITH COINS (Dean, 10/09/2026, K1-K15). Five more knobs, and
-  // every one of them ships at the value that turns the arm OFF - the same shape
-  // as the two fallback knobs above, and asserted the same way: off in the
-  // shipped data, present in the registry, and reachable through an overlay.
-  // ⚠️ THREE LEAVES AND NOT SEVEN SINCE 10/09/2026. The four suit-power numbers
-  // this used to assert here were `rules.economy.farmsteadPower.*`, and the
-  // notice-board visit RENAMED that block to `rules.economy.noticeBoardPower`
-  // and repointed it: the powers left the Farmstead and went to the Notice
-  // Boards, so the block went with them. They are asserted in their own describe
-  // below, and the coins arm's own handler has to be repointed at the new names.
-  it('ships every commons-with-coins knob off, and offers its three leaves as knobs', () => {
-    expect(BASE_GAME_DATA.rules.economy.commonsWildPair).toBe(false);
-    expect(commonsWildPair(BASE_GAME_DATA)).toBe(false);
+  // The coins arm's two sinks survive the deletion of its mint, because a
+  // Village Store coin can still pay them. Both ship off.
+  it('ships both coin sinks of the old coins arm off, and offers them as knobs', () => {
     expect(BASE_GAME_DATA.rules.economy.endgameCoinCost).toBeNull();
     expect(BASE_GAME_DATA.rules.economy.farmsteadCoinPower).toBe(false);
 
     const knobs = listKnobs(BASE_GAME_DATA).map((k) => k.path);
-    expect(knobs).toContain('rules.economy.commonsWildPair');
     expect(knobs).toContain('rules.economy.endgameCoinCost');
     expect(knobs).toContain('rules.economy.farmsteadCoinPower');
 
     const paired = loadGameData(
       overlay({
-        'rules.economy.commonsWildPair': true,
         'rules.economy.endgameCoinCost': 3,
         'rules.economy.farmsteadCoinPower': true,
       }),
     );
-    expect(commonsWildPair(paired)).toBe(true);
     expect(endgameCoinCost(paired)).toBe(3);
     expect(farmsteadCoinPower(paired)).toBe(true);
   });
@@ -503,50 +464,10 @@ describe('the commons', () => {
       );
     }
   });
-
-  // K3/K4: the fifth commonsTake value. ⛔ A COIN TAKE HANDS BACK NO CARDS, so
-  // it must never join `commonsTakeGoesToHand` - the pile is discarded to its
-  // suits' piles and the taker is paid in a currency instead. What it DOES share
-  // with the other three is that Harvest stops reaching the centre.
-  it("takes a pile OUT of the game under 'coins', and never into a hand", () => {
-    const coins = loadGameData(overlay({ 'rules.turn.commonsTake': 'coins' }, 'commons-coins-v1'));
-    expect(isCommonsTakeCoins(coins)).toBe(true);
-    expect(commonsTakeLeavesTheGame(coins)).toBe(true);
-    expect(commonsTakeGoesToHand(coins)).toBe(false);
-
-    // C5 is the shipped rule and the only value that leaves Harvest reaching the
-    // centre; all four variants take it away, which is why the farm-bypass
-    // reading is a structural zero under each of them rather than a fix.
-    expect(commonsHarvestReachesCentre(BASE_GAME_DATA)).toBe(true);
-    for (const take of ['bonus', 'spend', 'paid', 'coins']) {
-      const arm = loadGameData(overlay({ 'rules.turn.commonsTake': take }));
-      expect(commonsHarvestReachesCentre(arm), take).toBe(false);
-    }
-
-    // A closed set: a take may never resolve in a way nothing dispatches on.
-    expect(() =>
-      validateOverlay(overlay({ 'rules.turn.commonsTake': 'gold' }), BASE_GAME_DATA),
-    ).toThrow(/commonsTake/);
-  });
-
-  it('offers the Apiary door action as a knob, so a Sow arm is one overlay', () => {
-    expect(listKnobs(BASE_GAME_DATA).map((k) => k.path)).toContain(
-      'workers.roster.sow.actionUnderCommons',
-    );
-    const sown = loadGameData(overlay({ 'workers.roster.sow.actionUnderCommons': 'sow' }));
-    expect(doorActionForSuit(sown, 'apiary')).toBe('sow');
-    // A closed set: a door may never buy a word nothing dispatches on.
-    expect(() =>
-      validateOverlay(
-        overlay({ 'workers.roster.sow.actionUnderCommons': 'plough' }),
-        BASE_GAME_DATA,
-      ),
-    ).toThrow(/doorAction/);
-  });
 });
 
 /**
- * ⭐ THE NOTICE BOARD VISIT IS AN ARM AND NOT THE GAME (Dean, 10/09/2026,
+ * ⭐ THE NOTICE BOARD VISIT (Dean, 10/09/2026; THE SHIPPED GAME SINCE 13/09/2026,
  * docs/notice-board-visit-handoff-2026-09-10-v2.md, S1-S16). The centre is
  * deleted, the five Notice Board cards go home to their owners' farms and are
  * buildings again, and the bonus is to play one card onto ANY player's board -
@@ -589,14 +510,13 @@ describe('the notice board visit', () => {
   // A fourth game, not a repointing of `'card'`: that control carries a blocking
   // board at 2, the standalone free Draw 1 and the turn-start meeple spend, and
   // none of the three named controls may move under an arm it is read against.
-  it("adds 'noticeBoardPower' as a fourth currency, and still refuses a fifth word", () => {
-    expect(isNoticeBoardPower(BASE_GAME_DATA)).toBe(false);
+  it("reads 'noticeBoardPower' as its own currency, and still refuses an unknown word", () => {
+    expect(isNoticeBoardPower(BASE_GAME_DATA)).toBe(true);
 
     const arm = loadGameData(
       overlay({ 'rules.turn.visitCurrency': 'noticeBoardPower' }, 'notice-board-visit-v1'),
     );
     expect(isNoticeBoardPower(arm)).toBe(true);
-    expect(isCommons(arm)).toBe(false);
     expect(isMeepleCurrency(arm)).toBe(false);
 
     // A closed set: a game may never be named by a word nothing dispatches on.
@@ -705,162 +625,6 @@ describe('the notice board visit', () => {
 });
 
 /**
- * ⭐ DEAN'S UNCLAIMED-BOARDS VARIANT (ruled 11/09/2026), AND THE 2x2 THAT KEEPS
- * IT SEPARABLE.
- *
- * The variant changes TWO things at once - self-visiting OFF, and the Notice
- * Board of every unfarmed suit to the centre - and ruling in a bundle rules in
- * the bundle (05/09/2026). So the four arms form a grid:
- *
- * |                   | self-visiting ON             | self-visiting OFF      |
- * | ----------------- | ---------------------------- | ---------------------- |
- * | no centre         | `notice-board-visit-v1`      | `-no-self-v1`          |
- * | unclaimed centre  | `-unclaimed-self-v1`         | `-unclaimed-v1` (Dean) |
- *
- * These tests diff the loaded `set` blocks rather than trusting the files to
- * stay a grid, for the reason the imports at the top of this file record: A COPY
- * OF A PIN STOPS BEING A PIN THE MOMENT THE DEFAULT MOVES UNDER IT.
- */
-describe('the unclaimed boards in the centre', () => {
-  /** The four corners, keyed by filename for the report. */
-  const GRID: Readonly<Record<string, Overlay>> = {
-    'notice-board-visit-v1': armJson as unknown as Overlay,
-    'notice-board-visit-no-self-v1': noSelfJson as unknown as Overlay,
-    'notice-board-visit-unclaimed-v1': unclaimedJson as unknown as Overlay,
-    'notice-board-visit-unclaimed-self-v1': unclaimedSelfJson as unknown as Overlay,
-  };
-
-  /**
-   * The leaves that ARE the centre, and the whole of it. One of them is new;
-   * the other four are the commons knobs reused, because a central pile under
-   * this variant IS a commons pile: `commonsThreshold` null is "nothing ever
-   * refuses a play", `commonsHarvestMin` 3 is "anybody may harvest at three or
-   * more", `commonsHarvestTake` null is "the whole pile", and `commonsTake`
-   * 'harvest' is what lets Harvest reach the centre at all.
-   */
-  const CENTRE_LEAVES = [
-    'rules.economy.unclaimedBoardsToCentre',
-    'rules.economy.commonsThreshold',
-    'rules.economy.commonsHarvestMin',
-    'rules.economy.commonsHarvestTake',
-  ] as const;
-
-  // A new leaf, shipped OFF, on the same terms as `noticeBoardBlocks` beside
-  // it: the shipped game is still the commons and this is one overlay away.
-  it('adds one knob, ships it false, and round-trips it through an overlay', () => {
-    expect(BASE_GAME_DATA.rules.economy.unclaimedBoardsToCentre).toBe(false);
-    expect(unclaimedBoardsToCentre(BASE_GAME_DATA)).toBe(false);
-
-    const knobs = listKnobs(BASE_GAME_DATA).map((k) => k.path);
-    expect(knobs).toContain('rules.economy.unclaimedBoardsToCentre');
-
-    const centre = loadGameData(overlay({ 'rules.economy.unclaimedBoardsToCentre': true }));
-    expect(centre.rules.economy.unclaimedBoardsToCentre).toBe(true);
-    expect(unclaimedBoardsToCentre(centre)).toBe(true);
-
-    // A boolean and never a count of boards: the number of central boards is
-    // five minus the seats, which is arithmetic rather than a tuning.
-    expect(() =>
-      validateOverlay(overlay({ 'rules.economy.unclaimedBoardsToCentre': 4 }), BASE_GAME_DATA),
-    ).toThrow(/is boolean/);
-  });
-
-  // ⛔ THE SHIPPED DEFAULT IS UNTOUCHED BY THE WHOLE PASS. The commons is
-  // still the game, and a new knob that moved the default would be the
-  // 05/09/2026 passenger failure arriving as a data edit.
-  it('leaves the shipped game exactly where it was', () => {
-    expect(BASE_GAME_DATA.rules.turn.visitCurrency).toBe('commons');
-    expect(isCommons(BASE_GAME_DATA)).toBe(true);
-    expect(isNoticeBoardPower(BASE_GAME_DATA)).toBe(false);
-    expect(BASE_GAME_DATA.rules.economy.unclaimedBoardsToCentre).toBe(false);
-  });
-
-  // All four corners read from disk and applied, so an overlay naming a knob
-  // the data no longer has fails on the commit that broke it.
-  it('loads and validates all four corners of the 2x2', () => {
-    for (const [name, loaded] of Object.entries(GRID)) {
-      expect(loaded.name, name).toBe(name);
-      expect(() => validateOverlay(loaded, BASE_GAME_DATA), name).not.toThrow();
-      const data = loadGameData(loaded);
-      expect(isNoticeBoardPower(data), name).toBe(true);
-      expect(data.rules.turn.bonusTiming, name).toBe('start');
-    }
-  });
-
-  // The two centre arms differ in ONE leaf and it is the self-visit, which is
-  // what makes the pair attributable to that rule alone.
-  it('separates the two centre arms by exactly one leaf, the self-visit', () => {
-    const dean = GRID['notice-board-visit-unclaimed-v1']?.set ?? {};
-    const withSelf = GRID['notice-board-visit-unclaimed-self-v1']?.set ?? {};
-
-    expect(Object.keys(withSelf).sort()).toEqual(Object.keys(dean).sort());
-    expect(Object.keys(dean).filter((k) => dean[k] !== withSelf[k])).toEqual([
-      'rules.turn.selfVisitAllowed',
-    ]);
-    expect(dean['rules.turn.selfVisitAllowed']).toBe(false);
-    expect(withSelf['rules.turn.selfVisitAllowed']).toBe(true);
-  });
-
-  // ⭐ AND EACH CENTRE ARM IS ITS NO-CENTRE COUNTERPART PLUS THE CENTRE
-  // LEAVES, AND NOTHING ELSE. That is the half of the grid a reader is most
-  // likely to break by hand: a passenger added to one corner and not the other
-  // leaves a delta that is unreadable rather than wrong.
-  it('adds the centre leaves and only the centre leaves to each no-centre corner', () => {
-    const columns: ReadonlyArray<readonly [string, string]> = [
-      ['notice-board-visit-unclaimed-v1', 'notice-board-visit-no-self-v1'],
-      ['notice-board-visit-unclaimed-self-v1', 'notice-board-visit-v1'],
-    ];
-
-    for (const [centreName, plainName] of columns) {
-      const centre = GRID[centreName]?.set ?? {};
-      const plain = GRID[plainName]?.set ?? {};
-
-      const added = Object.keys(centre).filter((k) => !(k in plain));
-      expect(added.sort(), centreName).toEqual([...CENTRE_LEAVES].sort());
-      // Nothing is dropped either: a centre arm pins everything its plain
-      // counterpart pins.
-      expect(
-        Object.keys(plain).filter((k) => !(k in centre)),
-        centreName,
-      ).toEqual([]);
-      // And every shared leaf agrees, so the ONLY difference down a column is
-      // the centre.
-      expect(
-        Object.keys(plain).filter((k) => plain[k] !== centre[k]),
-        centreName,
-      ).toEqual([]);
-    }
-  });
-
-  // ⭐ THE `3+` RULE IS THE COMMONS KNOBS REUSED, NOT A SECOND SPELLING OF
-  // THEM. A new knob that duplicates an old one is a defect, so this asserts
-  // both the values and the fact that three of the four are knobs that were
-  // already here.
-  it('spells the 3+ rule with the commons knobs that already existed', () => {
-    for (const name of [
-      'notice-board-visit-unclaimed-v1',
-      'notice-board-visit-unclaimed-self-v1',
-    ]) {
-      const set = GRID[name]?.set ?? {};
-      // Never blocked: no cap on the inflow, so nothing refuses a play.
-      expect(set['rules.economy.commonsThreshold'], name).toBeNull();
-      // Harvestable by anybody at three or more: a gate on the outflow.
-      expect(set['rules.economy.commonsHarvestMin'], name).toBe(3);
-      // The whole pile, never a capped slice of it.
-      expect(set['rules.economy.commonsHarvestTake'], name).toBeNull();
-      // And Harvest reaches the centre at all, which every other value of this
-      // knob turns off (a Harvest is a Harvest, D1, reaffirmed 11/09/2026).
-      expect(set['rules.turn.commonsTake'], name).toBe('harvest');
-
-      const data = loadGameData(GRID[name] as Overlay);
-      expect(commonsHarvestReachesCentre(data), name).toBe(true);
-      expect(unclaimedBoardsToCentre(data), name).toBe(true);
-      expect(data.rules.economy.commonsHarvestMin, name).toBe(3);
-    }
-  });
-});
-
-/**
  * ⭐ DEAN'S TWO-BOARD FIX (ruled 11/09/2026), AND THE SURGICAL CLAIM THAT MAKES
  * IT READABLE.
  *
@@ -878,22 +642,22 @@ describe('the two-board fix', () => {
   const CONTROL = noSelfJson as unknown as Overlay;
   const ARM = twoBoardsJson as unknown as Overlay;
 
-  /** The leaves that ARE the variant, and the whole of it. */
+  /**
+   * The leaves the arm adds to its control. The control pins
+   * `noticeBoardsBySeats.2` at 1 since the default flipped (13/09/2026), so the
+   * arm adds only the three- and four-seat entries and CHANGES the two-seat one.
+   */
   const NEW_LEAVES = [
-    'rules.economy.noticeBoardsBySeats.2',
     'rules.economy.noticeBoardsBySeats.3',
     'rules.economy.noticeBoardsBySeats.4',
-    // ⛔ Pinned at the BASE value rather than changed: this variant is the
-    // ALTERNATIVE to the unclaimed-boards centre and never an addition to it,
-    // and an unpinned leaf is how that passenger rides in.
-    'rules.economy.unclaimedBoardsToCentre',
   ] as const;
 
-  // A map and not a boolean, in the `decksInPlayBySeats` idiom, shipped at one
-  // board each so the base game is untouched.
-  it('adds a per-seat-count map, defaults to one board each, and round-trips', () => {
-    expect(BASE_GAME_DATA.rules.economy.noticeBoardsBySeats).toEqual({ '2': 1, '3': 1, '4': 1 });
-    for (const seats of [2, 3, 4]) {
+  // A map and not a boolean, in the `decksInPlayBySeats` idiom, shipped at two
+  // boards at two seats since 13/09/2026.
+  it('adds a per-seat-count map, ships two boards at two seats, and round-trips', () => {
+    expect(BASE_GAME_DATA.rules.economy.noticeBoardsBySeats).toEqual({ '2': 2, '3': 1, '4': 1 });
+    expect(noticeBoardsPerSeat(BASE_GAME_DATA, 2)).toBe(2);
+    for (const seats of [3, 4]) {
       expect(noticeBoardsPerSeat(BASE_GAME_DATA, seats), String(seats)).toBe(1);
     }
 
@@ -902,9 +666,10 @@ describe('the two-board fix', () => {
       expect(knobs, String(seats)).toContain(`rules.economy.noticeBoardsBySeats.${seats}`);
     }
 
-    const two = loadGameData(overlay({ 'rules.economy.noticeBoardsBySeats.2': 2 }));
-    expect(two.rules.economy.noticeBoardsBySeats).toEqual({ '2': 2, '3': 1, '4': 1 });
-    expect(noticeBoardsPerSeat(two, 2)).toBe(2);
+    const one = loadGameData(overlay({ 'rules.economy.noticeBoardsBySeats.2': 1 }));
+    expect(one.rules.economy.noticeBoardsBySeats).toEqual({ '2': 1, '3': 1, '4': 1 });
+    expect(noticeBoardsPerSeat(one, 2)).toBe(1);
+    const two = BASE_GAME_DATA;
     expect(noticeBoardsPerSeat(two, 3)).toBe(1);
     // A seat count the map does not name falls back to the shipped rule rather
     // than to a guess.
@@ -915,16 +680,6 @@ describe('the two-board fix', () => {
     expect(() =>
       validateOverlay(overlay({ 'rules.economy.noticeBoardsBySeats.2': true }), BASE_GAME_DATA),
     ).toThrow(/is int/);
-  });
-
-  // ⛔ THE SHIPPED DEFAULT IS UNTOUCHED BY THIS PASS TOO. The commons is still
-  // the game, and a new knob that moved the default would be the 05/09/2026
-  // passenger failure arriving as a data edit.
-  it('leaves the shipped game exactly where it was', () => {
-    expect(BASE_GAME_DATA.rules.turn.visitCurrency).toBe('commons');
-    expect(isCommons(BASE_GAME_DATA)).toBe(true);
-    expect(isNoticeBoardPower(BASE_GAME_DATA)).toBe(false);
-    expect(BASE_GAME_DATA.rules.economy.unclaimedBoardsToCentre).toBe(false);
   });
 
   // Read from disk and applied, so an overlay naming a knob the data no longer
@@ -941,11 +696,6 @@ describe('the two-board fix', () => {
     expect(noticeBoardsPerSeat(data, 2)).toBe(2);
     expect(noticeBoardsPerSeat(data, 3)).toBe(1);
     expect(noticeBoardsPerSeat(data, 4)).toBe(1);
-
-    // ⛔ THE CENTRE IS OFF AND IT IS PINNED OFF. This variant is the
-    // ALTERNATIVE to the unclaimed-boards centre, not an addition to it.
-    expect(ARM.set['rules.economy.unclaimedBoardsToCentre']).toBe(false);
-    expect(unclaimedBoardsToCentre(data)).toBe(false);
   });
 
   // ⭐ THE SURGICAL CLAIM, ASSERTED MECHANICALLY SO IT CANNOT SILENTLY STOP
@@ -962,9 +712,10 @@ describe('the two-board fix', () => {
     // Nothing is dropped: the arm pins everything the control pins.
     expect(Object.keys(control).filter((k) => !(k in arm))).toEqual([]);
 
-    // And every shared leaf agrees, so the ONLY difference between the two
-    // overlays is the map plus the centre pinned at its base value.
-    expect(Object.keys(control).filter((k) => control[k] !== arm[k])).toEqual([]);
+    // And every shared leaf agrees but the two-seat board count.
+    expect(Object.keys(control).filter((k) => control[k] !== arm[k])).toEqual([
+      'rules.economy.noticeBoardsBySeats.2',
+    ]);
   });
 
   // ⭐ AND THE THREE-SEAT AND FOUR-SEAT COLUMNS ARE THE SAME RULES, NOT MERELY
@@ -1044,17 +795,6 @@ describe('the host draw on a visit', () => {
     ).toThrow(/is int/);
   });
 
-  // ⛔ THE SHIPPED DEFAULT IS UNTOUCHED BY THIS PASS TOO. The commons is still
-  // the game, and a new knob that moved the default would be the 05/09/2026
-  // passenger failure arriving as a data edit.
-  it('leaves the shipped game exactly where it was', () => {
-    expect(BASE_GAME_DATA.rules.turn.visitCurrency).toBe('commons');
-    expect(isCommons(BASE_GAME_DATA)).toBe(true);
-    expect(isNoticeBoardPower(BASE_GAME_DATA)).toBe(false);
-    expect(BASE_GAME_DATA.rules.turn.hostDrawOnVisit).toBe(0);
-    expect(hostDrawOnVisit(BASE_GAME_DATA)).toBe(0);
-  });
-
   // Read from disk and applied, so an overlay naming a knob the data no longer
   // has fails on the commit that broke it rather than in the middle of a run.
   it('loads and validates, and pays the host one card', () => {
@@ -1070,9 +810,8 @@ describe('the host draw on a visit', () => {
     // for visiting yourself is a pure faucet paid by nobody, so the rule and
     // the ban ship together.
     expect(data.rules.turn.selfVisitAllowed).toBe(false);
-    // The two-board map rides along unchanged, and the centre stays off.
+    // The two-board map rides along unchanged.
     expect(noticeBoardsPerSeat(data, 2)).toBe(2);
-    expect(unclaimedBoardsToCentre(data)).toBe(false);
   });
 
   // ⭐ THE SURGICAL CLAIM, ASSERTED MECHANICALLY SO IT CANNOT SILENTLY STOP
@@ -1152,9 +891,6 @@ describe('the village store coin and the delivery meeple', () => {
     expect(meepleSpendTiming(BASE_GAME_DATA)).toBe('start');
     expect(meepleSpendPerTurn(BASE_GAME_DATA)).toBeNull();
     expect(meepleSpendDistinctColours(BASE_GAME_DATA)).toBe(false);
-
-    // The shipped game is still the commons and nothing here moved it.
-    expect(isCommons(BASE_GAME_DATA)).toBe(true);
   });
 
   it('registers all ten as knobs of the right type', () => {
@@ -1252,16 +988,13 @@ describe('the village store coin and the delivery meeple', () => {
   // against `meeplesPerTile` in every currency, because that is the function the
   // island actually seeds from and the two must not drift.
   it('defers to the existing island seeding while deliveryMeepleSpace is null', () => {
-    for (const currency of ['commons', 'card', 'meeple', 'noticeBoardPower'] as const) {
-      const data =
-        currency === 'commons'
-          ? BASE_GAME_DATA
-          : loadGameData(overlay({ 'rules.turn.visitCurrency': currency }));
+    for (const currency of ['card', 'meeple', 'noticeBoardPower'] as const) {
+      const data = loadGameData(overlay({ 'rules.turn.visitCurrency': currency }));
       expect(deliveryMeepleSpace(data), currency).toBeNull();
       expect(tileMeepleSpaces(data).length, currency).toBe(meeplesPerTile(data));
     }
 
-    // The commons and the notice-board visit seed none; the v31 control seeds
+    // The notice-board visit seeds none; the v31 control seeds
     // one per delivery space; the meeple loop seeds the 3 VP space alone.
     expect(tileMeepleSpaces(BASE_GAME_DATA)).toEqual([]);
     expect(tileMeepleSpaces(loadGameData(overlay({ 'rules.turn.visitCurrency': 'card' })))).toEqual(
@@ -1421,7 +1154,7 @@ describe('the meeples', () => {
    * under the meeple loop (one per TILE, on the 3 VP second space) and
    * 12 / 18 / 24 under v31 (one per delivery SPACE).
    */
-  it('seeds no meeple at all under the shipped commons', () => {
+  it('seeds no meeple at all under the shipped game', () => {
     expect(meeplesDealt(BASE_GAME_DATA, 2)).toBe(0);
     expect(meeplesDealt(BASE_GAME_DATA, 3)).toBe(0);
     expect(meeplesDealt(BASE_GAME_DATA, 4)).toBe(0);

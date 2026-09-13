@@ -76,11 +76,10 @@ const DAIRY_GROWS_BUILT_VALUES: ReadonlySet<string> = new Set<string>([
  * The closed value set behind `visitCurrency`, kept here for the same reason as
  * `BONUS_TIMING_VALUES`.
  *
- * ⭐ FOUR VALUES SINCE 10/09/2026 AND IT IS NOT A LADDER: `'commons'` is the
- * shipped game, `'card'` (v31) and `'meeple'` (the loop and the economy) are
- * CONTROLS that must stay bit-reproducible, and `'noticeBoardPower'` is the
- * arm of 10/09/2026 - the boards come home to the farms and each prints a
- * different power. The comment this replaces said "two values and no third",
+ * ⭐ THREE VALUES SINCE 13/09/2026, WHEN `'commons'` WAS DELETED, AND IT IS NOT A
+ * LADDER: `'noticeBoardPower'` is the shipped game, and `'card'` (v31) and
+ * `'meeple'` (the loop and the economy) are CONTROLS that must stay
+ * bit-reproducible. The comment this replaces said "two values and no third",
  * which is how a closed set drifts - the set is the one place a further game
  * has to be declared, and declaring it here is what stops it passing validation
  * on one side of the codebase and failing on the other.
@@ -96,61 +95,7 @@ const DAIRY_GROWS_BUILT_VALUES: ReadonlySet<string> = new Set<string>([
 const VISIT_CURRENCY_VALUES: ReadonlySet<string> = new Set<string>([
   'card',
   'meeple',
-  'commons',
   'noticeBoardPower',
-]);
-
-/**
- * The closed value set behind `commonsTake` (Dean's variant, 09/09/2026), kept
- * here for the same reason as `VISIT_CURRENCY_VALUES`: a third value must not
- * pass validation on one side of the codebase and fail on the other.
- * `'harvest'` is the shipped C5 rule; `'bonus'` is Dean's take-to-hand variant,
- * where Harvest never reaches the centre and a free `commonsTake` move draws a
- * whole pile to hand instead.
- *
- * ⭐ `'spend'` IS THE THIRD VALUE (Dean, 09/09/2026, following exactly the
- * pattern that added `'bonus'`): the SAME free `commonsTake` move, but its
- * resolution now depends on which board is taken - orchard to hand, wheat to
- * barn, dairy a build paid from the pile, vegetable a delivery paid from the
- * pile, apiary a sow of the whole pile - rather than always landing in the
- * hand. See `CommonsTake` and the knob's own template for the ruling in full.
- *
- * ⭐ `'paid'` IS THE FOURTH VALUE (Dean, 09/09/2026): `'bonus'` exactly - a
- * take always lands the whole pile in the taker's hand - except the take now
- * costs one card, discarded to its own suit's pile. See `CommonsTake` and the
- * knob's own template for the ruling in full.
- *
- * ⭐ `'coins'` IS THE FIFTH VALUE (Dean, 10/09/2026, K3/K4 of
- * `docs/commons-coins-handoff-2026-09-10-v2.md`) and the first whose take hands
- * the cards to NOBODY: the whole pile is discarded to its cards' own suit
- * discards and the taker mints ONE COIN PER CARD, no card paid. Harvest still
- * never reaches the centre. ⛔ It is the only value in this set that creates a
- * currency, so it is also the only one whose two sinks
- * (`economy.farmsteadCoinPower`, `economy.endgameCoinCost`) have to be pinned
- * beside it; `overlays/commons-coins-v1.overlay.json` pins every passenger by
- * name. See `CommonsTake` and the knob's own template for the ruling in full.
- */
-const COMMONS_TAKE_VALUES: ReadonlySet<string> = new Set<string>([
-  'harvest',
-  'bonus',
-  'spend',
-  'paid',
-  'coins',
-]);
-
-/**
- * The closed value set behind `doorAction`: what a door may BUY. The five core
- * actions plus `grow`, which is the commons Apiary board and the only door
- * action that is not a `WorkerAction` (09/09/2026, C3). Kept here rather than
- * derived from the type so the sixth value cannot arrive on one side alone.
- */
-const DOOR_ACTION_VALUES: ReadonlySet<string> = new Set<string>([
-  'harvest',
-  'deliver',
-  'draw',
-  'sow',
-  'build',
-  'grow',
 ]);
 
 /** The closed value set behind `balloonReward`, kept here for the same reason. */
@@ -231,10 +176,6 @@ function typeMatches(type: KnobType, value: Leaf): boolean {
       return typeof value === 'string' && PAYMENT_HOST_VALUES.has(value);
     case 'balloonReward':
       return typeof value === 'string' && BALLOON_REWARD_VALUES.has(value);
-    case 'doorAction':
-      return typeof value === 'string' && DOOR_ACTION_VALUES.has(value);
-    case 'commonsTake':
-      return typeof value === 'string' && COMMONS_TAKE_VALUES.has(value);
   }
 }
 

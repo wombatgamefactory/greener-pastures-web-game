@@ -115,8 +115,8 @@ export interface GrowOptionMods {
   /** Never these buildings (A6's "ANOTHER of your buildings"). */
   exclude?: readonly CardId[];
   /**
-   * Ask as if this card had already left the hand - the commons FEE (C3), which
-   * lands before the action it buys and so cannot also pay for it.
+   * Ask as if this card had already left the hand - a visit FEE, which lands
+   * before the action it buys and so cannot also pay for it.
    *
    * It is `workerActionLegal`'s `excludingHandCard` arriving at the one action
    * that had no way to take it, and the gate and the action must be handed the
@@ -124,12 +124,6 @@ export interface GrowOptionMods {
    * own warning, which cost hours on 19/08/2026).
    */
   excludeHandCard?: CardId;
-  /**
-   * The WILD PAIR's second fee (K3, 10/09/2026): the same rule as
-   * `excludeHandCard`, for the second of the two cards paying one board. Set
-   * only by `doorActionLegal`, and only under `commonsWildPair`.
-   */
-  excludeHandCard2?: CardId;
   /**
    * ⭐ IS THIS THE MAIN-ACTION GROW? (Builder default D-C1, ruled by Dean on
    * 10/09/2026.)
@@ -177,12 +171,8 @@ export function growOptions(
   mods: GrowOptionMods = {},
 ): GrowOption[] {
   const p = player(state, seat);
-  const withoutFee =
-    mods.excludeHandCard === undefined ? p.hand : withoutFirst(p.hand, mods.excludeHandCard);
   const hand =
-    mods.excludeHandCard2 === undefined
-      ? withoutFee
-      : withoutFirst(withoutFee, mods.excludeHandCard2);
+    mods.excludeHandCard === undefined ? p.hand : withoutFirst(p.hand, mods.excludeHandCard);
   const out: GrowOption[] = [];
   const only = mods.onlyBuilding;
   const asCard = meepleAsCard(data);

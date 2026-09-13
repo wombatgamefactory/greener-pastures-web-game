@@ -30,45 +30,33 @@
 import type { GameData, Suit } from '@gp/data';
 import { dairyGrowsBuilt, doorActionForSuit, isMeepleCurrency, meepleSpendTiming } from '@gp/data';
 
-import { doorOf, unclaimedCentre } from './query.js';
+import { doorOf } from './query.js';
 import type { Fx } from './fx.js';
 import { fireHook } from './fx.js';
 import type { CardId, DoorAction, Seat } from './state.js';
 
 /**
- * What paid for this door action: a card on a rival's Notice Board, a meeple
- * leaving the supply, or - since 09/09/2026 - a card played onto a CENTRAL board
- * (C3). Three routes, one dispatch, exactly as the first two have been since
- * v31: `via` says what paid and nothing below it branches on the answer.
+ * What paid for this door action: a card on a Notice Board or a meeple leaving
+ * the supply (the commons route, a card onto a central board, was deleted on
+ * 13/09/2026). `via` says what paid and nothing below it branches on it.
  */
 /**
  * ⭐ 'balloon' ADDED 12/09/2026 for the plain-action balloon scheme. ⛔ IT IS A
  * PASSENGER WITH A NAME: `performDoorAction` emits `doorUsed`, which is what
  * a07 (action inflation) and a16 (the door mix) count, so under an arm whose
  * balloons pay plain actions a FLIGHT NOW COUNTS AS A BOUGHT DOOR exactly as
- * D4 made a commons play count as one. That is the honest reading - a flight
+ * D4 made a (now deleted) commons play count as one. That is the honest reading - a flight
  * does buy a door action - but it means the door mix on such an arm is not
  * comparable with the door mix on the shipped game, and no report may pool
  * them. The via field is on the event so a reader can split them.
  */
-export type DoorVia = 'visit' | 'meeple' | 'commons' | 'balloon';
+export type DoorVia = 'visit' | 'meeple' | 'balloon';
 
 /**
- * ⭐ WHAT A COLOUR'S DOOR BUYS, WHICH IS NOT ALWAYS WHAT `action` PRINTS.
- *
- * Under the commons the Apiary board buys **GROW** - pay the building's
- * activation card into its stack and gain the ability - where the roster's
- * `action` prints SOW, and Dean's reason is worth keeping: a sow through the
- * door cost a visitor two cards for one threshold step (the self-cancellation
- * bite), and the commons fee is a third card on top of it. A Grow is the same
- * placement with the ability attached, so the weakest door in the game becomes a
- * real one at the same price.
- *
- * The override is DATA (`workers.roster.sow.actionUnderCommons`, C3), read
- * through the data package's own `doorActionForSuit` so the engine, the bots and
- * the sim cannot disagree about what a board buys. It is a second payload beside
- * `action` rather than an edit to it, so `overlays/v31-card-visit` and
- * `overlays/meeple-loop-v1` keep their Sow door without pinning anything.
+ * WHAT A COLOUR'S DOOR BUYS: the roster's printed `action`, read through the
+ * data package's own `doorActionForSuit` so the engine, the bots and the sim
+ * cannot disagree. (The commons' Apiary GROW override was deleted with the
+ * commons on 13/09/2026.)
  *
  * Throws rather than defaulting, exactly as `doorOf` does: a colour with no door
  * is a corrupt roster and not a state a caller should be handling.
@@ -95,7 +83,7 @@ export function doorActionOf(data: GameData, colour: Suit): DoorAction {
  * not one of the five core actions - it is a keyword granted by card text - and
  * "orange means Grow here and Sow there" has cost this project a day before. The
  * roster's `action` for that door is `sow`, so the one mapping is written here:
- * a sow door buys the GROW its `actionUnderCommons` payload already names. ⭐ M8:
+ * a sow door buys a GROW. ⭐ M8:
  * a meeple Grow places its activation card AS NORMAL and CAN clog, which is the
  * ordinary `grow` task and therefore free - it differs on purpose from V8's
  * coin-Grow, which places nothing.
@@ -229,25 +217,11 @@ export function fireNoticeBoardPower(
       // full") reaching the one building S8 gives a floor to, and it is a
       // reading the engine had to make rather than one the handoff wrote down.
       // Flagged for Dean; excluding it would have been the bigger invention.
-      //
-      // ⭐ AND UNDER DEAN'S UNCLAIMED-BOARDS VARIANT IT ALSO REACHES A CENTRAL
-      // PILE (11/09/2026). Dean reaffirmed D1 that day - "a Harvest is a
-      // Harvest" - and his stated reason was "to prevent any rules exceptions",
-      // so the bought Harvest must take one of your buildings OR any central
-      // board at `commonsHarvestMin`, exactly as the MAIN Harvest action does.
-      // ⚠️ THE TWO LEGS KEEP THEIR OWN GATES AND THEY ARE DIFFERENT ON
-      // PURPOSE: a building of yours qualifies at ANY stack size (C88's
-      // `filter: 'loaded'`), a central pile only at the minimum, because the
-      // minimum is the centre's own `3+` rule and not a relaxation this power
-      // is allowed to waive. The flag is `central` rather than a sixth filter
-      // value so that W11, W13 and O7 - the card faces that also print
-      // `'loaded'` and say "YOUR buildings" - are untouched.
       fx.pushTask({
         t: 'chooseBuilding',
         pid: actor,
         src,
         filter: 'loaded',
-        ...(unclaimedCentre(fx.data) ? { central: true } : {}),
         then: 'harvest',
       });
       fx.pushTask({ t: 'handToBarn', pid: actor, src, remaining: numbers.wheatBarn });
@@ -320,9 +294,7 @@ export function fireNoticeBoardPower(
  */
 export function performDoorAction(fx: Fx, actor: Seat, colour: Suit, via: DoorVia): void {
   const door = doorOf(fx.data, colour);
-  // The commons re-reads one of the five (Apiary sow becomes GROW, C3); under
-  // both controls this is exactly `door.action`.
-  // ⭐ AND THE DELIVERY MEEPLE RE-READS THE SAME ONE (M7, 12/09/2026): under
+  // ⭐ THE DELIVERY MEEPLE RE-READS ONE OF THE FIVE (M7, 12/09/2026): under
   // `meepleSpendTiming: 'afterAction'` a meeple buys the PLAIN action of its
   // colour and the Apiary's is GROW. One dispatch for all three routes, so a
   // meeple can never be offered one action and handed another - see
@@ -341,11 +313,7 @@ export function performDoorAction(fx: Fx, actor: Seat, colour: Suit, via: DoorVi
       // standalone free Draw, so the door is the plain Draw 2 the other four
       // doors are equivalents of. A SECOND printed payload rather than an
       // overwrite, so the shipped 3/3 cannot move when the arm does.
-      // ⭐ THE COMMONS READS THE PRINTED `draw`, WHICH IS 2/2 SINCE 09/09/2026
-      // (C3: Dean chose Draw 2 over Draw 3, with `commons-draw-three` as the
-      // paired arm). No third payload and no branch: the data pass moved the
-      // printed number, the meeple arm keeps its own second payload, and the
-      // v31 control is the one game that ever wanted a 3 here.
+      // The printed `draw` is 2/2 since 09/09/2026; the v31 control pins 3.
       const spec = (isMeepleCurrency(fx.data) ? door.drawUnderMeepleCurrency : undefined) ??
         door.draw ?? { see: 1, keep: 1 };
       fx.pushTask({
@@ -386,16 +354,10 @@ export function performDoorAction(fx: Fx, actor: Seat, colour: Suit, via: DoorVi
       }
       break;
     case 'grow':
-      // ⭐ THE COMMONS APIARY BOARD (C3), and the one door action with no
-      // roster entry of its own. It reuses the main Grow action's own task
+      // The afterAction apiary meeple's GROW (M7), and the one door action with
+      // no roster entry of its own. It reuses the main Grow action's own task
       // chain - one task, answers straight out of `growOptions`, resolved
-      // through `doGrow` - so the ability fires through the same funnel a
-      // played Grow does and nothing here is a second implementation. The
-      // commons FEE is extra and has already left the hand by the time this
-      // runs, which is why the enumerator prices the payment without it.
-      // ⛔ NO CLOG BYPASS (C3): a card is placed, so a full building is not a
-      // target. The meeple-paid Grow's bypass (R15) is a different rule and
-      // there are no meeples here.
+      // through `doGrow`. A card is placed, so a full building is not a target.
       fx.pushTask({ t: 'grow', pid: actor, src: null });
       break;
     case 'build':

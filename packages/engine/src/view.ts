@@ -12,11 +12,10 @@
 
 import type { GameData, Suit } from '@gp/data';
 
-import { cardById, centralBoardSuits, commonsBoardCard, isCardId } from './query.js';
+import { cardById, isCardId } from './query.js';
 import type {
   AerodromeState,
   CardId,
-  CommonsState,
   GameEvent,
   GameState,
   IslandState,
@@ -58,11 +57,9 @@ export interface RivalView {
    */
   noticeBoard?: NoticeBoardState;
   /**
-   * COINS HELD - the commons-with-coins arm only (K7) and FULLY PUBLIC, like
-   * the meeples above and like the coins v31 deleted. They are minted face up
-   * off a central pile everybody watched being cleared, and what a rival can
-   * afford - a Farmstead power, an Endgame card - is part of reading the table.
-   * ABSENT under the shipped game, where there is no currency at all.
+   * COINS HELD - present only when a coin knob is on (the Village Store) and
+   * FULLY PUBLIC, like the meeples above and like the coins v31 deleted: what a
+   * rival can afford is part of reading the table. ABSENT otherwise.
    */
   coins?: number;
   handCount: number;
@@ -83,7 +80,7 @@ export interface PlayerView {
     meeples: Record<Suit, number>;
     /** Your own five colour slots. Meeple-loop arm only - see `RivalView`. */
     noticeBoard?: NoticeBoardState;
-    /** Your own coins. Commons-with-coins arm only - see `RivalView`. */
+    /** Your own coins. Only when a coin knob is on - see `RivalView`. */
     coins?: number;
     hand: CardId[];
     barn: Partial<Record<Suit, number>>;
@@ -91,14 +88,6 @@ export interface PlayerView {
     receipts: number[];
   };
   rivals: RivalView[];
-  /**
-   * THE FIVE CENTRAL PILES, commons only and FULLY PUBLIC (C1: "each central
-   * board's pile is face up and public"). Nothing is redacted: the cards were
-   * played face up out of hands everybody watched, and what is sitting on the
-   * wheat board is the whole of the decision to buy a Harvest there. Absent
-   * under both controls, which have no commons.
-   */
-  commons?: CommonsState;
   decks: Record<Suit, number>;
   discards: Record<Suit, CardId[]>;
   fair: WorkerState[];
@@ -211,18 +200,7 @@ export function viewFor(data: GameData, state: GameState, seat: Seat): PlayerVie
   }
 
   // Every card face-up on the table, for the fire-once guard below.
-  // ⭐ AND THE CENTRAL BOARDS ARE ON THE TABLE TOO (11/09/2026). Under Dean's
-  // unclaimed-boards variant an OWNERLESS Notice Board is latched into
-  // `turn.firedThisTurn` by S9's one-use-per-board rule, and it is in no
-  // tableau, so without this it would be filtered straight back out of the view
-  // and a client would be told a board it has already used is still free. The
-  // card ids come from the zone's own keys, so under the commons - where
-  // nothing ever latches a board - this adds five ids that never appear in the
-  // list and the view is byte-identical.
-  const onTable = new Set<CardId>([
-    ...state.players.flatMap((p) => p.tableau.map((b) => b.card)),
-    ...centralBoardSuits(data, state).map((colour) => commonsBoardCard(data, colour)),
-  ]);
+  const onTable = new Set<CardId>(state.players.flatMap((p) => p.tableau.map((b) => b.card)));
 
   return {
     seat,
@@ -258,15 +236,6 @@ export function viewFor(data: GameData, state: GameState, seat: Seat): PlayerVie
             },
           ],
     ),
-    ...(state.commons === undefined
-      ? {}
-      : {
-          commons: {
-            boards: Object.fromEntries(
-              Object.entries(state.commons.boards).map(([colour, pile]) => [colour, [...pile]]),
-            ) as Record<Suit, CardId[]>,
-          },
-        }),
     decks: Object.fromEntries(
       Object.entries(state.decks).map(([suit, deck]) => [suit, deck.length]),
     ) as Record<Suit, number>,

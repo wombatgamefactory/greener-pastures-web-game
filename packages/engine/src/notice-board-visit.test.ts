@@ -74,17 +74,15 @@ const blocking: GameData = loadGameData({
     'rules.economy.coinPaysGrow': false,
     'rules.economy.coinGrowOnFullBuilding': false,
     'rules.turn.visitCurrency': 'noticeBoardPower',
+    'rules.economy.noticeBoardsBySeats.2': 1, // pinned 13/09/2026: the default flipped
     'rules.turn.bonusTiming': 'start',
     'rules.turn.selfVisitAllowed': true,
-    'rules.turn.commonsTake': 'harvest',
     'rules.turn.startingMeeplesPerColour': 0,
     'rules.turn.meepleAsCard': false,
     'rules.turn.slotToll': null,
     'rules.turn.meepleCapPerColour': null,
     'rules.economy.noticeBoardThreshold': 3,
     'rules.economy.noticeBoardBlocks': true,
-    'rules.economy.commonsColourMatch': false,
-    'rules.economy.commonsWildPair': false,
     'rules.economy.endgameCoinCost': null,
     'rules.economy.farmsteadCoinPower': false,
   },
@@ -115,17 +113,15 @@ const noSelf: GameData = loadGameData({
     'rules.economy.coinPaysGrow': false,
     'rules.economy.coinGrowOnFullBuilding': false,
     'rules.turn.visitCurrency': 'noticeBoardPower',
+    'rules.economy.noticeBoardsBySeats.2': 1, // pinned 13/09/2026: the default flipped
     'rules.turn.bonusTiming': 'start',
     'rules.turn.selfVisitAllowed': false,
-    'rules.turn.commonsTake': 'harvest',
     'rules.turn.startingMeeplesPerColour': 0,
     'rules.turn.meepleAsCard': false,
     'rules.turn.slotToll': null,
     'rules.turn.meepleCapPerColour': null,
     'rules.economy.noticeBoardThreshold': 3,
     'rules.economy.noticeBoardBlocks': false,
-    'rules.economy.commonsColourMatch': false,
-    'rules.economy.commonsWildPair': false,
     'rules.economy.endgameCoinCost': null,
     'rules.economy.farmsteadCoinPower': false,
   },
@@ -183,13 +179,6 @@ describe('S1/S2: three starters, and no centre at all', () => {
       );
       expect(slots.sort()).toEqual(['barn', 'farmstead', 'noticeboard']);
     }
-  });
-
-  it('has no commons zone in state (S2: the centre is deleted)', () => {
-    const s = newGame(arm, { seats: 2, suits: ['wheat', 'orchard'], seed: 'nb' });
-    expect(s.commons).toBeUndefined();
-    expect(legalMoves(arm, s).some((m) => m.type === 'commons')).toBe(false);
-    expect(legalMoves(arm, s).some((m) => m.type === 'commonsTake')).toBe(false);
   });
 
   it('closes the standalone free Draw 1: the slot holds ONE option (S5)', () => {
@@ -557,11 +546,11 @@ describe('S1/S4: the Farmstead is inert and the Barn scores', () => {
    * for each <CROP> card you have built" and the Farmstead is the receipt tray,
    * in the shipped game as well as under the notice-board arm.
    */
-  it('and under the shipped commons the Barn scores the crop line too', () => {
-    const commons = loadGameData({ name: 'shipped', schemaVersion: 1, set: {} });
-    const s = makeState(commons, ['wheat', 'orchard']);
-    buildFor(commons, s, 0, 'W4', 'W6');
-    const byCard = new Map(gameEndScores(commons, s)[0]?.endgameCards.map((e) => [e.card, e.vp]));
+  it('and under the shipped game the Barn scores the crop line too', () => {
+    const shipped = loadGameData({ name: 'shipped', schemaVersion: 1, set: {} });
+    const s = makeState(shipped, ['wheat', 'orchard']);
+    buildFor(shipped, s, 0, 'W4', 'W6');
+    const byCard = new Map(gameEndScores(shipped, s)[0]?.endgameCards.map((e) => [e.card, e.vp]));
     expect(byCard.get('W1')).toBe(2);
     expect(byCard.get('W2')).toBe(0);
   });
@@ -573,11 +562,19 @@ describe('S1/S4: the Farmstead is inert and the Barn scores', () => {
    * the seat the SAME end-game total. Only the card that prints the line moved.
    */
   it('moves the line from the Farmstead to the Barn without moving the total', () => {
-    const onBarn = loadGameData({ name: 'shipped', schemaVersion: 1, set: {} });
+    // Asserted under the v31 card game since 13/09/2026: the shipped
+    // notice-board visit silences the Farmstead whatever this knob says, and
+    // the commons this was first written against is deleted.
+    const card = {
+      'rules.turn.visitCurrency': 'card',
+      'rules.turn.selfVisitAllowed': true,
+      'rules.economy.noticeBoardsBySeats.2': 1,
+    } as const;
+    const onBarn = loadGameData({ name: 'card-scorer-on-barn', schemaVersion: 1, set: card });
     const onFarmstead = loadGameData({
       name: 'scorer-on-farmstead',
       schemaVersion: 1,
-      set: { 'rules.economy.cropScorerOnBarn': false },
+      set: { ...card, 'rules.economy.cropScorerOnBarn': false },
     });
     const total = (data: typeof onBarn) => {
       const s = makeState(data, ['wheat', 'orchard']);

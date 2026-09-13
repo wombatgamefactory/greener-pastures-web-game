@@ -21,9 +21,6 @@ import {
   canTakeCard,
   coinsOf,
   coinSupplyLeft,
-  centralPileSuit,
-  commonsHarvestTake,
-  commonsBoards,
   drawableSuits,
   noticeBoardSlots,
   player,
@@ -698,132 +695,15 @@ export class Fx {
     this.land(from, onto, card);
   }
 
-  /**
-   * ⭐ THE COMMONS PLAY (C3): one card out of a hand and face up onto a central
-   * board's pile.
-   *
-   * Deliberately NOT `placeOnBuilding`. A central board is not a building -
-   * there is no threshold to check, no owner to touch and no clog to refuse (C4)
-   * - and, crucially, `afterPlacement` MUST NOT FIRE: A16 The Beekeeper's Veil
-   * reads a card landing on a building and a commons play is not one (C8). So
-   * this is its own two-line primitive with its own event, and the absence of
-   * the hook is the rule rather than an omission.
-   */
-  playOnCommons(seat: Seat, board: Suit, card: CardId): void {
-    const pile = commonsBoards(this.state)[board];
-    if (!pile) throw new Error(`There is no ${board} board in the commons`);
-    this.removeFromHand(seat, card);
-    pile.push(card);
-    this.emit({ e: 'commonsPlayed', seat, board, card, pileSize: pile.length });
-  }
-
-  /**
-   * ⭐ DEAN'S VARIANTS (09/09/2026, `rules.turn.commonsTake: 'bonus'` OR
-   * `'paid'`): take the WHOLE of one central pile, straight to the taker's
-   * HAND.
-   *
-   * Deliberately NOT `harvest`: nothing here touches a barn, no `afterHarvest`
-   * fires (there was no Harvest), and the destination is a hand rather than the
-   * harvester's barn - "instead of going into the barn, they go into your
-   * HAND", Dean's own words. Routed through `cardsToHand` so the gain is priced
-   * exactly as a draw is (`outcome.ts`'s `cardsToHand` case), and its own
-   * `commonsTaken` event carries the board and the cards for the sim to count.
-   *
-   * `fee` is present only under `'paid'`, where `doCommonsTake` has already
-   * discarded it (`fx.discardFromHand`) before calling here - it is carried
-   * through only so `commonsTaken` can report it, never spent twice.
-   */
-  takeCommons(seat: Seat, board: Suit, fee?: CardId): void {
-    const pile = commonsBoards(this.state)[board];
-    if (!pile) throw new Error(`There is no ${board} board in the commons`);
-    const cards = pile.splice(0);
-    this.cardsToHand(seat, cards);
-    this.emit(
-      fee === undefined
-        ? { e: 'commonsTaken', seat, board, cards }
-        : { e: 'commonsTaken', seat, board, cards, fee },
-    );
-  }
-
-  /**
-   * ⭐ DEAN'S 'paid' VARIANT'S FEE (09/09/2026, `rules.turn.commonsTake:
-   * 'paid'`): one card OUT OF A HAND, straight to its own suit's discard
-   * pile. "The card you pay goes to the discard pile", Dean's own words - not
-   * boxed, not onto the pile it is paying to take, and not routed through the
-   * divert seam (`discardOrDivert`), which exists for the end-of-turn discard
-   * and O17's family, not for a flat per-use fee. A build cost's overflow and
-   * this fee both end up in the same place; this is the simplest path there.
-   */
-  discardFromHand(seat: Seat, card: CardId): void {
-    this.removeFromHand(seat, card);
-    this.discard([card]);
-  }
-
-  /**
-   * ⭐ DEAN'S 'spend' VARIANT'S WHEAT LEG (09/09/2026, `rules.turn.commonsTake:
-   * 'spend'`): take the WHOLE of one central pile, straight to the taker's
-   * BARN. `takeCommons`'s sibling with a different destination and nothing
-   * else changed: no `afterHarvest` fires here either - this is not a
-   * Harvest, see `harvestOptions` - and the SAME `commonsTaken` event carries
-   * it, told apart from a hand-bound take only by `board` (fixed to `'wheat'`
-   * by the door table, C3), so nothing downstream has to learn a second event
-   * shape for a second destination.
-   */
-  takeCommonsToBarn(seat: Seat, board: Suit): void {
-    const pile = commonsBoards(this.state)[board];
-    if (!pile) throw new Error(`There is no ${board} board in the commons`);
-    const cards = pile.splice(0);
-    this.touch(seat);
-    player(this.state, seat).barn.push(...cards);
-    this.emit({ e: 'commonsTaken', seat, board, cards });
-  }
-
-  // --- coins (the commons-with-coins arm, K7-K15, Dean 10/09/2026) ---------
+  // --- coins (the Village Store, and the coins arm's two K7 sinks) ---------
   //
-  // ⛔ THIS IS NOT v31's `gainCoins` / `payCoins` COMING BACK, and the pair
-  // above says why the meeples were not either. The old pair served a fungible
-  // currency with a bank behind it, a wage, a pity rate and a market; this pair
-  // serves ONE MINT (clearing a central pile) and TWO SINKS (the Farmstead's
-  // activation and an Endgame card's price), and there is nothing else in the
-  // game that can produce or consume a coin. Every earlier coin economy in this
-  // project died of a second faucet, so the narrowness is the design.
+  // ⛔ THIS IS NOT v31's `gainCoins` / `payCoins` COMING BACK. The commons
+  // coin take (K8) was deleted with the commons on 13/09/2026, so the one mint
+  // left is the Village Store's `mintFromBarn`.
 
   /**
-   * ⭐ THE MINT (K3 second half / K8): clear the WHOLE of one central pile to
-   * its cards' OWN suits' discard piles and pay the clearer one coin per card.
-   *
-   * Deliberately NOT `takeCommons` and deliberately NOT `harvest`: nothing
-   * reaches a hand, a barn or a building, no `afterHarvest` fires, and the pile
-   * LEAVES THE GAME (`commonsTakeLeavesTheGame` in @gp/data). That is the whole
-   * difference between this arm and the three take variants of 09/09/2026,
-   * every one of which handed the cards back to somebody and ran the bonus slot
-   * at 74% to 89% of turns because the cards taken paid for the next play.
-   *
-   * ⚠️ TO THEIR OWN SUITS, NEVER TO THE BOARD'S. A pile holds whatever colours
-   * were played onto it, which under `commonsColourMatch` is usually but not
-   * always the board's colour - the wild pair (K3 first half) puts two cards of
-   * ANY colours onto a board. `fx.discard` routes each card by its own suit and
-   * emits one `cardsDiscarded` per card, so the deck accounting is exact
-   * without this primitive knowing anything about colour.
-   *
-   * Two events, on the same reasoning `commonsPlayed` and `doorUsed` are two:
-   * `commonsTaken` is what every reader of the centre's outflow already counts,
-   * and `coinsMinted` carries only the half that is new.
-   */
-  clearCommonsForCoins(seat: Seat, board: Suit): void {
-    const pile = commonsBoards(this.state)[board];
-    if (!pile) throw new Error(`There is no ${board} board in the commons`);
-    const cards = pile.splice(0);
-    this.discard(cards);
-    this.gainCoins(seat, cards.length);
-    this.emit({ e: 'commonsTaken', seat, board, cards });
-    this.emit({ e: 'coinsMinted', seat, board, coins: cards.length });
-  }
-
-  /**
-   * Add coins to a seat's pile. Private to the mint above by convention rather
-   * than by keyword: nothing else in the game may call it, because K8 says the
-   * only mint is clearing a pile, and a second caller here IS a second faucet.
+   * Add coins to a seat's pile. Private to the mint below by convention rather
+   * than by keyword: a second caller here IS a second faucet.
    * `coinsOf` throws when the arm is off, so a stray call cannot quietly create
    * a wallet.
    */
@@ -903,60 +783,11 @@ export class Fx {
     // read "how often was the supply empty" as a measure of PRESSURE rather
     // than of exhaustion.
     //
-    // ⚠️ GATED ON THE FIELD'S PRESENCE, and that is not defensive coding.
-    // The OTHER coin arm (K7, 10/09/2026) has no supply at all: its mint
-    // conjures coins out of a cleared pile and its sinks send them nowhere. A
-    // return there would be inventing a rule nobody ruled, and `coinSupplyLeft`
-    // would throw.
+    // ⚠️ GATED ON THE FIELD'S PRESENCE: a game with a coin sink on and no
+    // Store supply has nowhere to return a coin to, and `coinSupplyLeft` would
+    // throw.
     if (this.state.coinSupply !== undefined) this.state.coinSupply += n;
     this.emit({ e: 'coinsSpent', seat, on, coins: n });
-  }
-
-  /**
-   * ⭐ DEAN'S 'spend' VARIANT'S DAIRY AND VEGETABLE LEGS: remove SPECIFIC cards
-   * (by id) from a central pile, structural only - no discard, no event. The
-   * caller decides where they go (a build payment's `divertOrDiscard`, a
-   * delivery's `fx.discard`) and emits its own accounting.
-   */
-  takeFromCommonsPile(board: Suit, cards: readonly CardId[]): void {
-    const pile = commonsBoards(this.state)[board];
-    if (!pile) throw new Error(`There is no ${board} board in the commons`);
-    for (const id of cards) {
-      const i = pile.indexOf(id);
-      if (i < 0) throw new Error(`${id} is not on the ${board} pile`);
-      pile.splice(i, 1);
-    }
-  }
-
-  /**
-   * ⭐ DEAN'S 'spend' VARIANT'S LEFTOVER HALF (D-S2): the REST of a central
-   * pile, taken out whole and handed back - not discarded, not touched to any
-   * zone. The dairy and vegetable legs call this after taking their payment,
-   * and the apiary leg calls it once, at push time, to hold the whole pile in
-   * the task's own limbo (`Task.commonsSpendSow.cards`) while it resolves one
-   * card at a time.
-   */
-  clearCommonsPile(board: Suit): CardId[] {
-    const pile = commonsBoards(this.state)[board];
-    if (!pile) throw new Error(`There is no ${board} board in the commons`);
-    return pile.splice(0);
-  }
-
-  /**
-   * ⭐ DEAN'S 'spend' VARIANT'S APIARY LEG: a HELD card - already out of the
-   * pile and in the `commonsSpendSow` task's own limbo, never in a hand -
-   * landing on a building. `placeFromDiscard`'s sibling for a card that came
-   * from neither a hand nor a discard: the same landing tail as
-   * `placeOnBuilding` (so `afterPlacement` fires exactly as a real sow's
-   * does), only the origin differs, and there is no origin pile to check the
-   * card out of here.
-   */
-  placeHeldCard(from: Seat, onto: CardInPlay, card: CardId): void {
-    const building = this.buildingDraft(onto);
-    if (!canTakeCard(this.data, building)) {
-      throw new Error(`${onto.card} cannot take a card (full or no stack)`);
-    }
-    this.land(from, onto, card);
   }
 
   private land(from: Seat, onto: CardInPlay, card: CardId): void {
@@ -1036,64 +867,6 @@ export class Fx {
    */
   harvest(seat: Seat, buildingCard: CardId): void {
     this.touch(seat);
-    // ⭐ A HARVEST MAY TAKE A CENTRAL PILE (C5, 09/09/2026), and the branch is
-    // here rather than in the action so that every route reaches it - the
-    // Harvest action, the Wheat board's bought Harvest through `chooseBuilding`,
-    // and any card that harvests a chosen building. The cards go into the
-    // HARVESTER's barn (D3: never to a discard, and a central pile is reset by
-    // nothing else), the pile belongs to nobody (`owner: null`) and
-    // `afterHarvest` fires exactly as it does for a building (D1: a Harvest is
-    // a Harvest, so Wheat's riders fire). `centralPileSuit` answers null under
-    // both controls whatever the id, so W3 in a Wheat tableau is still a
-    // building there.
-    // ⭐ AND IT IS `centralPileSuit` RATHER THAN `commonsBoardSuit` SINCE
-    // 11/09/2026, because under Dean's unclaimed-boards variant THE SAME CARD
-    // ID IS A CENTRAL PILE IN ONE GAME AND A SEAT'S OWN BUILDING IN THE NEXT:
-    // W3 is ownerless in the middle when nobody farms Wheat, and is the Wheat
-    // seat's own Notice Board when somebody does. Only the STATE can tell the
-    // two apart, and a harvest routed down the wrong branch would either
-    // silently empty a rival's board into your barn or throw looking for a pile
-    // that is not there.
-    // ⚠️ AND THE BRANCH IS UNREACHABLE UNDER EVERY `commonsTake` VALUE BUT THE
-    // SHIPPED `'harvest'` (checked 10/09/2026 while building K4). Nothing needs
-    // to be added here for 'bonus', 'spend', 'paid' or 'coins': the only routes
-    // that name a building to harvest are `harvestOptions` and the tasks that
-    // read it, and `commonsHarvestReachesCentre` drops every central pile out of
-    // that set, so no caller can hand this a board card. It is left as it stands
-    // rather than guarded, because a second gate here would be a second place
-    // for the rule to live and the first one would stop being read.
-    const board = centralPileSuit(this.data, this.state, buildingCard);
-    if (board !== null) {
-      const pile = commonsBoards(this.state)[board];
-      // ⭐ HOW MANY COME OUT IS `commonsHarvestTake` (Dean, 09/09/2026). null
-      // is the shipped C5 rule and takes the whole pile; a number n takes at
-      // most the most recently played n - the TOP of the pile, which is its END
-      // because `playOnCommons` pushes - and LEAVES THE REST STANDING. A pile
-      // shallower than n gives up all of it: n caps the take and never demands
-      // a depth, which is `commonsHarvestMin`'s job.
-      //
-      // ⭐ IT IS THE ONLY ONE OF THE THREE COMMONS KNOBS THAT CAN REDUCE THE
-      // CENTRE'S OUTFLOW WITHOUT REDUCING PLAYS, because the remainder stays in
-      // the centre rather than never arriving. The centre is closed - in by a
-      // play, out by a harvest (D3) - so a18's conservation line is the reading
-      // that says whether a share moved by leaving cards behind or by stranding
-      // them at the end.
-      const take = commonsHarvestTake(this.data);
-      const cards =
-        take === null || take >= pile.length ? pile.splice(0) : pile.splice(pile.length - take);
-      player(this.state, seat).barn.push(...cards);
-      this.emit({
-        e: 'harvested',
-        seat,
-        building: buildingCard,
-        cards,
-        source: 'commons',
-        owner: null,
-        left: pile.length,
-      });
-      fireHook(this, 'afterHarvest', { seat, building: buildingCard, cards });
-      return;
-    }
     const building = this.buildingDraft({ seat, card: buildingCard });
     const cards = building.stack.splice(0);
     player(this.state, seat).barn.push(...cards);
@@ -1166,20 +939,7 @@ export interface HookEvents {
    * field it replaces distinguished the coin, Service and 2-card visits, none of
    * which exist.
    */
-  /**
-   * ⚠️ `host` IS NULLABLE SINCE THE COMMONS (C3, 09/09/2026), and `board` is
-   * the field that says why: a card played onto a CENTRAL Notice Board is a
-   * VISIT for every card that keys on the word (C8), but there is no seat to
-   * name as the host, so it fires with `host: null` and the board's colour.
-   *
-   * What that does to the three cards, WITHOUT a word of their text changing:
-   * W17 The Pie Shop compares `event.host === self.seat` and can never match a
-   * null, so it is dead under the commons exactly as C8 says; O16 The Fruit
-   * Store and A17 The Smoke Pot compare `event.visitor` and fire. A host-side
-   * listener written from here on has to answer the null rather than inherit an
-   * answer, which is the same warning `self` carries below.
-   */
-  afterVisit: { visitor: Seat; host: Seat | null; self: boolean; board?: Suit };
+  afterVisit: { visitor: Seat; host: Seat; self: boolean };
   /**
    * A see-N/keep-K draw finished and the kept cards entered the hand - the
    * reference's onDraw moment (keepFromReveal). Fires for the Draw action, the
@@ -1202,7 +962,7 @@ export interface HookEvents {
     colour: Suit;
     action: DoorAction;
     /** 'balloon' added 12/09/2026; see the note on `doorUsed` in state.ts. */
-    via: 'visit' | 'meeple' | 'commons' | 'balloon';
+    via: 'visit' | 'meeple' | 'balloon';
   };
   /**
    * A card landed in a tableau, by ANY path - the Build action, a Worker's
@@ -1218,10 +978,9 @@ export interface HookEvents {
     /**
      * ⭐ DID THE PAYMENT COME OUT OF THE HAND (A150, Dean 12/09/2026)?
      *
-     * True for every ordinary build, because `doBuild` takes the payment off
-     * the hand card by card. FALSE for exactly one route: Dean's 'spend'
-     * variant's Dairy leg (`doCommonsSpendBuild`), which pays a build straight
-     * out of a central pile and never touches a hand.
+     * True for every build, because `doBuild` takes the payment off the hand
+     * card by card. Its one false producer (the commons 'spend' variant's Dairy
+     * leg) was deleted with the commons on 13/09/2026.
      *
      * ⛔ IT EXISTS FOR O17 THE FRUIT BASKET AND FOR THE VILLAGE STORE'S SAKE.
      * O17 was restricted on 12/09/2026 to *"a card you discard FROM YOUR

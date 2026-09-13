@@ -215,6 +215,7 @@ describe('the arithmetic ceiling: seats * (n - 1) must be at most 5 - seats', ()
       'rules.economy.coinPaysGrow': false,
       'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
+      'rules.economy.noticeBoardsBySeats.2': 1, // pinned 13/09/2026: the default flipped
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': false,
       'rules.economy.noticeBoardThreshold': 3,
@@ -260,6 +261,7 @@ describe('the arithmetic ceiling: seats * (n - 1) must be at most 5 - seats', ()
         'rules.economy.coinPaysGrow': false,
         'rules.economy.coinGrowOnFullBuilding': false,
         'rules.turn.visitCurrency': 'noticeBoardPower',
+        'rules.turn.selfVisitAllowed': true, // pinned 13/09/2026: the default flipped
         'rules.economy.noticeBoardsBySeats.2': 0,
       },
     });
@@ -268,21 +270,23 @@ describe('the arithmetic ceiling: seats * (n - 1) must be at most 5 - seats', ()
 
   it('the knob has NO SUBJECT under any other currency, so nothing else can be broken by it', () => {
     // `extraNoticeBoardsPerSeat` gates on `isNoticeBoardPower`, so a sweep that
-    // sets the map under the commons or the v31 card fee changes nothing at all
-    // rather than building a game nobody designed.
-    const commonsWithMap: GameData = loadGameData({
-      name: 'commons-with-the-two-board-map',
+    // sets the map under the v31 card fee changes nothing at all rather than
+    // building a game nobody designed.
+    const cardWithMap: GameData = loadGameData({
+      name: 'card-with-the-two-board-map',
       schemaVersion: 1,
-      set: { 'rules.economy.noticeBoardsBySeats.2': 2 },
+      set: {
+        'rules.turn.visitCurrency': 'card',
+        'rules.turn.selfVisitAllowed': true,
+        'rules.economy.noticeBoardsBySeats.2': 2,
+      },
     });
-    const s = newGame(commonsWithMap, { seats: 2, suits: ['wheat', 'orchard'], seed: 'tb-1' });
-    // Under the commons no seat has a board at all (C1) and that is unchanged.
+    const s = newGame(cardWithMap, { seats: 2, suits: ['wheat', 'orchard'], seed: 'tb-1' });
+    // Under the card fee every seat has exactly its own one board.
     for (const seat of [0, 1] as Seat[]) {
       expect(
-        player(s, seat).tableau.filter(
-          (b) => cardById(commonsWithMap, b.card).slot === 'noticeboard',
-        ),
-      ).toHaveLength(0);
+        player(s, seat).tableau.filter((b) => cardById(cardWithMap, b.card).slot === 'noticeboard'),
+      ).toHaveLength(1);
     }
   });
 });
