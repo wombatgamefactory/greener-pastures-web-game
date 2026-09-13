@@ -41,7 +41,17 @@ import type { CardId, DoorAction, Seat } from './state.js';
  * (C3). Three routes, one dispatch, exactly as the first two have been since
  * v31: `via` says what paid and nothing below it branches on the answer.
  */
-export type DoorVia = 'visit' | 'meeple' | 'commons';
+/**
+ * ⭐ 'balloon' ADDED 12/09/2026 for the plain-action balloon scheme. ⛔ IT IS A
+ * PASSENGER WITH A NAME: `performDoorAction` emits `doorUsed`, which is what
+ * a07 (action inflation) and a16 (the door mix) count, so under an arm whose
+ * balloons pay plain actions a FLIGHT NOW COUNTS AS A BOUGHT DOOR exactly as
+ * D4 made a commons play count as one. That is the honest reading - a flight
+ * does buy a door action - but it means the door mix on such an arm is not
+ * comparable with the door mix on the shipped game, and no report may pool
+ * them. The via field is on the event so a reader can split them.
+ */
+export type DoorVia = 'visit' | 'meeple' | 'commons' | 'balloon';
 
 /**
  * ⭐ WHAT A COLOUR'S DOOR BUYS, WHICH IS NOT ALWAYS WHAT `action` PRINTS.

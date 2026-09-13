@@ -1,0 +1,21 @@
+{
+  "name": "commons-village-store-v1",
+  "description": "⭐ CONTROL 1 OF 2, THE VILLAGE STORE ALONE ON THE COMMONS (A150, Dean 12/09/2026): the mint (storeCoinsPerCard 1), the shared recirculating supply (5 a player), and both sinks - Build including the n-of-suit half, and GROW with a full building a legal target. Balloons are UNTOUCHED, so a flight neither costs one card nor mints. ⭐ WHY IT EXISTS: the balloon scheme and the Store are two devices with one job, giving a stranded barn card an exit, and ruling in a bundle rules in the bundle (05/09/2026). This arm says what the Store does to the commons suit table on its own. ⛔ C100 IS OPEN AND THE SHIPPED GAME IS THE COMMONS, so every commons leaf is pinned here BY NAME and this arm differs from reports/watchlist-2026-09-12T16-54-59-reference-v15.txt in the leaves listed and nothing else. ⛔ THE VILLAGE STORE HAS NEVER BEEN MEASURED ON THE COMMONS: every Store run of 12/09/2026 sits on the notice-board-visit stack, whose suit table (veg 43.5 / wheat 41.9 / apiary 41.2 / dairy 23.2 / orchard 17.4) is near-inverted from the shipped one (dairy 45.1 / wheat 40.2 / orchard 33.9 / apiary 29.8 / veg 18.1). Its finding that 'a device that pays for surplus pays the rich' is a finding about a DIFFERENT TABLE and may not be quoted at this one. ⛔ MAY NOT BE QUOTED: the bonus rate is a share of TURNS and never plays per turn; no level is comparable with a reference-v14 or earlier number; the hand limit of 7 is the SIMULATOR'S BOUND and not a rule (C7).",
+  "schemaVersion": 1,
+  "set": {
+    "rules.turn.visitCurrency": "commons",
+    "rules.turn.bonusTiming": "start",
+    "rules.turn.commonsTake": "harvest",
+    "rules.turn.startingMeeplesPerColour": 0,
+    "rules.turn.meepleAsCard": false,
+    "rules.economy.commonsThreshold": null,
+    "rules.economy.commonsColourMatch": false,
+    "rules.economy.storeCoinsPerCard": 1,
+    "rules.economy.coinSupplyPerPlayer": 5,
+    "rules.economy.coinPaysBuild": true,
+    "rules.economy.coinPaysSuitCost": true,
+    "rules.economy.coinPaysGrow": true,
+    "rules.economy.coinGrowOnFullBuilding": true,
+    "rules.economy.cropScorerOnBarn": false
+  }
+}

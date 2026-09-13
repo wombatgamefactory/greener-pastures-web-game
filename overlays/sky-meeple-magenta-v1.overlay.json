@@ -1,8 +1,24 @@
 {
   "name": "sky-meeple-magenta-v1",
-  "description": "⛔ 09/09/2026: NO SUBJECT UNDER THE SHIPPED GAME - 'meepleFromBag' pays a meeple and the commons has none (C6). Pin a meeple control beside it to ask the question. DEAN'S BALLOON, on the magenta Harvest-any instead. The magenta balloon is the one v31 had to re-point when coins left, so it is the slot with the least history to disturb, and 'harvest any building even if it is not full' is the reward closest in kind to a free action already. Paired with sky-meeple-draw-v1, this says whether WHICH balloon carries the meeple matters at all. NOTE: the magenta balloon carries no `amount` in the data - 'harvest any building' is a permission and not a size - so there is no amount knob to set on it and the engine's `amount ?? 1` floor supplies the 1. That is why this arm sets a type and no number.",
+  "description": "⛔ 09/09/2026: NO SUBJECT UNDER THE SHIPPED GAME - 'meepleFromBag' pays a meeple and the commons has none (C6). Pin a meeple control beside it to ask the question. DEAN'S BALLOON, on the magenta Harvest-any instead. The magenta balloon is the one v31 had to re-point when coins left, so it is the slot with the least history to disturb, and 'harvest any building even if it is not full' is the reward closest in kind to a free action already. Paired with sky-meeple-draw-v1, this says whether WHICH balloon carries the meeple matters at all. NOTE: the magenta balloon carries no `amount` in the data - 'harvest any building' is a permission and not a size - so there is no amount knob to set on it and the engine's `amount ?? 1` floor supplies the 1. That is why this arm sets a type and no number. ⛔ PASSENGERS PINNED 12/09/2026: Dean's plain-action balloon and Village Store ruling moved sixteen shipped leaves at once. This overlay predates that flip and every report taken against it does too, so each of those leaves is pinned here BY NAME at its PRE-FLIP value. Without it an arm read as a delta against a pre-flip base would silently gain a one-card flight, an always-present Aerodrome and a live coin economy. That is the 05/09/2026 passenger lesson: an overlay that should not move with the shipped default has to pin every knob the flip moved.",
   "schemaVersion": 1,
   "set": {
-    "aerodrome.balloons.balloonCoins.reward.type": "meepleFromBag"
+    "aerodrome.balloons.balloonCoins.reward.type": "meepleFromBag",
+    "aerodrome.moveCost.barnCards": 2,
+    "aerodrome.alwaysInPlay": false,
+    "aerodrome.flightMints": false,
+    "aerodrome.balloons.balloonDraw.reward.type": "draw",
+    "aerodrome.balloons.balloonDraw.reward.amount": 4,
+    "aerodrome.balloons.balloonBuild.reward.type": "buildDiscount",
+    "aerodrome.balloons.balloonBuild.reward.amount": 4,
+    "aerodrome.balloons.balloonSow.reward.type": "sowFromHand",
+    "aerodrome.balloons.balloonSow.reward.amount": 4,
+    "rules.economy.storeCoinsPerCard": 0,
+    "rules.economy.coinSupplyPerPlayer": 0,
+    "rules.economy.coinPaysBuild": false,
+    "rules.economy.coinPaysSuitCost": false,
+    "rules.economy.coinPaysGrow": false,
+    "rules.economy.coinGrowOnFullBuilding": false,
+    "rules.economy.cropScorerOnBarn": false
   }
 }

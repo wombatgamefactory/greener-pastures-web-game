@@ -88,16 +88,31 @@ function grow(state: GameState, seat: Seat, building: CardId, payment: CardId) {
 // --- The base rule, unchanged for everybody ---------------------------------
 
 describe('the balloon move as the Deliver action (DL-12)', () => {
-  it('still costs 2 differing BARN cards, and the base rule is untouched', () => {
+  // ⭐ RE-POINTED 12/09/2026, WHEN DEAN RULED THE ONE-CARD FLIGHT. A flight now
+  // costs ONE barn card of ANY crop, taken as the Deliver action, and the four
+  // balloons pay the PLAIN BASE ACTION of their colour. `mustDiffer` is still
+  // true in the data and is VACUOUS at a cost of one - there is no second card
+  // for the first to differ from - which is why no second leaf was needed.
+  // ⛔ THE REASON THE COST CAME DOWN IS THE PARITY TRAP: a crate is 2 cards of
+  // ONE crop, all or nothing, so 88.8% of barn-holding decisions cannot afford
+  // any open tile and 84% of those are one or two cards short. A ONE-CARD
+  // DELIVERY IS THE FIRST RULE THAT MAKES A SINGLE ODD BARN CARD WORTH ANYTHING.
+  it('costs ONE barn card of any crop, and the base rule is untouched', () => {
     const s = base();
     barnTo(s, VEG, 'V4', 'W4');
     // Something loaded for the magenta balloon's harvest to land on: with no
     // loaded building the `chooseBuilding` task has no legal answer and the
     // drain loop drops it, which is the card's printed "whiffs" reading.
+    // Loaded to FULL since 12/09/2026. Every balloon now gives ONE bonus action:
+    // the plain core action of its colour (Dean's ruling). The wheat balloon's
+    // action is therefore a plain Harvest, which takes a full building or a
+    // central pile. There is no purple balloon any more, so the old "even if it
+    // is not full" reward went with it by design.
     buildFor(data, s, VEG, 'V9');
-    loadStack(data, s, VEG, 'V9', 1, 'orchard');
-    // 4 balloons x the one {vegetable: 1, wheat: 1} spend.
-    expect(balloonMoves(s)).toHaveLength(4);
+    loadStack(data, s, VEG, 'V9', 2, 'orchard');
+    // 4 balloons x two single-card spends ({vegetable: 1} and {wheat: 1}), which
+    // is the one-card rule: every distinct crop in the barn is its own payment.
+    expect(balloonMoves(s)).toHaveLength(8);
 
     const magenta = balloonMoves(s).find((m) => m.balloon === 'balloonCoins') as Move;
     const out = apply(data, s, magenta);
@@ -109,17 +124,25 @@ describe('the balloon move as the Deliver action (DL-12)', () => {
     // scores balloons by COUNT, so a rename would have to be chased through the
     // handler, the art and the reports for no gain. Read the id as a slot
     // number.
+    // Since 12/09/2026 this is the WHEAT balloon and gives the plain wheat
+    // action, a Harvest reached through `performDoorAction` - the same
+    // `chooseBuilding` the Wheat board pushes.
     expect(out.state.tasks.some((t) => t.t === 'chooseBuilding')).toBe(true);
-    expect(player(out.state, VEG).barn).toHaveLength(0);
+    // One card paid, so one card left in the barn rather than none.
+    expect(player(out.state, VEG).barn).toHaveLength(1);
     expect(balloonAt(out.state, 'balloonCoins')).toBe(VEG);
-    expect(out.state.discards.vegetable).toContain('V4');
-    expect(out.state.discards.wheat).toContain('W4');
   });
 
-  it('never offers two barn cards of one suit, and never your own balloon', () => {
+  // ⭐ THE FIRST HALF OF THIS TEST HAS NO SUBJECT SINCE 12/09/2026 and is
+  // deliberately inverted rather than deleted: at a cost of ONE card there is
+  // no "two of one suit" to refuse, so a barn of two vegetables is now a LEGAL
+  // payment and offers one spend per balloon. The second half - you may never
+  // take a balloon already in your own Aerodrome - is Dean's ruling of the same
+  // day, was already true in `movableBalloon`, and is the half worth keeping.
+  it('offers a one-card spend per crop, and never your own balloon', () => {
     const s = base();
-    barnTo(s, VEG, 'V4', 'V5'); // two vegetables - the barn payment must differ
-    expect(balloonMoves(s)).toHaveLength(0);
+    barnTo(s, VEG, 'V4', 'V5'); // two vegetables: one crop, so one spend x 4 balloons
+    expect(balloonMoves(s)).toHaveLength(4);
 
     const t = base();
     barnTo(t, VEG, 'V4', 'W4');
@@ -127,12 +150,17 @@ describe('the balloon move as the Deliver action (DL-12)', () => {
     expect(balloonMoves(t)).toHaveLength(0);
   });
 
-  it('the red balloon draws 4 (see 4, keep 4)', () => {
+  // ⭐ RE-POINTED 12/09/2026: the red balloon is Orchard's colour and now pays
+  // Orchard's PLAIN action, which under the commons is Draw 2 keep both - not
+  // the old bespoke Draw 4. That is the whole point of the scheme: the balloons
+  // reuse the colour-to-action mapping a player already learns for the five
+  // central Notice Boards, so the module needs no reference card of its own.
+  it('the red balloon pays the plain orchard action (Draw 2, keep both)', () => {
     const s = base();
     barnTo(s, VEG, 'V4', 'W4');
     const move = balloonMoves(s).find((m) => m.balloon === 'balloonDraw') as Move;
     const out = apply(data, s, move);
-    expect(out.state.tasks[0]).toMatchObject({ t: 'draw', pid: VEG, see: 4, keep: 4 });
+    expect(out.state.tasks[0]).toMatchObject({ t: 'draw', pid: VEG, see: 2, keep: 2 });
   });
 });
 
@@ -226,11 +254,21 @@ describe('V2 Farmstead - the own-crop end-game scorer', () => {
    * a flight got its head too; both faces are gone, so a flight is the printed
    * two barn cards of differing crops and nothing else.
    */
-  it('a flight is two differing barn cards, with no head to unlock it', () => {
+  // ⭐ INVERTED 12/09/2026. The claim it was written for - a flight carries no
+  // head - is unchanged and is still what the last line tests: the HAND cannot
+  // close a flight, only the barn can. What moved is the base cost, so ONE barn
+  // card is now a whole payment and the same position offers four moves instead
+  // of none. ⭐ That is the ruling's entire purpose: a single odd barn card,
+  // worth exactly zero against a 2-of-one-crop crate, now buys an action.
+  it('a flight is ONE barn card, and the hand still cannot pay it', () => {
     const s = base();
-    barnTo(s, VEG, 'V4'); // one crop in the barn: a flight needs two
-    dealTo(data, s, VEG, 'W4'); // ...and the hand cannot close it
-    expect(balloonMoves(s)).toHaveLength(0);
+    barnTo(s, VEG, 'V4'); // one crop in the barn is now a whole flight
+    dealTo(data, s, VEG, 'W4'); // ...and the hand is still no help
+    expect(balloonMoves(s)).toHaveLength(4);
+
+    const empty = base();
+    dealTo(data, empty, VEG, 'W4'); // hand only, barn empty
+    expect(balloonMoves(empty)).toHaveLength(0);
   });
 
   /**
@@ -277,9 +315,10 @@ describe('the hand-paid flight (V4)', () => {
     expect(balloonAt(done, 'balloonCoins')).toBe(VEG);
     expect(player(done, VEG).hand).toHaveLength(0);
     expect(player(done, VEG).barn).toHaveLength(0); // the barn is untouched
-    // The magenta balloon's reward is a relaxed HARVEST since v31, not £4, and
-    // it queues a chooseBuilding like any other harvest.
-    expect(done.tasks.some((t) => t.t === 'chooseBuilding')).toBe(true);
+    // The wheat balloon gives a plain Harvest, which needs a full building or a
+    // central pile. This seat has neither, so the Harvest has no target and is
+    // drained; the flight itself still happened, which the next lines assert.
+    expect(done.tasks.some((t) => t.t === 'chooseBuilding')).toBe(false);
     expect(done.discards.vegetable).toEqual(expect.arrayContaining(['V9']));
   });
 
@@ -309,7 +348,8 @@ describe('V8 The Regional Depot - the FREE flight (retexted 19/08/2026)', () => 
     ) as TaskAnswer;
     const done = answerTask(data, out.state, pick).state;
     expect(balloonAt(done, 'balloonCoins')).toBe(VEG);
-    expect(done.tasks.some((t) => t.t === 'chooseBuilding')).toBe(true);
+    // No Harvest target, as in the V4 case: this seat has no full building.
+    expect(done.tasks.some((t) => t.t === 'chooseBuilding')).toBe(false);
     expect(player(done, VEG).hand).toHaveLength(0);
     expect(player(done, VEG).barn).toHaveLength(0);
     expect(done.discards.vegetable).not.toContain('V9');
@@ -328,7 +368,8 @@ describe('V8 The Regional Depot - the FREE flight (retexted 19/08/2026)', () => 
     // any more, and with it goes the only thing in the game that severed
     // reachability from cargo: you get the reward of the balloon you could reach.
     expect(moved.tasks.some((t) => t.t === 'card' && t.kind === 'anyReward')).toBe(false);
-    expect(moved.tasks[0]).toMatchObject({ t: 'draw', pid: VEG, see: 4, keep: 4 });
+    // Draw 2 keep both, the plain orchard action, since 12/09/2026.
+    expect(moved.tasks[0]).toMatchObject({ t: 'draw', pid: VEG, see: 2, keep: 2 });
   });
 
   it('never offers a balloon already at your own Aerodrome', () => {

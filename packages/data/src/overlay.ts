@@ -160,6 +160,7 @@ const BALLOON_REWARD_VALUES: ReadonlySet<string> = new Set<string>([
   'sowFromHand',
   'harvestAny',
   'meepleFromBag',
+  'plainAction',
 ]);
 
 /** Bumped when the meaning of a knob path changes, not when a knob is added. */

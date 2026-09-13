@@ -1181,6 +1181,18 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'arm that turns it back off.',
   },
   {
+    template: 'rules.economy.cropScorerOnBarn',
+    type: 'boolean',
+    description:
+      '⭐ THE BARN AND FARMSTEAD SWAP (Dean, 13/09/2026, from the v39 sheet). true puts the ' +
+      'own-crop end-game scorer ("Game end: 1 VP for each CROP card you have built") on the BARN ' +
+      'and makes the FARMSTEAD the receipt tray; false keeps the scorer on the Farmstead. ' +
+      '⭐ SCORE-NEUTRAL UNDER THE COMMONS - the Barn scores exactly what the Farmstead did, so ' +
+      'no total moves and only the printing card changes. ⛔ NOT NEUTRAL UNDER THE COINS ARM, ' +
+      'where the scorer landed nowhere (K13) and this would add VP, so pre-ruling overlays pin it ' +
+      'false. The notice-board visit arm moves it to the Barn on its own (S1) regardless.',
+  },
+  {
     template: 'rules.economy.farmsteadCoinPower',
     type: 'boolean',
     description:
@@ -1283,8 +1295,8 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     type: 'dairyGrowsBuilt',
     description:
       "⭐⭐ RULED IN BY DEAN, 12/09/2026, AND THE BASE IS NOW 'paidWild'. The Dairy Notice " +
-      "Board reads: BUILD, USING CARDS OF ANY CROPS, THEN YOU MAY GROW THE BUILDING YOU JUST " +
-      "BUILT BY SPENDING ANY CARD. What the leaf selects is what happens after the Build. " +
+      'Board reads: BUILD, USING CARDS OF ANY CROPS, THEN YOU MAY GROW THE BUILDING YOU JUST ' +
+      'BUILT BY SPENDING ANY CARD. What the leaf selects is what happens after the Build. ' +
       "'paid' immediately GROWs the building " +
       'just built, paying a matching activation card as normal, so the stack advances and the ' +
       "clog brake survives; 'paidWild' the same with the activation card wild, which is the " +
@@ -1729,6 +1741,44 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'a type without changing `rewardText` leaves the printed card lying about itself, which ' +
       'matters for a screenshot and not for a run - the engine reads the type, the card face reads ' +
       'the text.',
+  },
+  {
+    template: 'aerodrome.alwaysInPlay',
+    type: 'boolean',
+    description:
+      '⭐ IS THE AERODROME IN EVERY GAME (Dean, 12/09/2026)? false is the rule as built: the ' +
+      'module needs Vegetable among the decks in play, which is 3 of 5 suits at two seats, 4 of 5 ' +
+      'at three and all 5 at four, so it is ABSENT FROM ABOUT A GAME IN FIVE and most often at ' +
+      'two seats. true applies C1 own argument to the balloons: the five Notice Boards sit in the ' +
+      'centre of every game because not every suit is in play in every game and that guarantees ' +
+      'all five actions exist in every game, and under a plain-action balloon scheme the module ' +
+      'is a second action-granting commons. ⚠️ IT IS A SETUP RULE AND NOT A COMPONENT ' +
+      'CHANGE, since the four Aerodrome cards and four balloons already exist, but it does put a ' +
+      'Vegetable-sheet component on a table with no Vegetable seat, which is a PITCH and ART ' +
+      'question as much as a rules one.',
+  },
+  {
+    template: 'aerodrome.flightMints',
+    type: 'boolean',
+    description:
+      "⭐ DOES A BALLOON FLIGHT TRIGGER THE VILLAGE STORE'S MINT (Dean, 12/09/2026)? false is " +
+      'the shipped game. The engine already treated a flight as a delivery for CARD HOOKS - ' +
+      '`landBalloon` fires `afterDeliver` with `island: false` - and NOT for the Store, because ' +
+      'only `finishDelivery` called the exchange. This leaf closes that split in the yes ' +
+      'direction. ⛔ A SECOND GATE ON TOP OF rules.economy.storeCoinsPerCard, so that the ' +
+      'village-store arm of 12/09/2026 keeps its reports and this leaf changes nothing anywhere ' +
+      'until an arm pins it true.',
+  },
+  {
+    template: 'aerodrome.balloons.{}.reward.suit',
+    type: 'cropOrWild',
+    description:
+      "⭐ WHICH CROP'S PLAIN ACTION A 'plainAction' BALLOON PAYS (Dean, 12/09/2026), and read " +
+      'by no other reward type. It routes through `performDoorAction`, the same function a central ' +
+      'Notice Board uses, so a balloon and a board of the same colour buy the same thing and the ' +
+      "player learns ONE mapping. ⚠️ 'wild' is accepted by the validator and is a DATA " +
+      'ERROR the engine throws on: the shared cropOrWild type is reused here rather than adding a ' +
+      'ninth KnobType for one leaf.',
   },
   {
     template: 'aerodrome.balloons.{}.reward.amount',

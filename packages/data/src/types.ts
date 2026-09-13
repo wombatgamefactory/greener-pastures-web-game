@@ -550,18 +550,60 @@ export type HiredWorker = SuitDoor;
  * is a component addition and Dean's call.
  */
 export type BalloonRewardType =
-  'draw' | 'buildDiscount' | 'sowFromHand' | 'harvestAny' | 'meepleFromBag';
+  | 'draw'
+  | 'buildDiscount'
+  | 'sowFromHand'
+  | 'harvestAny'
+  | 'meepleFromBag'
+  /**
+   * ⭐ THE BALLOON PAYS THE PLAIN BASE ACTION OF A CROP (Dean, 12/09/2026).
+   * `reward.suit` names the crop and the engine routes it through
+   * `performDoorAction`, the SAME function a central Notice Board uses, so the
+   * mapping a player learns for the five boards - wheat Harvest, vegetable
+   * Deliver, orchard Draw 2, apiary GROW, dairy Build - is reused rather than
+   * duplicated. ⭐ THAT IS THE WHOLE POINT OF THE SCHEME: it deletes the
+   * balloons' own reference card. ⚠️ THERE IS NO VEGETABLE BALLOON under the
+   * design as ruled, so Deliver is the one action a balloon never pays; a
+   * flight IS the Deliver action, so a Deliver balloon would self-cancel (L2,
+   * the law that killed VISIT-as-a-main-action in v13). ⛔ `suit` is REQUIRED
+   * when the type is 'plainAction' and a balloon without one is a data error,
+   * in the same idiom as the note on `amount`.
+   */
+  | 'plainAction';
 
 export interface Balloon {
   readonly id: string;
   readonly colour: string;
   readonly hex: string;
   readonly rewardText: string;
-  readonly reward: { readonly type: BalloonRewardType; readonly amount?: number };
+  readonly reward: {
+    readonly type: BalloonRewardType;
+    readonly amount?: number;
+    /** Required by `plainAction` and meaningless to every other type. */
+    readonly suit?: Suit;
+  };
 }
 
 export interface AerodromeFile {
   readonly meta: DataMeta;
+  /**
+   * ⭐ DOES A FLIGHT COUNT AS A DELIVERY FOR THE VILLAGE STORE? (Dean,
+   * 12/09/2026.) false is the shipped game and changes nothing; true lets the
+   * Store's mint fire after a balloon move exactly as it fires after an island
+   * delivery. ⛔ IT IS A SECOND GATE ON TOP OF `rules.economy.storeCoinsPerCard`
+   * ON PURPOSE, so that the village-store arm of 12/09/2026 is NOT silently
+   * changed by this leaf existing: that arm leaves this false and keeps its
+   * reports. Name the passengers before ruling, not after.
+   */
+  readonly flightMints: boolean;
+  /**
+   * ⭐ IS THE AERODROME LAID OUT IN EVERY GAME, regardless of whether Vegetable
+   * is among the decks in play (Dean, 12/09/2026)? false is the rule as built.
+   * true is C1's argument reaching the balloons: a module that grants CORE
+   * ACTIONS should exist in every game, exactly as all five Notice Boards do.
+   * ⚠️ A setup rule, not a component: the Aerodromes and balloons already exist.
+   */
+  readonly alwaysInPlay: boolean;
   readonly port: {
     readonly name: string;
     readonly copies: number;
@@ -1694,6 +1736,25 @@ export interface RulesFile {
      * the table.
      */
     readonly farmsteadCoinPower: boolean;
+    /**
+     * ⭐ THE BARN AND THE FARMSTEAD SWAP ROLES (Dean, 13/09/2026, from the v39
+     * sheet). true puts the own-crop end-game scorer - "Game end: 1 VP for each
+     * <CROP> card you have built" - on the BARN, and the FARMSTEAD becomes the
+     * tray that holds the island receipt tokens ("Store Receipts here. Collect 6
+     * to trigger end of the game"). false is the scorer on the Farmstead, the
+     * rule from 02/09/2026 until this ruling.
+     *
+     * ⭐ UNDER THE COMMONS IT IS SCORE-NEUTRAL: the Barn scores exactly what the
+     * Farmstead scored, so every seat's game-end total is unchanged and only the
+     * card that PRINTS the line moves. ⛔ IT IS NOT NEUTRAL UNDER THE COINS ARM,
+     * where the scorer moved off the Farmstead and landed NOWHERE (K13): with
+     * this true it would land on the Barn and add VP. So every pre-ruling
+     * overlay pins it false by name.
+     *
+     * ⚠️ The notice-board visit arm already moved the scorer to the Barn by
+     * itself (S1, `isNoticeBoardPower`), and still does whatever this reads.
+     */
+    readonly cropScorerOnBarn: boolean;
     /**
      * ⭐ THE VILLAGE STORE'S MINT, AND THERE IS EXACTLY ONE (V1, Dean ruled
      * 12/09/2026, A150, `docs/village-store-coins-2026-09-12-v2.md`): COINS

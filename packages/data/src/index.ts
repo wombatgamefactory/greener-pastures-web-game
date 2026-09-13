@@ -556,6 +556,15 @@ export function farmsteadCoinPower(data: GameData): boolean {
 }
 
 /**
+ * ⭐ Is the own-crop end-game scorer printed on the BARN rather than the
+ * Farmstead (Dean, 13/09/2026)? See the note on the type. Score-neutral under
+ * the commons; not neutral under the coins arm, which pins it false.
+ */
+export function cropScorerOnBarn(data: GameData): boolean {
+  return data.rules.economy.cropScorerOnBarn;
+}
+
+/**
  * ⭐ THE VILLAGE STORE'S MINT, AND THERE IS EXACTLY ONE (V1, Dean 12/09/2026,
  * A150): coins taken per ADDITIONAL barn card spent at a delivery. One accessor,
  * so "what does a converted card pay" is asked in exactly one spelling across

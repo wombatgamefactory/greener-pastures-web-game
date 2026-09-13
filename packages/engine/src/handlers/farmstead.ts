@@ -62,7 +62,7 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import { farmsteadCoinPower, isNoticeBoardPower } from '@gp/data';
+import { cropScorerOnBarn, farmsteadCoinPower, isNoticeBoardPower } from '@gp/data';
 
 import { doorActionLegal } from '../actions.js';
 import type { CardInPlay, Fx } from '../fx.js';
@@ -127,8 +127,13 @@ function powersLive(data: GameData): boolean {
  * each pay 1.
  */
 export function barnCropScorer(crop: Suit) {
+  // ⭐ TWO ROUTES ONTO THE BARN (13/09/2026). The notice-board visit arm moved
+  // the scorer here on its own (S1); Dean's ruling of 13/09/2026 moved it here
+  // on the SHIPPED commons too (`cropScorerOnBarn`). Either is enough.
   return (data: GameData, state: GameState, seat: Seat): number =>
-    isNoticeBoardPower(data) ? cropBuildings(data, state, seat, crop).length : 0;
+    isNoticeBoardPower(data) || cropScorerOnBarn(data)
+      ? cropBuildings(data, state, seat, crop).length
+      : 0;
 }
 
 /**
@@ -203,7 +208,14 @@ export function farmsteadHandler(crop: Suit): CardHandler {
      * survives and the arm's scores stay comparable with the shipped game's.
      */
     gameEnd(data: GameData, state: GameState, seat: Seat): number {
-      if (powersLive(data)) return 0;
+      // ⭐ AND SINCE 13/09/2026 THE SHIPPED FARMSTEAD SCORES NOTHING EITHER: it
+      // is the receipt tray, and the Barn prints the scorer (`cropScorerOnBarn`).
+      // Under the commons the move is score-neutral - `barnCropScorer` pays the
+      // identical term - so no seat's total changes. ⛔ The two conditions are
+      // kept SEPARATE on purpose: `powersLive` still silences the Farmstead
+      // under the coins arm, where the term lands NOWHERE, and that arm pins
+      // `cropScorerOnBarn` false so the Barn does not pick it up.
+      if (powersLive(data) || cropScorerOnBarn(data)) return 0;
       return cropBuildings(data, state, seat, crop).length;
     },
   };

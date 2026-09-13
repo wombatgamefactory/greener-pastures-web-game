@@ -1310,8 +1310,55 @@ function freightSection({ data, pooled }: ReportInput): string[] {
     `    paid out of HAND (V4, V8)           ${num(
       per((g) => sum(g.handFlightsBySeat)),
       2,
-    )}` + `   (the suit's own route in; 0 means the Depots never fired)`,
+    )}` +
+      `   (the suit's own route in; ⚠️ IT COUNTS CARDS, so a flight at ` +
+      `aerodrome.handMoveCost 0 reads ZERO here and is not a dead Depot)`,
   );
+  // ⭐ WHICH BALLOON, AND NOBODY HAD ASKED BEFORE (12/09/2026). Every earlier
+  // reading of this module is a table total, so four even rewards and one
+  // reward carrying three passengers look identical. The `balloonMoved` event
+  // has always named the balloon; this only folds it. ⛔ IT COUNTS MOVES AND
+  // NOT VALUE: the magenta balloon has no `amount`, so it cannot be swept by
+  // sky-dull-v1 or sky-rich-v1 and its share moves for reasons the other three
+  // share do not.
+  {
+    const byId = new Map<string, number>();
+    for (const g of games) {
+      for (const [id, n] of Object.entries(g.balloonMovesById)) {
+        byId.set(id, (byId.get(id) ?? 0) + n);
+      }
+    }
+    const total = [...byId.values()].reduce((a, b) => a + b, 0);
+    if (total > 0) {
+      const order = data.aerodrome.balloons.map((b) => b.id);
+      const seen = [...byId.keys()].filter((id) => !order.includes(id));
+      const line = [...order, ...seen]
+        .map((id) => {
+          const n = byId.get(id) ?? 0;
+          // ⚠️ NOT `rewardText`. An arm may REPLACE a reward type without
+          // rewriting the printed face - the knob's own note says so - so the
+          // text lies about the run whenever it does. Print what the engine
+          // will actually do.
+          const b = data.aerodrome.balloons.find((x) => x.id === id);
+          const reward =
+            b === undefined
+              ? '?'
+              : b.reward.type === 'plainAction'
+                ? `plain ${b.reward.suit ?? '?'} action`
+                : (b.rewardText ?? b.reward.type);
+          // ⭐ LABELLED BY COLOUR, NOT BY ID (12/09/2026). Since Dean's ruling the
+          // four balloons ARE the four core-action colours and there is no
+          // purple balloon, but the wheat balloon's internal id is still
+          // `balloonCoins`, a name two currencies out of date. A reader of this
+          // line should see "wheat", not a coin that does not exist. The id is
+          // kept internally because renaming it is a scripted rewrite across the
+          // handlers, the tests and every overlay that pins it by path.
+          return `${b?.colour ?? id} ${pct(n / total)} (${reward})`;
+        })
+        .join('   ');
+      out.push(`    by BALLOON, of ${total} moves:  ${line}`);
+    }
+  }
   out.push('');
   // DELIVERIES BY SUIT. Not a Vegetable diagnostic either, though it was added
   // for one: the island carries most of a winning score, so a suit's delivery

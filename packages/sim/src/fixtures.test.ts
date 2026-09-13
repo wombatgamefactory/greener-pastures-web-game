@@ -108,6 +108,15 @@ function overlayData(file: string) {
  */
 const V31_CONTROL = overlayData('v31-card-visit.overlay.json');
 const MEEPLE_LOOP_V1 = overlayData('meeple-loop-v1.overlay.json');
+/**
+ * ⭐ THE COMMONS BEFORE THE BALLOON AND VILLAGE STORE RULING (12/09/2026). The
+ * three `-commons-opening` fixtures were captured against that game; when Dean
+ * ruled the new balloons and the Store into the shipped default, that game
+ * became an ARM, so - by this file's own convention - its fixtures gained the
+ * `-commons-pre-balloons-` marker and replay here, byte-identically, while fresh
+ * unmarked `-commons-opening` fixtures record the new shipped game.
+ */
+const COMMONS_PRE_BALLOONS = overlayData('commons-pre-balloons-v1.overlay.json');
 
 /**
  * ⚠️ A FILE WITH NO MARKER REPLAYS AGAINST THE SHIPPED DEFAULT, whatever the
@@ -118,6 +127,7 @@ const MEEPLE_LOOP_V1 = overlayData('meeple-loop-v1.overlay.json');
 function dataFor(file: string) {
   if (file.includes('-v31-')) return V31_CONTROL;
   if (file.includes('-meeple-loop-')) return MEEPLE_LOOP_V1;
+  if (file.includes('-commons-pre-balloons-')) return COMMONS_PRE_BALLOONS;
   return BASE_GAME_DATA;
 }
 

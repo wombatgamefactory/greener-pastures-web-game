@@ -43,6 +43,25 @@ const arm: GameData = loadGameData({
   name: 'meeple-loop-v1',
   schemaVersion: 1,
   set: {
+    'rules.economy.cropScorerOnBarn': false,
+    // Pre-flip pins (12/09/2026): this is a named inline copy of a
+    // committed overlay, and a copy of a pin stops being a pin.
+    'aerodrome.moveCost.barnCards': 2,
+    'aerodrome.alwaysInPlay': false,
+    'aerodrome.flightMints': false,
+    'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+    'aerodrome.balloons.balloonDraw.reward.amount': 4,
+    'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+    'aerodrome.balloons.balloonBuild.reward.amount': 4,
+    'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+    'aerodrome.balloons.balloonSow.reward.amount': 4,
+    'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
+    'rules.economy.storeCoinsPerCard': 0,
+    'rules.economy.coinSupplyPerPlayer': 0,
+    'rules.economy.coinPaysBuild': false,
+    'rules.economy.coinPaysSuitCost': false,
+    'rules.economy.coinPaysGrow': false,
+    'rules.economy.coinGrowOnFullBuilding': false,
     'rules.turn.visitCurrency': 'meeple',
     // ⚠️ PINNED WITH THE COMMONS (09/09/2026). The shipped turn takes its bonus
     // FIRST (C2) and deals no starting meeples (C6), and neither arm is that
@@ -61,6 +80,25 @@ const control: GameData = loadGameData({
   name: 'v31-card-visit',
   schemaVersion: 1,
   set: {
+    'rules.economy.cropScorerOnBarn': false,
+    // Pre-flip pins (12/09/2026): this is a named inline copy of a
+    // committed overlay, and a copy of a pin stops being a pin.
+    'aerodrome.moveCost.barnCards': 2,
+    'aerodrome.alwaysInPlay': false,
+    'aerodrome.flightMints': false,
+    'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+    'aerodrome.balloons.balloonDraw.reward.amount': 4,
+    'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+    'aerodrome.balloons.balloonBuild.reward.amount': 4,
+    'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+    'aerodrome.balloons.balloonSow.reward.amount': 4,
+    'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
+    'rules.economy.storeCoinsPerCard': 0,
+    'rules.economy.coinSupplyPerPlayer': 0,
+    'rules.economy.coinPaysBuild': false,
+    'rules.economy.coinPaysSuitCost': false,
+    'rules.economy.coinPaysGrow': false,
+    'rules.economy.coinGrowOnFullBuilding': false,
     'rules.turn.visitCurrency': 'card',
     // ⚠️ PINNED WITH THE COMMONS (09/09/2026). The shipped turn takes its bonus
     // FIRST (C2) and deals no starting meeples (C6), and neither arm is that

@@ -1,8 +1,25 @@
 {
   "name": "veg-hand-flight-free-v1",
-  "description": "NOT A BALLOON REWARD AT ALL, and that is the point: it changes WHO CAN AFFORD THE MODULE rather than what the module pays. `aerodrome.handMoveCost` 1 -> 0 makes the hand-paid flight free, and the hand-paid flight is the ONE part of the aerodrome that is exclusively Vegetable's (V4 and V8 print it and nothing else in the game may use it). It is currently firing 0.27 times a game, against 1.22 when it was last measured at cost 1 in August, so Vegetable's own privileged route has decayed to nothing. If the reward arms are flat and this one is not, the module's problem is access and never generosity.",
+  "description": "NOT A BALLOON REWARD AT ALL, and that is the point: it changes WHO CAN AFFORD THE MODULE rather than what the module pays. `aerodrome.handMoveCost` 1 -> 0 makes the hand-paid flight free, and the hand-paid flight is the ONE part of the aerodrome that is exclusively Vegetable's (V4 and V8 print it and nothing else in the game may use it). It is currently firing 0.27 times a game, against 1.22 when it was last measured at cost 1 in August, so Vegetable's own privileged route has decayed to nothing. If the reward arms are flat and this one is not, the module's problem is access and never generosity. ⛔ PASSENGERS PINNED 12/09/2026: Dean's plain-action balloon and Village Store ruling moved sixteen shipped leaves at once. This overlay predates that flip and every report taken against it does too, so each of those leaves is pinned here BY NAME at its PRE-FLIP value. Without it an arm read as a delta against a pre-flip base would silently gain a one-card flight, an always-present Aerodrome and a live coin economy. That is the 05/09/2026 passenger lesson: an overlay that should not move with the shipped default has to pin every knob the flip moved.",
   "schemaVersion": 1,
   "set": {
-    "aerodrome.handMoveCost": 0
+    "aerodrome.handMoveCost": 0,
+    "aerodrome.moveCost.barnCards": 2,
+    "aerodrome.alwaysInPlay": false,
+    "aerodrome.flightMints": false,
+    "aerodrome.balloons.balloonDraw.reward.type": "draw",
+    "aerodrome.balloons.balloonDraw.reward.amount": 4,
+    "aerodrome.balloons.balloonBuild.reward.type": "buildDiscount",
+    "aerodrome.balloons.balloonBuild.reward.amount": 4,
+    "aerodrome.balloons.balloonSow.reward.type": "sowFromHand",
+    "aerodrome.balloons.balloonSow.reward.amount": 4,
+    "aerodrome.balloons.balloonCoins.reward.type": "harvestAny",
+    "rules.economy.storeCoinsPerCard": 0,
+    "rules.economy.coinSupplyPerPlayer": 0,
+    "rules.economy.coinPaysBuild": false,
+    "rules.economy.coinPaysSuitCost": false,
+    "rules.economy.coinPaysGrow": false,
+    "rules.economy.coinGrowOnFullBuilding": false,
+    "rules.economy.cropScorerOnBarn": false
   }
 }

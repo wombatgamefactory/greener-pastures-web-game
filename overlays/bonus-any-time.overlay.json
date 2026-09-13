@@ -1,8 +1,25 @@
 {
   "name": "bonus-any-time",
-  "description": "⭐ 09/09/2026: STILL A REAL ARM, AND ITS MEANING MOVED. The shipped window is 'start' again (Dean, C2 - a turn visibly ends on the main action), so 'any' is now the superset of the shipped rule and of overlays/commons-bonus-last.overlay.json rather than of 'start' and the shipped 'end'. Under the commons it asks whether a player wants to see their main action before deciding which board to buy - which is the same question the 03/09/2026 correction asked and Dean has now answered the other way. v14's 'once per turn, at any point', a SUPERSET of both other timings: a door may fuel the action AND the action may inform the door. Kept as the upper bound on what the bonus slot is worth when timing costs nothing. ⚠️ THE 19/08/2026 RUN OF THIS ARM WAS INVALID and returned an exactly zero delta on every metric: turnflow.ts had had its hold-the-turn-open line deleted as unreachable, which it was under 'start' and is not under this arm, so the slot reopened after the action and was never offered. The line is restored and load-bearing under the shipped 'end'. Any comparison with the 19/08/2026 numbers is worthless.",
+  "description": "⭐ 09/09/2026: STILL A REAL ARM, AND ITS MEANING MOVED. The shipped window is 'start' again (Dean, C2 - a turn visibly ends on the main action), so 'any' is now the superset of the shipped rule and of overlays/commons-bonus-last.overlay.json rather than of 'start' and the shipped 'end'. Under the commons it asks whether a player wants to see their main action before deciding which board to buy - which is the same question the 03/09/2026 correction asked and Dean has now answered the other way. v14's 'once per turn, at any point', a SUPERSET of both other timings: a door may fuel the action AND the action may inform the door. Kept as the upper bound on what the bonus slot is worth when timing costs nothing. ⚠️ THE 19/08/2026 RUN OF THIS ARM WAS INVALID and returned an exactly zero delta on every metric: turnflow.ts had had its hold-the-turn-open line deleted as unreachable, which it was under 'start' and is not under this arm, so the slot reopened after the action and was never offered. The line is restored and load-bearing under the shipped 'end'. Any comparison with the 19/08/2026 numbers is worthless. ⛔ PASSENGERS PINNED 12/09/2026: Dean's plain-action balloon and Village Store ruling moved sixteen shipped leaves at once. This overlay predates that flip and every report taken against it does too, so each of those leaves is pinned here BY NAME at its PRE-FLIP value. Without it an arm read as a delta against a pre-flip base would silently gain a one-card flight, an always-present Aerodrome and a live coin economy. That is the 05/09/2026 passenger lesson: an overlay that should not move with the shipped default has to pin every knob the flip moved.",
   "schemaVersion": 1,
   "set": {
-    "rules.turn.bonusTiming": "any"
+    "rules.turn.bonusTiming": "any",
+    "aerodrome.moveCost.barnCards": 2,
+    "aerodrome.alwaysInPlay": false,
+    "aerodrome.flightMints": false,
+    "aerodrome.balloons.balloonDraw.reward.type": "draw",
+    "aerodrome.balloons.balloonDraw.reward.amount": 4,
+    "aerodrome.balloons.balloonBuild.reward.type": "buildDiscount",
+    "aerodrome.balloons.balloonBuild.reward.amount": 4,
+    "aerodrome.balloons.balloonSow.reward.type": "sowFromHand",
+    "aerodrome.balloons.balloonSow.reward.amount": 4,
+    "aerodrome.balloons.balloonCoins.reward.type": "harvestAny",
+    "rules.economy.storeCoinsPerCard": 0,
+    "rules.economy.coinSupplyPerPlayer": 0,
+    "rules.economy.coinPaysBuild": false,
+    "rules.economy.coinPaysSuitCost": false,
+    "rules.economy.coinPaysGrow": false,
+    "rules.economy.coinGrowOnFullBuilding": false,
+    "rules.economy.cropScorerOnBarn": false
   }
 }

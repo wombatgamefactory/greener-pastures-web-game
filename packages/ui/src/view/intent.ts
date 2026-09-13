@@ -171,6 +171,22 @@ export function clickBuilding(moves: readonly Move[], intent: Intent, building: 
         (held === null || move.payment === held)
       ) {
         actions.push(move);
+      } else if (
+        // ⭐ THE VILLAGE STORE'S COIN GROW (A150, live in the shipped game since
+        // Dean's ruling of 12/09/2026). It holds no card either - a coin places
+        // nothing, so `payment` is null exactly as R15's meeple grow was - but
+        // unlike the meeple it IS a rule of the shipped game, so it has to be
+        // reachable. It is offered on a click of the building with NO card
+        // held, which is the only gesture that does not already mean "pay with
+        // this card". ⚠️ The meeple grow above stays filtered: `coinGrow` is
+        // what separates the two, and only the coin grow carries it.
+        canGrow &&
+        move.building === building &&
+        move.payment === null &&
+        move.coinGrow === true &&
+        held === null
+      ) {
+        actions.push(move);
       }
     }
   }

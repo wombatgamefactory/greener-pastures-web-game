@@ -244,7 +244,15 @@ describe('coins are an arm, not the shipped game', () => {
   // not money.
   const BALLOON_ID = 'aerodrome.balloons.balloonCoins.';
 
-  it('ships every coin switch OFF, so the default game has no currency', () => {
+  // ⭐ REWRITTEN 12/09/2026, WHEN DEAN RULED THE VILLAGE STORE INTO THE SHIPPED
+  // GAME (A150). The old name of this test was "ships every coin switch OFF, so
+  // the default game has no currency" and it is kept in the history rather than
+  // in the title: the shipped game now HAS a currency, minted at the Store when
+  // you deliver. ⛔ THE GUARD IT PROVIDES IS UNCHANGED AND IS THE REASON IT
+  // STILL EXISTS: the OTHER coin routes stay shut, so a second mint cannot creep
+  // in behind a passing test. There is exactly one mint in this game and it is
+  // `storeCoinsPerCard`.
+  it('ships the Village Store ON and every OTHER coin route shut', () => {
     // The mint.
     expect(BASE_GAME_DATA.rules.turn.commonsTake).toBe('harvest');
     expect(isCommonsTakeCoins(BASE_GAME_DATA)).toBe(false);
@@ -254,13 +262,16 @@ describe('coins are an arm, not the shipped game', () => {
     expect(farmsteadCoinPower(BASE_GAME_DATA)).toBe(false);
     expect(BASE_GAME_DATA.rules.economy.endgameCoinCost).toBeNull();
     expect(endgameCoinCost(BASE_GAME_DATA)).toBeNull();
-    // The Village Store's own mint, supply and four sink switches (A150).
-    expect(storeCoinsPerCard(BASE_GAME_DATA)).toBe(0);
-    expect(coinSupplyPerPlayer(BASE_GAME_DATA)).toBe(0);
-    expect(coinPaysBuild(BASE_GAME_DATA)).toBe(false);
-    expect(coinPaysSuitCost(BASE_GAME_DATA)).toBe(false);
-    expect(coinPaysGrow(BASE_GAME_DATA)).toBe(false);
-    expect(coinGrowReachesFullBuildings(BASE_GAME_DATA)).toBe(false);
+    // ⭐ THE VILLAGE STORE, LIVE SINCE 12/09/2026 (A150, Dean): one mint, a
+    // shared recirculating supply of 5 a player, and both sinks - Build
+    // including the n-of-suit half, and GROW with a full building a legal
+    // target. Asserted at their RULED values rather than at zero.
+    expect(storeCoinsPerCard(BASE_GAME_DATA)).toBe(1);
+    expect(coinSupplyPerPlayer(BASE_GAME_DATA)).toBe(5);
+    expect(coinPaysBuild(BASE_GAME_DATA)).toBe(true);
+    expect(coinPaysSuitCost(BASE_GAME_DATA)).toBe(true);
+    expect(coinPaysGrow(BASE_GAME_DATA)).toBe(true);
+    expect(coinGrowReachesFullBuildings(BASE_GAME_DATA)).toBe(true);
   });
 
   // Listed LITERALLY rather than by count, so a NINTH coin leaf cannot creep in
@@ -287,10 +298,14 @@ describe('coins are an arm, not the shipped game', () => {
     // paid nothing else since. If this ever reads non-zero, the arm has grown a
     // second mint and the whole economy needs re-deriving.
     expect(BASE_GAME_DATA.island.tileRule.coinsPerDelivery).toBe(0);
-    // And the balloon that keeps the name has stopped paying money.
-    expect(
-      BASE_GAME_DATA.aerodrome.balloons.find((b) => b.id === 'balloonCoins')?.reward.type,
-    ).toBe('harvestAny');
+    // ⭐ And the balloon that keeps the name has stopped paying money TWICE
+    // over: v31 made it a harvest, and Dean's ruling of 12/09/2026 made it the
+    // plain WHEAT action, which is a Harvest by another route. Its id stays
+    // `balloonCoins` for V19's count, which is the whole reason this line is
+    // here rather than in the aerodrome block.
+    const magenta = BASE_GAME_DATA.aerodrome.balloons.find((b) => b.id === 'balloonCoins');
+    expect(magenta?.reward.type).toBe('plainAction');
+    expect(magenta?.reward.suit).toBe('wheat');
   });
 
   // The registry is the other surface a coin could arrive on, and the same
@@ -1117,15 +1132,21 @@ describe('the host draw on a visit', () => {
 describe('the village store coin and the delivery meeple', () => {
   // Every leaf, its shipped value and its accessor, in one table so a future
   // edit that flips one has to flip a line here as well.
-  it('ships all ten leaves at the value that changes nothing', () => {
-    expect(BASE_GAME_DATA.rules.economy.storeCoinsPerCard).toBe(0);
-    expect(storeCoinsPerCard(BASE_GAME_DATA)).toBe(0);
-    expect(BASE_GAME_DATA.rules.economy.coinSupplyPerPlayer).toBe(0);
-    expect(coinSupplyPerPlayer(BASE_GAME_DATA)).toBe(0);
-    expect(coinPaysBuild(BASE_GAME_DATA)).toBe(false);
-    expect(coinPaysSuitCost(BASE_GAME_DATA)).toBe(false);
-    expect(coinPaysGrow(BASE_GAME_DATA)).toBe(false);
-    expect(coinGrowOnFullBuilding(BASE_GAME_DATA)).toBe(false);
+  // ⭐ RENAMED AND RE-POINTED 12/09/2026. This block was written while all ten
+  // leaves were inert and its claim was inertness. Dean ruled the Village
+  // Store in (A150), so SIX of the ten are now live and the claim has split:
+  // the six coin leaves are asserted at their RULED values, and the four
+  // meeple leaves keep the original inertness claim, which is the half that
+  // still protects the v31 control's turn-start meeple spend.
+  it('ships the six coin leaves as ruled and the four meeple leaves inert', () => {
+    expect(BASE_GAME_DATA.rules.economy.storeCoinsPerCard).toBe(1);
+    expect(storeCoinsPerCard(BASE_GAME_DATA)).toBe(1);
+    expect(BASE_GAME_DATA.rules.economy.coinSupplyPerPlayer).toBe(5);
+    expect(coinSupplyPerPlayer(BASE_GAME_DATA)).toBe(5);
+    expect(coinPaysBuild(BASE_GAME_DATA)).toBe(true);
+    expect(coinPaysSuitCost(BASE_GAME_DATA)).toBe(true);
+    expect(coinPaysGrow(BASE_GAME_DATA)).toBe(true);
+    expect(coinGrowOnFullBuilding(BASE_GAME_DATA)).toBe(true);
 
     expect(deliveryMeepleSpace(BASE_GAME_DATA)).toBeNull();
     expect(meepleSpendTiming(BASE_GAME_DATA)).toBe('start');
@@ -1183,12 +1204,26 @@ describe('the village store coin and the delivery meeple', () => {
   // ⛔ THE PRECEDENCE RULE, ASSERTED SO IT CANNOT SILENTLY STOP BEING TRUE: V9
   // is meaningless without V8, and a branch reading the raw leaf would price a
   // decision that cannot happen under the build-only arm.
+  // ⭐ RE-POINTED 12/09/2026. The precedence rule is what this test is FOR and
+  // it has not changed; what changed is that the base now has BOTH leaves true
+  // (A150), so the "raw leaf says yes, rule says no" case can no longer be read
+  // off the shipped data and is built with an overlay that shuts coinPaysGrow.
+  // ⛔ Asserting it off the base was always the weaker form: it only worked
+  // while the feature was inert, which is exactly the snapshot-test shape this
+  // project keeps being bitten by.
   it('answers the full-building Grow through one accessor and never the raw leaf', () => {
-    expect(coinGrowReachesFullBuildings(BASE_GAME_DATA)).toBe(false);
+    // Shipped: both leaves live, so the rule reaches full buildings.
+    expect(coinGrowReachesFullBuildings(BASE_GAME_DATA)).toBe(true);
 
-    const rawOnly = loadGameData(overlay({ 'rules.economy.coinGrowOnFullBuilding': true }));
+    const rawOnly = loadGameData(
+      overlay({
+        'rules.economy.coinPaysGrow': false,
+        'rules.economy.coinGrowOnFullBuilding': true,
+      }),
+    );
     expect(coinGrowOnFullBuilding(rawOnly)).toBe(true);
-    // The raw leaf says yes and the rule says no, which is the whole point.
+    // The raw leaf says yes and the rule says no, which is the whole point: V9
+    // is meaningless without V8.
     expect(coinGrowReachesFullBuildings(rawOnly)).toBe(false);
 
     const both = loadGameData(
@@ -1200,7 +1235,15 @@ describe('the village store coin and the delivery meeple', () => {
     expect(coinGrowReachesFullBuildings(both)).toBe(true);
 
     // And a coin-Grow that cannot reach a full building is still a coin-Grow.
-    const growOnly = loadGameData(overlay({ 'rules.economy.coinPaysGrow': true }));
+    // ⚠️ Both leaves are named here since 12/09/2026: the base now ships the
+    // full-building clause TRUE, so setting only coinPaysGrow no longer builds
+    // this case and would silently assert the shipped game instead.
+    const growOnly = loadGameData(
+      overlay({
+        'rules.economy.coinPaysGrow': true,
+        'rules.economy.coinGrowOnFullBuilding': false,
+      }),
+    );
     expect(coinPaysGrow(growOnly)).toBe(true);
     expect(coinGrowReachesFullBuildings(growOnly)).toBe(false);
   });
@@ -1510,9 +1553,19 @@ describe('the five doors', () => {
 });
 
 describe('the aerodrome', () => {
-  it('gives the magenta balloon a harvest instead of coins, keeping its id for V19', () => {
+  // ⭐ RE-POINTED 12/09/2026. v31 turned this balloon from "Gain GBP 4" into a
+  // harvest; Dean's ruling made it the plain WHEAT action, which is a Harvest
+  // reached through `performDoorAction` instead of its own reward branch. It is
+  // also recoloured from magenta #c15c90 to wheat #e2c488, because it always
+  // paid wheat's verb in a colour no suit had. ⛔ THE ID STAYS `balloonCoins`,
+  // which is the claim this test actually protects: V19 The Market Gazette
+  // scores by balloon COUNT and a rename would have to be chased through the
+  // handler, the art and the reports for no gain.
+  it('gives the magenta balloon the plain wheat action, keeping its id for V19', () => {
     const balloon = BASE_GAME_DATA.aerodrome.balloons.find((b) => b.id === 'balloonCoins');
-    expect(balloon?.reward.type).toBe('harvestAny');
+    expect(balloon?.reward.type).toBe('plainAction');
+    expect(balloon?.reward.suit).toBe('wheat');
+    expect(balloon?.colour).toBe('wheat');
     // A permission has no size. An `amount` appearing here means somebody has
     // quietly turned it back into a quantity.
     expect(balloon?.reward.amount).toBeUndefined();

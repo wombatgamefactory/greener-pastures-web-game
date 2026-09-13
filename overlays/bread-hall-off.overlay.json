@@ -1,8 +1,25 @@
 {
   "name": "bread-hall-off",
-  "description": "Paired comparison: W21 The Bread Hall switched out. RE-POINTED FOR v31 (02/09/2026) - the question this arm used to ask is gone, and the card it asks about is not. It was written to settle whether the card's old text, 'Game end: 1 VP for every GBP 2', corrupted the coin economy; coins were deleted from the game and the card is now 'Game end: 2 VP for each FIELD you have built', a Wheat own-suit scorer. So this is now an arm about RISK 3, the monoculture pull: the Farmstead already pays 1 VP per own-suit card built and the Power and Endgame cards already cost 2 cards of their own suit, and this card is a third payment on the same axis. The Innovation lens's standing constraint is that the metric axis must not be the specialisation axis. Read the own-crop build share (82.6% before v31 and expected to rise), the Wheat seat's win rate, and whether Wheat's card mix flattens without it.",
+  "description": "Paired comparison: W21 The Bread Hall switched out. RE-POINTED FOR v31 (02/09/2026) - the question this arm used to ask is gone, and the card it asks about is not. It was written to settle whether the card's old text, 'Game end: 1 VP for every GBP 2', corrupted the coin economy; coins were deleted from the game and the card is now 'Game end: 2 VP for each FIELD you have built', a Wheat own-suit scorer. So this is now an arm about RISK 3, the monoculture pull: the Farmstead already pays 1 VP per own-suit card built and the Power and Endgame cards already cost 2 cards of their own suit, and this card is a third payment on the same axis. The Innovation lens's standing constraint is that the metric axis must not be the specialisation axis. Read the own-crop build share (82.6% before v31 and expected to rise), the Wheat seat's win rate, and whether Wheat's card mix flattens without it. ⛔ PASSENGERS PINNED 12/09/2026: Dean's plain-action balloon and Village Store ruling moved sixteen shipped leaves at once. This overlay predates that flip and every report taken against it does too, so each of those leaves is pinned here BY NAME at its PRE-FLIP value. Without it an arm read as a delta against a pre-flip base would silently gain a one-card flight, an always-present Aerodrome and a live coin economy. That is the 05/09/2026 passenger lesson: an overlay that should not move with the shipped default has to pin every knob the flip moved.",
   "schemaVersion": 1,
   "set": {
-    "cards.catalogue.W21.enabled": false
+    "cards.catalogue.W21.enabled": false,
+    "aerodrome.moveCost.barnCards": 2,
+    "aerodrome.alwaysInPlay": false,
+    "aerodrome.flightMints": false,
+    "aerodrome.balloons.balloonDraw.reward.type": "draw",
+    "aerodrome.balloons.balloonDraw.reward.amount": 4,
+    "aerodrome.balloons.balloonBuild.reward.type": "buildDiscount",
+    "aerodrome.balloons.balloonBuild.reward.amount": 4,
+    "aerodrome.balloons.balloonSow.reward.type": "sowFromHand",
+    "aerodrome.balloons.balloonSow.reward.amount": 4,
+    "aerodrome.balloons.balloonCoins.reward.type": "harvestAny",
+    "rules.economy.storeCoinsPerCard": 0,
+    "rules.economy.coinSupplyPerPlayer": 0,
+    "rules.economy.coinPaysBuild": false,
+    "rules.economy.coinPaysSuitCost": false,
+    "rules.economy.coinPaysGrow": false,
+    "rules.economy.coinGrowOnFullBuilding": false,
+    "rules.economy.cropScorerOnBarn": false
   }
 }

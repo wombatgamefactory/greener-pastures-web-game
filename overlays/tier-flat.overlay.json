@@ -1,6 +1,6 @@
 {
   "name": "tier-flat",
-  "description": "The power test, not a proposal. Every Tier 2 and Tier 3 card is repriced to 1 suit card, the cheapest Tier 1 price, with everything else untouched. If these cards are unbought because they are DEAR, this arm should see them bought and should move the score. If they are unbought because they are WEAK, they get bought and nothing else moves - which is the finding, and says the answer is stronger cards rather than cheaper ones.",
+  "description": "The power test, not a proposal. Every Tier 2 and Tier 3 card is repriced to 1 suit card, the cheapest Tier 1 price, with everything else untouched. If these cards are unbought because they are DEAR, this arm should see them bought and should move the score. If they are unbought because they are WEAK, they get bought and nothing else moves - which is the finding, and says the answer is stronger cards rather than cheaper ones. ⛔ PASSENGERS PINNED 12/09/2026: Dean's plain-action balloon and Village Store ruling moved sixteen shipped leaves at once. This overlay predates that flip and every report taken against it does too, so each of those leaves is pinned here BY NAME at its PRE-FLIP value. Without it an arm read as a delta against a pre-flip base would silently gain a one-card flight, an always-present Aerodrome and a live coin economy. That is the 05/09/2026 passenger lesson: an overlay that should not move with the shipped default has to pin every knob the flip moved.",
   "schemaVersion": 1,
   "set": {
     "cards.catalogue.A9.buildCost.suit": 1,
@@ -72,6 +72,23 @@
     "cards.catalogue.W14.buildCost.suit": 1,
     "cards.catalogue.W14.buildCost.wild": 0,
     "cards.catalogue.W15.buildCost.suit": 1,
-    "cards.catalogue.W15.buildCost.wild": 0
+    "cards.catalogue.W15.buildCost.wild": 0,
+    "aerodrome.moveCost.barnCards": 2,
+    "aerodrome.alwaysInPlay": false,
+    "aerodrome.flightMints": false,
+    "aerodrome.balloons.balloonDraw.reward.type": "draw",
+    "aerodrome.balloons.balloonDraw.reward.amount": 4,
+    "aerodrome.balloons.balloonBuild.reward.type": "buildDiscount",
+    "aerodrome.balloons.balloonBuild.reward.amount": 4,
+    "aerodrome.balloons.balloonSow.reward.type": "sowFromHand",
+    "aerodrome.balloons.balloonSow.reward.amount": 4,
+    "aerodrome.balloons.balloonCoins.reward.type": "harvestAny",
+    "rules.economy.storeCoinsPerCard": 0,
+    "rules.economy.coinSupplyPerPlayer": 0,
+    "rules.economy.coinPaysBuild": false,
+    "rules.economy.coinPaysSuitCost": false,
+    "rules.economy.coinPaysGrow": false,
+    "rules.economy.coinGrowOnFullBuilding": false,
+    "rules.economy.cropScorerOnBarn": false
   }
 }

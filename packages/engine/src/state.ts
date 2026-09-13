@@ -1710,7 +1710,16 @@ export type GameEvent =
       seat: Seat;
       colour: Suit;
       action: DoorAction;
-      via: 'visit' | 'meeple' | 'commons';
+      /**
+       * ⭐ 'balloon' ADDED 12/09/2026 and it is a NAMED PASSENGER. Under an arm
+       * whose balloons pay plain actions, a flight buys a door action and is
+       * counted as one here, exactly as D4 made a commons play count as one.
+       * ⛔ SO THE DOOR MIX AND ACTION INFLATION ON SUCH AN ARM ARE NOT
+       * COMPARABLE WITH THE SHIPPED GAME'S, and no report may pool them. This
+       * field is how a reader splits them; it produces nothing at all while
+       * every balloon reward is a sized one, which is the shipped data.
+       */
+      via: 'visit' | 'meeple' | 'commons' | 'balloon';
     }
   /**
    * A MEEPLE WAS CLAIMED off an island delivery space and is now in a player's

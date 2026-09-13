@@ -339,7 +339,14 @@ describe('a full game never offers an id the acting seat cannot see', () => {
         const seed = `view-safety-${seats}-${n}`;
         const rng = seedRng(`${seed}:policy`);
         let state = newGame(data, { seats, suits: suits.slice(0, seats), seed });
-        for (let step = 0; step < 250 && state.phase === 'playing'; step++) {
+        // ⭐ 250 -> 400 STEPS (12/09/2026), AND THE FLOOR BELOW IS UNTOUCHED ON
+        // PURPOSE. Dean's Village Store ruling puts an optional mint prompt after
+        // every delivery and flight, so a random walk now spends steps answering
+        // it, and 250 steps checked 4,581 positions against the 5,000 floor. This
+        // test is a LEAK DETECTOR: lowering the floor to fit would quietly check
+        // fewer hidden-information positions, which is the wrong direction for a
+        // safety net. So the budget grows and the floor holds.
+        for (let step = 0; step < 400 && state.phase === 'playing'; step++) {
           const moves = legalMoves(data, state);
           if (moves.length === 0) break;
           const where = `${seed} step ${step}`;

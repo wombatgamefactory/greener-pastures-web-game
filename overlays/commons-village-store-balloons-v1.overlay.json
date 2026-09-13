@@ -1,0 +1,27 @@
+{
+  "name": "commons-village-store-balloons-v1",
+  "description": "⭐ THE ASSEMBLED ARM (Dean, 12/09/2026): the Village Store AND the four plain-action balloons, with a flight counting as a delivery so the Store's mint fires after it (aerodrome.flightMints true). Dean's own example: two cards in the barn, deliver one to take a balloon and perform its colour's action, then discard the other for £1. ⭐ WHAT IT IS AIMED AT, and it is the measured cause rather than a guess: a crate is 2 cards of ONE crop, all or nothing, so 88.8% of barn-holding decisions cannot afford any open tile and 84% of those are one or two cards short. A ONE-CARD DELIVERY IS THE FIRST THING IN THIS GAME THAT MAKES A SINGLE ODD CARD WORTH ANYTHING. ⭐ AND IT IS AIMED AT VEGETABLE SIDEWAYS: the four balloons are the four actions that are NOT Deliver, so Deliver becomes the key that buys every other verb, and Vegetable's dead 'then Deliver' riders (V5, V6, V7, V14, V15, currently firing into a barn that cannot pay) get a target that always exists. NO CARD TEXT CHANGES. ⛔ THE HEADLINE RISK, AND IT IS THE NUMBER TO READ FIRST: barn card → one-card flight → Store coin → BUILD COST, because coinPaysBuild is true including the n-of-suit half. That is a barn-to-build pipe arriving by COMPOSITION, and rules.json's standing warning on cardsPerSubstitution exists to stop exactly it: 'or the barn stops being a dead end and starts accelerating engines'. Read builds per seat by suit, and read it against Dairy, which already leads at 9.19. ⚠️ SECOND RISK: the mint's trigger count roughly doubles, so the handoff's '7-9 coins minted a player a game' prediction was made about island deliveries alone and is VOID here. ⚠️ THIRD: game length, because the design's own note says Vegetable needs the tightest leash in the game since deliveries are the end trigger. ⛔ IT MOVES TWO DEVICES AT ONCE, so its two controls are overlays/commons-village-store-v1.overlay.json and overlays/commons-balloon-actions-v1.overlay.json and neither may be skipped. ⛔ C100 IS OPEN AND THE SHIPPED GAME IS THE COMMONS, so every commons leaf is pinned here BY NAME and this arm differs from reports/watchlist-2026-09-12T16-54-59-reference-v15.txt in the leaves listed and nothing else. ⛔ THE VILLAGE STORE HAS NEVER BEEN MEASURED ON THE COMMONS: every Store run of 12/09/2026 sits on the notice-board-visit stack, whose suit table (veg 43.5 / wheat 41.9 / apiary 41.2 / dairy 23.2 / orchard 17.4) is near-inverted from the shipped one (dairy 45.1 / wheat 40.2 / orchard 33.9 / apiary 29.8 / veg 18.1). Its finding that 'a device that pays for surplus pays the rich' is a finding about a DIFFERENT TABLE and may not be quoted at this one. ⛔ MAY NOT BE QUOTED: the bonus rate is a share of TURNS and never plays per turn; no level is comparable with a reference-v14 or earlier number; the hand limit of 7 is the SIMULATOR'S BOUND and not a rule (C7).",
+  "schemaVersion": 1,
+  "set": {
+    "rules.turn.visitCurrency": "commons",
+    "rules.turn.bonusTiming": "start",
+    "rules.turn.commonsTake": "harvest",
+    "rules.turn.startingMeeplesPerColour": 0,
+    "rules.turn.meepleAsCard": false,
+    "rules.economy.commonsThreshold": null,
+    "rules.economy.commonsColourMatch": false,
+    "rules.economy.storeCoinsPerCard": 1,
+    "rules.economy.coinSupplyPerPlayer": 5,
+    "rules.economy.coinPaysBuild": true,
+    "rules.economy.coinPaysSuitCost": true,
+    "rules.economy.coinPaysGrow": true,
+    "rules.economy.coinGrowOnFullBuilding": true,
+    "aerodrome.moveCost.barnCards": 1,
+    "aerodrome.flightMints": true,
+    "aerodrome.balloons.balloonDraw.reward.type": "plainAction",
+    "aerodrome.balloons.balloonBuild.reward.type": "plainAction",
+    "aerodrome.balloons.balloonSow.reward.type": "plainAction",
+    "aerodrome.balloons.balloonCoins.reward.type": "plainAction",
+    "rules.economy.cropScorerOnBarn": false
+  }
+}

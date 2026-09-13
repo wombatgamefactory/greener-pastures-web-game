@@ -1,6 +1,6 @@
 {
   "name": "tier-flat-no-vp",
-  "description": "THE PURE POWER TEST (Dean, 2026-08-09). tier-flat and no-printed-vp combined: every Tier 2 and Tier 3 card costs 1 suit card, and no card in the game prints any VP in its corner. A card can now only be built because a player wants what its TEXT does. Abilities, thresholds and Endgame gameEnd scoring are untouched. This is the fourth cell of a 2x2 (price on/off by VP on/off) and it is the one that answers the question the other three cannot: is the ability worth an action?",
+  "description": "THE PURE POWER TEST (Dean, 2026-08-09). tier-flat and no-printed-vp combined: every Tier 2 and Tier 3 card costs 1 suit card, and no card in the game prints any VP in its corner. A card can now only be built because a player wants what its TEXT does. Abilities, thresholds and Endgame gameEnd scoring are untouched. This is the fourth cell of a 2x2 (price on/off by VP on/off) and it is the one that answers the question the other three cannot: is the ability worth an action? ⛔ PASSENGERS PINNED 12/09/2026: Dean's plain-action balloon and Village Store ruling moved sixteen shipped leaves at once. This overlay predates that flip and every report taken against it does too, so each of those leaves is pinned here BY NAME at its PRE-FLIP value. Without it an arm read as a delta against a pre-flip base would silently gain a one-card flight, an always-present Aerodrome and a live coin economy. That is the 05/09/2026 passenger lesson: an overlay that should not move with the shipped default has to pin every knob the flip moved.",
   "schemaVersion": 1,
   "set": {
     "cards.catalogue.A9.buildCost.suit": 1,
@@ -147,6 +147,23 @@
     "cards.catalogue.W15.printedVp": 0,
     "cards.catalogue.W16.printedVp": 0,
     "cards.catalogue.W17.printedVp": 0,
-    "cards.catalogue.W18.printedVp": 0
+    "cards.catalogue.W18.printedVp": 0,
+    "aerodrome.moveCost.barnCards": 2,
+    "aerodrome.alwaysInPlay": false,
+    "aerodrome.flightMints": false,
+    "aerodrome.balloons.balloonDraw.reward.type": "draw",
+    "aerodrome.balloons.balloonDraw.reward.amount": 4,
+    "aerodrome.balloons.balloonBuild.reward.type": "buildDiscount",
+    "aerodrome.balloons.balloonBuild.reward.amount": 4,
+    "aerodrome.balloons.balloonSow.reward.type": "sowFromHand",
+    "aerodrome.balloons.balloonSow.reward.amount": 4,
+    "aerodrome.balloons.balloonCoins.reward.type": "harvestAny",
+    "rules.economy.storeCoinsPerCard": 0,
+    "rules.economy.coinSupplyPerPlayer": 0,
+    "rules.economy.coinPaysBuild": false,
+    "rules.economy.coinPaysSuitCost": false,
+    "rules.economy.coinPaysGrow": false,
+    "rules.economy.coinGrowOnFullBuilding": false,
+    "rules.economy.cropScorerOnBarn": false
   }
 }

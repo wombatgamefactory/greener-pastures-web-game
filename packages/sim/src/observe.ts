@@ -538,6 +538,7 @@ export class Fold {
       movesChosen: {},
       movesOffered: {},
       balloonMoves: 0,
+      balloonMovesById: {},
       raidsByVictim: zeros(),
       balloonMovesBySeat: zeros(),
       handFlightsBySeat: zeros(),
@@ -1660,6 +1661,7 @@ export class Fold {
       }
       case 'balloonMoved': {
         m.balloonMoves += 1;
+        m.balloonMovesById[e.balloon] = (m.balloonMovesById[e.balloon] ?? 0) + 1;
         m.balloonMovesBySeat[e.seat] = (m.balloonMovesBySeat[e.seat] ?? 0) + 1;
         // Paid out of HAND (V4, V8) rather than out of the barn, read off the
         // event's own count rather than inferred from an empty barn spend.

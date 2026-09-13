@@ -1201,7 +1201,8 @@ export interface HookEvents {
     actor: Seat;
     colour: Suit;
     action: DoorAction;
-    via: 'visit' | 'meeple' | 'commons';
+    /** 'balloon' added 12/09/2026; see the note on `doorUsed` in state.ts. */
+    via: 'visit' | 'meeple' | 'commons' | 'balloon';
   };
   /**
    * A card landed in a tableau, by ANY path - the Build action, a Worker's

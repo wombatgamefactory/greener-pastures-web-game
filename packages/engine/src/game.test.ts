@@ -25,7 +25,7 @@ import { anyDeliverOption, deliverOptions, islandDeliveriesBy, tileLevel } from 
 import { apply, isOver, legalMoves, newGame } from './game.js';
 import { cardById } from './query.js';
 import { seedRng, rngInt } from './rng.js';
-import { score } from './runtime.js';
+import { answerTask, score } from './runtime.js';
 import { freshTurn, islandTilesInPlay, meeplePool } from './setup.js';
 import type { GameEvent, GameState, Move } from './state.js';
 import {
@@ -51,6 +51,21 @@ const ORCHARD = 1;
  */
 function base(): GameState {
   return makeState(data, ['wheat', 'orchard']);
+}
+
+/**
+ * ⭐ DECLINE THE VILLAGE STORE (12/09/2026). Dean ruled the Store into the
+ * shipped game, so every delivery now queues an OPTIONAL `mint` task that asks
+ * whether to sell spare barn cards for coins. Tests whose subject is the ISLAND
+ * are not about that question, so they answer it with the explicit decline the
+ * task always offers (D3: declining is explicit, never an empty list) and carry
+ * on. Answering it rather than clearing `tasks` by hand keeps the engine's own
+ * drain loop honest.
+ */
+function declineStore(state: GameState): GameState {
+  let s = state;
+  while (s.tasks[0]?.t === 'mint') s = answerTask(data, s, { kind: 'skip' }).state;
+  return s;
 }
 
 /**
@@ -186,11 +201,15 @@ describe('newGame', () => {
     });
     expect(four.suitsInPlay).toContain('vegetable');
     expect(four.aerodrome).not.toBeNull();
-    // At 2 seats the passive suit is random; find a seed that leaves Vegetable out.
+    // ⭐ INVERTED 12/09/2026: the Aerodrome is in EVERY game (Dean's ruling,
+    // `aerodrome.alwaysInPlay`), on C1's own argument that a module granting
+    // core actions should exist whatever suits are dealt. So a two-seat game
+    // that leaves Vegetable out STILL parks its balloons in the centre.
     for (let i = 0; i < 20; i++) {
       const s = newGame(data, { seats: 2, suits: ['wheat', 'apiary'], seed: `n${i}` });
       if (!s.suitsInPlay.includes('vegetable')) {
-        expect(s.aerodrome).toBeNull();
+        expect(s.aerodrome).not.toBeNull();
+        expect(s.aerodrome?.balloons.every((b) => b.at === 'centre')).toBe(true);
         return;
       }
     }
@@ -489,10 +508,10 @@ describe('main actions through apply', () => {
     const state = base();
     stockBarn(state, WHEAT, 'wheat', 12);
     const move: Move = { type: 'deliver', seat: WHEAT, tile: 'A1', spend: { wheat: 4 } };
-    let s = apply(data, state, move).state;
+    let s = declineStore(apply(data, state, move).state);
     s.turn = freshTurn();
     s.turnPlayer = WHEAT;
-    s = apply(data, s, move).state;
+    s = declineStore(apply(data, s, move).state);
     s.turn = freshTurn();
     s.turnPlayer = WHEAT;
     expect(legalMoves(data, s).some((m) => m.type === 'deliver' && m.tile === 'A1')).toBe(false);
@@ -592,6 +611,7 @@ describe('main actions through apply', () => {
       spend: { wheat: 4 },
     });
     const nextTurn = (state: GameState, seat: number) => {
+      state = declineStore(state);
       state.turn = freshTurn();
       state.turnPlayer = seat;
       return state;

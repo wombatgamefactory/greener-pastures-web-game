@@ -973,8 +973,62 @@ export const REFERENCE_V15: ReferenceConfig = {
   seed: 'reference-v15',
 };
 
+/**
+ * ⭐ reference-v16, cut 12/09/2026 for Dean's balloon and Village Store ruling.
+ *
+ * The commons of reference-v15 is unchanged. On top of it, sixteen shipped
+ * leaves moved at once, and every level in the suite moves with them:
+ *
+ *  - THE BALLOONS GIVE ONE BONUS ACTION EACH, the plain core action of their
+ *    colour, through the same `performDoorAction` a central board uses. Four
+ *    balloons in the four core-action colours - wheat Harvest, orchard Draw 2,
+ *    apiary GROW, dairy Build. There is NO purple balloon and NO vegetable one.
+ *  - A FLIGHT COSTS ONE BARN CARD OF ANY CROP, taken as the Deliver action. It is
+ *    aimed at the parity trap: a crate is 2 cards of one crop, all or nothing, so
+ *    a single odd barn card was worth exactly zero, and now it buys an action.
+ *  - THE AERODROME IS IN EVERY GAME, on C1's own argument that a module granting
+ *    core actions should exist whatever suits are dealt.
+ *  - THE VILLAGE STORE IS LIVE (A150): a mint after every delivery AND every
+ *    flight, a shared supply of 5 coins a player, and both sinks.
+ *  - THE BARN AND FARMSTEAD SWAP ROLES (13/09/2026, `cropScorerOnBarn`): the
+ *    Barn prints the own-crop end-game scorer and the Farmstead holds the
+ *    receipts. Score-neutral under the commons, proven by test, so it moves no
+ *    level on its own.
+ *
+ * ⛔ WHAT A READER MUST NOT DO: quote a v15 level against a v16 one. The seed is
+ * new, the rules are new, and a07 and a16 now count a flight as a bought door
+ * (`doorUsed` with `via: 'balloon'`). The pre-flip game survives as
+ * `overlays/commons-pre-balloons-v1.overlay.json`, proven by the three
+ * `-commons-pre-balloons-` fixtures replaying against it byte-identically.
+ */
+export const REFERENCE_V16: ReferenceConfig = {
+  ...REFERENCE_V15,
+  id: 'reference-v16',
+  description:
+    'THE COMMONS WITH DEAN’S BALLOONS AND THE VILLAGE STORE (12/09/2026). Everything in ' +
+    'reference-v15 stands - five ownerless central Notice Boards, the bonus first, any card onto ' +
+    'any board, no threshold, no meeples - and sixteen leaves moved on top of it. THE BALLOONS ' +
+    'GIVE ONE BONUS ACTION EACH: four balloons in the four core-action colours, each paying the ' +
+    'plain action of its colour (wheat Harvest, orchard Draw 2, apiary GROW, dairy Build); there ' +
+    'is no purple balloon and no vegetable one, because a flight IS the Deliver action and a ' +
+    'Deliver balloon would self-cancel. A FLIGHT COSTS ONE BARN CARD OF ANY CROP, which makes a ' +
+    'single odd barn card worth an action for the first time. THE AERODROME IS IN EVERY GAME. THE ' +
+    'VILLAGE STORE IS LIVE: after every delivery and every flight you may sell spare barn cards ' +
+    'for £1 each from a shared supply of 5 a player, and a coin pays a build (including the ' +
+    'n-of-suit half) or a GROW (a full building a legal target). ⚠️ a07 AND a16 COUNT A ' +
+    'FLIGHT AS A BOUGHT DOOR (via "balloon"), so the door mix is not comparable with v15. ' +
+    '⚠️ THE HAND LIMIT OF 7 IS THE SIMULATOR’S BOUND AND NOT A RULE OF THE GAME ' +
+    '(C7). THE BARN NOW PRINTS THE OWN-CROP END-GAME SCORER AND THE FARMSTEAD IS THE RECEIPT TRAY ' +
+    '(rules.economy.cropScorerOnBarn, 13/09/2026); under the commons that swap is SCORE-NEUTRAL, so ' +
+    'it moves no total. ⛔ THE NOISE FLOOR IS RE-MEASURED FOR THIS REFERENCE AND DOES NOT CARRY ' +
+    'FROM v15. ' +
+    'The pre-flip game is overlays/commons-pre-balloons-v1.overlay.json. NO NUMBER IN ANY ' +
+    'reference-v15 OR EARLIER REPORT IS COMPARABLE.',
+  seed: 'reference-v16',
+};
+
 /** The instrument every current number is defined against. */
-export const REFERENCE = REFERENCE_V15;
+export const REFERENCE = REFERENCE_V16;
 
 /**
  * The noise floor, measured once and quoted constantly.
@@ -1109,25 +1163,38 @@ export interface NoiseFloor {
  * quantity. Until `--noise` is re-run, the band comparison every arm in this
  * family is judged on still has nothing to be read against.
  */
+/*
+ * ⭐ reference-v16's FLOOR, measured 12/09/2026 at n=1580 per seat count, and
+ * the first floor to carry the three C115 metrics (the bonus rate as a share of
+ * TURNS, the door mix and the farm bypass). ⛔ TWO OF ITS LINES ARE FINDINGS AND
+ * NOT JUST RESOLUTIONS: SEAT DEVIATION MOVED 4.781 POINTS between two identical
+ * runs, against 0.927 under reference-v15 - five times noisier, so the +/-3 seat
+ * band can no longer be detected at this n - and LAST AS % OF WINNER read 35.4%
+ * against about 57% under v15, which is a much bigger gap between the winner and
+ * the last seat. Both are what a longer game with a stronger engine loop does.
+ */
 export const NOISE_FLOOR: NoiseFloor | null = {
-  reference: 'reference-v15',
+  reference: 'reference-v16',
   games: 1580,
-  measured: '2026-09-09',
+  measured: '2026-09-12',
   movement: {
     'meeples held at game end': 0,
     'barn at game end': 0,
     'game length, rounds': 0,
     'visits per turn': 0,
-    'actions per turn': 0.003,
+    'actions per turn': 0.004,
     'meeple spend rate': NaN,
     'self-visit share of visits': NaN,
+    'bonus slot used, share of turns': 0.004,
+    'door mix, busiest board share': 0,
+    'farm bypass share': 0.002,
     'unfinished games': 0,
-    'winning score': 0,
-    'last as % of winner': 0.005,
-    'tied top score': 0.001,
-    'deck reshuffles per game': 0,
+    'winning score': 1,
+    'last as % of winner': 0.008,
+    'tied top score': 0.002,
+    'deck reshuffles per game': 1,
     'reshuffles, played crop': 0,
-    'seat deviation': 0.927,
+    'seat deviation': 4.781,
   },
 };
 /**

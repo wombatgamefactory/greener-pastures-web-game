@@ -1,9 +1,24 @@
 {
   "name": "sky-meeple-two-v1",
-  "description": "⛔ 09/09/2026: NO SUBJECT UNDER THE SHIPPED GAME - 'meepleFromBag' pays a meeple and the commons has none (C6). Pin a meeple control beside it to ask the question. The size bracket for Dean's balloon: TWO random meeples on the red balloon rather than one. Two stored actions for a flight is deliberately generous - a flight costs 2 barn cards, so this pays one action per card - and it exists to say whether the idea is weak or merely small.",
+  "description": "⛔ 09/09/2026: NO SUBJECT UNDER THE SHIPPED GAME - 'meepleFromBag' pays a meeple and the commons has none (C6). Pin a meeple control beside it to ask the question. The size bracket for Dean's balloon: TWO random meeples on the red balloon rather than one. Two stored actions for a flight is deliberately generous - a flight costs 2 barn cards, so this pays one action per card - and it exists to say whether the idea is weak or merely small. ⛔ PASSENGERS PINNED 12/09/2026: Dean's plain-action balloon and Village Store ruling moved sixteen shipped leaves at once. This overlay predates that flip and every report taken against it does too, so each of those leaves is pinned here BY NAME at its PRE-FLIP value. Without it an arm read as a delta against a pre-flip base would silently gain a one-card flight, an always-present Aerodrome and a live coin economy. That is the 05/09/2026 passenger lesson: an overlay that should not move with the shipped default has to pin every knob the flip moved.",
   "schemaVersion": 1,
   "set": {
     "aerodrome.balloons.balloonDraw.reward.type": "meepleFromBag",
-    "aerodrome.balloons.balloonDraw.reward.amount": 2
+    "aerodrome.balloons.balloonDraw.reward.amount": 2,
+    "aerodrome.moveCost.barnCards": 2,
+    "aerodrome.alwaysInPlay": false,
+    "aerodrome.flightMints": false,
+    "aerodrome.balloons.balloonBuild.reward.type": "buildDiscount",
+    "aerodrome.balloons.balloonBuild.reward.amount": 4,
+    "aerodrome.balloons.balloonSow.reward.type": "sowFromHand",
+    "aerodrome.balloons.balloonSow.reward.amount": 4,
+    "aerodrome.balloons.balloonCoins.reward.type": "harvestAny",
+    "rules.economy.storeCoinsPerCard": 0,
+    "rules.economy.coinSupplyPerPlayer": 0,
+    "rules.economy.coinPaysBuild": false,
+    "rules.economy.coinPaysSuitCost": false,
+    "rules.economy.coinPaysGrow": false,
+    "rules.economy.coinGrowOnFullBuilding": false,
+    "rules.economy.cropScorerOnBarn": false
   }
 }

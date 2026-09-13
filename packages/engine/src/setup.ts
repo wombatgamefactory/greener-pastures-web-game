@@ -664,14 +664,29 @@ export function newGame(data: GameData, opts: NewGameOptions): GameState {
       shuffle(rng, meeplePool(data)),
     ),
   };
-  const aerodrome = suitsInPlay.includes('vegetable')
-    ? parkBalloons(
-        shuffle(
-          rng,
-          data.aerodrome.balloons.map((b) => b.id),
-        ),
-      )
-    : null;
+  // ⭐ IS THE AERODROME IN EVERY GAME? (Dean's question, 12/09/2026.) Shipped
+  // false, which is the rule as built: the module exists only when Vegetable is
+  // one of the decks in play, so it is absent from about a game in five and
+  // MOST OFTEN AT TWO SEATS, where only three of the five decks are dealt.
+  //
+  // ⭐ TRUE IS THE C1 ARGUMENT APPLIED TO THE BALLOONS. Dean's standing ruling 2
+  // of 09/09/2026 put all five Notice Boards in the centre of every game "because
+  // not every suit is in play in every game and this guarantees all five actions
+  // exist in every game", and island.json's own unresolved list records the same
+  // question answered the same way for the island's colours ("a meeple's action
+  // exists regardless of who farms its suit"). Under a plain-action balloon
+  // scheme the module IS a second action-granting commons, so the same argument
+  // reaches it. ⚠️ It is a SETUP rule and not a component change: the four
+  // Aerodrome cards and four balloons already exist.
+  const aerodrome =
+    data.aerodrome.alwaysInPlay || suitsInPlay.includes('vegetable')
+      ? parkBalloons(
+          shuffle(
+            rng,
+            data.aerodrome.balloons.map((b) => b.id),
+          ),
+        )
+      : null;
 
   return {
     schema: 1,

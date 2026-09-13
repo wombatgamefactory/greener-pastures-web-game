@@ -10,6 +10,7 @@
 import type { Fx } from '../fx.js';
 import { fireHook } from '../fx.js';
 import { coinSupplyLeft, player } from '../query.js';
+import { performDoorAction } from '../workers.js';
 import { rngInt } from '../rng.js';
 import type {
   AerodromeState,
@@ -957,6 +958,18 @@ function landBalloon(
   fireHook(fx, 'afterBalloonMove', { seat, balloon: balloonId, from });
   fireHook(fx, 'afterDeliver', { seat, island: false, cards });
   if (grantReward) grantBalloonReward(fx, seat, balloonId);
+  // ⭐ IS A FLIGHT A DELIVERY FOR THE VILLAGE STORE? (Dean, 12/09/2026.) The
+  // engine already answered that question TWO WAYS: yes for card hooks, which
+  // is the `afterDeliver` above with `island: false`, and no for the Store,
+  // because only `finishDelivery` called `pushStoreExchange`. This makes it yes
+  // for both, behind its own leaf so nothing moves until an arm asks.
+  //
+  // ⛔ TWO GATES, NOT ONE, AND BOTH ARE INERT AT THEIR SHIPPED VALUES:
+  // `flightMints` is false in the base data, and `pushStoreExchange` returns
+  // early while `storeCoinsPerCard` is 0. So the shipped game and EVERY
+  // existing control replay byte-identically, and the village-store arm of
+  // 12/09/2026 is untouched until it pins this leaf on purpose.
+  if (fx.data.aerodrome.flightMints) pushStoreExchange(fx, seat);
 }
 
 /** The shared source rule: the centre or a rival's Aerodrome, never your own. */
@@ -1075,6 +1088,19 @@ export function grantBalloonReward(fx: Fx, seat: Seat, balloonId: string): void 
   // a default worth tuning: a balloon with no printed number is a data error.
   const amount = balloon.reward.amount ?? 1;
   switch (reward) {
+    case 'plainAction': {
+      // ⭐ DEAN'S SCHEME (12/09/2026): the balloon pays the PLAIN BASE ACTION of
+      // its colour, routed through the SAME function a central Notice Board
+      // uses, so the mapping is learned once and the module needs no reference
+      // card of its own. ⛔ There is no vegetable balloon: a flight IS the
+      // Deliver action, so a Deliver balloon self-cancels (L2).
+      const suit = balloon.reward.suit;
+      if (suit === undefined) {
+        throw new Error(`Balloon ${balloonId} pays a plain action but names no suit`);
+      }
+      performDoorAction(fx, seat, suit, 'balloon');
+      break;
+    }
     case 'draw':
       // A card-ability draw, and since v31 there is no draw modifier at all for
       // it to skip (DL-47 kept it clear of the Orchard Farmstead's; that power

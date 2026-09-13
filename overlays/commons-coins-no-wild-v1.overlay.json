@@ -1,6 +1,6 @@
 {
   "name": "commons-coins-no-wild-v1",
-  "description": "⭐ THE COMMONS WITH COINS, THE WILD PAIR OFF (Dean, 10/09/2026). It is overlays/commons-coins-v1.overlay.json EXACTLY, every one of its seven passengers pinned to the same value, WITH ONE CHANGE: rules.economy.commonsWildPair is false, so the colour gate is absolute and a hand with no card of a board's suit simply cannot buy that board. THE QUESTION IT ANSWERS is what the pair is worth, and it is the oldest unanswered question in the commons line: D5 of the 09/09/2026 pass described the pair and D7 recorded that the colour-match arm shipped WITHOUT it, so that arm's 34.4% of turns is the gate AT ITS HARSHEST rather than the rule Dean would write. This overlay reproduces that harshness on top of the coin economy; the arm beside it builds the pair. ⚠️ THE PAIR IS THE ONLY LEVER ANYBODY HAS FOR LANDING THE BONUS RATE IN THE MIDDLE OF DEAN'S 30-60% BAND rather than at one end of it, so this pairing is the reading that says whether it does. READ: the bonus rate on the turn measure by seat count, the PLAY / COIN TAKE / SLOT UNSPENT split (a gate this hard should push traffic off the play and onto the free coin take, which is the solitaire law watching a free option in the slot), the door mix, and branching, which should FALL here because the pair is what adds C(h,2) fee options per board. ⛔ NOTHING ELSE MOVES: same mint, same two sinks, same price of 3, same bonus timing, same currency. UNRUN BEFORE THIS PASS.",
+  "description": "⭐ THE COMMONS WITH COINS, THE WILD PAIR OFF (Dean, 10/09/2026). It is overlays/commons-coins-v1.overlay.json EXACTLY, every one of its seven passengers pinned to the same value, WITH ONE CHANGE: rules.economy.commonsWildPair is false, so the colour gate is absolute and a hand with no card of a board's suit simply cannot buy that board. THE QUESTION IT ANSWERS is what the pair is worth, and it is the oldest unanswered question in the commons line: D5 of the 09/09/2026 pass described the pair and D7 recorded that the colour-match arm shipped WITHOUT it, so that arm's 34.4% of turns is the gate AT ITS HARSHEST rather than the rule Dean would write. This overlay reproduces that harshness on top of the coin economy; the arm beside it builds the pair. ⚠️ THE PAIR IS THE ONLY LEVER ANYBODY HAS FOR LANDING THE BONUS RATE IN THE MIDDLE OF DEAN'S 30-60% BAND rather than at one end of it, so this pairing is the reading that says whether it does. READ: the bonus rate on the turn measure by seat count, the PLAY / COIN TAKE / SLOT UNSPENT split (a gate this hard should push traffic off the play and onto the free coin take, which is the solitaire law watching a free option in the slot), the door mix, and branching, which should FALL here because the pair is what adds C(h,2) fee options per board. ⛔ NOTHING ELSE MOVES: same mint, same two sinks, same price of 3, same bonus timing, same currency. UNRUN BEFORE THIS PASS. ⛔ PASSENGERS PINNED 12/09/2026: Dean's plain-action balloon and Village Store ruling moved sixteen shipped leaves at once. This overlay predates that flip and every report taken against it does too, so each of those leaves is pinned here BY NAME at its PRE-FLIP value. Without it an arm read as a delta against a pre-flip base would silently gain a one-card flight, an always-present Aerodrome and a live coin economy. That is the 05/09/2026 passenger lesson: an overlay that should not move with the shipped default has to pin every knob the flip moved.",
   "schemaVersion": 1,
   "set": {
     "rules.turn.visitCurrency": "commons",
@@ -9,6 +9,23 @@
     "rules.economy.commonsColourMatch": true,
     "rules.economy.commonsWildPair": false,
     "rules.economy.endgameCoinCost": 3,
-    "rules.economy.farmsteadCoinPower": true
+    "rules.economy.farmsteadCoinPower": true,
+    "aerodrome.moveCost.barnCards": 2,
+    "aerodrome.alwaysInPlay": false,
+    "aerodrome.flightMints": false,
+    "aerodrome.balloons.balloonDraw.reward.type": "draw",
+    "aerodrome.balloons.balloonDraw.reward.amount": 4,
+    "aerodrome.balloons.balloonBuild.reward.type": "buildDiscount",
+    "aerodrome.balloons.balloonBuild.reward.amount": 4,
+    "aerodrome.balloons.balloonSow.reward.type": "sowFromHand",
+    "aerodrome.balloons.balloonSow.reward.amount": 4,
+    "aerodrome.balloons.balloonCoins.reward.type": "harvestAny",
+    "rules.economy.storeCoinsPerCard": 0,
+    "rules.economy.coinSupplyPerPlayer": 0,
+    "rules.economy.coinPaysBuild": false,
+    "rules.economy.coinPaysSuitCost": false,
+    "rules.economy.coinPaysGrow": false,
+    "rules.economy.coinGrowOnFullBuilding": false,
+    "rules.economy.cropScorerOnBarn": false
   }
 }

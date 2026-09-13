@@ -68,12 +68,28 @@ interface BuildAct {
    * HOW a build is being paid rather than of which cards it burns.
    */
   readonly meeples: number;
+  /**
+   * ⭐ COINS SPENT AT THE VILLAGE STORE (A150), as a COUNT. Live in the shipped
+   * game since Dean's ruling of 12/09/2026: a coin is a wild card on a build,
+   * so it is a FOURTH payment source, and exactly like the stacks and the
+   * meeples it is part of HOW a build is paid. A coin-paid build spends fewer
+   * hand cards by construction, so leaving this out of the method key made the
+   * case below compare a coin payment against a card payment and report the
+   * bot as choosing the dearer junk when it had chosen a different METHOD.
+   */
+  readonly coins: number;
 }
 
 function buildAct(move: Move): BuildAct | null {
   const act = actOf(move);
   return act.a === 'build'
-    ? { card: act.card, payment: act.payment, stacks: act.stacks, meeples: act.meeples.length }
+    ? {
+        card: act.card,
+        payment: act.payment,
+        stacks: act.stacks,
+        meeples: act.meeples.length,
+        coins: act.coins,
+      }
     : null;
 }
 
@@ -87,7 +103,9 @@ function buildAct(move: Move): BuildAct | null {
  * is what prices that trade.
  */
 function sameMethod(a: BuildAct, b: BuildAct): boolean {
-  return a.card === b.card && a.stacks === b.stacks && a.meeples === b.meeples;
+  return (
+    a.card === b.card && a.stacks === b.stacks && a.meeples === b.meeples && a.coins === b.coins
+  );
 }
 
 // --- view safety -----------------------------------------------------------
@@ -1019,16 +1037,44 @@ describe('the archetypes', () => {
    * inequality with no margin: the margin would be a number taken from our own
    * output, and what is being asserted is that the profile has an effect at all.
    */
-  it('makes the socialite reach across the table more than balanced', { timeout: 180_000 }, () => {
+  /*
+   * ⭐ RE-MEASURED 12/09/2026, AFTER DEAN'S BALLOON AND VILLAGE STORE RULING, AND
+   * THE CHANGE IS TWO FIXES TO THE MEASUREMENT RATHER THAN A LOOSER CLAIM.
+   *
+   * (1) THE DENOMINATOR EXCLUDES TASK ANSWERS. The comment above already says
+   * this share must not move because a mode "resolves more decisions per turn".
+   * Under the new rules task answers - the Store's optional mint prompt after
+   * every delivery and flight, and the balloon reward tasks - are about 70% of
+   * all moves, and they were diluting the share to ~0.15 and burying the
+   * profile's signal. Excluding them reads the share of real CHOICES, ~0.50.
+   *
+   * (2) IT AVERAGES TWELVE SEEDS INSTEAD OF COMPARING ONE GAME WITH ANOTHER. The
+   * old case ran ONE seed per profile, and those are two different games. A
+   * 12-seed probe read socialite 0.5003 against balanced 0.4898, so the taste
+   * still points the right way, but socialite won only 6 of 12 same-seed games -
+   * a coin flip. ⛔ SO THE EFFECT HAS SHRUNK TO NEAR NOISE, AND THAT IS A DESIGN
+   * SIGNAL, NOT A BOT BUG: the likeliest cause is that the one-card balloon
+   * flight, now in every game, competes with the commons play for the same job
+   * of buying an extra action. Read a17 and a18 before trusting the commons'
+   * traffic under the new rules. The strict inequality with no margin is kept,
+   * for the reason the comment above gives.
+   */
+  it('makes the socialite reach across the table more than balanced', { timeout: 300_000 }, () => {
     const reach = (id: PolicyId) => {
-      const result = runGame(data, {
-        seed: `taste-${id}`,
-        seats: 3,
-        suits: SUITS.slice(0, 3),
-        policies: mirror(id, 3),
-        maxMoves: 1500,
-      });
-      return result.moves.filter((m) => m.type === TABLE_MOVE).length / result.moves.length;
+      let table = 0;
+      let choices = 0;
+      for (let n = 0; n < 12; n++) {
+        const result = runGame(data, {
+          seed: `taste-${n}`,
+          seats: 3,
+          suits: SUITS.slice(0, 3),
+          policies: mirror(id, 3),
+          maxMoves: 1500,
+        });
+        table += result.moves.filter((m) => m.type === TABLE_MOVE).length;
+        choices += result.moves.filter((m) => m.type !== 'task').length;
+      }
+      return table / choices;
     };
     expect(reach('socialite')).toBeGreaterThan(reach('balanced'));
   });

@@ -54,6 +54,25 @@ const blocking: GameData = loadGameData({
   name: 'notice-board-visit-blocking-v1',
   schemaVersion: 1,
   set: {
+    'rules.economy.cropScorerOnBarn': false,
+    // Pre-flip pins (12/09/2026): this is a named inline copy of a
+    // committed overlay, and a copy of a pin stops being a pin.
+    'aerodrome.moveCost.barnCards': 2,
+    'aerodrome.alwaysInPlay': false,
+    'aerodrome.flightMints': false,
+    'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+    'aerodrome.balloons.balloonDraw.reward.amount': 4,
+    'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+    'aerodrome.balloons.balloonBuild.reward.amount': 4,
+    'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+    'aerodrome.balloons.balloonSow.reward.amount': 4,
+    'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
+    'rules.economy.storeCoinsPerCard': 0,
+    'rules.economy.coinSupplyPerPlayer': 0,
+    'rules.economy.coinPaysBuild': false,
+    'rules.economy.coinPaysSuitCost': false,
+    'rules.economy.coinPaysGrow': false,
+    'rules.economy.coinGrowOnFullBuilding': false,
     'rules.turn.visitCurrency': 'noticeBoardPower',
     'rules.turn.bonusTiming': 'start',
     'rules.turn.selfVisitAllowed': true,
@@ -76,6 +95,25 @@ const noSelf: GameData = loadGameData({
   name: 'notice-board-visit-no-self-v1',
   schemaVersion: 1,
   set: {
+    'rules.economy.cropScorerOnBarn': false,
+    // Pre-flip pins (12/09/2026): this is a named inline copy of a
+    // committed overlay, and a copy of a pin stops being a pin.
+    'aerodrome.moveCost.barnCards': 2,
+    'aerodrome.alwaysInPlay': false,
+    'aerodrome.flightMints': false,
+    'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+    'aerodrome.balloons.balloonDraw.reward.amount': 4,
+    'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+    'aerodrome.balloons.balloonBuild.reward.amount': 4,
+    'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+    'aerodrome.balloons.balloonSow.reward.amount': 4,
+    'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
+    'rules.economy.storeCoinsPerCard': 0,
+    'rules.economy.coinSupplyPerPlayer': 0,
+    'rules.economy.coinPaysBuild': false,
+    'rules.economy.coinPaysSuitCost': false,
+    'rules.economy.coinPaysGrow': false,
+    'rules.economy.coinGrowOnFullBuilding': false,
     'rules.turn.visitCurrency': 'noticeBoardPower',
     'rules.turn.bonusTiming': 'start',
     'rules.turn.selfVisitAllowed': false,
@@ -513,11 +551,45 @@ describe('S1/S4: the Farmstead is inert and the Barn scores', () => {
     expect(byCard.get('W2')).toBe(0);
   });
 
-  it('and under the shipped commons the scorer is still the Farmstead s', () => {
+  /*
+   * ⭐ INVERTED 13/09/2026: DEAN RULED THE SWAP INTO THE SHIPPED COMMONS (the v39
+   * sheet, `rules.economy.cropScorerOnBarn`). The Barn now prints "Game end: 1 VP
+   * for each <CROP> card you have built" and the Farmstead is the receipt tray,
+   * in the shipped game as well as under the notice-board arm.
+   */
+  it('and under the shipped commons the Barn scores the crop line too', () => {
     const commons = loadGameData({ name: 'shipped', schemaVersion: 1, set: {} });
     const s = makeState(commons, ['wheat', 'orchard']);
     buildFor(commons, s, 0, 'W4', 'W6');
     const byCard = new Map(gameEndScores(commons, s)[0]?.endgameCards.map((e) => [e.card, e.vp]));
+    expect(byCard.get('W1')).toBe(2);
+    expect(byCard.get('W2')).toBe(0);
+  });
+
+  /*
+   * ⭐ AND THE SWAP IS SCORE-NEUTRAL, WHICH IS THE CLAIM THAT LET IT SHIP WITHOUT
+   * A MEASUREMENT: the same position scored with the scorer on the Farmstead
+   * (`cropScorerOnBarn` false, the rule until 13/09/2026) and on the Barn gives
+   * the seat the SAME end-game total. Only the card that prints the line moved.
+   */
+  it('moves the line from the Farmstead to the Barn without moving the total', () => {
+    const onBarn = loadGameData({ name: 'shipped', schemaVersion: 1, set: {} });
+    const onFarmstead = loadGameData({
+      name: 'scorer-on-farmstead',
+      schemaVersion: 1,
+      set: { 'rules.economy.cropScorerOnBarn': false },
+    });
+    const total = (data: typeof onBarn) => {
+      const s = makeState(data, ['wheat', 'orchard']);
+      buildFor(data, s, 0, 'W4', 'W6', 'O4');
+      return gameEndScores(data, s)[0]?.endgame;
+    };
+    expect(total(onBarn)).toBe(total(onFarmstead));
+    const s = makeState(onFarmstead, ['wheat', 'orchard']);
+    buildFor(onFarmstead, s, 0, 'W4', 'W6');
+    const byCard = new Map(
+      gameEndScores(onFarmstead, s)[0]?.endgameCards.map((e) => [e.card, e.vp]),
+    );
     expect(byCard.get('W2')).toBe(2);
     expect(byCard.get('W1')).toBe(0);
   });

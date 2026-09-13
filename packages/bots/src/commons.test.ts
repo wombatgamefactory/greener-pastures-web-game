@@ -204,6 +204,7 @@ describe('the commons with coins, the arm', () => {
     // out rather than loaded, so this case cannot start passing or failing
     // because somebody edited an overlay file.
     set: {
+      'rules.economy.cropScorerOnBarn': false,
       'rules.turn.visitCurrency': 'commons',
       'rules.turn.bonusTiming': 'start',
       'rules.turn.commonsTake': 'coins',
@@ -211,6 +212,24 @@ describe('the commons with coins, the arm', () => {
       'rules.economy.commonsWildPair': true,
       'rules.economy.endgameCoinCost': 3,
       'rules.economy.farmsteadCoinPower': true,
+      // ⛔ PRE-FLIP PINS (12/09/2026). This arm predates Dean's Village Store
+      // ruling and must not inherit a SECOND coin system from the base: with the
+      // Store's sinks live, a coin is spent on a Grow or a build before it can
+      // ever reach the Endgame price this case measures, and the case silently
+      // reads zero. The Store and the one-card flight are pinned off by name.
+      'rules.economy.storeCoinsPerCard': 0,
+      'rules.economy.coinSupplyPerPlayer': 0,
+      'rules.economy.coinPaysBuild': false,
+      'rules.economy.coinPaysSuitCost': false,
+      'rules.economy.coinPaysGrow': false,
+      'rules.economy.coinGrowOnFullBuilding': false,
+      'aerodrome.moveCost.barnCards': 2,
+      'aerodrome.alwaysInPlay': false,
+      'aerodrome.flightMints': false,
+      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
     },
   });
 

@@ -166,6 +166,30 @@ export function cardVisitGame(): GameData {
     // unpinned leaf is how a control silently stops being the game it is named
     // after - the 05/09/2026 passenger lesson, arriving on schedule.
     set: {
+      'rules.economy.cropScorerOnBarn': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
+      // Store ruling moved sixteen shipped leaves at once. Every helper here
+      // reproduces a game that predates it, so each leaf is pinned BY NAME at
+      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
+      // overlays, and `fixtures.test.ts` already records why that is dangerous:
+      // a copy of a pin stops being a pin. Adding the leaves in both places is
+      // the price of the copy.
+      'aerodrome.moveCost.barnCards': 2,
+      'aerodrome.alwaysInPlay': false,
+      'aerodrome.flightMints': false,
+      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+      'aerodrome.balloons.balloonDraw.reward.amount': 4,
+      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+      'aerodrome.balloons.balloonBuild.reward.amount': 4,
+      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+      'aerodrome.balloons.balloonSow.reward.amount': 4,
+      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
+      'rules.economy.storeCoinsPerCard': 0,
+      'rules.economy.coinSupplyPerPlayer': 0,
+      'rules.economy.coinPaysBuild': false,
+      'rules.economy.coinPaysSuitCost': false,
+      'rules.economy.coinPaysGrow': false,
+      'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'card',
       'rules.turn.bonusTiming': 'end',
       'rules.turn.startingMeeplesPerColour': 1,
@@ -211,6 +235,30 @@ export function noticeBoardVisitGame(): GameData {
     name: 'notice-board-visit-v1',
     schemaVersion: 1,
     set: {
+      'rules.economy.cropScorerOnBarn': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
+      // Store ruling moved sixteen shipped leaves at once. Every helper here
+      // reproduces a game that predates it, so each leaf is pinned BY NAME at
+      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
+      // overlays, and `fixtures.test.ts` already records why that is dangerous:
+      // a copy of a pin stops being a pin. Adding the leaves in both places is
+      // the price of the copy.
+      'aerodrome.moveCost.barnCards': 2,
+      'aerodrome.alwaysInPlay': false,
+      'aerodrome.flightMints': false,
+      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+      'aerodrome.balloons.balloonDraw.reward.amount': 4,
+      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+      'aerodrome.balloons.balloonBuild.reward.amount': 4,
+      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+      'aerodrome.balloons.balloonSow.reward.amount': 4,
+      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
+      'rules.economy.storeCoinsPerCard': 0,
+      'rules.economy.coinSupplyPerPlayer': 0,
+      'rules.economy.coinPaysBuild': false,
+      'rules.economy.coinPaysSuitCost': false,
+      'rules.economy.coinPaysGrow': false,
+      'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': true,
@@ -260,6 +308,30 @@ export function noticeBoardUnclaimedGame(): GameData {
     name: 'notice-board-visit-unclaimed-v1',
     schemaVersion: 1,
     set: {
+      'rules.economy.cropScorerOnBarn': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
+      // Store ruling moved sixteen shipped leaves at once. Every helper here
+      // reproduces a game that predates it, so each leaf is pinned BY NAME at
+      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
+      // overlays, and `fixtures.test.ts` already records why that is dangerous:
+      // a copy of a pin stops being a pin. Adding the leaves in both places is
+      // the price of the copy.
+      'aerodrome.moveCost.barnCards': 2,
+      'aerodrome.alwaysInPlay': false,
+      'aerodrome.flightMints': false,
+      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+      'aerodrome.balloons.balloonDraw.reward.amount': 4,
+      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+      'aerodrome.balloons.balloonBuild.reward.amount': 4,
+      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+      'aerodrome.balloons.balloonSow.reward.amount': 4,
+      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
+      'rules.economy.storeCoinsPerCard': 0,
+      'rules.economy.coinSupplyPerPlayer': 0,
+      'rules.economy.coinPaysBuild': false,
+      'rules.economy.coinPaysSuitCost': false,
+      'rules.economy.coinPaysGrow': false,
+      'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': false,
@@ -300,6 +372,30 @@ export function noticeBoardUnclaimedSelfGame(): GameData {
     name: 'notice-board-visit-unclaimed-self-v1',
     schemaVersion: 1,
     set: {
+      'rules.economy.cropScorerOnBarn': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
+      // Store ruling moved sixteen shipped leaves at once. Every helper here
+      // reproduces a game that predates it, so each leaf is pinned BY NAME at
+      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
+      // overlays, and `fixtures.test.ts` already records why that is dangerous:
+      // a copy of a pin stops being a pin. Adding the leaves in both places is
+      // the price of the copy.
+      'aerodrome.moveCost.barnCards': 2,
+      'aerodrome.alwaysInPlay': false,
+      'aerodrome.flightMints': false,
+      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+      'aerodrome.balloons.balloonDraw.reward.amount': 4,
+      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+      'aerodrome.balloons.balloonBuild.reward.amount': 4,
+      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+      'aerodrome.balloons.balloonSow.reward.amount': 4,
+      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
+      'rules.economy.storeCoinsPerCard': 0,
+      'rules.economy.coinSupplyPerPlayer': 0,
+      'rules.economy.coinPaysBuild': false,
+      'rules.economy.coinPaysSuitCost': false,
+      'rules.economy.coinPaysGrow': false,
+      'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': true,
@@ -348,6 +444,30 @@ export function noticeBoardTwoBoardsGame(): GameData {
     name: 'notice-board-visit-two-boards-v1',
     schemaVersion: 1,
     set: {
+      'rules.economy.cropScorerOnBarn': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
+      // Store ruling moved sixteen shipped leaves at once. Every helper here
+      // reproduces a game that predates it, so each leaf is pinned BY NAME at
+      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
+      // overlays, and `fixtures.test.ts` already records why that is dangerous:
+      // a copy of a pin stops being a pin. Adding the leaves in both places is
+      // the price of the copy.
+      'aerodrome.moveCost.barnCards': 2,
+      'aerodrome.alwaysInPlay': false,
+      'aerodrome.flightMints': false,
+      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+      'aerodrome.balloons.balloonDraw.reward.amount': 4,
+      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+      'aerodrome.balloons.balloonBuild.reward.amount': 4,
+      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+      'aerodrome.balloons.balloonSow.reward.amount': 4,
+      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
+      'rules.economy.storeCoinsPerCard': 0,
+      'rules.economy.coinSupplyPerPlayer': 0,
+      'rules.economy.coinPaysBuild': false,
+      'rules.economy.coinPaysSuitCost': false,
+      'rules.economy.coinPaysGrow': false,
+      'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': false,
@@ -396,6 +516,30 @@ export function noticeBoardHostDrawGame(n = 1): GameData {
     name: `notice-board-visit-host-draw-v1-${n}`,
     schemaVersion: 1,
     set: {
+      'rules.economy.cropScorerOnBarn': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
+      // Store ruling moved sixteen shipped leaves at once. Every helper here
+      // reproduces a game that predates it, so each leaf is pinned BY NAME at
+      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
+      // overlays, and `fixtures.test.ts` already records why that is dangerous:
+      // a copy of a pin stops being a pin. Adding the leaves in both places is
+      // the price of the copy.
+      'aerodrome.moveCost.barnCards': 2,
+      'aerodrome.alwaysInPlay': false,
+      'aerodrome.flightMints': false,
+      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+      'aerodrome.balloons.balloonDraw.reward.amount': 4,
+      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+      'aerodrome.balloons.balloonBuild.reward.amount': 4,
+      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+      'aerodrome.balloons.balloonSow.reward.amount': 4,
+      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
+      'rules.economy.storeCoinsPerCard': 0,
+      'rules.economy.coinSupplyPerPlayer': 0,
+      'rules.economy.coinPaysBuild': false,
+      'rules.economy.coinPaysSuitCost': false,
+      'rules.economy.coinPaysGrow': false,
+      'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': false,
@@ -443,6 +587,30 @@ export function noticeBoardHostDrawCappedGame(capped = true, n = 1): GameData {
     name: `notice-board-visit-host-draw-capped-v1-${String(capped)}-${n}`,
     schemaVersion: 1,
     set: {
+      'rules.economy.cropScorerOnBarn': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
+      // Store ruling moved sixteen shipped leaves at once. Every helper here
+      // reproduces a game that predates it, so each leaf is pinned BY NAME at
+      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
+      // overlays, and `fixtures.test.ts` already records why that is dangerous:
+      // a copy of a pin stops being a pin. Adding the leaves in both places is
+      // the price of the copy.
+      'aerodrome.moveCost.barnCards': 2,
+      'aerodrome.alwaysInPlay': false,
+      'aerodrome.flightMints': false,
+      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+      'aerodrome.balloons.balloonDraw.reward.amount': 4,
+      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+      'aerodrome.balloons.balloonBuild.reward.amount': 4,
+      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+      'aerodrome.balloons.balloonSow.reward.amount': 4,
+      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
+      'rules.economy.storeCoinsPerCard': 0,
+      'rules.economy.coinSupplyPerPlayer': 0,
+      'rules.economy.coinPaysBuild': false,
+      'rules.economy.coinPaysSuitCost': false,
+      'rules.economy.coinPaysGrow': false,
+      'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': false,
@@ -488,6 +656,30 @@ export function noticeBoardHostDrawBySeatsGame(): GameData {
     name: 'notice-board-visit-host-draw-by-seats-v1',
     schemaVersion: 1,
     set: {
+      'rules.economy.cropScorerOnBarn': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
+      // Store ruling moved sixteen shipped leaves at once. Every helper here
+      // reproduces a game that predates it, so each leaf is pinned BY NAME at
+      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
+      // overlays, and `fixtures.test.ts` already records why that is dangerous:
+      // a copy of a pin stops being a pin. Adding the leaves in both places is
+      // the price of the copy.
+      'aerodrome.moveCost.barnCards': 2,
+      'aerodrome.alwaysInPlay': false,
+      'aerodrome.flightMints': false,
+      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+      'aerodrome.balloons.balloonDraw.reward.amount': 4,
+      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+      'aerodrome.balloons.balloonBuild.reward.amount': 4,
+      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+      'aerodrome.balloons.balloonSow.reward.amount': 4,
+      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
+      'rules.economy.storeCoinsPerCard': 0,
+      'rules.economy.coinSupplyPerPlayer': 0,
+      'rules.economy.coinPaysBuild': false,
+      'rules.economy.coinPaysSuitCost': false,
+      'rules.economy.coinPaysGrow': false,
+      'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': false,
@@ -553,6 +745,24 @@ export function villageStoreGame(
     name: `village-store-coins-${which}-testkit`,
     schemaVersion: 1,
     set: {
+      'rules.economy.cropScorerOnBarn': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
+      // Store ruling moved sixteen shipped leaves at once. Every helper here
+      // reproduces a game that predates it, so each leaf is pinned BY NAME at
+      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
+      // overlays, and `fixtures.test.ts` already records why that is dangerous:
+      // a copy of a pin stops being a pin. Adding the leaves in both places is
+      // the price of the copy.
+      'aerodrome.moveCost.barnCards': 2,
+      'aerodrome.alwaysInPlay': false,
+      'aerodrome.flightMints': false,
+      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+      'aerodrome.balloons.balloonDraw.reward.amount': 4,
+      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+      'aerodrome.balloons.balloonBuild.reward.amount': 4,
+      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+      'aerodrome.balloons.balloonSow.reward.amount': 4,
+      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
       // The control's twenty, unchanged and in its own order.
       'rules.turn.visitCurrency': 'noticeBoardPower',
       'rules.turn.bonusTiming': 'start',
@@ -638,6 +848,30 @@ export function deliveryMeepleGame(): GameData {
     name: 'delivery-meeple-v1',
     schemaVersion: 1,
     set: {
+      'rules.economy.cropScorerOnBarn': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
+      // Store ruling moved sixteen shipped leaves at once. Every helper here
+      // reproduces a game that predates it, so each leaf is pinned BY NAME at
+      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
+      // overlays, and `fixtures.test.ts` already records why that is dangerous:
+      // a copy of a pin stops being a pin. Adding the leaves in both places is
+      // the price of the copy.
+      'aerodrome.moveCost.barnCards': 2,
+      'aerodrome.alwaysInPlay': false,
+      'aerodrome.flightMints': false,
+      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+      'aerodrome.balloons.balloonDraw.reward.amount': 4,
+      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+      'aerodrome.balloons.balloonBuild.reward.amount': 4,
+      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+      'aerodrome.balloons.balloonSow.reward.amount': 4,
+      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
+      'rules.economy.storeCoinsPerCard': 0,
+      'rules.economy.coinSupplyPerPlayer': 0,
+      'rules.economy.coinPaysBuild': false,
+      'rules.economy.coinPaysSuitCost': false,
+      'rules.economy.coinPaysGrow': false,
+      'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': false,
@@ -658,12 +892,6 @@ export function deliveryMeepleGame(): GameData {
       'rules.economy.commonsWildPair': false,
       'rules.economy.endgameCoinCost': null,
       'rules.economy.farmsteadCoinPower': false,
-      'rules.economy.storeCoinsPerCard': 0,
-      'rules.economy.coinSupplyPerPlayer': 0,
-      'rules.economy.coinPaysBuild': false,
-      'rules.economy.coinPaysSuitCost': false,
-      'rules.economy.coinPaysGrow': false,
-      'rules.economy.coinGrowOnFullBuilding': false,
       // The three that ARE the rule (M1, M4, M5).
       'rules.turn.deliveryMeepleSpace': 1,
       'rules.turn.meepleSpendTiming': 'afterAction',
@@ -689,6 +917,30 @@ export function deliveryMeepleDistinctGame(): GameData {
     name: 'delivery-meeple-distinct-colours-v1',
     schemaVersion: 1,
     set: {
+      'rules.economy.cropScorerOnBarn': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
+      // Store ruling moved sixteen shipped leaves at once. Every helper here
+      // reproduces a game that predates it, so each leaf is pinned BY NAME at
+      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
+      // overlays, and `fixtures.test.ts` already records why that is dangerous:
+      // a copy of a pin stops being a pin. Adding the leaves in both places is
+      // the price of the copy.
+      'aerodrome.moveCost.barnCards': 2,
+      'aerodrome.alwaysInPlay': false,
+      'aerodrome.flightMints': false,
+      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+      'aerodrome.balloons.balloonDraw.reward.amount': 4,
+      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+      'aerodrome.balloons.balloonBuild.reward.amount': 4,
+      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+      'aerodrome.balloons.balloonSow.reward.amount': 4,
+      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
+      'rules.economy.storeCoinsPerCard': 0,
+      'rules.economy.coinSupplyPerPlayer': 0,
+      'rules.economy.coinPaysBuild': false,
+      'rules.economy.coinPaysSuitCost': false,
+      'rules.economy.coinPaysGrow': false,
+      'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': false,
@@ -709,12 +961,6 @@ export function deliveryMeepleDistinctGame(): GameData {
       'rules.economy.commonsWildPair': false,
       'rules.economy.endgameCoinCost': null,
       'rules.economy.farmsteadCoinPower': false,
-      'rules.economy.storeCoinsPerCard': 0,
-      'rules.economy.coinSupplyPerPlayer': 0,
-      'rules.economy.coinPaysBuild': false,
-      'rules.economy.coinPaysSuitCost': false,
-      'rules.economy.coinPaysGrow': false,
-      'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.deliveryMeepleSpace': 1,
       'rules.turn.meepleSpendTiming': 'afterAction',
       'rules.turn.meepleSpendPerTurn': null,
@@ -738,6 +984,30 @@ export function noticeBoardHostDrawSelfGame(): GameData {
     name: 'notice-board-visit-host-draw-self-probe',
     schemaVersion: 1,
     set: {
+      'rules.economy.cropScorerOnBarn': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
+      // Store ruling moved sixteen shipped leaves at once. Every helper here
+      // reproduces a game that predates it, so each leaf is pinned BY NAME at
+      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
+      // overlays, and `fixtures.test.ts` already records why that is dangerous:
+      // a copy of a pin stops being a pin. Adding the leaves in both places is
+      // the price of the copy.
+      'aerodrome.moveCost.barnCards': 2,
+      'aerodrome.alwaysInPlay': false,
+      'aerodrome.flightMints': false,
+      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+      'aerodrome.balloons.balloonDraw.reward.amount': 4,
+      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+      'aerodrome.balloons.balloonBuild.reward.amount': 4,
+      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+      'aerodrome.balloons.balloonSow.reward.amount': 4,
+      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
+      'rules.economy.storeCoinsPerCard': 0,
+      'rules.economy.coinSupplyPerPlayer': 0,
+      'rules.economy.coinPaysBuild': false,
+      'rules.economy.coinPaysSuitCost': false,
+      'rules.economy.coinPaysGrow': false,
+      'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': true,
@@ -775,6 +1045,30 @@ export function noticeBoardNoSelfGame(): GameData {
     name: 'notice-board-visit-no-self-v1',
     schemaVersion: 1,
     set: {
+      'rules.economy.cropScorerOnBarn': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
+      // Store ruling moved sixteen shipped leaves at once. Every helper here
+      // reproduces a game that predates it, so each leaf is pinned BY NAME at
+      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
+      // overlays, and `fixtures.test.ts` already records why that is dangerous:
+      // a copy of a pin stops being a pin. Adding the leaves in both places is
+      // the price of the copy.
+      'aerodrome.moveCost.barnCards': 2,
+      'aerodrome.alwaysInPlay': false,
+      'aerodrome.flightMints': false,
+      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+      'aerodrome.balloons.balloonDraw.reward.amount': 4,
+      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+      'aerodrome.balloons.balloonBuild.reward.amount': 4,
+      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+      'aerodrome.balloons.balloonSow.reward.amount': 4,
+      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
+      'rules.economy.storeCoinsPerCard': 0,
+      'rules.economy.coinSupplyPerPlayer': 0,
+      'rules.economy.coinPaysBuild': false,
+      'rules.economy.coinPaysSuitCost': false,
+      'rules.economy.coinPaysGrow': false,
+      'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': false,
@@ -813,6 +1107,30 @@ export function meepleEconomyGame(): GameData {
     name: 'meeple-economy-v1',
     schemaVersion: 1,
     set: {
+      'rules.economy.cropScorerOnBarn': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
+      // Store ruling moved sixteen shipped leaves at once. Every helper here
+      // reproduces a game that predates it, so each leaf is pinned BY NAME at
+      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
+      // overlays, and `fixtures.test.ts` already records why that is dangerous:
+      // a copy of a pin stops being a pin. Adding the leaves in both places is
+      // the price of the copy.
+      'aerodrome.moveCost.barnCards': 2,
+      'aerodrome.alwaysInPlay': false,
+      'aerodrome.flightMints': false,
+      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+      'aerodrome.balloons.balloonDraw.reward.amount': 4,
+      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+      'aerodrome.balloons.balloonBuild.reward.amount': 4,
+      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+      'aerodrome.balloons.balloonSow.reward.amount': 4,
+      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
+      'rules.economy.storeCoinsPerCard': 0,
+      'rules.economy.coinSupplyPerPlayer': 0,
+      'rules.economy.coinPaysBuild': false,
+      'rules.economy.coinPaysSuitCost': false,
+      'rules.economy.coinPaysGrow': false,
+      'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'meeple',
       'rules.turn.bonusTiming': 'end',
       'rules.turn.startingMeeplesPerColour': 1,
@@ -913,6 +1231,30 @@ export function meepleLoopGame(): GameData {
     name: 'meeple-loop-v1',
     schemaVersion: 1,
     set: {
+      'rules.economy.cropScorerOnBarn': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
+      // Store ruling moved sixteen shipped leaves at once. Every helper here
+      // reproduces a game that predates it, so each leaf is pinned BY NAME at
+      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
+      // overlays, and `fixtures.test.ts` already records why that is dangerous:
+      // a copy of a pin stops being a pin. Adding the leaves in both places is
+      // the price of the copy.
+      'aerodrome.moveCost.barnCards': 2,
+      'aerodrome.alwaysInPlay': false,
+      'aerodrome.flightMints': false,
+      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+      'aerodrome.balloons.balloonDraw.reward.amount': 4,
+      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+      'aerodrome.balloons.balloonBuild.reward.amount': 4,
+      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+      'aerodrome.balloons.balloonSow.reward.amount': 4,
+      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
+      'rules.economy.storeCoinsPerCard': 0,
+      'rules.economy.coinSupplyPerPlayer': 0,
+      'rules.economy.coinPaysBuild': false,
+      'rules.economy.coinPaysSuitCost': false,
+      'rules.economy.coinPaysGrow': false,
+      'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'meeple',
       // Pinned with the commons (09/09/2026): the default turn is bonus-FIRST
       // and deals no starting meeples, and this arm is neither.

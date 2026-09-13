@@ -1320,6 +1320,17 @@ export interface GameMetrics {
   movesOffered: Record<string, number>;
 
   balloonMoves: number;
+  /**
+   * Balloon moves BY BALLOON ID (12/09/2026). ⛔ NOBODY HAD EVER MEASURED WHICH
+   * OF THE FOUR IS TAKEN: every earlier reading is a table total, so a module
+   * carried by one reward and three passengers is indistinguishable from four
+   * even rewards. Keyed by the `balloon` field the `balloonMoved` event has
+   * always carried, so this is a fold and not a new event. ⚠️ IT COUNTS MOVES,
+   * NOT VALUE: the magenta balloon has no `amount` and cannot be swept, so a
+   * low count on it may mean a dull reward or a reward that only pays a seat
+   * holding a full building.
+   */
+  balloonMovesById: Record<string, number>;
   /** A balloon taken from another seat's Aerodrome, by victim. */
   raidsByVictim: number[];
 

@@ -1,10 +1,27 @@
 {
   "name": "wheat-rebuild-v5",
-  "description": "The Wheat rebuild's ACTION layer, switched off. READ THIS BEFORE READING THE ARM: the rebuild itself is a data-and-handler change, not a set of numbers, so no overlay can express \"the Wheat suit as it was\" - a knob cannot restore a threshold that has become a printed action, nor unwrite the reseed line five cards now share. Against the shipped game this arm therefore isolates the ONE piece of the rebuild an overlay can reach: W13 The Bakery, W14 The Pizzeria and W15 The Patisserie, the three Tier 3 cards that print an ACTION taken instead of a main action. Base is the rebuild with them in, this cell is the rebuild with them out, and the delta is what the action layer is worth. The rebuild's other pass conditions - Tier 3 firings per card built up from 0.63, Wheat's activations per card built up from 0.29, reshuffles per played deck flat at 5 to 8, median game length flat at 27 / 24 / 23 rounds, a Wheat seat's visits per turn at or above 0.51 - are before-and-after against the committed reference run, not against this cell. Read the noise floor before believing any of it.",
+  "description": "The Wheat rebuild's ACTION layer, switched off. READ THIS BEFORE READING THE ARM: the rebuild itself is a data-and-handler change, not a set of numbers, so no overlay can express \"the Wheat suit as it was\" - a knob cannot restore a threshold that has become a printed action, nor unwrite the reseed line five cards now share. Against the shipped game this arm therefore isolates the ONE piece of the rebuild an overlay can reach: W13 The Bakery, W14 The Pizzeria and W15 The Patisserie, the three Tier 3 cards that print an ACTION taken instead of a main action. Base is the rebuild with them in, this cell is the rebuild with them out, and the delta is what the action layer is worth. The rebuild's other pass conditions - Tier 3 firings per card built up from 0.63, Wheat's activations per card built up from 0.29, reshuffles per played deck flat at 5 to 8, median game length flat at 27 / 24 / 23 rounds, a Wheat seat's visits per turn at or above 0.51 - are before-and-after against the committed reference run, not against this cell. Read the noise floor before believing any of it. ⛔ PASSENGERS PINNED 12/09/2026: Dean's plain-action balloon and Village Store ruling moved sixteen shipped leaves at once. This overlay predates that flip and every report taken against it does too, so each of those leaves is pinned here BY NAME at its PRE-FLIP value. Without it an arm read as a delta against a pre-flip base would silently gain a one-card flight, an always-present Aerodrome and a live coin economy. That is the 05/09/2026 passenger lesson: an overlay that should not move with the shipped default has to pin every knob the flip moved.",
   "schemaVersion": 1,
   "set": {
     "cards.catalogue.W13.enabled": false,
     "cards.catalogue.W14.enabled": false,
-    "cards.catalogue.W15.enabled": false
+    "cards.catalogue.W15.enabled": false,
+    "aerodrome.moveCost.barnCards": 2,
+    "aerodrome.alwaysInPlay": false,
+    "aerodrome.flightMints": false,
+    "aerodrome.balloons.balloonDraw.reward.type": "draw",
+    "aerodrome.balloons.balloonDraw.reward.amount": 4,
+    "aerodrome.balloons.balloonBuild.reward.type": "buildDiscount",
+    "aerodrome.balloons.balloonBuild.reward.amount": 4,
+    "aerodrome.balloons.balloonSow.reward.type": "sowFromHand",
+    "aerodrome.balloons.balloonSow.reward.amount": 4,
+    "aerodrome.balloons.balloonCoins.reward.type": "harvestAny",
+    "rules.economy.storeCoinsPerCard": 0,
+    "rules.economy.coinSupplyPerPlayer": 0,
+    "rules.economy.coinPaysBuild": false,
+    "rules.economy.coinPaysSuitCost": false,
+    "rules.economy.coinPaysGrow": false,
+    "rules.economy.coinGrowOnFullBuilding": false,
+    "rules.economy.cropScorerOnBarn": false
   }
 }

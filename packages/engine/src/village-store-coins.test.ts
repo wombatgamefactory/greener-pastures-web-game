@@ -567,13 +567,26 @@ describe('the Village Store coin: inertness at the shipped values', () => {
    * and depend on the key being missing, which is the register
    * `GameState.commons` and `PlayerState.coins` are already written in.
    */
-  it('carries no supply and no wallet in the shipped game or in either control', () => {
-    for (const data of [BASE_GAME_DATA, control, cardVisitGame()]) {
+  // ⭐ RE-POINTED 12/09/2026. The shipped game is no longer in this list: Dean
+  // ruled the Village Store in, so BASE_GAME_DATA carries a supply and a wallet
+  // on purpose (asserted in the next test's shape, off the base). The claim this
+  // test exists for - a game that PREDATES the Store carries neither key, absent
+  // rather than present-and-zero - is unchanged, and it is what lets the
+  // historical fixtures replay byte-identically.
+  it('carries no supply and no wallet in either pre-Store control', () => {
+    for (const data of [control, cardVisitGame()]) {
       const state = newGame(data, { seats: 2, seed: 'inert' });
       expect(Object.hasOwn(state, 'coinSupply')).toBe(false);
       expect(Object.hasOwn(player(state, SEAT), 'coins')).toBe(false);
       expect(JSON.stringify(state).includes('coinSupply')).toBe(false);
     }
+  });
+
+  /** The shipped game carries both since 12/09/2026, sized by seats. */
+  it('carries both in the shipped game, sized by seats', () => {
+    const state = newGame(BASE_GAME_DATA, { seats: 3, seed: 'inert' });
+    expect(state.coinSupply).toBe(15);
+    expect(player(state, SEAT).coins).toBe(0);
   });
 
   /** And the arm DOES carry both, or the mint would have nothing to draw on. */

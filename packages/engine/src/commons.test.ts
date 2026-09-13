@@ -35,7 +35,7 @@ import { commonsBoardCard, commonsBoards, player } from './query.js';
 import { rngInt, seedRng } from './rng.js';
 import { gameEndScores } from './runtime.js';
 import type { CardId, GameState, Move, Seat } from './state.js';
-import { buildFor, dealTo, loadStack, makeState } from './testkit.js';
+import { buildFor, dealTo, loadStack, makeState, meepleEconomyGame } from './testkit.js';
 import { viewFor } from './view.js';
 
 const data: GameData = BASE_GAME_DATA;
@@ -48,6 +48,25 @@ const cardControl: GameData = loadGameData({
   name: 'v31-card-visit',
   schemaVersion: 1,
   set: {
+    'rules.economy.cropScorerOnBarn': false,
+    // Pre-flip pins (12/09/2026): this is a named inline copy of a
+    // committed overlay, and a copy of a pin stops being a pin.
+    'aerodrome.moveCost.barnCards': 2,
+    'aerodrome.alwaysInPlay': false,
+    'aerodrome.flightMints': false,
+    'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+    'aerodrome.balloons.balloonDraw.reward.amount': 4,
+    'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+    'aerodrome.balloons.balloonBuild.reward.amount': 4,
+    'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+    'aerodrome.balloons.balloonSow.reward.amount': 4,
+    'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
+    'rules.economy.storeCoinsPerCard': 0,
+    'rules.economy.coinSupplyPerPlayer': 0,
+    'rules.economy.coinPaysBuild': false,
+    'rules.economy.coinPaysSuitCost': false,
+    'rules.economy.coinPaysGrow': false,
+    'rules.economy.coinGrowOnFullBuilding': false,
     'rules.turn.visitCurrency': 'card',
     'rules.turn.bonusTiming': 'end',
     'rules.turn.startingMeeplesPerColour': 1,
@@ -67,6 +86,25 @@ const meepleControl: GameData = loadGameData({
   name: 'meeple-loop-v1',
   schemaVersion: 1,
   set: {
+    'rules.economy.cropScorerOnBarn': false,
+    // Pre-flip pins (12/09/2026): this is a named inline copy of a
+    // committed overlay, and a copy of a pin stops being a pin.
+    'aerodrome.moveCost.barnCards': 2,
+    'aerodrome.alwaysInPlay': false,
+    'aerodrome.flightMints': false,
+    'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+    'aerodrome.balloons.balloonDraw.reward.amount': 4,
+    'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+    'aerodrome.balloons.balloonBuild.reward.amount': 4,
+    'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+    'aerodrome.balloons.balloonSow.reward.amount': 4,
+    'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
+    'rules.economy.storeCoinsPerCard': 0,
+    'rules.economy.coinSupplyPerPlayer': 0,
+    'rules.economy.coinPaysBuild': false,
+    'rules.economy.coinPaysSuitCost': false,
+    'rules.economy.coinPaysGrow': false,
+    'rules.economy.coinGrowOnFullBuilding': false,
     'rules.turn.visitCurrency': 'meeple',
     'rules.turn.bonusTiming': 'end',
     'rules.turn.startingMeeplesPerColour': 1,
@@ -997,6 +1035,25 @@ describe("Dean's arm: the commons with coins (10/09/2026)", () => {
     name: 'commons-coins-v1',
     schemaVersion: 1,
     set: {
+      'rules.economy.cropScorerOnBarn': false,
+      // Pre-flip pins (12/09/2026): this is a named inline copy of a
+      // committed overlay, and a copy of a pin stops being a pin.
+      'aerodrome.moveCost.barnCards': 2,
+      'aerodrome.alwaysInPlay': false,
+      'aerodrome.flightMints': false,
+      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+      'aerodrome.balloons.balloonDraw.reward.amount': 4,
+      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+      'aerodrome.balloons.balloonBuild.reward.amount': 4,
+      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+      'aerodrome.balloons.balloonSow.reward.amount': 4,
+      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
+      'rules.economy.storeCoinsPerCard': 0,
+      'rules.economy.coinSupplyPerPlayer': 0,
+      'rules.economy.coinPaysBuild': false,
+      'rules.economy.coinPaysSuitCost': false,
+      'rules.economy.coinPaysGrow': false,
+      'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'commons',
       'rules.turn.bonusTiming': 'start',
       'rules.turn.commonsTake': 'coins',
@@ -1012,6 +1069,25 @@ describe("Dean's arm: the commons with coins (10/09/2026)", () => {
     name: 'commons-coins-no-wild-v1',
     schemaVersion: 1,
     set: {
+      'rules.economy.cropScorerOnBarn': false,
+      // Pre-flip pins (12/09/2026): this is a named inline copy of a
+      // committed overlay, and a copy of a pin stops being a pin.
+      'aerodrome.moveCost.barnCards': 2,
+      'aerodrome.alwaysInPlay': false,
+      'aerodrome.flightMints': false,
+      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+      'aerodrome.balloons.balloonDraw.reward.amount': 4,
+      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+      'aerodrome.balloons.balloonBuild.reward.amount': 4,
+      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+      'aerodrome.balloons.balloonSow.reward.amount': 4,
+      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
+      'rules.economy.storeCoinsPerCard': 0,
+      'rules.economy.coinSupplyPerPlayer': 0,
+      'rules.economy.coinPaysBuild': false,
+      'rules.economy.coinPaysSuitCost': false,
+      'rules.economy.coinPaysGrow': false,
+      'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'commons',
       'rules.turn.bonusTiming': 'start',
       'rules.turn.commonsTake': 'coins',
@@ -1027,6 +1103,25 @@ describe("Dean's arm: the commons with coins (10/09/2026)", () => {
     name: 'commons-coins-endgame-cards-v1',
     schemaVersion: 1,
     set: {
+      'rules.economy.cropScorerOnBarn': false,
+      // Pre-flip pins (12/09/2026): this is a named inline copy of a
+      // committed overlay, and a copy of a pin stops being a pin.
+      'aerodrome.moveCost.barnCards': 2,
+      'aerodrome.alwaysInPlay': false,
+      'aerodrome.flightMints': false,
+      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
+      'aerodrome.balloons.balloonDraw.reward.amount': 4,
+      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
+      'aerodrome.balloons.balloonBuild.reward.amount': 4,
+      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
+      'aerodrome.balloons.balloonSow.reward.amount': 4,
+      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
+      'rules.economy.storeCoinsPerCard': 0,
+      'rules.economy.coinSupplyPerPlayer': 0,
+      'rules.economy.coinPaysBuild': false,
+      'rules.economy.coinPaysSuitCost': false,
+      'rules.economy.coinPaysGrow': false,
+      'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'commons',
       'rules.turn.bonusTiming': 'start',
       'rules.turn.commonsTake': 'coins',
@@ -1060,15 +1155,24 @@ describe("Dean's arm: the commons with coins (10/09/2026)", () => {
   }
 
   describe('setup and the wallet (K7)', () => {
-    it('gives every seat a wallet at zero, and the shipped game none at all', () => {
+    // ⭐ RE-POINTED 12/09/2026. The shipped game HAS wallets now: Dean ruled the
+    // Village Store in, and it mints coins when you deliver. So the "shipped
+    // game none at all" half has no subject and is replaced by the claim that
+    // still protects the six historical fixtures: a game that predates the Store
+    // - the meeple-economy control - carries NO wallet key, absent rather than
+    // present-and-zero.
+    it('gives every seat a wallet at zero, and a pre-Store control none at all', () => {
       const armed = newGame(coins, { seats: 2, suits: ['wheat', 'orchard'], seed: 'coins-setup' });
       for (const p of armed.players) expect(p.coins).toBe(0);
 
       const shipped = newGame(data, { seats: 2, suits: ['wheat', 'orchard'], seed: 'coins-setup' });
-      // ⛔ ABSENT, not present-and-zero. Six of the nine fixtures replay
-      // byte-identically and this is the assertion that says why they can.
-      for (const p of shipped.players) expect(Object.hasOwn(p, 'coins')).toBe(false);
-      expect(Object.hasOwn(viewFor(data, shipped, 0).you, 'coins')).toBe(false);
+      for (const p of shipped.players) expect(p.coins).toBe(0);
+
+      const preStore = meepleEconomyGame();
+      const old = newGame(preStore, { seats: 2, suits: ['wheat', 'orchard'], seed: 'coins-setup' });
+      // ⛔ ABSENT, not present-and-zero, which is why the historical fixtures
+      // can still replay byte-identically.
+      for (const p of old.players) expect(Object.hasOwn(p, 'coins')).toBe(false);
     });
 
     it('shows coins in the view, your own and every rival s (they are public)', () => {
