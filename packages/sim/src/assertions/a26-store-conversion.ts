@@ -4,6 +4,7 @@ import { coinSupplyPerPlayer, storeCoinsPerCard } from '@gp/data';
 import type { GameMetrics } from '../observe.js';
 import type { Assertion, Measurement, MeasureContext } from './types.js';
 import { NO_REMEDY } from './types.js';
+import { REFERENCE } from '../reference.js';
 import { num, pct, sum } from '../stats.js';
 
 /**
@@ -125,7 +126,7 @@ export const storeConversion: Assertion = {
     'EXCHANGE OFF THE DELIVERY RIDER, not to cut rules.economy.storeCoinsPerCard and not to ' +
     'shrink rules.economy.coinSupplyPerPlayer: section 1 of docs/village-store-2026-08-19-v1.md ' +
     'lists the placements that were considered instead, and none of them is built. ⭐ THE RUNS ' +
-    'THAT INFORM IT, on identical reference-v15 seeds against the control ' +
+    `THAT INFORM IT, on identical ${REFERENCE.id} seeds against the control ` +
     'overlays/notice-board-visit-host-draw-by-seats-v1.overlay.json: ' +
     'overlays/village-store-coins-v1.overlay.json is the assembled arm, and ' +
     'overlays/village-store-coins-grow-only-v1.overlay.json is the same mint with only one ' +
@@ -144,9 +145,9 @@ function noSubject(data: GameData): Measurement {
     headline:
       'NO SUBJECT: rules.economy.storeCoinsPerCard is 0, so no delivery offers an exchange and ' +
       'C113 has nothing to ask. a25-village-store-coin carries the whole coin balance sheet ' +
-      'and says the same thing there; a19-coin-economy owns the SEPARATE commons-with-coins ' +
-      'arm of 10/09/2026, whose mint clears a central pile and has no barn exchange in it at ' +
-      'all.',
+      'and says the same thing there; a19-coin-economy owned the SEPARATE commons-with-coins ' +
+      'arm of 10/09/2026, whose mint cleared a central pile and had no barn exchange in it at ' +
+      'all, and it was retired with the commons on 13/09/2026.',
     detail: [
       'C113 is a question about a PLACEMENT and not about a currency: ' +
         'docs/village-store-2026-08-19-v1.md section 1 ruled a rider on Deliver out in August ' +
@@ -155,7 +156,7 @@ function noSubject(data: GameData): Measurement {
       `Setup on this run mints nothing: storeCoinsPerCard ${storeCoinsPerCard(data)} and ` +
         `coinSupplyPerPlayer ${coinSupplyPerPlayer(data)}. The arms are ` +
         'overlays/village-store-coins-v1.overlay.json and its three siblings, every one of ' +
-        'them an ARM ON TOP OF AN ARM while C100 is open.',
+        'them an arm on the shipped Notice Board visit (ruled 13/09/2026).',
     ],
     verdict: 'OBSERVE',
   };
@@ -318,13 +319,13 @@ function conversionMode({ data, pooled }: MeasureContext): Measurement {
       'rules.economy.storeCoinsPerCard or shrinking rules.economy.coinSupplyPerPlayer makes ' +
       'the reward smaller without making the choice real; the design’s own answer is to move ' +
       'the exchange off the delivery rider.',
-    '⛔ THE INSTRUMENT IS reference-v15 AND THIS IS AN ARM ON TOP OF AN ARM. C100 is open and ' +
-      'no Notice Board configuration is ruled in as the shipped game, so the control is only ' +
-      'the best-performing configuration measured ' +
-      '(overlays/notice-board-visit-host-draw-by-seats-v1.overlay.json, 5 PASS / 1 FAIL / 11 ' +
-      'OBSERVE) and not a ruling. No level here is comparable with a reference-v14 or earlier ' +
-      'number, and ⚠️ THERE IS NO NOISE FLOOR FOR ANY LINE ON THIS PAGE: nothing here is in ' +
-      'HEADLINE_METRICS and --noise has never been run against a Store arm. ⚠️ ONE ' +
+    `⛔ THE INSTRUMENT IS ${REFERENCE.id}. The Notice Board visit is the shipped game (ruled ` +
+      '13/09/2026) and the Village Store coin is live in it; the Village Store and ' +
+      'delivery-meeple overlays are arms on the shipped game, paired against ' +
+      'overlays/notice-board-visit-host-draw-by-seats-v1.overlay.json, whose leaves they pin. ' +
+      'No level here is comparable with an earlier reference, and ⚠️ THERE IS NO NOISE FLOOR ' +
+      `FOR ANY LINE ON THIS PAGE: nothing here is in HEADLINE_METRICS, so the ${REFERENCE.id} ` +
+      'floor says nothing about any of them. ⚠️ ONE ' +
       'APPROXIMATION IS NAMED IN observe.ts rather than hidden here: two `mint` tasks queued ' +
       'back to back for the same seat, the second opening at exactly the first’s remaining ' +
       'minus one, are folded as one window. It needs two deliveries with no drain between and ' +

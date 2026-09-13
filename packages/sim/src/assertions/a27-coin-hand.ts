@@ -4,6 +4,7 @@ import { coinPaysBuild, coinPaysGrow, isNoticeBoardPower, storeCoinsPerCard } fr
 import type { GameMetrics } from '../observe.js';
 import type { Assertion, Measurement, MeasureContext } from './types.js';
 import { NO_REMEDY } from './types.js';
+import { REFERENCE } from '../reference.js';
 import { num, pct, sum } from '../stats.js';
 
 /**
@@ -119,7 +120,7 @@ export const coinHand: Assertion = {
     'overlays/village-store-coins-grow-only-v1.overlay.json (the Grow bet alone, which is the ' +
     'arm that pays no card at all) and overlays/village-store-coins-build-only-v1.overlay.json ' +
     'against the control overlays/notice-board-visit-host-draw-by-seats-v1.overlay.json on ' +
-    'identical reference-v15 seeds. ⛔ IF THE DISCARD ENUMERATION CLIMBS FAR ENOUGH TO COST ' +
+    `identical ${REFERENCE.id} seeds. ⛔ IF THE DISCARD ENUMERATION CLIMBS FAR ENOUGH TO COST ` +
     'RUNTIME, THE ANSWER IS AN INSTRUMENT CHANGE AND NEVER A RULES CHANGE: a bot-side discard ' +
     'heuristic in place of the task is what CLAUDE.md section 2.3 already names as the missing ' +
     'piece, and nobody has designed one.',
@@ -278,18 +279,19 @@ function handMode({ data, pooled }: MeasureContext): Measurement {
       'WRONG and should be rewritten rather than explained away.',
     '⚠️ THIS PAGE, a21-host-draw AND a22-crop-diagnosis ALL READ THE SAME FOUR COUNTERS AND ' +
       'ARE NOT THREE FINDINGS. The sample is folded once, at the first decision of every turn. ' +
-      'a21 asks what S17’s faucet does to a hand and carries the CONTROL’s numbers, because ' +
-      'the control is the seat-shaped host-draw arm; a22 splits the same counters by crop for ' +
+      'a21 asks what S17’s faucet does to a hand, and on a run with the host draw off (the ' +
+      'shipped game) it carries the same hand this page reads; a22 splits the same counters by crop for ' +
       'the Orchard liquidity chain and has no mode gate; this page asks what a sink that pays ' +
       'no card does. ⛔ Quoting two of the three as independent evidence is double-counting one ' +
       'sample.',
     '⛔ NO FAIL CONDITION, AND THERE CANNOT BE ONE. The design names no number for a hand ' +
       'size, and under C7 it could not: the quantity belongs to the instrument rather than to ' +
-      'the game, so a guard here would be a guard on the simulator. ⛔ THE INSTRUMENT IS ' +
-      'reference-v15 AND THIS IS AN ARM ON TOP OF AN ARM (C100 is open and no Notice Board ' +
-      'configuration is ruled in as the shipped game). No level here is comparable with a ' +
-      'reference-v14 or earlier number, and ⚠️ THE NOISE FLOOR COVERS NOTHING ON THIS PAGE: ' +
-      'no hand line is in HEADLINE_METRICS and --noise has never been run against a Store arm.',
+      `the game, so a guard here would be a guard on the simulator. ⛔ THE INSTRUMENT IS ` +
+      `${REFERENCE.id}. The Notice Board visit is the shipped game (ruled 13/09/2026) and the ` +
+      'Village Store coin is live in it; the Village Store and delivery-meeple overlays are ' +
+      'arms on the shipped game. No level here is comparable with an earlier reference, and ' +
+      `⚠️ THE NOISE FLOOR COVERS NOTHING ON THIS PAGE: no hand line is in HEADLINE_METRICS, so ` +
+      `the ${REFERENCE.id} floor says nothing about any of them.`,
   ];
 
   return {

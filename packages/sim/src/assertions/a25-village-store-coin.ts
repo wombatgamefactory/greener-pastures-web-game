@@ -11,6 +11,7 @@ import {
 import type { GameMetrics } from '../observe.js';
 import type { Assertion, Measurement, MeasureContext } from './types.js';
 import { NO_REMEDY } from './types.js';
+import { REFERENCE } from '../reference.js';
 import { mean, median, num, pct, sum } from '../stats.js';
 
 /**
@@ -112,7 +113,7 @@ export const villageStoreCoin: Assertion = {
   remedy:
     `${NO_REMEDY} - nothing here can fail, so nothing here prescribes. ⭐ THE ARMS THAT MOVE ` +
     'THESE NUMBERS, all four against the control ' +
-    'overlays/notice-board-visit-host-draw-by-seats-v1.overlay.json on identical reference-v15 ' +
+    `overlays/notice-board-visit-host-draw-by-seats-v1.overlay.json on identical ${REFERENCE.id} ` +
     'seeds: overlays/village-store-coins-v1.overlay.json is the assembled coin, ' +
     'overlays/village-store-coins-build-only-v1.overlay.json and ' +
     'overlays/village-store-coins-grow-only-v1.overlay.json hold the two bets apart, and ' +
@@ -140,8 +141,9 @@ export const villageStoreCoin: Assertion = {
 function noSubject(): Measurement {
   const other =
     'There is no currency in this game at all. Coins were deleted from the shipped game with ' +
-    'v31 on 02/09/2026 and the only two things that have minted one since are arms: ' +
-    'rules.turn.commonsTake "coins" (a19) and this one.';
+    'v31 on 02/09/2026 and the only two things that have minted one since are the ' +
+    'commons-with-coins arm (a19, deleted with the commons on 13/09/2026) and the Village ' +
+    'Store this page measures, which is live in the shipped game.';
   return {
     value: NaN,
     headline:
@@ -151,9 +153,8 @@ function noSubject(): Measurement {
       'The arms are overlays/village-store-coins-v1.overlay.json (both sinks), ' +
         'overlays/village-store-coins-build-only-v1.overlay.json, ' +
         'overlays/village-store-coins-grow-only-v1.overlay.json and ' +
-        'overlays/village-store-coins-wild-only-v1.overlay.json. ⛔ Every one of them is an ARM ' +
-        'ON TOP OF AN ARM: C100 is open and no Notice Board configuration is ruled in as the ' +
-        'shipped game.',
+        'overlays/village-store-coins-wild-only-v1.overlay.json. ⛔ Every one of them is an arm ' +
+        'on the shipped Notice Board visit (ruled 13/09/2026).',
       '⚠️ THE MINT IS THE OFF SWITCH AND THE SINKS ARE NOT. rules.economy.coinPaysBuild and ' +
         'rules.economy.coinPaysGrow can be true with no mint behind them and the game is still ' +
         'coinless, so this page gates on storeCoinsPerCard and on nothing else. ' +
@@ -401,14 +402,14 @@ function storeMode({ data, pooled }: MeasureContext): Measurement {
       'that first measures a quantity is a snapshot test that can never fail (ticket 11 ' +
       'section 2), and this project has been bitten by that shape twice - the cap-of-two ' +
       'lesson of 05/09/2026 and its repeat as commonsThreshold: 2 on 09/09/2026.',
-    '⛔ THE INSTRUMENT IS reference-v15 AND THIS IS AN ARM ON TOP OF AN ARM. C100 is open and ' +
-      'no Notice Board configuration is ruled in as the shipped game, so the control is only ' +
-      'the best-performing configuration measured ' +
-      '(overlays/notice-board-visit-host-draw-by-seats-v1.overlay.json, 5 PASS / 1 FAIL / 11 ' +
-      'OBSERVE) and not a ruling. No level here is comparable with a reference-v14 or earlier ' +
-      'number; a delta paired on identical seeds is sound and a level across a re-cut is not. ' +
-      '⚠️ AND THERE IS NO NOISE FLOOR FOR ANY LINE ON THIS PAGE: nothing here is in ' +
-      'HEADLINE_METRICS and --noise has never been run against a Store arm.',
+    `⛔ THE INSTRUMENT IS ${REFERENCE.id}. The Notice Board visit is the shipped game (ruled ` +
+      '13/09/2026) and the Village Store coin is live in it; the Village Store and ' +
+      'delivery-meeple overlays are arms on the shipped game, paired against ' +
+      'overlays/notice-board-visit-host-draw-by-seats-v1.overlay.json, whose leaves they pin. ' +
+      'No level here is comparable with an earlier reference; a delta paired on identical ' +
+      'seeds is sound and a level across a re-cut is not. ⚠️ AND THERE IS NO NOISE FLOOR FOR ' +
+      `ANY LINE ON THIS PAGE: nothing here is in HEADLINE_METRICS, so the ${REFERENCE.id} ` +
+      'floor says nothing about any of them.',
     '⚠️ AND EVERY NUMBER HERE IS DOWNSTREAM OF WHAT THE BOTS THINK A COIN IS WORTH. The ' +
       'pricing was measured rather than argued for the other arm on 10/09/2026, and a Store ' +
       'coin is worth MORE than that one because it pays a suit requirement. ⛔ Weights are not ' +

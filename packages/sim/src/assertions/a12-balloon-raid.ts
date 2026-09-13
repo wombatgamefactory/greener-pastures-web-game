@@ -1,10 +1,28 @@
+import type { GameData } from '@gp/data';
+
+import type { GameMetrics } from '../observe.js';
 import type { Assertion } from './types.js';
 import { NO_REMEDY } from './types.js';
 import { mean, num, pct, separated, meanInterval } from '../stats.js';
 
 /**
- * Added by ticket 06 ruling J. Moving a balloon costs 2 barn cards and the
- * raided player receives NOTHING, so unlike the visit fee it is a pure take:
+ * Was the Aerodrome laid out in this game? The same test the engine's setup
+ * makes (`setup.ts`): `aerodrome.alwaysInPlay`, or Vegetable among the decks in
+ * play. ⛔ UNTIL 13/09/2026 THE SIM ASKED ONLY THE SECOND HALF, so once
+ * `alwaysInPlay` shipped true every game had an Aerodrome but the "Aerodrome in
+ * play" readings still counted only the Vegetable games: a12 read 68,807 moves
+ * where the by-balloon table (every ended game) read 82,500 on the same run.
+ */
+export function aerodromeInPlay(data: GameData, g: GameMetrics): boolean {
+  return (
+    data.aerodrome.alwaysInPlay || g.suits.includes('vegetable') || g.neutral.includes('vegetable')
+  );
+}
+
+/**
+ * Added by ticket 06 ruling J. Moving a balloon costs barn cards
+ * (`aerodrome.moveCost.barnCards`, 2 then and 1 since the plain-action balloons)
+ * and the raided player receives NOTHING, so unlike the visit fee it is a pure take:
  * the same "reverse engine-building" resentment shape as assertion 2, on a
  * different mechanism, and consciously accepted at the time.
  *
@@ -39,10 +57,8 @@ export const balloonRaid: Assertion = {
     'OBSERVE - a score gap here can run either way causally, so it reports and does not judge',
   taste: false,
   remedy: NO_REMEDY,
-  measure({ pooled }) {
-    const withBalloons = pooled.ended.filter(
-      (g) => g.suits.includes('vegetable') || g.neutral.includes('vegetable'),
-    );
+  measure({ data, pooled }) {
+    const withBalloons = pooled.ended.filter((g) => aerodromeInPlay(data, g));
     let raids = 0;
     const raided: number[] = [];
     const safe: number[] = [];
@@ -84,12 +100,15 @@ export const balloonRaid: Assertion = {
                     1,
                     withBalloons.reduce((a, g) => a + g.balloonMoves, 0),
                   ),
-          )} were raids on a seat rather than takes from the centre`,
+          )} were raids off a rival's Aerodrome rather than first flights of a balloon still ` +
+          `parked in the middle of the table (the Aerodrome's own centre, not the deleted commons)`,
         `V16 The Market Signal Tower built in ${pct(
           withBalloons.length === 0 ? NaN : towers / withBalloons.length,
         )} of these games and V19 The Market Gazette in ${pct(
           withBalloons.length === 0 ? NaN : gazettes / withBalloons.length,
-        )} - both make being raided pay, so read the gap against them rather than as a pure rule effect`,
+        )} - V16 pays a raided owner a card and V19 pays for every balloon still parked at the ` +
+          'end, so being raided pays under one and costs under the other: read the gap against ' +
+          'them rather than as a pure rule effect',
       ],
       verdict: 'OBSERVE',
     };

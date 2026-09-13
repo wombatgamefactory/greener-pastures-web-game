@@ -15,6 +15,7 @@
 
 import type { GameData, Suit } from '@gp/data';
 import {
+  BASE_GAME_DATA,
   hostDrawOnVisit,
   isMeepleCurrency,
   isNoticeBoardPower,
@@ -24,6 +25,8 @@ import {
 import { ENGINE_VERSION, RULES_EDITION } from '@gp/engine';
 import { LADDER, POLICY_IDS } from '@gp/bots';
 
+import { aerodromeInPlay } from './assertions/a12-balloon-raid.js';
+import { deckSizes } from './assertions/a24-deck-circulation.js';
 import { cutList, funnel } from './cutlist.js';
 import type { CutRow, FunnelRow } from './cutlist.js';
 import type { GameMetrics } from './observe.js';
@@ -147,13 +150,20 @@ function boundaryBanner(id: string, data: GameData, overlayName: string | null):
   // (`rules.turn.hostDrawOnVisit`), so it is appended after that banner rather
   // than replacing it: the arm banner says what the notice-board visit is, the
   // two-board banner says what a seat lays out, and this one says what a host is
-  // paid. It runs on `reference-v15` seeds because it is PAIRED against
-  // `overlays/notice-board-visit-two-boards-v1.overlay.json` on them.
+  // paid. It is PAIRED against
+  // `overlays/notice-board-visit-two-boards-v1.overlay.json` on identical seeds.
+  // ⭐ AND SINCE 13/09/2026 THE NOTICE BOARD VISIT IS THE SHIPPED GAME, so a run
+  // whose Notice Board leaves all sit at their shipped values prints the short
+  // shipped-game banner instead of claiming to be an arm. The arm banners print
+  // only when at least one of those leaves has been moved.
   if (id !== 'reference-v10') {
+    if (!isNoticeBoardPower(data)) return [];
+    const off = visitLeavesOffShipped(data);
+    if (off.length === 0) return shippedGameBanner(id, data, overlayName);
     return [
-      ...noticeBoardArmBanner(data, overlayName),
-      ...twoBoardArmBanner(data, overlayName),
-      ...hostDrawArmBanner(data, overlayName),
+      ...noticeBoardArmBanner(id, data, overlayName, off),
+      ...twoBoardArmBanner(id, data, overlayName),
+      ...hostDrawArmBanner(id, data, overlayName),
     ];
   }
   return [
@@ -187,6 +197,79 @@ function boundaryBanner(id: string, data: GameData, overlayName: string | null):
 }
 
 /**
+ * The Notice Board leaves the shipped game is defined by (Dean, 13/09/2026,
+ * `reference-v17`), each as [path, value]. A run with every one of them at its
+ * value in `BASE_GAME_DATA` IS the shipped Notice Board visit, whatever else an
+ * overlay moves; a run with any of them moved is an arm on it.
+ */
+function visitLeaves(data: GameData): readonly (readonly [string, unknown])[] {
+  const { turn, economy } = data.rules;
+  return [
+    ['rules.turn.visitCurrency', turn.visitCurrency],
+    ['rules.turn.bonusTiming', turn.bonusTiming],
+    ['rules.turn.selfVisitAllowed', turn.selfVisitAllowed],
+    ['rules.turn.hostDrawOnVisit', turn.hostDrawOnVisit],
+    ['rules.economy.noticeBoardThreshold', economy.noticeBoardThreshold],
+    ['rules.economy.noticeBoardBlocks', economy.noticeBoardBlocks],
+    ['rules.economy.noticeBoardsBySeats', economy.noticeBoardsBySeats],
+  ];
+}
+
+/** The Notice Board leaves this run has moved off the shipped game, printed as `path value (shipped value)`. */
+function visitLeavesOffShipped(data: GameData): string[] {
+  const shipped = new Map(visitLeaves(BASE_GAME_DATA));
+  const show = (v: unknown) => (typeof v === 'string' ? `'${v}'` : JSON.stringify(v));
+  return visitLeaves(data)
+    .filter(([path, v]) => JSON.stringify(v) !== JSON.stringify(shipped.get(path)))
+    .map(([path, v]) => `${path} ${show(v)} (shipped ${show(shipped.get(path))})`);
+}
+
+/**
+ * ⭐ THE SHIPPED GAME'S BANNER (13/09/2026), printed when every Notice Board leaf
+ * sits at its shipped value. Short on purpose: the arm banners below carry the
+ * history of how each leaf was chosen, and a baseline that prints "THIS IS AN ARM"
+ * over the shipped game is a banner that lies at the top of the file.
+ */
+function shippedGameBanner(id: string, data: GameData, overlayName: string | null): string[] {
+  const threshold = data.rules.economy.noticeBoardThreshold;
+  const map = [1, 2, 3, 4].map((n) => `${n}p ${noticeBoardsPerSeat(data, n)}`).join('  ');
+  return [
+    '',
+    '*** THIS IS THE SHIPPED GAME: THE TWO-BOARD NOTICE BOARD VISIT, NO HOST DRAW (Dean, 13/09/2026). ***',
+    '',
+    `    overlay: ${overlayName ?? 'none (base)'}. Every Notice Board leaf is at its shipped value:`,
+    `    rules.turn.visitCurrency '${data.rules.turn.visitCurrency}', bonusTiming '${data.rules.turn.bonusTiming}', ` +
+      `selfVisitAllowed ${data.rules.turn.selfVisitAllowed},`,
+    `    hostDrawOnVisit ${hostDrawOnVisit(data)}, rules.economy.noticeBoardThreshold ${threshold}, ` +
+      `noticeBoardBlocks ${noticeBoardBlocks(data)},`,
+    `    noticeBoardsBySeats ${map}.`,
+    ...(overlayName === null
+      ? []
+      : [
+          '    ⚠️ THE OVERLAY MOVES OTHER LEAVES ONLY, so this run is an ARM ON THE SHIPPED GAME and',
+          '    not the baseline itself: read it as a paired delta against the no-overlay run.',
+        ]),
+    '',
+    '    THE RULE IN ONE LINE: the Notice Boards are BUILDINGS on their owners’ farms, and the',
+    '    bonus - FIRST, before the main action - is to play ONE card from your hand onto a',
+    '    RIVAL’s board and take the PRINTED POWER on it. Self-visiting is banned, so every target',
+    '    is a person: at two seats each player lays out two boards (their own suit’s plus one',
+    '    drawn at random from the suits nobody farms), and one at three and four. The fee card',
+    '    rests on the board until its owner harvests it, and that is the host’s whole payment.',
+    `    The threshold of ${threshold} is a MINIMUM to harvest at and never a maximum, so a04-door-clog`,
+    '    reads a genuine 0% and a20-board-stall carries the real question.',
+    '',
+    '    THE COMMONS WAS RULED DEAD AND ITS CODE DELETED ON 13/09/2026 (C100 AND C122 RULED). A',
+    '    central column below is a structural zero, and a commons figure quoted below is history.',
+    '',
+    `    THE INSTRUMENT IS ${id}. Every arm on this game - the Village Store and delivery-meeple`,
+    '    overlays, the host draw, the blocking and threshold controls - is read as a PAIRED DELTA',
+    `    on identical ${id} seeds: --overlay= with --watchlist, never --sweep=, and always`,
+    '    --n=1580. A bare --watchlist is a 1,580-game pilot and must not be quoted beside a real run.',
+  ];
+}
+
+/**
  * ⭐ DEAN'S TWO-BOARD FIX FOR THE NOTICE-BOARD VISIT (ruled 11/09/2026,
  * `overlays/notice-board-visit-two-boards-v1.overlay.json`), printed at the top
  * beside the reference banner and immediately under the notice-board arm's own,
@@ -200,13 +283,11 @@ function boundaryBanner(id: string, data: GameData, overlayName: string | null):
  * banner is still true here; the only thing that changes is WHAT A SEAT LAYS
  * OUT at two players.
  *
- * ⛔ IT IS NOT A NEW REFERENCE AND MUST NOT BECOME ONE while the variant is a
- * variant. `reference-v15` is the instrument and this is measured against
- * `overlays/notice-board-visit-no-self-v1.overlay.json` on ITS seeds, which is
- * the whole reason the comparison is sound. Cut `reference-v16` only when Dean
- * rules the variant in.
+ * ⭐ DEAN RULED IT INTO THE SHIPPED GAME ON 13/09/2026 (`reference-v17`), so it
+ * now prints only beside an arm on the Notice Board visit, and its header no
+ * longer claims the two boards are an arm.
  */
-function twoBoardArmBanner(data: GameData, overlayName: string | null): string[] {
+function twoBoardArmBanner(id: string, data: GameData, overlayName: string | null): string[] {
   if (!isNoticeBoardPower(data)) return [];
   const bySeats = [1, 2, 3, 4].map((n) => [n, noticeBoardsPerSeat(data, n)] as const);
   if (!bySeats.some(([, boards]) => boards > 1)) return [];
@@ -217,11 +298,11 @@ function twoBoardArmBanner(data: GameData, overlayName: string | null): string[]
   const map = bySeats.map(([n, boards]) => `${n}p ${boards}`).join('  ');
   return [
     '',
-    '*** THIS IS AN ARM AND NOT THE SHIPPED GAME. AT TWO SEATS EVERY PLAYER LAYS OUT TWO BOARDS. ***',
+    '*** AT TWO SEATS EVERY PLAYER LAYS OUT TWO BOARDS (the shipped rule since 13/09/2026). ***',
     '',
     `    overlay: ${overlayName ?? 'none named - the knobs were set directly'}.  rules.economy.noticeBoardsBySeats = ${map},`,
-    `    with rules.turn.selfVisitAllowed ${data.rules.turn.selfVisitAllowed} and rules.economy.unclaimedBoardsToCentre`,
-    '    false. Everything else is the notice-board visit above, leaf for leaf.',
+    `    with rules.turn.selfVisitAllowed ${data.rules.turn.selfVisitAllowed}. Everything else is the notice-board`,
+    '    visit above, leaf for leaf.',
     '',
     '    THE RULE IN ONE LINE: self-visiting stays BANNED, and at TWO SEATS each player lays out',
     '    TWO Notice Boards - their own suit’s, plus one more drawn AT RANDOM from the suits',
@@ -246,8 +327,8 @@ function twoBoardArmBanner(data: GameData, overlayName: string | null): string[]
     '    cross-table share of every play at 100% at every seat count: with the ban on and no',
     '    centre, anything else is a leak rather than a taste.',
     '',
-    '    THE CONTROL IS overlays/notice-board-visit-no-self-v1.overlay.json AND IT IS THE ONLY',
-    '    CORNER OF THE 11/09/2026 2x2 THAT PASSES THE HOOK, at 0.54. Its sole problem is two',
+    '    THE PRE-RULING CONTROL WAS overlays/notice-board-visit-no-self-v1.overlay.json, THE ONLY',
+    '    CORNER OF THE 11/09/2026 2x2 THAT PASSED THE HOOK, at 0.54. Its sole problem was two',
     '    seats: the bonus slot is used on 28.8% of turns there against Dean’s own 30% floor, and',
     '    17.9% of two-player turns begin with cards in hand and NO LEGAL VISIT, because with',
     '    self-visiting banned and one board each THERE IS EXACTLY ONE BOARD A SEAT MAY VISIT.',
@@ -305,11 +386,10 @@ function twoBoardArmBanner(data: GameData, overlayName: string | null): string[]
     '    because an unbounded hand cannot be enumerated. ANY READING ABOUT HAND SIZE BELOW IS A',
     '    READING ABOUT THE INSTRUMENT and not about the design.',
     '',
-    '    NOT A NEW REFERENCE, AND THIS RUNS ON reference-v15 SEEDS ON PURPOSE. The pairing is the',
-    '    only sound comparison this project has, and the pair is',
-    '    overlays/notice-board-visit-no-self-v1.overlay.json on identical seeds, --overlay= with',
-    '    --watchlist and always --n=1580. A bare --watchlist is a 1,580-game pilot and must not be',
-    '    quoted beside a real run. reference-v16 is cut only if Dean rules the variant in.',
+    `    THE INSTRUMENT IS ${id}. The pairing is the only sound comparison this project has, and`,
+    '    the pre-ruling pair is overlays/notice-board-visit-no-self-v1.overlay.json on identical',
+    '    seeds, --overlay= with --watchlist and always --n=1580. A bare --watchlist is a 1,580-game',
+    '    pilot and must not be quoted beside a real run.',
   ];
 }
 
@@ -327,12 +407,11 @@ function twoBoardArmBanner(data: GameData, overlayName: string | null): string[]
  * ⭐ ITS PROVENANCE IS A TABLE RATHER THAN A RUN, which is rare enough in this
  * project to be the first thing the banner records.
  *
- * ⛔ IT IS NOT A NEW REFERENCE AND MUST NOT BECOME ONE while the rule is an arm.
- * `reference-v15` is the instrument and this is measured against
- * `overlays/notice-board-visit-two-boards-v1.overlay.json` on ITS seeds, which is
- * the whole reason the comparison is sound.
+ * ⛔ THE SHIPPED GAME OF 13/09/2026 HAS NO HOST DRAW, so this is an arm on it,
+ * measured against `overlays/notice-board-visit-two-boards-v1.overlay.json` on
+ * identical seeds of the current reference.
  */
-function hostDrawArmBanner(data: GameData, overlayName: string | null): string[] {
+function hostDrawArmBanner(id: string, data: GameData, overlayName: string | null): string[] {
   if (!isNoticeBoardPower(data)) return [];
   const n = hostDrawOnVisit(data);
   if (n <= 0) return [];
@@ -342,7 +421,7 @@ function hostDrawArmBanner(data: GameData, overlayName: string | null): string[]
     '*** THIS IS AN ARM AND NOT THE SHIPPED GAME. WHEN A NEIGHBOUR VISITS YOU, YOU DRAW A CARD. ***',
     '',
     `    overlay: ${overlayName ?? 'none named - the knobs were set directly'}.  rules.turn.hostDrawOnVisit = ${n},`,
-    '    and everything else is the two-board arm above, leaf for leaf.',
+    '    and every other Notice Board leaf is as listed above.',
     '',
     '    THE RULE IN ONE LINE (S17, Dean, 11/09/2026): the owner of a visited Notice Board',
     '    immediately draws one card off a deck. NEVER on a self-visit, and PER VISIT rather than',
@@ -354,9 +433,9 @@ function hostDrawArmBanner(data: GameData, overlayName: string | null): string[]
     '    table on 11/09/2026 and house-ruled this in during the session. His verdict on that',
     '    session: the visiting worked well, everyone visited, every Notice Board was used at some',
     '    stage, and "the rule that the person who gets visited draws a card led to a lot of extra',
-    '    cards in play, which relieved the tightness of the game in a useful way". He has now',
-    '    ruled it in. The simulator is here to find what one session could not see; it is not here',
-    '    to second-guess what the session did see.',
+    '    cards in play, which relieved the tightness of the game in a useful way". ⛔ THE SHIPPED',
+    '    GAME OF 13/09/2026 HAS NO HOST DRAW, so this rule is an arm on it. The simulator is here to',
+    '    find what one session could not see; it is not here to second-guess what the session did see.',
     '',
     '    ⛔ IT AMENDS S7, AND S7 SAID THE OPPOSITE IN AS MANY WORDS. S7 reads that the card stays',
     '    on the board it was played to, its owner harvests it into their barn like any other',
@@ -407,10 +486,10 @@ function hostDrawArmBanner(data: GameData, overlayName: string | null): string[]
     '    is that file pinned leaf for leaf, so EVERY DELTA BETWEEN THE TWO COLUMNS IS THIS RULE',
     '    AND NOTHING ELSE.',
     '',
-    '    NOT A NEW REFERENCE, AND THIS RUNS ON reference-v15 SEEDS ON PURPOSE. The pairing is the',
+    `    THE INSTRUMENT IS ${id}, AND THE PAIR RUNS ON IDENTICAL ${id} SEEDS. The pairing is the`,
     '    only sound comparison this project has. --overlay= with --watchlist, never --sweep=, and',
     '    always --n=1580: a bare --watchlist is a 1,580-game pilot and must not be quoted beside a',
-    '    real run. reference-v16 is cut only if Dean rules the rule in.',
+    '    real run.',
   ];
 }
 
@@ -420,29 +499,35 @@ function hostDrawArmBanner(data: GameData, overlayName: string | null): string[]
  * SILENT under every other run, because a permanent banner is a banner nobody
  * reads.
  *
- * ⛔ IT IS NOT A NEW REFERENCE AND MUST NOT BECOME ONE while the arm is an arm.
- * `reference-v15` is the instrument and the arm is measured against the shipped
- * commons on ITS seeds, which is the whole reason the comparison is sound. Cut
- * `reference-v16` only when Dean rules the arm in.
+ * ⭐ SINCE 13/09/2026 THE NOTICE BOARD VISIT IS THE SHIPPED GAME (`reference-v17`),
+ * so this banner prints only when a run has moved one of its leaves off the
+ * shipped value (`visitLeavesOffShipped`) and names the leaves it moved. A run
+ * with none moved gets `shippedGameBanner` instead.
  */
-function noticeBoardArmBanner(data: GameData, overlayName: string | null): string[] {
+function noticeBoardArmBanner(
+  id: string,
+  data: GameData,
+  overlayName: string | null,
+  off: readonly string[],
+): string[] {
   if (!isNoticeBoardPower(data)) return [];
   const threshold = data.rules.economy.noticeBoardThreshold;
   const blocks = noticeBoardBlocks(data);
   const self = data.rules.turn.selfVisitAllowed;
   return [
     '',
-    '*** THIS IS AN ARM AND NOT THE SHIPPED GAME. THE COMMONS IS GONE AND THE BOARDS ARE OWNED. ***',
+    '*** THIS IS AN ARM AND NOT THE SHIPPED GAME: THE NOTICE BOARD VISIT WITH A LEAF MOVED. ***',
     '',
     `    overlay: ${overlayName ?? 'none named - the knobs were set directly'}.  rules.turn.visitCurrency = 'noticeBoardPower'`,
     `    (S5, Dean 10/09/2026), with rules.economy.noticeBoardThreshold ${threshold},`,
     `    noticeBoardBlocks ${blocks}, rules.turn.selfVisitAllowed ${self} and bonusTiming`,
     `    '${data.rules.turn.bonusTiming}'.`,
+    `    MOVED OFF THE SHIPPED GAME (13/09/2026): ${off.join('; ')}.`,
     '',
-    '    THE RULE IN ONE LINE: there is NO CENTRE. The five Notice Board cards have gone home to',
-    '    the farms that own them and are BUILDINGS again, and the bonus - still FIRST, before the',
-    '    main action - is to play ONE card from your hand onto ANY Notice Board on the table, your',
-    '    own included, and immediately take the PRINTED POWER on it. Orchard Draw 4; Dairy Build,',
+    '    THE RULE IN ONE LINE: there is NO CENTRE. The five Notice Board cards are BUILDINGS on',
+    '    the farms that own them, and the bonus - still FIRST, before the main action - is to play',
+    `    ONE card from your hand onto a Notice Board on the table (${self ? 'your own included, as this run allows' : 'a RIVAL’s only, as shipped'}),`,
+    '    and immediately take the PRINTED POWER on it. Orchard Draw 4; Dairy Build,',
     '    spending cards of any crops; Wheat harvest one of your buildings then 1 card from hand to',
     '    barn; Apiary Sow 2 from hand onto your OWN buildings; Vegetable Deliver, or 2 cards from',
     '    hand to barn if you cannot.',
@@ -461,13 +546,13 @@ function noticeBoardArmBanner(data: GameData, overlayName: string | null): strin
     '    a20-board-stall measures the real question instead: how often a board sits loaded and',
     '    uncleared, and for how long. Read a20 hardest at TWO PLAYERS, where there are two boards.',
     '',
-    `    SELF-VISITING IS LEGAL AND RULED IN (S6, and it is ${self ? 'ON' : 'OFF in this run'}), reversing the ban of`,
-    '    04/09/2026 deliberately: the five boards print five DIFFERENT powers, so your own board is',
-    '    one option of five and the one that never has what you have not got, where in v31 every',
-    '    board printed the SAME thing and a self-visit was strictly better than a visit.',
-    '    ITS SHARE IS THE HEADLINE RISK OF THE PASS. v31 read 22.2%; much above that here says the',
-    '    variety argument is wrong and the interaction is decoration. a17 splits it by seat count',
-    '    and overlays/notice-board-visit-no-self-v1.overlay.json is the control.',
+    `    SELF-VISITING IS BANNED IN THE SHIPPED GAME (13/09/2026) and it is ${self ? 'ON' : 'OFF'} in this run. S6 had`,
+    '    made it legal on 10/09/2026 on the argument that the five boards print five DIFFERENT',
+    '    powers, so your own board is one option of five and the one that never has what you have',
+    '    not got, where in v31 every board printed the SAME thing and a self-visit was strictly',
+    '    better than a visit. WHERE IT IS ON, ITS SHARE IS THE HEADLINE RISK. v31 read 22.2%; much',
+    '    above that says the variety argument is wrong and the interaction is decoration. a17',
+    '    splits it by seat count.',
     '',
     '    TWO RULINGS POSTDATE THE HANDOFF AND THE CODE FOLLOWS THEM, NOT S12, so nobody reads a',
     '    disagreement into it. C88, WHEAT: S12 printed "Harvest any one of your buildings, however',
@@ -477,16 +562,15 @@ function noticeBoardArmBanner(data: GameData, overlayName: string | null): strin
     '    across the table, and Dean ruled it is your OWN buildings only, so every power is',
     '    self-contained and THE VISIT ITSELF STAYS THE ONLY CROSS-TABLE ACT IN THE DESIGN.',
     '',
-    '    WHAT MOVED IN THE SUITE, so a reader knows why a familiar line changed: a08-the-hook IS',
-    '    RESTORED and has printed NO SUBJECT since 09/09/2026 - there is a host again, so',
-    '    NEIGHBOUR visits per player per turn is a rate over an event that can happen and its',
-    '    floor of 0.5 is live. a18 CHANGES MEANING rather than going quiet: it carries the FARM',
-    '    traffic here (visits received per player, the busiest-against-quietest board spread,',
-    '    cards resting on boards by game third, and the farm bypass REDEFINED as the share of barn',
-    '    cards that arrived as a fee somebody else paid) and the CENTRE traffic under the',
-    '    commons, still with no fail condition. a20-board-stall IS NEW. a19-coin-economy reports',
-    '    NO SUBJECT and points at a17, which carries the band of 30%-60% OF TURNS that Dean set',
-    '    on 09/09/2026, split self against neighbour.',
+    '    WHAT MOVED IN THE SUITE, so a reader knows why a familiar line changed: a08-the-hook HAS',
+    '    A SUBJECT, where under the commons it printed NO SUBJECT - there is a host, so NEIGHBOUR',
+    '    visits per player per turn is a rate over an event that can happen and its floor of 0.5',
+    '    is live. a18 carries the FARM traffic (visits received per player, the',
+    '    busiest-against-quietest board spread, cards resting on boards by game third, and the',
+    '    farm bypass REDEFINED as the share of barn cards that arrived as a fee somebody else',
+    '    paid), still with no fail condition. a20-board-stall carries the stall. a19-coin-economy',
+    '    is retired with the commons (13/09/2026), and a17 carries the band of 30%-60% OF TURNS',
+    '    that Dean set on 09/09/2026, split self against neighbour.',
     '',
     '    THE BAND IS A SHARE OF TURNS AND NOT OF PLAYS. A Helping Hand grants a second visit (S9,',
     '    to a different board), so visits per turn runs above the share of turns that used the',
@@ -498,11 +582,11 @@ function noticeBoardArmBanner(data: GameData, overlayName: string | null): strin
     '    7 only because an unbounded hand cannot be enumerated. ANY READING ABOUT HAND SIZE',
     '    BELOW IS A READING ABOUT THE INSTRUMENT and not about the design.',
     '',
-    '    NOT A NEW REFERENCE. This runs on reference-v15 seeds on purpose: the arm is PAIRED',
-    '    against the shipped commons baseline, against the coins arm and against',
-    '    overlays/v31-card-visit.overlay.json, which is the last design that put a card on a board',
-    '    somebody owned, and the one whose 22.2% self-visit number this must be read against.',
-    '    reference-v16 is cut only if Dean rules the arm in.',
+    `    THE INSTRUMENT IS ${id}. This arm is read as a PAIRED DELTA on identical ${id} seeds`,
+    '    against the shipped baseline (no overlay) or its own named control, never as a level.',
+    '    overlays/v31-card-visit.overlay.json is the last design before this one that put a card',
+    '    on a board somebody owned, and the one whose 22.2% self-visit number a self-visit arm',
+    '    must be read against.',
   ];
 }
 
@@ -834,19 +918,24 @@ function seriesSection({ data, pooled }: ReportInput): string[] {
   );
   line('island filled at game end', (g) => pct(median(g.map((x) => x.islandFill)), 0));
   // The C1 lines, tracked from 2026-08-09. Per DECK, not per game, and split,
-  // because a played crop's central deck is 12 cards and a neutral crop's is 18
-  // - they churn at completely different rates and one pooled number describes
-  // neither. See the note below the table.
+  // because a played crop's central deck is smaller than a neutral crop's by what
+  // setup deals out of it (`deckSizes`, 14 against 18 since v31) - they churn at
+  // different rates and one pooled number describes neither. See the note below
+  // the table.
   line('reshuffles per played deck', (g) => num(median(perDeck(g, 'played')), 2));
   line('reshuffles per neutral deck', (g) => num(median(perDeck(g, 'neutral')), 2));
+  const decks = deckSizes(data);
   out.push('');
   out.push(
     'Reshuffles are the C1 line: a pool that cycles is not a pool that is sampled. A played',
   );
   out.push(
-    "crop's deck holds 12 cards (setup takes 6 of its 18 into a hand and a barn); a neutral",
+    `crop's deck holds ${decks.played} cards (setup deals ${decks.hand} of its ${decks.whole} ` +
+      `to a hand and ${decks.barn} to a barn); a neutral`,
   );
-  out.push("crop's holds 18 and loses none, which is why the two lines are printed apart. If the");
+  out.push(
+    `crop's holds ${decks.whole} and loses none, which is why the two lines are printed apart. If the`,
+  );
   out.push(
     'played figure is above about 1, that crop is a cycling deck rather than a sampled pool,',
   );
@@ -857,9 +946,10 @@ function seriesSection({ data, pooled }: ReportInput): string[] {
     'half of the pool. First recorded 2026-08-09 on reference-v9 at n=1580: played 6 / 5 / 5',
   );
   out.push(
-    'by seat count, neutral 0 / 0 / 0. No noise floor for these two yet - run --noise before',
+    `by seat count, neutral 0 / 0 / 0. The played line's pooled median has a noise floor ` +
+      `("reshuffles, played crop", ${NOISE_FLOOR?.reference ?? 'none measured'});`,
   );
-  out.push('reading a movement in them as a finding.');
+  out.push('the neutral line has none - run --noise before reading a movement in it as a finding.');
   out.push('');
   out.push('End reasons. `stalled` drained the card supply; `maxMoves` hit the ceiling; `crashed`');
   out.push('is a bug. They are three different things and only the first is a design fact.');
@@ -1009,9 +1099,7 @@ function freightSection({ data, pooled }: ReportInput): string[] {
   // of every line here is a structural 0 that says nothing.
   const per = (f: (g: GameMetrics) => number) => mean(games.map(f));
   const vegGames = games.filter((g) => g.suits.includes('vegetable'));
-  const aeroGames = games.filter(
-    (g) => g.suits.includes('vegetable') || g.neutral.includes('vegetable'),
-  );
+  const aeroGames = games.filter((g) => aerodromeInPlay(data, g));
 
   out.push(
     `  balloon moves per game                ${num(

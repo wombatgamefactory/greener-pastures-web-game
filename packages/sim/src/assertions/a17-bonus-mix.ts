@@ -409,9 +409,9 @@ function noticeBoardMode({ data, pooled }: MeasureContext): Measurement {
     `⛔ THE FOUR-WAY TALLY, AS A SHARE OF EVERY TURN PLAYED, AND THE SPLIT IS THE READING: ` +
       `visit your OWN board ${share(selves)}, visit a RIVAL ${share(neighbours)}, ` +
       `play the CENTRE ${share(0)}, SLOT UNSPENT ${share(unspent)}. ` +
-      '⚠️ THE CENTRAL COLUMN IS A STRUCTURAL ZERO ON THIS ARM, not a finding: ' +
-      'rules.economy.unclaimedBoardsToCentre is false, so there is no centre and every ' +
-      'Notice Board is owned. The column is printed under both settings on purpose - it is ' +
+      '⚠️ THE CENTRAL COLUMN IS A STRUCTURAL ZERO, not a finding: the central boards were ' +
+      'deleted with the commons on 13/09/2026, so there is no centre and every Notice Board ' +
+      'is owned. The column is still printed on purpose - it is ' +
       'the one the 2x2 of 11/09/2026 separates, and a column that appeared and disappeared ' +
       'could not be diffed across the four corners.' +
       ' There is no free option and no fifth column: the slot holds one thing (S5), the ' +
@@ -454,7 +454,7 @@ function noticeBoardMode({ data, pooled }: MeasureContext): Measurement {
           'per board per turn, latched on the BOARD’S CARD ID, so A Helping Hand’s ' +
           'second play must land on a DIFFERENT board. Under the no-self control at two seats a ' +
           'seat faces exactly ONE legal board, so the second play CAN NEVER BE TAKEN and the ' +
-          'gap is welded shut at zero. Under this arm the one rival holds TWO boards, so it ' +
+          'gap is welded shut at zero. Under two boards the one rival holds TWO boards, so it ' +
           'can, and A Helping Hand comes alive at two seats for the first time. ⚠️ A GAP THAT ' +
           'OPENS AT TWO SEATS IS THEREFORE THE ARM WORKING AND NOT A LEAK; a gap that opens at ' +
           'THREE or FOUR seats is a leak, because those columns are rule-for-rule the control. ' +

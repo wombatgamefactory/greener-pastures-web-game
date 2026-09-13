@@ -9,6 +9,7 @@ import {
 import type { GameMetrics } from '../observe.js';
 import type { Assertion, Measurement, MeasureContext } from './types.js';
 import { NO_REMEDY } from './types.js';
+import { REFERENCE } from '../reference.js';
 import { num, pct, sum } from '../stats.js';
 
 /**
@@ -156,7 +157,7 @@ export const deliveryMeeple: Assertion = {
   taste: false,
   remedy:
     `${NO_REMEDY}, and the decision this feeds is a COMPONENT decision rather than a dial. ` +
-    '⭐ THE PAIRS THAT DECIDE ANYTHING, both on identical reference-v15 seeds: the control ' +
+    `⭐ THE PAIRS THAT DECIDE ANYTHING, both on identical ${REFERENCE.id} seeds: the control ` +
     'overlays/notice-board-visit-host-draw-by-seats-v1.overlay.json, which is this arm with ' +
     'the meeple leaves off, for what the rule costs elsewhere (a16 action inflation passes at ' +
     'only 1.61 against a target of 1.5 and every meeple spent adds an action); and ' +
@@ -193,11 +194,10 @@ function noSubject(data: GameData): Measurement {
     detail: [
       'The arm is overlays/delivery-meeple-v1.overlay.json (deliveryMeepleSpace 1, ' +
         'meepleSpendTiming "afterAction", meepleSpendPerTurn 1) and its C112 sibling ' +
-        'overlays/delivery-meeple-distinct-colours-v1.overlay.json. ⛔ Both are arms on top of ' +
-        'an arm: C100 is open and no Notice Board configuration is ruled in as the shipped ' +
-        'game.',
+        'overlays/delivery-meeple-distinct-colours-v1.overlay.json. ⛔ Both are arms on the ' +
+        'shipped Notice Board visit (ruled 13/09/2026).',
       'Where the meeples of this game live instead: a15-meeple-economy carries the "card" ' +
-        'island meeple and the meeple loop, and reports no subject under the commons. Setup on ' +
+        'island meeple and the meeple loop. Setup on ' +
         `this run seeds ${data.rules.turn.startingMeeplesPerColour ?? 0} per colour per player.`,
     ],
     verdict: 'OBSERVE',
@@ -387,12 +387,11 @@ function deliveryMeepleMode({ data, pooled }: MeasureContext): Measurement {
       'moving an assertion’s threshold to suit a new arm is how a suite stops being an ' +
       'instrument. a15 carries the verdict, this page carries the diagnosis, and quoting both ' +
       'as independent evidence is double-counting one set of counters.',
-    '⛔ THE INSTRUMENT IS reference-v15 AND THIS IS AN ARM ON TOP OF AN ARM. C100 is open and ' +
-      'no Notice Board configuration is ruled in as the shipped game, so the control is only ' +
-      'the best-performing configuration measured ' +
-      '(overlays/notice-board-visit-host-draw-by-seats-v1.overlay.json, 5 PASS / 1 FAIL / 11 ' +
-      'OBSERVE) and not a ruling. No level here is comparable with a reference-v14 or earlier ' +
-      'number; a delta paired on identical seeds is sound and a level across a re-cut is not. ' +
+    `⛔ THE INSTRUMENT IS ${REFERENCE.id}. The Notice Board visit is the shipped game (ruled ` +
+      '13/09/2026) and the delivery-meeple overlays are arms on it, paired against ' +
+      'overlays/notice-board-visit-host-draw-by-seats-v1.overlay.json, whose leaves they pin. ' +
+      'No level here is comparable with an earlier reference; a delta paired on identical ' +
+      'seeds is sound and a level across a re-cut is not. ' +
       '⚠️ AND THERE IS NO NOISE FLOOR FOR ANY LINE ON THIS PAGE: the floor in reference.ts ' +
       'covers HEADLINE_METRICS, whose only meeple entry is "meeples held at game end" as a ' +
       'median over a whole game. Read a difference of a tenth of a meeple as nothing.',

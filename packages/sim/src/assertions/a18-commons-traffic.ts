@@ -3,6 +3,7 @@ import { isNoticeBoardPower } from '@gp/data';
 import type { Assertion, Measurement, MeasureContext } from './types.js';
 import { NO_REMEDY } from './types.js';
 import { totalTurns } from './lib.js';
+import { REFERENCE } from '../reference.js';
 import { mean, median, num, pct, sum } from '../stats.js';
 
 /**
@@ -355,8 +356,8 @@ function farmTraffic({ pooled }: MeasureContext): Measurement {
 
   const detail = [
     `⭐ THIS PAGE IS ABOUT THE FARM AND NOT THE CENTRE (S2, 10/09/2026). There is no ` +
-      'commons under this run: rules.economy.unclaimedBoardsToCentre is false, so all five ' +
-      'Notice Boards are owned buildings and every centre line above has no subject. ⛔ NO ' +
+      'commons: it was deleted on 13/09/2026, so every Notice Board is an owned building and ' +
+      'every centre line on this page has no subject. ⛔ NO ' +
       'NUMBER HERE IS COMPARABLE WITH A COMMONS ONE AS A LEVEL, including the farm bypass, ' +
       'which is a different ratio over a different denominator.',
     `READING 4a, VISITS RECEIVED PER PLAYER PER GAME: ` +
@@ -451,8 +452,9 @@ function farmTraffic({ pooled }: MeasureContext): Measurement {
       'speaking rather than a taste.',
     '⛔ NO FAIL CONDITION IN THIS PASS. Every line is OBSERVE, because the design names no ' +
       'number for any of them and one taken from this run would be a snapshot test. ' +
-      'reference-v15 has no noise floor either, so a delta in any of these is not yet formally ' +
-      'readable.',
+      `THE ${REFERENCE.id} NOISE FLOOR COVERS ONE LINE HERE, the fee column of reading 5 ` +
+      '("farm bypass share"); every other line has no floor, so a delta in it is not yet ' +
+      'formally readable.',
   ];
 
   return {

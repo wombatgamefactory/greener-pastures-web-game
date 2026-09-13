@@ -311,7 +311,7 @@ export const theHook: Assertion = {
       (everyTargetIsAPerson
         ? '⛔ IT MUST READ 100% AT EVERY SEAT COUNT AND ANYTHING ELSE IS A BUG RATHER THAN A ' +
           'FINDING. Self-visiting is banned (rules.turn.selfVisitAllowed false) and there is no ' +
-          'centre (rules.economy.unclaimedBoardsToCentre false), so EVERY TARGET THE BONUS SLOT ' +
+          'centre (the central boards were deleted with the commons, 13/09/2026), so EVERY TARGET THE BONUS SLOT ' +
           'CAN BUY IS A RIVAL’S BOARD and every play crosses the table by construction. ' +
           `Self-visits read ${selves} and central plays read 0; ` +
           (leak
@@ -327,15 +327,15 @@ export const theHook: Assertion = {
           'ARGUED. The starve at two seats had two proposed cures and they differ in one thing ' +
           'only: WHAT THE EXTRA TARGETS ARE. The unclaimed-boards variant added OWNERLESS ' +
           'central boards, fixed the rate and read 14.7% cross-table at two players - the ' +
-          'neighbour designed out for the second time in three days. This arm adds a SECOND ' +
+          'neighbour designed out for the second time in three days. The two-board rule (shipped 13/09/2026) adds a SECOND ' +
           'BOARD TO A PERSON, so the target count rises to 2 / 2 / 3 by seat count and every ' +
           'one of them is somebody who gets paid. ⛔ THE HEADLINE IS THE HOOK ITSELF AND NOT ' +
           'THIS SHARE: the no-self control is the only corner of the 11/09/2026 2x2 that ' +
-          `PASSES the hook, at 0.54, and this arm reads ${num(value, 2)} (by seat count ` +
-          `${crossRows.map((r) => `${r.seats}p ${num(r.hook, 2)}`).join('  ')}). IF THIS ARM ` +
-          'MOVES THE HOOK DOWN, THE FIX HAS COST THE THING IT WAS PROTECTING. ⚠️ And only the ' +
-          'TWO-SEAT column can have moved: at three and four seats this arm is rule-for-rule ' +
-          'its control and the engine replays those columns byte-identically, so a difference ' +
+          `PASSES the hook, at 0.54, and this run reads ${num(value, 2)} (by seat count ` +
+          `${crossRows.map((r) => `${r.seats}p ${num(r.hook, 2)}`).join('  ')}). IF TWO BOARDS ` +
+          'MOVE THE HOOK DOWN, THE FIX HAS COST THE THING IT WAS PROTECTING. ⚠️ And only the ' +
+          'TWO-SEAT column can have moved: at three and four seats the two-board rule is rule-for-rule ' +
+          'the no-self control and the engine replays those columns byte-identically, so a difference ' +
           'there is a leak and not a finding.'
         : '');
 

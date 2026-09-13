@@ -3,6 +3,7 @@ import type { GameData, Suit } from '@gp/data';
 import type { GameMetrics } from '../observe.js';
 import type { Assertion, Measurement, MeasureContext } from './types.js';
 import { NO_REMEDY } from './types.js';
+import { REFERENCE } from '../reference.js';
 import { num, pct } from '../stats.js';
 
 /**
@@ -143,8 +144,8 @@ export const cropDiagnosis: Assertion = {
     'If Orchard’s share is materially the lowest, the coin is aimed at the wrong one and C114 ' +
     'reopens before anything is built. ⚠️ Read the two halves TOGETHER or not at all - they ' +
     'point opposite ways, which is why C114 asks for both in one pass. After that the reading ' +
-    'that decides anything is a delta against a paired arm on identical reference-v15 seeds, ' +
-    'never a level: no number here is comparable with a reference-v14 or earlier one.',
+    `that decides anything is a delta against a paired arm on identical ${REFERENCE.id} seeds, ` +
+    'never a level: no number here is comparable with one from an earlier reference.',
   measure(ctx) {
     return cropMode(ctx);
   },
@@ -372,9 +373,9 @@ function cropMode({ data, pooled }: MeasureContext): Measurement {
       'shape twice - the cap-of-two lesson of 05/09/2026 and its repeat as commonsThreshold: 2 ' +
       'on 09/09/2026, both of which set a guard at a number the thing already sat on. The ' +
       'verdicts these readings feed are the suit table’s win rates, a17 and a06.',
-    '⛔ THE INSTRUMENT IS reference-v15 AND NO LEVEL ON THIS PAGE IS COMPARABLE WITH ONE FROM ' +
-      'reference-v14 OR EARLIER. Five re-cuts sit between these numbers and the archive; a ' +
-      'delta paired on identical seeds is sound and a level quoted across a re-cut is not. ' +
+    `⛔ THE INSTRUMENT IS ${REFERENCE.id} AND NO LEVEL ON THIS PAGE IS COMPARABLE WITH ONE ` +
+      'FROM AN EARLIER REFERENCE. A delta paired on identical seeds is sound and a level ' +
+      'quoted across a re-cut is not. ' +
       '⚠️ AND THERE IS NO NOISE FLOOR FOR ANY LINE HERE: the floor recorded in reference.ts ' +
       'covers HEADLINE_METRICS only, and C115’s extension adds the bonus rate, the door mix and ' +
       'the farm bypass rather than these. Read a crop-to-crop gap of a point or two as nothing.',

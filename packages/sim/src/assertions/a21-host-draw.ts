@@ -10,6 +10,7 @@ import {
 import type { Assertion, Measurement, MeasureContext } from './types.js';
 import { NO_REMEDY } from './types.js';
 import { totalTurns } from './lib.js';
+import { REFERENCE } from '../reference.js';
 import { num, pct, sum } from '../stats.js';
 
 /**
@@ -112,7 +113,7 @@ export const hostDraw: Assertion = {
     `${NO_REMEDY}. The rule came off a table and not off a run, so the instrument's job is to ` +
     'say what it costs elsewhere rather than to price it. The pair is ' +
     'overlays/notice-board-visit-two-boards-v1.overlay.json, ONE LEAF away ' +
-    '(rules.turn.hostDrawOnVisit 0 against 1), on identical reference-v15 seeds: run both and ' +
+    `(rules.turn.hostDrawOnVisit 0 against 1), on identical ${REFERENCE.id} seeds: run both and ` +
     'read the delta on a17, a06, a08, the game length and the deliveries per player. ' +
     '⛔ DO NOT READ THE HAND-SIZE LINES AS EVIDENCE ABOUT TIGHTNESS IN EITHER DIRECTION.',
   measure(ctx) {
@@ -199,14 +200,16 @@ function hostDrawMode({ data, pooled }: MeasureContext): Measurement {
       'suite can say. S17, Dean, 11/09/2026: when a neighbour visits you, you draw 1 card. ' +
       'Never on a self-visit, and PER VISIT rather than per turn - so A Helping Hand sending a ' +
       'second visit to the same owner pays them twice, because they also receive two fee cards ' +
-      'and the payment is for the fee rather than for the turn. ⛔ IT AMENDS S7, under which ' +
-      'the fee card resting on the host’s board was the host’s ENTIRE payment: THE HOST IS NOW ' +
-      'PAID TWICE, a card now and the fee card later, and S7 must never be quoted forward ' +
-      'without S17 beside it.',
+      'and the payment is for the fee rather than for the turn. ⛔ WHERE IT IS ON IT AMENDS S7, ' +
+      'under which the fee card resting on the host’s board is the host’s ENTIRE payment: THE ' +
+      'HOST IS PAID TWICE, a card now and the fee card later, and S7 must never be quoted ' +
+      'forward without S17 beside it. ⛔ THE SHIPPED GAME OF 13/09/2026 HAS NO HOST DRAW, so ' +
+      'S17 is an arm on it.',
     off
       ? `⛔ THE RULE IS OFF ON THIS RUN (rules.turn.hostDrawOnVisit ${n}), SO EVERY NUMBER BELOW ` +
-        'IS A STRUCTURAL ZERO AND NOT A FINDING. This is the CONTROL column, ' +
-        'overlays/notice-board-visit-two-boards-v1.overlay.json and its own control, where the ' +
+        'IS A STRUCTURAL ZERO AND NOT A FINDING. This is the shipped rule and the CONTROL column ' +
+        'of the S17 pair (overlays/notice-board-visit-two-boards-v1.overlay.json against ' +
+        'overlays/notice-board-visit-host-draw-v1.overlay.json), where the ' +
         'fee resting on the board is the host’s whole payment (S7 unamended). The page is ' +
         'printed anyway so that the pair can be diffed line for line: a column that appeared ' +
         'and disappeared could not be.'
@@ -227,7 +230,7 @@ function hostDrawMode({ data, pooled }: MeasureContext): Measurement {
         } Its control is ` +
         'overlays/notice-board-visit-two-boards-v1.overlay.json and THE TWO DIFFER IN EXACTLY ' +
         'ONE LEAF, so every delta between the two columns is this rule and nothing else. Run ' +
-        'them paired on identical reference-v15 seeds.',
+        `them paired on identical ${REFERENCE.id} seeds.`,
     `THE FAUCET: ${cards} cards were drawn by hosts over ${games.length} games, ` +
       `${num(seats === 0 ? NaN : cards / seats, 2)} PER PLAYER PER GAME and ` +
       `${num(turns === 0 ? NaN : cards / turns, 3)} per turn. By seat count (per player per ` +
@@ -331,7 +334,7 @@ function hostDrawMode({ data, pooled }: MeasureContext): Measurement {
     value,
     headline: off
       ? `NO HOST DRAW ON THIS RUN (rules.turn.hostDrawOnVisit 0) - the S7 game, where the fee ` +
-        `resting on the board is the host's whole payment. This is the CONTROL column of the ` +
+        `resting on the board is the host's whole payment, and the shipped rule since 13/09/2026. This is the CONTROL column of the ` +
         `one-leaf pair; ${received} non-self visits were received and none of them paid a card.`
       : `THE FAUCET: ${num(seats === 0 ? NaN : cards / seats, 2)} host draws per player per ` +
         `game (${num(turns === 0 ? NaN : cards / turns, 3)} a turn), paid on ` +

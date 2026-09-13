@@ -164,7 +164,7 @@ export const actionInflation: Assertion = {
           `turns bought one). NOT counted: ${draws} ${drawLabel} - ` +
           'reported for completeness, never folded into the action total (handoff v2 preamble).',
         '⭐ WHY 1.5 AND WHY IT IS a08 SEEN FROM THE OTHER SIDE. One main action a turn is 1.0 by ' +
-          'rule; a bought door under this arm IS a visit to a rival (X5 rules out any other ' +
+          'rule; a bought door under this mode IS a visit to a rival (X5 rules out any other ' +
           'kind), so the door rate here and a08’s NEIGHBOUR-visits-per-turn rate are the same ' +
           'population. 1.0 + a08’s own 0.5 floor is 1.5, so this assertion FAILING is not a ' +
           'second finding - it is a08’s shortfall restated through the turn ledger, and the two ' +

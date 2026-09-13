@@ -1,7 +1,31 @@
+import type { GameData } from '@gp/data';
+
 import type { GameMetrics } from '../observe.js';
 import type { Assertion, Measurement, MeasureContext } from './types.js';
 import { NO_REMEDY } from './types.js';
+import { NOISE_FLOOR, REFERENCE } from '../reference.js';
 import { mean, median, num, sum } from '../stats.js';
+
+/**
+ * How big a crop's central deck is, read off the data rather than written as a
+ * constant: `whole` is one suit's deck cards (the engine's own filter in
+ * `setup.ts`), `hand` and `barn` are what setup deals a farming seat out of its
+ * own suit's deck, and `played` is what that crop's central deck holds after the
+ * deal. ⛔ THE PROSE SAID "12 CARDS (setup takes 6 of its 18 into a hand and a
+ * barn)" FROM THE OLD 5-PLUS-1 SETUP UNTIL 13/09/2026; v31 deals 4 to the hand
+ * and 0 to the barn, so a played deck holds 14. A neutral crop's deck is `whole`.
+ */
+export function deckSizes(data: GameData): {
+  whole: number;
+  hand: number;
+  barn: number;
+  played: number;
+} {
+  const suit = data.cards.suits[0];
+  const whole = data.cards.catalogue.filter((c) => c.suit === suit && c.inDeck && c.enabled).length;
+  const { startingHand: hand, startingBarnCards: barn } = data.rules.setup;
+  return { whole, hand, barn, played: whole - hand - barn };
+}
 
 /**
  * NEW ON 12/09/2026 FOR DEAN'S CIRCULATION ARGUMENT (ledger row A150), and
@@ -162,7 +186,7 @@ export const deckCirculation: Assertion = {
     `${NO_REMEDY}. ⭐ THIS IS A HYPOTHESIS TEST AND NOT A DIAL: it is the one number that can ` +
     'tell Dean whether his own best argument for the Village Store was right. Run ' +
     'overlays/village-store-coins-v1.overlay.json against its control ' +
-    'overlays/notice-board-visit-host-draw-by-seats-v1.overlay.json on identical reference-v15 ' +
+    `overlays/notice-board-visit-host-draw-by-seats-v1.overlay.json on identical ${REFERENCE.id} ` +
     'seeds and read the DELTA on all four lines together. ⛔ RESHUFFLES FALLING IS NOT ON ITS ' +
     'OWN THE FINDING: if the draws fell with them the game merely got shorter. Only ' +
     'reshuffles down AND draws roughly held AND the pool at a reshuffle up is the circulation ' +
@@ -185,8 +209,8 @@ interface DeckRows {
  * nobody is.
  *
  * ⚠️ THE SPLIT IS THE WHOLE POINT AND A POOLED FIGURE DESCRIBES NEITHER HALF: a
- * played crop's central deck is 12 cards (setup takes 6 of its 18 into a hand
- * and a barn) and a neutral crop's is 18 and loses none. ⚠️ AND A CROP FARMED BY
+ * played crop's central deck is smaller than a neutral crop's by what setup deals
+ * out of it (`deckSizes`: 14 against 18 since v31). ⚠️ AND A CROP FARMED BY
  * TWO SEATS CONTRIBUTES TWO ROWS, which is the convention metrics.ts already
  * uses for this metric and is kept so the two figures stay comparable.
  */
@@ -208,7 +232,8 @@ function deckRows(games: readonly GameMetrics[], which: 'played' | 'neutral'): D
   return rows;
 }
 
-function circulation({ pooled }: MeasureContext): Measurement {
+function circulation({ data, pooled }: MeasureContext): Measurement {
+  const decks = deckSizes(data);
   const games = pooled.ended;
   if (games.length === 0) {
     return { value: NaN, headline: 'not measured: no games ended', verdict: 'OBSERVE' };
@@ -256,9 +281,10 @@ function circulation({ pooled }: MeasureContext): Measurement {
       'reports/watchlist-2026-09-11T21-45-42-reference-v15-notice-board-visit-host-draw-by-seats-v1.txt ' +
       '(n=1580 per seat count, 4,820 games, reference-v15, the seat-shaped host-draw arm ' +
       'A148), which is the NAMED CONTROL of both the delivery-meeple and the Village Store ' +
-      'overlays - so it is comparable as a level in a way most levels in this project are ' +
-      'not: same instrument, same control arm. ⚠️ IT IS STILL A LEVEL. The reading that ' +
-      'decides anything is a PAIRED DELTA ON IDENTICAL SEEDS against that control.',
+      `overlays. ⛔ IT IS A reference-v15 LEVEL AND THIS RUN IS ${REFERENCE.id}, so it is NOT ` +
+      'comparable as a level with anything on this page: it is kept as the record the ' +
+      'prediction was written against. The reading that decides anything is a PAIRED DELTA ' +
+      'ON IDENTICAL SEEDS against that control.',
     '⛔ THE RESHUFFLE COUNT ALONE CANNOT SAY WHICH TERM MOVED, SO BOTH ARE PRINTED. If the ' +
       'Store both returns cards AND shortens the game, reshuffles fall for two entirely ' +
       'different reasons. THE NUMERATOR, cards taken off a played deck per game: ' +
@@ -285,8 +311,10 @@ function circulation({ pooled }: MeasureContext): Measurement {
       'pooled reshuffle count averages over unlike games.',
     `THE NEUTRAL DECKS, FOR CONTRAST AND NEVER POOLED WITH THE ABOVE: ` +
       `${num(median(neutral.reshuffles), 2)} reshuffles per neutral deck, ` +
-      `${num(mean(neutral.draws), 1)} cards taken. ⚠️ A PLAYED CROP’S CENTRAL DECK IS 12 CARDS ` +
-      'and a neutral crop’s is 18 and loses none to setup, so the two churn at completely ' +
+      `${num(mean(neutral.draws), 1)} cards taken. ⚠️ A PLAYED CROP’S CENTRAL DECK IS ` +
+      `${decks.played} CARDS (setup deals ${decks.hand} of its ${decks.whole} to a hand and ` +
+      `${decks.barn} to a barn) and a neutral crop’s is ${decks.whole} and loses none to ` +
+      'setup, so the two churn at completely ' +
       'different rates and one pooled number describes neither. ⭐ THE NEUTRAL LINE IS ALSO ' +
       'THE CONTROL ON THE WHOLE READING: the Store converts BARN cards, and a neutral crop has ' +
       'no barn behind it, so a movement that shows up on both lines is not the Store.',
@@ -326,12 +354,13 @@ function circulation({ pooled }: MeasureContext): Measurement {
       'never ran dry, and unlike it, it is measured at one arbitrary instant - the end - ' +
       'rather than at the moment the pool actually mattered.',
     '⚠️ THE NOISE FLOOR IS HALF PRESENT HERE, WHICH IS UNUSUAL IN THIS PASS AND IS STATED ' +
-      'EXACTLY. "reshuffles, played crop" IS in HEADLINE_METRICS, so it HAS a floor: ' +
-      'reports/noise-2026-09-11T18-18-25-reference-v15.txt read a movement of 0.00 on it, ' +
-      'which that report defines as BELOW THE METRIC’S RESOLUTION rather than noiseless (it is ' +
+      'EXACTLY. "reshuffles, played crop" IS in HEADLINE_METRICS, so it HAS a floor: the ' +
+      `${NOISE_FLOOR?.reference ?? 'current'} floor (measured ${NOISE_FLOOR?.measured ?? 'never'}) ` +
+      `read a movement of ${num(NOISE_FLOOR?.movement['reshuffles, played crop'] ?? NaN, 2)} on it, ` +
+      'which the noise report defines as BELOW THE METRIC’S RESOLUTION rather than noiseless (it is ' +
       'a median over integers, so both arms land on the same whole number). READ IT AS ONE ' +
-      'UNIT, not as "any delta is real". ⛔ AND THAT FLOOR WAS TAKEN ON THE SHIPPED COMMONS ' +
-      'AND COVERS THE POOLED MEDIAN ONLY: there is no floor for the per-seat rows, for the ' +
+      'UNIT, not as "any delta is real". ⛔ AND THAT FLOOR ' +
+      'COVERS THE POOLED MEDIAN ONLY: there is no floor for the per-seat rows, for the ' +
       'mean pool at a reshuffle, for the draws per deck or for the barn at game end.',
     '⛔ NO FAIL CONDITION, AND THE 7 / 6 / 4 WILL NEVER BECOME ONE. The design names no number ' +
       'a reshuffle count must reach; it names a direction and a mechanism, which is a ' +
@@ -340,12 +369,13 @@ function circulation({ pooled }: MeasureContext): Measurement {
       'bitten by that shape twice - the cap-of-two lesson of 05/09/2026 and its repeat as ' +
       'commonsThreshold: 2 on 09/09/2026, both of which set a guard at a number the thing ' +
       'already sat on.',
-    '⛔ THE INSTRUMENT IS reference-v15. The 7 / 6 / 4 is an ARM on it (C100 is open and no ' +
-      'Notice Board configuration is ruled in as the shipped game), so it is not the shipped ' +
-      'game’s figure and must not be quoted as one. ⛔ AND IT IS NOT THE SAME NUMBER AS THE ' +
+    `⛔ THE INSTRUMENT IS ${REFERENCE.id}. The Notice Board visit is the shipped game (ruled ` +
+      '13/09/2026), and the 7 / 6 / 4 was read on reference-v15 under an ARM (the seat-shaped ' +
+      'host draw), so it is not the shipped game’s figure and must not be quoted as one. ⛔ ' +
+      'AND IT IS NOT THE SAME NUMBER AS THE ' +
       'FIRST RECORD OF THIS METRIC, 09/08/2026 on reference-v9 at n=1580, played 6 / 5 / 5 ' +
-      'and neutral 0 / 0 / 0: five re-cuts sit between them and no reference-v14 or earlier ' +
-      'level is comparable. ⭐ THIS PAGE HAS NO MODE GATE, which it shares only with a22 - ' +
+      'and neutral 0 / 0 / 0: re-cuts sit between them and no level from an earlier ' +
+      'reference is comparable. ⭐ THIS PAGE HAS NO MODE GATE, which it shares only with a22 - ' +
       'every currency this codebase has shuffles decks and fills barns, so it never reports NO ' +
       'SUBJECT and it outlives every rule in this pass.',
   ];
@@ -355,7 +385,8 @@ function circulation({ pooled }: MeasureContext): Measurement {
     headline:
       `DECK CIRCULATION (A150): ${num(value, 2)} reshuffles per played deck, by seat count ` +
       `${bySeat.map((s) => `${s.seats}p ${num(median(s.played.reshuffles), 2)}`).join(' ')}, ` +
-      'against a 7 / 6 / 4 baseline on the same instrument and the same control arm. ' +
+      'against a 7 / 6 / 4 baseline recorded on reference-v15 (a different instrument, so not ' +
+      'comparable as a level). ' +
       `⛔ LOWER IS THE STORE WORKING: reshuffles are draws (${num(mean(played.draws), 1)} a ` +
       `played deck) over pool (${num(mean(played.pool), 2)} cards at a reshuffle), and ` +
       'barn-locked cards are cards out of the pool, so a bigger pool means fewer reshuffles. ' +
