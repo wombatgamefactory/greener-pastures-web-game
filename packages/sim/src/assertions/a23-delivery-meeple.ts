@@ -485,8 +485,8 @@ function deliveryMeepleMode(ctx: MeasureContext): Measurement {
       'delivery-meeple-no-choice-v1, delivery-meeple-choice-v1 and closing-draw-only-v1 ' +
       'decompose the three against it. The older delivery-meeple overlays replay the ' +
       'pre-12/09 arm against overlays/notice-board-visit-host-draw-by-seats-v1.overlay.json. ' +
-      `⚠️ ${REFERENCE.id} was cut BEFORE the ruling, so a run on the shipped default is not ` +
-      'that reference game and the reference is owed a re-cut. ' +
+      'reference-v19 was cut FOR the ruling on 14/09/2026; reference-v18 and earlier describe ' +
+      'the game without it. ' +
       'No level here is comparable with an earlier reference; a delta paired on identical ' +
       'seeds is sound and a level across a re-cut is not. ' +
       '⚠️ AND THERE IS NO NOISE FLOOR FOR ANY LINE ON THIS PAGE: the floor in reference.ts ' +

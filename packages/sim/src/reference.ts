@@ -1100,8 +1100,55 @@ export const REFERENCE_V18: ReferenceConfig = {
   seed: 'reference-v18',
 };
 
+/**
+ * ⭐ reference-v19, cut 14/09/2026 when Dean ruled in the delivery meeple, the
+ * delivery space choice and the closing draw. Everything else is reference-v18.
+ * Six leaves moved: `rules.turn.deliveryMeepleSpace` 1 (a random meeple on
+ * every tile's 3 VP space), `meepleSpendTiming` 'afterAction', `meepleSpendPerTurn`
+ * 1 (M1, M4, M5 - `meepleSpendDistinctColours` stays false, unchanged),
+ * `rules.turn.deliverySpaceChoice` true (a delivery names either free space) and
+ * `rules.turn.closingDrawPerCrate` 1 (the delivery that fills a tile's last
+ * space draws one card per crate token from that suit's deck, a cornucopia from
+ * any deck in play at the closer's choice).
+ *
+ * ⚠️ THE HAND LIMIT OF 7 IS STILL THE SIMULATOR'S BOUND AND NOT A RULE OF THE
+ * GAME (C7, 09/09/2026): the table plays with no hand limit at all.
+ *
+ * ⛔ A level from `reference-v18` is not comparable: the seed moved with the
+ * rule. The v18 game survives as `overlays/pre-delivery-meeple-v1.overlay.json`,
+ * and every overlay and test helper on the notice-board visit that predates
+ * this ruling pins the six leaves by name at their old inert values
+ * (deliveryMeepleSpace null, meepleSpendTiming 'start', meepleSpendPerTurn
+ * null, meepleSpendDistinctColours false, deliverySpaceChoice false,
+ * closingDrawPerCrate 0). NO NUMBER IN ANY `reference-v18` OR EARLIER REPORT IS
+ * COMPARABLE AS A LEVEL.
+ */
+export const REFERENCE_V19: ReferenceConfig = {
+  ...REFERENCE_V18,
+  id: 'reference-v19',
+  description:
+    'THE TWO-BOARD NOTICE BOARD VISIT WITH THE DELIVERY MEEPLE, THE SPACE CHOICE AND THE ' +
+    'CLOSING DRAW (Dean, 14/09/2026). reference-v18 stands - the Notice Boards are buildings on ' +
+    'their owners’ farms, the bonus comes FIRST and is one card from your hand onto a RIVAL’s ' +
+    'board for its printed power, two boards a seat at two players and one at three and four, no ' +
+    'host draw, the plain-action balloons, the Village Store, the Barn scorer and the Apiary ' +
+    'retext (apiaryPower "deckGrowWild") - and THREE RULES SHIP WITH IT, SIX LEAVES IN ALL. (1) ' +
+    'THE DELIVERY MEEPLE (M1-M8): a random meeple sits on every tile’s 3 VP space, claiming the ' +
+    'receipt claims it, and after your main action you may discard ONE for the PLAIN action of ' +
+    'its colour (deliveryMeepleSpace 1, meepleSpendTiming "afterAction", meepleSpendPerTurn 1, ' +
+    'meepleSpendDistinctColours false, unchanged). (2) THE DELIVERY SPACE CHOICE ' +
+    '(deliverySpaceChoice true): a delivery to a tile names EITHER free space, the 6 VP space or ' +
+    'the 3 VP space with the meeple, rather than fill order. (3) THE CLOSING DRAW ' +
+    '(closingDrawPerCrate 1): the delivery that fills a tile’s LAST free space draws one card per ' +
+    'crate token on the tile from that token’s suit, a cornucopia from any deck in play at the ' +
+    'closer’s choice. ⚠️ THE HAND LIMIT OF 7 IS THE SIMULATOR’S BOUND AND NOT A RULE OF THE GAME. ' +
+    'The v18 game is overlays/pre-delivery-meeple-v1.overlay.json. ⛔ NO NUMBER IN ANY ' +
+    'reference-v18 OR EARLIER REPORT IS COMPARABLE AS A LEVEL.',
+  seed: 'reference-v19',
+};
+
 /** The instrument every current number is defined against. */
-export const REFERENCE = REFERENCE_V18;
+export const REFERENCE = REFERENCE_V19;
 
 /**
  * The noise floor, measured once and quoted constantly.
@@ -1269,29 +1316,41 @@ export interface NoiseFloor {
  * seeds, from `reports/noise-2026-09-14T14-52-50-reference-v18.txt`. Seat
  * deviation moved 0.876 points (the worst chair, 2p, moved 3.6), so the +/-3
  * seat band is still inside the instrument's reach at three and four seats.
+ *
+ * The v18 values, for the record and NOT for use: meeple spend rate NaN (no
+ * delivery meeple), visits per turn 0.002, actions per turn 0.003, bonus slot
+ * used 0.002, door mix 0.005, farm bypass 0, unfinished games 0.001, winning
+ * score 1, last as % of winner 0.008, tied top score 0.003, seat deviation
+ * 0.876, every other line 0.
+ *
+ * ⭐ reference-v19's FLOOR, measured 14/09/2026 at n=1580 per seat count, two
+ * seeds, from `reports/noise-2026-09-14T22-13-53-reference-v19.txt`. `meeple
+ * spend rate` has a subject again (the delivery meeple) and moved 0.9%; seat
+ * deviation moved 0.489 points, so the +/-3 seat band stays inside the
+ * instrument's reach.
  */
 export const NOISE_FLOOR: NoiseFloor | null = {
-  reference: 'reference-v18',
+  reference: 'reference-v19',
   games: 1580,
   measured: '2026-09-14',
   movement: {
     'meeples held at game end': 0,
     'barn at game end': 0,
     'game length, rounds': 0,
-    'visits per turn': 0.002,
-    'actions per turn': 0.003,
-    'meeple spend rate': NaN,
+    'visits per turn': 0.001,
+    'actions per turn': 0,
+    'meeple spend rate': 0.009,
     'self-visit share of visits': 0,
-    'bonus slot used, share of turns': 0.002,
-    'door mix, busiest board share': 0.005,
+    'bonus slot used, share of turns': 0.003,
+    'door mix, busiest board share': 0.002,
     'farm bypass share': 0,
-    'unfinished games': 0.001,
-    'winning score': 1,
-    'last as % of winner': 0.008,
-    'tied top score': 0.003,
+    'unfinished games': 0.002,
+    'winning score': 0,
+    'last as % of winner': 0.002,
+    'tied top score': 0.006,
     'deck reshuffles per game': 0,
     'reshuffles, played crop': 0,
-    'seat deviation': 0.876,
+    'seat deviation': 0.489,
   },
 };
 /**
