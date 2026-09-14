@@ -29,6 +29,7 @@
  */
 
 import type { GameData } from '@gp/data';
+import { deliverySpacesTaken } from '@gp/data';
 import type { GameScore, PlayerView, ScoreBreakdown, Seat } from '@gp/engine';
 
 import { printedFace } from './printed';
@@ -139,8 +140,12 @@ export interface ScoreReport {
 function arrivalsFor(data: GameData, view: PlayerView, seat: Seat): ArrivalTally[] {
   const counts = new Map<number, number>();
   for (const tile of view.island.tiles) {
-    tile.deliveredBy.forEach((who, order) => {
+    // ⚠️ 14/09/2026: the VP follows the SPACE each receipt took, which is the
+    // arrival order only without Dean's space choice.
+    const spaces = deliverySpacesTaken(tile);
+    tile.deliveredBy.forEach((who, arrival) => {
       if (who !== seat) return;
+      const order = spaces[arrival] ?? arrival;
       counts.set(order, (counts.get(order) ?? 0) + 1);
     });
   }

@@ -242,8 +242,26 @@ export interface IslandTileState {
    * seat at index i took `island.vpByDeliveryOrder[i]`. Full at that array's
    * length. This is why nothing else has to be stored per delivery - the public
    * record on the tile is enough to re-derive every VP the island paid.
+   *
+   * ⚠️ 14/09/2026: "THE ORDER IS THE PAYMENT" HOLDS ONLY WITHOUT THE SPACE
+   * CHOICE. Under `rules.turn.deliverySpaceChoice` this is still the seats IN
+   * ARRIVAL ORDER and its length is still the delivery count, but which space
+   * (and so which VP and which meeple) each arrival took is `deliveredSpaces`.
+   * Ask `deliverySpacesTaken(tile)` in `@gp/data`, never index this list.
    */
   deliveredBy: Seat[];
+  /**
+   * ⭐ THE SPACE EACH RECEIPT TOOK (Dean, ruled 14/09/2026), parallel to
+   * `deliveredBy` by index: the seat at `deliveredBy[i]` took delivery space
+   * `deliveredSpaces[i]`, so the 6 VP space is held by the seat whose entry
+   * here is 0.
+   *
+   * ⛔ ABSENT UNLESS `rules.turn.deliverySpaceChoice` IS ON, and absent rather
+   * than present-and-empty, because a key added to every tile would change
+   * every serialised state and every fixture under the old rules. Without it
+   * the i-th arrival took space i, which is what `deliverySpacesTaken` answers.
+   */
+  deliveredSpaces?: number[];
 }
 
 export interface IslandState {
@@ -457,8 +475,14 @@ export type Task =
        * rules exceptions" ruling on which deck a host draws from. Absent on
        * every other draw in the game, so the field is purely additive and the
        * event it feeds is unchanged for every producer but this one.
+       *
+       * ⭐ `'closingDraw'` (Dean, ruled 14/09/2026) is the second label, on the
+       * same terms: the draw a seat takes for filling a tile's last delivery
+       * space, one card per crate. Its named decks arrive pre-revealed and a
+       * cornucopia is a deck pick, which is the ordinary draw task's ordinary
+       * behaviour; the label only lets the cards be counted.
        */
-      via?: 'hostDraw';
+      via?: 'hostDraw' | 'closingDraw';
     }
   | {
       /**
@@ -874,6 +898,11 @@ export type TaskAnswer =
       /** R17: where that share lands, by seat, and the toll it owed. */
       placements?: Partial<Record<Suit, number>>[];
       paymentToll?: Partial<Record<Suit, number>>;
+      /**
+       * The delivery space taken (Dean, 14/09/2026). Present only under
+       * `rules.turn.deliverySpaceChoice`; absent is fill order.
+       */
+      space?: number;
     }
   | {
       kind: 'balloon';
@@ -1153,6 +1182,13 @@ export type Move =
       /** R17: where the crate's meeple share lands, and the toll it owed. */
       placements?: Partial<Record<Suit, number>>[];
       paymentToll?: Partial<Record<Suit, number>>;
+      /**
+       * ⭐ WHICH DELIVERY SPACE THIS RECEIPT TAKES (Dean, ruled 14/09/2026):
+       * 0 is the 6 VP space, 1 the 3 VP space carrying the delivery meeple.
+       * Present on every enumerated move under `rules.turn.deliverySpaceChoice`
+       * and absent under fill order; `apply` rejects a space already taken.
+       */
+      space?: number;
     }
   /**
    * The Deliver action's freight branch (reference DL-12): pay 2 differing
@@ -1328,7 +1364,7 @@ export type GameEvent =
    * pays are public at a real table. Only the card identities are private, and
    * they are masked exactly as they are for any other seat's draw.
    */
-  | { e: 'cardsToHand'; seat: Seat; cards: CardId[]; via?: 'hostDraw' }
+  | { e: 'cardsToHand'; seat: Seat; cards: CardId[]; via?: 'hostDraw' | 'closingDraw' }
   | { e: 'cardsDiscarded'; suit: Suit; cards: CardId[] }
   | { e: 'deckToBarn'; seat: Seat; suit: Suit; card: CardId }
   /** One card lifted from a building's stack into its owner's barn (W14) - NOT a harvest, no on-harvest passives. */
@@ -1572,9 +1608,15 @@ export type GameEvent =
       e: 'delivered';
       seat: Seat;
       tile: string;
-      /** The receipt taken: 6 for arriving first at this tile, 3 for second. */
+      /**
+       * The receipt taken: 6 for the first delivery space, 3 for the second.
+       * ⚠️ Under the space choice (14/09/2026) that is the SPACE and not the
+       * arrival order: a first arrival may take 3.
+       */
       vp: number;
       spend: Partial<Record<Suit, number>>;
+      /** The space taken. Present only under `rules.turn.deliverySpaceChoice`. */
+      space?: number;
     }
   | {
       e: 'balloonMoved';

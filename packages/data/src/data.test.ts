@@ -48,9 +48,12 @@ import {
   coinPaysSuitCost,
   coinSupplyPerPlayer,
   deadTemplates,
+  closingDrawPerCrate,
   deliveriesPerTile,
   deliveryCost,
   deliveryMeepleSpace,
+  deliverySpaceChoice,
+  deliverySpacesTaken,
   deliveryVp,
   doorActionForSuit,
   doorForSuit,
@@ -58,6 +61,7 @@ import {
   expandSweep,
   farmsteadCoinPower,
   flatten,
+  freeDeliverySpaces,
   hostDrawOnVisit,
   isMeepleCurrency,
   isNoticeBoardPower,
@@ -530,9 +534,17 @@ describe('the notice board visit', () => {
   // a fourth currency would have seeded two meeples a tile in silence. The
   // function's own comment predicted it in September; this is the assertion that
   // keeps it closed.
+  // ⚠️ 14/09/2026: the shipped game seeds the delivery meeple (M1) now, so the
+  // seam is asserted with that one leaf pinned back to its deferring null.
   it('seeds no meeple on the island under the arm either', () => {
     const arm = loadGameData(
-      overlay({ 'rules.turn.visitCurrency': 'noticeBoardPower' }, 'notice-board-visit-v1'),
+      overlay(
+        {
+          'rules.turn.visitCurrency': 'noticeBoardPower',
+          'rules.turn.deliveryMeepleSpace': null,
+        },
+        'notice-board-visit-v1',
+      ),
     );
     expect(meeplesPerTile(arm)).toBe(0);
     expect(meeplesDealt(arm, 4)).toBe(0);
@@ -881,7 +893,11 @@ describe('the village store coin and the delivery meeple', () => {
   // the six coin leaves are asserted at their RULED values, and the four
   // meeple leaves keep the original inertness claim, which is the half that
   // still protects the v31 control's turn-start meeple spend.
-  it('ships the six coin leaves as ruled and the four meeple leaves inert', () => {
+  // ⭐ RE-POINTED AGAIN 14/09/2026: Dean ruled the delivery meeple ON, so the
+  // four meeple leaves are asserted at their RULED values too, beside the two
+  // island rules that shipped with them. The inertness claim moved to
+  // overlays/pre-delivery-meeple-v1.overlay.json, which pins all six off.
+  it('ships the six coin leaves and the four meeple leaves as ruled', () => {
     expect(BASE_GAME_DATA.rules.economy.storeCoinsPerCard).toBe(1);
     expect(storeCoinsPerCard(BASE_GAME_DATA)).toBe(1);
     expect(BASE_GAME_DATA.rules.economy.coinSupplyPerPlayer).toBe(5);
@@ -891,10 +907,38 @@ describe('the village store coin and the delivery meeple', () => {
     expect(coinPaysGrow(BASE_GAME_DATA)).toBe(true);
     expect(coinGrowOnFullBuilding(BASE_GAME_DATA)).toBe(true);
 
-    expect(deliveryMeepleSpace(BASE_GAME_DATA)).toBeNull();
-    expect(meepleSpendTiming(BASE_GAME_DATA)).toBe('start');
-    expect(meepleSpendPerTurn(BASE_GAME_DATA)).toBeNull();
+    expect(deliveryMeepleSpace(BASE_GAME_DATA)).toBe(1);
+    expect(meepleSpendTiming(BASE_GAME_DATA)).toBe('afterAction');
+    expect(meepleSpendPerTurn(BASE_GAME_DATA)).toBe(1);
     expect(meepleSpendDistinctColours(BASE_GAME_DATA)).toBe(false);
+    // The two island rules Dean shipped with the meeple (14/09/2026).
+    expect(deliverySpaceChoice(BASE_GAME_DATA)).toBe(true);
+    expect(closingDrawPerCrate(BASE_GAME_DATA)).toBe(1);
+  });
+
+  it('registers the space choice and the closing draw as knobs, off-able by name', () => {
+    const byPath = new Map(listKnobs(BASE_GAME_DATA).map((k) => [k.path, k.type]));
+    expect(byPath.get('rules.turn.deliverySpaceChoice')).toBe('boolean');
+    expect(byPath.get('rules.turn.closingDrawPerCrate')).toBe('int');
+    const off = loadGameData(
+      overlay({ 'rules.turn.deliverySpaceChoice': false, 'rules.turn.closingDrawPerCrate': 0 }),
+    );
+    expect(deliverySpaceChoice(off)).toBe(false);
+    expect(closingDrawPerCrate(off)).toBe(0);
+    expect(() =>
+      validateOverlay(overlay({ 'rules.turn.closingDrawPerCrate': true }), BASE_GAME_DATA),
+    ).toThrow(/is int/);
+  });
+
+  // ⭐ THE ONE SPELLING FOR "WHICH SPACE DID EACH RECEIPT TAKE" (14/09/2026).
+  it('reads delivery spaces off the record, falling back to fill order', () => {
+    expect(deliverySpacesTaken({ deliveredBy: [2, 0] })).toEqual([0, 1]);
+    expect(freeDeliverySpaces(BASE_GAME_DATA, { deliveredBy: [2] })).toEqual([1]);
+    expect(deliverySpacesTaken({ deliveredBy: [2], deliveredSpaces: [1] })).toEqual([1]);
+    expect(freeDeliverySpaces(BASE_GAME_DATA, { deliveredBy: [2], deliveredSpaces: [1] })).toEqual([
+      0,
+    ]);
+    expect(freeDeliverySpaces(BASE_GAME_DATA, { deliveredBy: [] })).toEqual([0, 1]);
   });
 
   it('registers all ten as knobs of the right type', () => {
@@ -992,21 +1036,27 @@ describe('the village store coin and the delivery meeple', () => {
   // against `meeplesPerTile` in every currency, because that is the function the
   // island actually seeds from and the two must not drift.
   it('defers to the existing island seeding while deliveryMeepleSpace is null', () => {
+    // ⚠️ 14/09/2026: the leaf ships at 1 now, so null is pinned by name here.
+    const deferring = { 'rules.turn.deliveryMeepleSpace': null };
     for (const currency of ['card', 'meeple', 'noticeBoardPower'] as const) {
-      const data = loadGameData(overlay({ 'rules.turn.visitCurrency': currency }));
+      const data = loadGameData(overlay({ 'rules.turn.visitCurrency': currency, ...deferring }));
       expect(deliveryMeepleSpace(data), currency).toBeNull();
       expect(tileMeepleSpaces(data).length, currency).toBe(meeplesPerTile(data));
     }
 
     // The notice-board visit seeds none; the v31 control seeds
     // one per delivery space; the meeple loop seeds the 3 VP space alone.
-    expect(tileMeepleSpaces(BASE_GAME_DATA)).toEqual([]);
-    expect(tileMeepleSpaces(loadGameData(overlay({ 'rules.turn.visitCurrency': 'card' })))).toEqual(
-      [0, 1],
-    );
+    expect(tileMeepleSpaces(loadGameData(overlay(deferring)))).toEqual([]);
     expect(
-      tileMeepleSpaces(loadGameData(overlay({ 'rules.turn.visitCurrency': 'meeple' }))),
+      tileMeepleSpaces(loadGameData(overlay({ 'rules.turn.visitCurrency': 'card', ...deferring }))),
+    ).toEqual([0, 1]);
+    expect(
+      tileMeepleSpaces(
+        loadGameData(overlay({ 'rules.turn.visitCurrency': 'meeple', ...deferring })),
+      ),
     ).toEqual([1]);
+    // And the shipped game since 14/09/2026: M1's one meeple on the 3 VP space.
+    expect(tileMeepleSpaces(BASE_GAME_DATA)).toEqual([1]);
   });
 
   // M1: exactly one meeple, on delivery space index 1 and never index 0. The
@@ -1030,8 +1080,10 @@ describe('the village store coin and the delivery meeple', () => {
   // ⛔ 'start' IS THE CURRENT BEHAVIOUR AND THEREFORE THE INERT VALUE. 'none'
   // would delete the v31 control's turn-start meeple spend, and a fixture
   // replays against it.
-  it("ships the meeple spend window at 'start', with 'none' reachable but not shipped", () => {
-    expect(meepleSpendTiming(BASE_GAME_DATA)).toBe('start');
+  // ⚠️ 14/09/2026: 'afterAction' SHIPS (Dean ruled the delivery meeple on), and
+  // 'start' stays the value every control pins, for the reason above.
+  it("ships the meeple spend window at 'afterAction', with 'start' and 'none' reachable", () => {
+    expect(meepleSpendTiming(BASE_GAME_DATA)).toBe('afterAction');
 
     for (const value of ['none', 'start', 'afterAction'] as const) {
       expect(() =>
@@ -1051,8 +1103,9 @@ describe('the village store coin and the delivery meeple', () => {
   // ⛔ null MEANS UNLIMITED, in the idiom of commonsThreshold and
   // meepleCapPerColour. 0 would mean "no spend at all", which is a different
   // rule and would delete a live phase.
-  it('caps the meeple spend at null for unlimited, and keeps C112 as its own leaf', () => {
-    expect(meepleSpendPerTurn(BASE_GAME_DATA)).toBeNull();
+  // ⚠️ 14/09/2026: Dean's cap of 1 SHIPS; null stays the controls' pinned value.
+  it('caps the meeple spend at 1 as ruled, and keeps C112 as its own leaf', () => {
+    expect(meepleSpendPerTurn(BASE_GAME_DATA)).toBe(1);
     expect(meepleSpendDistinctColours(BASE_GAME_DATA)).toBe(false);
 
     // The rule as Dean ruled it.
@@ -1158,11 +1211,16 @@ describe('the meeples', () => {
    * under the meeple loop (one per TILE, on the 3 VP second space) and
    * 12 / 18 / 24 under v31 (one per delivery SPACE).
    */
-  it('seeds no meeple at all under the shipped game', () => {
-    expect(meeplesDealt(BASE_GAME_DATA, 2)).toBe(0);
-    expect(meeplesDealt(BASE_GAME_DATA, 3)).toBe(0);
-    expect(meeplesDealt(BASE_GAME_DATA, 4)).toBe(0);
+  // ⚠️ 14/09/2026: THE SHIPPED GAME SEEDS THE DELIVERY MEEPLE (M1), one per
+  // TILE on its 3 VP space, and still starts nobody with one. The zero is now
+  // the reference-v18 game's, asserted with its one seeding leaf pinned.
+  it('seeds one meeple per tile under the shipped game, and none before 14/09/2026', () => {
+    expect(meeplesDealt(BASE_GAME_DATA, 2)).toBe(6);
+    expect(meeplesDealt(BASE_GAME_DATA, 3)).toBe(9);
+    expect(meeplesDealt(BASE_GAME_DATA, 4)).toBe(12);
     expect(BASE_GAME_DATA.rules.turn.startingMeeplesPerColour).toBe(0);
+    const before = loadGameData(overlay({ 'rules.turn.deliveryMeepleSpace': null }));
+    expect(meeplesDealt(before, 4)).toBe(0);
   });
 
   it('has a bag deep enough for the biggest board under the meeple controls', () => {
@@ -1183,7 +1241,8 @@ describe('the meeples', () => {
     const control = loadGameData({
       name: 'v31-card-visit',
       schemaVersion: 1,
-      set: { 'rules.turn.visitCurrency': 'card' },
+      // The seeding leaf pinned since 14/09/2026, as the overlay pins it.
+      set: { 'rules.turn.visitCurrency': 'card', 'rules.turn.deliveryMeepleSpace': null },
     });
     expect(meeplesDealt(control, 2)).toBe(12);
     expect(meeplesDealt(control, 3)).toBe(18);

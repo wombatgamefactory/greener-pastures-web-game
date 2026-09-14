@@ -749,6 +749,65 @@ export function meepleSpendDistinctColours(data: GameData): boolean {
   return data.rules.turn.meepleSpendDistinctColours;
 }
 
+/**
+ * ⭐ THE SPACE CHOICE (Dean, ruled 14/09/2026, `rules.turn.deliverySpaceChoice`,
+ * shipped `true`): may a delivery name EITHER free space of its tile? `false`
+ * is fill order exactly, and under it no move names a space and nothing new is
+ * stored on a tile.
+ */
+export function deliverySpaceChoice(data: GameData): boolean {
+  return data.rules.turn.deliverySpaceChoice;
+}
+
+/**
+ * ⭐ THE CLOSING DRAW (Dean, ruled 14/09/2026, `rules.turn.closingDrawPerCrate`,
+ * shipped `1`): cards drawn per crate token by whoever fills a tile's last free
+ * space. `0` is off.
+ */
+export function closingDrawPerCrate(data: GameData): number {
+  return data.rules.turn.closingDrawPerCrate;
+}
+
+/**
+ * The island record every package reads a tile through: the seats that have
+ * delivered, IN ARRIVAL ORDER, and (only under the space choice) which space
+ * each of those receipts took. Structural so a `GameState` tile and a
+ * `PlayerView` tile both fit without this package knowing either.
+ */
+export interface DeliveryRecord {
+  readonly deliveredBy: readonly number[];
+  readonly deliveredSpaces?: readonly number[];
+}
+
+/**
+ * ⭐ WHICH DELIVERY SPACE EACH RECEIPT ON THIS TILE TOOK, parallel to
+ * `deliveredBy` (14/09/2026). This is the ONE spelling for "who holds the 6 VP
+ * space": `deliveredBy[i]` is the i-th ARRIVAL and took space
+ * `deliverySpacesTaken(tile)[i]`.
+ *
+ * ⛔ WITHOUT THE SPACE CHOICE THE ANSWER IS THE IDENTITY, which is the rule from
+ * the flat island to 14/09/2026: the i-th arrival took space i. The fallback is
+ * per entry, so a tile with no `deliveredSpaces` (every tile under `false`)
+ * reads exactly as it always did.
+ */
+export function deliverySpacesTaken(tile: DeliveryRecord): number[] {
+  return tile.deliveredBy.map((_, i) => tile.deliveredSpaces?.[i] ?? i);
+}
+
+/**
+ * The spaces of this tile still open, ascending. Under fill order that is
+ * `[deliveredBy.length, ..., deliveriesPerTile - 1]`, and its first entry is the
+ * space the old rule would have given the next arrival.
+ */
+export function freeDeliverySpaces(data: GameData, tile: DeliveryRecord): number[] {
+  const taken = new Set(deliverySpacesTaken(tile));
+  const out: number[] = [];
+  for (let space = 0; space < deliveriesPerTile(data); space += 1) {
+    if (!taken.has(space)) out.push(space);
+  }
+  return out;
+}
+
 /** Cards actually in the game: the enable flag applied. */
 export function activeCards(data: GameData = BASE_GAME_DATA) {
   return data.cards.catalogue.filter((card) => card.enabled);

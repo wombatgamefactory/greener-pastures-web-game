@@ -207,6 +207,15 @@ export function cardVisitGame(): GameData {
       // `overlays/v31-card-visit.overlay.json` pins the same leaf; this is the
       // engine's own copy of that control and has to agree with it.
       'rules.economy.noticeBoardThreshold': 2,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+      // choice and the closing draw. This helper predates it, so all six are pinned
+      // off by name ('start' and null are the old inert values).
+      'rules.turn.deliveryMeepleSpace': null,
+      'rules.turn.meepleSpendTiming': 'start',
+      'rules.turn.meepleSpendPerTurn': null,
+      'rules.turn.meepleSpendDistinctColours': false,
+      'rules.turn.deliverySpaceChoice': false,
+      'rules.turn.closingDrawPerCrate': 0,
     },
   });
   return cardVisitCache;
@@ -268,6 +277,15 @@ export function noticeBoardVisitGame(): GameData {
       'rules.economy.noticeBoardBlocks': false,
       'rules.economy.endgameCoinCost': null,
       'rules.economy.farmsteadCoinPower': false,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+      // choice and the closing draw. This helper predates it, so all six are pinned
+      // off by name ('start' and null are the old inert values).
+      'rules.turn.deliveryMeepleSpace': null,
+      'rules.turn.meepleSpendTiming': 'start',
+      'rules.turn.meepleSpendPerTurn': null,
+      'rules.turn.meepleSpendDistinctColours': false,
+      'rules.turn.deliverySpaceChoice': false,
+      'rules.turn.closingDrawPerCrate': 0,
     },
   });
   return noticeBoardVisitCache;
@@ -332,6 +350,15 @@ export function noticeBoardTwoBoardsGame(): GameData {
       'rules.economy.noticeBoardsBySeats.4': 1,
       'rules.economy.endgameCoinCost': null,
       'rules.economy.farmsteadCoinPower': false,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+      // choice and the closing draw. This helper predates it, so all six are pinned
+      // off by name ('start' and null are the old inert values).
+      'rules.turn.deliveryMeepleSpace': null,
+      'rules.turn.meepleSpendTiming': 'start',
+      'rules.turn.meepleSpendPerTurn': null,
+      'rules.turn.meepleSpendDistinctColours': false,
+      'rules.turn.deliverySpaceChoice': false,
+      'rules.turn.closingDrawPerCrate': 0,
     },
   });
   return noticeBoardTwoBoardsCache;
@@ -402,6 +429,15 @@ export function noticeBoardHostDrawGame(n = 1): GameData {
       'rules.economy.noticeBoardsBySeats.4': 1,
       'rules.economy.endgameCoinCost': null,
       'rules.economy.farmsteadCoinPower': false,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+      // choice and the closing draw. This helper predates it, so all six are pinned
+      // off by name ('start' and null are the old inert values).
+      'rules.turn.deliveryMeepleSpace': null,
+      'rules.turn.meepleSpendTiming': 'start',
+      'rules.turn.meepleSpendPerTurn': null,
+      'rules.turn.meepleSpendDistinctColours': false,
+      'rules.turn.deliverySpaceChoice': false,
+      'rules.turn.closingDrawPerCrate': 0,
     },
   });
 }
@@ -471,6 +507,15 @@ export function noticeBoardHostDrawCappedGame(capped = true, n = 1): GameData {
       'rules.economy.noticeBoardsBySeats.4': 1,
       'rules.economy.endgameCoinCost': null,
       'rules.economy.farmsteadCoinPower': false,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+      // choice and the closing draw. This helper predates it, so all six are pinned
+      // off by name ('start' and null are the old inert values).
+      'rules.turn.deliveryMeepleSpace': null,
+      'rules.turn.meepleSpendTiming': 'start',
+      'rules.turn.meepleSpendPerTurn': null,
+      'rules.turn.meepleSpendDistinctColours': false,
+      'rules.turn.deliverySpaceChoice': false,
+      'rules.turn.closingDrawPerCrate': 0,
     },
   });
 }
@@ -537,6 +582,15 @@ export function noticeBoardHostDrawBySeatsGame(): GameData {
       'rules.economy.noticeBoardsBySeats.4': 1,
       'rules.economy.endgameCoinCost': null,
       'rules.economy.farmsteadCoinPower': false,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+      // choice and the closing draw. This helper predates it, so all six are pinned
+      // off by name ('start' and null are the old inert values).
+      'rules.turn.deliveryMeepleSpace': null,
+      'rules.turn.meepleSpendTiming': 'start',
+      'rules.turn.meepleSpendPerTurn': null,
+      'rules.turn.meepleSpendDistinctColours': false,
+      'rules.turn.deliverySpaceChoice': false,
+      'rules.turn.closingDrawPerCrate': 0,
     },
   });
 }
@@ -634,6 +688,11 @@ export function villageStoreGame(
       'rules.turn.meepleSpendTiming': 'start',
       'rules.turn.meepleSpendPerTurn': null,
       'rules.turn.meepleSpendDistinctColours': false,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+      // choice and the closing draw. This helper keeps its own meeple leaves and pins the
+      // two new ones off by name.
+      'rules.turn.deliverySpaceChoice': false,
+      'rules.turn.closingDrawPerCrate': 0,
     },
   });
 }
@@ -728,6 +787,11 @@ export function deliveryMeepleGame(): GameData {
       'rules.turn.meepleSpendTiming': 'afterAction',
       'rules.turn.meepleSpendPerTurn': 1,
       'rules.turn.meepleSpendDistinctColours': false,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+      // choice and the closing draw. This helper keeps its own meeple leaves and pins the
+      // two new ones off by name.
+      'rules.turn.deliverySpaceChoice': false,
+      'rules.turn.closingDrawPerCrate': 0,
     },
   });
 }
@@ -793,6 +857,11 @@ export function deliveryMeepleDistinctGame(): GameData {
       'rules.turn.meepleSpendTiming': 'afterAction',
       'rules.turn.meepleSpendPerTurn': null,
       'rules.turn.meepleSpendDistinctColours': true,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+      // choice and the closing draw. This helper keeps its own meeple leaves and pins the
+      // two new ones off by name.
+      'rules.turn.deliverySpaceChoice': false,
+      'rules.turn.closingDrawPerCrate': 0,
     },
   });
 }
@@ -851,6 +920,15 @@ export function noticeBoardHostDrawSelfGame(): GameData {
       'rules.economy.noticeBoardBlocks': false,
       'rules.economy.endgameCoinCost': null,
       'rules.economy.farmsteadCoinPower': false,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+      // choice and the closing draw. This helper predates it, so all six are pinned
+      // off by name ('start' and null are the old inert values).
+      'rules.turn.deliveryMeepleSpace': null,
+      'rules.turn.meepleSpendTiming': 'start',
+      'rules.turn.meepleSpendPerTurn': null,
+      'rules.turn.meepleSpendDistinctColours': false,
+      'rules.turn.deliverySpaceChoice': false,
+      'rules.turn.closingDrawPerCrate': 0,
     },
   });
 }
@@ -910,6 +988,15 @@ export function noticeBoardNoSelfGame(): GameData {
       'rules.economy.noticeBoardBlocks': false,
       'rules.economy.endgameCoinCost': null,
       'rules.economy.farmsteadCoinPower': false,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+      // choice and the closing draw. This helper predates it, so all six are pinned
+      // off by name ('start' and null are the old inert values).
+      'rules.turn.deliveryMeepleSpace': null,
+      'rules.turn.meepleSpendTiming': 'start',
+      'rules.turn.meepleSpendPerTurn': null,
+      'rules.turn.meepleSpendDistinctColours': false,
+      'rules.turn.deliverySpaceChoice': false,
+      'rules.turn.closingDrawPerCrate': 0,
     },
   });
   return noticeBoardNoSelfCache;
@@ -969,6 +1056,15 @@ export function meepleEconomyGame(): GameData {
       'rules.turn.meepleAsCardGoesTo': 'board',
       'rules.turn.slotToll': 1,
       'rules.turn.meepleCapPerColour': null,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+      // choice and the closing draw. This helper predates it, so all six are pinned
+      // off by name ('start' and null are the old inert values).
+      'rules.turn.deliveryMeepleSpace': null,
+      'rules.turn.meepleSpendTiming': 'start',
+      'rules.turn.meepleSpendPerTurn': null,
+      'rules.turn.meepleSpendDistinctColours': false,
+      'rules.turn.deliverySpaceChoice': false,
+      'rules.turn.closingDrawPerCrate': 0,
     },
   });
   return meepleEconomyCache;
@@ -1098,6 +1194,15 @@ export function meepleLoopGame(): GameData {
       'rules.turn.meepleAsCard': false,
       'rules.turn.slotToll': null,
       'rules.turn.meepleCapPerColour': 1,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+      // choice and the closing draw. This helper predates it, so all six are pinned
+      // off by name ('start' and null are the old inert values).
+      'rules.turn.deliveryMeepleSpace': null,
+      'rules.turn.meepleSpendTiming': 'start',
+      'rules.turn.meepleSpendPerTurn': null,
+      'rules.turn.meepleSpendDistinctColours': false,
+      'rules.turn.deliverySpaceChoice': false,
+      'rules.turn.closingDrawPerCrate': 0,
     },
   });
   return meepleLoopCache;

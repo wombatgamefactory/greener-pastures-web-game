@@ -74,6 +74,15 @@ const arm: GameData = loadGameData({
     'rules.turn.meepleAsCard': false,
     'rules.turn.slotToll': null,
     'rules.turn.meepleCapPerColour': 1,
+    // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+    // choice and the closing draw. This helper predates it, so all six are pinned
+    // off by name ('start' and null are the old inert values).
+    'rules.turn.deliveryMeepleSpace': null,
+    'rules.turn.meepleSpendTiming': 'start',
+    'rules.turn.meepleSpendPerTurn': null,
+    'rules.turn.meepleSpendDistinctColours': false,
+    'rules.turn.deliverySpaceChoice': false,
+    'rules.turn.closingDrawPerCrate': 0,
   },
 });
 
@@ -118,6 +127,15 @@ const control: GameData = loadGameData({
     // the commons (C3), so the control has to pin it.
     'workers.roster.draw.draw.see': 3,
     'workers.roster.draw.draw.keep': 3,
+    // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+    // choice and the closing draw. This helper predates it, so all six are pinned
+    // off by name ('start' and null are the old inert values).
+    'rules.turn.deliveryMeepleSpace': null,
+    'rules.turn.meepleSpendTiming': 'start',
+    'rules.turn.meepleSpendPerTurn': null,
+    'rules.turn.meepleSpendDistinctColours': false,
+    'rules.turn.deliverySpaceChoice': false,
+    'rules.turn.closingDrawPerCrate': 0,
   },
 });
 
@@ -486,13 +504,15 @@ describe('the shipped default is the NOTICE-BOARD VISIT, and both controls still
    * file is about an arm rather than about the shipped game. (The commons was
    * deleted on 13/09/2026; the shipped notice-board visit seeds no meeple either.)
    */
-  it('the base data has no meeples in it at all, and the arm deals them as R3 does', () => {
+  it('the base data starts nobody holding a meeple, and the arm deals them as R3 does', () => {
     expect(BASE_GAME_DATA.rules.turn.visitCurrency).toBe('noticeBoardPower');
     const shipped = newGame(BASE_GAME_DATA, { seats: 2, seed: 'shipped' });
     for (const p of shipped.players) {
       for (const colour of BASE_GAME_DATA.cards.suits) expect(p.meeples[colour]).toBe(0);
     }
-    for (const tile of shipped.island.tiles) expect(tile.meeples).toEqual([]);
+    // ⚠️ 14/09/2026: the island does carry ONE meeple a tile under the shipped
+    // game now (Dean ruled the delivery meeple on), and still none in a supply.
+    for (const tile of shipped.island.tiles) expect(tile.meeples).toHaveLength(1);
 
     const s = newGame(arm, { seats: 2, seed: 'shipped' });
     for (const p of s.players) {

@@ -157,6 +157,8 @@ interface CropRow {
   deliveries: number;
   /** Receipts taken, by fill order: index 0 is first to a tile, index 1 second. */
   byOrder: number[];
+  /** Receipts that were the FIRST delivery to their tile (14/09/2026: not the same as space 0). */
+  firstArrivals: number;
   receipts: number;
   /** Island receipt VP only. Never a score. */
   vp: number;
@@ -177,6 +179,7 @@ function cropRows(games: readonly GameMetrics[], data: GameData): CropRow[] {
       seatGames: 0,
       deliveries: 0,
       byOrder: schedule.map(() => 0),
+      firstArrivals: 0,
       receipts: 0,
       vp: 0,
       handSampled: 0,
@@ -202,6 +205,7 @@ function cropRows(games: readonly GameMetrics[], data: GameData): CropRow[] {
         r.receipts += n;
         r.vp += n * vp;
       });
+      r.firstArrivals += (g.receiptsByArrivalBySeat[seat] ?? [])[0] ?? 0;
       r.handSampled += g.handSampledTurnsBySeat[seat] ?? 0;
       r.handSum += g.handSizeSumBySeat[seat] ?? 0;
       r.atBound += g.handAtBoundTurnsBySeat[seat] ?? 0;
@@ -219,8 +223,10 @@ function cropRows(games: readonly GameMetrics[], data: GameData): CropRow[] {
   });
 }
 
-const firstShare = (r: CropRow): number =>
-  r.receipts === 0 ? NaN : (r.byOrder[0] ?? 0) / r.receipts;
+// ⭐ ARRIVAL AND NOT SPACE (14/09/2026): "arrives second more often" is a
+// question about time, and under Dean's space choice a first arrival may take
+// the 3 VP space. Under fill order `firstArrivals` equals `byOrder[0]` exactly.
+const firstShare = (r: CropRow): number => (r.receipts === 0 ? NaN : r.firstArrivals / r.receipts);
 
 function cropMode({ data, pooled }: MeasureContext): Measurement {
   const games = pooled.ended;

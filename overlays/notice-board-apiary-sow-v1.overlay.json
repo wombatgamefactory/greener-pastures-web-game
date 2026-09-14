@@ -1,8 +1,14 @@
 {
   "name": "notice-board-apiary-sow-v1",
-  "description": "⭐ THE reference-v17 GAME, KEPT AS A CONTROL (14/09/2026). The shipped game of 13/09/2026 with the Apiary Notice Board's S12 power, \"Sow 2 cards from your hand onto your buildings\", before Dean ruled in the retext \"Grow a building using the top card of any deck\" (apiaryPower 'deckGrowWild'). One leaf, so on the shipped base it reproduces reference-v17's rules exactly; a paired arm against the new default reads the retext as a delta.",
+  "description": "⭐ THE reference-v17 GAME, KEPT AS A CONTROL (14/09/2026). The shipped game of 13/09/2026 with the Apiary Notice Board's S12 power, \"Sow 2 cards from your hand onto your buildings\", before Dean ruled in the retext \"Grow a building using the top card of any deck\" (apiaryPower 'deckGrowWild'). One leaf, so on the shipped base it reproduces reference-v17's rules exactly; a paired arm against the new default reads the retext as a delta. ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the delivery meeple ON as the shipped default (rules.turn.deliveryMeepleSpace 1, meepleSpendTiming 'afterAction', meepleSpendPerTurn 1, meepleSpendDistinctColours false) together with two new island rules, the space choice (rules.turn.deliverySpaceChoice true: a delivery names either free space) and the closing draw (rules.turn.closingDrawPerCrate 1: filling a tile draws one card per crate). This overlay predates it, so all six leaves are pinned here BY NAME at their pre-ruling values (deliveryMeepleSpace null, meepleSpendTiming 'start', meepleSpendPerTurn null, meepleSpendDistinctColours false, deliverySpaceChoice false, closingDrawPerCrate 0; 'start' and null are the old inert values, not 'none' and 0) and it still replays its own game.",
   "schemaVersion": 1,
   "set": {
-    "rules.economy.noticeBoardPower.apiaryPower": "sow"
+    "rules.economy.noticeBoardPower.apiaryPower": "sow",
+    "rules.turn.deliveryMeepleSpace": null,
+    "rules.turn.meepleSpendTiming": "start",
+    "rules.turn.meepleSpendPerTurn": null,
+    "rules.turn.meepleSpendDistinctColours": false,
+    "rules.turn.deliverySpaceChoice": false,
+    "rules.turn.closingDrawPerCrate": 0
   }
 }

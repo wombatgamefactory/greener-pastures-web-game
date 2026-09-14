@@ -1,6 +1,6 @@
 {
   "name": "veg-hand-flight-free-v1",
-  "description": "NOT A BALLOON REWARD AT ALL, and that is the point: it changes WHO CAN AFFORD THE MODULE rather than what the module pays. `aerodrome.handMoveCost` 1 -> 0 makes the hand-paid flight free, and the hand-paid flight is the ONE part of the aerodrome that is exclusively Vegetable's (V4 and V8 print it and nothing else in the game may use it). It is currently firing 0.27 times a game, against 1.22 when it was last measured at cost 1 in August, so Vegetable's own privileged route has decayed to nothing. If the reward arms are flat and this one is not, the module's problem is access and never generosity. ⛔ PASSENGERS PINNED 12/09/2026: Dean's plain-action balloon and Village Store ruling moved sixteen shipped leaves at once. This overlay predates that flip and every report taken against it does too, so each of those leaves is pinned here BY NAME at its PRE-FLIP value. Without it an arm read as a delta against a pre-flip base would silently gain a one-card flight, an always-present Aerodrome and a live coin economy. That is the 05/09/2026 passenger lesson: an overlay that should not move with the shipped default has to pin every knob the flip moved.",
+  "description": "NOT A BALLOON REWARD AT ALL, and that is the point: it changes WHO CAN AFFORD THE MODULE rather than what the module pays. `aerodrome.handMoveCost` 1 -> 0 makes the hand-paid flight free, and the hand-paid flight is the ONE part of the aerodrome that is exclusively Vegetable's (V4 and V8 print it and nothing else in the game may use it). It is currently firing 0.27 times a game, against 1.22 when it was last measured at cost 1 in August, so Vegetable's own privileged route has decayed to nothing. If the reward arms are flat and this one is not, the module's problem is access and never generosity. ⛔ PASSENGERS PINNED 12/09/2026: Dean's plain-action balloon and Village Store ruling moved sixteen shipped leaves at once. This overlay predates that flip and every report taken against it does too, so each of those leaves is pinned here BY NAME at its PRE-FLIP value. Without it an arm read as a delta against a pre-flip base would silently gain a one-card flight, an always-present Aerodrome and a live coin economy. That is the 05/09/2026 passenger lesson: an overlay that should not move with the shipped default has to pin every knob the flip moved. ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the delivery meeple ON as the shipped default (rules.turn.deliveryMeepleSpace 1, meepleSpendTiming 'afterAction', meepleSpendPerTurn 1, meepleSpendDistinctColours false) together with two new island rules, the space choice (rules.turn.deliverySpaceChoice true: a delivery names either free space) and the closing draw (rules.turn.closingDrawPerCrate 1: filling a tile draws one card per crate). This overlay predates it, so all six leaves are pinned here BY NAME at their pre-ruling values (deliveryMeepleSpace null, meepleSpendTiming 'start', meepleSpendPerTurn null, meepleSpendDistinctColours false, deliverySpaceChoice false, closingDrawPerCrate 0; 'start' and null are the old inert values, not 'none' and 0) and it still replays its own game.",
   "schemaVersion": 1,
   "set": {
     "aerodrome.handMoveCost": 0,
@@ -20,6 +20,12 @@
     "rules.economy.coinPaysSuitCost": false,
     "rules.economy.coinPaysGrow": false,
     "rules.economy.coinGrowOnFullBuilding": false,
-    "rules.economy.cropScorerOnBarn": false
+    "rules.economy.cropScorerOnBarn": false,
+    "rules.turn.deliveryMeepleSpace": null,
+    "rules.turn.meepleSpendTiming": "start",
+    "rules.turn.meepleSpendPerTurn": null,
+    "rules.turn.meepleSpendDistinctColours": false,
+    "rules.turn.deliverySpaceChoice": false,
+    "rules.turn.closingDrawPerCrate": 0
   }
 }

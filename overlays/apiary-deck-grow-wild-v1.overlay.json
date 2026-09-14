@@ -1,8 +1,14 @@
 {
   "name": "apiary-deck-grow-wild-v1",
-  "description": "⭐⭐ DEAN'S APIARY RETEXT, RULED IN 14/09/2026, AND SINCE THEN THE SHIPPED DEFAULT: under reference-v18 this overlay changes nothing. The Apiary Notice Board reads \"Grow a building using the top card of any deck\", and the deck card pays ANY activation cost (Dean: \"it's a way of bypassing the suit requirements\"). Measured as an arm on reference-v17 seeds before the ruling, it moved Dairy's win rate from 36.6% to 50.4% and Apiary's from 40.2% to 25.9%. The game it replaced is overlays/notice-board-apiary-sow-v1.overlay.json; the rejected literal reading is apiary-deck-grow-v1.",
+  "description": "⭐⭐ DEAN'S APIARY RETEXT, RULED IN 14/09/2026, AND SINCE THEN THE SHIPPED DEFAULT: under reference-v18 this overlay changes nothing. The Apiary Notice Board reads \"Grow a building using the top card of any deck\", and the deck card pays ANY activation cost (Dean: \"it's a way of bypassing the suit requirements\"). Measured as an arm on reference-v17 seeds before the ruling, it moved Dairy's win rate from 36.6% to 50.4% and Apiary's from 40.2% to 25.9%. The game it replaced is overlays/notice-board-apiary-sow-v1.overlay.json; the rejected literal reading is apiary-deck-grow-v1. ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the delivery meeple ON as the shipped default (rules.turn.deliveryMeepleSpace 1, meepleSpendTiming 'afterAction', meepleSpendPerTurn 1, meepleSpendDistinctColours false) together with two new island rules, the space choice (rules.turn.deliverySpaceChoice true: a delivery names either free space) and the closing draw (rules.turn.closingDrawPerCrate 1: filling a tile draws one card per crate). This overlay predates it, so all six leaves are pinned here BY NAME at their pre-ruling values (deliveryMeepleSpace null, meepleSpendTiming 'start', meepleSpendPerTurn null, meepleSpendDistinctColours false, deliverySpaceChoice false, closingDrawPerCrate 0; 'start' and null are the old inert values, not 'none' and 0) and it still replays its own game.",
   "schemaVersion": 1,
   "set": {
-    "rules.economy.noticeBoardPower.apiaryPower": "deckGrowWild"
+    "rules.economy.noticeBoardPower.apiaryPower": "deckGrowWild",
+    "rules.turn.deliveryMeepleSpace": null,
+    "rules.turn.meepleSpendTiming": "start",
+    "rules.turn.meepleSpendPerTurn": null,
+    "rules.turn.meepleSpendDistinctColours": false,
+    "rules.turn.deliverySpaceChoice": false,
+    "rules.turn.closingDrawPerCrate": 0
   }
 }

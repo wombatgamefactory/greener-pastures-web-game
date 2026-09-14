@@ -1,0 +1,13 @@
+{
+  "name": "delivery-meeple-choice-v1",
+  "description": "⭐ DECOMPOSITION ARM 2 OF 3 (14/09/2026): THE DELIVERY MEEPLE PLUS THE SPACE CHOICE, on the reference-v18 game. Its CONTROL for the choice is overlays/delivery-meeple-no-choice-v1.overlay.json, from which it differs in ONE leaf, rules.turn.deliverySpaceChoice true (a delivery names either free space, so a first arrival may take the 3 VP space and its meeple and leave the 6 VP); against overlays/pre-delivery-meeple-v1.overlay.json it is five leaves. The four meeple leaves are set at Dean's ruled values (deliveryMeepleSpace 1, meepleSpendTiming 'afterAction', meepleSpendPerTurn 1, meepleSpendDistinctColours false) and rules.turn.closingDrawPerCrate is pinned 0. ⛔ PASSENGERS, NAMED: startingMeeplesPerColour 0 and meepleAsCard false from the base; everything else is the shipped reference-v18 game. ⚠️ READ a23's first-delivery share as a reading about the bots as much as the rule: the pricer weighs 6 VP well above 3 VP and a meeple. The third sibling is overlays/closing-draw-only-v1.overlay.json. ⚠️ HOW TO RUN IT: --overlay= with --watchlist, never --sweep=, and always --n=1580 (4,820 games, five mirrors), paired on identical reference-v18 seeds. A bare --watchlist is a 1,580-game pilot and must not be quoted beside a real run.",
+  "schemaVersion": 1,
+  "set": {
+    "rules.turn.deliveryMeepleSpace": 1,
+    "rules.turn.meepleSpendTiming": "afterAction",
+    "rules.turn.meepleSpendPerTurn": 1,
+    "rules.turn.meepleSpendDistinctColours": false,
+    "rules.turn.deliverySpaceChoice": true,
+    "rules.turn.closingDrawPerCrate": 0
+  }
+}

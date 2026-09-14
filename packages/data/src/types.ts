@@ -1148,6 +1148,34 @@ export interface RulesFile {
      * target of 1.5 and to which every meeple spent adds an action.
      */
     readonly meepleSpendDistinctColours: boolean;
+    /**
+     * ⭐ THE SPACE CHOICE (Dean, ruled 14/09/2026, shipped `true`). A delivery to
+     * a tile names WHICH free delivery space it takes: the 6 VP space (index 0)
+     * or the 3 VP space (index 1, the one carrying the delivery meeple). A
+     * first deliverer may take the 3 VP and the meeple and leave the 6 VP for
+     * somebody else; the second deliverer takes whichever space is left.
+     *
+     * ⛔ **`false` IS FILL ORDER EXACTLY**, the rule from the flat island
+     * (09/08/2026) to 14/09/2026: the receipt is `vpByDeliveryOrder[deliveredBy
+     * .length]` and no move names a space. Under `false` nothing new is stored
+     * on a tile and no move or answer carries a `space`, so a state hash and a
+     * replay fixture under the old rules are unchanged.
+     *
+     * ⚠️ V14 The Distribution Center, taking every receipt a tile has left,
+     * takes every free space and chooses nothing.
+     */
+    readonly deliverySpaceChoice: boolean;
+    /**
+     * ⭐ THE CLOSING DRAW (Dean, ruled 14/09/2026, shipped `1`). The delivery
+     * that fills a tile's LAST free space, whichever index that is, makes its
+     * deliverer draw this many cards for EACH crate token on the tile, from the
+     * deck of that token's suit. Mandatory. `0` is off.
+     *
+     * A cornucopia (`'wild'`) crate draws from ANY deck in play, the closer's
+     * choice (Dean, 14/09/2026). ⚠️ A crate turned face down by V6 The Trade
+     * Depot draws from its PRINTED suit: a builder default, not ruled by Dean.
+     */
+    readonly closingDrawPerCrate: number;
   };
   readonly economy: {
     /**

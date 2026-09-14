@@ -1,0 +1,13 @@
+{
+  "name": "delivery-meeple-no-choice-v1",
+  "description": "⭐ DECOMPOSITION ARM 1 OF 3 (14/09/2026): THE DELIVERY MEEPLE ALONE, on the reference-v18 game. Its CONTROL is overlays/pre-delivery-meeple-v1.overlay.json and it differs from it in exactly the four meeple leaves, set here at the values Dean ruled: rules.turn.deliveryMeepleSpace 1 (a random meeple on every tile's 3 VP space), meepleSpendTiming 'afterAction', meepleSpendPerTurn 1 and meepleSpendDistinctColours false (M1 to M8). The two new island rules are pinned OFF by name: rules.turn.deliverySpaceChoice false (fill order, so the meeple goes to whoever arrives second) and rules.turn.closingDrawPerCrate 0. ⛔ PASSENGERS, NAMED: rules.turn.startingMeeplesPerColour 0 and meepleAsCard false ride in from the base and are what keep this the EARNED island meeple rather than the ambient economy a table rejected on 09/09/2026; every other leaf is the shipped reference-v18 game (the two-board Notice Board visit, one-card plain-action balloons, the Village Store, apiaryPower 'deckGrowWild'), which is NOT the pre-12/09 base overlays/delivery-meeple-v1.overlay.json replays. Its sibling arms are overlays/delivery-meeple-choice-v1.overlay.json and overlays/closing-draw-only-v1.overlay.json. ⚠️ HOW TO RUN IT: --overlay= with --watchlist, never --sweep=, and always --n=1580 (4,820 games, five mirrors), paired on identical reference-v18 seeds. A bare --watchlist is a 1,580-game pilot and must not be quoted beside a real run.",
+  "schemaVersion": 1,
+  "set": {
+    "rules.turn.deliveryMeepleSpace": 1,
+    "rules.turn.meepleSpendTiming": "afterAction",
+    "rules.turn.meepleSpendPerTurn": 1,
+    "rules.turn.meepleSpendDistinctColours": false,
+    "rules.turn.deliverySpaceChoice": false,
+    "rules.turn.closingDrawPerCrate": 0
+  }
+}

@@ -270,7 +270,18 @@ export type Act =
    * by construction, so `barnSpend` must charge `spend` MINUS these or a
    * meeple-paid crate is charged twice, once as freight and once as a meeple.
    */
-  | { a: 'deliver'; tile: string; spend: Spend; meeples: readonly Suit[] }
+  | {
+      a: 'deliver';
+      tile: string;
+      spend: Spend;
+      meeples: readonly Suit[];
+      /**
+       * ⭐ THE DELIVERY SPACE THE MOVE NAMES (Dean's space choice, 14/09/2026),
+       * present only when the engine named one. Absent means the lowest free
+       * space, which is fill order.
+       */
+      space?: number;
+    }
   | { a: 'balloon'; balloon: string; spend: Spend }
   /**
    * THE INTERACTION HALF OF THE BONUS SLOT: one card from hand onto a Notice
@@ -461,7 +472,13 @@ function actOfAnswer(answer: TaskAnswer): Act {
         coinGrow: answer.coinGrow === true,
       };
     case 'deliver':
-      return { a: 'deliver', tile: answer.tile, spend: answer.spend, meeples: NO_MEEPLES };
+      return {
+        a: 'deliver',
+        tile: answer.tile,
+        spend: answer.spend,
+        meeples: NO_MEEPLES,
+        ...(answer.space === undefined ? {} : { space: answer.space }),
+      };
     case 'balloon':
       return { a: 'balloon', balloon: answer.balloon, spend: answer.spend };
     case 'deckSow':
@@ -523,6 +540,7 @@ export function actOf(move: Move): Act {
         tile: move.tile,
         spend: move.spend,
         meeples: meepleList(move.meeples),
+        ...(move.space === undefined ? {} : { space: move.space }),
       };
     case 'moveBalloon':
       return { a: 'balloon', balloon: move.balloon, spend: move.spend };

@@ -1020,11 +1020,38 @@ export interface GameMetrics {
    */
   deliveriesUnlockedByAlteration: number;
   /**
-   * Island receipts by FILL ORDER, by seat: index 0 is arriving first at a tile
-   * (6 VP), index 1 second (3 VP). The flat island's only remaining time
-   * gradient, and the thing V14 takes both of at once.
+   * Island receipts by DELIVERY SPACE, by seat: index 0 is the 6 VP space,
+   * index 1 the 3 VP space. The thing V14 takes both of at once.
+   *
+   * ⚠️ 14/09/2026: UNTIL DEAN'S SPACE CHOICE THIS WAS ALSO ARRIVAL ORDER, and
+   * it was documented as "arriving first at a tile". Under
+   * `rules.turn.deliverySpaceChoice` a first arrival may take the 3 VP space,
+   * so this stays keyed on the receipt's VP (which is what every VP sum over it
+   * needs) and ARRIVAL order is `receiptsByArrivalBySeat`. Under fill order the
+   * two are the same numbers.
    */
   receiptsByOrderBySeat: number[][];
+  /**
+   * ⭐ Island receipts by ARRIVAL ORDER at their tile, by seat (14/09/2026):
+   * index 0 is the first delivery a tile ever took, whichever space it chose.
+   * Sparse like `receiptsByOrderBySeat`. This is the "first to a tile" reading.
+   */
+  receiptsByArrivalBySeat: number[][];
+  /**
+   * ⭐ FIRST ARRIVALS AT A TILE THAT TOOK A SPACE OTHER THAN THE 6 VP ONE (Dean's
+   * space choice, 14/09/2026): under the shipped rules, the 3 VP space and its
+   * delivery meeple, leaving the 6 VP for somebody else. Denominator: index 0 of
+   * `receiptsByArrivalBySeat`. Always 0 under fill order.
+   */
+  firstArrivalsPassingSixBySeat: number[];
+  /**
+   * ⭐ THE CLOSING DRAW (Dean, 14/09/2026): tiles this seat filled, i.e. took
+   * the LAST free space of, and the cards that reached its hand through the
+   * `closingDraw` label. The tiles count is whoever closed the tile, whether or
+   * not `rules.turn.closingDrawPerCrate` paid anything for it.
+   */
+  tilesClosedBySeat: number[];
+  closingDrawCardsBySeat: number[];
 
   /**
    * THE GIVEAWAY (the Orchard rebuild, 2026-08-09): cards handed across the

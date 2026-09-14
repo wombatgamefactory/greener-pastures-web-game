@@ -123,9 +123,13 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
       moves.push({ type: 'harvest', seat, building });
     }
     for (const o of deliverOptions(data, state, seat)) {
+      // ⭐ THE SPACE CHOICE (Dean, 14/09/2026) rides as a trailing key, present
+      // only when the option named one, so a fill-order move is the same object
+      // it always was.
+      const space = o.space === undefined ? {} : { space: o.space };
       moves.push(
         o.meeples === undefined
-          ? { type: 'deliver', seat, tile: o.tile, spend: o.spend }
+          ? { type: 'deliver', seat, tile: o.tile, spend: o.spend, ...space }
           : {
               type: 'deliver',
               seat,
@@ -134,6 +138,7 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
               meeples: o.meeples,
               ...(o.placements === undefined ? {} : { placements: o.placements }),
               ...(o.paymentToll === undefined ? {} : { paymentToll: o.paymentToll }),
+              ...space,
             },
       );
     }
@@ -306,10 +311,21 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
       doHarvestAction(fx, move.seat, move.building);
       break;
     case 'deliver':
-      doDeliver(fx, move.seat, move.tile, move.spend, undefined, 1, move.meeples, {
-        ...(move.placements === undefined ? {} : { placements: move.placements }),
-        ...(move.paymentToll === undefined ? {} : { paymentToll: move.paymentToll }),
-      });
+      doDeliver(
+        fx,
+        move.seat,
+        move.tile,
+        move.spend,
+        undefined,
+        1,
+        move.meeples,
+        {
+          ...(move.placements === undefined ? {} : { placements: move.placements }),
+          ...(move.paymentToll === undefined ? {} : { paymentToll: move.paymentToll }),
+        },
+        // The space choice (14/09/2026): `doDeliver` rejects a taken space.
+        move.space,
+      );
       break;
     case 'moveBalloon':
       doMoveBalloon(fx, move.seat, move.balloon, move.spend);

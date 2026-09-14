@@ -1,6 +1,8 @@
 import type { GameData } from '@gp/data';
 import {
+  closingDrawPerCrate,
   deliveryMeepleSpace,
+  deliverySpaceChoice,
   meepleSpendDistinctColours,
   meepleSpendPerTurn,
   meepleSpendTiming,
@@ -166,11 +168,84 @@ export const deliveryMeeple: Assertion = {
     'Dean’s own table enjoyed and the branching worry that produced it shrank when it was ' +
     'measured. ⛔ NOTHING HERE ANSWERS C111 (does the meeple’s Deliver mint coins) - that ' +
     'needs overlays/village-store-coins-and-meeple-v1.overlay.json.',
+  // ⭐ 14/09/2026: DEAN SHIPPED THE MEEPLE AND TWO ISLAND RULES WITH IT (the
+  // space choice and the closing draw), and this page carries their readings
+  // too, because all three are one decision at one tile. It is silent only when
+  // all three are off, which is exactly the reference-v18 game, so the
+  // no-subject page reads byte-identically under
+  // overlays/pre-delivery-meeple-v1.overlay.json.
   measure(ctx) {
-    if (deliveryMeepleSpace(ctx.data) === null) return noSubject(ctx.data);
+    const d = ctx.data;
+    if (deliveryMeepleSpace(d) === null && !deliverySpaceChoice(d) && closingDrawPerCrate(d) <= 0) {
+      return noSubject(d);
+    }
     return deliveryMeepleMode(ctx);
   },
 };
+
+/**
+ * ⭐ THE TWO ISLAND RULES THAT SHIPPED WITH THE MEEPLE (Dean, ruled 14/09/2026).
+ * Readings only, no fail condition, and no noise floor for any of them.
+ *
+ *   - THE SPACE CHOICE (`rules.turn.deliverySpaceChoice`): the share of FIRST
+ *     deliveries to a tile that took the 3 VP space and its meeple and left the
+ *     6 VP space open, pooled and by seat count.
+ *   - THE CLOSING DRAW (`rules.turn.closingDrawPerCrate`): tiles closed and
+ *     cards drawn for closing them, per player per game, by seat count.
+ */
+function islandRuleLines({ data, pooled }: MeasureContext): { lines: string[]; headline: string } {
+  const lines: string[] = [];
+  const heads: string[] = [];
+  const slices = [...pooled.bySeats].sort((a, b) => a.seats - b.seats);
+  const firstsOf = (gs: readonly GameMetrics[]) =>
+    sum(gs.map((g) => sum(g.receiptsByArrivalBySeat.map((r) => r[0] ?? 0))));
+  const passedOf = (gs: readonly GameMetrics[]) =>
+    sum(gs.map((g) => sum(g.firstArrivalsPassingSixBySeat)));
+  const seatGamesOf = (gs: readonly GameMetrics[]) => sum(gs.map((g) => g.seats));
+  const games = pooled.ended;
+  if (deliverySpaceChoice(data)) {
+    const firsts = firstsOf(games);
+    const share = firsts === 0 ? NaN : passedOf(games) / firsts;
+    heads.push(`${pct(share)} of first deliveries to a tile took the 3 VP space`);
+    lines.push(
+      '⭐ THE SPACE CHOICE (Dean, ruled 14/09/2026, rules.turn.deliverySpaceChoice true): of ' +
+        `${firsts} FIRST deliveries to a tile, ${pct(share)} took the 3 VP space and its meeple ` +
+        `and left the 6 VP space for somebody else. By seat count: ${slices
+          .map((x) => {
+            const f = firstsOf(x.ended);
+            return `${x.seats}p ${pct(f === 0 ? NaN : passedOf(x.ended) / f)}`;
+          })
+          .join('  ')}. ⚠️ READ IT AS A READING ABOUT THE BOTS AS MUCH AS THE RULE: the ` +
+        'pricer weighs a delivery at the deliver weight times its VP plus meepleGain for the ' +
+        'meeple, so 6 VP outweighs 3 VP and a meeple in almost every position, and nobody has ' +
+        'measured what a human does with the choice. No fail condition and no noise floor.',
+    );
+  }
+  const per = closingDrawPerCrate(data);
+  const closedPer = (gs: readonly GameMetrics[]) => {
+    const n = seatGamesOf(gs);
+    return n === 0 ? NaN : sum(gs.map((g) => sum(g.tilesClosedBySeat))) / n;
+  };
+  const cardsPer = (gs: readonly GameMetrics[]) => {
+    const n = seatGamesOf(gs);
+    return n === 0 ? NaN : sum(gs.map((g) => sum(g.closingDrawCardsBySeat))) / n;
+  };
+  if (per > 0) {
+    heads.push(`${num(cardsPer(games), 2)} closing-draw cards per player per game`);
+    lines.push(
+      `⭐ THE CLOSING DRAW (Dean, ruled 14/09/2026, rules.turn.closingDrawPerCrate ${per}): ` +
+        `${num(closedPer(games), 2)} tiles CLOSED and ${num(cardsPer(games), 2)} cards drawn ` +
+        'for closing them, per player per game. By seat count, tiles closed: ' +
+        `${slices.map((x) => `${x.seats}p ${num(closedPer(x.ended), 2)}`).join('  ')}; cards: ` +
+        `${slices.map((x) => `${x.seats}p ${num(cardsPer(x.ended), 2)}`).join('  ')}. ` +
+        '⚠️ A cornucopia draws from any deck in play, the closer’s choice (Dean), and a crate ' +
+        'turned face down by V6 draws from its PRINTED suit, which is a builder default and not ' +
+        'a ruling. A dry deck whiffs, so cards can fall short of tiles times crates. No fail ' +
+        'condition and no noise floor.',
+    );
+  }
+  return { lines, headline: heads.join('; ') };
+}
 
 /**
  * ⛔ NO SUBJECT WHEREVER `rules.turn.deliveryMeepleSpace` IS NULL, WHICH IS EVERY
@@ -254,13 +329,28 @@ function tally(
   return m;
 }
 
-function deliveryMeepleMode({ data, pooled }: MeasureContext): Measurement {
+function deliveryMeepleMode(ctx: MeasureContext): Measurement {
+  const { data, pooled } = ctx;
   const games = pooled.ended;
   if (games.length === 0) {
     return { value: NaN, headline: 'not measured: no games ended', verdict: 'OBSERVE' };
   }
+  const island = islandRuleLines(ctx);
   const suits = data.cards.suits;
   const space = deliveryMeepleSpace(data);
+  // ⭐ THE ISLAND RULES WITHOUT THE MEEPLE (closing-draw-only-v1): no meeple
+  // lines at all, rather than a page of zeroes reading as a finding.
+  if (space === null) {
+    return {
+      value: NaN,
+      headline: `NO DELIVERY MEEPLE ON THIS RUN (deliveryMeepleSpace null). ${island.headline}.`,
+      detail: [
+        ...island.lines,
+        `⛔ THE INSTRUMENT IS ${REFERENCE.id}; no level here is comparable across a re-cut.`,
+      ],
+      verdict: 'OBSERVE',
+    };
+  }
   const cap = meepleSpendPerTurn(data);
   const timing = meepleSpendTiming(data);
   const distinct = meepleSpendDistinctColours(data);
@@ -374,7 +464,9 @@ function deliveryMeepleMode({ data, pooled }: MeasureContext): Measurement {
     `THE RULES IN FORCE ON THIS RUN, named rather than assumed: deliveryMeepleSpace ${space} ` +
       `(M1, the 3 VP space and never the 6 VP one), meepleSpendTiming "${timing}" (M4), ` +
       `meepleSpendPerTurn ${cap === null ? 'none' : cap} (M5) and meepleSpendDistinctColours ` +
-      `${distinct} (C112). ⚠️ M4’s "after your main action" REVERSES THE REASON THE BONUS ` +
+      `${distinct} (C112), deliverySpaceChoice ${deliverySpaceChoice(data)} and ` +
+      `closingDrawPerCrate ${closingDrawPerCrate(data)} (both 14/09/2026). ` +
+      `⚠️ M4’s "after your main action" REVERSES THE REASON THE BONUS ` +
       'SITS AT THE FRONT: the bonus was moved to the start of the turn on Dean’s own reasoning ' +
       'that a turn visibly ends on the main action (C2, 09/09/2026), and a meeple spend after ' +
       'it means the turn can end on a bonus again. That is a teach cost rather than a number ' +
@@ -387,14 +479,20 @@ function deliveryMeepleMode({ data, pooled }: MeasureContext): Measurement {
       'moving an assertion’s threshold to suit a new arm is how a suite stops being an ' +
       'instrument. a15 carries the verdict, this page carries the diagnosis, and quoting both ' +
       'as independent evidence is double-counting one set of counters.',
-    `⛔ THE INSTRUMENT IS ${REFERENCE.id}. The Notice Board visit is the shipped game (ruled ` +
-      '13/09/2026) and the delivery-meeple overlays are arms on it, paired against ' +
-      'overlays/notice-board-visit-host-draw-by-seats-v1.overlay.json, whose leaves they pin. ' +
+    `⛔ THE INSTRUMENT IS ${REFERENCE.id}. Since 14/09/2026 the delivery meeple, the space ` +
+      'choice and the closing draw are the SHIPPED game (Dean); ' +
+      'overlays/pre-delivery-meeple-v1.overlay.json is the game without them, and ' +
+      'delivery-meeple-no-choice-v1, delivery-meeple-choice-v1 and closing-draw-only-v1 ' +
+      'decompose the three against it. The older delivery-meeple overlays replay the ' +
+      'pre-12/09 arm against overlays/notice-board-visit-host-draw-by-seats-v1.overlay.json. ' +
+      `⚠️ ${REFERENCE.id} was cut BEFORE the ruling, so a run on the shipped default is not ` +
+      'that reference game and the reference is owed a re-cut. ' +
       'No level here is comparable with an earlier reference; a delta paired on identical ' +
       'seeds is sound and a level across a re-cut is not. ' +
       '⚠️ AND THERE IS NO NOISE FLOOR FOR ANY LINE ON THIS PAGE: the floor in reference.ts ' +
       'covers HEADLINE_METRICS, whose only meeple entry is "meeples held at game end" as a ' +
       'median over a whole game. Read a difference of a tenth of a meeple as nothing.',
+    ...island.lines,
   ];
 
   return {
@@ -406,7 +504,8 @@ function deliveryMeepleMode({ data, pooled }: MeasureContext): Measurement {
       `of about 1.8 minted. Spent mix ${mix(spentByColour, suits)}; stranded mix ` +
       `${mix(strandedByColour, suits)}. ⛔ THE STRANDED SHARE IS D8 AS A NUMBER and has no ` +
       'fail condition: it is the rule working as ruled and the component not earning its ' +
-      'place, at once, and only a table can say which.',
+      'place, at once, and only a table can say which.' +
+      (island.headline === '' ? '' : ` ${island.headline}.`),
     detail,
     verdict: 'OBSERVE',
   };

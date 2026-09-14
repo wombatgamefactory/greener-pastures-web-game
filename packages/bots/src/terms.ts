@@ -124,7 +124,13 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import { deliveryVp, endgameCoinCost, hostDrawOnVisitAt } from '@gp/data';
+import {
+  deliveryVp,
+  endgameCoinCost,
+  freeDeliverySpaces,
+  hostDrawOnVisitAt,
+  meepleIndexForSpace,
+} from '@gp/data';
 import type { CardId, Move, MoveType } from '@gp/engine';
 
 import type { Act } from './acts.js';
@@ -276,22 +282,41 @@ function isProbed(act: Act): boolean {
 }
 
 /**
- * The receipt a delivery to this tile would take, read off how many seats have
- * already delivered there. 0 for a tile with no room, which never reaches here
- * because a full tile offers no move.
+ * THE DELIVERY SPACE THIS ACT TAKES: the one the move names under Dean's space
+ * choice (14/09/2026), else the lowest free space, which is fill order. null for
+ * a tile with no room, which never reaches here because a full tile offers no
+ * move.
  */
-function deliverVpOf(s: Scratch, tileId: string): number {
+function deliverySpaceOf(s: Scratch, tileId: string, named: number | undefined): number | null {
   const tile = s.view.island.tiles.find((t) => t.tile === tileId);
-  return tile ? deliveryVp(s.data, tile.deliveredBy.length) : 0;
+  if (tile === undefined) return null;
+  return named ?? freeDeliverySpaces(s.data, tile)[0] ?? null;
 }
 
 /**
- * THE MEEPLE THIS DELIVERY WOULD CLAIM - the colour sitting face up on the next
- * free delivery space of this tile.
+ * The receipt a delivery to this tile would take, read off the SPACE it takes.
+ * Under fill order that is how many seats have already delivered there, exactly
+ * as this read before 14/09/2026; under the space choice it is the space the
+ * move names, so a first arrival taking the 3 VP space is priced at 3.
+ */
+function deliverVpOf(s: Scratch, tileId: string, named: number | undefined): number {
+  const space = deliverySpaceOf(s, tileId, named);
+  return space === null ? 0 : deliveryVp(s.data, space);
+}
+
+/**
+ * THE MEEPLE THIS DELIVERY WOULD CLAIM - the colour sitting face up on the
+ * delivery space it takes.
  *
- * Parallel arrays by index: entry i of `meeples` is the meeple on delivery space
- * i, and `deliveredBy.length` is the next free one. Face up from setup, so this
- * is public information and there is no sight question.
+ * ⛔ THROUGH `meepleIndexForSpace`, AND IT USED TO INDEX `tile.meeples` BY
+ * `deliveredBy.length` (fixed 14/09/2026). A tile stores its meeples DENSELY:
+ * under the delivery meeple (M1) and the meeple loop the one meeple for space 1
+ * sits at index 0, so the old read credited the meeple to the FIRST delivery and
+ * nothing to the second, which is the space that actually claims it. It was
+ * right only under the v31 control, where every space is seeded and the mapping
+ * is the identity, and that control reads identically now. ⚠️ Every bot number
+ * published off `delivery-meeple-v1`, its C112 sibling and the meeple loop was
+ * priced with the old read.
  *
  * ⚠️ IT READS ONE SPACE AND V14 CAN TAKE TWO. The Depot that claims BOTH
  * receipts on a tile also claims both meeples, and this returns only the first,
@@ -300,9 +325,12 @@ function deliverVpOf(s: Scratch, tileId: string): number {
  * a move and never a card - and the safe direction, since the alternative is a
  * bot that over-rates a card it happens to know about.
  */
-function meepleAtTile(s: Scratch, tileId: string): Suit | null {
+function meepleAtTile(s: Scratch, tileId: string, named: number | undefined): Suit | null {
   const tile = s.view.island.tiles.find((t) => t.tile === tileId);
-  return tile?.meeples[tile.deliveredBy.length] ?? null;
+  const space = deliverySpaceOf(s, tileId, named);
+  if (tile === undefined || space === null) return null;
+  const slot = meepleIndexForSpace(s.data, space);
+  return slot < 0 ? null : (tile.meeples[slot] ?? null);
 }
 
 /**
@@ -682,7 +710,7 @@ export const TERMS: readonly Term[] = [
     // to a half-taken one without any term saying so.
     name: 'deliver',
     claims: ['deliver', ...ACTION_AND_TASK],
-    feature: (act, s) => (act.a === 'deliver' ? deliverVpOf(s, act.tile) : 0),
+    feature: (act, s) => (act.a === 'deliver' ? deliverVpOf(s, act.tile, act.space) : 0),
   },
   {
     /**
@@ -741,7 +769,7 @@ export const TERMS: readonly Term[] = [
         return worth;
       }
       if (act.a !== 'deliver') return 0;
-      const colour = meepleAtTile(s, act.tile);
+      const colour = meepleAtTile(s, act.tile, act.space);
       return colour === null ? 0 : meepleWorth(s, colour);
     },
   },

@@ -61,6 +61,15 @@ const ARM: GameData = loadGameData({
     'rules.turn.selfVisitAllowed': true,
     'rules.economy.noticeBoardThreshold': 3,
     'rules.economy.noticeBoardBlocks': false,
+    // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+    // choice and the closing draw. This helper predates it, so all six are pinned
+    // off by name ('start' and null are the old inert values).
+    'rules.turn.deliveryMeepleSpace': null,
+    'rules.turn.meepleSpendTiming': 'start',
+    'rules.turn.meepleSpendPerTurn': null,
+    'rules.turn.meepleSpendDistinctColours': false,
+    'rules.turn.deliverySpaceChoice': false,
+    'rules.turn.closingDrawPerCrate': 0,
   },
 });
 
@@ -94,6 +103,15 @@ const BLOCKING: GameData = loadGameData({
     'rules.turn.selfVisitAllowed': true,
     'rules.economy.noticeBoardThreshold': 3,
     'rules.economy.noticeBoardBlocks': true,
+    // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+    // choice and the closing draw. This helper predates it, so all six are pinned
+    // off by name ('start' and null are the old inert values).
+    'rules.turn.deliveryMeepleSpace': null,
+    'rules.turn.meepleSpendTiming': 'start',
+    'rules.turn.meepleSpendPerTurn': null,
+    'rules.turn.meepleSpendDistinctColours': false,
+    'rules.turn.deliverySpaceChoice': false,
+    'rules.turn.closingDrawPerCrate': 0,
   },
 });
 
@@ -129,6 +147,15 @@ const V31: GameData = loadGameData({
     'rules.turn.meepleCapPerColour': 1,
     'rules.turn.startingMeeplesPerColour': 1,
     'rules.economy.noticeBoardThreshold': 2,
+    // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+    // choice and the closing draw. This helper predates it, so all six are pinned
+    // off by name ('start' and null are the old inert values).
+    'rules.turn.deliveryMeepleSpace': null,
+    'rules.turn.meepleSpendTiming': 'start',
+    'rules.turn.meepleSpendPerTurn': null,
+    'rules.turn.meepleSpendDistinctColours': false,
+    'rules.turn.deliverySpaceChoice': false,
+    'rules.turn.closingDrawPerCrate': 0,
   },
 });
 

@@ -222,6 +222,15 @@ describe('the arithmetic ceiling: seats * (n - 1) must be at most 5 - seats', ()
       'rules.economy.noticeBoardThreshold': 3,
       'rules.economy.noticeBoardBlocks': false,
       'rules.economy.noticeBoardsBySeats.3': 2,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+      // choice and the closing draw. This helper predates it, so all six are pinned
+      // off by name ('start' and null are the old inert values).
+      'rules.turn.deliveryMeepleSpace': null,
+      'rules.turn.meepleSpendTiming': 'start',
+      'rules.turn.meepleSpendPerTurn': null,
+      'rules.turn.meepleSpendDistinctColours': false,
+      'rules.turn.deliverySpaceChoice': false,
+      'rules.turn.closingDrawPerCrate': 0,
     },
   });
 
@@ -265,6 +274,15 @@ describe('the arithmetic ceiling: seats * (n - 1) must be at most 5 - seats', ()
         'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
         'rules.turn.selfVisitAllowed': true, // pinned 13/09/2026: the default flipped
         'rules.economy.noticeBoardsBySeats.2': 0,
+        // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+        // choice and the closing draw. This helper predates it, so all six are pinned
+        // off by name ('start' and null are the old inert values).
+        'rules.turn.deliveryMeepleSpace': null,
+        'rules.turn.meepleSpendTiming': 'start',
+        'rules.turn.meepleSpendPerTurn': null,
+        'rules.turn.meepleSpendDistinctColours': false,
+        'rules.turn.deliverySpaceChoice': false,
+        'rules.turn.closingDrawPerCrate': 0,
       },
     });
     expect(() => newGame(none, { seats: 2, seed: 'x' })).toThrow(/at least one Notice Board/);
@@ -281,6 +299,15 @@ describe('the arithmetic ceiling: seats * (n - 1) must be at most 5 - seats', ()
         'rules.turn.visitCurrency': 'card',
         'rules.turn.selfVisitAllowed': true,
         'rules.economy.noticeBoardsBySeats.2': 2,
+        // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+        // choice and the closing draw. This helper predates it, so all six are pinned
+        // off by name ('start' and null are the old inert values).
+        'rules.turn.deliveryMeepleSpace': null,
+        'rules.turn.meepleSpendTiming': 'start',
+        'rules.turn.meepleSpendPerTurn': null,
+        'rules.turn.meepleSpendDistinctColours': false,
+        'rules.turn.deliverySpaceChoice': false,
+        'rules.turn.closingDrawPerCrate': 0,
       },
     });
     const s = newGame(cardWithMap, { seats: 2, suits: ['wheat', 'orchard'], seed: 'tb-1' });

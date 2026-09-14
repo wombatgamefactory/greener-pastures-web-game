@@ -251,6 +251,8 @@ export function viewFor(data: GameData, state: GameState, seat: Seat): PlayerVie
         // deliverer to a tile will take is public all game.
         meeples: [...t.meeples],
         deliveredBy: [...t.deliveredBy],
+        // The space choice (14/09/2026): public, and absent under fill order.
+        ...(t.deliveredSpaces === undefined ? {} : { deliveredSpaces: [...t.deliveredSpaces] }),
       })),
     },
     aerodrome:

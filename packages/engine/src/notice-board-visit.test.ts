@@ -86,6 +86,15 @@ const blocking: GameData = loadGameData({
     'rules.economy.noticeBoardBlocks': true,
     'rules.economy.endgameCoinCost': null,
     'rules.economy.farmsteadCoinPower': false,
+    // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+    // choice and the closing draw. This helper predates it, so all six are pinned
+    // off by name ('start' and null are the old inert values).
+    'rules.turn.deliveryMeepleSpace': null,
+    'rules.turn.meepleSpendTiming': 'start',
+    'rules.turn.meepleSpendPerTurn': null,
+    'rules.turn.meepleSpendDistinctColours': false,
+    'rules.turn.deliverySpaceChoice': false,
+    'rules.turn.closingDrawPerCrate': 0,
   },
 });
 
@@ -126,6 +135,15 @@ const noSelf: GameData = loadGameData({
     'rules.economy.noticeBoardBlocks': false,
     'rules.economy.endgameCoinCost': null,
     'rules.economy.farmsteadCoinPower': false,
+    // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+    // choice and the closing draw. This helper predates it, so all six are pinned
+    // off by name ('start' and null are the old inert values).
+    'rules.turn.deliveryMeepleSpace': null,
+    'rules.turn.meepleSpendTiming': 'start',
+    'rules.turn.meepleSpendPerTurn': null,
+    'rules.turn.meepleSpendDistinctColours': false,
+    'rules.turn.deliverySpaceChoice': false,
+    'rules.turn.closingDrawPerCrate': 0,
   },
 });
 

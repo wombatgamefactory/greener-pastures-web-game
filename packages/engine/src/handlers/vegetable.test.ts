@@ -241,9 +241,12 @@ describe('V2 Farmstead - the own-crop end-game scorer', () => {
   it('the barn alone still pays a tile it covers', () => {
     const s = base();
     barnTo(s, VEG, 'V4', 'V5', 'V6', 'V7');
+    // ⚠️ 14/09/2026: under Dean's space choice one payment is offered once per
+    // free space, so an untouched tile offers it twice and this takes the 6 VP.
     const offered = deliversTo(s, VEG, 'A1');
-    expect(offered).toHaveLength(1);
-    const done = apply(data, s, offered[0] as Move).state;
+    expect(offered).toHaveLength(2);
+    const six = offered.find((m) => m.space === 0);
+    const done = apply(data, s, six as Move).state;
     expect(player(done, VEG).barn).toHaveLength(0);
     expect(player(done, VEG).receipts).toEqual([6]);
   });
@@ -488,10 +491,12 @@ describe('V6 The Trade Depot - turn a demand token FACE DOWN', () => {
     // island it just changed. One crate takes any 2 cards, so the same barn
     // pays A5 exactly.
     expect(done.tasks[0]).toMatchObject({ t: 'deliver', pid: VEG });
+    // The answer names the one space left (Dean's space choice, 14/09/2026).
     expect(pendingAnswers(data, done)).toContainEqual({
       kind: 'deliver',
       tile: 'A5',
       spend: { wheat: 2, vegetable: 2 },
+      space: 1,
     });
   });
 

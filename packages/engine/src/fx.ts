@@ -351,14 +351,15 @@ export class Fx {
   /**
    * Cards into a hand.
    *
-   * ⭐ `via` IS OPTIONAL AND ITS ONLY VALUE IS S17's (Dean, 11/09/2026): the
-   * cards are the host draw, taken by the OWNER of a visited Notice Board. It
-   * is passed through to the event and nothing else - the cards arrive in the
-   * hand identically either way, which is the point. Omitted by every one of
-   * the dozen other callers, so the emitted event is byte-identical to what it
-   * was for all of them.
+   * ⭐ `via` IS OPTIONAL AND IS A LABEL: `'hostDraw'` is S17's (Dean,
+   * 11/09/2026), the cards the OWNER of a visited Notice Board takes, and
+   * `'closingDraw'` (Dean, 14/09/2026) is the draw for filling a tile's last
+   * delivery space. It is passed through to the event and nothing else - the
+   * cards arrive in the hand identically either way, which is the point.
+   * Omitted by every one of the dozen other callers, so the emitted event is
+   * byte-identical to what it was for all of them.
    */
-  cardsToHand(seat: Seat, cards: CardId[], via?: 'hostDraw'): void {
+  cardsToHand(seat: Seat, cards: CardId[], via?: 'hostDraw' | 'closingDraw'): void {
     if (cards.length === 0) return;
     this.touch(seat);
     player(this.state, seat).hand.push(...cards);

@@ -53,7 +53,13 @@
 
 import { describe, expect, it } from 'vitest';
 import type { GameData, Suit } from '@gp/data';
-import { BASE_GAME_DATA, meepleIndexForSpace, meeplesPerTile, tileMeepleSpaces } from '@gp/data';
+import {
+  BASE_GAME_DATA,
+  loadGameData,
+  meepleIndexForSpace,
+  meeplesPerTile,
+  tileMeepleSpaces,
+} from '@gp/data';
 
 import { hasMainOption, meepleSpendOpen } from './actions.js';
 import { apply, drainTasks, legalMoves, newGame, player, taskAnswers } from './index.js';
@@ -540,10 +546,22 @@ describe('inertness: nothing moves at the shipped values', () => {
     expect(spendable(v31, s)).toEqual([]);
   });
 
-  /** The shipped notice-board visit has no meeples at all. */
-  it('seeds no meeple in the shipped game', () => {
-    expect(meeplesPerTile(BASE_GAME_DATA)).toBe(0);
-    expect(tileMeepleSpaces(BASE_GAME_DATA)).toEqual([]);
-    expect(meepleIndexForSpace(BASE_GAME_DATA, 1)).toBe(-1);
+  /**
+   * ⚠️ RE-POINTED 14/09/2026: Dean ruled the delivery meeple ON, so the shipped
+   * game seeds M1's meeple and the no-meeple game is the reference-v18 control,
+   * `overlays/pre-delivery-meeple-v1.overlay.json`, whose seeding leaf is null.
+   */
+  it('seeds the delivery meeple in the shipped game, and none in the reference-v18 control', () => {
+    expect(meeplesPerTile(BASE_GAME_DATA)).toBe(1);
+    expect(tileMeepleSpaces(BASE_GAME_DATA)).toEqual([1]);
+    expect(meepleIndexForSpace(BASE_GAME_DATA, 1)).toBe(0);
+    const before = loadGameData({
+      name: 'pre-delivery-meeple-v1',
+      schemaVersion: 1,
+      set: { 'rules.turn.deliveryMeepleSpace': null },
+    });
+    expect(meeplesPerTile(before)).toBe(0);
+    expect(tileMeepleSpaces(before)).toEqual([]);
+    expect(meepleIndexForSpace(before, 1)).toBe(-1);
   });
 });

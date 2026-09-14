@@ -22,8 +22,12 @@ import type {
 } from '../state.js';
 import type { GameData, Suit } from '@gp/data';
 import {
+  closingDrawPerCrate,
   deliveriesPerTile,
+  deliverySpaceChoice,
+  deliverySpacesTaken,
   deliveryVp,
+  freeDeliverySpaces,
   meepleAsCardGoesToBoard,
   meepleIndexForSpace,
   storeCoinsPerCard,
@@ -57,6 +61,14 @@ export interface DeliverOption {
   /** R17: where the paid meeples land, by seat, and the toll they owed. */
   placements?: Partial<Record<Suit, number>>[];
   paymentToll?: Partial<Record<Suit, number>>;
+  /**
+   * ⭐ THE DELIVERY SPACE THIS OPTION TAKES (Dean, ruled 14/09/2026). Under
+   * `rules.turn.deliverySpaceChoice` every payment is offered once per FREE
+   * space of its tile - both on an untouched tile, the one left on a
+   * half-claimed one - and the option always names it. Absent under fill order,
+   * which is the whole of the knob's inertness.
+   */
+  space?: number;
 }
 
 /**
@@ -518,6 +530,24 @@ export function deliverOptions(
   const demands = deliverDemands(data, state, seat);
   const out: DeliverOption[] = [];
   const seen = new Set<string>();
+  // ⭐ THE SPACE CHOICE (14/09/2026) MULTIPLIES AN OPTION BY ITS TILE'S FREE
+  // SPACES AND DOES NOTHING ELSE. Under fill order the list is one `undefined`,
+  // so the loop below pushes the identical object, in the identical order, with
+  // no `space` key at all.
+  const choice = deliverySpaceChoice(data);
+  const spacesOf = (tileId: string): (number | undefined)[] => {
+    if (!choice) return [undefined];
+    const tile = state.island.tiles.find((t) => t.tile === tileId);
+    return tile === undefined ? [] : freeDeliverySpaces(data, tile);
+  };
+  /** Push one option per free space; true once `limit` is reached. */
+  const push = (o: DeliverOption): boolean => {
+    for (const space of spacesOf(o.tile)) {
+      out.push(space === undefined ? o : { ...o, space });
+      if (out.length >= limit) return true;
+    }
+    return false;
+  };
   demandLoop: for (const demand of demands) {
     const affordable = (Object.entries(demand.spend) as [Suit, number][]).every(
       ([s, n]) => (barn[s] ?? 0) >= n,
@@ -568,33 +598,30 @@ export function deliverOptions(
       if (seen.has(key)) continue;
       seen.add(key);
       if (!asCard) {
-        out.push({ tile: demand.tile, spend });
-        if (out.length >= limit) break demandLoop;
+        if (push({ tile: demand.tile, spend })) break demandLoop;
         continue;
       }
       const meeples = meepleShare(data, state, seat, spend);
       if (meeples === null) continue;
       if (meepleCount(meeples) === 0) {
-        out.push({ tile: demand.tile, spend });
-        if (out.length >= limit) break demandLoop;
+        if (push({ tile: demand.tile, spend })) break demandLoop;
         continue;
       }
       if (!onBoard) {
-        out.push({ tile: demand.tile, spend, meeples });
-        if (out.length >= limit) break demandLoop;
+        if (push({ tile: demand.tile, spend, meeples })) break demandLoop;
         continue;
       }
       // ⭐ R17: the crate's meeple share lands on a neighbour's board rather
       // than in the box, so one spend becomes one option per legal placement.
       for (const spot of placementsFor(data, state, seat, meeples, rate)) {
-        out.push({
+        const o: DeliverOption = {
           tile: demand.tile,
           spend,
           meeples,
           placements: spot.boards,
           paymentToll: spot.toll,
-        });
-        if (out.length >= limit) break demandLoop;
+        };
+        if (push(o)) break demandLoop;
       }
     }
   }
@@ -680,6 +707,13 @@ export function doDeliver(
     placements?: Partial<Record<Suit, number>>[];
     paymentToll?: Partial<Record<Suit, number>>;
   },
+  /**
+   * ⭐ THE SPACE CHOICE (Dean, ruled 14/09/2026): which free delivery space
+   * the receipt takes. Legal only under `rules.turn.deliverySpaceChoice` and
+   * only for a single receipt; omit it and the lowest free space is taken,
+   * which under fill order is exactly the old rule.
+   */
+  space?: number,
 ): void {
   const state = fx.state;
   const tile = state.island.tiles.find((t) => t.tile === tileId);
@@ -691,6 +725,18 @@ export function doDeliver(
         ? `Tile ${tileId} has no delivery slots left`
         : `Tile ${tileId} has no delivery slots left for ${receipts} receipts at once`,
     );
+  }
+  // ⛔ A NAMED SPACE IS CHECKED BEFORE ANYTHING IS PAID, because `apply` does
+  // not re-run `legalMoves` for a main action and this is the only thing that
+  // stands between a move naming a taken space and a second receipt on it.
+  if (space !== undefined) {
+    if (!deliverySpaceChoice(fx.data)) {
+      throw new Error('A delivery names its space only under rules.turn.deliverySpaceChoice');
+    }
+    if (receipts !== 1) throw new Error('A delivery taking several receipts cannot name a space');
+    if (!freeDeliverySpaces(fx.data, tile).includes(space)) {
+      throw new Error(`Delivery space ${space} on ${tileId} is taken or does not exist`);
+    }
   }
   const virtual: Partial<Record<Suit, number>> = { ...spend };
   for (const sub of countAs ?? []) {
@@ -759,7 +805,7 @@ export function doDeliver(
     }
   }
   const cards = fx.spendFromBarn(seat, fromBarn);
-  finishDelivery(fx, seat, tile, tileId, spend, cards, receipts, meepleTotal, meeples);
+  finishDelivery(fx, seat, tile, tileId, spend, cards, receipts, meepleTotal, meeples, space);
 }
 
 /**
@@ -784,6 +830,20 @@ export function doDeliver(
  * One `delivered` event per receipt, so nothing counting deliveries has to
  * learn that one of them can be double; only the first carries the spend,
  * because only one payment was made.
+ *
+ * ⭐ 14/09/2026, THE SPACE CHOICE: "the tile's own fill order is the whole
+ * gradient" is true only under `rules.turn.deliverySpaceChoice` false. Under
+ * true a receipt takes the space the move named, and the VP and the meeple are
+ * read off THAT space rather than off `deliveredBy.length`; the space goes on
+ * `tile.deliveredSpaces` beside the seat. The receipts a delivery takes are the
+ * named space first and then the remaining free spaces in ascending order, so
+ * V14 takes every free space and fill order is `[length, length + 1, ...]`,
+ * which is the old arithmetic exactly.
+ *
+ * ⭐ AND THE CLOSING DRAW (14/09/2026) SITS BETWEEN THE RECEIPTS AND THE HOOK:
+ * receipts and meeples, then the draw for filling the tile, then
+ * `afterDeliver`, the end trigger and the Store exchange, which is the order a
+ * player would describe. See `pushClosingDraw` for what actually resolves when.
  */
 export function finishDelivery(
   fx: Fx,
@@ -795,24 +855,45 @@ export function finishDelivery(
   receipts: number,
   meepleTotal = 0,
   meeples: Partial<Record<Suit, number>> = {},
+  named?: number,
 ): void {
   const state = fx.state;
-  for (let i = 0; i < receipts; i++) {
-    const space = tile.deliveredBy.length;
+  const choice = deliverySpaceChoice(fx.data);
+  const free = freeDeliverySpaces(fx.data, tile);
+  const spaces = (named === undefined ? free : [named, ...free.filter((s) => s !== named)]).slice(
+    0,
+    receipts,
+  );
+  // A tile that took receipts before the record existed (a test that seeds
+  // `deliveredBy` by hand) is back-filled in fill order, so the two lists stay
+  // parallel from the first push.
+  if (choice && tile.deliveredSpaces === undefined) {
+    tile.deliveredSpaces = deliverySpacesTaken(tile);
+  }
+  for (const [i, space] of spaces.entries()) {
     const vp = deliveryVp(fx.data, space);
     player(state, seat).receipts.push(vp);
     tile.deliveredBy.push(seat);
-    fx.emit({ e: 'delivered', seat, tile: tileId, vp, spend: i === 0 ? spend : {} });
+    if (choice) tile.deliveredSpaces?.push(space);
+    fx.emit(
+      choice
+        ? { e: 'delivered', seat, tile: tileId, vp, spend: i === 0 ? spend : {}, space }
+        : { e: 'delivered', seat, tile: tileId, vp, spend: i === 0 ? spend : {} },
+    );
     // ⭐ WHICH SPACES CARRY A MEEPLE IS DATA, NOT ARITHMETIC (R12). Under the
-    // shipped game every space does and `meepleIndexForSpace` is the identity;
-    // under the meeple arm only `island.meeples.seededSpaces` do - [1], the 3 VP
-    // second delivery - and the tile stores its one meeple densely at index 0.
+    // v31 control every space does and `meepleIndexForSpace` is the identity;
+    // under the shipped delivery meeple (14/09/2026) and the meeple arm only
+    // space 1 does - the 3 VP space - and the tile stores its one meeple densely
+    // at index 0. It is read off the SPACE TAKEN, never the arrival order.
     // A -1 is a space that was never seeded, which is a legal delivery paying VP
     // alone. The gain goes through the supply cap and boxes a duplicate.
     const slot = meepleIndexForSpace(fx.data, space);
     const meeple = slot < 0 ? undefined : tile.meeples[slot];
     if (meeple !== undefined) fx.gainMeeple(seat, meeple, tileId, space, 'island');
   }
+  // The receipts above can only have filled the tile if it had room before
+  // them, so a tile with no room left NOW was closed by THIS delivery.
+  if (spaces.length > 0 && !tileHasRoom(fx.data, tile)) pushClosingDraw(fx, seat, tile);
   // ONE Deliver, so one afterDeliver: the rebuilt Farmstead puts one card in the
   // barn for a delivery, not one per receipt taken.
   // ⭐ THE HOOK CARRIES THE MEEPLES TOO (v2 section 5, default: a meeple in a
@@ -872,6 +953,66 @@ export function finishDelivery(
  * shipped game - `storeCoinsPerCard` 0 - queues nothing at all and every
  * delivery is byte-identical to 11/09/2026.
  */
+/**
+ * ⭐ THE CLOSING DRAW (Dean, ruled 14/09/2026, `rules.turn.closingDrawPerCrate`):
+ * *"the delivery that fills a tile's last free space draws 1 card for each
+ * crate token on the tile, from the deck of that token's suit"*. Mandatory.
+ *
+ * ⭐ IT IS THE CARD-TEXT DRAW AND NEVER THE DRAW ACTION. The shape is O15 The
+ * Fruit Library's "draw the top card of each deck", the codebase's one
+ * named-deck draw: the named deck tops are taken NOW through `takeDeckTop` (so
+ * a reshuffle and an empty deck behave exactly as every other draw's do, and an
+ * empty suit whiffs quietly), and one see-N/keep-N `draw` task carries them
+ * pre-revealed. Nothing that hooks the Draw ACTION can fire, because the action
+ * is `doDraw` and this is not it. ⚠️ The task DOES fire `afterDrawKeep` when it
+ * resolves, which is the existing convention for every card-ability draw (the
+ * hook's own docblock says so); no card in the catalogue listens to it today.
+ *
+ * ⭐ A CORNUCOPIA IS A DECK PICK (Dean: "Draw 1 from ANY deck in play, the
+ * closer's choice"), and the draw task already asks exactly that question
+ * whenever `revealed` is shorter than `see`, so each wild crate adds one to
+ * `see` and nothing else. The bots answer it through the ordinary draw task.
+ *
+ * ⚠️ A CRATE TURNED FACE DOWN BY V6 THE TRADE DEPOT DRAWS FROM ITS PRINTED SUIT,
+ * which `tile.crates` still stores. A BUILDER DEFAULT, NOT RULED BY DEAN: a
+ * face-down token accepts any crop for PAYMENT (`namedDemand`), and the other
+ * reading - that it draws like a cornucopia - is one line here.
+ *
+ * ⚠️ WHEN IT RESOLVES. The named cards leave their decks inline, ahead of
+ * `afterDeliver`, the end trigger and the Store exchange; the task that puts
+ * them in hand is QUEUED, ahead of the Store's `mint` task but behind any task
+ * already waiting (V15's second Deliver, for one). A delivery pays out of the
+ * barn and never the hand, so nothing a queued task can reach depends on the
+ * cards having arrived.
+ */
+function pushClosingDraw(fx: Fx, seat: Seat, tile: IslandTileState): void {
+  const per = closingDrawPerCrate(fx.data);
+  if (per <= 0) return;
+  const revealed: CardId[] = [];
+  let picks = 0;
+  for (const crate of tile.crates) {
+    if (crate === 'wild') {
+      picks += per;
+      continue;
+    }
+    for (let n = 0; n < per; n += 1) {
+      const card = fx.takeDeckTop(crate);
+      if (card !== null) revealed.push(card);
+    }
+  }
+  const see = revealed.length + picks;
+  if (see === 0) return;
+  fx.pushTask({
+    t: 'draw',
+    pid: seat,
+    src: null,
+    see,
+    keep: see,
+    revealed,
+    via: 'closingDraw',
+  });
+}
+
 function pushStoreExchange(fx: Fx, seat: Seat): void {
   if (storeCoinsPerCard(fx.data) <= 0) return;
   const barn = player(fx.state, seat).barn.length;
@@ -1180,6 +1321,9 @@ export function deliverAnswers(data: GameData, state: GameState, seat: Seat): Ta
           ...(o.meeples === undefined ? {} : { meeples: o.meeples }),
           ...(o.placements === undefined ? {} : { placements: o.placements }),
           ...(o.paymentToll === undefined ? {} : { paymentToll: o.paymentToll }),
+          // ⭐ The space choice (14/09/2026) rides on the answer for the same
+          // reason: `resolveTask` re-applies exactly what was offered.
+          ...(o.space === undefined ? {} : { space: o.space }),
         }) as TaskAnswer,
     ),
     ...balloonMoveOptions(data, state, seat).map(

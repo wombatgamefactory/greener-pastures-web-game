@@ -87,6 +87,15 @@ const ARM: GameData = loadGameData({
     'rules.economy.noticeBoardsBySeats.2': 2,
     'rules.economy.noticeBoardsBySeats.3': 1,
     'rules.economy.noticeBoardsBySeats.4': 1,
+    // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+    // choice and the closing draw. This helper predates it, so all six are pinned
+    // off by name ('start' and null are the old inert values).
+    'rules.turn.deliveryMeepleSpace': null,
+    'rules.turn.meepleSpendTiming': 'start',
+    'rules.turn.meepleSpendPerTurn': null,
+    'rules.turn.meepleSpendDistinctColours': false,
+    'rules.turn.deliverySpaceChoice': false,
+    'rules.turn.closingDrawPerCrate': 0,
   },
 });
 
@@ -122,6 +131,15 @@ const CONTROL: GameData = loadGameData({
     'rules.economy.noticeBoardBlocks': false,
     // Pinned since the 13/09/2026 default flip gave two seats two boards.
     'rules.economy.noticeBoardsBySeats.2': 1,
+    // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+    // choice and the closing draw. This helper predates it, so all six are pinned
+    // off by name ('start' and null are the old inert values).
+    'rules.turn.deliveryMeepleSpace': null,
+    'rules.turn.meepleSpendTiming': 'start',
+    'rules.turn.meepleSpendPerTurn': null,
+    'rules.turn.meepleSpendDistinctColours': false,
+    'rules.turn.deliverySpaceChoice': false,
+    'rules.turn.closingDrawPerCrate': 0,
   },
 });
 

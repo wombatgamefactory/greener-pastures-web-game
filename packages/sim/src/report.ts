@@ -16,6 +16,7 @@
 import type { GameData, Suit } from '@gp/data';
 import {
   BASE_GAME_DATA,
+  deliverySpaceChoice,
   hostDrawOnVisit,
   isMeepleCurrency,
   isNoticeBoardPower,
@@ -1231,13 +1232,24 @@ function freightSection({ data, pooled }: ReportInput): string[] {
     )}` + `   - the number that says whether the rules earned their keep`,
   );
   out.push('');
-  const firsts = sum(games.map((g) => sum(g.receiptsByOrderBySeat.map((r) => r[0] ?? 0))));
-  const seconds = sum(games.map((g) => sum(g.receiptsByOrderBySeat.map((r) => r[1] ?? 0))));
+  // ⭐ ARRIVAL ORDER (14/09/2026). Under fill order arrival IS the space and
+  // the VP in brackets is what each arrival took; under Dean's space choice a
+  // first arrival may take the 3 VP space, so the brackets would lie and the
+  // line says which space the first arrivals took instead.
+  const firsts = sum(games.map((g) => sum(g.receiptsByArrivalBySeat.map((r) => r[0] ?? 0))));
+  const seconds = sum(games.map((g) => sum(g.receiptsByArrivalBySeat.map((r) => r[1] ?? 0))));
   const schedule = data.island.vpByDeliveryOrder;
   out.push(
-    `  receipts by fill order                first ${firsts} (${schedule[0] ?? 0} VP)` +
-      `   second ${seconds} (${schedule[1] ?? 0} VP)` +
-      `   first share ${pct(firsts / Math.max(1, firsts + seconds), 1)}`,
+    deliverySpaceChoice(data)
+      ? `  receipts by arrival order             first ${firsts}   second ${seconds}` +
+          `   first share ${pct(firsts / Math.max(1, firsts + seconds), 1)}` +
+          `   first arrivals leaving the ${schedule[0] ?? 0} VP space ${pct(
+            sum(games.map((g) => sum(g.firstArrivalsPassingSixBySeat))) / Math.max(1, firsts),
+            1,
+          )}`
+      : `  receipts by fill order                first ${firsts} (${schedule[0] ?? 0} VP)` +
+          `   second ${seconds} (${schedule[1] ?? 0} VP)` +
+          `   first share ${pct(firsts / Math.max(1, firsts + seconds), 1)}`,
   );
   out.push('');
   out.push(

@@ -38,6 +38,7 @@
 import type { GameData, Suit } from '@gp/data';
 import {
   deliveriesPerTile,
+  freeDeliverySpaces,
   isMeepleCurrency,
   isNoticeBoardPower,
   meepleIndexForSpace,
@@ -445,6 +446,10 @@ export class Fold {
       demandFaceDowns: 0,
       deliveriesUnlockedByAlteration: 0,
       receiptsByOrderBySeat: Array.from({ length: seats }, () => []),
+      receiptsByArrivalBySeat: Array.from({ length: seats }, () => []),
+      firstArrivalsPassingSixBySeat: zeros(),
+      tilesClosedBySeat: zeros(),
+      closingDrawCardsBySeat: zeros(),
       giftsBySeat: zeros(),
       barnInByRoute: { harvest: 0, hand: 0, deck: 0, stack: 0, discard: 0 },
       barnInBySeat: zeros(),
@@ -1214,6 +1219,12 @@ export class Fold {
           m.hostDrawCardsBySeat[e.seat] = (m.hostDrawCardsBySeat[e.seat] ?? 0) + e.cards.length;
           m.hostDrawPaymentsBySeat[e.seat] = (m.hostDrawPaymentsBySeat[e.seat] ?? 0) + 1;
         }
+        // ⭐ THE CLOSING DRAW (Dean, 14/09/2026), the engine's second label and
+        // the same shape: a structural zero wherever closingDrawPerCrate is 0.
+        if (e.via === 'closingDraw') {
+          m.closingDrawCardsBySeat[e.seat] =
+            (m.closingDrawCardsBySeat[e.seat] ?? 0) + e.cards.length;
+        }
         return;
       }
       case 'cardGifted':
@@ -1286,6 +1297,27 @@ export class Fold {
         if (order >= 0) {
           const byOrder = m.receiptsByOrderBySeat[e.seat] as number[];
           byOrder[order] = (byOrder[order] ?? 0) + 1;
+        }
+        // ⭐ ARRIVAL ORDER, SEPARATELY (14/09/2026). Under Dean's space choice
+        // the receipt's VP says which SPACE was taken and no longer who got
+        // there first, so arrival is read off the tile as it stood before this
+        // decision plus the receipts this same decision already put on it (V14
+        // emits two; V15 can deliver twice).
+        const before = d.pre.island.tiles.find((t) => t.tile === e.tile)?.deliveredBy.length ?? 0;
+        let earlier = 0;
+        for (const x of d.events) {
+          if (x === e) break;
+          if (x.e === 'delivered' && x.tile === e.tile) earlier += 1;
+        }
+        const arrival = before + earlier;
+        const byArrival = m.receiptsByArrivalBySeat[e.seat] as number[];
+        byArrival[arrival] = (byArrival[arrival] ?? 0) + 1;
+        if (arrival === 0 && (e.space ?? arrival) !== 0) {
+          m.firstArrivalsPassingSixBySeat[e.seat] =
+            (m.firstArrivalsPassingSixBySeat[e.seat] ?? 0) + 1;
+        }
+        if (arrival === deliveriesPerTile(this.data) - 1) {
+          m.tilesClosedBySeat[e.seat] = (m.tilesClosedBySeat[e.seat] ?? 0) + 1;
         }
         // ⛔ THE MARKET EXPLOIT PROBE IS GONE with the market (v31): it asked
         // whether the market buys made since a seat's last harvest covered a
@@ -1758,9 +1790,12 @@ export class Fold {
       const slots = noticeBoardSlots(state, seat);
       for (const colour of this.data.cards.suits) n += slots[colour]?.length ?? 0;
     }
-    const per = deliveriesPerTile(this.data);
+    // ⭐ THE FREE SPACES AND NOT `deliveredBy.length` UPWARD (14/09/2026): under
+    // Dean's space choice a first arrival can take space 1 and leave space 0
+    // open, and the meeple left on the island is then the one it took. Under
+    // fill order the two lists are identical.
     for (const tile of state.island.tiles) {
-      for (let space = tile.deliveredBy.length; space < per; space++) {
+      for (const space of freeDeliverySpaces(this.data, tile)) {
         const idx = meepleIndexForSpace(this.data, space);
         if (idx >= 0 && tile.meeples[idx] !== undefined) n += 1;
       }

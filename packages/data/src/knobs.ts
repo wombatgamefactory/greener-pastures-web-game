@@ -112,6 +112,14 @@
  * economy in this project has died of: `storeCoinsPerCard` is the only faucet,
  * and if a future session finds itself adding another, that is the failure
  * repeating rather than a tuning.
+ *
+ * ⭐ 14/09/2026: DEAN RULED THE DELIVERY MEEPLE ON AND ADDED TWO ISLAND RULES,
+ * AND THIS FILE GAINS TWO TEMPLATES FOR THEM: `rules.turn.deliverySpaceChoice`
+ * (a delivery names either free space) and `rules.turn.closingDrawPerCrate`
+ * (the delivery that fills a tile draws one card per crate). The four meeple
+ * leaves above now ship at their ARM values and both new leaves ship ON, so
+ * every overlay that should not move pins all six by name at the old values
+ * (`'start'` and `null` for the spend window, not the handoff's `'none'` and 0).
  */
 
 import { flatten } from './paths.js';
@@ -780,6 +788,44 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       "burst Dean's own table enjoyed on 11/09/2026, and a table finding discarded on a manager's " +
       'say-so is worth less than a run. ⚠️ Read it beside actions per turn (1.61 against a target ' +
       'of 1.5) and beside the branching bench, since it is the looser of the two rules.',
+  },
+  {
+    template: 'rules.turn.deliverySpaceChoice',
+    type: 'boolean',
+    description:
+      '⭐ THE SPACE CHOICE (Dean, ruled 14/09/2026, SHIPPED true). A delivery to a tile names ' +
+      'EITHER free delivery space: the 6 VP space (index 0) or the 3 VP space (index 1), which ' +
+      'carries the delivery meeple. A first deliverer may take the 3 VP and the meeple and leave ' +
+      'the 6 VP for somebody else; the second deliverer takes whichever space is left. ' +
+      '⛔ false IS FILL ORDER EXACTLY, the rule from 09/08/2026 to 14/09/2026: no move or task ' +
+      'answer carries a space, nothing new is stored on a tile, and a state hash or replay ' +
+      'fixture under the old rules is byte-identical. ' +
+      '⭐ THE STATE: IslandTileState.deliveredSpaces, parallel to deliveredBy and present only ' +
+      'under true. deliveredBy keeps its meaning (the seats IN ARRIVAL ORDER, length = the ' +
+      'delivery count); the space a receipt took is read through deliverySpacesTaken(tile), ' +
+      'never off an index into deliveredBy. ' +
+      '⚠️ V14 The Distribution Center takes every free space on its tile and chooses nothing. ' +
+      '⚠️ A bot prices a delivery at deliver-weight times the VP plus meepleGain for the meeple, ' +
+      'so it will rarely give up 6 VP for 3 and a meeple; read a23’s first-delivery share as a ' +
+      'reading about the bots as much as about the rule.',
+  },
+  {
+    template: 'rules.turn.closingDrawPerCrate',
+    type: 'int',
+    description:
+      '⭐ THE CLOSING DRAW (Dean, ruled 14/09/2026, SHIPPED 1). The delivery that fills a tile’s ' +
+      'LAST free space, whichever index that is, draws this many cards for EACH crate token on ' +
+      'the tile, from the deck of that token’s suit. MANDATORY. 0 is off. ' +
+      '⭐ A CORNUCOPIA (wild) CRATE draws from ANY deck in play, the closer’s choice (Dean, ' +
+      '14/09/2026), and that is the only choice in the rule. ⚠️ A crate turned FACE DOWN by V6 ' +
+      'The Trade Depot draws from its PRINTED suit (still stored in tile.crates): a builder ' +
+      'default, NOT ruled by Dean. ' +
+      '⭐ A PLAIN DRAW EFFECT AND NEVER THE DRAW ACTION: it is one see-N/keep-N draw task with ' +
+      'the named decks pre-revealed (the O15 convention) and one deck pick per cornucopia, so ' +
+      'reshuffles and an empty deck behave as every other card-text draw does, and it fires ' +
+      'afterDrawKeep exactly as every card-ability draw does (no card listens to it today). ' +
+      'V14 taking both receipts closes the tile and draws. The draw resolves after the ' +
+      'receipts and the meeple and ahead of the Store exchange in the task queue.',
   },
 
   // --- Economy -------------------------------------------------------------

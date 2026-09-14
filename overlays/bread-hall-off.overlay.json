@@ -1,6 +1,6 @@
 {
   "name": "bread-hall-off",
-  "description": "Paired comparison: W21 The Bread Hall switched out. RE-POINTED FOR v31 (02/09/2026) - the question this arm used to ask is gone, and the card it asks about is not. It was written to settle whether the card's old text, 'Game end: 1 VP for every GBP 2', corrupted the coin economy; coins were deleted from the game and the card is now 'Game end: 2 VP for each FIELD you have built', a Wheat own-suit scorer. So this is now an arm about RISK 3, the monoculture pull: the Farmstead already pays 1 VP per own-suit card built and the Power and Endgame cards already cost 2 cards of their own suit, and this card is a third payment on the same axis. The Innovation lens's standing constraint is that the metric axis must not be the specialisation axis. Read the own-crop build share (82.6% before v31 and expected to rise), the Wheat seat's win rate, and whether Wheat's card mix flattens without it. ⛔ PASSENGERS PINNED 12/09/2026: Dean's plain-action balloon and Village Store ruling moved sixteen shipped leaves at once. This overlay predates that flip and every report taken against it does too, so each of those leaves is pinned here BY NAME at its PRE-FLIP value. Without it an arm read as a delta against a pre-flip base would silently gain a one-card flight, an always-present Aerodrome and a live coin economy. That is the 05/09/2026 passenger lesson: an overlay that should not move with the shipped default has to pin every knob the flip moved.",
+  "description": "Paired comparison: W21 The Bread Hall switched out. RE-POINTED FOR v31 (02/09/2026) - the question this arm used to ask is gone, and the card it asks about is not. It was written to settle whether the card's old text, 'Game end: 1 VP for every GBP 2', corrupted the coin economy; coins were deleted from the game and the card is now 'Game end: 2 VP for each FIELD you have built', a Wheat own-suit scorer. So this is now an arm about RISK 3, the monoculture pull: the Farmstead already pays 1 VP per own-suit card built and the Power and Endgame cards already cost 2 cards of their own suit, and this card is a third payment on the same axis. The Innovation lens's standing constraint is that the metric axis must not be the specialisation axis. Read the own-crop build share (82.6% before v31 and expected to rise), the Wheat seat's win rate, and whether Wheat's card mix flattens without it. ⛔ PASSENGERS PINNED 12/09/2026: Dean's plain-action balloon and Village Store ruling moved sixteen shipped leaves at once. This overlay predates that flip and every report taken against it does too, so each of those leaves is pinned here BY NAME at its PRE-FLIP value. Without it an arm read as a delta against a pre-flip base would silently gain a one-card flight, an always-present Aerodrome and a live coin economy. That is the 05/09/2026 passenger lesson: an overlay that should not move with the shipped default has to pin every knob the flip moved. ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the delivery meeple ON as the shipped default (rules.turn.deliveryMeepleSpace 1, meepleSpendTiming 'afterAction', meepleSpendPerTurn 1, meepleSpendDistinctColours false) together with two new island rules, the space choice (rules.turn.deliverySpaceChoice true: a delivery names either free space) and the closing draw (rules.turn.closingDrawPerCrate 1: filling a tile draws one card per crate). This overlay predates it, so all six leaves are pinned here BY NAME at their pre-ruling values (deliveryMeepleSpace null, meepleSpendTiming 'start', meepleSpendPerTurn null, meepleSpendDistinctColours false, deliverySpaceChoice false, closingDrawPerCrate 0; 'start' and null are the old inert values, not 'none' and 0) and it still replays its own game.",
   "schemaVersion": 1,
   "set": {
     "cards.catalogue.W21.enabled": false,
@@ -20,6 +20,12 @@
     "rules.economy.coinPaysSuitCost": false,
     "rules.economy.coinPaysGrow": false,
     "rules.economy.coinGrowOnFullBuilding": false,
-    "rules.economy.cropScorerOnBarn": false
+    "rules.economy.cropScorerOnBarn": false,
+    "rules.turn.deliveryMeepleSpace": null,
+    "rules.turn.meepleSpendTiming": "start",
+    "rules.turn.meepleSpendPerTurn": null,
+    "rules.turn.meepleSpendDistinctColours": false,
+    "rules.turn.deliverySpaceChoice": false,
+    "rules.turn.closingDrawPerCrate": 0
   }
 }

@@ -125,6 +125,15 @@ export const data: GameData = loadGameData({
     // board per farm, so both are pinned at their old values.
     'rules.turn.selfVisitAllowed': true,
     'rules.economy.noticeBoardsBySeats.2': 1,
+    // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
+    // choice and the closing draw. The UI plays v31 and predates it, so all six are pinned
+    // off by name ('start' and null are the old inert values).
+    'rules.turn.deliveryMeepleSpace': null,
+    'rules.turn.meepleSpendTiming': 'start',
+    'rules.turn.meepleSpendPerTurn': null,
+    'rules.turn.meepleSpendDistinctColours': false,
+    'rules.turn.deliverySpaceChoice': false,
+    'rules.turn.closingDrawPerCrate': 0,
   },
 });
 

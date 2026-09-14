@@ -17,7 +17,7 @@
 
 import { useEffect, useState } from 'react';
 import type { GameData, Suit } from '@gp/data';
-import { deliveriesPerTile, deliveryVp } from '@gp/data';
+import { deliveriesPerTile, deliverySpacesTaken, deliveryVp } from '@gp/data';
 import type { PlayerView, Seat } from '@gp/engine';
 
 import { mark } from '../session/play';
@@ -191,7 +191,12 @@ export function IslandPanel({
                         says WHAT IT PAYS, which is the whole race. */}
                     <div className="island-receipts">
                       {Array.from({ length: capacity }, (_, i) => {
-                        const seat = tile.deliveredBy[i];
+                        // ⚠️ 14/09/2026: slot i is delivery SPACE i, and under
+                        // Dean's space choice the seat holding it is whoever took
+                        // that space, not the i-th arrival. The UI is pinned to
+                        // v31 and this is the minimum to stay truthful.
+                        const holder = deliverySpacesTaken(tile).indexOf(i);
+                        const seat = holder < 0 ? undefined : tile.deliveredBy[holder];
                         const suit = seat === undefined ? undefined : suitOf(seat);
                         const vp = deliveryVp(data, i);
                         const meeple = tile.meeples[i];
