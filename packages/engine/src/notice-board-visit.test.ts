@@ -74,6 +74,7 @@ const blocking: GameData = loadGameData({
     'rules.economy.coinPaysGrow': false,
     'rules.economy.coinGrowOnFullBuilding': false,
     'rules.turn.visitCurrency': 'noticeBoardPower',
+    'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
     'rules.economy.noticeBoardsBySeats.2': 1, // pinned 13/09/2026: the default flipped
     'rules.turn.bonusTiming': 'start',
     'rules.turn.selfVisitAllowed': true,
@@ -113,6 +114,7 @@ const noSelf: GameData = loadGameData({
     'rules.economy.coinPaysGrow': false,
     'rules.economy.coinGrowOnFullBuilding': false,
     'rules.turn.visitCurrency': 'noticeBoardPower',
+    'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
     'rules.economy.noticeBoardsBySeats.2': 1, // pinned 13/09/2026: the default flipped
     'rules.turn.bonusTiming': 'start',
     'rules.turn.selfVisitAllowed': false,

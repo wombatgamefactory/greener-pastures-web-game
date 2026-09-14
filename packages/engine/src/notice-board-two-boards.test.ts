@@ -215,6 +215,7 @@ describe('the arithmetic ceiling: seats * (n - 1) must be at most 5 - seats', ()
       'rules.economy.coinPaysGrow': false,
       'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
+      'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
       'rules.economy.noticeBoardsBySeats.2': 1, // pinned 13/09/2026: the default flipped
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': false,
@@ -261,6 +262,7 @@ describe('the arithmetic ceiling: seats * (n - 1) must be at most 5 - seats', ()
         'rules.economy.coinPaysGrow': false,
         'rules.economy.coinGrowOnFullBuilding': false,
         'rules.turn.visitCurrency': 'noticeBoardPower',
+        'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
         'rules.turn.selfVisitAllowed': true, // pinned 13/09/2026: the default flipped
         'rules.economy.noticeBoardsBySeats.2': 0,
       },

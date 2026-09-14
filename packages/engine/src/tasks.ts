@@ -22,6 +22,7 @@ import {
   doBuild,
   doDeliver,
   doMoveBalloon,
+  deckGrowOptions,
   growOptions,
   harvestOptions,
   subsets,
@@ -254,6 +255,22 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
       // ⚠️ K10's `coin` STAYS OUT and needs no filter, because `growOptions`
       // offers the Farmstead only under `mods.mainAction` and this caller does
       // not pass it: a bonus may never buy a suit power (D-C1).
+      //
+      // ⭐ THE APIARY RETEXT'S DECK-PAID GROW (14/09/2026) answers from its own
+      // list, the same one the board's gate reads, and never mixes with a
+      // hand-paid or coin-paid option: the power names the deck.
+      if (task.fromDeck !== undefined) {
+        const deckOut: TaskAnswer[] = deckGrowOptions(
+          data,
+          state,
+          task.pid,
+          task.fromDeck === 'wild',
+        )
+          .filter((o) => task.target === undefined || o.building === task.target)
+          .map((o) => ({ kind: 'grow', building: o.building, payment: null, deckSuit: o.suit }));
+        if (task.optional === true && deckOut.length > 0) deckOut.push({ kind: 'skip' });
+        return deckOut;
+      }
       const out: TaskAnswer[] = growOptions(data, state, task.pid, {
         ...(task.target === undefined ? {} : { onlyBuilding: task.target }),
         ...(task.wildActivation === true ? { anyCrop: true } : {}),
@@ -442,6 +459,15 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
       // left in v31 that does, and the constraint is permanent - see `doGrow`).
       // V8 (A150): a coin-paid bought Grow places nothing and may reach a full
       // building. `doGrow` re-validates every gate the enumerator filtered on.
+      if (answer.deckSuit !== undefined) {
+        if (task.fromDeck === undefined) throw new Error('This Grow is not paid off a deck');
+        doGrow(fx, task.pid, answer.building, null, {
+          fromDeck: answer.deckSuit,
+          ...(task.fromDeck === 'wild' ? { anyCrop: true } : {}),
+        });
+        return true;
+      }
+      if (task.fromDeck !== undefined) throw new Error('A deck-paid Grow must name a deck');
       doGrow(
         fx,
         task.pid,

@@ -86,6 +86,15 @@ const OVERLAY_DIR = fileURLToPath(new URL('../../../overlays', import.meta.url))
  * not a guard. The shipped default is now the Notice Board visit, and the three
  * unmarked `-notice-board-opening` fixtures record it, captured with
  * `npm run sim -- --replay=<capture> --fixture="<why>"`.
+ *
+ * ## ⭐ AND A FOURTH TIME ON 14/09/2026
+ *
+ * Dean ruled in the Apiary board's retext ("Grow a building using the top card
+ * of any deck", `apiaryPower: 'deckGrowWild'`). Two of the three logs visit an
+ * Apiary board and answered its old Sow 2, so they became logs of the
+ * reference-v17 game: renamed `-apiary-sow-opening` and replayed against
+ * `overlays/notice-board-apiary-sow-v1`, which pins that one leaf. The third
+ * moved with them so the set stays one game.
  */
 function overlayData(file: string) {
   const overlay = JSON.parse(readFileSync(join(OVERLAY_DIR, file), 'utf8')) as Overlay;
@@ -101,16 +110,18 @@ function overlayData(file: string) {
  */
 const V31_CONTROL = overlayData('v31-card-visit.overlay.json');
 const MEEPLE_LOOP_V1 = overlayData('meeple-loop-v1.overlay.json');
+const APIARY_SOW_V1 = overlayData('notice-board-apiary-sow-v1.overlay.json');
 /**
  * ⚠️ A FILE WITH NO MARKER REPLAYS AGAINST THE SHIPPED DEFAULT, whatever the
  * shipped default currently is. That is the convention and it is deliberate: a
  * fixture belongs to the game of the day it was captured, and a marker is added
- * only when that game becomes an arm. The `-notice-board-opening` fixtures are
- * the unmarked ones today.
+ * only when that game becomes an arm. Since 14/09/2026 no fixture records the
+ * shipped game, which is a gap on the to-do list.
  */
 function dataFor(file: string) {
   if (file.includes('-v31-')) return V31_CONTROL;
   if (file.includes('-meeple-loop-')) return MEEPLE_LOOP_V1;
+  if (file.includes('-apiary-sow-')) return APIARY_SOW_V1;
   return BASE_GAME_DATA;
 }
 

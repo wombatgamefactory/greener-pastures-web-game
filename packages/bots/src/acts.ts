@@ -447,6 +447,10 @@ function actOfAnswer(answer: TaskAnswer): Act {
     //
     // ⭐ `coinGrow` RIDES ACROSS HERE, WHICH `coin` DOES NOT (V8, A150,
     // 12/09/2026): a task-bought Grow IS coin-payable.
+    //
+    // The Apiary retext's deck-paid Grow (14/09/2026) arrives as `payment` null
+    // and `coinGrow` false: no hand card leaves, so `handSpend` and `growSpend`
+    // charge nothing, and the Grow is probed like every other.
     case 'grow':
       return {
         a: 'grow',

@@ -113,7 +113,9 @@ export function meepleActionOf(data: GameData, colour: Suit): DoorAction {
  *   Dairy      "Build. You may spend cards of any crops."        `dairyWild`
  *   Wheat      "Harvest one of your buildings, then put 1 card
  *               from your hand into your barn."                  `wheatBarn`
- *   Apiary     "Sow 2 cards from your hand onto your buildings." `apiarySows`
+ *   Apiary     "Grow a building using the top card of any deck." `apiaryPower`
+ *              (ruled 14/09/2026; the S12 "Sow 2 cards from your hand onto your
+ *              buildings", `apiarySows`, is `apiaryPower: 'sow'`)
  *   Vegetable  "Deliver. If you cannot, put 2 cards from your
  *               hand into your barn."                    `vegetableFallback`
  *
@@ -242,6 +244,22 @@ export function fireNoticeBoardPower(
       // THE ONLY CROSS-TABLE ACT IN THE DESIGN. A `sow` task with no `targets`
       // is exactly "your own buildings" (see `sowTargets`), and S11 takes the
       // Notice Board itself out of that set through `canSowOnto`.
+      //
+      // ⭐⭐ SUPERSEDED BY DEAN'S RETEXT, RULED 14/09/2026 (`apiaryPower`, base
+      // 'deckGrowWild'): *"Grow a building using the top card of any deck."* A
+      // GROW, so the ability fires and C89's reason for a sow is set aside; the
+      // activation card comes off a deck, never the hand, and is wild ("a way of
+      // bypassing the suit requirements"). Still your own buildings only. The
+      // sow below survives for the overlays that pin 'sow'.
+      if (numbers.apiaryPower !== 'sow') {
+        fx.pushTask({
+          t: 'grow',
+          pid: actor,
+          src,
+          fromDeck: numbers.apiaryPower === 'deckGrowWild' ? 'wild' : 'match',
+        });
+        return;
+      }
       fx.pushTask({ t: 'sow', pid: actor, src, remaining: numbers.apiarySows });
       return;
     case 'vegetable':

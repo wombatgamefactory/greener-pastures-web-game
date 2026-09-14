@@ -83,6 +83,7 @@ const ARM: GameData = loadGameData({
     'rules.economy.coinPaysGrow': false,
     'rules.economy.coinGrowOnFullBuilding': false,
     'rules.turn.visitCurrency': 'noticeBoardPower',
+    'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
     'rules.turn.bonusTiming': 'start',
     'rules.turn.selfVisitAllowed': false,
     'rules.turn.hostDrawOnVisit': 1,
@@ -119,6 +120,7 @@ const CONTROL: GameData = loadGameData({
     'rules.economy.coinPaysGrow': false,
     'rules.economy.coinGrowOnFullBuilding': false,
     'rules.turn.visitCurrency': 'noticeBoardPower',
+    'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
     'rules.turn.bonusTiming': 'start',
     'rules.turn.selfVisitAllowed': false,
     'rules.economy.noticeBoardThreshold': 3,

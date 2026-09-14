@@ -589,6 +589,14 @@ export function dairyGrowsBuilt(data: GameData): 'none' | 'paid' | 'paidWild' | 
   return data.rules.economy.noticeBoardPower.dairyGrowsBuilt;
 }
 
+/**
+ * ⭐ Which power the Apiary Notice Board prints (Dean's retext, ruled 14/09/2026).
+ * Shipped 'deckGrowWild'. Read only under visitCurrency 'noticeBoardPower'.
+ */
+export function apiaryPower(data: GameData): 'sow' | 'deckGrow' | 'deckGrowWild' {
+  return data.rules.economy.noticeBoardPower.apiaryPower;
+}
+
 export function meeplesPerTile(data: GameData): number {
   return tileMeepleSpaces(data).length;
 }

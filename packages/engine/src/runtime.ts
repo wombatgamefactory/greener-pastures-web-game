@@ -97,6 +97,14 @@ export interface GrowMods {
    * full-building question has no subject here.
    */
   freeGrow?: boolean;
+  /**
+   * ⭐ DEAN'S APIARY RETEXT (14/09/2026, `noticeBoardPower.apiaryPower`): the
+   * activation card is the TOP OF THIS DECK, never a hand card. `payment` is
+   * null. The card lands on the stack like any Grow payment, so the building
+   * advances, can fill, and a full building is refused. With `anyCrop` the deck
+   * may be any crop; without it, its crop must pay the activation cost.
+   */
+  fromDeck?: Suit;
 }
 
 /**
@@ -203,6 +211,31 @@ export function doGrow(
     if (type === null) throw new Error(`${building} has no activation type`);
     if (fx.state.turn.firedThisTurn.includes(building)) {
       throw new Error(`${building} has already fired this turn`);
+    }
+    markFired(fx, building);
+    handlerFor(building)?.activate?.(fx, { seat, card: building });
+    return;
+  }
+  // ⭐ THE APIARY RETEXT'S DECK-PAID GROW (14/09/2026). Every gate
+  // `deckGrowOptions` filtered on is re-asked and thrown on here.
+  if (mods.fromDeck !== undefined) {
+    const suit = mods.fromDeck;
+    if (payment !== null || meeples.length > 0) {
+      throw new Error('A deck-paid GROW pays no hand card and no meeple');
+    }
+    const type = faceOf(fx.data, b).activationType;
+    if (type === null) throw new Error(`${building} has no activation type`);
+    if (!canTakeCard(fx.data, b)) throw new Error(`${building} is full or has no stack`);
+    if (fx.state.turn.firedThisTurn.includes(building)) {
+      throw new Error(`${building} has already fired this turn`);
+    }
+    if (mods.anyCrop !== true && type !== 'wild' && type !== suit) {
+      throw new Error(`${building} needs a ${type} card, and the ${suit} deck cannot pay it`);
+    }
+    const before = b.stack.length;
+    fx.deckTopToBuilding(seat, suit, { seat, card: building });
+    if (b.stack.length === before) {
+      throw new Error(`The ${suit} deck and discard are empty: nothing pays for ${building}`);
     }
     markFired(fx, building);
     handlerFor(building)?.activate?.(fx, { seat, card: building });

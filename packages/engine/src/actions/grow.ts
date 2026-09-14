@@ -4,7 +4,7 @@
  * Split out of actions.ts on 2026-09-12; the code is unchanged.
  */
 
-import { canTakeCard, cardById, coinsOf, faceOf, player } from '../query.js';
+import { canTakeCard, cardById, coinsOf, drawableSuits, faceOf, player } from '../query.js';
 import type { CardId, GameState, Seat } from '../state.js';
 import type { GameData, Suit } from '@gp/data';
 import {
@@ -312,6 +312,49 @@ export function growOptions(
     // for every building on the table.
     for (const pair of meeplePairs(data, p.meeples)) {
       emit([pair[0], pair[1]]);
+    }
+  }
+  return out;
+}
+
+/** One Grow paid off the top of a deck: which building, and which deck pays. */
+export interface DeckGrowOption {
+  building: CardId;
+  suit: Suit;
+}
+
+/**
+ * ⭐ DEAN'S APIARY RETEXT (14/09/2026, `noticeBoardPower.apiaryPower`): *"Grow
+ * a building using the top card of any deck."* Every (building, deck) pair the
+ * power could resolve into, and THE ONE LIST BOTH THE GATE AND THE TASK READ, so
+ * the board is never offered on a Grow the task could not then answer.
+ *
+ * The targets are exactly a card-paid Grow's: your own building, never a Notice
+ * Board, not already fired this turn, a printed activation type, and ROOM for a
+ * card (a card is placed, so a full building is refused and the clog brake
+ * stands). The deck must be drawable. Under `wild` false the deck's crop must
+ * pay the activation cost ('wild' activation takes any deck), which is the
+ * printed Grow rule with the choice of deck standing in for the choice of card.
+ *
+ * Hand-blind by construction: nothing is paid from the hand.
+ */
+export function deckGrowOptions(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+  wild: boolean,
+): DeckGrowOption[] {
+  const suits = drawableSuits(data, state);
+  if (suits.length === 0) return [];
+  const out: DeckGrowOption[] = [];
+  for (const b of player(state, seat).tableau) {
+    if (cardById(data, b.card).slot === 'noticeboard') continue;
+    if (state.turn.firedThisTurn.includes(b.card)) continue;
+    const type = faceOf(data, b).activationType;
+    if (type === null) continue;
+    if (!canTakeCard(data, b)) continue;
+    for (const suit of suits) {
+      if (wild || type === 'wild' || type === suit) out.push({ building: b.card, suit });
     }
   }
   return out;

@@ -153,6 +153,7 @@ export type KnobType =
   | 'meepleDestination'
   | 'meepleSpendTiming'
   | 'dairyGrowsBuilt'
+  | 'apiaryPower'
   | 'paymentHostChoice'
   | 'balloonReward';
 
@@ -983,6 +984,24 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'and leaves the sow-match and DL-63 questions with no subject. ⚠️ Raising it raises the ' +
       "board's worth faster than any other number here, because a sow needs no matching suit " +
       'and pays no activation.',
+  },
+  {
+    template: 'rules.economy.noticeBoardPower.apiaryPower',
+    type: 'apiaryPower',
+    description:
+      '⭐⭐ WHICH POWER THE APIARY NOTICE BOARD PRINTS. RULED BY DEAN, 14/09/2026: THE BASE IS ' +
+      '\'deckGrowWild\', "Grow a building using the top card of any deck": GROW one of your own ' +
+      'non-full buildings with its activation card paid off the top of a deck in play, so the ' +
+      'ability FIRES, the stack advances and the clog brake survives, and the deck card pays ANY ' +
+      'activation cost ("a way of bypassing the suit requirements"). \'deckGrow\' is the ' +
+      "rejected literal reading, the deck's crop matching the cost. 'sow' is the S12 power of " +
+      '10-13/09/2026, "Sow 2 cards from your hand onto your buildings", reading apiarySows, and ' +
+      'every overlay that predates the ruling pins it. Measured on reference-v17 seeds: Dairy ' +
+      'win rate 36.6% to 50.4%, Apiary 40.2% to 25.9%. ⚠️ ' +
+      'EITHER GROW REVERSES THE REASONING OF C89, which kept the power a SOW so it could never ' +
+      'be a better A12 The Honey Hut or A5 The Meadow Hive, and it makes the orange board and ' +
+      'the orange balloon mean the same verb for the first time. Read the Apiary win rate, the ' +
+      'door mix and a06 together.',
   },
   {
     template: 'rules.economy.noticeBoardPower.vegetableFallback',

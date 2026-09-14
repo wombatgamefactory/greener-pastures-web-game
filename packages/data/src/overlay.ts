@@ -73,6 +73,17 @@ const DAIRY_GROWS_BUILT_VALUES: ReadonlySet<string> = new Set<string>([
 ]);
 
 /**
+ * The closed value set behind `noticeBoardPower.apiaryPower` (Dean's Apiary
+ * retext, ruled 14/09/2026). 'deckGrowWild' is the shipped value; 'sow' is the
+ * pre-ruling power every older overlay pins.
+ */
+const APIARY_POWER_VALUES: ReadonlySet<string> = new Set<string>([
+  'sow',
+  'deckGrow',
+  'deckGrowWild',
+]);
+
+/**
  * The closed value set behind `visitCurrency`, kept here for the same reason as
  * `BONUS_TIMING_VALUES`.
  *
@@ -172,6 +183,8 @@ function typeMatches(type: KnobType, value: Leaf): boolean {
       return typeof value === 'string' && MEEPLE_SPEND_TIMING_VALUES.has(value);
     case 'dairyGrowsBuilt':
       return typeof value === 'string' && DAIRY_GROWS_BUILT_VALUES.has(value);
+    case 'apiaryPower':
+      return typeof value === 'string' && APIARY_POWER_VALUES.has(value);
     case 'paymentHostChoice':
       return typeof value === 'string' && PAYMENT_HOST_VALUES.has(value);
     case 'balloonReward':

@@ -548,10 +548,13 @@ describe('the notice board visit', () => {
   // the building you just built by spending any card*. The count moved from
   // five to six DELIBERATELY, and the test failing first is the mechanism
   // working rather than a nuisance.
-  it('carries the six Notice Board powers, and offers all six as knobs', () => {
+  // `apiaryPower` is the SEVENTH key: Dean's Apiary retext, ruled 14/09/2026 with
+  // the deck card wild.
+  it('carries the seven Notice Board powers, and offers all seven as knobs', () => {
     expect(BASE_GAME_DATA.rules.economy.noticeBoardPower).toEqual({
       orchardDraw: 4,
       apiarySows: 2,
+      apiaryPower: 'deckGrowWild',
       vegetableFallback: 2,
       dairyWild: true,
       dairyGrowsBuilt: 'paidWild',
@@ -562,6 +565,7 @@ describe('the notice board visit', () => {
     for (const key of [
       'orchardDraw',
       'apiarySows',
+      'apiaryPower',
       'vegetableFallback',
       'dairyWild',
       'dairyGrowsBuilt',

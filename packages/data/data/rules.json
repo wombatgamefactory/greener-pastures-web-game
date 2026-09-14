@@ -103,6 +103,7 @@
     "noticeBoardPower": {
       "orchardDraw": 4,
       "apiarySows": 2,
+      "apiaryPower": "deckGrowWild",
       "vegetableFallback": 2,
       "dairyWild": true,
       "dairyGrowsBuilt": "paidWild",

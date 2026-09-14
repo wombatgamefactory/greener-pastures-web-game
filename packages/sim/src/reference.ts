@@ -1073,8 +1073,35 @@ export const REFERENCE_V17: ReferenceConfig = {
   seed: 'reference-v17',
 };
 
+/**
+ * ⭐ reference-v18, cut 14/09/2026 when Dean ruled in the Apiary board's retext:
+ * *"Grow a building using the top card of any deck"*, the deck card WILD
+ * (`noticeBoardPower.apiaryPower: 'deckGrowWild'`). Everything else is
+ * reference-v17.
+ *
+ * ⛔ A level from `reference-v17` is not comparable: the seed moved with the
+ * rule. The v17 game survives as `overlays/notice-board-apiary-sow-v1`, and every
+ * older overlay on the notice-board visit pins `apiaryPower: 'sow'` by name.
+ */
+export const REFERENCE_V18: ReferenceConfig = {
+  ...REFERENCE_V17,
+  id: 'reference-v18',
+  description:
+    'THE TWO-BOARD NOTICE BOARD VISIT WITH THE APIARY RETEXT (Dean, 14/09/2026). reference-v17 ' +
+    'stands - the Notice Boards are buildings on their owners’ farms, the bonus comes FIRST and ' +
+    'is one card from your hand onto a RIVAL’s board for its printed power, two boards a seat at ' +
+    'two players and one at three and four, no host draw, the plain-action balloons, the Village ' +
+    'Store and the Barn scorer - and ONE leaf moved: THE APIARY BOARD NOW READS "Grow a building ' +
+    'using the top card of any deck", the deck card paying ANY activation cost (apiaryPower ' +
+    '"deckGrowWild"), in place of "Sow 2 cards from your hand onto your buildings". ⚠️ THE HAND ' +
+    'LIMIT OF 7 IS THE SIMULATOR’S BOUND AND NOT A RULE OF THE GAME. The v17 game is ' +
+    'overlays/notice-board-apiary-sow-v1.overlay.json. ⛔ NO NUMBER IN ANY reference-v17 OR ' +
+    'EARLIER REPORT IS COMPARABLE AS A LEVEL.',
+  seed: 'reference-v18',
+};
+
 /** The instrument every current number is defined against. */
-export const REFERENCE = REFERENCE_V17;
+export const REFERENCE = REFERENCE_V18;
 
 /**
  * The noise floor, measured once and quoted constantly.
@@ -1231,29 +1258,40 @@ export interface NoiseFloor {
  * is back inside the instrument's reach. `farm bypass share` is the rival-fee
  * share of HARVESTED barn cards under this game and is not the commons ratio.
  * `meeple spend rate` is NaN: there are no meeples, so no subject, not zero.
+ *
+ * The v17 values, for the record and NOT for use: game length 1 round, visits
+ * per turn 0.004, actions per turn 0.005, bonus slot used 0.001, door mix 0.002,
+ * farm bypass 0.001, unfinished games 0.001, winning score 0, last as % of
+ * winner 0.006, tied top score 0.006, seat deviation 0.388, every other line 0
+ * or NaN.
+ *
+ * ⭐ reference-v18's FLOOR, measured 14/09/2026 at n=1580 per seat count, two
+ * seeds, from `reports/noise-2026-09-14T14-52-50-reference-v18.txt`. Seat
+ * deviation moved 0.876 points (the worst chair, 2p, moved 3.6), so the +/-3
+ * seat band is still inside the instrument's reach at three and four seats.
  */
 export const NOISE_FLOOR: NoiseFloor | null = {
-  reference: 'reference-v17',
+  reference: 'reference-v18',
   games: 1580,
-  measured: '2026-09-13',
+  measured: '2026-09-14',
   movement: {
     'meeples held at game end': 0,
     'barn at game end': 0,
-    'game length, rounds': 1,
-    'visits per turn': 0.004,
-    'actions per turn': 0.005,
+    'game length, rounds': 0,
+    'visits per turn': 0.002,
+    'actions per turn': 0.003,
     'meeple spend rate': NaN,
     'self-visit share of visits': 0,
-    'bonus slot used, share of turns': 0.001,
-    'door mix, busiest board share': 0.002,
-    'farm bypass share': 0.001,
+    'bonus slot used, share of turns': 0.002,
+    'door mix, busiest board share': 0.005,
+    'farm bypass share': 0,
     'unfinished games': 0.001,
-    'winning score': 0,
-    'last as % of winner': 0.006,
-    'tied top score': 0.006,
+    'winning score': 1,
+    'last as % of winner': 0.008,
+    'tied top score': 0.003,
     'deck reshuffles per game': 0,
     'reshuffles, played crop': 0,
-    'seat deviation': 0.388,
+    'seat deviation': 0.876,
   },
 };
 /**

@@ -255,6 +255,7 @@ export function noticeBoardVisitGame(): GameData {
       'rules.economy.coinPaysGrow': false,
       'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
+      'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
       // Pinned 13/09/2026, when the shipped default flipped to 2.
       'rules.economy.noticeBoardsBySeats.2': 1,
       'rules.turn.bonusTiming': 'start',
@@ -317,6 +318,7 @@ export function noticeBoardTwoBoardsGame(): GameData {
       'rules.economy.coinPaysGrow': false,
       'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
+      'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': false,
       'rules.turn.startingMeeplesPerColour': 0,
@@ -385,6 +387,7 @@ export function noticeBoardHostDrawGame(n = 1): GameData {
       'rules.economy.coinPaysGrow': false,
       'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
+      'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': false,
       'rules.turn.hostDrawOnVisit': n,
@@ -452,6 +455,7 @@ export function noticeBoardHostDrawCappedGame(capped = true, n = 1): GameData {
       'rules.economy.coinPaysGrow': false,
       'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
+      'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': false,
       'rules.turn.hostDrawOnVisit': n,
@@ -517,6 +521,7 @@ export function noticeBoardHostDrawBySeatsGame(): GameData {
       'rules.economy.coinPaysGrow': false,
       'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
+      'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': false,
       'rules.turn.hostDrawOnVisit': 1,
@@ -597,6 +602,7 @@ export function villageStoreGame(
       'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
       // The control's twenty, unchanged and in its own order.
       'rules.turn.visitCurrency': 'noticeBoardPower',
+      'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': false,
       'rules.turn.hostDrawOnVisit': 1,
@@ -701,6 +707,7 @@ export function deliveryMeepleGame(): GameData {
       'rules.economy.coinPaysGrow': false,
       'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
+      'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': false,
       'rules.turn.hostDrawOnVisit': 1,
@@ -766,6 +773,7 @@ export function deliveryMeepleDistinctGame(): GameData {
       'rules.economy.coinPaysGrow': false,
       'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
+      'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
       'rules.turn.bonusTiming': 'start',
       'rules.turn.selfVisitAllowed': false,
       'rules.turn.hostDrawOnVisit': 1,
@@ -829,6 +837,7 @@ export function noticeBoardHostDrawSelfGame(): GameData {
       'rules.economy.coinPaysGrow': false,
       'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
+      'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
       // Pinned 13/09/2026, when the shipped default flipped to 2.
       'rules.economy.noticeBoardsBySeats.2': 1,
       'rules.turn.bonusTiming': 'start',
@@ -888,6 +897,7 @@ export function noticeBoardNoSelfGame(): GameData {
       'rules.economy.coinPaysGrow': false,
       'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
+      'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
       // Pinned 13/09/2026, when the shipped default flipped to 2.
       'rules.economy.noticeBoardsBySeats.2': 1,
       'rules.turn.bonusTiming': 'start',

@@ -38,6 +38,7 @@ import {
 } from '@gp/data';
 import { anyBuildOption } from './build.js';
 import { doorActionLegal, workerActionLegal } from './doors.js';
+import { deckGrowOptions } from './grow.js';
 import { meepleFills, slotTollOf } from './meeples.js';
 import { withoutFirst } from './shared.js';
 
@@ -519,6 +520,15 @@ export function noticeBoardPowerLegal(
       // "Sow 2 cards from your hand onto your buildings." A card to sow and
       // somewhere of your OWN to put it (C89) - and never the Notice Board
       // itself (S11), which is why this reads `canSowOnto`.
+      //
+      // ⭐ Dean's retext, ruled 14/09/2026 and the shipped power: a deck-paid GROW
+      // is live exactly when the task it pushes has an answer, so the gate reads
+      // the task's own list.
+      if (numbers.apiaryPower !== 'sow') {
+        return (
+          deckGrowOptions(data, state, seat, numbers.apiaryPower === 'deckGrowWild').length > 0
+        );
+      }
       return (
         numbers.apiarySows > 0 && hand.length > 0 && p.tableau.some((b) => canSowOnto(data, b))
       );

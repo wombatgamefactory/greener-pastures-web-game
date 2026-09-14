@@ -1585,6 +1585,20 @@ export interface RulesFile {
        */
       readonly apiarySows: number;
       /**
+       * ⭐⭐ WHICH APIARY POWER THE BOARD PRINTS. RULED BY DEAN, 14/09/2026: THE
+       * BASE IS 'deckGrowWild'. The Apiary board reads *"Grow a building using
+       * the top card of any deck"*: GROW one of your own non-full buildings,
+       * paying its activation card off the top of a deck in play instead of from
+       * your hand, so the ability fires, the stack advances and the clog brake
+       * survives. The deck card is WILD - Dean: "it's a way of bypassing the suit
+       * requirements". 'deckGrow' is the rejected literal reading (the deck's
+       * crop must match the activation cost). 'sow' is the S12 power of
+       * 10-13/09/2026, *"Sow 2 cards from your hand onto your buildings"*, which
+       * reads `apiarySows` and is PINNED by name in every overlay and test
+       * helper that predates the ruling.
+       */
+      readonly apiaryPower: 'sow' | 'deckGrow' | 'deckGrowWild';
+      /**
        * Cards the Vegetable board puts into your barn when you CANNOT deliver:
        * *"Deliver. If you cannot, put 2 cards from your hand into your barn."*
        * 2 (Dean, 10/09/2026, S12). ⚠️ NOT A COUNT OF DELIVERIES, which is why

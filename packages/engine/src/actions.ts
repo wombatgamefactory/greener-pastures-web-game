@@ -57,8 +57,8 @@ export {
   placeBuilt,
 } from './actions/build.js';
 export { doDraw } from './actions/draw.js';
-export type { GrowOption, GrowOptionMods } from './actions/grow.js';
-export { activateTargets, growOptions, meeplePairs } from './actions/grow.js';
+export type { DeckGrowOption, GrowOption, GrowOptionMods } from './actions/grow.js';
+export { activateTargets, deckGrowOptions, growOptions, meeplePairs } from './actions/grow.js';
 export { doHarvestAction, harvestOptions } from './actions/harvest.js';
 export type { BalloonMoveOption, DeliverOption, DemandRef } from './actions/deliver.js';
 export {

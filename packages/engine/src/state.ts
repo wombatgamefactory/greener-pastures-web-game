@@ -538,6 +538,15 @@ export type Task =
       target?: CardId;
       /** Dean's Dairy experiment, 'paidWild': the activation card may be any crop. */
       wildActivation?: boolean;
+      /**
+       * ⭐ DEAN'S APIARY RETEXT (14/09/2026, `noticeBoardPower.apiaryPower`):
+       * *"Grow a building using the top card of any deck."* The activation card
+       * comes off the top of a deck in play and never out of the hand, so every
+       * answer names a DECK and `payment` is null. 'match' keeps the printed
+       * Grow rule (the deck's crop must pay the activation cost); 'wild' lets
+       * any deck pay. Coin payments are not offered: the power names the deck.
+       */
+      fromDeck?: 'match' | 'wild';
     }
   | {
       /** A full Build action mid-effect (the Build Worker). Answers come from the same enumerator as the Build move. */
@@ -801,7 +810,17 @@ export type TaskAnswer =
    * multiply ACTIONS - the standing fire-once-per-turn guard means two
    * coin-Grows a turn is the ceiling and never the same building twice.
    */
-  | { kind: 'grow'; building: CardId; payment: CardId | null; coinGrow?: true }
+  | {
+      kind: 'grow';
+      building: CardId;
+      payment: CardId | null;
+      coinGrow?: true;
+      /**
+       * The Apiary retext's Grow (14/09/2026): the activation card is the top
+       * of THIS deck. `payment` is null and `coinGrow` absent.
+       */
+      deckSuit?: Suit;
+    }
   /** `ontoSeat` is absent for the actor's own building - which is every sow but A4's and A14's. */
   | { kind: 'sow'; card: CardId; onto: CardId; ontoSeat?: Seat }
   /** sowFromDeck: which deck top, onto which building. */

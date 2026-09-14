@@ -1,0 +1,8 @@
+{
+  "name": "apiary-deck-grow-v1",
+  "description": "⭐ DEAN'S APIARY RETEXT (14/09/2026), THE LITERAL READING, REJECTED 14/09/2026 when Dean ruled the deck card wild (apiaryPower 'deckGrowWild', now the shipped default). It sets ONE leaf, so there are no passengers. The Apiary Notice Board reads: \"Grow a building using the top card of any deck.\" The visitor GROWs one of their own non-full buildings, paying the activation card off the top of a deck in play instead of from hand: the card lands on the stack, the building's ability fires, and the clog brake stands. The printed Grow rule still asks the card to match the activation cost, so the choice of deck is a choice of the matching deck, and a building whose crop has no deck on the table cannot be grown this way. The paired arm is apiary-deck-grow-wild-v1. ⚠️ The Dairy board text Dean restated on the same day (\"Build, spending cards of any crops. You may then Grow that building with a card of any crop.\") is ALREADY the shipped power (dairyGrowsBuilt 'paidWild') and is not touched. ⚠️ A GROW REVERSES C89's REASON FOR A SOW (a power that fires abilities can be a better A12 The Honey Hut or A5 The Meadow Hive), and the board and the orange balloon now name the same verb. Read the Apiary win rate, the door mix, a17 on TURNS, and a06.",
+  "schemaVersion": 1,
+  "set": {
+    "rules.economy.noticeBoardPower.apiaryPower": "deckGrow"
+  }
+}

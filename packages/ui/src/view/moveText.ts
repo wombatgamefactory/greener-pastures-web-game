@@ -129,7 +129,7 @@ export function describeAnswer(data: GameData, answer: TaskAnswer, task?: CardTa
       // ⚠️ `payment` IS NULLABLE SINCE 12/09/2026 (V8, A150): a bought Grow
       // may be paid with one Village Store coin, in which case nothing is
       // placed.
-      return `${cardName(data, answer.building)}, paying ${answer.payment === null ? 'one coin' : cardName(data, answer.payment)} (a bought Grow: unsupported in this interface, C59)`;
+      return `${cardName(data, answer.building)}, paying ${answer.deckSuit !== undefined ? `the top ${answer.deckSuit} card` : answer.payment === null ? 'one coin' : cardName(data, answer.payment)} (a bought Grow: unsupported in this interface, C59)`;
     default:
       return answer satisfies never;
   }
