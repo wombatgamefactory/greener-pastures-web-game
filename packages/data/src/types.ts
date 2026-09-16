@@ -1150,6 +1150,12 @@ export interface RulesFile {
      */
     readonly cropScorerOnBarn: boolean;
     /**
+     * A cap on W20 The Grand Granary's end-game VP ("1 VP for each building
+     * you have built"). null is the card as printed on v42, with no cap. Added
+     * 16/09/2026 to test "Max 5VP" as an arm before any sheet change.
+     */
+    readonly grandGranaryCap: number | null;
+    /**
      * ⭐ THE NUMBERS BEHIND THE FIVE NOTICE BOARD POWERS (Dean, 10/09/2026,
      * S12 as amended by rulings C88 and C89 the same evening). Read under
      * `visitCurrency: 'noticeBoardPower'`, and flat rather than per-suit-keyed

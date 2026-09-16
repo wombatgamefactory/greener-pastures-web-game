@@ -850,6 +850,15 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'overlays/notice-board-visit-no-self-v1.overlay.json is its control.',
   },
   {
+    template: 'rules.economy.grandGranaryCap',
+    type: 'intOrNull',
+    description:
+      "A cap on W20 The Grand Granary's end-game VP." +
+      ' null (shipped) is the v42 card with no ' +
+      'cap; 5 is the "Max 5VP" arm of 16/09/2026, tested because W20 averaged 8-15 VP and ' +
+      'switching it off cost Wheat 12.6 points of win rate on reference-v20.',
+  },
+  {
     template: 'rules.economy.cropScorerOnBarn',
     type: 'boolean',
     description:

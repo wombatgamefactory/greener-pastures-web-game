@@ -35,7 +35,7 @@
  * filtered assertion would stop noticing if the deposit ever fired twice.
  */
 
-import { BASE_GAME_DATA as data } from '@gp/data';
+import { BASE_GAME_DATA as data, loadGameData } from '@gp/data';
 import type { GameData } from '@gp/data';
 import { describe, expect, it } from 'vitest';
 
@@ -248,6 +248,26 @@ describe('the Wheat Farmstead (W2) - the own-crop end-game scorer', () => {
     buildFor(data, s, WHEAT, 'W16', 'W20'); // a Power card and an Endgame card
     // W2's 2, plus W20 The Grand Granary's own count of the 2 deck-built cards.
     expect(gameEndScores(data, s)[WHEAT]?.endgame).toBe(4);
+  });
+
+  /**
+   * `rules.economy.grandGranaryCap` (an arm of 16/09/2026, "Max 5VP"): W20 stops
+   * at the cap while the Barn scorer beside it keeps counting.
+   */
+  it('W20 respects grandGranaryCap', () => {
+    const capped = loadGameData({
+      name: 'w20-cap-5',
+      schemaVersion: 1,
+      set: { 'rules.economy.grandGranaryCap': 5 },
+    });
+    const cards = ['W4', 'W5', 'W6', 'W7', 'W8', 'W16', 'W20'] as const;
+    const open = base();
+    buildFor(data, open, WHEAT, ...cards);
+    const shut = base();
+    buildFor(capped, shut, WHEAT, ...cards);
+    // Barn 7 plus W20 7, against Barn 7 plus W20 capped at 5.
+    expect(gameEndScores(data, open)[WHEAT]?.endgame).toBe(14);
+    expect(gameEndScores(capped, shut)[WHEAT]?.endgame).toBe(12);
   });
 
   /** An empty farm scores nothing, and the starters are what makes that a real assertion. */

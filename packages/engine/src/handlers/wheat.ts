@@ -916,7 +916,9 @@ export const grandGranary: CardHandler = {
       'count, which is the same rule every other formula in the game applies to them.',
   },
   gameEnd(data, state, seat) {
-    return player(state, seat).tableau.filter((b) => cardById(data, b.card).inDeck).length;
+    const count = player(state, seat).tableau.filter((b) => cardById(data, b.card).inDeck).length;
+    const cap = data.rules.economy.grandGranaryCap;
+    return cap === null ? count : Math.min(cap, count);
   },
 };
 

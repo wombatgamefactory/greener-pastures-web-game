@@ -93,6 +93,7 @@
       "4": 1
     },
     "cropScorerOnBarn": true,
+    "grandGranaryCap": null,
     "noticeBoardPower": {
       "orchardDraw": 4,
       "apiarySows": 2,
