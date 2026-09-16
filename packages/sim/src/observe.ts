@@ -122,6 +122,10 @@ export const EVENT_KINDS = {
   endTriggered: true,
   turnEnded: true,
   demandSwapped: true,
+  // v42's barn discard (V8, V10, V12, V15) and V6's barn-to-hand swap
+  // (16/09/2026): claimed, and no metric reads them yet.
+  barnDiscarded: false,
+  barnToHand: false,
   gameEnded: false,
 } satisfies Record<GameEvent['e'], boolean>;
 
@@ -1383,6 +1387,8 @@ export class Fold {
       // no assertion and no funnel layer reads.
       case 'cardsDiscarded':
       case 'demolished':
+      case 'barnDiscarded':
+      case 'barnToHand':
       case 'gameEnded':
         return;
       default:

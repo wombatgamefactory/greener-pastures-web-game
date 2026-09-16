@@ -1400,6 +1400,17 @@ export type GameEvent =
   /** A card sent from its owner's hand into their own barn (O17's £1 divert). */
   | { e: 'handToBarn'; seat: Seat; card: CardId }
   /**
+   * ⭐ A CARD EFFECT DISCARDED A BARN CARD (v42: V8, V10, V12, V15). Face up
+   * and public. ⛔ A delivery payment never emits this (R6). `src` is the card
+   * whose text did it. `cardsDiscarded` is emitted for the same card as well.
+   */
+  | { e: 'barnDiscarded'; seat: Seat; suit: Suit; card: CardId; src: CardId | null }
+  /**
+   * ⭐ A BARN CARD INTO ITS OWNER'S HAND (v42: V6's swap). The crop is public;
+   * the identity is the owner's alone (`redactEvents`).
+   */
+  | { e: 'barnToHand'; seat: Seat; suit: Suit; card: CardId }
+  /**
    * A card was placed on a Notice Board and its door action taken.
    *
    * ⭐ `self` IS THE NUMBER THE WHOLE v31 PASS TURNS ON. Self-visiting is a

@@ -273,11 +273,14 @@ describe('the notice-board visit, the arm', () => {
     expect(visitsIn(walked.moves).all).toBeGreaterThan(0);
     const board = ARM.cards.catalogue.find((c) => c.slot === 'noticeboard');
     expect(board).toBeDefined();
-    // The threshold the BOTS read has to be the one the engine enforces: the
-    // override of 3, not the v33 sheet's printed 2.
+    // The threshold the BOTS read has to be the one the engine enforces, which
+    // is the `noticeBoardThreshold` override and never the printed number.
+    // ⚠️ Since the v42 extract (16/09/2026) the sheet PRINTS 3 (`3+`), where the
+    // v33 sheet printed 2, so the arm's override and the print now agree and
+    // only the v31 control (override 2) still tells the two readings apart.
     expect(thresholdOfView(BLOCKING, { card: (board as { id: string }).id, stack: [] })).toBe(3);
     expect(thresholdOfView(V31, { card: (board as { id: string }).id, stack: [] })).toBe(2);
-    expect(cardById(ARM, (board as { id: string }).id).threshold).toBe(2);
+    expect(cardById(ARM, (board as { id: string }).id).threshold).toBe(3);
   });
 });
 

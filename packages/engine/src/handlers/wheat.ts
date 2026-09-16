@@ -9,7 +9,8 @@
  * W16 and W17 lost the once-per-turn guard: Dean ruled on 15/09/2026 that card
  * text fires every time its trigger happens, and the only per-turn cap left is
  * that a building activates at most once a turn (the runtime keeps that).
- * `isFieldCard` survives for W21 The Bread Hall (a later slice) and the sim.
+ * W21 counts receipt crops since v42, so no card text reads `isFieldCard` any
+ * more; it stays exported from the engine's public surface.
  *
  * Suit identity: Harvest, and the rebuild's whole thesis is that the identity was
  * never in doubt - the INTERVAL was. Every Tier 1 FIELD reads on two lines:
@@ -82,7 +83,7 @@ import type { GameData, Suit } from '@gp/data';
 
 import type { Fx } from '../fx.js';
 import { cardById, cropOf, drawableSuits, isHarvestable, player } from '../query.js';
-import type { BuildingState, CardId, GameState, Seat, TaskAnswer } from '../state.js';
+import type { CardId, GameState, Seat, TaskAnswer } from '../state.js';
 import {
   cropBuildingsOf,
   deckSowRiders,
@@ -98,10 +99,6 @@ const FIELD_NAME = /\bField\b/;
 /** FIELD sub-type membership, by whole-word title keyword (reference DL-42). */
 export function isFieldCard(data: GameData, id: CardId): boolean {
   return FIELD_NAME.test(cardById(data, id).name);
-}
-
-function ownFields(data: GameData, state: GameState, seat: Seat): BuildingState[] {
-  return player(state, seat).tableau.filter((b) => isFieldCard(data, b.card));
 }
 
 /** Push a see-N/keep-N "Draw N" for a card ability (each card from any deck). */
@@ -923,26 +920,25 @@ export const grandGranary: CardHandler = {
   },
 };
 
-/** W21 The Bread Hall - "Game end: 2 VP for each FIELD you have built." */
+/**
+ * W21 The Bread Hall - v41/v42: "Game end: 2 VP for each different RECEIPT suit
+ * you have delivered."
+ */
 export const breadHall: CardHandler = {
   difficulty: {
     score: 1,
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: true },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
-      'FIELD density, the third of three tableau shapes (W19 wide across crops, W20 wide ' +
-      'across buildings, this deep in FIELDs). It no longer scores coins, so its ' +
-      '`replacesCoinPity` declaration is gone: nothing in the game converts coins to VP, ' +
-      'and the card that used to reward hoarding against the market now rewards the thing ' +
-      'the suit is built out of. CAPPED at 6 by the rebalance (2026-08-12), which is a ' +
-      'TEMPLATE fix and not a balance one: an uncapped "for each" on the axis the suit ' +
-      'specialises in is the exact shape docs/innovation.md warns about, and every other ' +
-      'endgame scaler in the game carries a cap or a divisor. ⚠️ Expect it to move ' +
-      'NOTHING - the card measures 0.44 VP a game, 0.98% of a winning score. If it moves ' +
-      'something, that is the finding rather than the fix. A HOLDING fix either way: a ' +
-      'proper re-point is still owed (wheat-rebalance-v1.md §6).',
+      'RETEXTED ON v41 (15/09/2026), and it needs R7: a receipt keeps the crop of the token ' +
+      "it was (the token island, 16/09/2026). Counts the DISTINCT crops among the seat's " +
+      'receipts, a receipt beyond six included. ⚠️ BUILDER DEFAULT (handoff §5 item 7): a ' +
+      'WILD receipt is a suit of its own, so at most 6 distinct suits and 12 VP. ' +
+      '⛔ The old FIELD count ("2 VP for each FIELD you have built") and its cap of 6 are ' +
+      'gone with the text; the cap was a template fix for a count on the specialisation ' +
+      'axis, and a count of DIFFERENT receipt crops runs across that axis instead.',
   },
-  gameEnd(data, state, seat) {
-    return Math.min(6, 2 * ownFields(data, state, seat).length);
+  gameEnd(_data, state, seat) {
+    return 2 * new Set(player(state, seat).receipts.map((r) => r.crop)).size;
   },
 };

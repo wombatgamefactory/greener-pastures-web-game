@@ -458,6 +458,52 @@ export class Fx {
   }
 
   /**
+   * ⭐ "DISCARD A CARD FROM YOUR BARN" (v42, 16/09/2026: V8, V10, V12, V15).
+   *
+   * The player names a CROP, never a card: a barn is anonymous even to its
+   * owner (see view.ts), so barn cards of one crop are interchangeable and the
+   * first matching id goes. It lands face up on its own suit's discard, and
+   * then `afterBarnDiscard` fires, which is what V17 The Dockworker's Union
+   * listens to ("Whenever you discard a card from your Barn, Draw 1").
+   *
+   * ⛔ R6 (Dean, 15-16/09/2026): A DELIVERY PAYMENT IS NOT A DISCARD, so
+   * `spendFromBarn` never comes through here, and neither does V14's
+   * demolition (which discards a building's STACK, not a barn card). Only a
+   * card effect that prints "discard ... from your Barn" calls this.
+   *
+   * `src` is the card whose text caused it, carried on the event and the hook.
+   */
+  discardFromBarn(seat: Seat, suit: Suit, src: CardId | null): CardId {
+    this.touch(seat);
+    const barn = player(this.state, seat).barn;
+    const at = barn.findIndex((id) => cardById(this.data, id).suit === suit);
+    if (at < 0) throw new Error(`Seat ${seat}'s barn has no ${suit} card to discard`);
+    const [card] = barn.splice(at, 1) as [CardId];
+    this.discard([card]);
+    this.emit({ e: 'barnDiscarded', seat, suit, card, src });
+    fireHook(this, 'afterBarnDiscard', { seat, suit, card, src });
+    return card;
+  }
+
+  /**
+   * ⭐ ONE BARN CARD OF A NAMED CROP INTO ITS OWNER'S HAND (V6 The Trade Depot,
+   * v42: "Swap up to 2 cards between your hand and your Barn"). By crop, for
+   * the reason `discardFromBarn` gives; the card's identity becomes known to
+   * its owner as it arrives in the hand, and to nobody else (`redactEvents`).
+   * Not a draw: no `afterDrawKeep`, and not a discard.
+   */
+  barnToHand(seat: Seat, suit: Suit): CardId {
+    this.touch(seat);
+    const p = player(this.state, seat);
+    const at = p.barn.findIndex((id) => cardById(this.data, id).suit === suit);
+    if (at < 0) throw new Error(`Seat ${seat}'s barn has no ${suit} card to take`);
+    const [card] = p.barn.splice(at, 1) as [CardId];
+    p.hand.push(card);
+    this.emit({ e: 'barnToHand', seat, suit, card });
+    return card;
+  }
+
+  /**
    * Lift ONE card out of a building's stack into a barn (the Pizzeria shape;
    * the Dairy/Orchard stack-manipulation cards share it).
    *
@@ -902,6 +948,13 @@ export interface HookEvents {
    * the seat whose turn is ending; the listener guards its own scope.
    */
   beforeTurnEnd: { seat: Seat };
+  /**
+   * ⭐ A CARD EFFECT DISCARDED A CARD FROM A BARN (v42, 16/09/2026, for V17 The
+   * Dockworker's Union). Fired by `Fx.discardFromBarn` and nothing else, once
+   * per card. ⛔ Never by a delivery payment (R6) and never by V14's
+   * demolition. `seat` is the barn's owner; `src` the card whose text did it.
+   */
+  afterBarnDiscard: { seat: Seat; suit: Suit; card: CardId; src: CardId | null };
 }
 
 export type HookName = keyof HookEvents;

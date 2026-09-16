@@ -991,44 +991,39 @@ describe('the Endgame cards - three shapes of tableau', () => {
   });
 
   /**
-   * ⛔ The coin-pity half of this test is DELETED (v31): there is no currency to
-   * hoard, `replacesCoinPity` is off the handler interface and `ScoreBreakdown`
-   * carries neither `coinPity` nor `coinPityReplacedBy`. What survives is the
-   * FIELD rate, plus the W2 line every Wheat tableau now scores alongside it -
-   * which is the assertion that catches the Farmstead being counted twice or
-   * not at all.
+   * ⭐ RETEXTED ON v41 (15/09/2026): *"Game end: 2 VP for each different RECEIPT
+   * suit you have delivered."* A receipt keeps its token's crop (R7). The old
+   * FIELD count and its cap of 6 are gone with the text. The W2 line every
+   * Wheat tableau scores rides beside it, which is what catches the Farmstead
+   * being counted twice or not at all.
    */
-  it('W21 The Bread Hall: 2 VP per FIELD, beside the Farmstead line', () => {
+  it('W21 The Bread Hall: 2 VP per DIFFERENT receipt crop, beside the Farmstead line', () => {
     const s = base();
-    buildFor(data, s, WHEAT, 'W21', 'W4', 'W5', 'W9'); // two FIELDs; W9 is not one
-    // W21's 4, plus W2's 1 per own-crop deck card built: W21, W4, W5 and W9.
-    expect(gameEndScores(data, s)[WHEAT]?.endgame).toBe(8);
+    buildFor(data, s, WHEAT, 'W21', 'W4', 'W5'); // FIELDs no longer count
+    player(s, WHEAT).receipts.push(
+      { vp: 6, crop: 'wheat', tile: 'A1' },
+      { vp: 3, crop: 'wheat', tile: 'A2' },
+      { vp: 5, crop: 'apiary', tile: 'A5' },
+    );
+    // W21's 2 x 2 distinct crops, plus W2's 1 per Wheat deck card built (3).
+    expect(gameEndScores(data, s)[WHEAT]?.endgame).toBe(4 + 3);
   });
 
-  /**
-   * CAPPED AT 6 by the rebalance (2026-08-12), which is a TEMPLATE fix rather
-   * than a balance one: an uncapped "for each" on the very axis the suit
-   * specialises in is the shape docs/innovation.md warns about, and every other
-   * endgame scaler in the game carries a cap or a divisor. There are five FIELDs
-   * in the suit, so the cap is reachable and this walks the whole ramp - the 3rd
-   * FIELD is where the rate and the cap agree, and the 4th is where they part.
-   */
-  it('W21 The Bread Hall: 2 VP per FIELD up to the cap, then 6 whatever you own', () => {
-    const FIELDS = ['W4', 'W5', 'W6', 'W7', 'W8'];
-    // Each row adds W2's own 1 VP a card on top of W21's rate: at n FIELDs the
-    // tableau holds n + 1 Wheat deck cards (the FIELDs and W21 itself).
-    const ramp: [number, number][] = [
-      [1, 2 + 2],
-      [2, 4 + 3],
-      [3, 6 + 4],
-      [4, 6 + 5],
-      [5, 6 + 6],
-    ];
-    for (const [count, expected] of ramp) {
-      const s = base();
-      buildFor(data, s, WHEAT, 'W21', ...FIELDS.slice(0, count));
-      expect(gameEndScores(data, s)[WHEAT]?.endgame, `${count} FIELDs`).toBe(expected);
-    }
+  it('W21 The Bread Hall: a WILD receipt is a suit of its own (builder default)', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W21');
+    player(s, WHEAT).receipts.push(
+      { vp: 4, crop: 'wild', tile: 'A1' },
+      { vp: 6, crop: 'wild', tile: 'A2' },
+      { vp: 5, crop: 'dairy', tile: 'A5' },
+    );
+    expect(gameEndScores(data, s)[WHEAT]?.endgame).toBe(4 + 1);
+  });
+
+  it('W21 The Bread Hall: no receipts, no VP', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W21');
+    expect(gameEndScores(data, s)[WHEAT]?.endgame).toBe(0 + 1);
   });
 });
 

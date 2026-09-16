@@ -102,16 +102,27 @@ describe('the scoring breakdown traces back to the table', () => {
    * end-game section and the card is NAMED there rather than turning up as an
    * unexplained lump in a total.
    */
-  it('names every seat their Farmstead, in the end-game working', () => {
+  /**
+   * ⭐ SINCE THE v42 EXTRACT (16/09/2026) THE SCORER IS PRINTED ON THE BARN
+   * (`cropScorerOnBarn`, ruled 13/09/2026), and the Farmstead prints "Store
+   * Receipts here. Collect 6 to trigger end of the game." and scores 0. Both
+   * still have a `gameEnd` handler, so both are named in the working; the test
+   * checks each carries its own printed text.
+   */
+  it('names every seat their Barn scorer and their Farmstead, in the end-game working', () => {
     for (const game of GAMES) {
       const report = scoreReport(data, game.view, game.score);
       for (const seat of report.seats) {
-        const farmstead = seat.endgame.find((c) => /^(W2|V2|O2|A2|D2)$/.test(c.id));
-        expect(farmstead, `${seat.name} in ${game.seed}`).toBeDefined();
+        const barn = seat.endgame.find((c) => /^(W1|V1|O1|A1|D1)$/.test(c.id));
+        expect(barn, `${seat.name} in ${game.seed}`).toBeDefined();
         // Its printed formula travels with its number, so the number is
         // arguable rather than asserted.
-        expect(farmstead!.text).toMatch(/^Game end: 1 VP for each /);
-        expect(farmstead!.vp).toBeGreaterThanOrEqual(0);
+        expect(barn!.text).toMatch(/^Game end: 1 VP for each /);
+        expect(barn!.vp).toBeGreaterThanOrEqual(0);
+        const farmstead = seat.endgame.find((c) => /^(W2|V2|O2|A2|D2)$/.test(c.id));
+        expect(farmstead, `${seat.name} in ${game.seed}`).toBeDefined();
+        expect(farmstead!.text).toMatch(/^Store Receipts here\./);
+        expect(farmstead!.vp).toBe(0);
       }
     }
   });

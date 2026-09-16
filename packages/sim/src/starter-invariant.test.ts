@@ -14,6 +14,12 @@
  * stopped building on top of things. One primitive left, one enumerator to
  * check, and the test is otherwise unchanged.
  *
+ * ⭐ A SECOND CALLER ARRIVED WITH SHEET v42 (16/09/2026): V14 The Distribution
+ * Center prints "... then destroy this building", so `handlers/vegetable.ts`
+ * demolishes the card being activated, `task.src`, and nothing else. An
+ * activated card is a grown deck card and never a starter (a starter has no
+ * activation type), and the check below pins that the call names `task.src`.
+ *
  * So this reads the engine's source rather than trusting the comment. It lives
  * in @gp/sim because file I/O is exactly what the engine may not do (ticket 01),
  * a sibling of `boundary.test.ts`.
@@ -27,8 +33,10 @@ import { describe, expect, it } from 'vitest';
 
 const ENGINE_SRC = fileURLToPath(new URL('../../engine/src', import.meta.url));
 
-/** The one module allowed to remove a building from a tableau. */
+/** The module whose ENUMERATED target set may remove a building from a tableau. */
 const REMOVER = join('handlers', 'dairy.ts');
+/** V14's self-destruction (v42): it may only ever demolish its own card. */
+const SELF_REMOVER = join('handlers', 'vegetable.ts');
 
 function engineSources(dir = ENGINE_SRC): { rel: string; text: string }[] {
   return readdirSync(dir).flatMap((entry) => {
@@ -48,11 +56,17 @@ describe('nothing can remove a starter from a tableau', () => {
     expect(files.some((f) => f.rel === 'fx.ts')).toBe(true);
   });
 
-  it('calls the removal primitive from exactly one module', () => {
-    // fx.ts DEFINES it; dairy.ts is the only place that may CALL it.
+  it('calls the removal primitive from dairy.ts, and from V14 on itself only', () => {
+    // fx.ts DEFINES it; dairy.ts may CALL it on an enumerated target, and
+    // vegetable.ts only on the activated card (V14, v42).
     const call = /\bfx\.demolish\s*\(/;
-    const offenders = files.filter((f) => f.rel !== REMOVER && call.test(f.text));
+    const offenders = files.filter(
+      (f) => f.rel !== REMOVER && f.rel !== SELF_REMOVER && call.test(f.text),
+    );
     expect(offenders.map((f) => f.rel)).toEqual([]);
+    const veg = files.find((f) => f.rel === SELF_REMOVER)?.text ?? '';
+    const calls = veg.match(/\bfx\.demolish\s*\([^)]*\)/g) ?? [];
+    expect(calls).toEqual(['fx.demolish(task.pid, task.src)']);
   });
 
   it('has no cover primitive left to guard', () => {

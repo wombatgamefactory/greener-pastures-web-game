@@ -224,6 +224,108 @@ export function deckToBarnTask(): CustomTask {
 }
 
 /**
+ * The riders of a `barnDiscard` card task (v42). Push it with
+ * `barnDiscardRiders`.
+ *
+ * - `remaining`: barn cards still to discard.
+ * - `optional`: "up to" (V10) - a skip answer ends the task early.
+ * - `crops`: the crops discarded so far, in order; read by the `then` step.
+ */
+export interface BarnDiscardRiders {
+  remaining: number;
+  optional: boolean;
+  crops: Suit[];
+}
+
+/** Build the rider bag for a `barnDiscard` task (a plain object, so it serialises). */
+export function barnDiscardRiders(remaining: number, optional: boolean): Record<string, unknown> {
+  const riders: BarnDiscardRiders = { remaining, optional, crops: [] };
+  return { ...riders };
+}
+
+/**
+ * ⭐ "DISCARD A CARD FROM YOUR BARN" - V8, V10, V12 and V15 (sheet v42,
+ * 16/09/2026), the shared step V17 The Dockworker's Union hooks.
+ *
+ * One barn card at a time, named BY CROP (a barn is anonymous even to its
+ * owner, so two cards of one crop are the same choice), through
+ * `Fx.discardFromBarn`, which fires `afterBarnDiscard` per card. The task stays
+ * while `remaining` holds. When it finishes - the budget spent, the barn
+ * emptied, or a skip where the text says "up to" - `then` runs ONCE with every
+ * crop discarded, in order, and queues whatever the card does next.
+ *
+ * ⛔ R6: a delivery payment never comes through here. Register it on the card's
+ * handler under the kind `barnDiscard`.
+ *
+ * A mandatory discard with an empty barn offers nothing, so the drain loop
+ * drops the task and `then` never runs: a card that says "Discard ... then X"
+ * does not do X without the discard. An optional one that has already
+ * discarded ends itself on the discard that empties the barn, so the drain
+ * loop can never drop a task holding crops.
+ */
+export function barnDiscardTask(
+  then: (fx: Fx, task: { pid: Seat; src: CardId }, crops: readonly Suit[]) => void,
+): CustomTask {
+  return {
+    answers(data, state, task) {
+      const r = task.riders as unknown as BarnDiscardRiders;
+      if (r.remaining <= 0) return [];
+      const barn = player(state, task.pid).barn;
+      const out: TaskAnswer[] = data.cards.suits
+        .filter((suit) => barn.some((id) => cardById(data, id).suit === suit))
+        .map((suit) => ({ kind: 'card', payload: { suit } }) as TaskAnswer);
+      if (r.optional && out.length > 0) out.push({ kind: 'skip' });
+      return out;
+    },
+    resolve(fx, task, answer) {
+      const r = task.riders as unknown as BarnDiscardRiders;
+      if (answer.kind === 'skip' && r.optional) {
+        if (r.crops.length > 0) then(fx, task, r.crops);
+        return true;
+      }
+      if (answer.kind !== 'card') throw new Error('barnDiscard expects a card answer');
+      const suit = answer.payload.suit as Suit;
+      // The riders are written BEFORE the discard, whose hook may push tasks
+      // but never touches this one.
+      const crops = [...r.crops, suit];
+      task.riders.crops = crops;
+      task.riders.remaining = r.remaining - 1;
+      fx.discardFromBarn(task.pid, suit, task.src);
+      const done =
+        (task.riders.remaining as number) <= 0 || player(fx.state, task.pid).barn.length === 0;
+      if (done) then(fx, task, crops);
+      return done;
+    },
+  };
+}
+
+/**
+ * ⭐ "DRAW N OF THAT CROP" (V8, v42): N cards off ONE named deck, the O15
+ * Garden Library shape - taken now, then handed to an ordinary draw task with
+ * `revealed` pre-filled and see === keep, so it has exactly one answer and
+ * still goes through the draw funnel (`afterDrawKeep`). A deck that runs out
+ * reshuffles its own discard as everywhere (`takeDeckTop`); a crop with
+ * nothing left draws what there is.
+ */
+export function drawFromCropDeck(fx: Fx, pid: Seat, src: CardId, suit: Suit, n: number): void {
+  const taken: CardId[] = [];
+  for (let i = 0; i < n; i++) {
+    const card = fx.takeDeckTop(suit);
+    if (card === null) break;
+    taken.push(card);
+  }
+  if (taken.length === 0) return;
+  fx.pushTask({
+    t: 'draw',
+    pid,
+    src,
+    see: taken.length,
+    keep: taken.length,
+    revealed: taken,
+  });
+}
+
+/**
  * A GROW paid with a hand card of ANY crop, onto any of your buildings bar
  * `exclude` (A6 The Garden Hive, O13 The Seed Bank). A REAL grow through
  * `doGrow` - a card paid onto the stack, the ability, the fire-once cap - with

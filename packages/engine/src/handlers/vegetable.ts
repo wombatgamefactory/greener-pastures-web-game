@@ -3,24 +3,35 @@
  * docs/handoff-vegetable-engine-build.md). Card texts are quoted from cards.json
  * (the sheet is the single source of truth for wording).
  *
- * Suit identity: Deliver. ⛔ The rebuild's second outlet, the balloons, was
- * deleted on 16/09/2026 (R1), and V4, V8, V16, V17 and V19 are inert until the
- * v42 Vegetable texts are built (slice 6).
+ * ⭐ SHEET v42 (16/09/2026, Dean's R8): VEGETABLE IS THE BARN SUIT, and its
+ * texts are locked for the next playtest. Every handler below follows the v42
+ * text; the implementation notes and builder defaults are those of
+ * `docs/vegetable-token-island-handoff-2026-09-16-v1.md` §3 and §5. The
+ * balloons, the suit's old second outlet, were deleted the same day (R1).
  *
  * Structural things this suit brought to the engine:
  *
  *   1. **The island's tokens are MUTABLE.** V5 swaps two of them between two
  *      island cards (the token island, 16/09/2026: each token keeps its VP and
  *      its Worker). Engine seams: `tokenSwapOptions` and `fx.swapIslandTokens`.
- *      ⛔ V6's face-down token was deleted with the crate island; v42's V6
- *      prints something else and its handler is owed (slice 6).
  *   2. **One delivery may take EVERY receipt a tile has left** (V14), which is
  *      `doDeliver`'s `takeAll` choice: pay the same 4 cards once and take both
  *      tokens, or the last one.
+ *   3. **"Discard a card from your Barn"** (V8, V10, V12, V15): one shared step,
+ *      `barnDiscardTask` in buildings.ts, through `Fx.discardFromBarn`, which
+ *      fires the `afterBarnDiscard` hook V17 listens to. ⛔ R6: a delivery
+ *      payment is never a barn discard, and V14's demolition is not one either.
+ *   4. **A barn card into the hand** (V6): `Fx.barnToHand`, by crop.
+ *   5. **A card off a building into the barn without a harvest** (V11):
+ *      `Fx.stackCardToBarn`, which already existed.
+ *   6. **A board power by crop without a visit** (V12): `fireNoticeBoardPower`
+ *      (workers.ts), which places no card, fires no `afterVisit` and latches no
+ *      board, so it is no visit: no fee, and no W17, O16 or A17.
+ *   7. **Receipts by crop and value** (V19, V20, V21; W21 in wheat.ts).
  *
- * DEPOT is a sub-type derived from the whole-word title keyword, following the
- * reference (DL-42) and matching Wheat's FIELD and Orchard's ORCHARD: V4-V8, the
- * only cards in the catalogue named Depot. V12 and V20 both read it.
+ * ⛔ THE DEPOT SUB-TYPE IS GONE FROM THIS FILE (v42). V12 and V20 were its only
+ * readers and neither prints the word any more; v41 took the building nouns off
+ * the card text.
  *
  * THE ACTION CARD IS GONE (19/08/2026, Dean: "The concept of an ACTION was never
  * requested. They are all GROW."). V13, V14 and V15 used to be the suit's three
@@ -46,26 +57,25 @@ import {
   barnTally,
   deliverOptions,
   doDeliver,
-  islandDeliveriesBy,
+  placeBuilt,
   tokenSwapOptions,
+  vegetableBoardCanDeliver,
 } from '../actions.js';
 import type { TokenRef } from '../actions.js';
 import type { Fx } from '../fx.js';
 import { cardById, drawableSuits, player } from '../query.js';
-import type { BuildingState, CardId, GameState, Seat, TaskAnswer } from '../state.js';
+import type { CardId, DoorAction, GameState, Receipt, Seat, TaskAnswer } from '../state.js';
+import { doorActionOf, fireNoticeBoardPower } from '../workers.js';
+import {
+  barnDiscardRiders,
+  barnDiscardTask,
+  deckToBarnTask,
+  drawFromCropDeck,
+  isNoticeBoardCard,
+  ownBuildings,
+} from './buildings.js';
 import { barnCropScorer, farmsteadHandler } from './farmstead.js';
 import type { CardHandler } from './types.js';
-
-const DEPOT_NAME = /\bDepot\b/;
-
-/** DEPOT sub-type membership, by whole-word title keyword (reference DL-42). */
-export function isDepotCard(data: GameData, id: CardId): boolean {
-  return DEPOT_NAME.test(cardById(data, id).name);
-}
-
-function builtDepots(data: GameData, state: GameState, seat: Seat): BuildingState[] {
-  return player(state, seat).tableau.filter((b) => isDepotCard(data, b.card));
-}
 
 /** Push a see-N/keep-N "Draw N" for a card ability (each card from any deck). */
 function drawN(fx: Fx, pid: Seat, src: CardId, n: number): void {
@@ -73,13 +83,84 @@ function drawN(fx: Fx, pid: Seat, src: CardId, n: number): void {
   fx.pushTask({ t: 'draw', pid, src, see: n, keep: n, revealed: [] });
 }
 
-/** Decks on the table with cards left - V13's and V15's "any deck". */
+/** Decks on the table with cards left - V13's "that crop's deck". */
 function liveDecks(data: GameData, state: GameState): Suit[] {
   return drawableSuits(data, state).filter((s) => state.suitsInPlay.includes(s));
 }
 
 /**
- * V1 Barn (starter) - prints NOTHING (v31).
+ * Push a "discard N cards from your Barn" step (see `barnDiscardTask`); `upTo`
+ * makes it optional. Nothing is pushed on an empty barn.
+ */
+function pushBarnDiscard(
+  fx: Fx,
+  self: { seat: Seat; card: CardId },
+  n: number,
+  upTo: boolean,
+): void {
+  if (player(fx.state, self.seat).barn.length === 0) return;
+  fx.pushTask({
+    t: 'card',
+    pid: self.seat,
+    src: self.card,
+    kind: 'barnDiscard',
+    riders: barnDiscardRiders(n, upTo),
+  });
+}
+
+/**
+ * ⭐ THE PLAIN ACTION OF A CROP (V10's "base action", v42): wheat Harvest,
+ * vegetable Deliver, orchard Draw 2, apiary GROW, dairy Build - the Worker
+ * mapping. It reads the roster through `doorActionOf` and maps the Apiary's
+ * `sow` to a Grow UNCONDITIONALLY: `meepleActionOf` makes the same mapping only
+ * under `meepleSpendTiming: 'afterAction'`, which is a Worker knob and not a
+ * card's business. Deliberately not `performDoorAction`, which emits
+ * `doorUsed` and fires `afterWork` as a door or Worker use.
+ */
+export function plainActionOf(data: GameData, crop: Suit): DoorAction {
+  const action = doorActionOf(data, crop);
+  return action === 'sow' ? 'grow' : action;
+}
+
+/** Queue the plain action of a crop for `seat`, as granted by the card `src`. */
+function pushPlainAction(fx: Fx, seat: Seat, src: CardId, crop: Suit): void {
+  const action = plainActionOf(fx.data, crop);
+  switch (action) {
+    case 'draw': {
+      const { see, keep } = fx.data.rules.turn.baseDraw;
+      fx.pushTask({ t: 'draw', pid: seat, src, see, keep, revealed: [] });
+      return;
+    }
+    case 'harvest':
+      fx.pushTask({ t: 'chooseBuilding', pid: seat, src, filter: 'harvestable', then: 'harvest' });
+      return;
+    case 'grow':
+      fx.pushTask({ t: 'grow', pid: seat, src });
+      return;
+    case 'build':
+      fx.pushTask({ t: 'build', pid: seat, src });
+      return;
+    case 'deliver':
+      fx.pushTask({ t: 'deliver', pid: seat, src });
+      return;
+    case 'sow':
+      // Unreachable: `plainActionOf` maps it away. Kept so the switch stays total.
+      fx.pushTask({ t: 'grow', pid: seat, src });
+      return;
+    default:
+      return action satisfies never;
+  }
+}
+
+/** A seat's receipts (the token island, R7). */
+function receiptsOf(state: GameState, seat: Seat): readonly Receipt[] {
+  return player(state, seat).receipts;
+}
+
+/**
+ * V1 Barn (starter) - v42: "Game end: 1 VP for each Vegetable card you have
+ * built." (the own-crop scorer, `barnCropScorer`; see below). Before v42 it
+ * printed nothing (v31), and the history of that is kept here.
  *
  * ⛔ Both lines went: the hand size with the hand limit itself, and the build
  * rider ("When you build a DEPOT, Draw 2") with the other four. It mattered more
@@ -156,8 +237,10 @@ export const vegetableBarn: CardHandler = {
 export const vegetableFarmstead: CardHandler = farmsteadHandler('vegetable');
 
 /**
- * V3 Notice Board (starter) - "VISITOR: place 1 card here, then Deliver."
- * Threshold 2, wild activation.
+ * V3 Notice Board (starter) - v42: "Deliver - 2 of the cards may be any crop.
+ * If you cannot, put 2 cards from your hand into your Barn." Threshold `3+`.
+ * The power is engine-level (`fireNoticeBoardPower`, workers.ts, R9); this
+ * handler has no behaviour of its own.
  */
 export const vegetableNoticeBoard: CardHandler = {
   difficulty: {
@@ -165,31 +248,44 @@ export const vegetableNoticeBoard: CardHandler = {
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'No behaviour here: the fee landing, the door action and the clog at threshold 2 are ' +
-      'all engine-level, and the door is the PLAIN Deliver. ' +
-      '⛔ Its coin payoff and its hand-card-into-the-barn rider are both gone (v31). ' +
-      '⚠️ IT IS THE DOOR MOST LIKELY TO BE DEAD FOR A VISITOR, and the engine rules that a ' +
-      'door which can do nothing is not offered: a seat with an empty barn simply is not ' +
-      'shown this board. That is a real lockout - a seat can be shut ' +
-      "out of the bonus slot's interaction half entirely - and `bonusDraw` is what backstops " +
-      'it.',
+      'No behaviour here: the fee landing, the `3+` harvest minimum and the power are all ' +
+      'engine-level. The power is v42\'s "Deliver - 2 of the cards may be any crop. If you ' +
+      'cannot, put 2 cards from your hand into your Barn." (R9, `vegetableWildCards` and ' +
+      '`vegetableFallback`), so the board is never dead: a seat that cannot pay a delivery ' +
+      'even with the relaxation takes the fallback. ' +
+      '⛔ Its coin payoff and its hand-card-into-the-barn rider are both gone (v31).',
   },
 };
 
 /**
- * V4 The Market Stall Depot (v39: "Discard 1 card to move a Balloon ...").
- *
- * ⛔ INERT SINCE 16/09/2026: the balloons and the Aerodrome were deleted (R1).
+ * V4 The Market Stall Depot - v42: "If your barn has 3 or fewer cards, place a
+ * deck card into your barn."
  */
-// v42 handler owed (slice 6)
 export const marketStallDepot: CardHandler = {
   difficulty: {
     score: 1,
-    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: true, counts: true, interrupts: false },
     notes:
-      'Inert: its balloon text died with the balloons on 16/09/2026. v42 handler owed (slice 6).',
+      'The barn size is read ONCE, at activation, after the GROW payment has landed on this ' +
+      'card (a payment goes on the stack, never in the barn, so it cannot move the count). ' +
+      'A barn of 4 or more does nothing at all. Otherwise one `deckToBarn` task: the player ' +
+      'picks the deck and its top card goes straight into the barn (the shared task in ' +
+      'buildings.ts). A table with every deck dry offers nothing and the task drops. ' +
+      'Replaces the v39 balloon text, which died with the balloons on 16/09/2026.',
   },
+  activate(fx, self) {
+    if (player(fx.state, self.seat).barn.length > 3) return;
+    if (drawableSuits(fx.data, fx.state).length === 0) return;
+    fx.pushTask({
+      t: 'card',
+      pid: self.seat,
+      src: self.card,
+      kind: 'deckToBarn',
+      riders: { remaining: 1 },
+    });
+  },
+  tasks: { deckToBarn: deckToBarnTask() },
 };
 
 /** V5 The Coastal Trading Depot - "You may swap two demand tokens between 2 islands, then Deliver." */
@@ -204,8 +300,8 @@ export const coastalTradingDepot: CardHandler = {
       'cards trade places, each keeping its VP and its Worker; a finished tile holds nothing, so ' +
       'a delivery already made is never re-priced. ⚠️ BUILDER DEFAULT: the lone token of a ' +
       'half-finished tile may be swapped. A pair of identical tokens is a no-op and is never ' +
-      'offered. v42 prints "You may swap two demand tokens between 2 islands, then Deliver"; ' +
-      'the full v42 handler pass is owed (slice 6). ' +
+      'offered. v42 prints "You may swap two demand tokens between 2 islands, then Deliver", ' +
+      'which this is (checked 16/09/2026). ' +
       '"You may", so a skip is offered whenever there is anything to skip. ' +
       "⚠️ THE BOTS CANNOT JUDGE THIS CARD'S DENIAL USE. outcome.ts prices what the acting seat " +
       'GAINS and never rival harm (a deliberate law of the instrument), so every swap a bot ' +
@@ -236,9 +332,8 @@ export const coastalTradingDepot: CardHandler = {
     swapDemand: {
       answers(data, state) {
         // ⭐ The token island (16/09/2026): two tokens on two DIFFERENT island
-        // cards, each keeping its VP and Worker. v42's text is "You may swap two
-        // demand tokens between 2 islands, then Deliver", which this already
-        // is; the full v42 handler pass is owed (slice 6).
+        // cards, each keeping its VP and Worker - v42's "You may swap two
+        // demand tokens between 2 islands, then Deliver".
         const out: TaskAnswer[] = tokenSwapOptions(data, state).map(
           ([a, b]) => ({ kind: 'card', payload: { a, b } }) as TaskAnswer,
         );
@@ -259,17 +354,58 @@ export const coastalTradingDepot: CardHandler = {
 /** V6 The Trade Depot - v42: "Swap up to 2 cards between your hand and your Barn, then Draw 1." */
 export const tradeDepot: CardHandler = {
   difficulty: {
-    score: 1,
-    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
+    score: 2,
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: true, conditional: false, counts: false, interrupts: false },
     notes:
-      'Inert since 16/09/2026: its face-down demand token died with the crate island, and the ' +
-      'v42 text is a hand/barn swap. v42 handler owed (slice 6).',
+      'A SWAP IS ONE CARD FOR ONE CARD (handoff §3): a hand card into the barn and a barn card ' +
+      'into the hand. The answer names the HAND card by id (the owner sees their hand) and the ' +
+      'BARN card by crop only (a barn is anonymous even to its owner, so two barn cards of one ' +
+      'crop are one choice; `Fx.barnToHand`, the new primitive, takes the first). Up to 2 swaps, ' +
+      'each its own optional answer: one re-entrant `tradeSwap` task with a skip, never a ' +
+      'subset enumeration. The barn card leaves BEFORE the hand card arrives, so a same-crop ' +
+      'swap really hands over a different card. The swapped hand card is not a delivery and ' +
+      'not a discard. Then Draw 1, the ordinary draw task with the deck chosen, which runs ' +
+      'whether or not anything was swapped. Replaces the v39 face-down token, which died with ' +
+      'the crate island on 16/09/2026.',
   },
-  // v42 handler owed (slice 6). The face-down token this card turned was
-  // deleted with the crate island on 16/09/2026, and v42's V6 prints "Swap up
-  // to 2 cards between your hand and your Barn, then Draw 1", so the card is
-  // INERT until that handler is written.
+  activate(fx, self) {
+    fx.pushTask({
+      t: 'card',
+      pid: self.seat,
+      src: self.card,
+      kind: 'tradeSwap',
+      riders: { remaining: 2 },
+    });
+    drawN(fx, self.seat, self.card, 1);
+  },
+  tasks: {
+    tradeSwap: {
+      answers(data, state, task) {
+        if ((task.riders.remaining as number) <= 0) return [];
+        const p = player(state, task.pid);
+        const crops = data.cards.suits.filter((suit) =>
+          p.barn.some((id) => cardById(data, id).suit === suit),
+        );
+        const out: TaskAnswer[] = [];
+        for (const give of p.hand) {
+          for (const take of crops) out.push({ kind: 'card', payload: { give, take } });
+        }
+        if (out.length > 0) out.push({ kind: 'skip' });
+        return out;
+      },
+      resolve(fx, task, answer) {
+        if (answer.kind === 'skip') return true;
+        if (answer.kind !== 'card') throw new Error('tradeSwap expects a card answer');
+        const give = answer.payload.give as CardId;
+        const take = answer.payload.take as Suit;
+        fx.barnToHand(task.pid, take);
+        fx.handToBarn(task.pid, give);
+        task.riders.remaining = (task.riders.remaining as number) - 1;
+        return (task.riders.remaining as number) <= 0;
+      },
+    },
+  },
 };
 
 /** V7 The Export Depot - "Harvest one of your buildings, then Deliver." */
@@ -307,23 +443,32 @@ export const exportDepot: CardHandler = {
   },
 };
 
-/**
- * V8 The Regional Depot (v39: "Move a Balloon to your Aerodrome ...").
- *
- * ⛔ INERT SINCE 16/09/2026: the balloons and the Aerodrome were deleted (R1).
- */
-// v42 handler owed (slice 6)
+/** V8 The Regional Depot - v42: "Discard a card from your Barn. Draw 4 of that crop." */
 export const regionalDepot: CardHandler = {
   difficulty: {
-    score: 1,
-    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
+    score: 2,
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: true, conditional: false, counts: false, interrupts: false },
     notes:
-      'Inert: its balloon text died with the balloons on 16/09/2026. v42 handler owed (slice 6).',
+      'The shared barn-discard step (`barnDiscardTask`), mandatory, one card, named by crop; ' +
+      "then 4 cards off THAT crop's deck (`drawFromCropDeck`, the O15 shape: taken, then an " +
+      'ordinary draw task with the cards pre-revealed). A deck that runs out reshuffles its ' +
+      'own discard, which by then holds the card just discarded. Triggers V17. An empty barn ' +
+      'pushes nothing, so the card does nothing: no discard, no draw. Replaces the v39 ' +
+      'balloon text, which died with the balloons on 16/09/2026.',
+  },
+  activate(fx, self) {
+    pushBarnDiscard(fx, self, 1, false);
+  },
+  tasks: {
+    barnDiscard: barnDiscardTask((fx, task, crops) => {
+      const crop = crops[0];
+      if (crop !== undefined) drawFromCropDeck(fx, task.pid, task.src, crop, 4);
+    }),
   },
 };
 
-/** V9 The Merchant Guild - "Draw 1 for each different crop in your barn." */
+/** V9 The Merchant Guild - v42: "Draw 2, then put 1 card from your hand into your Barn." */
 export const merchantGuild: CardHandler = {
   difficulty: {
     score: 2,
@@ -347,100 +492,143 @@ export const merchantGuild: CardHandler = {
   },
 };
 
-/** V10 The Supply House - "Draw 1 for each receipt you have taken." */
+/**
+ * V10 The Supply House - v42: "Discard up to 2 cards from your Barn. For each
+ * card discarded, perform the base action of that crop."
+ */
 export const supplyHouse: CardHandler = {
   difficulty: {
-    score: 2,
+    score: 3,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
+    asserted: { newPrimitive: true, conditional: true, counts: true, interrupts: true },
     notes:
-      "The suit's other hand refill, and the one that pays for having done the thing the suit " +
-      'is for. Counted off the ISLAND (islandDeliveriesBy) rather than off player.receipts, for ' +
-      'the same reason the end trigger is: the count has to stay a count of things visible on ' +
-      "the board. It therefore counts V14's two receipts as two, which is ruling G's " +
-      'recommendation applied consistently. ' +
-      'ZERO FLOOR IS INTENDED: it is dead until the first delivery, which is what makes it a ' +
-      'payoff card rather than a supply card, and it is capped by the six-delivery end trigger.',
+      '"BASE ACTION" IS THE PLAIN ACTION (handoff §3): wheat Harvest, vegetable Deliver, ' +
+      'orchard Draw 2, apiary GROW, dairy Build (`plainActionOf`, the Worker mapping). ' +
+      '⚠️ BUILDER DEFAULT: EVERY DISCARD FIRST, THEN THE ACTIONS IN DISCARD ORDER. The ' +
+      'handoff allows "any order"; discard order is the simpler of the two and the player ' +
+      'controls it by choosing which crop to discard first. Discarding first means a card ' +
+      'harvested into the barn by the first action can never be discarded by this card. ' +
+      '"Up to", so the barn-discard step offers a skip at each of its two answers; a skip ' +
+      'after one discard performs one action. Each discard triggers V17. Each action is the ' +
+      'ordinary task for it (chooseBuilding harvestable, deliver, draw at `baseDraw`, grow, ' +
+      'build), so one with nothing legal drops silently. A Grow cannot pick V10 itself, which ' +
+      'has already activated this turn. ' +
+      '⚠️ THE BRANCHING RISK (handoff §7): a discarded Apiary card is a Grow, and a Grow ' +
+      'activates another building; the once-per-turn activation cap bounds the chain.',
   },
   activate(fx, self) {
-    drawN(fx, self.seat, self.card, islandDeliveriesBy(fx.state, self.seat));
+    pushBarnDiscard(fx, self, 2, true);
   },
-};
-
-/** V11 The Market Master - "SOW 1 for every card in your Barn." */
-export const marketMaster: CardHandler = {
-  difficulty: {
-    score: 2,
-    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
-    notes:
-      "The whole hand onto the tableau, once the barn is deep - the suit's wow card at Tier 2. " +
-      'ONE re-entrant sow task with the printed count as its budget rather than N separate ' +
-      'tasks: the generic sow task already decrements, and it auto-drops when the hand empties ' +
-      'or nothing has room. Sow is suit-free (ruled 2026-07-20) and the generic task restricts ' +
-      "targets to your own buildings. WHICH card goes where is still the player's choice, and " +
-      'that is the whole of the decision the card offers now. ' +
-      '"UP TO" WAS DROPPED ON 19/08/2026 AND THE SOW IS MANDATORY. Dean has ruled this a ' +
-      'DELIBERATE POWER-UP, not a wording slip, so it is coded as forced: `optional` comes off ' +
-      'the task and no skip answer is ever offered. Read it as the card getting louder rather ' +
-      'than the card getting a downside - the sow that used to be declinable is now the point. ' +
-      'THE NO-OP CONVENTION (plan §8.3) IS SKIP SILENTLY: with no legal target - an empty hand, ' +
-      'or every building of yours full - the enumerator returns nothing and the drain loop drops ' +
-      'the task. The activation is never refused and never wedges, and a partly-payable budget ' +
-      'does as much as it can and then drops. That is the same answer V12 takes, and it is the ' +
-      'one answer applied to every mandatory effect in this pass. ' +
-      '⚠️ IT SPENDS THE HAND AND YOU CAN NO LONGER STOP IT. That is a real cost in a suit whose ' +
-      'hand is its bottleneck: three cards competing for a hand of 5 is the named risk, an empty ' +
-      'hand cannot visit, and a deep barn now forces the whole hand onto buildings whether or ' +
-      'not you wanted the thresholds. Watch for a seat that builds V11 and then cannot afford ' +
-      'the bonus slot for two turns.',
-  },
-  activate(fx, self) {
-    const budget = player(fx.state, self.seat).barn.length;
-    if (budget <= 0) return;
-    fx.pushTask({ t: 'sow', pid: self.seat, src: self.card, remaining: budget });
+  tasks: {
+    barnDiscard: barnDiscardTask((fx, task, crops) => {
+      for (const crop of crops) pushPlainAction(fx, task.pid, task.src, crop);
+    }),
   },
 };
 
 /**
- * V12 The Auction House - "Put 1 card from your hand into your barn for each
- * DEPOT you have built."
+ * V11 The Market Master - v42: "For every card in your Barn, move a card of the
+ * same crop from any of your buildings into your Barn."
+ */
+export const marketMaster: CardHandler = {
+  difficulty: {
+    score: 3,
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: true, counts: true, interrupts: false },
+    notes:
+      'The barn is COUNTED BY CROP ONCE, at activation, before anything moves: a card that ' +
+      'arrives cannot extend the loop that moved it. For each counted card you MAY move one ' +
+      'card of that crop off one of your buildings into your barn (`Fx.stackCardToBarn`). ' +
+      '"MOVE", NOT HARVEST: no afterHarvest, so no When-Harvested text, no W16 and no W18. ' +
+      'It may take cards off a FULL building, which unclogs it. ' +
+      '⚠️ BUILDER DEFAULT: NEVER FROM A NOTICE BOARD (S11: a board card leaves only by its ' +
+      "owner's Harvest). No cap is printed and none is applied. " +
+      'One re-entrant `stackMove` task: each answer names a building and a crop (stack ' +
+      'identity dies on placement, so two cards of one crop on one stack are one choice), and ' +
+      'a skip ends it - "may" is the builder reading of an effect the player would sometimes ' +
+      'not want (a half-built stack loses progress). A sequence of single choices, never a ' +
+      'subset enumeration. Replaces v31\'s "SOW 1 for every card in your Barn".',
+  },
+  activate(fx, self) {
+    const budget = barnTally(fx.data, fx.state, self.seat);
+    if (Object.values(budget).every((n) => (n ?? 0) <= 0)) return;
+    fx.pushTask({
+      t: 'card',
+      pid: self.seat,
+      src: self.card,
+      kind: 'stackMove',
+      riders: { budget },
+    });
+  },
+  tasks: {
+    stackMove: {
+      answers(data, state, task) {
+        const budget = task.riders.budget as Partial<Record<Suit, number>>;
+        const out: TaskAnswer[] = [];
+        for (const b of ownBuildings(data, state, task.pid)) {
+          if (isNoticeBoardCard(data, b.card)) continue;
+          for (const suit of data.cards.suits) {
+            if ((budget[suit] ?? 0) <= 0) continue;
+            if (!b.stack.some((id) => cardById(data, id).suit === suit)) continue;
+            out.push({ kind: 'card', payload: { building: b.card, suit } });
+          }
+        }
+        if (out.length > 0) out.push({ kind: 'skip' });
+        return out;
+      },
+      resolve(fx, task, answer) {
+        if (answer.kind === 'skip') return true;
+        if (answer.kind !== 'card') throw new Error('stackMove expects a card answer');
+        const building = answer.payload.building as CardId;
+        const suit = answer.payload.suit as Suit;
+        const b = player(fx.state, task.pid).tableau.find((x) => x.card === building);
+        const card = b?.stack.find((id) => cardById(fx.data, id).suit === suit);
+        if (card === undefined) throw new Error(`${building} holds no ${suit} card`);
+        fx.stackCardToBarn(task.pid, building, card);
+        const budget = { ...(task.riders.budget as Partial<Record<Suit, number>>) };
+        budget[suit] = (budget[suit] ?? 0) - 1;
+        task.riders.budget = budget;
+        return Object.values(budget).every((n) => (n ?? 0) <= 0);
+      },
+    },
+  },
+};
+
+/**
+ * V12 The Auction House - v42: "Discard a card from your Barn. Perform the
+ * Notice Board action of that crop."
  */
 export const auctionHouse: CardHandler = {
   difficulty: {
-    score: 2,
+    score: 3,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
+    asserted: { newPrimitive: true, conditional: true, counts: false, interrupts: true },
     notes:
-      'The consignment: hand into barn, one per DEPOT, so the Tier 1 layer is literally its ' +
-      'supply. Caps at 5. Ruling D is CLOSED by an earlier retext - the old "treat any 1 card as ' +
-      'a Vegetable" overlapped the universal wild substitution and is gone, taking doDeliver\'s ' +
-      "countAs parameter out of Vegetable's hands (the parameter itself stays, unused, because " +
-      'removing it is a separate edit to a shared funnel). One re-entrant handToBarn task with ' +
-      'the count as its budget. ' +
-      '"UP TO" WAS DROPPED ON 19/08/2026 AND THE DEPOSIT IS MANDATORY, ruled by Dean as a ' +
-      'DELIBERATE POWER-UP exactly as V11 was, so `optional` comes off the task and there is no ' +
-      'skip answer. This is the sharper of the two: barn cards are worth roughly 1.5 VP each ' +
-      'through the delivery rate, so being made to move five of them is mostly upside - but the ' +
-      'barn is a DEAD END (barn to island only), so a hand emptied into it cannot be built with, ' +
-      'flown with or visited with. A late-game V12 with five Depots on a hand you were saving is ' +
-      'the case to watch. ' +
-      'THE NO-OP CONVENTION (plan §8.3) IS SKIP SILENTLY, the same answer V11 takes: an empty ' +
-      'hand enumerates no answers and the drain loop drops the task, and a hand shorter than the ' +
-      'budget moves what it has and then drops. No DEPOT built is caught one step earlier by the ' +
-      'zero-budget guard, which never pushes the task at all - same observable outcome, and the ' +
-      'guard is kept because pushing a task with a budget of nothing is a lie about what ' +
-      'happened.',
+      "The barn-discard step, mandatory, one card; then THAT CROP'S BOARD POWER through " +
+      '`fireNoticeBoardPower` (workers.ts): Wheat harvest-then-hand-to-barn, Vegetable ' +
+      'Deliver with 2 any-crop cards or the fallback, Orchard Draw 4, Apiary the wild deck ' +
+      "Grow, Dairy Build at a discount of 2 with any crops. Any crop's power is available " +
+      'even if that board is not on the table. NOT A VISIT (handoff §3): no card is placed, ' +
+      'no `afterVisit` fires and no board is latched, so there is no fee and no W17, O16 or ' +
+      'A17. Vegetable\'s "if you cannot" is asked AFTER the discard, with the relaxation ' +
+      '(`vegetableBoardCanDeliver`), because the discard may have been the card that paid. ' +
+      '⚠️ BUILDER DEFAULT: THE DISCARD HAPPENS WHETHER OR NOT THE POWER CAN DO ANYTHING, and ' +
+      'the power then does as much as it can (its tasks drop when dead), because a GROW ' +
+      'activation cannot be refused per crop. Triggers V17. Replaces v31\'s "Put 1 card from ' +
+      'your hand into your barn for each DEPOT you have built".',
   },
   activate(fx, self) {
-    const budget = builtDepots(fx.data, fx.state, self.seat).length;
-    if (budget <= 0) return;
-    fx.pushTask({
-      t: 'handToBarn',
-      pid: self.seat,
-      src: self.card,
-      remaining: budget,
-    });
+    pushBarnDiscard(fx, self, 1, false);
+  },
+  tasks: {
+    barnDiscard: barnDiscardTask((fx, task, crops) => {
+      const crop = crops[0];
+      if (crop === undefined) return;
+      fireNoticeBoardPower(fx, task.pid, crop, {
+        src: task.src,
+        deliverLegal: vegetableBoardCanDeliver(fx.data, fx.state, task.pid),
+      });
+    }),
   },
 };
 
@@ -502,7 +690,10 @@ function refillCrops(data: GameData, state: GameState, seat: Seat): Suit[] {
   return live.filter((suit) => (tally[suit] ?? 0) > 0);
 }
 
-/** V14 The Distribution Center - "Deliver and take every receipt on the island card." (v42 adds "then destroy this building", slice 6) */
+/**
+ * V14 The Distribution Center - v42: "Deliver and take every receipt on the
+ * island card, then destroy this building." Cost 3 (2 vegetable + 1 any).
+ */
 export const distributionCenter: CardHandler = {
   difficulty: {
     score: 3,
@@ -514,8 +705,15 @@ export const distributionCenter: CardHandler = {
       'on a virgin tile, the last one on a half-finished tile (an ordinary second delivery, ' +
       '⚠️ BUILDER DEFAULT). It emits one `delivered` event per token so nothing counting ' +
       'receipts has to learn about the sweep, and fires afterDeliver ONCE with both receipts, ' +
-      'because it is one Deliver. v42 adds "then destroy this building" and a cost of 3: owed ' +
-      'in slice 6. ' +
+      'because it is one Deliver. ' +
+      '⭐ v42 "THEN DESTROY THIS BUILDING": after the delivery, V14\'s own stack goes to the ' +
+      'discard (`fx.discardStack`) and V14 leaves the tableau for its discard (`fx.demolish`, ' +
+      'the D14 pair), so it scores no printed VP and counts for nothing - the Barn scorer, ' +
+      'A19-A21, D21, O20 - from then on. It is NOT a barn discard, so V17 does not fire. ' +
+      'The afterDeliver listeners (V16, V18) fire inside the delivery, before the demolition. ' +
+      '⚠️ BUILDER DEFAULT: NO DELIVERY, NO DESTRUCTION. Like V7, the activation is not gated ' +
+      'on a payable delivery (a GROW is never refused per card); with nothing payable the ' +
+      'sweep task drops and V14 stays built, clogged at its threshold of 1. ' +
       '⚠️ RETEXTED AND RE-RULED ON 19/08/2026, AND THE RULING OVERRIDES THE PRINTED TEXT. The ' +
       'card now reads "Deliver and take EVERY RECEIPT ON THE ISLAND", which taken literally ' +
       'would empty the board. Dean has ruled it: it takes whatever receipts REMAIN ON THE TILE ' +
@@ -580,142 +778,186 @@ export const distributionCenter: CardHandler = {
         // "Every receipt" = every token THIS TILE still holds (Dean,
         // 19/08/2026): both on a virgin tile for the one 4-card payment, the
         // last one on a half-finished tile (an ordinary second delivery,
-        // ⚠️ BUILDER DEFAULT). v42 adds "then destroy this building": owed in
-        // slice 6.
+        // ⚠️ BUILDER DEFAULT).
         doDeliver(fx, task.pid, tile, spend, { takeAll: true });
+        // v42: "then destroy this building". The D14 pair: the stack to the
+        // discard, then the building itself. Never a barn discard (no V17).
+        if (player(fx.state, task.pid).tableau.some((b) => b.card === task.src)) {
+          fx.discardStack(task.pid, task.src);
+          fx.demolish(task.pid, task.src);
+        }
         return true;
       },
     },
   },
 };
 
-/** V15 The International Port - "Deliver Twice" */
+/**
+ * V15 The International Port - v42: "Discard 1 card from your Barn, then Build
+ * a card of the same crop from your hand for free."
+ */
 export const internationalPort: CardHandler = {
+  difficulty: {
+    score: 3,
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: true, conditional: true, counts: false, interrupts: false },
+    notes:
+      'The barn-discard step, mandatory, one card; then a `freeBuild` task offering every ' +
+      'card in the hand of THAT crop with a build cost - Power and Endgame cards included - ' +
+      'built with NO payment through `placeBuilt`, so the Build hooks fire exactly as for any ' +
+      'build: D16 The Ledger, D18 A Helping Hand (it counts toward "Build two buildings"), and ' +
+      'the `built` event. The build is mandatory when there is one ("then Build"); with no ' +
+      'card of that crop in hand the task drops and the discard stands. The own-suit minimum ' +
+      "and every cost are waived, because nothing is paid. Triggers V17. Replaces v31's " +
+      '"Deliver Twice".',
+  },
+  activate(fx, self) {
+    pushBarnDiscard(fx, self, 1, false);
+  },
+  tasks: {
+    barnDiscard: barnDiscardTask((fx, task, crops) => {
+      const crop = crops[0];
+      if (crop === undefined) return;
+      fx.pushTask({
+        t: 'card',
+        pid: task.pid,
+        src: task.src,
+        kind: 'freeBuild',
+        riders: { crop },
+      });
+    }),
+    freeBuild: {
+      answers(data, state, task) {
+        const crop = task.riders.crop as Suit;
+        return player(state, task.pid)
+          .hand.filter((id) => {
+            const card = cardById(data, id);
+            return card.suit === crop && card.buildCost !== null;
+          })
+          .map((card) => ({ kind: 'card', payload: { card } }) as TaskAnswer);
+      },
+      resolve(fx, task, answer) {
+        if (answer.kind !== 'card') throw new Error('freeBuild expects a card answer');
+        const card = answer.payload.card as CardId;
+        fx.removeFromHand(task.pid, card);
+        placeBuilt(fx, task.pid, card, [], task.src);
+        return true;
+      },
+    },
+  },
+};
+
+/**
+ * V16 The Market Signal Tower - v42: "Whenever you Deliver, put the top card of
+ * any deck into your Barn."
+ */
+export const marketSignalTower: CardHandler = {
   difficulty: {
     score: 2,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'THE SUIT\'S "EACH OTHER PLAYER" CARD IS GONE (19/08/2026). It used to read "Put the top ' +
-      'card of any deck into each other player\'s barn, Draw 1 for each, then Deliver", and both ' +
-      'the gift and its compensation have been deleted. What is left is two Deliver actions in ' +
-      'one activation, and nothing else. crossPlayer goes false with it: Vegetable now touches ' +
-      'another seat in exactly one place, V16 being raided. ' +
-      'That is a real loss to the hook and it should be recorded as one rather than passed off ' +
-      'as a simplification. The card was the only place in the suit where a Vegetable turn put ' +
-      'something on somebody else\'s side of the table, and the "your junk is their treasure" ' +
-      'supply line has one fewer source. The counter-argument, and the reason the cut is ' +
-      'defensible: the gift was never the reason anybody built it, the arithmetic had already ' +
-      'been reversed once (2026-08-09, the coin became a draw) for handing rivals barn cards ' +
-      'worth ~1.5 VP each, and Tier 3 is the wrong slot for a card whose text is mostly about ' +
-      'other people. ' +
-      'TWO SEPARATE DELIVERS, not one delivery scoring twice, which is the whole difference ' +
-      'between this and V14. Each is a plain deliver task off the shared enumerator, so each is ' +
-      'PAID for separately, TARGETED separately, and takes ONE receipt. Two tasks rather than one task with ' +
-      'a budget of 2, because the deliver task has no budget field and does not need one - the ' +
-      'queue is the counter. ' +
-      'MANDATORY AS PRINTED, and it auto-skips per delivery: the drain loop drops a deliver task ' +
-      'with no payable answer, so a seat that can afford one delivery and not a second simply ' +
-      'takes the one. The second task also enumerates AFTER the first has resolved, so a barn ' +
-      'emptied by delivery one correctly offers nothing for delivery two - and a Farmstead deck ' +
-      'card that arrived on delivery one is available to pay for delivery two. ' +
-      'IT GRANTS DELIVERIES, TWO AT A TIME, and six by one seat ends the game. This is the ' +
-      'fastest end-trigger route in the suit, ahead of V7 and V14, and worth watching for an ' +
-      'abrupt ending at 2p. ' +
-      'CONVERTED FROM ACTION TO GROW in the same pass: the standing move and its applyMove are ' +
-      'gone, the turn.actionSpent line came out, and it now costs a card into its own stack. ' +
-      'SHEET TIDY OWED: the printed text is "Deliver Twice" - capitalised as a title and with ' +
-      'no full stop. Cosmetic, and not fixable from the engine (cards.json is generated).',
+      'Owner-only, on EVERY delivery: the main action, the Vegetable board (V3), V5, V7, V10, ' +
+      'V12 and V14 (one delivery, so one card, even when it takes two receipts). One ' +
+      '`deckToBarn` task, the player picking the deck. ' +
+      '⚠️ WITH V18 (handoff §5 item 6, BUILDER DEFAULT "the active player orders"): NOT ' +
+      'IMPLEMENTED AS A CHOICE. The hook bus resolves listeners in a fixed order, and this ' +
+      "card only QUEUES its card, so V18 always reads the barn BEFORE V16's card lands, " +
+      'whichever sits first in the tableau: in effect V18 first. That is the order an active ' +
+      'player who holds both would choose (it can only help V18). Replaces the v39 balloon ' +
+      'text, which died with the balloons on 16/09/2026.',
   },
-  activate(fx, self) {
-    fx.pushTask({ t: 'deliver', pid: self.seat, src: self.card });
-    fx.pushTask({ t: 'deliver', pid: self.seat, src: self.card });
+  on: {
+    afterDeliver(fx, event, self) {
+      if (event.seat !== self.seat) return;
+      if (drawableSuits(fx.data, fx.state).length === 0) return;
+      fx.pushTask({
+        t: 'card',
+        pid: self.seat,
+        src: self.card,
+        kind: 'deckToBarn',
+        riders: { remaining: 1 },
+      });
+    },
   },
+  tasks: { deckToBarn: deckToBarnTask() },
 };
 
 /**
- * V16 The Market Signal Tower (v39: "Whenever a neighbour moves a Balloon ...").
- *
- * ⛔ INERT SINCE 16/09/2026: the balloons and the Aerodrome were deleted (R1).
+ * V17 The Dockworker's Union - v42: "Whenever you discard a card from your Barn,
+ * Draw 1."
  */
-// v42 handler owed (slice 6)
-export const marketSignalTower: CardHandler = {
-  difficulty: {
-    score: 1,
-    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
-    notes:
-      'Inert: its balloon text died with the balloons on 16/09/2026. v42 handler owed (slice 6).',
-  },
-};
-
-/**
- * V17 The Dockworker's Union (v39: "Whenever you move a Balloon, Draw 1.").
- *
- * ⛔ INERT SINCE 16/09/2026: the balloons and the Aerodrome were deleted (R1).
- */
-// v42 handler owed (slice 6)
 export const dockworkersUnion: CardHandler = {
   difficulty: {
-    score: 1,
-    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
+    score: 2,
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: true, conditional: false, counts: false, interrupts: false },
     notes:
-      'Inert: its balloon text died with the balloons on 16/09/2026. v42 handler owed (slice 6).',
+      'The only listener on `afterBarnDiscard`, the hook added for it: `Fx.discardFromBarn` ' +
+      "fires it once per card a CARD EFFECT discards from its owner's barn (V8, V10, V12, " +
+      "V15). Owner-only, every time. ⛔ Never on a delivery payment (R6) and never on V14's " +
+      'demolition, neither of which comes through that primitive. The draw is the ordinary ' +
+      'Draw 1 task, the player choosing the deck. Replaces the v39 balloon text.',
+  },
+  on: {
+    afterBarnDiscard(fx, event, self) {
+      if (event.seat !== self.seat) return;
+      drawN(fx, self.seat, self.card, 1);
+    },
   },
 };
 
 /**
- * V19 The Market Gazette (v39: "Game end: 2 VP for each Balloon at your Aerodrome.").
- *
- * ⛔ INERT SINCE 16/09/2026: the balloons and the Aerodrome were deleted (R1).
+ * V19 The Market Gazette - v42: "Game end: 3 VP for each pair of RECEIPTs with
+ * the same crop."
  */
-// v42 handler owed (slice 6)
 export const marketGazette: CardHandler = {
   difficulty: {
     score: 1,
-    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
+    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: true },
+    asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
-      'Inert: its balloon text died with the balloons on 16/09/2026. v42 handler owed (slice 6).',
+      '⚠️ BUILDER DEFAULTS (handoff §5 item 7): pairs are DISJOINT, floor(n / 2) per crop, and ' +
+      'a WILD receipt is its own crop: it pairs only with another wild. Receipts carry the ' +
+      "token's crop (R7). Replaces the v39 balloon scorer.",
+  },
+  gameEnd(_data, state, seat) {
+    const byCrop = new Map<string, number>();
+    for (const r of receiptsOf(state, seat)) byCrop.set(r.crop, (byCrop.get(r.crop) ?? 0) + 1);
+    let pairs = 0;
+    for (const n of byCrop.values()) pairs += Math.floor(n / 2);
+    return 3 * pairs;
   },
 };
 
-/** V20 The Trading Commission - "Game end: 2 VP for each DEPOT you have built." */
+/** V20 The Trading Commission - v42: "Game end: 2 VP for each RECEIPT worth 4 or less." */
 export const tradingCommission: CardHandler = {
   difficulty: {
     score: 1,
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: true },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
-      'The depth of the network. DEPOT = the whole-word title keyword, exactly V4-V8, so this ' +
-      'caps at 10 VP - it was 1 VP a Depot and the sheet now says 2, which roughly doubles it ' +
-      'against a winning score that has fallen from ~65 to ~38. Reads the same definition V12 ' +
-      'does, which is why DEPOT has to be printed as meaning the five Tier 1 cards. ' +
-      "⚠️ Same unresolved keyword problem as Wheat's FIELD and Orchard's ORCHARD: the " +
-      'convention contradicts nothing in Vegetable today (all five Tier 1 cards really are named ' +
-      'Depot and nothing else is), but it is one shared ruling across the suits and should be ' +
-      'settled once.',
+      'Read off the token value on each receipt (the token island: 3, 4, 5 or 6), so the 3 ' +
+      'and 4 VP tokens - the ones that carry a Worker - each score 2 more. Every receipt ' +
+      'counts, a seventh beside the Farmstead included. Replaces v31\'s "2 VP for each DEPOT ' +
+      'you have built".',
   },
-  gameEnd(data, state, seat) {
-    return 2 * builtDepots(data, state, seat).length;
+  gameEnd(_data, state, seat) {
+    return 2 * receiptsOf(state, seat).filter((r) => r.vp <= 4).length;
   },
 };
 
-/** V21 The Harvest Ledger - "Game end: 1 VP for every 2 cards in your barn." */
+/** V21 The Harvest Ledger - v42: "Game end: 3 VP for each vegetable RECEIPT." */
 export const harvestLedger: CardHandler = {
   difficulty: {
     score: 1,
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: true },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
-      'The residue, and deliberately priced UNDER the delivery rate. A barn payout must sit ' +
-      'below roughly 1.5 VP per barn card or it pays you to hold freight back from the island; ' +
-      'at 0.5 shipping always wins and the card is insurance, worth 2 to 3 VP. Counts CARDS, ' +
-      'not crops - the old "2 VP per different crop colour" is gone, and with it a second card ' +
-      'pointing at the same variety metric V9 already owns.',
+      'A receipt whose crop is vegetable (R7). ⚠️ BUILDER DEFAULT: a WILD receipt does not ' +
+      'count. Replaces v31\'s "1 VP for every 2 cards in your barn".',
   },
   gameEnd(_data, state, seat) {
-    return Math.floor(player(state, seat).barn.length / 2);
+    return 3 * receiptsOf(state, seat).filter((r) => r.crop === 'vegetable').length;
   },
 };

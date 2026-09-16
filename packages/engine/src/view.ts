@@ -280,7 +280,10 @@ export function redactEvents(events: GameEvent[], seat: Seat): GameEvent[] {
           ? event
           : { ...event, card: maskCard(event.card) };
       case 'handToBarn':
-        // The owner chose the card; to everyone else the barn stays a suit tally.
+      case 'barnToHand':
+        // The owner chose the card; to everyone else the barn stays a suit
+        // tally. V6's swap (v42, `barnToHand`) lands a barn card in its owner's
+        // hand, so the owner sees it and a rival sees a card of a known crop.
         return event.seat === seat ? event : { ...event, card: maskCard(event.card) };
       default:
         return event;

@@ -1025,27 +1025,44 @@ describe('the archetypes', () => {
   });
 
   /**
-   * ⭐ AND THE TWO CONTROLS KEEP THE OLD SPELLING ALIVE (09/09/2026), because
+   * ⭐ AND THE CONTROLS KEEP THE OLD SPELLING ALIVE (09/09/2026), because
    * deleting a case when its rule became an arm would leave the arm untested.
    * The same taste, asserted on the `visit` move, under the two overlays that
    * still produce one. It is a shorter walk than the case above: what is being
    * guarded is that the profile weight still reaches the visit at all under each
    * control, not the size of the effect.
+   *
+   * ⭐ RE-POINTED 16/09/2026. The balloons and the Village Store were deleted,
+   * so the v31 control no longer replays the v31 game, and under what it now
+   * runs socialite visits LESS than balanced (0.115 against 0.129 over six
+   * seeds): the case measured a hybrid, not a taste. The shipped Notice Board
+   * visit (0.147 against 0.140) and the meeple loop (0.118 against 0.086) take
+   * its place, pooled over six seeds, because one seed passed or failed on
+   * noise.
    */
-  it('keeps the socialite taste on the visit under both controls', { timeout: 300_000 }, () => {
-    for (const file of ['v31-card-visit.overlay.json', 'meeple-loop-v1.overlay.json']) {
-      const pinned = control(file);
+  it('keeps the socialite taste on the visit', { timeout: 300_000 }, () => {
+    const tables: [string, typeof data][] = [
+      ['shipped', data],
+      ['meeple-loop-v1', control('meeple-loop-v1.overlay.json')],
+    ];
+    for (const [name, rules] of tables) {
       const visits = (id: PolicyId) => {
-        const result = runGame(pinned, {
-          seed: `taste-${file}-${id}`,
-          seats: 3,
-          suits: SUITS.slice(0, 3),
-          policies: mirror(id, 3),
-          maxMoves: 1500,
-        });
-        return result.moves.filter((m) => m.type === 'visit').length / result.moves.length;
+        let visited = 0;
+        let moves = 0;
+        for (let s = 0; s < 6; s++) {
+          const result = runGame(rules, {
+            seed: `taste-${s}`,
+            seats: 3,
+            suits: SUITS.slice(0, 3),
+            policies: mirror(id, 3),
+            maxMoves: 1500,
+          });
+          visited += result.moves.filter((m) => m.type === 'visit').length;
+          moves += result.moves.length;
+        }
+        return visited / moves;
       };
-      expect(visits('socialite'), file).toBeGreaterThan(visits('balanced'));
+      expect(visits('socialite'), name).toBeGreaterThan(visits('balanced'));
     }
   });
 });

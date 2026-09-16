@@ -159,6 +159,16 @@ export function narrate(
         `${who(event.seat)} reclaims ${cardWord(data, event.card)} from the discard`,
         event.seat,
       );
+    case 'barnDiscarded':
+      return line(
+        `${who(event.seat)} discards ${cardWord(data, event.card)} from the barn`,
+        event.seat,
+      );
+    case 'barnToHand':
+      return line(
+        `${who(event.seat)} takes ${maskedCardPhrase(event.suit)} from the barn into hand`,
+        event.seat,
+      );
     case 'demandSwapped':
       return line(
         `${who(event.seat)} swaps a token on island ${event.a.tile} with one on island ${event.b.tile}`,

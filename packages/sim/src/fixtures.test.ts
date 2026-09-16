@@ -95,6 +95,19 @@ const OVERLAY_DIR = fileURLToPath(new URL('../../../overlays', import.meta.url))
  * reference-v17 game: renamed `-apiary-sow-opening` and replayed against
  * `overlays/notice-board-apiary-sow-v1`, which pins that one leaf. The third
  * moved with them so the set stays one game.
+ *
+ * ## ⭐ ALL NINE WENT ON 16/09/2026, AND THE LOADER CODE WENT WITH THEM
+ *
+ * Dean ruled the token island in and the balloons, the Village Store, the
+ * closing draw and the wild substitution out, and those are code deletions, not
+ * knobs. The `-v31-`, `-meeple-loop-` and `-apiary-sow-` logs were all played on
+ * the old island with balloons and coins on the table, so no overlay can run
+ * their games any more: by the rule of 13/09 a log of a game that cannot be run
+ * is not a guard, and they were deleted. The three unmarked
+ * `-token-island-opening` fixtures record the shipped game of 16/09/2026 (sheet
+ * v42), captured with `.scratch/capture-v42-openings.mts` and written with
+ * `npm run sim -- --replay=<capture> --fixture="<why>"`. The marker convention
+ * stands for the next arm that needs one: add its overlay to `dataFor` then.
  */
 function overlayData(file: string) {
   const overlay = JSON.parse(readFileSync(join(OVERLAY_DIR, file), 'utf8')) as Overlay;
@@ -102,27 +115,21 @@ function overlayData(file: string) {
 }
 
 /**
- * ⭐ READ FROM THE COMMITTED OVERLAY, NEVER RESTATED HERE. See the note above:
- * an inline copy of a pin stops being a pin the moment the default moves under
- * it, and on 09/09/2026 that cost all six fixtures at once. These two files are
- * the controls the passenger audit maintains, and `overlays.test.ts` validates
- * that every path in them still addresses a real knob.
+ * ⭐ AN ARM'S RULES ARE READ FROM ITS COMMITTED OVERLAY, NEVER RESTATED HERE.
+ * See the note above: an inline copy of a pin stops being a pin the moment the
+ * default moves under it, and on 09/09/2026 that cost all six fixtures at once.
+ * No fixture carries a marker today (16/09/2026), so the table is empty.
  */
-const V31_CONTROL = overlayData('v31-card-visit.overlay.json');
-const MEEPLE_LOOP_V1 = overlayData('meeple-loop-v1.overlay.json');
-const APIARY_SOW_V1 = overlayData('notice-board-apiary-sow-v1.overlay.json');
+const ARMS: readonly (readonly [marker: string, overlay: string])[] = [];
 /**
  * ⚠️ A FILE WITH NO MARKER REPLAYS AGAINST THE SHIPPED DEFAULT, whatever the
  * shipped default currently is. That is the convention and it is deliberate: a
  * fixture belongs to the game of the day it was captured, and a marker is added
- * only when that game becomes an arm. Since 14/09/2026 no fixture records the
- * shipped game, which is a gap on the to-do list.
+ * only when that game becomes an arm.
  */
 function dataFor(file: string) {
-  if (file.includes('-v31-')) return V31_CONTROL;
-  if (file.includes('-meeple-loop-')) return MEEPLE_LOOP_V1;
-  if (file.includes('-apiary-sow-')) return APIARY_SOW_V1;
-  return BASE_GAME_DATA;
+  const arm = ARMS.find(([marker]) => file.includes(marker));
+  return arm === undefined ? BASE_GAME_DATA : overlayData(arm[1]);
 }
 
 function fixtures(): { file: string; fixture: Fixture }[] {

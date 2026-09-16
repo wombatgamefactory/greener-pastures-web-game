@@ -253,6 +253,17 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
       // D14: the building leaves the tableau and becomes freight.
       return event.seat === me ? weight(w, 'harvest') : 0;
 
+    // ⭐ v42's barn cards LEAVING a barn (16/09/2026): V8, V10, V12 and V15
+    // discard one, V6 swaps one into the hand. Charged at the same harvest rate
+    // a card arriving is paid, so a discard is never free; the card V6 hands
+    // over is also priced at the blind hand rate `cardsToHand` uses.
+    case 'barnDiscarded':
+      return event.seat === me ? -weight(w, 'harvest') : 0;
+    case 'barnToHand':
+      return event.seat === me
+        ? weight(w, 'keepValue') * meanCardValue(s.data) - weight(w, 'harvest')
+        : 0;
+
     /**
      * ⛔ **AND SINCE S17 (Dean, 11/09/2026) THE `: 0` LEG HAS A BUSY NEW
      * PRODUCER, WHICH IS WHY IT IS WRITTEN OUT RATHER THAN LEFT TO THE FILE'S

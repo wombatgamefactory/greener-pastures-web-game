@@ -115,7 +115,11 @@ export const KEEPS_SPENT_CARDS: readonly CardId[] = ['O17', 'D5', 'D11'];
  * inheriting "spend your junk".
  */
 export const READS_BUILD_PAYMENT: readonly CardId[] = ['O17', 'D5', 'D6', 'D11'];
-export const IGNORES_BUILD_PAYMENT: readonly CardId[] = ['D16', 'D17'];
+// D18 A Helping Hand (v42) counts builds and never reads what paid for them.
+// ⚠️ V17 The Dockworker's Union (v42) listens to `afterBarnDiscard`, a BARN
+// discard by card text, and never to the hand discards this file collapses, so
+// it needs no list of its own here.
+export const IGNORES_BUILD_PAYMENT: readonly CardId[] = ['D16', 'D17', 'D18'];
 
 /**
  * THE PAIRED-ARM SWITCH. Off, `narrowMoves` returns its input untouched and the
