@@ -1,0 +1,762 @@
+<title>Greener Pastures Sim Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:wght@400;500;600&display=swap">
+<style>
+:root {
+  color-scheme: light;
+  --bg: #eff2ec;
+  --surface: #fbfcfa;
+  --surface-2: #f4f6f2;
+  --ink: #17231c;
+  --ink-2: #4a5950;
+  --muted: #7d8a81;
+  --grid: #dfe5dc;
+  --axis: #c3ccc4;
+  --hair: rgba(23, 35, 28, 0.10);
+  --accent: #2e6a4e;
+  --accent-wash: rgba(46, 106, 78, 0.12);
+  --band: rgba(46, 106, 78, 0.14);
+  --s2p: #2a78d6;
+  --s3p: #eb6834;
+  --s4p: #1baf7a;
+  --good: #0ca30c;
+  --good-ink: #006300;
+  --warn: #fab219;
+  --warn-ink: #8a5a00;
+  --crit: #d03b3b;
+  --crit-ink: #b02a2a;
+  --observe: #62748a;
+  --beyond: #b02a2a;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Public Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0e1310;
+    --surface: #161d19;
+    --surface-2: #1c2520;
+    --ink: #ecf1ed;
+    --ink-2: #b5c1b9;
+    --muted: #87948b;
+    --grid: #26302a;
+    --axis: #3a463e;
+    --hair: rgba(255, 255, 255, 0.10);
+    --accent: #74c29a;
+    --accent-wash: rgba(116, 194, 154, 0.14);
+    --band: rgba(116, 194, 154, 0.16);
+    --s2p: #3987e5;
+    --s3p: #d95926;
+    --s4p: #199e70;
+    --good-ink: #3ecf3e;
+    --warn-ink: #fab219;
+    --crit-ink: #f07070;
+    --observe: #93a4b8;
+    --beyond: #f07070;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0e1310;
+  --surface: #161d19;
+  --surface-2: #1c2520;
+  --ink: #ecf1ed;
+  --ink-2: #b5c1b9;
+  --muted: #87948b;
+  --grid: #26302a;
+  --axis: #3a463e;
+  --hair: rgba(255, 255, 255, 0.10);
+  --accent: #74c29a;
+  --accent-wash: rgba(116, 194, 154, 0.14);
+  --band: rgba(116, 194, 154, 0.16);
+  --s2p: #3987e5;
+  --s3p: #d95926;
+  --s4p: #199e70;
+  --good-ink: #3ecf3e;
+  --warn-ink: #fab219;
+  --crit-ink: #f07070;
+  --observe: #93a4b8;
+  --beyond: #f07070;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.5 var(--body);
+  padding-inline: 20px;
+  padding-block: 0 48px;
+}
+table { font-size: inherit; color: inherit; }
+.wrap { max-width: 1440px; margin: 0 auto; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; }
+h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+h3 { font-size: 15px; font-weight: 700; }
+.num, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.eyebrow { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.sub { color: var(--ink-2); }
+.muted { color: var(--muted); }
+a { color: var(--accent); }
+
+/* masthead */
+.mast { padding-block: 28px 20px; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) auto; align-items: end; border-bottom: 1px solid var(--hair); }
+.mast h1 { font-size: clamp(28px, 4vw, 44px); font-weight: 700; letter-spacing: -0.02em; line-height: 1.05; }
+.mast h1 span { color: var(--accent); }
+.facts { display: flex; flex-wrap: wrap; gap: 6px 22px; margin-top: 12px; }
+.fact { display: flex; flex-direction: column; }
+.fact b { font-family: var(--mono); font-weight: 500; font-size: 13px; }
+.verdict { display: flex; gap: 8px; flex-wrap: wrap; }
+.vcount { background: var(--surface); border: 1px solid var(--hair); border-radius: 8px; padding: 8px 14px; min-width: 88px; }
+.vcount b { display: block; font: 700 28px/1 var(--display); }
+.vcount.fail b { color: var(--crit-ink); }
+.vcount.pass b { color: var(--good-ink); }
+.caveat { margin-top: 14px; font-size: 12.5px; color: var(--ink-2); max-width: 110ch; }
+.caveat strong { color: var(--ink); }
+
+/* sections */
+section { margin-top: 34px; }
+.sechead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.sechead p { margin: 0; color: var(--ink-2); max-width: 80ch; }
+.grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); }
+.grid.wide { grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); }
+.panel { background: var(--surface); border: 1px solid var(--hair); border-radius: 10px; padding: 16px 18px; min-width: 0; }
+.panel h3 { margin-bottom: 2px; }
+.panel .note { font-size: 12.5px; color: var(--muted); margin: 2px 0 12px; }
+.span2 { grid-column: span 2; }
+@media (max-width: 760px) { .span2 { grid-column: auto; } .mast { grid-template-columns: 1fr; } }
+
+/* attention list */
+.attn { display: grid; gap: 14px; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); }
+@media (max-width: 1000px) { .attn { grid-template-columns: 1fr; } }
+.flags { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.flag { display: grid; grid-template-columns: 22px 1fr; gap: 10px; align-items: start; padding: 9px 10px; border-radius: 7px; background: var(--surface-2); border-left: 3px solid var(--observe); }
+.flag.crit { border-left-color: var(--crit); }
+.flag.warn { border-left-color: var(--warn); }
+.flag .ic { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font: 700 12px/1 var(--body); color: #fff; background: var(--observe); }
+.flag.crit .ic { background: var(--crit); }
+.flag.warn .ic { background: var(--warn); color: #3a2800; }
+.flag .t { font-weight: 600; }
+.flag .d { color: var(--ink-2); font-size: 12.5px; }
+
+/* check tiles */
+.checks { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); }
+.check { background: var(--surface); border: 1px solid var(--hair); border-radius: 8px; padding: 0; min-width: 0; }
+.check summary { list-style: none; cursor: pointer; padding: 10px 12px; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; }
+.check summary::-webkit-details-marker { display: none; }
+.check summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
+.check[open] { grid-column: 1 / -1; }
+.check .id { font: 500 12px var(--mono); color: var(--muted); }
+.check .ti { font-weight: 600; line-height: 1.3; }
+.check .hl { grid-column: 1 / -1; font-size: 12.5px; color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.check[open] .hl { -webkit-line-clamp: unset; }
+.check .body { padding: 0 12px 12px; font-size: 12.5px; color: var(--ink-2); display: flex; flex-direction: column; gap: 6px; max-height: 420px; overflow: auto; }
+.check .body b { color: var(--ink); }
+.pill { display: inline-flex; align-items: center; gap: 5px; font: 600 11px/1 var(--body); letter-spacing: 0.05em; padding: 4px 7px; border-radius: 999px; text-transform: uppercase; white-space: nowrap; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill.PASS { color: var(--good-ink); background: color-mix(in srgb, var(--good) 14%, transparent); }
+.pill.FAIL { color: var(--crit-ink); background: color-mix(in srgb, var(--crit) 14%, transparent); }
+.pill.OBSERVE { color: var(--observe); background: color-mix(in srgb, var(--observe) 14%, transparent); }
+.check.FAIL { border-color: color-mix(in srgb, var(--crit) 55%, transparent); }
+
+/* charts: rows of label | track | value */
+.rows { display: flex; flex-direction: column; gap: 7px; }
+.row { display: grid; grid-template-columns: 76px minmax(0, 1fr) 64px; gap: 10px; align-items: center; }
+.row.wl { grid-template-columns: 104px minmax(0, 1fr) 64px; }
+.row .l { font-size: 12.5px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
+.row .v { font: 500 12.5px var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+.track { position: relative; height: 18px; }
+.track::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--grid); }
+.band { position: absolute; top: 1px; bottom: 1px; background: var(--band); border-radius: 3px; }
+.refline { position: absolute; top: -3px; bottom: -3px; width: 0; border-left: 1.5px dashed var(--muted); }
+.dot { position: absolute; top: 50%; width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--surface); }
+.dot.hollow { background: var(--surface); border: 2px solid var(--accent); }
+.ci { position: absolute; top: 50%; height: 2px; margin-top: -1px; background: var(--ink-2); border-radius: 1px; }
+.bar { position: absolute; top: 3px; bottom: 3px; left: 0; background: var(--accent); border-radius: 0 4px 4px 0; }
+.bar.neg { border-radius: 4px 0 0 4px; }
+.seg { position: absolute; top: 3px; bottom: 3px; }
+.axis { position: relative; height: 16px; margin-left: 86px; margin-right: 74px; font: 10.5px var(--mono); color: var(--muted); }
+.row.wl ~ .axis, .axis.wl { margin-left: 114px; }
+.axis span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); margin: 4px 0 10px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+.legend i.band { position: static; width: 16px; height: 10px; border-radius: 2px; }
+.legend i.hollow { background: var(--surface); border: 2px solid var(--ink-2); }
+.legend i.dash { width: 0; height: 12px; border-radius: 0; border-left: 1.5px dashed var(--muted); }
+.chip { width: 11px; height: 11px; border-radius: 3px; flex: none; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18); }
+.sp { display: inline-block; font: 600 11px var(--mono); padding: 1px 5px; border-radius: 4px; color: #fff; }
+
+/* tiles */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 10px; }
+.tile { background: var(--surface-2); border-radius: 7px; padding: 9px 11px; }
+.tile b { display: block; font: 500 20px/1.2 var(--mono); }
+.tile span { font-size: 11.5px; color: var(--ink-2); line-height: 1.3; display: block; }
+
+/* tables */
+.tw { overflow-x: auto; }
+table.t { border-collapse: collapse; width: 100%; }
+.t th, .t td { padding: 5px 8px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+.t th { font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.t td { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12.5px; }
+.t th:first-child, .t td:first-child { text-align: left; font-family: var(--body); font-size: 13px; }
+.t td.txt { font-family: var(--body); text-align: left; }
+.t tr:hover td { background: var(--accent-wash); }
+.t .minibar { display: inline-block; height: 8px; background: var(--accent); border-radius: 0 3px 3px 0; vertical-align: middle; margin-right: 6px; opacity: 0.8; }
+.beyond { color: var(--beyond); font-weight: 600; }
+.within { color: var(--muted); }
+.tag { font: 600 10px var(--body); letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--hair); border-radius: 4px; padding: 1px 4px; margin-left: 6px; }
+.t td.hi { box-shadow: inset 3px 0 0 var(--crit); }
+
+.tip { position: fixed; pointer-events: none; z-index: 10; background: var(--ink); color: var(--surface); font: 12px/1.4 var(--body); padding: 6px 9px; border-radius: 6px; max-width: 320px; opacity: 0; transition: opacity 0.08s; }
+[data-tip] { cursor: default; }
+.foot { margin-top: 40px; font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+@media (prefers-reduced-motion: reduce) { .tip { transition: none; } }
+</style>
+
+<div class="wrap" id="app"></div>
+<div class="tip" id="tip" role="tooltip"></div>
+
+<script>
+const DATA = /*__DATA__*/null;
+
+const SEATS = ["2p", "3p", "4p"];
+const SUIT_ORDER = ["wheat", "dairy", "vegetable", "apiary", "orchard"];
+const SUIT_HEX = { orchard: "#CA5744", dairy: "#F4D68D", apiary: "#E7963B", wheat: "#E2C488", vegetable: "#9CAC85" };
+const SUIT_ACTION = { orchard: "Draw 2", dairy: "Build", apiary: "Grow", wheat: "Harvest", vegetable: "Deliver" };
+const BALLOON_SUIT = { red: "orchard", cream: "dairy", orange: "apiary", wheat: "wheat" };
+const SEAT_VAR = { "2p": "var(--s2p)", "3p": "var(--s3p)", "4p": "var(--s4p)" };
+
+// --- tiny DOM helpers ------------------------------------------------------------------
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === "class") el.className = v;
+    else if (k === "style") el.style.cssText = v;
+    else if (k === "html") el.innerHTML = v;
+    else el.setAttribute(k, v);
+  }
+  for (const kid of kids.flat(Infinity)) {
+    if (kid == null || kid === false) continue;
+    el.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
+  }
+  return el;
+}
+const isNum = (v) => typeof v === "number" && isFinite(v);
+function fmt(v, dp = 1, unit = "") {
+  if (!isNum(v)) return "n/a";
+  return v.toLocaleString("en-GB", { minimumFractionDigits: dp, maximumFractionDigits: dp }) + unit;
+}
+const pct = (s) => (s == null ? null : parseFloat(String(s)));
+const ciOf = (s) => { const m = String(s || "").match(/([\d.]+)%\s*-\s*([\d.]+)%/); return m ? [+m[1], +m[2]] : null; };
+const clamp = (x) => Math.max(0, Math.min(100, x));
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+const suitLabel = (s) => h("span", { class: "l" }, h("span", { class: "chip", style: `background:${SUIT_HEX[s]}` }), cap(s));
+const seatLabel = (s) => h("span", { class: "l" }, h("span", { class: "sp", style: `background:${SEAT_VAR[s]}` }, s));
+
+function panel(title, note, ...body) {
+  return h("div", { class: "panel" }, h("h3", {}, title), note ? h("p", { class: "note" }, note) : null, ...body);
+}
+function section(id, title, blurb, ...body) {
+  return h("section", { id }, h("div", { class: "sechead" }, h("h2", {}, title), blurb ? h("p", {}, blurb) : null), ...body);
+}
+function axis(ticks, lo, hi, unit = "", wide = false) {
+  return h("div", { class: "axis" + (wide ? " wl" : "") }, ticks.map((t) => h("span", { style: `left:${((t - lo) / (hi - lo)) * 100}%` }, t + unit)));
+}
+function legend(items) {
+  return h("div", { class: "legend" }, items.map(([cls, style, text]) => h("span", {}, h("i", { class: cls, style }), text)));
+}
+
+// A bullet row: a band (or floor line), one filled marker and an optional hollow one.
+function bullet({ label, value, lo, hi, band, floor, second, color, unit = "", dp = 1, tip, wide }) {
+  const pos = (v) => clamp(((v - lo) / (hi - lo)) * 100);
+  const track = h("div", { class: "track" });
+  if (band) track.append(h("div", { class: "band", style: `left:${pos(band[0])}%;width:${pos(band[1]) - pos(band[0])}%` }));
+  if (isNum(floor)) track.append(h("div", { class: "refline", style: `left:${pos(floor)}%` }));
+  if (isNum(second)) track.append(h("div", { class: "dot hollow", style: `left:${pos(second)}%;border-color:${color || "var(--accent)"}`, "data-tip": `${tip || label}: second measure ${fmt(second, dp, unit)}` }));
+  if (isNum(value)) track.append(h("div", { class: "dot", style: `left:${pos(value)}%;background:${color || "var(--accent)"}`, "data-tip": `${tip || label}: ${fmt(value, dp, unit)}` }));
+  return h("div", { class: "row" + (wide ? " wl" : "") }, typeof label === "string" ? h("span", { class: "l" }, label) : label, track, h("span", { class: "v" }, fmt(value, dp, unit)));
+}
+// A dot with a 95% interval against a reference line.
+function ciRow({ label, value, ci, lo, hi, ref, tip, flag }) {
+  const pos = (v) => clamp(((v - lo) / (hi - lo)) * 100);
+  const track = h("div", { class: "track" });
+  if (isNum(ref)) track.append(h("div", { class: "refline", style: `left:${pos(ref)}%` }));
+  if (ci) track.append(h("div", { class: "ci", style: `left:${pos(ci[0])}%;width:${Math.max(1, pos(ci[1]) - pos(ci[0]))}%` }));
+  track.append(h("div", { class: "dot", style: `left:${pos(value)}%;${flag ? "background:var(--crit)" : ""}`, "data-tip": tip }));
+  return h("div", { class: "row wl" }, label, track, h("span", { class: "v" }, fmt(value, 1, "%")));
+}
+// A plain horizontal bar.
+function barRow({ label, value, max, unit = "", dp = 1, tip, color, wide = true }) {
+  const track = h("div", { class: "track" }, h("div", { class: "bar", style: `width:${clamp((value / max) * 100)}%;${color ? `background:${color}` : ""}`, "data-tip": tip || `${fmt(value, dp, unit)}` }));
+  return h("div", { class: "row" + (wide ? " wl" : "") }, typeof label === "string" ? h("span", { class: "l" }, label) : label, track, h("span", { class: "v" }, fmt(value, dp, unit)));
+}
+
+// --- the flags: what needs attention, computed the same way every run ------------------
+function evenShare(suits) {
+  let w = 0, n = 0;
+  for (const s of suits) { const g = +s.seat_games; w += (pct(s.win) / 100) * g; n += g; }
+  return n ? (w / n) * 100 : null;
+}
+function computeFlags(d) {
+  const r = d.readings, out = [];
+  const add = (sev, t, dd) => out.push({ sev, t, d: dd });
+  const clip = (t) => (t.length > 240 ? t.slice(0, 237).replace(/\s+\S*$/, "") + "…" : t);
+  for (const c of d.checks) if (c.status === "FAIL") add("crit", `a${String(c.id).padStart(2, "0")} ${c.title} fails`, clip(c.summary || c.measured || ""));
+  if (r.slot_turns_seat) for (const s of SEATS) {
+    const v = r.slot_turns_seat[s];
+    if (v < 30 || v > 60) add("crit", `Bonus slot out of band at ${s}: ${fmt(v)}% of turns`, "Dean's band is 30% to 60% of turns.");
+    else if (v < 33 || v > 57) add("warn", `Bonus slot near the band edge at ${s}: ${fmt(v)}% of turns`, `Within 3 points of the ${v > 45 ? "60% ceiling" : "30% floor"}. Plays per turn read ${fmt(r.plays_turn_seat?.[s])}%.`);
+  }
+  if (isNum(r.hook) && r.hook < 0.5) add("crit", `The hook is below its floor: ${fmt(r.hook, 2)} visits per player per turn`, "a08 floor is 0.5.");
+  if (r.hook_seat) for (const s of SEATS) if (r.hook_seat[s] < 0.5) add("warn", `The hook is below 0.5 at ${s}: ${fmt(r.hook_seat[s], 2)}`, "The floor is read pooled, so this is a seat-count warning.");
+  const even = evenShare(d.suits);
+  for (const s of d.suits) {
+    const ci = ciOf(s.ci), v = pct(s.win);
+    if (ci && ci[1] < even * 0.5) add("crit", `${cap(s.suit)} wins ${fmt(v)}% against an even ${fmt(even)}%`, `Its whole 95% interval (${s.ci}) sits below half of an even share. No noise floor exists for suit win rates.`);
+    else if (ci && ci[1] < even * 0.75) add("warn", `${cap(s.suit)} wins ${fmt(v)}% against an even ${fmt(even)}%`, `Its 95% interval (${s.ci}) sits below three-quarters of an even share.`);
+    else if (ci && ci[0] > even * 1.4) add("warn", `${cap(s.suit)} wins ${fmt(v)}% against an even ${fmt(even)}%`, `Its 95% interval (${s.ci}) sits above 1.4 times an even share.`);
+  }
+  if (d.vp_sources && d.vp_sources.island < 50) add("warn", `Island receipts are ${d.vp_sources.island}% of a winning score`, "The design wants island deliveries at 50% or more.");
+  for (const s of d.seats) { const dev = parseFloat(s.dev); if (Math.abs(dev) > 3) add("warn", `Chair ${s.seat} at ${s.seats} deviates ${s.dev}`, "The seat band is about +/-3 points."); }
+  const un = d.series["unfinished"];
+  if (un) for (const s of SEATS) if (un[s].v > 1.5) add("warn", `${fmt(un[s].v)}% of ${s} games are unfinished`, `End reasons: ${Object.entries(d.end_reasons[s] || {}).filter(([k]) => k !== "ended").map(([k, v]) => `${k} ${v}`).join(", ")}.`);
+  if (r.hand) {
+    if (r.hand.worst_moves > 250000) add("warn", `Worst legal-move count ${fmt(r.hand.worst_moves, 0)}`, "An end-of-turn discard enumeration: the engine-cost risk. A bot-side discard heuristic is owed.");
+    if (r.hand.at_bound > 10) add("warn", `${fmt(r.hand.at_bound)}% of turns begin at the hand bound of ${r.hand.bound}`, "The bound is the simulator's, not a rule. Readings about hand size are readings about the instrument.");
+  }
+  if (r.meeple && r.meeple.stranded_share > 15) {
+    const top = r.meeple_stranded_mix ? Object.entries(r.meeple_stranded_mix).sort((a, b) => b[1] - a[1])[0] : null;
+    add("warn", `${fmt(r.meeple.stranded_share)}% of Workers (delivery meeples) are stranded`, top ? `${cap(top[0])} (${SUIT_ACTION[top[0]]}) is ${fmt(top[1])}% of the stranded ones.` : "");
+  }
+  if (r.space_choice_3vp === 0) add("note", "The bots never take the 3 VP space on a first delivery", "The space choice is unmeasured by the simulator. It is a table question.");
+  const tc = d.sky.token_choice;
+  if (tc && tc.lower_for_worker === 0) add("note", `The bots never take the lower token for its Worker (${fmt(tc.higher)}% take the higher VP)`, "The token choice is unmeasured by the simulator. It is a table question.");
+  if (d.sky.token_values && isNum(d.sky.wild_receipts)) {
+    const n = Object.values(d.sky.token_values).reduce((a, b) => a + b, 0);
+    if (n) add("note", `Wild tokens are ${fmt((d.sky.wild_receipts / n) * 100)}% of island receipts`, `${fmt(d.sky.wild_receipts, 0)} of ${fmt(n, 0)} receipts.`);
+  }
+  if (r.c113 && r.c113.all > 90) add("note", `The Store prompt is taken in full ${fmt(r.c113.all)}% of the time`, "C113: a ceiling on how automatic the decision is, not a measurement of its weight.");
+  if (r.coins && r.coins.dead >= 2) add("note", `${fmt(r.coins.dead, 2)} Store coins die per player per game`, "Coins score nothing.");
+  if (isNum(r.busiest_board) && r.busiest_board > 45) add("note", `The busiest board takes ${fmt(r.busiest_board)}% of its game's placements`, `An even share is ${fmt(r.busiest_even)}%.`);
+  if (d.warnings.length) add("note", `${d.warnings.length} readings could not be parsed`, d.warnings.join("; "));
+  const rank = { crit: 0, warn: 1, note: 2 };
+  return out.sort((a, b) => rank[a.sev] - rank[b.sev]);
+}
+
+// --- sections ----------------------------------------------------------------------------
+function masthead(d) {
+  const hd = d.header, v = d.verdict || {};
+  const facts = [
+    ["Instrument", hd.reference], ["Arm", hd.arm === "base" ? "base (shipped default)" : hd.arm], ["Run", hd.stamp],
+    ["Games", hd.games], ["Wall", hd.wall ? hd.wall.split("(")[0].trim() : null], ["Data hash", hd.data ? hd.data.slice(0, 12) + "…" : null],
+  ];
+  return h("header", { class: "mast" },
+    h("div", {},
+      h("div", { class: "eyebrow" }, "Greener Pastures · simulation dashboard"),
+      h("h1", {}, "Watch list for ", h("span", {}, hd.reference)),
+      h("div", { class: "facts" }, facts.filter((f) => f[1]).map(([k, val]) => h("div", { class: "fact" }, h("span", { class: "eyebrow" }, k), h("b", {}, val)))),
+      h("p", { class: "caveat" },
+        h("strong", {}, "Read the numbers, not the prose. "),
+        `Hand limit ${hd.hand_limit ? hd.hand_limit.split(",")[0] : "7"} is the simulator's bound, not a rule. `,
+        `Levels are only comparable within ${hd.reference}; a delta is sound only when paired on identical seeds. `,
+        "Bonus-slot figures are shares of turns unless labelled plays per turn."),
+    ),
+    h("div", { class: "verdict", "aria-label": "Verdict" },
+      h("div", { class: "vcount pass" }, h("span", { class: "eyebrow" }, "Pass"), h("b", {}, v.pass ?? "?")),
+      h("div", { class: "vcount fail" }, h("span", { class: "eyebrow" }, "Fail"), h("b", {}, v.fail ?? "?")),
+      h("div", { class: "vcount" }, h("span", { class: "eyebrow" }, "Observe"), h("b", {}, v.observe ?? "?")),
+    ),
+  );
+}
+
+function attention(d) {
+  const flags = computeFlags(d);
+  const icon = { crit: "✕", warn: "!", note: "i" };
+  const sevName = { crit: "Critical", warn: "Warning", note: "Note" };
+  const list = h("ul", { class: "flags" }, flags.map((f) =>
+    h("li", { class: `flag ${f.sev}` }, h("span", { class: "ic", "aria-label": sevName[f.sev], title: sevName[f.sev] }, icon[f.sev]), h("div", {}, h("div", { class: "t" }, f.t), f.d ? h("div", { class: "d" }, f.d) : null))));
+  const checks = h("div", { class: "checks" }, d.checks.map((c) =>
+    h("details", { class: `check ${c.status}` },
+      h("summary", {}, h("span", { class: "id" }, "a" + String(c.id).padStart(2, "0")), h("span", { class: "pill " + c.status }, c.status),
+        h("span", { class: "ti", style: "grid-column:1/-1" }, c.title), h("span", { class: "hl" }, c.summary || c.measured || "")),
+      h("div", { class: "body" },
+        c.measured ? h("div", {}, h("b", {}, "Measured. "), c.measured) : null,
+        c.rule ? h("div", {}, h("b", {}, "Rule. "), c.rule) : null,
+        c.details.slice(0, 12).map((x) => h("div", {}, "· " + x)),
+        c.mirrors ? h("div", {}, h("b", {}, "Mirrors. "), c.mirrors) : null))));
+  const retired = d.retired.length ? h("p", { class: "note", style: "margin-top:10px" }, "Retired ids: " + d.retired.map((r) => `a${r[0].padStart(2, "0")} ${r[1]}`).join(" · ")) : null;
+  return section("attention", "What needs attention", "Flags are computed from the run by fixed rules, so the same problem is flagged the same way every time. Open a check to read what it measured.",
+    h("div", { class: "attn" },
+      panel(`${flags.length} flags`, "Critical, then warnings, then notes.", list),
+      panel("The watch list", `${d.checks.length} checks. Select one to expand it.`, checks, retired)));
+}
+
+function bands(d) {
+  const r = d.readings, s = d.series;
+  const slot = panel("Bonus slot use", "Share of turns (filled) against Dean's 30-60% band. Hollow: plays per turn, which A Helping Hand inflates.",
+    legend([["band", "", "30-60% band"], ["", "background:var(--ink-2)", "share of turns"], ["hollow", "", "plays per turn"]]),
+    h("div", { class: "rows" },
+      SEATS.map((x) => bullet({ label: seatLabel(x), value: r.slot_turns_seat?.[x], second: r.plays_turn_seat?.[x], lo: 0, hi: 100, band: [30, 60], color: SEAT_VAR[x], unit: "%", tip: `${x} bonus slot` })),
+      bullet({ label: "pooled", value: r.slot_turns, second: r.plays_turn, lo: 0, hi: 100, band: [30, 60], unit: "%", tip: "Pooled bonus slot" })),
+    axis([0, 25, 50, 75, 100], 0, 100, "%"));
+  const hook = panel("The hook", "Neighbour visits per player per turn. The dashed line is a08's floor of 0.5.",
+    h("div", { class: "rows" },
+      SEATS.map((x) => bullet({ label: seatLabel(x), value: r.hook_seat?.[x], lo: 0, hi: 1, floor: 0.5, color: SEAT_VAR[x], dp: 2, tip: `${x} hook` })),
+      bullet({ label: "pooled", value: r.hook, lo: 0, hi: 1, floor: 0.5, dp: 2 })),
+    axis([0, 0.25, 0.5, 0.75, 1], 0, 1),
+    h("p", { class: "note", style: "margin:10px 0 0" }, `Cross-table share of plays: ${fmt(r.cross_table)}% (must read 100%).`));
+  const act = s["actions per turn (mean)"];
+  const actions = panel("Action inflation", "Actions resolved per player per turn, ended games. The dashed line is the 1.5 target.",
+    h("div", { class: "rows" },
+      SEATS.map((x) => bullet({ label: seatLabel(x), value: act?.[x]?.v, lo: 1, hi: 2.5, floor: 1.5, color: SEAT_VAR[x], dp: 2 })),
+      bullet({ label: "pooled", value: r.actions, lo: 1, hi: 2.5, floor: 1.5, dp: 2 })),
+    axis([1, 1.5, 2, 2.5], 1, 2.5));
+  const vp = d.vp_sources;
+  const vpPanel = panel("Where a winning score comes from", "The design wants island receipts at 50% or more (dashed line).",
+    vp ? h("div", {},
+      h("div", { class: "track", style: "height:30px;margin:6px 0 8px" },
+        h("div", { class: "seg", style: `left:0;width:calc(${vp.island}% - 2px);background:var(--accent);border-radius:4px 0 0 4px`, "data-tip": `Island receipts ${vp.island}%` }),
+        h("div", { class: "seg", style: `left:${vp.island}%;width:calc(${vp.printed}% - 2px);background:var(--s2p)`, "data-tip": `Printed VP ${vp.printed}%` }),
+        h("div", { class: "seg", style: `left:${vp.island + vp.printed}%;width:${vp.endgame}%;background:var(--s3p);border-radius:0 4px 4px 0`, "data-tip": `Endgame cards ${vp.endgame}%` }),
+        h("div", { class: "refline", style: "left:50%;top:-4px;bottom:-4px" })),
+      legend([["", "background:var(--accent)", `island receipts ${vp.island}%`], ["", "background:var(--s2p)", `printed VP ${vp.printed}%`], ["", "background:var(--s3p)", `endgame cards ${vp.endgame}%`]]))
+      : h("p", { class: "muted" }, "Not found in this report."));
+  const un = s["unfinished"];
+  const unf = panel("Unfinished games and the hand bound", "Unfinished share (stalled or move ceiling), dashed at 1.5%; then turns that began at the engine's hand bound, dashed at 10%.",
+    h("div", { class: "rows" },
+      SEATS.map((x) => bullet({ label: seatLabel(x), value: un?.[x]?.v, lo: 0, hi: 5, floor: 1.5, color: SEAT_VAR[x], unit: "%", tip: `${x} unfinished` }))),
+    axis([0, 1, 2, 3, 4, 5], 0, 5, "%"),
+    h("div", { class: "rows", style: "margin-top:14px" },
+      SEATS.map((x) => bullet({ label: seatLabel(x), value: r.hand_bound_seat?.[x], lo: 0, hi: 25, floor: 10, color: SEAT_VAR[x], unit: "%", tip: `${x} turns at hand bound` }))),
+    axis([0, 5, 10, 15, 20, 25], 0, 25, "%"));
+  const hand = r.hand || {};
+  const eng = panel("Engine cost", "The one engine-cost risk is the end-of-turn discard enumeration.",
+    h("div", { class: "tiles" },
+      h("div", { class: "tile" }, h("b", { style: hand.worst_moves > 250000 ? "color:var(--crit-ink)" : "" }, fmt(hand.worst_moves, 0)), h("span", {}, "worst legal-move count")),
+      h("div", { class: "tile" }, h("b", {}, fmt(hand.mean, 2)), h("span", {}, "mean hand at turn start")),
+      h("div", { class: "tile" }, h("b", {}, fmt(hand.peak, 0)), h("span", {}, "peak hand")),
+      h("div", { class: "tile" }, h("b", {}, fmt(d.header.wall_s, 1, "s")), h("span", {}, "wall clock for the run"))));
+  return section("bands", "The bands", "The readings with a number Dean or the design has set, by seat count.",
+    h("div", { class: "grid" }, slot, hook, actions, vpPanel, unf, eng));
+}
+
+function seriesTable(d) {
+  const s = d.series;
+  const rows = [
+    ["game length, rounds (median)", "Game length, rounds (median)", 0],
+    ["winning score (median)", "Winning score (median)", 0],
+    ["score spread, top - bottom", "Score spread, top to bottom", 0],
+    ["last as % of winner (median)", "Last as % of winner", 0, "%"],
+    ["games with a tied top score", "Tied top score", 1, "%"],
+    ["lead changes (median)", "Lead changes (median)", 0],
+    ["deliveries per player (mean)", "Deliveries per player", 2],
+    ["island filled at game end", "Island filled at game end", 0, "%"],
+    ["actions per turn (mean)", "Actions per turn", 2],
+    ["bonus slot used / turn", "Bonus slot used, share of turns", 0, "%"],
+    ["visits received / player / game", "Visits received per player per game", 2],
+    ["barn cards paid by a RIVAL", "Barn cards paid by a rival", 0, "%"],
+    ["board loaded and uncleared / turn", "Board loaded and uncleared", 0, "%"],
+    ["barn at game end (median)", "Barn at game end (median)", 0],
+    ["reshuffles per played deck", "Reshuffles per played deck", 2],
+    ["unfinished", "Unfinished games", 1, "%"],
+  ];
+  const find = (k) => s[k] || s[Object.keys(s).find((x) => k.startsWith(x))];
+  const body = rows.map(([k, label, dp, unit]) => {
+    const row = find(k);
+    if (!row) return null;
+    return h("tr", {}, h("td", {}, label), SEATS.map((x) => h("td", { "data-tip": row[x].all != null ? `[all games incl. stalls] ${fmt(row[x].all, dp, unit || "")}` : null }, fmt(row[x].v, dp, unit || ""))));
+  });
+  const ends = h("tr", {}, h("td", {}, "Games ended of planned"), SEATS.map((x) => h("td", {}, s.games ? `${fmt(s.games[x].v, 0)} / ${fmt(s.games[x].of, 0)}` : "n/a")));
+  const reasons = h("tr", {}, h("td", {}, "Stalled · move ceiling"), SEATS.map((x) => { const e = d.end_reasons[x] || {}; return h("td", {}, `${e.stalled || 0} · ${e.maxMoves || 0}`); }));
+  const r = d.readings;
+  const extra = [
+    ["Clog as denial (turns with no legal visit)", r.clog_seat, 1, "%"],
+    ["Supply locked", r.locked_seat, 1, "%"],
+    ["Board stall share of board-turns", r.stall_seat, 1, "%"],
+    ["Slot unspent", r.slot_unspent_seat, 1, "%"],
+    ["Mean hand at turn start (instrument)", r.hand_mean_seat, 2, ""],
+  ].map(([label, m, dp, unit]) => m ? h("tr", {}, h("td", {}, label), SEATS.map((x) => h("td", {}, fmt(m[x], dp, unit)))) : null);
+  return section("series", "The series", "Ended games by seat count. Hover a cell for the figure over all games, stalls included.",
+    h("div", { class: "panel" }, h("div", { class: "tw" }, h("table", { class: "t" },
+      h("thead", {}, h("tr", {}, h("th", {}, "Reading"), SEATS.map((x) => h("th", {}, h("span", { class: "sp", style: `background:${SEAT_VAR[x]}` }, x))))),
+      h("tbody", {}, ends, reasons, body, extra)))));
+}
+
+function suits(d) {
+  const r = d.readings, sky = d.sky;
+  const even = evenShare(d.suits);
+  const bySuit = Object.fromEntries(d.suits.map((s) => [s.suit, s]));
+  const win = panel("Suit win rates", `Dot and 95% interval. The dashed line is an even share for this run (${fmt(even)}%). There is no noise floor for suit win rates.`,
+    h("div", { class: "rows" }, SUIT_ORDER.filter((x) => bySuit[x]).map((x) => {
+      const s = bySuit[x], ci = ciOf(s.ci);
+      return ciRow({ label: suitLabel(x), value: pct(s.win), ci, lo: 0, hi: 70, ref: even, flag: ci && ci[1] < even * 0.5, tip: `${cap(x)} ${s.win} (${s.ci}) over ${s.seat_games} seat-games` });
+    })),
+    axis([0, 10, 20, 30, 40, 50, 60, 70], 0, 70, "%", true));
+  const cols = [
+    ["Win rate", (x) => bySuit[x]?.win ?? "n/a"],
+    ["Buildings / seat", (x) => fmt(sky.buildings?.[x], 2)],
+    ["Barn cards in / seat", (x) => fmt(sky.barn_in?.[x], 1)],
+    ["Deliveries / seat", (x) => fmt(sky.deliveries?.[x], 2)],
+    ["Receipt VP / player", (x) => fmt(r.receipt_vp?.[x], 1)],
+    ["Mean hand", (x) => fmt(r.hand_crop?.[x], 2)],
+    ["Empty-hand turns", (x) => fmt(r.empty_crop?.[x], 1, "%")],
+    ["Turns at bound", (x) => fmt(r.bound_crop?.[x], 1, "%")],
+    ["Door share", (x) => fmt(r.doors?.[x], 0, "%")],
+    ["Meeples spent mix", (x) => fmt(r.meeple_spent_mix?.[x], 1, "%")],
+    ["Meeples stranded mix", (x) => fmt(r.meeple_stranded_mix?.[x], 1, "%")],
+  ];
+  const table = panel("Suits side by side", "Per seat per game unless stated. Door share is the board of that suit, by door use.",
+    h("div", { class: "tw" }, h("table", { class: "t" },
+      h("thead", {}, h("tr", {}, h("th", {}, "Reading"), SUIT_ORDER.map((x) => h("th", {}, h("span", { style: "display:inline-flex;gap:5px;align-items:center" }, h("span", { class: "chip", style: `background:${SUIT_HEX[x]}` }), x))))),
+      h("tbody", {}, cols.map(([label, fn]) => h("tr", {}, h("td", {}, label), SUIT_ORDER.map((x) => h("td", {}, fn(x)))))))));
+  const maxB = Math.max(...Object.values(sky.buildings || { a: 1 }));
+  const builds = panel("Buildings built per seat", "Read beside each suit's hand and barn in the table below.",
+    h("div", { class: "rows" }, SUIT_ORDER.map((x) => barRow({ label: suitLabel(x), value: sky.buildings?.[x], max: maxB * 1.1, dp: 2 }))));
+  const yard = kvPanel("The Yard (Dairy)", d.yard);
+  const swarm = kvPanel("The Swarm (Apiary)", d.swarm);
+  return section("suits", "Suits", "Which crop wins, and the card flow that explains it.",
+    h("div", { class: "grid wide" }, win, builds), h("div", { style: "height:14px" }), table, h("div", { style: "height:14px" }), h("div", { class: "grid wide" }, yard, swarm));
+}
+function kvPanel(title, rows) {
+  return panel(title, null, h("div", { class: "tw" }, h("table", { class: "t" }, h("tbody", {},
+    (rows || []).map((x) => h("tr", {}, h("td", { "data-tip": x.note || null }, x.label), h("td", {}, x.value)))))));
+}
+
+function economy(d) {
+  const r = d.readings, sky = d.sky;
+  const m = r.meeple, ms = r.meeple_seat || {};
+  const meeple = panel("Workers (delivery meeples)", m ? `${fmt(m.minted, 2)} minted, ${fmt(m.spent, 2)} spent, ${fmt(m.stranded, 2)} stranded per player per game (${fmt(m.stranded_share)}% stranded).` : "Not in this run.",
+    m ? h("div", {},
+      legend([["", "background:var(--accent)", "spent"], ["", "background:var(--crit)", "stranded"]]),
+      h("div", { class: "rows" }, SEATS.map((x) => {
+        const sp = ms.spent?.[x], st = ms.stranded?.[x], max = 2.5;
+        return h("div", { class: "row" }, seatLabel(x),
+          h("div", { class: "track" },
+            h("div", { class: "seg", style: `left:0;width:calc(${(sp / max) * 100}% - 2px);background:var(--accent);border-radius:4px 0 0 4px`, "data-tip": `${x}: ${fmt(sp, 2)} spent` }),
+            h("div", { class: "seg", style: `left:${(sp / max) * 100}%;width:${(st / max) * 100}%;background:var(--crit);border-radius:0 4px 4px 0`, "data-tip": `${x}: ${fmt(st, 2)} stranded (${fmt(ms.stranded_share?.[x])}%)` })),
+          h("span", { class: "v" }, fmt(ms.minted?.[x], 2)));
+      })),
+      axis([0, 0.5, 1, 1.5, 2, 2.5], 0, 2.5),
+      h("div", { class: "tiles", style: "margin-top:12px" },
+        isNum(r.space_choice_3vp) ? h("div", { class: "tile" }, h("b", {}, fmt(r.space_choice_3vp, 1, "%")), h("span", {}, "first deliveries taking the 3 VP space")) : null,
+        r.closing ? h("div", { class: "tile" }, h("b", {}, fmt(r.closing.cards, 2)), h("span", {}, "closing-draw cards per player per game")) : null,
+        h("div", { class: "tile" }, h("b", {}, fmt(r.meeple_spend_rate, 1, "%")), h("span", {}, "a15: meeples gained that are spent"))),
+      r.closing_cards_seat ? h("p", { class: "note", style: "margin:10px 0 0" }, "Closing-draw cards by seat count: " + SEATS.map((x) => `${x} ${fmt(r.closing_cards_seat[x], 2)}`).join(" · ")) : null)
+      : null);
+  const c = r.coins;
+  const tv = sky.token_values;
+  const tvTotal = tv ? Object.values(tv).reduce((a, b) => a + b, 0) : 0;
+  const island = !tvTotal ? null : panel("The token island", `Island receipts by token value (${fmt(tvTotal, 0)} in all). First arrivals take ${fmt(sky.first_share)}% of receipts.`,
+    h("div", { class: "rows" },
+      Object.entries(tv).map(([k, v]) => barRow({ label: k + " token", value: (v / tvTotal) * 100, max: 50, unit: "%", tip: `${k}: ${fmt(v, 0)} receipts` })),
+      isNum(sky.wild_receipts) ? barRow({ label: "of which wild", value: (sky.wild_receipts / tvTotal) * 100, max: 50, unit: "%", color: "var(--s2p)", tip: `${fmt(sky.wild_receipts, 0)} wild-token receipts, counted within the values above` }) : null),
+    h("div", { class: "tiles", style: "margin-top:12px" },
+      sky.token_choice ? h("div", { class: "tile" }, h("b", {}, fmt(sky.token_choice.higher, 1, "%")), h("span", {}, "first deliveries taking the higher-VP token")) : null,
+      sky.token_choice ? h("div", { class: "tile" }, h("b", {}, fmt(sky.token_choice.lower_for_worker, 0)), h("span", {}, "lower tokens taken for their Worker")) : null,
+      isNum(sky.tokens_swapped) ? h("div", { class: "tile" }, h("b", {}, fmt(sky.tokens_swapped, 2)), h("span", {}, "tokens swapped per game (V5)")) : null,
+      sky.veg_relax ? h("div", { class: "tile" }, h("b", {}, fmt(sky.veg_relax.deliveries, 0)), h("span", {}, `Vegetable-board deliveries, using ${fmt(sky.veg_relax.cards, 0)} any-crop cards`)) : null));
+  const store = !c ? null : panel("Village Store coins", c ? "Minted, spent and wasted, per player per game." : "Not in this run.",
+    c ? h("div", {},
+      h("div", { class: "tiles" },
+        h("div", { class: "tile" }, h("b", {}, fmt(c.minted, 2)), h("span", {}, "coins minted")),
+        h("div", { class: "tile" }, h("b", {}, fmt(c.per_delivery, 2)), h("span", {}, "per delivery")),
+        h("div", { class: "tile" }, h("b", {}, fmt(c.dead, 2)), h("span", {}, "dead at game end")),
+        h("div", { class: "tile" }, h("b", {}, fmt(c.supply_empty, 1, "%")), h("span", {}, "turns with an empty supply"))),
+      h("div", { class: "rows", style: "margin-top:12px" },
+        barRow({ label: "spent on builds", value: c.on_builds, max: 100, unit: "%" }),
+        barRow({ label: "spent on Grows", value: c.on_grows, max: 100, unit: "%" }),
+        r.c113 ? barRow({ label: "windows, any", value: r.c113.any, max: 100, unit: "%", tip: "C113: exchange windows that converted at all" }) : null,
+        r.c113 ? barRow({ label: "windows, all", value: r.c113.all, max: 100, unit: "%", tip: "C113: windows that took every convertible card" }) : null))
+      : null);
+  const glut = panel("The barn glut", "Median barn in the middle third (hollow) and the last third (filled). a06 fails if the last exceeds the middle.",
+    h("div", { class: "rows" },
+      SEATS.map((x) => { const g = r.glut_seat?.[x]; return bullet({ label: seatLabel(x), value: g?.last, second: g?.middle, lo: 0, hi: 3, color: SEAT_VAR[x], tip: `${x} barn median, last third` }); }),
+      bullet({ label: "pooled", value: r.glut?.last, second: r.glut?.middle, lo: 0, hi: 3 })),
+    axis([0, 1, 2, 3], 0, 3),
+    h("p", { class: "note", style: "margin:10px 0 0" }, `Cards still in a barn at the stop: ${fmt(r.barn_stranded, 2)} per player per game.`));
+  const harvest = panel("Where harvested barn cards come from", "Own farm against a rival's fee off your own Notice Board.",
+    legend([["", "background:var(--accent)", "own farm"], ["", "background:var(--s2p)", "rival's fee"]]),
+    h("div", { class: "rows" }, SEATS.map((x) => {
+      const hs = r.harvest_seat?.[x];
+      if (!hs) return null;
+      return h("div", { class: "row" }, seatLabel(x), h("div", { class: "track" },
+        h("div", { class: "seg", style: `left:0;width:calc(${hs.own}% - 2px);background:var(--accent);border-radius:4px 0 0 4px`, "data-tip": `${x}: own farm ${hs.own}%` }),
+        h("div", { class: "seg", style: `left:${hs.own}%;width:${hs.fee}%;background:var(--s2p);border-radius:0 4px 4px 0`, "data-tip": `${x}: rival fee ${hs.fee}%` })),
+        h("span", { class: "v" }, fmt(hs.fee, 1, "%")));
+    })),
+    h("p", { class: "note", style: "margin:10px 0 0" }, `Fees: ${fmt(r.fees_game, 2)} a game, ${fmt(r.fees_banked)}% reach the host's barn, ${fmt(r.fees_to_leader)}% went to the sole VP leader. Busiest board ${fmt(r.busiest_board)}% against an even ${fmt(r.busiest_even)}%.`));
+  const doors = panel("Door mix", "Share of door uses by board suit (visits plus meeple actions). Even share is 20%.",
+    h("div", { class: "rows" }, SUIT_ORDER.map((x) => barRow({ label: suitLabel(x), value: r.doors?.[x], max: 40, unit: "%", dp: 0, color: SUIT_HEX[x] }))),
+    h("p", { class: "note", style: "margin:10px 0 0" }, `${fmt(r.door_uses_game, 1)} door uses per ended game.`));
+  const bm = sky.balloon_mix;
+  const balloons = !bm ? null : panel("Balloons", `${fmt(sky.balloon_moves, 2)} flights per game. Share of flights by balloon, each paying its suit's plain action.`,
+    h("div", { class: "rows" }, Object.entries(bm).map(([b, v]) => barRow({ label: h("span", { class: "l" }, h("span", { class: "chip", style: `background:${SUIT_HEX[BALLOON_SUIT[b]]}` }), `${b} (${SUIT_ACTION[BALLOON_SUIT[b]]})`), value: v, max: 60, unit: "%" }))),
+    r.raids ? h("p", { class: "note", style: "margin:10px 0 0" }, `${fmt(r.raids.per_game, 2)} raids a game; raided seats score ${fmt(r.raids.raided)} against ${fmt(r.raids.others)}.`) : null);
+  const routes = d.barn_routes || {};
+  const maxR = Math.max(1, ...Object.values(routes));
+  const barn = panel("Barn cards in, by route", "Median cards per game.",
+    h("div", { class: "rows" }, Object.entries(routes).map(([k, v]) => barRow({ label: k, value: v, max: maxR * 1.1, dp: 1 }))),
+    h("div", { class: "tw", style: "margin-top:10px" }, h("table", { class: "t" }, h("tbody", {}, d.giveaway.map((x) => h("tr", {}, h("td", { "data-tip": x.note || null }, x.label), h("td", {}, x.value)))))));
+  return section("economy", "Economy", "The island, Workers, barns and boards, plus coins and balloons when a run has them.",
+    h("div", { class: "grid" }, island, meeple, store, glut, harvest, doors, balloons, barn));
+}
+
+function seatsAndBots(d) {
+  const lim = 6;
+  const noise = d.seat_noise_quoted;
+  const rows = d.seats.map((s) => {
+    const dev = parseFloat(s.dev);
+    const w = (Math.abs(dev) / lim) * 50;
+    const track = h("div", { class: "track" },
+      h("div", { class: "band", style: `left:${50 - (3 / lim) * 50}%;width:${(3 / lim) * 100}%` }),
+      h("div", { class: "refline", style: "left:50%" }),
+      h("div", { class: "bar" + (dev < 0 ? " neg" : ""), style: `left:${dev < 0 ? 50 - w : 50}%;width:${w}%;background:${SEAT_VAR[s.seats]};${Math.abs(dev) > 3 ? "outline:2px solid var(--crit)" : ""}`, "data-tip": `${s.seats} chair ${s.seat}: win ${s.win} (${s.ci}), deviation ${s.dev}, mean score ${s.score}` }));
+    return h("div", { class: "row" }, h("span", { class: "l" }, h("span", { class: "sp", style: `background:${SEAT_VAR[s.seats]}` }, s.seats), `chair ${s.seat}`), track, h("span", { class: "v" }, s.dev.replace(" pts", "")));
+  });
+  const seats = panel("Seat balance", `Win share minus an even split, in points. The shaded band is +/-3.${noise ? ` The report quotes a seat noise floor of +/-${noise}.` : ""}`,
+    h("div", { class: "rows" }, rows), axis([-6, -3, 0, 3, 6], -6, 6));
+  const bots = panel("Bot profiles", "Win rate and 95% interval. Mirrors are diagnostic only.",
+    h("div", { class: "rows" }, d.bots.map((b) => ciRow({ label: h("span", { class: "l" }, b.profile), value: pct(b.win), ci: ciOf(b.ci), lo: 0, hi: 70, tip: `${b.profile} ${b.win} (${b.ci}) over ${b.seat_games} seat-games` }))),
+    axis([0, 10, 20, 30, 40, 50, 60, 70], 0, 70, "%", true));
+  const seatTable = panel("Chairs in detail", null, h("div", { class: "tw" }, h("table", { class: "t" },
+    h("thead", {}, h("tr", {}, ["Seats", "Chair", "Win", "95% interval", "Mean score", "Receipts", "Turns"].map((x) => h("th", {}, x)))),
+    h("tbody", {}, d.seats.map((s) => h("tr", {}, [s.seats, s.seat, s.win, s.ci, s.score, s.receipts, s.turns].map((x) => h("td", {}, x))))))));
+  return section("seats", "Seats and bots", null, h("div", { class: "grid" }, seats, bots, seatTable));
+}
+
+function actionMix(d) {
+  const rows = d.action_mix;
+  return panel("The action mix", "What was taken against the decisions it was offered at.",
+    h("div", { class: "tw" }, h("table", { class: "t" },
+      h("thead", {}, h("tr", {}, ["Move", "Take rate", "Per game", "Taken", "Offered"].map((x) => h("th", {}, x)))),
+      h("tbody", {}, rows.map((r) => h("tr", {},
+        h("td", {}, r.move),
+        h("td", {}, h("span", { class: "minibar", style: `width:${parseFloat(r.rate) * 0.6}px` }), r.rate),
+        h("td", {}, r.per_game), h("td", {}, Number(r.taken).toLocaleString("en-GB")), h("td", {}, Number(r.offered).toLocaleString("en-GB"))))))));
+}
+function cutList(d) {
+  const mk = (rows) => rows.map((c) => h("tr", {},
+    h("td", {}, h("span", { class: "chip", style: `display:inline-block;margin-right:6px;vertical-align:-1px;background:${SUIT_HEX[c.band.split("/")[0]]}` }), `${c.card} ${c.name}`),
+    h("td", { class: "txt" }, c.band), h("td", {}, c.play + "%"),
+    h("td", {}, (c.vs > 0 ? "+" : "") + c.vs + "%"), h("td", {}, c.rank), h("td", {}, c.diff), h("td", { class: "txt" }, c.flags)));
+  const head = h("thead", {}, h("tr", {}, ["Card", "Band", "Play", "Vs band", "Rank", "Difficulty", "Flags"].map((x) => h("th", {}, x))));
+  return panel("The cut list", "Bottom of each suit-and-tier band first, then the top of the table for contrast. 'fuel' means kept willingly and then spent.",
+    h("div", { class: "tw" }, h("table", { class: "t" }, head, h("tbody", {}, mk(d.cut_list.bottom),
+      h("tr", {}, h("td", { colspan: 7, class: "txt", style: "padding-top:12px;color:var(--muted);font-size:11px;letter-spacing:.05em;text-transform:uppercase" }, "Top of the table")),
+      mk(d.cut_list.top)))));
+}
+
+// --- paired arms ----------------------------------------------------------------------
+const pctPt = (key) => ({ key, scale: 100 });
+const ARM_METRICS = [
+  { group: "Bonus slot and hook" },
+  { label: "Bonus slot, share of turns", get: (r) => r.readings.slot_turns, dp: 1, unit: "%", noise: pctPt("bonus slot used, share of turns"), res: 0.1 },
+  ...SEATS.map((x) => ({ label: `  at ${x}`, get: (r) => r.readings.slot_turns_seat?.[x], dp: 1, unit: "%", noise: pctPt("bonus slot used, share of turns"), res: 0.1 })),
+  { label: "Plays per turn", get: (r) => r.readings.plays_turn, dp: 1, unit: "%", res: 0.1 },
+  { label: "Hook, visits per player per turn", get: (r) => r.readings.hook, dp: 2, noise: { key: "visits per turn", scale: 1 }, res: 0.01 },
+  { label: "Actions per player per turn", get: (r) => r.readings.actions, dp: 2, noise: { key: "actions per turn", scale: 1 }, res: 0.01 },
+  { label: "Busiest door share", get: (r) => r.readings.top_door, dp: 1, unit: "%", noise: pctPt("door mix, busiest board share"), res: 0.1 },
+  { label: "Harvest from a rival's fee", get: (r) => r.readings.harvest_fee, dp: 1, unit: "%", noise: pctPt("farm bypass share"), res: 0.1 },
+  { group: "Game shape" },
+  ...SEATS.map((x) => ({ label: `Median rounds at ${x}`, get: (r) => r.series["game length, rounds (median)"]?.[x]?.v, dp: 0, noise: { key: "game length, rounds", scale: 1 }, res: 1 })),
+  ...SEATS.map((x) => ({ label: `Median winning score at ${x}`, get: (r) => r.series["winning score (median)"]?.[x]?.v, dp: 0, noise: { key: "winning score", scale: 1 }, res: 1 })),
+  ...SEATS.map((x) => ({ label: `Unfinished at ${x}`, get: (r) => r.series["unfinished"]?.[x]?.v, dp: 1, unit: "%", noise: pctPt("unfinished games"), res: 0.1 })),
+  ...SEATS.map((x) => ({ label: `Last as % of winner at ${x}`, get: (r) => r.series["last as % of winner (median)"]?.[x]?.v, dp: 0, unit: "%", noise: pctPt("last as % of winner"), res: 1 })),
+  { label: "Island share of a winning score", get: (r) => r.vp_sources?.island, dp: 0, unit: "%", res: 1 },
+  { label: "Barn glut, last minus middle", get: (r) => (r.readings.glut ? r.readings.glut.last - r.readings.glut.middle : null), dp: 1, res: 0.1 },
+  { group: "Suit win rates (no noise floor)" },
+  ...SUIT_ORDER.map((x) => ({ label: `${cap(x)}`, suit: x, get: (r) => pct(r.suits.find((s) => s.suit === x)?.win), ci: (r) => ciOf(r.suits.find((s) => s.suit === x)?.ci), dp: 1, unit: "%", res: 0.1 })),
+  { group: "Economy and engine" },
+  { label: "Meeples minted per player", get: (r) => r.readings.meeple?.minted, dp: 2, res: 0.01 },
+  { label: "Meeples spent per player", get: (r) => r.readings.meeple?.spent, dp: 2, res: 0.01 },
+  { label: "Meeple spend rate (a15)", get: (r) => r.readings.meeple_spend_rate, dp: 1, unit: "%", noise: pctPt("meeple spend rate"), res: 0.1 },
+  { label: "Closing-draw cards per player", get: (r) => r.readings.closing?.cards, dp: 2, res: 0.01 },
+  { label: "Store coins minted per player", get: (r) => r.readings.coins?.minted, dp: 2, res: 0.01 },
+  { label: "Dead Store coins per player", get: (r) => r.readings.coins?.dead, dp: 2, res: 0.01 },
+  { label: "Turns starting at the hand bound", get: (r) => r.readings.hand?.at_bound, dp: 1, unit: "%", res: 0.1 },
+  { label: "Worst legal-move count", get: (r) => r.readings.hand?.worst_moves, dp: 0, res: 1 },
+];
+function armName(run) {
+  const a = run.header.arm;
+  return a === "base" ? "shipped default" : a.replace(/-v\d+$/, "").replace(/-/g, " ");
+}
+function arms(d) {
+  const A = DATA.arms;
+  if (!A) return null;
+  const runs = A.runs, control = runs[0], mv = A.noise?.movement || {};
+  const head = h("tr", {}, h("th", {}, "Reading"), runs.map((r, i) => h("th", { style: "white-space:normal;min-width:110px" }, i === 0 ? "control: " : "", armName(r), h("div", { class: "muted", style: "text-transform:none;letter-spacing:0;font-weight:400" }, r.header.stamp))));
+  const verdictRow = h("tr", {}, h("td", {}, "Verdict (pass / fail / observe)"), runs.map((r) => h("td", {}, r.verdict ? `${r.verdict.pass} / ${r.verdict.fail} / ${r.verdict.observe}` : "n/a")));
+  const body = [verdictRow];
+  for (const m of ARM_METRICS) {
+    if (m.group) { body.push(h("tr", {}, h("td", { colspan: runs.length + 1, class: "txt", style: "padding-top:14px;color:var(--muted);font-size:11px;letter-spacing:.05em;text-transform:uppercase" }, m.group))); continue; }
+    const base = m.get(control);
+    const floor = m.noise && mv[m.noise.key] != null ? mv[m.noise.key] * m.noise.scale : null;
+    const thr = floor == null ? null : Math.max(floor, m.res);
+    const cells = runs.map((r, i) => {
+      const v = m.get(r);
+      if (i === 0 || !isNum(v) || !isNum(base)) return h("td", {}, fmt(v, m.dp, m.unit || ""));
+      const dlt = v - base;
+      let cls = "", mark = "", tip;
+      if (thr != null) {
+        const beyond = Math.abs(dlt) > thr + 1e-9;
+        cls = beyond ? "beyond" : "within";
+        mark = beyond ? " ▲" : "";
+        tip = `Delta ${fmt(dlt, m.dp)} against a noise floor of ${fmt(floor, Math.max(m.dp, 1))}${floor < m.res ? ` (read as one unit, ${m.res})` : ""}: ${beyond ? "beyond noise" : "within noise"}`;
+      } else if (m.ci) {
+        const a = m.ci(r), b = m.ci(control);
+        const apart = a && b && (a[0] > b[1] || a[1] < b[0]);
+        cls = apart ? "beyond" : "within";
+        mark = apart ? " ▲" : "";
+        tip = `Delta ${fmt(dlt, m.dp)}. ${apart ? "The 95% intervals do not overlap." : "The 95% intervals overlap."}`;
+      } else tip = `Delta ${fmt(dlt, m.dp)}. No noise floor for this reading.`;
+      const sign = dlt > 0 ? "+" : "";
+      return h("td", { "data-tip": tip }, fmt(v, m.dp, m.unit || ""), " ", h("span", { class: cls || "muted" }, `(${sign}${fmt(dlt, m.dp)})${mark}`));
+    });
+    const label = m.suit ? h("span", { style: "display:inline-flex;gap:6px;align-items:center" }, h("span", { class: "chip", style: `background:${SUIT_HEX[m.suit]}` }), m.label) : m.label.trim();
+    body.push(h("tr", {}, h("td", { style: m.label.startsWith("  ") ? "padding-left:22px" : "" }, label, thr == null && !m.ci ? h("span", { class: "tag" }, "no floor") : null), cells));
+  }
+  const mixed = A.mixed_references ? h("p", { class: "note", style: "color:var(--crit-ink)" }, `These arms were run on different references (${A.mixed_references.join(", ")}), so their deltas are not paired.`) : null;
+  const sameRef = A.reference === d.header.reference;
+  return section("arms", "Paired arms", `Each arm against the first column, on identical ${A.reference} seeds. ${sameRef ? "" : `These are not the ${d.header.reference} seeds above, so compare their levels only with each other.`}`,
+    h("div", { class: "panel" },
+      h("p", { class: "note" }, `Brackets show the delta against the control. ▲ in red marks a delta beyond the ${A.reference} noise floor (${A.noise ? A.noise.file : "no noise report found"}); a floor of 0 is read as one unit of the reading's resolution. Suit rows use non-overlapping 95% intervals instead. Hover a cell for the arithmetic.`),
+      mixed,
+      h("div", { class: "tw" }, h("table", { class: "t" }, h("thead", {}, head), h("tbody", {}, body)))));
+}
+
+function footer(d) {
+  const n = DATA.noise;
+  return h("footer", { class: "foot" },
+    h("div", {}, `Baseline: ${d.header.file}`),
+    h("div", {}, `Noise floor: ${n ? `${n.file} (${n.reference}, measured ${n.measured})` : "none found"}`),
+    DATA.arms ? h("div", {}, `Arms: ${DATA.arms.runs.map((r) => r.header.file).join(", ")}`) : null,
+    h("div", {}, `Engine: ${d.header.engine || "n/a"} · mirrors: ${d.header.mirrors || "n/a"}`),
+    h("div", {}, `Built ${DATA.built} by tools/sim-dashboard.py.${d.warnings.length ? " Parse warnings: " + d.warnings.join("; ") : " Every reading parsed."}`));
+}
+
+function render() {
+  const app = document.getElementById("app");
+  if (!DATA) { app.append(h("p", {}, "No data embedded. Build this page with tools/sim-dashboard.py.")); return; }
+  const d = DATA.baseline;
+  app.append(
+    masthead(d), attention(d), bands(d), seriesTable(d), suits(d), economy(d), seatsAndBots(d),
+    section("cards", "Actions and cards", null, h("div", { class: "grid wide" }, actionMix(d), cutList(d))),
+    arms(d), footer(d));
+}
+render();
+
+// --- tooltip ---------------------------------------------------------------------------
+const tip = document.getElementById("tip");
+document.addEventListener("pointermove", (e) => {
+  const t = e.target.closest?.("[data-tip]");
+  if (!t) { tip.style.opacity = 0; return; }
+  tip.textContent = t.getAttribute("data-tip");
+  const x = Math.min(e.clientX + 14, window.innerWidth - tip.offsetWidth - 8);
+  const y = e.clientY + 16 + tip.offsetHeight > window.innerHeight ? e.clientY - tip.offsetHeight - 10 : e.clientY + 16;
+  tip.style.left = x + "px"; tip.style.top = y + "px"; tip.style.opacity = 1;
+});
+</script>
