@@ -1147,8 +1147,31 @@ export const REFERENCE_V19: ReferenceConfig = {
   seed: 'reference-v19',
 };
 
+export const REFERENCE_V20: ReferenceConfig = {
+  ...REFERENCE_V19,
+  id: 'reference-v20',
+  description:
+    'THE TOKEN ISLAND AND SHEET v42 (Dean, 15-16/09/2026; ' +
+    'docs/vegetable-token-island-handoff-2026-09-16-v1.md). The Notice Board visit stands - ' +
+    'rival boards only, bonus first, two boards a seat at two players, no host draw - and the ' +
+    'Worker (the delivery meeple) is still spent after the main action, one a turn. DELETED: the ' +
+    'balloons and the Aerodrome, the Village Store coin, the closing draw and the island wild ' +
+    'substitution. THE TOKEN ISLAND: two tokens a tile (a crop or wild demand, 3 to 6 VP, a ' +
+    'Worker on the 3 and 4 VP tokens); a delivery is always 4 barn cards; the first pays both ' +
+    'demands and chooses a token, the second pays the last demand plus 2 of any crops; receipts ' +
+    'keep their crop. The Vegetable board lets 2 of the 4 cards be any crop; the Dairy board ' +
+    'builds with any crops at a discount of 2 and no longer Grows. cards.json is sheet v42: the ' +
+    'Vegetable barn suit, the five per-suit Helping Hands in place of the second bonus play, no ' +
+    'VP on Power cards, crop-worded buildings. Whenever triggers fire every time. A random first ' +
+    'player, and the round is finished at game end. ⚠️ THE HAND LIMIT OF 7 IS THE SIMULATOR’S ' +
+    'BOUND AND NOT A RULE OF THE GAME. ⚠️ THE ENGINE FILLS SEVERAL UNRULED BUILDER DEFAULTS ' +
+    '(handoff section 5). ⛔ NO NUMBER IN ANY reference-v19 OR EARLIER REPORT IS COMPARABLE AS A ' +
+    'LEVEL.',
+  seed: 'reference-v20',
+};
+
 /** The instrument every current number is defined against. */
-export const REFERENCE = REFERENCE_V19;
+export const REFERENCE = REFERENCE_V20;
 
 /**
  * The noise floor, measured once and quoted constantly.
@@ -1328,29 +1351,36 @@ export interface NoiseFloor {
  * spend rate` has a subject again (the delivery meeple) and moved 0.9%; seat
  * deviation moved 0.489 points, so the +/-3 seat band stays inside the
  * instrument's reach.
+ *
+ * ⭐ reference-v20's FLOOR, measured 16/09/2026 at n=1580 per seat count, two
+ * seeds, from `reports/noise-2026-09-16T13-38-16-reference-v20.txt` (the token
+ * island, sheet v42). ⚠️ SEAT DEVIATION MOVED 3.647 POINTS, against 0.489 on
+ * v19: the first player is now drawn at random, so a seat index no longer
+ * means an opening position, and the +/-3 seat band sits inside the noise
+ * until the seat reading is re-keyed to turn order.
  */
 export const NOISE_FLOOR: NoiseFloor | null = {
-  reference: 'reference-v19',
+  reference: 'reference-v20',
   games: 1580,
-  measured: '2026-09-14',
+  measured: '2026-09-16',
   movement: {
     'meeples held at game end': 0,
     'barn at game end': 0,
     'game length, rounds': 0,
-    'visits per turn': 0.001,
-    'actions per turn': 0,
-    'meeple spend rate': 0.009,
+    'visits per turn': 0.005,
+    'actions per turn': 0.004,
+    'meeple spend rate': 0.01,
     'self-visit share of visits': 0,
-    'bonus slot used, share of turns': 0.003,
-    'door mix, busiest board share': 0.002,
-    'farm bypass share': 0,
-    'unfinished games': 0.002,
+    'bonus slot used, share of turns': 0.005,
+    'door mix, busiest board share': 0.004,
+    'farm bypass share': 0.005,
+    'unfinished games': 0.001,
     'winning score': 0,
-    'last as % of winner': 0.002,
-    'tied top score': 0.006,
+    'last as % of winner': 0.021,
+    'tied top score': 0.001,
     'deck reshuffles per game': 0,
     'reshuffles, played crop': 0,
-    'seat deviation': 0.489,
+    'seat deviation': 3.647,
   },
 };
 /**
