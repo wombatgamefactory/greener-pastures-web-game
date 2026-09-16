@@ -227,8 +227,7 @@ export interface GameMetrics {
   /**
    * ⭐ THE TWO HALVES OF `actionsBySeat`, KEPT APART FOR a16's RE-CUT (Dean,
    * 04/09/2026 evening, handoff v2 preamble): `mainActionsBySeat` is the ONE
-   * core action a turn takes by rule (draw/build/grow/harvest/deliver/
-   * moveBalloon); `boughtDoorActionsBySeat` is every `doorUsed` event
+   * core action a turn takes by rule (draw/build/grow/harvest/deliver); `boughtDoorActionsBySeat` is every `doorUsed` event
    * regardless of what paid for it - a card fee under `'card'`, a meeple visit
    * under `'meeple'`. Neither field is new counting: both are drawn from
    * events `actionsBySeat` already folds in, split apart rather than pooled,
@@ -461,9 +460,9 @@ export interface GameMetrics {
    */
   wildVisitsBySeat: number[];
   /**
-   * MEEPLES RETURNED TO THE BOX under the supply CAP (R4) ONLY - `'collect'`,
-   * `'island'` and `'balloon'`, the three sources v1 had and the only ones
-   * this field has ever counted.
+   * MEEPLES RETURNED TO THE BOX under the supply CAP (R4) ONLY - `'collect'`
+   * and `'island'` (and `'balloon'`, the magenta balloon's bag draw, until the
+   * balloons were deleted on 16/09/2026).
    *
    * ⚠️ DELIBERATELY KEPT CAP-ONLY (handoff v2, 04/09/2026), AND THAT IS A FIX
    * RATHER THAN THE ORIGINAL DESIGN. `meepleBoxed`'s `source` union grew four
@@ -479,7 +478,7 @@ export interface GameMetrics {
    * side and never let one stand in for the other.
    *
    * By SEAT, by SOURCE (`collect` is your own board coming home, `island` a
-   * delivery, `balloon` the magenta balloon's bag draw) and by COLOUR. The
+   * delivery) and by COLOUR. The
    * source split is the one that diagnoses: boxing on `collect` says the cap is
    * refusing the host's own payment, boxing on `island` says it is refusing the
    * island's, and those are two different arguments about whether the cap is
@@ -490,7 +489,7 @@ export interface GameMetrics {
    * ⭐ EVERY SOURCE, INCLUDING THE FOUR R15/R6 ADD (handoff v2, 04/09/2026):
    * `'build'`, `'activation'`, `'delivery'` (a meeple spent as a card - R15)
    * and `'toll'` (a meeple burned to enter an occupied slot - R6 amended),
-   * beside the original `'collect'`, `'island'`, `'balloon'`. This is the
+   * beside the original `'collect'` and `'island'`. This is the
    * figure the handoff calls "every meeple that left the game"; `meeplesBoxedBySeat`
    * above is the CAP-ONLY subset of it, kept apart on purpose - see its own
    * comment. `meeplesBoxedBySource` below carries the same total split by
@@ -823,85 +822,10 @@ export interface GameMetrics {
    */
   barnFromOwnBoardBySeat: number[];
   /**
-   * ⭐ DEAD COINS: coins still held when the game ended, read off the FINAL state
-   * rather than derived as minted minus spent, on exactly the reasoning
-   * `meeplesHeldAtEnd` states of itself.
-   */
-  coinsHeldAtEndBySeat: number[];
-  /** ⭐ THE ARC: the 1-based round on which each seat first minted a coin, or null if it never did. */
-  firstCoinRoundBySeat: (number | null)[];
-
-  // --- THE VILLAGE STORE COIN, 12/09/2026 (V1 to V12, ledger A150) ---------
-  //
-  // ⚠️ EVERY LINE IN THIS BLOCK IS ZERO UNDER EVERY GAME WITH
-  // `rules.economy.storeCoinsPerCard` AT ITS SHIPPED 0, which is every mode this
-  // project has ever shipped. Read a zero as "there is no Village Store in this
-  // game", never as a finding. a25, a26 and a27 all gate on that leaf and print
-  // NO SUBJECT rather than a page of structural zeroes.
-  //
-  // ⚠️ AND NONE OF THEM HAS A NOISE FLOOR. `reference-v15` has never had
-  // `--noise` run against a Store arm, and no line here is in `HEADLINE_METRICS`.
-
-  /** ⭐ THE MINT (V1), AS CARDS: barn cards converted at the exchange, by the seat that converted them. One `coinsMinted` event with `board: 'store'` per CARD, so this is the count of cards that left a barn for their suit's discard (D1). */
-  storeCardsConvertedBySeat: number[];
-  /** ...AS COINS. Equal to the cards at `storeCoinsPerCard: 1`, and deliberately kept apart because the leaf is an int so the rate can be swept without another knob. A disagreement at rate 1 is a fold bug. */
-  storeCoinsMintedBySeat: number[];
-  /** ...by the CONVERTED CARD'S OWN SUIT, off the event's `card`. Which crops actually strand in a barn, which is the parity trap named rather than inferred. */
-  storeConvertedByCardSuit: Record<string, number>;
-  /**
-   * ⛔ C113's DENOMINATOR: exchange WINDOWS offered. One per `mint` task pushed,
-   * which is one per delivery where `min(barn after the crate, supply left)` was
-   * above zero - `pushStoreExchange` pushes nothing when either is 0, so a window
-   * is exactly "a delivery at which a conversion was possible".
-   *
-   * ⚠️ COUNTED OFF THE TASK AND NEVER OFF THE `delivered` EVENT, because V14 emits
-   * a SECOND `delivered` with an empty spend for the same payment and a
-   * delivery-keyed count would double it.
-   */
-  storeExchanges: number;
-  /** ...the sum of those windows' CEILINGS, `min(barn, supply)` read off the task's own `remaining` at the moment it was offered. The convertible cards available, which is C113's other denominator. */
-  storeExchangeCeiling: number;
-  /** ...the sum of the BARN SIZES at those moments, so a reader can see whether the ceiling was the barn or the SUPPLY. A ceiling far below the barn is the supply rationing, which is the half of C113 Dean's answer rests on. */
-  storeExchangeBarn: number;
-  /** ⛔ C113's NUMERATOR: windows at which the seat converted AT LEAST ONE card. Near 100% is the August verdict confirmed. */
-  storeExchangesUsed: number;
-  /** ...and windows at which the seat converted EVERY convertible card it had. Nearer to C113's actual sentence than the line above: "every player converts every spare card every time". */
-  storeExchangesEmptied: number;
-  /**
-   * ⛔ DELIVERIES THAT COULD NOT CONVERT AT ALL, counted once per seat per
-   * decision so V14's double `delivered` cannot inflate them. Split by which
-   * side was empty, because they mean opposite things: an empty BARN is a seat
-   * with nothing stranded (the Store had nothing to fix) and an empty SUPPLY is
-   * the cap actually biting, which is the pressure C113 asks about.
-   */
-  storeDeliveriesNoExchange: number;
-  storeDeliveriesNoExchangeEmptySupply: number;
-  storeDeliveriesNoExchangeEmptyBarn: number;
-  /** ⭐ HOW OFTEN THE SUPPLY IS EMPTY (C113), sampled at the first decision of every turn, which is the same clean moment the hand is sampled at. Turns sampled, turns at which the shared supply held nothing, and the running total for a mean. */
-  coinSupplySampledTurns: number;
-  coinSupplyEmptyTurns: number;
-  coinSupplySum: number;
-  /** The shared supply still unspent when the game ended. `coinSupplyAtEnd + sum(coinsHeldAtEndBySeat)` is the whole pool under V5, and a disagreement is a fold bug. */
-  coinSupplyAtEnd: number;
-  /** ⭐ SINK ONE (V6/V7): coins spent on a BUILD, by seat. One `coinsSpent` event per build for the WHOLE coin component, because coins are fungible and a payment names a count, so this is coins and `coinBuildsBySeat` is builds. */
-  coinsSpentBuildBySeat: number[];
-  /** ...the count of BUILDS any part of which was paid in coins. */
-  coinBuildsBySeat: number[];
-  /** ⭐ SINK TWO (V8): coin-Grows, by seat. Always exactly one coin, so this is coins and Grows at once. Folded off the MOVE's `coinGrow` flag and the bought Grow's ANSWER, never off `coinsSpent`, so the two can be checked against each other. */
-  coinGrowsBySeat: number[];
-  /** ...of which were BOUGHT Grows (the Apiary board's, a `grow` task) rather than a main action. Two coin-Grows a turn is the design's stated ceiling and this is the half that makes the second one possible. */
-  coinGrowsBoughtBySeat: number[];
-  /** ⛔ V9, THE STRONGEST SINGLE CLAUSE IN THE PACKAGE: coin-Grows that fired on a building that was already FULL. The first clog bypass in this game since the meeples, and the one line that must be readable on its own. */
-  coinGrowsOfFullBySeat: number[];
-  /** EVERY Grow, by seat, main action and bought alike, so the coin half above has a denominator and card-Grows are the remainder. ⚠️ It is not `activationsBySeat`, which counts a Grow that PLACES NOTHING through the `activate` task and is a different population. */
-  growsBySeat: number[];
-  /**
-   * ⛔ THE BRANCHING CONSEQUENCE OF A SINK THAT PAYS NO CARD (a27), and it is a
-   * reading about the INSTRUMENT. The worst end-of-turn discard enumeration in
-   * the game, and the worst position of any kind. A coin-Grow pays no card, so
-   * cards stop leaving the hand, and the discard task enumerates C(hand, over)
-   * - which is the exact shape that produced a 116,535-move position on
-   * 02/09/2026 when the hand limit went.
+   * ⛔ THE DECISION SPACE (a27), and it is a reading about the INSTRUMENT. The
+   * worst end-of-turn discard enumeration in the game, and the worst position of
+   * any kind. The discard task enumerates C(hand, over) - the exact shape that
+   * produced a 116,535-move position on 02/09/2026 when the hand limit went.
    */
   maxDiscardMoves: number;
   maxLegalMovesSeen: number;
@@ -971,87 +895,46 @@ export interface GameMetrics {
   movesChosen: Record<string, number>;
   movesOffered: Record<string, number>;
 
-  balloonMoves: number;
-  /**
-   * Balloon moves BY BALLOON ID (12/09/2026). ⛔ NOBODY HAD EVER MEASURED WHICH
-   * OF THE FOUR IS TAKEN: every earlier reading is a table total, so a module
-   * carried by one reward and three passengers is indistinguishable from four
-   * even rewards. Keyed by the `balloon` field the `balloonMoved` event has
-   * always carried, so this is a fold and not a new event. ⚠️ IT COUNTS MOVES,
-   * NOT VALUE: the magenta balloon has no `amount` and cannot be swept, so a
-   * low count on it may mean a dull reward or a reward that only pays a seat
-   * holding a full building.
-   */
-  balloonMovesById: Record<string, number>;
-  /** A balloon taken from another seat's Aerodrome, by victim. */
-  raidsByVictim: number[];
-
   // --- The Vegetable rebuild, 2026-08-09 -----------------------------------
   //
-  // Five lines its pass conditions need and no previous run recorded. ⚠️ NONE
-  // OF THEM HAS A NOISE FLOOR YET - run --noise before reading a movement in one
-  // as a finding.
+  // Lines its pass conditions need and no previous run recorded (the balloon
+  // lines went with the balloons on 16/09/2026). ⚠️ NONE OF THEM HAS A NOISE
+  // FLOOR YET - run --noise before reading a movement in one as a finding.
 
-  /**
-   * Balloon moves BY SEAT, so the report can split them by suit. The draft's
-   * central prediction is that this climbs sharply from 5.1 a game with a
-   * Vegetable seat taking well over an even share, and a table total cannot
-   * answer it.
-   */
-  balloonMovesBySeat: number[];
-  /**
-   * Of those, the ones paid OUT OF HAND (V4, V8) rather than out of the barn.
-   * The suit's whole privilege, so it is the direct measurement of whether the
-   * privilege is used - a Vegetable seat still taking the barn route is a
-   * Vegetable seat not playing its Depots.
-   */
-  handFlightsBySeat: number[];
-  /** Demand tokens altered, split by verb: V5's swap and V6's turn. */
+  /** Island tokens swapped between tiles (V5). V6's face-down turn was deleted on 16/09/2026. */
   demandSwaps: number;
-  demandFaceDowns: number;
   /**
-   * DELIVERIES THAT WERE ONLY PAYABLE BECAUSE A DEMAND TOKEN HAD BEEN ALTERED -
-   * the number that says whether the mutable tokens earned their rules.
-   *
-   * Measured against the tokens AS DEALT: the spend actually made is re-tested
-   * against the tile's original demand, and counted only when the original
-   * refuses it. So it is not "deliveries to a tile somebody touched", which
-   * would count every delivery to a tile whose swap was irrelevant.
+   * ⭐ ISLAND RECEIPTS BY TOKEN VP, by seat (the token island, 16/09/2026):
+   * `receiptsByVpBySeat[seat][vp]` is how many tokens of that value the seat
+   * took. Replaces the delivery-space reading (`receiptsByOrderBySeat`), whose
+   * subject was deleted with the spaces.
    */
-  deliveriesUnlockedByAlteration: number;
+  receiptsByVpBySeat: Record<string, number>[];
   /**
-   * Island receipts by DELIVERY SPACE, by seat: index 0 is the 6 VP space,
-   * index 1 the 3 VP space. The thing V14 takes both of at once.
-   *
-   * ⚠️ 14/09/2026: UNTIL DEAN'S SPACE CHOICE THIS WAS ALSO ARRIVAL ORDER, and
-   * it was documented as "arriving first at a tile". Under
-   * `rules.turn.deliverySpaceChoice` a first arrival may take the 3 VP space,
-   * so this stays keyed on the receipt's VP (which is what every VP sum over it
-   * needs) and ARRIVAL order is `receiptsByArrivalBySeat`. Under fill order the
-   * two are the same numbers.
-   */
-  receiptsByOrderBySeat: number[][];
-  /**
-   * ⭐ Island receipts by ARRIVAL ORDER at their tile, by seat (14/09/2026):
-   * index 0 is the first delivery a tile ever took, whichever space it chose.
-   * Sparse like `receiptsByOrderBySeat`. This is the "first to a tile" reading.
+   * Island receipts by ARRIVAL ORDER at their tile, by seat: index 0 is a
+   * tile's first delivery (both tokens paid, one chosen), index 1 its second
+   * (the last token plus 2 any). V14 takes two receipts in one arrival and is
+   * counted at both indices. Sparse: an unreached index is `undefined`.
    */
   receiptsByArrivalBySeat: number[][];
   /**
-   * ⭐ FIRST ARRIVALS AT A TILE THAT TOOK A SPACE OTHER THAN THE 6 VP ONE (Dean's
-   * space choice, 14/09/2026): under the shipped rules, the 3 VP space and its
-   * delivery meeple, leaving the 6 VP for somebody else. Denominator: index 0 of
-   * `receiptsByArrivalBySeat`. Always 0 under fill order.
+   * ⭐ THE TOKEN CHOICE (16/09/2026). FIRST deliveries that took ONE of two
+   * tokens with DIFFERENT VP (the denominator), and of those, the ones that
+   * took the HIGHER-VP token, and the ones that took the LOWER-VP token when
+   * only it carried a Worker (a VP-for-Worker trade), by seat.
    */
-  firstArrivalsPassingSixBySeat: number[];
+  firstChoicesBySeat: number[];
+  firstTookHigherBySeat: number[];
+  firstLowerForWorkerBySeat: number[];
+  /** Receipts off a WILD token (any 2 cards), by seat. */
+  wildTokenReceiptsBySeat: number[];
   /**
-   * ⭐ THE CLOSING DRAW (Dean, 14/09/2026): tiles this seat filled, i.e. took
-   * the LAST free space of, and the cards that reached its hand through the
-   * `closingDraw` label. The tiles count is whoever closed the tile, whether or
-   * not `rules.turn.closingDrawPerCrate` paid anything for it.
+   * ⭐ THE VEGETABLE BOARD'S RELAXATION (R9, 16/09/2026): deliveries that used
+   * it (at least one card missed the named demand), and the cards that did,
+   * by seat.
    */
-  tilesClosedBySeat: number[];
-  closingDrawCardsBySeat: number[];
+  vegetableWildDeliveriesBySeat: number[];
+  vegetableWildCardsBySeat: number[];
 
   /**
    * THE GIVEAWAY (the Orchard rebuild, 2026-08-09): cards handed across the

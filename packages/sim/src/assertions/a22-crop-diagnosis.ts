@@ -53,13 +53,10 @@ import { num, pct } from '../stats.js';
  *
  * ## What the numbers are made of, exactly
  *
- * ⭐ **READING 1 NEEDED NO NEW COUNTER, WHICH IS WHY IT IS CHEAP.**
- * `receiptsByOrderBySeat` has been folded since the Vegetable rebuild of
- * 09/08/2026: index 0 is arriving first at a tile, index 1 second, read off the
- * receipt's own VP against `island.vpByDeliveryOrder` so it survives a knob on
- * the VP schedule. All this page does is split it by the seat's crop and
- * multiply by the schedule. **So the reading is available on every report in
- * `reports/` retrospectively, and it was simply never asked for.**
+ * ⭐ **READING 1 IS A SPLIT OF EXISTING COUNTERS.** Since the token island
+ * (16/09/2026) `receiptsByVpBySeat` counts each seat's receipts by the VP
+ * printed on the token, and `receiptsByArrivalBySeat` whether each was a
+ * tile's first or second delivery. This page splits both by the seat's crop.
  *
  * ⚠️ **THE VP HERE IS ISLAND RECEIPT VP AND NOT A SCORE.** It excludes printed
  * VP on built cards, the Farmstead's per-own-crop VP and every Endgame card, so
@@ -155,9 +152,9 @@ interface CropRow {
   suit: Suit;
   seatGames: number;
   deliveries: number;
-  /** Receipts taken, by fill order: index 0 is first to a tile, index 1 second. */
-  byOrder: number[];
-  /** Receipts that were the FIRST delivery to their tile (14/09/2026: not the same as space 0). */
+  /** Receipts taken, by token VP, parallel to `island.tokens.vpValues`. */
+  byVp: number[];
+  /** Receipts that were the FIRST delivery to their tile. */
   firstArrivals: number;
   receipts: number;
   /** Island receipt VP only. Never a score. */
@@ -169,7 +166,7 @@ interface CropRow {
 }
 
 function cropRows(games: readonly GameMetrics[], data: GameData): CropRow[] {
-  const schedule = data.island.vpByDeliveryOrder;
+  const schedule = data.island.tokens.vpValues;
   const rows = new Map<Suit, CropRow>();
   const row = (suit: Suit): CropRow => {
     const found = rows.get(suit);
@@ -178,7 +175,7 @@ function cropRows(games: readonly GameMetrics[], data: GameData): CropRow[] {
       suit,
       seatGames: 0,
       deliveries: 0,
-      byOrder: schedule.map(() => 0),
+      byVp: schedule.map(() => 0),
       firstArrivals: 0,
       receipts: 0,
       vp: 0,
@@ -196,12 +193,12 @@ function cropRows(games: readonly GameMetrics[], data: GameData): CropRow[] {
       const r = row(suit);
       r.seatGames += 1;
       r.deliveries += g.deliveriesBySeat[seat] ?? 0;
-      // ⚠️ SPARSE BY CONSTRUCTION: the fold in observe.ts writes only the orders
-      // a seat actually reached, so an unvisited index is `undefined` and not 0.
-      const orders = g.receiptsByOrderBySeat[seat] ?? [];
+      // ⚠️ SPARSE BY CONSTRUCTION: the fold in observe.ts writes only the values
+      // a seat actually took, so an untaken value is `undefined` and not 0.
+      const byVp = g.receiptsByVpBySeat[seat] ?? {};
       schedule.forEach((vp, i) => {
-        const n = orders[i] ?? 0;
-        r.byOrder[i] = (r.byOrder[i] ?? 0) + n;
+        const n = byVp[String(vp)] ?? 0;
+        r.byVp[i] = (r.byVp[i] ?? 0) + n;
         r.receipts += n;
         r.vp += n * vp;
       });
@@ -223,15 +220,14 @@ function cropRows(games: readonly GameMetrics[], data: GameData): CropRow[] {
   });
 }
 
-// ⭐ ARRIVAL AND NOT SPACE (14/09/2026): "arrives second more often" is a
-// question about time, and under Dean's space choice a first arrival may take
-// the 3 VP space. Under fill order `firstArrivals` equals `byOrder[0]` exactly.
+// ⭐ ARRIVAL, READ OFF THE TILE: "arrives second more often" is a question about
+// time, and on the token island (16/09/2026) the VP taken is a choice.
 const firstShare = (r: CropRow): number => (r.receipts === 0 ? NaN : r.firstArrivals / r.receipts);
 
 function cropMode({ data, pooled }: MeasureContext): Measurement {
   const games = pooled.ended;
   const bound = data.rules.turn.handLimit;
-  const schedule = data.island.vpByDeliveryOrder;
+  const schedule = data.island.tokens.vpValues;
   const rows = cropRows(games, data);
 
   const shares = rows.map(firstShare).filter(Number.isFinite);
@@ -253,7 +249,6 @@ function cropMode({ data, pooled }: MeasureContext): Measurement {
     .sort((a, b) => firstShare(b) - firstShare(a))[0];
 
   const per = (n: number, seatGames: number) => (seatGames === 0 ? NaN : n / seatGames);
-  const orderLabel = (i: number) => `${i === 0 ? 'first' : i === 1 ? 'second' : `#${i + 1}`}`;
 
   const bySeatRows = [...pooled.bySeats]
     .sort((a, b) => a.seats - b.seats)
@@ -269,7 +264,7 @@ function cropMode({ data, pooled }: MeasureContext): Measurement {
       'fault. ⛔ IF ONE CROP’S SHARE IS MATERIALLY THE LOWEST, the island is where that crop ' +
       'loses and the coin is aimed at the wrong one.',
     `⛔ READING 1, DELIVERY VALUE BY CROP, POOLED (${games.length} ended games). The VP ` +
-      `schedule on this run is ${schedule.map((vp, i) => `${orderLabel(i)} ${vp} VP`).join(' / ')}` +
+      `tokens on this run are worth ${schedule.join(' / ')} VP` +
       `. Per crop, as deliveries a player a game / first-arrival share of receipts taken / ` +
       `island receipt VP a player a game: ${rows
         .map(
@@ -288,12 +283,12 @@ function cropMode({ data, pooled }: MeasureContext): Measurement {
       'making against the suit table’s win rates further up this report. The island carries ' +
       'roughly half a winning score by design, so a crop that leads on deliveries, leads on ' +
       'receipt VP and still loses is losing everywhere ELSE, and a crop that leads on ' +
-      'deliveries but NOT on receipt VP is losing the race for the 6 VP space.',
+      'deliveries but NOT on receipt VP is taking the low tokens.',
     `⚠️ THE RECEIPT COUNT AND THE DELIVERY COUNT ARE NOT THE SAME NUMBER AND THE GAP IS ` +
       `PRINTED SO NOBODY HAS TO ASSUME IT IS ZERO: ${rows
         .map((r) => `${r.suit} ${r.receipts} receipts of ${r.deliveries} deliveries`)
-        .join('   ')}. A delivery whose VP is not on the schedule above cannot be placed in ` +
-      'the order and is counted in the second column only. ⛔ AND V14 THE DISTRIBUTION CENTER ' +
+        .join('   ')}. A receipt whose VP is not among the token values above is counted in ` +
+      'the second column only. ⛔ AND V14 THE DISTRIBUTION CENTER ' +
       'MAKES THE VEGETABLE ROW A DIFFERENT SHAPE: it reads "Deliver and take every receipt on ' +
       'the island", so one activation emits several `delivered` events, each a real receipt ' +
       'with an empty spend. The vegetable numbers are right as RECEIPTS and wrong as DELIVERY ' +
@@ -366,12 +361,9 @@ function cropMode({ data, pooled }: MeasureContext): Measurement {
       `moment a11’s no-build probe uses. ${rows.reduce((n, r) => n + r.handSampled, 0)} turns ` +
       'were sampled across every crop, and the by-crop sums are the game-level hand fields a21 ' +
       'prints SPLIT rather than a second sample.',
-    `⭐ READING 1 NEEDED NO NEW COUNTER AND THAT IS WORTH KNOWING BEFORE ANYBODY RE-RUNS ` +
-      'ANYTHING. `receiptsByOrderBySeat` has been folded since the Vegetable rebuild of ' +
-      '09/08/2026, read off the receipt’s own VP against island.vpByDeliveryOrder so it ' +
-      'survives a knob on the VP schedule; this page only splits it by the seat’s crop. ⚠️ ' +
-      'Reading 2 DID need four new by-seat counters (12/09/2026), so it exists on no report ' +
-      'before this one.',
+    `⭐ READING 1 IS A SPLIT OF receiptsByVpBySeat (the token island, 16/09/2026) and ` +
+      'receiptsByArrivalBySeat by the seat’s crop, so no reading on this line is comparable ' +
+      'with one from before 16/09/2026. Reading 2 needed four by-seat counters (12/09/2026).',
     '⛔ NO FAIL CONDITION ON ANY LINE ABOVE AND NO NUMBER HERE WILL EVER BECOME ONE. The design ' +
       'names no number for a crop’s share of first deliveries and none for a crop’s hand size, ' +
       'and a threshold taken off the run that FIRST measures a quantity is a snapshot test that ' +

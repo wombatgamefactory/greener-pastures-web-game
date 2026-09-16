@@ -4,76 +4,19 @@
  * Split out of actions.ts on 2026-09-12; the code is unchanged.
  */
 
-import { canTakeCard, cardById, coinsOf, drawableSuits, faceOf, player } from '../query.js';
+import { canTakeCard, cardById, drawableSuits, faceOf, player } from '../query.js';
 import type { CardId, GameState, Seat } from '../state.js';
 import type { GameData, Suit } from '@gp/data';
-import {
-  coinGrowReachesFullBuildings,
-  coinPaysGrow,
-  farmsteadCoinPower,
-  meepleAsCardGoesToBoard,
-} from '@gp/data';
+import { meepleAsCardGoesToBoard } from '@gp/data';
 import { meepleAsCard, placementsFor } from './meeples.js';
 import { withoutFirst } from './shared.js';
 
 // --- Grow ------------------------------------------------------------------
 
-/**
- * ⭐ WHAT THE FARMSTEAD'S ACTIVATION COSTS (K10, Dean 10/09/2026): ONE COIN.
- *
- * A constant rather than a knob, deliberately, and the handoff's knob list
- * agrees: `rules.economy.farmsteadPower.*` carries the four numbers behind the
- * POWERS, which are what a sweep would move, and the price is the rule - "spend
- * a coin instead of a card", Dean's own words. If it ever becomes a dial it
- * goes in `rules.economy` beside those four, and this constant is the one place
- * to re-point.
- */
-const FARMSTEAD_COIN_COST = 1;
-
-/**
- * ⭐ WHAT A VILLAGE STORE COIN-GROW COSTS (V8, Dean 12/09/2026, ledger A150):
- * ONE COIN.
- *
- * A constant and not a knob, on exactly the reasoning `FARMSTEAD_COIN_COST`
- * above carries: "a coin is a wild CARD for GROW" is the rule, and a Grow is
- * paid with one card, so the price is one. The dials this package DOES sweep are
- * the mint rate, the supply per player and the four on/off leaves. If a rate for
- * this ever becomes a question it goes in `rules.economy` and this is the one
- * line to re-point.
- */
-const COIN_GROW_COST = 1;
-
 export interface GrowOption {
   building: CardId;
-  /** Null when a meeple paid (R15) or a coin did (K10): nothing is placed. */
+  /** Null when a meeple paid (R15): nothing is placed. */
   payment: CardId | null;
-  /**
-   * ⭐ K10: this GROW is paid with ONE COIN and the target is the seat's own
-   * FARMSTEAD. Mutually exclusive with `payment` and with `meeples`; nothing is
-   * placed, so the Farmstead's stack stays empty for the whole game and its
-   * "no threshold" is the printed rule rather than a special case.
-   */
-  coin?: true;
-  /**
-   * ⭐ V8/V9 (A150, Dean 12/09/2026): THIS GROW IS PAID WITH ONE VILLAGE STORE
-   * COIN. `payment` is null and nothing is placed, so the building does not
-   * advance toward its threshold and never clogs; a FULL building is a legal
-   * target under `coinGrowReachesFullBuildings`.
-   *
-   * ⛔ IT IS NOT `coin` ABOVE, AND THE TWO MUST NOT BE MERGED. `coin` is K10,
-   * the OTHER coin arm's Farmstead suit power: a different knob, a different
-   * target (the Farmstead alone), a different sink label on `coinsSpent`, and
-   * `observe.ts` counts `move.coin === true` as a Farmstead firing. Folding V8
-   * into that flag would silently add every coin-Grow to a metric that means
-   * something else. The two are mutually exclusive by construction - no overlay
-   * turns both economies on - and each says so.
-   *
-   * ⭐ D5: A COIN-GROW FIRES "WHEN ACTIVATED" ABILITIES. That is the whole
-   * point of a Grow, and it is stated because V8 places no card and a reader may
-   * assume otherwise. ⚠️ What does NOT fire is anything keyed on a PLACEMENT -
-   * A16 The Beekeeper's Veil is the obvious one - because a coin places nothing.
-   */
-  coinGrow?: true;
   /**
    * R15: the meeple that paid, or the two meeples spent as a wild pair (R10).
    * It goes STRAIGHT TO THE BOX - never onto the stack, never toward the
@@ -125,22 +68,6 @@ export interface GrowOptionMods {
    */
   excludeHandCard?: CardId;
   /**
-   * ⭐ IS THIS THE MAIN-ACTION GROW? (Builder default D-C1, ruled by Dean on
-   * 10/09/2026.)
-   *
-   * It gates ONE THING, in one place: the coin-activated FARMSTEAD (K10) is a
-   * Grow target only when this is true. `legalMoves`'s Grow branch is the only
-   * caller that sets it. The Apiary board's BOUGHT Grow pushes a `grow` TASK
-   * whose answers come from this same enumerator WITHOUT it, so a bonus can
-   * never buy a suit power - which is Dean's ruling that the Farmstead is your
-   * main action, expressed as one flag rather than as a second enumerator.
-   *
-   * ⚠️ THE GATE AND THE ACTION MUST AGREE, as ever: `doorActionLegal`'s
-   * `'grow'` branch omits it too, so the Apiary board is never OFFERED on the
-   * strength of a Farmstead the task could not then fire.
-   */
-  mainAction?: boolean;
-  /**
    * ⭐ DEAN'S DAIRY EXPERIMENT (12/09/2026): the GROW may target ONLY this
    * building, the one the Dairy board's own Build just made.
    */
@@ -178,41 +105,12 @@ export function growOptions(
   const asCard = meepleAsCard(data);
   const onBoard = meepleAsCardGoesToBoard(data);
   const rate = data.rules.turn.paymentSlotToll;
-  // ⭐ THE COIN-ACTIVATED FARMSTEAD (K10, Dean 10/09/2026), and it is false in
-  // the shipped game twice over: the knob is off, and `mods.mainAction` is set
-  // by exactly one caller. Hoisted so the loop below is byte-identical when it
-  // is false.
-  const farmsteadCoin = farmsteadCoinPower(data) && mods.mainAction === true;
   for (const b of p.tableau) {
     // Dean's Dairy experiment: one legal target, the building just built.
     if (only !== undefined && b.card !== only) continue;
     if (cardById(data, b.card).slot === 'noticeboard') continue;
     if (state.turn.firedThisTurn.includes(b.card)) continue;
     if (mods.exclude?.includes(b.card)) continue;
-    // ⭐ K10: THE FARMSTEAD IS A BUILDING WITH NO THRESHOLD WHOSE ACTIVATION
-    // COST IS ONE COIN, used as a GROW that is your MAIN action, once per turn,
-    // with NOTHING PLACED ON IT.
-    //
-    // ⚠️ IT IS FOUND BY SLOT AND NOT BY `activationType`. The v35 sheet prints
-    // the Farmstead's activation cost as `coin`, but `cards.json` is pinned at
-    // v32 (which prints `null`) and the arm is measured on handlers alone, so
-    // the engine may not read a coin off a card face that does not yet carry
-    // one. `slot === 'farmstead'` is the same rule the sheet states and it
-    // needs no re-extract; if a `coin` activation type ever lands in the data,
-    // this is the line that reads it instead.
-    //
-    // ⭐ AND IT IS FILTERED, NEVER THROWN. Both gates - the coin and the
-    // once-per-turn latch (`firedThisTurn`, the guard just above, which is
-    // shared with every other fire-once rule) - drop the option out of the list
-    // rather than refusing it later: bots probe by cloning and applying, so a
-    // throw from an enumerator surfaces as a crash in probe.ts rather than as a
-    // move nobody chose.
-    if (farmsteadCoin && cardById(data, b.card).slot === 'farmstead') {
-      if (coinsOf(state, seat) >= FARMSTEAD_COIN_COST) {
-        out.push({ building: b.card, payment: null, coin: true });
-      }
-      continue;
-    }
     const type = faceOf(data, b).activationType;
     if (type === null) continue;
     // ⭐ THE FULL-BUILDING GATE MOVED OFF THE TOP OF THIS LOOP (R15). It used
@@ -229,42 +127,6 @@ export function growOptions(
           out.push({ building: b.card, payment: card });
         }
       }
-    }
-    // ⭐ V8/V9's OPTION (A150, Dean 12/09/2026): ONE COIN, NOTHING PLACED.
-    //
-    // ⛔ THE FULL-BUILDING GATE READS `canTakeCard` AND NOT `isHarvestable`,
-    // and the two stopped being the same boolean on 10/09/2026 (query.ts:182).
-    // "Full" in V9 means CLOGGED - the building refuses a card - which is
-    // exactly `!canTakeCard`, and it is the right half because the ONLY reason a
-    // full building cannot be grown is that no card may be placed on it. A
-    // `3+` Notice Board is harvestable at three cards and clogged at none, so
-    // reading `isHarvestable` here would refuse a coin-Grow on a board that
-    // happily takes cards.
-    //
-    // ⛔ AND IT ASKS `coinGrowReachesFullBuildings`, THE COMBINING ACCESSOR,
-    // NEVER THE RAW `coinGrowOnFullBuilding` LEAF. A full building is reachable
-    // only if a coin pays a Grow AT ALL, and that precedence lives in one place
-    // in @gp/data - the `hostGift` seam of 12/09/2026 was a term reading a rule
-    // off the wrong accessor and pricing a decision that could not happen.
-    //
-    // ⚠️ IT IS THE FIRST CLOG BYPASS SINCE THE MEEPLES AND IT IS DELIBERATE.
-    // Its brake is that it is self-limiting: a building you only ever coin-Grow
-    // never fills, so it is never harvested, so it never puts cards in your
-    // barn - and barn cards are what make coins. Spending coins to dodge clog
-    // starves the supply of the material that makes coins. ⛔ C110 records the
-    // consequence: the Tier 3 layer was priced with clog as its brake and needs
-    // re-pricing. That is card-balance work and not a reason to reopen the rule.
-    const coinGrows = coinPaysGrow(data) && coinsOf(state, seat) >= COIN_GROW_COST;
-    if (coinGrows && (open || coinGrowReachesFullBuildings(data))) {
-      out.push({
-        building: b.card,
-        payment: null,
-        coinGrow: true,
-        // The clog bypass, counted apart from every other Grow: `atThreshold`
-        // is the measurement v2 section 3 asks for by name and V9 is the
-        // strongest clause in the package, so it must be readable on its own.
-        ...(open ? {} : { atThreshold: true }),
-      });
     }
     if (!asCard) continue;
     const atThreshold = !open;

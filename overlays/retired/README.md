@@ -72,3 +72,14 @@ themselves are re-cut for the commons:
 - `packages/sim/src/reference.ts` names the report
   `...-reference-v13-meeple-no-cap-v1.txt`, which is a filename in `reports/`
   and is correct: the report is not moving.
+
+## Retired 16/09/2026, with the token island and the board retexts
+
+Dean ruled the token island (R3) and retexted the Vegetable and Dairy boards
+(R9, R10). Six arms lost their only subject:
+
+| File                                                         | What it was                                                                           | Why it is here                                                                                                                  |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `dairy-grow-built-free-v1` · `-paid-v1` · `-paid-wild-v1`    | the three values of `noticeBoardPower.dairyGrowsBuilt` (12/09/2026)                   | The leaf is deleted: the Dairy board now reads "Build, spending cards of any crops, with a discount of 2" and Grows nothing.    |
+| `flat-receipts.overlay.json`                                 | `island.vpByDeliveryOrder` [5, 4] against the shipped [6, 3]                          | The VP-by-arrival schedule is deleted. VP is printed on each token now.                                                         |
+| `delivery-meeple-no-choice-v1` · `delivery-meeple-choice-v1` | the 14/09/2026 decomposition of the delivery meeple with and without the space choice | `deliverySpaceChoice` and `deliveryMeepleSpace` are deleted with the delivery spaces, so the two arms had become the same game. |

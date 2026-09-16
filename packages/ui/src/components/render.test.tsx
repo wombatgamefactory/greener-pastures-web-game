@@ -86,33 +86,6 @@ describe('the table renders', () => {
     });
   }
 
-  it('shows the Aerodrome in every game, Vegetable or not', () => {
-    const withVeg = dealTable({
-      seats: 2,
-      suits: ['wheat', 'vegetable'],
-      seed: 'aero',
-      depth: 40,
-      minHand: 0,
-    });
-    const without = dealTable({
-      seats: 2,
-      suits: ['wheat', 'orchard'],
-      seed: 'aero',
-      depth: 40,
-      minHand: 0,
-    });
-    expect(renderToStaticMarkup(<Table data={data} view={withVeg.view} events={[]} />)).toContain(
-      'Aerodrome',
-    );
-    // ⭐ INVERTED 12/09/2026: the Aerodrome is in EVERY game since Dean's
-    // ruling (`aerodrome.alwaysInPlay`), so a table with no Vegetable seat
-    // renders it too. The case is kept rather than deleted because "renders the
-    // Aerodrome with no Vegetable present" is now the rule worth pinning.
-    expect(renderToStaticMarkup(<Table data={data} view={without.view} events={[]} />)).toContain(
-      'Aerodrome',
-    );
-  });
-
   /**
    * ⭐ THE HAND LIMIT IS ON THE TABLE, AND THE BARN IS NOT WHERE IT IS.
    *

@@ -22,7 +22,8 @@ import { apply, isOver, legalMoves, newGame } from './game.js';
 import { seedRng, rngInt } from './rng.js';
 import { noticeBoardSlots, player } from './query.js';
 import type { GameState, Move, Seat } from './state.js';
-import { buildFor, dealTo, deliveredAt, makeState } from './testkit.js';
+import { freshTurn } from './setup.js';
+import { buildFor, dealTo, makeState } from './testkit.js';
 
 const WHEAT: Seat = 0;
 const ORCHARD: Seat = 1;
@@ -46,22 +47,6 @@ const arm: GameData = loadGameData({
     'rules.economy.cropScorerOnBarn': false,
     // Pre-flip pins (12/09/2026): this is a named inline copy of a
     // committed overlay, and a copy of a pin stops being a pin.
-    'aerodrome.moveCost.barnCards': 2,
-    'aerodrome.alwaysInPlay': false,
-    'aerodrome.flightMints': false,
-    'aerodrome.balloons.balloonDraw.reward.type': 'draw',
-    'aerodrome.balloons.balloonDraw.reward.amount': 4,
-    'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
-    'aerodrome.balloons.balloonBuild.reward.amount': 4,
-    'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
-    'aerodrome.balloons.balloonSow.reward.amount': 4,
-    'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
-    'rules.economy.storeCoinsPerCard': 0,
-    'rules.economy.coinSupplyPerPlayer': 0,
-    'rules.economy.coinPaysBuild': false,
-    'rules.economy.coinPaysSuitCost': false,
-    'rules.economy.coinPaysGrow': false,
-    'rules.economy.coinGrowOnFullBuilding': false,
     'rules.turn.visitCurrency': 'meeple',
     'rules.turn.selfVisitAllowed': true, // pinned 13/09/2026: the default flipped
     'rules.economy.noticeBoardsBySeats.2': 1, // pinned 13/09/2026: the default flipped
@@ -74,15 +59,14 @@ const arm: GameData = loadGameData({
     'rules.turn.meepleAsCard': false,
     'rules.turn.slotToll': null,
     'rules.turn.meepleCapPerColour': 1,
-    // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
-    // choice and the closing draw. This helper predates it, so all six are pinned
-    // off by name ('start' and null are the old inert values).
-    'rules.turn.deliveryMeepleSpace': null,
+    // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: the spend window, at its old inert
+    // values ('start' and null). The space choice was deleted on 16/09/2026.
     'rules.turn.meepleSpendTiming': 'start',
     'rules.turn.meepleSpendPerTurn': null,
     'rules.turn.meepleSpendDistinctColours': false,
-    'rules.turn.deliverySpaceChoice': false,
-    'rules.turn.closingDrawPerCrate': 0,
+    // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
+    'rules.economy.noticeBoardPower.vegetableWildCards': 0,
+    'rules.economy.noticeBoardPower.dairyDiscount': 0,
   },
 });
 
@@ -94,22 +78,6 @@ const control: GameData = loadGameData({
     'rules.economy.cropScorerOnBarn': false,
     // Pre-flip pins (12/09/2026): this is a named inline copy of a
     // committed overlay, and a copy of a pin stops being a pin.
-    'aerodrome.moveCost.barnCards': 2,
-    'aerodrome.alwaysInPlay': false,
-    'aerodrome.flightMints': false,
-    'aerodrome.balloons.balloonDraw.reward.type': 'draw',
-    'aerodrome.balloons.balloonDraw.reward.amount': 4,
-    'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
-    'aerodrome.balloons.balloonBuild.reward.amount': 4,
-    'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
-    'aerodrome.balloons.balloonSow.reward.amount': 4,
-    'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
-    'rules.economy.storeCoinsPerCard': 0,
-    'rules.economy.coinSupplyPerPlayer': 0,
-    'rules.economy.coinPaysBuild': false,
-    'rules.economy.coinPaysSuitCost': false,
-    'rules.economy.coinPaysGrow': false,
-    'rules.economy.coinGrowOnFullBuilding': false,
     'rules.turn.visitCurrency': 'card',
     'rules.turn.selfVisitAllowed': true, // pinned 13/09/2026: the default flipped
     'rules.economy.noticeBoardsBySeats.2': 1, // pinned 13/09/2026: the default flipped
@@ -127,15 +95,14 @@ const control: GameData = loadGameData({
     // the commons (C3), so the control has to pin it.
     'workers.roster.draw.draw.see': 3,
     'workers.roster.draw.draw.keep': 3,
-    // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
-    // choice and the closing draw. This helper predates it, so all six are pinned
-    // off by name ('start' and null are the old inert values).
-    'rules.turn.deliveryMeepleSpace': null,
+    // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: the spend window, at its old inert
+    // values ('start' and null). The space choice was deleted on 16/09/2026.
     'rules.turn.meepleSpendTiming': 'start',
     'rules.turn.meepleSpendPerTurn': null,
     'rules.turn.meepleSpendDistinctColours': false,
-    'rules.turn.deliverySpaceChoice': false,
-    'rules.turn.closingDrawPerCrate': 0,
+    // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
+    'rules.economy.noticeBoardPower.vegetableWildCards': 0,
+    'rules.economy.noticeBoardPower.dairyDiscount': 0,
   },
 });
 
@@ -174,15 +141,18 @@ describe('setup under the arm', () => {
     for (const p of s.players) {
       for (const colour of arm.cards.suits) expect(p.meeples[colour], colour).toBe(1);
     }
-    // The bag is untouched by R3: it still seeds the island and only the island.
-    const dealt = s.island.tiles.flatMap((t) => t.meeples).length;
+    // The bag is untouched by R3: it still seeds the island and only the island,
+    // one Worker on each 3 and 4 VP token (the token island, 16/09/2026).
+    const dealt = s.island.tiles.flatMap((t) => t.tokens).filter((t) => t.worker !== null).length;
     expect(dealt).toBe(s.island.tiles.length);
     expect(dealt).toBeLessThanOrEqual(arm.island.meeples.poolSize);
   });
 
-  it('seeds ONE meeple per tile, on the 3 VP second space (R12)', () => {
+  it('seeds a Worker on every 3 and 4 VP token and no other (the token island)', () => {
     const s = newGame(arm, { seats: 2, seed: 'meeple-seed' });
-    for (const tile of s.island.tiles) expect(tile.meeples).toHaveLength(1);
+    for (const token of s.island.tiles.flatMap((t) => t.tokens)) {
+      expect(token.worker !== null).toBe(token.vp <= 4);
+    }
   });
 
   it('gives every seat five empty colour slots (R5)', () => {
@@ -362,54 +332,41 @@ describe('the supply cap (R4)', () => {
     });
   });
 
-  it('boxes a duplicate coming off the island, and pays the meeple on the SECOND delivery only', () => {
+  it('boxes a duplicate Worker coming off the island, and pays none off a Worker-less token', () => {
     const s = makeState(arm, ['wheat', 'orchard']);
-    const tile = s.island.tiles[0];
-    if (!tile) throw new Error('no tile in play');
-    // The testkit deals the bag unshuffled, so tile 0's one meeple is the first
-    // colour in `island.meeples.colours`.
-    const seeded = tile.meeples[0];
-    expect(seeded).toBeDefined();
-
-    // Enough barn cards to pay both crates of the tile, whatever they demand.
+    // The testkit deals in pool order: A1 holds wheat 6 and 5 (no Worker), A2
+    // wheat 4 and 3 (a Worker each, the first colours of the bag).
+    const a2 = s.island.tiles.find((t) => t.tile === 'A2')!;
+    const seeded = a2.tokens[0]!.worker!;
     const barn = player(s, WHEAT).barn;
-    for (const crate of tile.crates) {
-      const suit = crate === 'wild' ? 'wheat' : crate;
-      for (let i = 0; i < arm.island.tileRule.cardsPerCrate; i++) {
-        const card = s.decks[suit].shift();
-        if (card === undefined) throw new Error(`${suit} deck ran dry`);
-        barn.push(card);
-      }
+    for (let i = 0; i < 8; i++) {
+      const card = s.decks.wheat.shift();
+      if (card === undefined) throw new Error('wheat deck ran dry');
+      barn.push(card);
     }
-    supply(s, WHEAT)[seeded as Suit] = 1;
+    supply(s, WHEAT)[seeded] = 1;
 
-    // FIRST delivery: VP only, no meeple (R12).
+    // A token with no Worker: VP only.
     const first = apply(arm, s, {
       type: 'deliver',
       seat: WHEAT,
-      tile: tile.tile,
-      spend: countBySuit(arm, barn),
+      tile: 'A1',
+      spend: { wheat: 4 },
+      token: 0,
     });
     expect(first.events.some((e) => e.e === 'meepleGained' || e.e === 'meepleBoxed')).toBe(false);
 
-    // SECOND delivery to the same tile: the meeple, and it duplicates one held.
-    const s2 = makeState(arm, ['wheat', 'orchard']);
-    deliveredAt(s2, ORCHARD, tile.tile);
-    const barn2 = player(s2, WHEAT).barn;
-    for (const crate of tile.crates) {
-      const suit = crate === 'wild' ? 'wheat' : crate;
-      for (let i = 0; i < arm.island.tileRule.cardsPerCrate; i++) {
-        const card = s2.decks[suit].shift();
-        if (card === undefined) throw new Error(`${suit} deck ran dry`);
-        barn2.push(card);
-      }
-    }
-    supply(s2, WHEAT)[seeded as Suit] = 1;
+    // A Worker token whose colour the seat already holds, under the arm's cap
+    // of one: the Worker is boxed.
+    const s2 = first.state;
+    s2.turn = freshTurn();
+    s2.turnPlayer = WHEAT;
     const second = apply(arm, s2, {
       type: 'deliver',
       seat: WHEAT,
-      tile: tile.tile,
-      spend: countBySuit(arm, barn2),
+      tile: 'A2',
+      spend: { wheat: 4 },
+      token: 0,
     });
     expect(second.events).toContainEqual({
       e: 'meepleBoxed',
@@ -417,7 +374,7 @@ describe('the supply cap (R4)', () => {
       colour: seeded,
       source: 'island',
     });
-    expect(supply(second.state, WHEAT)[seeded as Suit]).toBe(1);
+    expect(supply(second.state, WHEAT)[seeded]).toBe(1);
   });
 });
 
@@ -457,32 +414,19 @@ describe('what the arm deletes', () => {
   });
 });
 
-describe('A Helping Hand under the arm (R11)', () => {
-  it('grants ONE visit and ONE collect, never two of either', () => {
+describe('A Helping Hand under the arm (R11), retired 16/09/2026', () => {
+  // ⛔ The card used to grant ONE visit and ONE collect. The v42 Helping Hands
+  // grant no bonus option at all, so under the arm a W18 holder gets the one
+  // option the rule gives and the turn ends after it.
+  it('grants no second option: after a visit, neither a visit nor a collect', () => {
     const s = armPosition();
     buildFor(arm, s, WHEAT, 'W18');
 
     const first = visits(s).find((m) => m.host === ORCHARD && m.colour === 'orchard');
     const afterVisit = apply(arm, s, first as Move);
-    let state = afterVisit.state;
-    // The visit pushed a Draw 2 task; answer it away so the bonus slot is what
-    // the next enumeration is about.
-    state = drainDraw(state);
-
-    // A second visit is refused, a collect is not.
-    expect(visitOptions(arm, state, WHEAT)).toHaveLength(0);
-    expect(collectOpen(arm, state, WHEAT)).toBe(true);
-
-    const afterCollect = apply(arm, state, { type: 'collect', seat: WHEAT });
-    // Read the slot record BEFORE the draw drains: with both options spent and
-    // the action already taken, `settleTurn` ends the turn and `freshTurn`
-    // clears `bonusUsed`, so draining first would assert against the next seat.
-    expect(afterCollect.state.turn.bonusUsed).toEqual(['visit', 'collect']);
-    expect(collectOpen(arm, afterCollect.state, WHEAT)).toBe(false);
-    expect(visitOptions(arm, afterCollect.state, WHEAT)).toHaveLength(0);
-    // And the turn really does end rather than offering a third option.
-    state = drainDraw(afterCollect.state);
-    expect(state.turnPlayer).toBe(ORCHARD);
+    expect(afterVisit.state.turn.bonusUsed).toEqual(['visit']);
+    expect(collectOpen(arm, afterVisit.state, WHEAT)).toBe(false);
+    expect(visitOptions(arm, afterVisit.state, WHEAT)).toHaveLength(0);
   });
 });
 
@@ -510,15 +454,17 @@ describe('the shipped default is the NOTICE-BOARD VISIT, and both controls still
     for (const p of shipped.players) {
       for (const colour of BASE_GAME_DATA.cards.suits) expect(p.meeples[colour]).toBe(0);
     }
-    // ⚠️ 14/09/2026: the island does carry ONE meeple a tile under the shipped
-    // game now (Dean ruled the delivery meeple on), and still none in a supply.
-    for (const tile of shipped.island.tiles) expect(tile.meeples).toHaveLength(1);
+    // ⚠️ The island carries Workers under the shipped game (the delivery meeple,
+    // on the 3 and 4 VP tokens since 16/09/2026), and still none in a supply.
+    const workersOn = (st: GameState) =>
+      st.island.tiles.flatMap((t) => t.tokens).filter((t) => t.worker !== null).length;
+    expect(workersOn(shipped)).toBe(shipped.island.tiles.length);
 
     const s = newGame(arm, { seats: 2, seed: 'shipped' });
     for (const p of s.players) {
       for (const colour of arm.cards.suits) expect(p.meeples[colour]).toBe(1);
     }
-    for (const tile of s.island.tiles) expect(tile.meeples).toHaveLength(1);
+    expect(workersOn(s)).toBe(s.island.tiles.length);
   });
 
   it('carries no Notice Board slots and no starting meeples under the v31 control', () => {
@@ -528,8 +474,11 @@ describe('the shipped default is the NOTICE-BOARD VISIT, and both controls still
       expect(Object.hasOwn(p, 'noticeBoard')).toBe(false);
       for (const colour of control.cards.suits) expect(p.meeples[colour]).toBe(0);
     }
-    // Two meeples per tile, on both delivery spaces, exactly as v31 deals them.
-    for (const tile of s.island.tiles) expect(tile.meeples).toHaveLength(2);
+    // ⚠️ Since 16/09/2026 the v31 control's island meeples sit on the 3 and 4
+    // VP tokens like every other game's: one a tile at two seats.
+    expect(s.island.tiles.flatMap((t) => t.tokens).filter((t) => t.worker !== null)).toHaveLength(
+      s.island.tiles.length,
+    );
   });
 
   it('still offers the free Draw 1 and still prices a visit in cards', () => {
@@ -566,12 +515,6 @@ describe('whole games under the arm', () => {
     'cardMove',
     'pass',
     'endTurn',
-    // ⚠️ LAST, AND THE ORDER IS THE WHOLE OF IT. A balloon move IS the Deliver
-    // action but never an island delivery, so a greedy policy that prefers one
-    // spends the turn without moving the clock and the game never ends. It is
-    // in the list at all because a position can offer nothing else, which is
-    // what a bare `throw` here was mistaking for a stuck game.
-    'moveBalloon',
   ];
 
   function pick(rng: [number, number, number, number], moves: Move[]): Move {
@@ -635,25 +578,3 @@ describe('whole games under the arm', () => {
     expect(held).toBeGreaterThan(0);
   });
 });
-
-/** Answer whatever draw task is pending, taking the first legal answer each time. */
-function drainDraw(state: GameState): GameState {
-  let out = state;
-  for (let guard = 0; guard < 20 && out.tasks.length > 0; guard++) {
-    const move = legalMoves(arm, out)[0];
-    if (!move) break;
-    out = apply(arm, out, move).state;
-  }
-  return out;
-}
-
-/** A barn tally by suit, for a deliver move's `spend`. */
-function countBySuit(data: GameData, cards: readonly string[]): Partial<Record<Suit, number>> {
-  const out: Partial<Record<Suit, number>> = {};
-  for (const id of cards) {
-    const suit = data.cards.catalogue.find((c) => c.id === id)?.suit;
-    if (!suit) throw new Error(`Unknown card ${id}`);
-    out[suit] = (out[suit] ?? 0) + 1;
-  }
-  return out;
-}

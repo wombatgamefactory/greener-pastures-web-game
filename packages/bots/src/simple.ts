@@ -37,9 +37,6 @@ export const random: Policy = {
  * `random` with Deliver forced whenever it is legal - including a Deliver
  * door's task answer, because `actOf` collapses both spellings. Genuinely
  * weak, genuinely coherent, and it finishes games.
- *
- * Balloon moves are Deliver ACTIONS but not island deliveries, so they are
- * deliberately not forced: they fill no crate and end no game.
  */
 export const pulse: Policy = {
   id: 'pulse',
@@ -114,7 +111,6 @@ export const GREEDY_PRIORITY: readonly MoveType[] = [
   // burn pairs at random. It is not in `BALANCE_PROFILES` and no arm is
   // measured through it.
   'collect',
-  'moveBalloon',
   'harvest',
   'build',
   'grow',

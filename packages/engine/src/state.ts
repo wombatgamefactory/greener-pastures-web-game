@@ -14,8 +14,8 @@
  *      `coins` event, the `coins` field on `built` and `delivered`, and every
  *      move that spent money (`buy`, `market`, `upgrade`).
  *   2. **Players hold MEEPLES instead.** `PlayerState.meeples` is a count per
- *      colour, claimed off the island's delivery spaces and spent at the start
- *      of a turn to perform that colour's door action, after which the meeple
+ *      colour, claimed off the island (a Worker on a 3 or 4 VP token since
+ *      16/09/2026) and spent to perform that colour's plain action, after which the meeple
  *      leaves the game. It is not a currency: it buys one specific action and
  *      nothing else.
  *   3. **Starters have one face.** `BuildingState.upgraded` is deleted with the
@@ -79,11 +79,13 @@ export interface PlayerState {
    * MEEPLES HELD, BY COLOUR (v31, 02/09/2026) - the component that replaced the
    * currency.
    *
-   * A meeple is claimed with an island delivery (it sits face up on the delivery
-   * space from setup), and is spent at the START of a later turn to perform its
-   * colour's plain door action free, after which it LEAVES THE GAME. So this is
-   * a count of stored future actions, not a wallet: nothing refills it but the
-   * island, and nothing but spending empties it.
+   * ⭐ SINCE 16/09/2026 A MEEPLE ON THE ISLAND IS CALLED A WORKER: it sits face
+   * up on a 3 or 4 VP token from setup and is claimed with that token. It is
+   * spent after a later main action (shipped `meepleSpendTiming`
+   * 'afterAction') to perform its colour's plain action free, after which it
+   * LEAVES THE GAME. So this is a count of stored future actions, not a
+   * wallet: nothing refills it but the island, and nothing but spending
+   * empties it.
    *
    * A count per colour rather than a list, because meeples of a colour are
    * interchangeable in every way a rule can read. All five colours are always
@@ -111,40 +113,11 @@ export interface PlayerState {
    */
   noticeBoard?: NoticeBoardState;
   /**
-   * ⭐ COINS HELD - THE COMMONS-WITH-COINS ARM ONLY (K7, Dean 10/09/2026,
-   * `docs/commons-coins-handoff-2026-09-10-v2.md`), and since 12/09/2026 the
-   * Village Store.
-   *
-   * ⚠️ ABSENT UNDER THE SHIPPED GAME, and the absence is the same deliberate
-   * register `noticeBoard` above is written in: a key
-   * present-and-zero would change every serialised state, every capture and
-   * every fixture replay for a currency the shipped game has no concept of. Six
-   * of the nine fixtures in `packages/sim/fixtures/` replay byte-identically and
-   * depend on it. `coinsOf` in query.ts is the one accessor and it THROWS when
-   * the arm is on and this is missing, so the optionality never reaches a rule.
-   *
-   * ⛔ EXACTLY ONE MINT AND EXACTLY TWO SINKS, which is the whole of the
-   * economy and the reason it is written down here rather than only in the
-   * knob's description. The mint is clearing a central pile (K3/K8: one coin
-   * per card, the cards to their own suits' discards). The sinks are the
-   * Farmstead's coin-activated suit power (K10-K12) and the Endgame cards'
-   * price (K15). Coins score nothing, break no ties, buy no ordinary card and
-   * are minted by nothing but a pile; leftover coins are dead. Every earlier
-   * coin economy in this project died of a second faucet or a pity rate, so a
-   * future session adding a third use or a second mint is repeating that
-   * failure rather than tuning this one.
-   *
-   * A plain integer, not the v31 wallet: `startingCoins`, the bank, the wage,
-   * the GBP 5 = 1 VP pity rate, the coin tie-break and the market all went with
-   * the currency on 02/09/2026 and none of them comes back with it.
-   */
-  coins?: number;
-  /**
    * ⭐ HAS THIS SEAT ALREADY BEEN PAID A HOST DRAW SINCE ITS OWN LAST TURN -
    * THE HOST-DRAW CAP ONLY (`rules.turn.hostDrawCapPerRound`, 11/09/2026).
    *
    * ⚠️ **ABSENT UNLESS THE CAP IS ON**, and the absence is the same deliberate
-   * register `noticeBoard` and `coins` above are written in: a key
+   * register `noticeBoard` above is written in: a key
    * present-and-false would change every serialised state, every capture and
    * every fixture replay for a rule the shipped game has no concept of, and six
    * of the nine fixtures in `packages/sim/fixtures/` replay byte-identically and
@@ -165,13 +138,24 @@ export interface PlayerState {
   hostDrewThisRound?: boolean;
   tableau: BuildingState[];
   /**
-   * VP taken from the island, in delivery order - one entry per delivery, so
-   * `receipts.length` is the receipt count the tie-break reads. Since the flat
-   * island every entry is read straight off `island.vpByDeliveryOrder` (6 for
-   * arriving first at a tile, 3 for second), and nothing is added on top, so a
-   * scoring screen can re-derive the whole list from the tiles.
+   * ⭐ THE ISLAND TOKENS THIS SEAT HAS TAKEN, IN THE ORDER TAKEN (the token
+   * island, 16/09/2026). One entry per token, so `receipts.length` is the
+   * receipt count the end trigger and the tie-break read, and the VP sum is the
+   * island's share of the score. A receipt KEEPS ITS CROP (Dean, R7), so an
+   * end-game card may count receipts by crop.
    */
-  receipts: number[];
+  receipts: Receipt[];
+}
+
+/**
+ * ⭐ ONE RECEIPT: an island token taken by a delivery (Dean, R3 and R7,
+ * 16/09/2026). `crop` is the token's demand, `'wild'` for a wild token; `tile`
+ * is the island card it came from.
+ */
+export interface Receipt {
+  vp: number;
+  crop: Suit | 'wild';
+  tile: string;
 }
 
 /**
@@ -194,87 +178,44 @@ export interface WorkerState {
 }
 
 /**
- * One island tile in play. Cost and VP are the same on every tile and live in
- * `island.tileRule` / `island.vpByDeliveryOrder`; the state stores only what
- * setup randomised (the demand tokens and the meeples) and what play has done.
+ * ⭐ ONE ISLAND TOKEN (Dean, ruling R3, 16/09/2026). A DEMAND (a crop: 2 cards
+ * of it; or `'wild'`: any 2 cards, which may differ), a VP value (3 to 6) and,
+ * on the 3 and 4 VP tokens only, a WORKER (the delivery meeple's colour).
+ * Dealt face up at setup. Plain JSON, and structurally a `TokenRecord` of
+ * `@gp/data`, which is where the payment rule (`tileDemand`) lives.
+ */
+export interface IslandToken {
+  demand: Suit | 'wild';
+  vp: number;
+  worker: Suit | null;
+}
+
+/**
+ * One island tile (an "island card") in play. The state stores what setup
+ * dealt and what play has left: the TOKENS still on it, and who has delivered.
  */
 export interface IslandTileState {
   /** Printed face id, e.g. "A1". Its level is layout only - see tileLevel. */
   tile: string;
-  /** One demand token per crate, dealt at setup. 'wild' is the cornucopia. */
-  crates: (Suit | 'wild')[];
   /**
-   * ONE MEEPLE PER DELIVERY SPACE (v31), drawn from a bag of 25 at setup and
-   * placed FACE UP - so which colour the first and second deliverer to this tile
-   * will take is public from the first turn, and is the whole of the island's
-   * new pull.
-   *
-   * Parallel to `deliveredBy` by INDEX, and deliberately never mutated: entry i
-   * is the meeple on delivery space i, so the seat at `deliveredBy[i]` took
-   * `meeples[i]`, and spaces from `deliveredBy.length` up are the ones still on
-   * the board. That is the same trick `deliveredBy` itself plays with
-   * `vpByDeliveryOrder` - one immutable printed schedule plus one growing record
-   * of who arrived - and it means the tile still re-derives its whole history
-   * rather than storing a second copy of it. `length` is
-   * `deliveriesPerTile(data)`.
+   * ⭐ THE TOKENS STILL ON THE TILE (16/09/2026): two at setup, one after the
+   * first delivery, none once the tile is finished. A token LEAVES the tile
+   * when it is taken (it becomes a receipt), so the length is the whole state
+   * of the tile: 2 = a first delivery pays both demands and chooses one, 1 = a
+   * second delivery pays this token's demand plus 2 any, 0 = finished. V5's
+   * swap moves a token between two tiles, carrying its VP and its Worker.
    */
-  meeples: Suit[];
+  tokens: IslandToken[];
   /**
-   * THE DEMAND TOKENS ARE MUTABLE (the Vegetable rebuild, 2026-08-09). Parallel
-   * to `crates`: entry i true = that token has been turned FACE DOWN by V6 The
-   * Trade Depot, and a face-down token accepts cards of any crops at the normal
-   * rate. Absent (the overwhelmingly common case) = nothing on this tile has
-   * been turned.
-   *
-   * A PARALLEL ARRAY rather than making `crates` hold objects, deliberately. A
-   * face-down token BEHAVES as wild but is not a cornucopia: the UI must draw it
-   * differently, and V6 must never be offered a token that is already wild. This
-   * shape leaves every existing reader of `crates` untouched, and `namedDemand`
-   * is the single place that has to know - which is what makes the rule one edit
-   * rather than an audit of every affordability path.
-   *
-   * V5's SWAP moves a token between crates, and the face-down flag travels with
-   * the token it belongs to, because physically it is the token that moves.
-   */
-  faceDown?: boolean[];
-  /**
-   * Seats that have delivered here, IN ORDER, and the order is the payment: the
-   * seat at index i took `island.vpByDeliveryOrder[i]`. Full at that array's
-   * length. This is why nothing else has to be stored per delivery - the public
-   * record on the tile is enough to re-derive every VP the island paid.
-   *
-   * ⚠️ 14/09/2026: "THE ORDER IS THE PAYMENT" HOLDS ONLY WITHOUT THE SPACE
-   * CHOICE. Under `rules.turn.deliverySpaceChoice` this is still the seats IN
-   * ARRIVAL ORDER and its length is still the delivery count, but which space
-   * (and so which VP and which meeple) each arrival took is `deliveredSpaces`.
-   * Ask `deliverySpacesTaken(tile)` in `@gp/data`, never index this list.
+   * Seats that have taken a token here, in the order taken, one entry per
+   * TOKEN (so V14's double take pushes the seat twice). A public record; the
+   * VP each seat took is on its receipts.
    */
   deliveredBy: Seat[];
-  /**
-   * ⭐ THE SPACE EACH RECEIPT TOOK (Dean, ruled 14/09/2026), parallel to
-   * `deliveredBy` by index: the seat at `deliveredBy[i]` took delivery space
-   * `deliveredSpaces[i]`, so the 6 VP space is held by the seat whose entry
-   * here is 0.
-   *
-   * ⛔ ABSENT UNLESS `rules.turn.deliverySpaceChoice` IS ON, and absent rather
-   * than present-and-empty, because a key added to every tile would change
-   * every serialised state and every fixture under the old rules. Without it
-   * the i-th arrival took space i, which is what `deliverySpacesTaken` answers.
-   */
-  deliveredSpaces?: number[];
 }
 
 export interface IslandState {
   tiles: IslandTileState[];
-}
-
-/**
- * The balloon module, in play only when Vegetable is on the table (null
- * otherwise). Ticket 17 sets it up; the balloon-move Deliver branch lands with
- * the Vegetable handler ticket.
- */
-export interface AerodromeState {
-  balloons: { id: string; at: Seat | 'centre' }[];
 }
 
 /**
@@ -383,8 +324,7 @@ export interface TurnState {
    * "no two of the same colour"), and a bare counter cannot answer the second.
    *
    * ⛔ **ABSENT UNLESS ONE OF THOSE TWO RULES IS ON**, and the absence is the
-   * same deliberate register `PlayerState.coins` and `PlayerState.hostDrewThisRound`
-   * are written in: a key present-and-empty would change
+   * same deliberate register `PlayerState.hostDrewThisRound` is written in: a key present-and-empty would change
    * every serialised state and every view for a rule the shipped game and all
    * three named controls have no concept of, and nine fixtures in
    * `packages/sim/fixtures/` replay byte-identically. `meepleSpendRationed` in
@@ -398,6 +338,34 @@ export interface TurnState {
    * cleared by hand and would cap the wrong window.
    */
   meeplesSpent?: Suit[];
+  /**
+   * ⭐ THE TURN PLAYER'S OWN BUILDINGS HARVESTED THIS TURN, by any route (the
+   * Harvest action, the Wheat Notice Board, W8, W11, W12, W13...). Counted in
+   * `Fx.harvest`, before `afterHarvest` fires, for W18 A Helping Hand (v42,
+   * *"If, on your turn, you Harvest two or more of your buildings, Draw 3."*).
+   *
+   * Counted by the ENGINE rather than by W18's own listener so that a W18 built
+   * part-way through a turn still sees the harvests that came before it.
+   * ABSENT until the first such harvest of the turn, in the same register as
+   * `meeplesSpent`, and reset by `freshTurn()` replacing the whole object.
+   */
+  harvestsThisTurn?: number;
+  /**
+   * ⭐ CARDS THE TURN PLAYER HAS BUILT THIS TURN, by any route (the Build
+   * action, the Dairy Notice Board, W7, D10...). Counted in `placeBuilt`,
+   * before `afterBuild` fires, for D18 A Helping Hand (v42, *"If, on your turn,
+   * you Build two buildings, put the top 2 cards of any one deck into your
+   * Barn."*). Every card built counts, Power and Endgame included (a builder
+   * default, see D18). Absent until the first build; reset with the turn.
+   */
+  buildsThisTurn?: number;
+  /**
+   * ⭐ THE END-OF-TURN HOOK HAS RUN (`beforeTurnEnd`, 16/09/2026), so the turn
+   * boundary, which can suspend and be re-entered (a pushed draw, the hand-limit
+   * discard), fires it once and only once. Absent until the boundary is first
+   * reached; reset with the turn. O18 A Helping Hand is its only listener.
+   */
+  endHooksDone?: boolean;
 }
 
 /**
@@ -475,14 +443,8 @@ export type Task =
        * rules exceptions" ruling on which deck a host draws from. Absent on
        * every other draw in the game, so the field is purely additive and the
        * event it feeds is unchanged for every producer but this one.
-       *
-       * ⭐ `'closingDraw'` (Dean, ruled 14/09/2026) is the second label, on the
-       * same terms: the draw a seat takes for filling a tile's last delivery
-       * space, one card per crate. Its named decks arrive pre-revealed and a
-       * cornucopia is a deck pick, which is the ordinary draw task's ordinary
-       * behaviour; the label only lets the cards be counted.
        */
-      via?: 'hostDraw' | 'closingDraw';
+      via?: 'hostDraw';
     }
   | {
       /**
@@ -558,17 +520,13 @@ export type Task =
       src: CardId | null;
       /** "You may GROW": a skip answer is offered. Nothing passes it today. */
       optional?: boolean;
-      /** Dean's Dairy experiment (12/09/2026): the only legal target. */
-      target?: CardId;
-      /** Dean's Dairy experiment, 'paidWild': the activation card may be any crop. */
-      wildActivation?: boolean;
       /**
        * ⭐ DEAN'S APIARY RETEXT (14/09/2026, `noticeBoardPower.apiaryPower`):
        * *"Grow a building using the top card of any deck."* The activation card
        * comes off the top of a deck in play and never out of the hand, so every
        * answer names a DECK and `payment` is null. 'match' keeps the printed
        * Grow rule (the deck's crop must pay the activation cost); 'wild' lets
-       * any deck pay. Coin payments are not offered: the power names the deck.
+       * any deck pay.
        */
       fromDeck?: 'match' | 'wild';
     }
@@ -578,13 +536,7 @@ export type Task =
       pid: Seat;
       src: CardId | null;
       /**
-       * ⭐ DEAN'S DAIRY EXPERIMENT (12/09/2026): what happens immediately after
-       * this Build resolves. Absent under every shipped rule.
-       */
-      thenGrow?: 'paid' | 'paidWild' | 'free';
-      /**
-       * The modifiers this build runs under: the cream balloon's and Dairy's
-       * discounts, the Builder's Yard's crop waiver, D7's stack payment. Absent
+       * The modifiers this build runs under: Dairy's discounts, the Builder's Yard's crop waiver, D7's stack payment. Absent
        * = the plain printed rules. Nothing is folded in on top any more - the
        * Dairy Farmstead stopped granting substitution on 2026-08-10, so what a
        * build carries is exactly what granted it.
@@ -596,15 +548,20 @@ export type Task =
   | {
       /**
        * A full Deliver action mid-effect (the Deliver Worker, the Vegetable
-       * deliver cards). Answers come from the same enumerators as the Deliver
-       * move - island deliveries AND balloon moves, because moving a balloon
-       * IS the Deliver action (reference DL-12).
+       * deliver cards). Answers come from the same enumerator as the Deliver
+       * move.
        */
       t: 'deliver';
       pid: Seat;
       src: CardId | null;
       /** "You may immediately deliver" (A15): a skip answer is offered. */
       optional?: boolean;
+      /**
+       * ⭐ THE VEGETABLE BOARD'S RELAXATION (Dean, R9, 16/09/2026): up to this
+       * many of the delivery's cards may be of ANY crop. Absent = 0, an exact
+       * payment. Rides on the task so the answers and the re-validation agree.
+       */
+      wildCards?: number;
     }
   | {
       /**
@@ -667,51 +624,6 @@ export type Task =
       src: CardId | null;
       remaining: number;
       optional?: boolean;
-    }
-  | {
-      /**
-       * ⭐ THE VILLAGE STORE'S EXCHANGE (V1, Dean 12/09/2026, ledger A150):
-       * *"when you make a delivery you may spend any number of ADDITIONAL cards
-       * FROM YOUR BARN, taking £1 each"*.
-       *
-       * ⛔ **IT IS A REPEATED BINARY CHOICE AND IT MUST NEVER BECOME A SUBSET
-       * ENUMERATION.** "Any number of cards from your barn" is the POWER SET of
-       * the barn: an 11-card barn is 2,048 conversions offered in ONE task, at
-       * EVERY delivery, which is the end-of-turn discard's C(n, k) failure
-       * arriving through a new door. This project has been stopped dead twice by
-       * exactly that - a 116,535-move position on 02/09/2026 and an 888,030-move
-       * one on 05/09/2026 - so the task offers "convert ONE more, or stop" and is
-       * re-offered while `remaining` holds. n sequential decisions instead of
-       * 2^n, and it costs NOTHING in expressiveness: every subset is reachable,
-       * by a different route.
-       *
-       * ⭐ **AND THE ANSWER NAMES A SUIT, NOT A CARD, WHICH IS THE SECOND HALF
-       * OF THE BOUND.** Barn identity is inert - `fx.spendFromBarn` says so in
-       * code, taking "the first matching id" for a per-suit tally - so two
-       * wheat cards in a barn differ in nothing a rule or a player can read.
-       * Answering by suit is the same reduction `stackGroupsOf` makes for a
-       * build payment, and it caps the answer list at **FIVE SUITS PLUS ONE
-       * SKIP, six, whatever the barn holds**. That bound is asserted by test.
-       *
-       * `remaining` is min(barn size, coins left in the supply) at the moment
-       * the task is pushed, and it is re-bounded at every answer: V5's supply is
-       * shared and finite, and D4 says an empty supply mid-conversion STOPS
-       * rather than refusing the whole exchange.
-       *
-       * ⚠️ ALWAYS OPTIONAL, so no `optional` flag: D3 says declining is
-       * EXPLICIT, so a `skip` is offered whenever anything is, and the turn
-       * settles cleanly on it.
-       *
-       * ⛔ PUSHED FROM `finishDelivery` AND ONLY FROM THERE, which is V3: the
-       * exchange resolves AFTER the crate is paid, so a player can never convert
-       * the cards the delivery itself needs. That placement is also D2 for free -
-       * every delivery reaches that tail, including one bought by a Notice Board
-       * power - and it keeps the balloon's freight move out, which is a Deliver
-       * ACTION but not a delivery.
-       */
-      t: 'mint';
-      pid: Seat;
-      remaining: number;
     }
   | {
       /**
@@ -822,26 +734,16 @@ export type TaskAnswer =
    * exactly the reasoning written on `activate` just above.
    */
   /**
-   * ⚠️ `payment` WENT NULLABLE ON 12/09/2026 (V8, A150). A bought Grow may
-   * now be paid with ONE VILLAGE STORE COIN instead of a card, in which case
-   * `payment` is null and `coinGrow` is set: nothing is placed, the stack does
-   * not advance, and a FULL building is a legal target under
-   * `rules.economy.coinGrowOnFullBuilding`. Every other answer of this kind is
-   * unchanged, so a Store-off answer is byte-identical.
-   *
-   * ⭐ WHY A BOUGHT GROW GETS THE SINK AT ALL: V8 says a coin is a wild card
-   * for GROW, and the Apiary board's bought Grow is a Grow. Coins still cannot
-   * multiply ACTIONS - the standing fire-once-per-turn guard means two
-   * coin-Grows a turn is the ceiling and never the same building twice.
+   * `payment` is null for the Apiary retext's deck Grow, which names `deckSuit`
+   * instead.
    */
   | {
       kind: 'grow';
       building: CardId;
       payment: CardId | null;
-      coinGrow?: true;
       /**
        * The Apiary retext's Grow (14/09/2026): the activation card is the top
-       * of THIS deck. `payment` is null and `coinGrow` absent.
+       * of THIS deck. `payment` is null.
        */
       deckSuit?: Suit;
     }
@@ -869,14 +771,6 @@ export type TaskAnswer =
        */
       meeples?: Partial<Record<Suit, number>>;
       wildPairs?: number;
-      /**
-       * ⭐ V6 (A150, 12/09/2026): coins in the payment, as a COUNT. It rides
-       * on the answer for exactly the reason `meeples` does above - an answer
-       * that dropped it is an answer that cannot pay, and `doBuild` throws
-       * "costs N cards, got N-j" a long way from the seam that lost it. Every
-       * route into a build has to carry it or none.
-       */
-      coins?: number;
     }
   /**
    * ⛔ `head` / `deckHead` rode on both of these until v31 and are GONE with the
@@ -899,15 +793,11 @@ export type TaskAnswer =
       placements?: Partial<Record<Suit, number>>[];
       paymentToll?: Partial<Record<Suit, number>>;
       /**
-       * The delivery space taken (Dean, 14/09/2026). Present only under
-       * `rules.turn.deliverySpaceChoice`; absent is fill order.
+       * ⭐ WHICH TOKEN THE RECEIPT IS (16/09/2026): an index into the tile's
+       * `tokens`. Every enumerated answer names it; absent takes the
+       * highest-VP token (a convenience for hand-written callers).
        */
-      space?: number;
-    }
-  | {
-      kind: 'balloon';
-      balloon: string;
-      spend: Partial<Record<Suit, number>>;
+      token?: number;
     }
   /** The turn-boundary overflow: exactly `hand.length - downTo` cards, chosen by their holder. */
   | { kind: 'discard'; cards: CardId[] }
@@ -980,6 +870,14 @@ export interface GameState {
    */
   suitsInPlay: Suit[];
   turnPlayer: Seat;
+  /**
+   * ⭐ THE SEAT THAT OPENED THE GAME (Dean, 15/09/2026: first player random).
+   * Written by `newGame` under `rules.setup.firstPlayer: 'random'` and ABSENT
+   * under `'seat0'`, where it means seat 0, so an older game's state is
+   * unchanged. Read through `firstPlayerOf` in turnflow.ts: it is the round
+   * boundary that `rules.endGame.endOfGame: 'finishRound'` ends the game on.
+   */
+  firstPlayer?: Seat;
   phase: 'playing' | 'ended';
   endTrigger: { seat: Seat } | null;
   players: PlayerState[];
@@ -988,35 +886,6 @@ export interface GameState {
   discards: Record<Suit, CardId[]>;
   fair: WorkerState[];
   island: IslandState;
-  aerodrome: AerodromeState | null;
-  /**
-   * ⭐ THE VILLAGE STORE'S SHARED COIN SUPPLY (V4, Dean 12/09/2026, ledger
-   * A150): how many coins are still IN THE SUPPLY, waiting to be minted.
-   *
-   * `rules.economy.coinSupplyPerPlayer` x seats at setup - 10 at two seats and
-   * 20 at four - SHARED across the table with NO per-player holding cap, so one
-   * player may hold every one of them. Spent coins RETURN here and may be
-   * minted again (V5), which makes this a recirculating pool rather than a
-   * countdown: the sum of this and every seat's `PlayerState.coins` is
-   * invariant for the whole game, and that identity is what the tests assert.
-   * An empty supply mints nothing.
-   *
-   * ⚠️ **ABSENT UNLESS THE STORE IS ON**, in exactly the register
-   * `PlayerState.coins` is written in: a key present-and-zero would
-   * change every serialised state, every capture and every fixture replay for a
-   * rule the shipped game has no concept of, and NINE fixtures in
-   * `packages/sim/fixtures/` replay byte-identically and depend on the absence.
-   * `coinSupplyLeft` in query.ts is the one accessor and it THROWS when the
-   * Store is on and this is missing, so the optionality never reaches a rule.
-   *
-   * ⛔ IT IS NOT THE v31 BANK. There is no wage, no pity rate, no market and
-   * no purchase from it: the ONE way a coin leaves this pool is V1's exchange at
-   * a delivery, and the only two ways one comes back are the Build and Grow
-   * sinks. Every coin economy this project has had died of a second faucet, so
-   * a future session adding a second producer here is repeating that failure
-   * rather than tuning this one.
-   */
-  coinSupply?: number;
   turn: TurnState;
   tasks: Task[];
   resume: Resume | null;
@@ -1098,13 +967,6 @@ export type Move =
       payment: CardId[];
       meeples?: Partial<Record<Suit, number>>;
       wildPairs?: number;
-      /**
-       * ⭐ V6 (A150, Dean 12/09/2026): coins in the payment, as a COUNT and
-       * never a choice of which coins. Absent when none, so a Store-off move is
-       * byte-identical. See `BuildOption.coins` in actions.ts for the branching
-       * argument, which is the whole reason it is a number.
-       */
-      coins?: number;
     }
   /**
    * GROW: activate one of your own buildings, paying one card that matches its
@@ -1121,38 +983,12 @@ export type Move =
    * apply. That is a PRICED CLOG BYPASS and it is deliberate. `atThreshold` on
    * the `meepleAsCard` event is how often it happens.
    */
-  /**
-   * ⭐ AND UNDER K10 THE PAYMENT MAY BE A COIN (Dean, 10/09/2026,
-   * `rules.economy.farmsteadCoinPower`). `coin` is set, `payment` is null and
-   * `meeples` is absent: the target is the seat's own FARMSTEAD, whose
-   * activation cost is one coin, nothing is placed on it, and the suit power
-   * on its face fires through the ordinary `activate` hook.
-   *
-   * ⛔ IT IS A MAIN-ACTION GROW AND ONLY A MAIN-ACTION GROW (builder default
-   * D-C1, ruled 10/09/2026). The Apiary board's BOUGHT Grow pushes a `grow`
-   * task, and that task's enumerator asks `growOptions` without
-   * `mods.mainAction`, so the Farmstead is never among its answers: a bonus
-   * may not buy a suit power.
-   */
   | {
       type: 'grow';
       seat: Seat;
       building: CardId;
       payment: CardId | null;
       meeples?: Suit[];
-      /** K10: this GROW is paid with ONE COIN and places nothing. */
-      coin?: true;
-      /**
-       * ⭐ V8/V9 (A150, Dean 12/09/2026): this GROW is paid with ONE VILLAGE
-       * STORE COIN, on ANY of the seat's buildings with an activation type, and
-       * PLACES NOTHING - so the stack does not advance, the building never
-       * clogs, and a FULL building is a legal target under
-       * `rules.economy.coinGrowOnFullBuilding`. ⛔ NOT `coin` above, which is
-       * K10's Farmstead power on the other coin arm: `observe.ts` counts
-       * `move.coin === true` as a Farmstead firing, so merging them would put
-       * every coin-Grow into a metric that means something else.
-       */
-      coinGrow?: true;
       /** R17: where the paid meeple(s) land, by seat, and the toll they owed. */
       placements?: Partial<Record<Suit, number>>[];
       paymentToll?: Partial<Record<Suit, number>>;
@@ -1165,13 +1001,6 @@ export type Move =
    * ⭐ UNDER R15 `meeples` is the part of `spend` paid out of the SUPPLY
    * rather than the barn, per colour, and it is a subset of `spend` colour by
    * colour. It is boxed, never barned and never discarded.
-   *
-   * ⭐ NO WILD PAIR IS MODELLED HERE AND THAT IS NOT AN OMISSION. The island
-   * already carries its own substitution at exactly the same rate - "any single
-   * card it asks for may instead be paid with 2 cards of any crops" - so two
-   * meeples paying one named crop is already reachable through
-   * `cardsPerSubstitution`, and adding R10 beside it would be a second rate on
-   * the same payment.
    */
   | {
       type: 'deliver';
@@ -1183,23 +1012,11 @@ export type Move =
       placements?: Partial<Record<Suit, number>>[];
       paymentToll?: Partial<Record<Suit, number>>;
       /**
-       * ⭐ WHICH DELIVERY SPACE THIS RECEIPT TAKES (Dean, ruled 14/09/2026):
-       * 0 is the 6 VP space, 1 the 3 VP space carrying the delivery meeple.
-       * Present on every enumerated move under `rules.turn.deliverySpaceChoice`
-       * and absent under fill order; `apply` rejects a space already taken.
+       * ⭐ WHICH TOKEN THIS DELIVERY TAKES (Dean, R3, 16/09/2026): an index
+       * into the tile's `tokens`. On a first delivery the payer CHOOSES between
+       * the two; on a second there is one. Present on every enumerated move.
        */
-      space?: number;
-    }
-  /**
-   * The Deliver action's freight branch (reference DL-12): pay 2 differing
-   * barn cards, take a balloon that is not on your own Aerodrome, collect its
-   * reward. In play only when Vegetable is on the table.
-   */
-  | {
-      type: 'moveBalloon';
-      seat: Seat;
-      balloon: string;
-      spend: Partial<Record<Suit, number>>;
+      token?: number;
     }
   /**
    * THE INTERACTION HALF OF THE BONUS SLOT (v31): place exactly ONE card from
@@ -1249,7 +1066,7 @@ export type Move =
        * `overlays/notice-board-visit-no-self-v1.overlay.json` on identical
        * seeds - the claim the whole variant is read through - and what keeps
        * every fixture in `packages/sim/fixtures/` replaying unchanged. It is
-       * the same rule `fee2`, `coin` and `noticeBoard?` follow, and it means a
+       * the same rule `fee2` and `noticeBoard?` follow, and it means a
        * reader that has never heard of the fix reads `host` and is right about
        * every game but this one.
        *
@@ -1322,7 +1139,6 @@ const MOVE_TYPE_KEYS = {
   grow: true,
   harvest: true,
   deliver: true,
-  moveBalloon: true,
   visit: true,
   collect: true,
   pass: true,
@@ -1364,7 +1180,7 @@ export type GameEvent =
    * pays are public at a real table. Only the card identities are private, and
    * they are masked exactly as they are for any other seat's draw.
    */
-  | { e: 'cardsToHand'; seat: Seat; cards: CardId[]; via?: 'hostDraw' | 'closingDraw' }
+  | { e: 'cardsToHand'; seat: Seat; cards: CardId[]; via?: 'hostDraw' }
   | { e: 'cardsDiscarded'; suit: Suit; cards: CardId[] }
   | { e: 'deckToBarn'; seat: Seat; suit: Suit; card: CardId }
   /** One card lifted from a building's stack into its owner's barn (W14) - NOT a harvest, no on-harvest passives. */
@@ -1387,52 +1203,6 @@ export type GameEvent =
       owner: Seat;
     }
   /**
-   * A COIN CAME OUT OF THE SUPPLY.
-   *
-   * ⭐ `board` IS ALWAYS `'store'` SINCE 13/09/2026: the other mint (the
-   * commons-with-coins arm's cleared central pile) was deleted with the
-   * commons, and the field is kept so events stay identical. `'store'` is the VILLAGE STORE's exchange
-   * (V1): one event per card converted, `coins` is
-   * `rules.economy.storeCoinsPerCard`, and `card` names the barn card that paid
-   * for it and therefore its suit and its discard pile.
-   */
-  | { e: 'coinsMinted'; seat: Seat; board: 'store'; coins: number; card?: CardId }
-  /**
-   * ⭐ COINS LEFT A SEAT'S PILE - one of the currency's EXACTLY TWO SINKS (K7,
-   * Dean 10/09/2026). `on` says which:
-   *
-   *  - `'farmstead'`: the Farmstead's activation cost, one coin, spent as a
-   *    MAIN-ACTION GROW that places nothing and fires the suit power (K10-K12).
-   *  - `'endgame'`: an Endgame card's whole price, `rules.economy.endgameCoinCost`
-   *    coins and ZERO CARDS (K15). The `built` event fires unchanged beside it,
-   *    with an empty `payment`.
-   *
-   * ⚠️ THE UNION IS THE ECONOMY'S GUARD RAIL. A third member is a third use for
-   * coins, which K7 rules out in so many words, so adding one is a design
-   * decision and never an implementation detail. a19 reads the split.
-   */
-  /**
-   * A COIN LEFT A WALLET. `on` says which sink took it.
-   *
-   * ⭐ TWO OF THE FOUR ARE THE VILLAGE STORE'S (V6 and V8, A150,
-   * 12/09/2026): `'build'` is a coin paying any part of a build cost, emitted
-   * ONCE for the whole coin component of one payment because coins are fungible
-   * and a payment names a COUNT and never which coins; `'grow'` is a coin-Grow,
-   * always exactly one coin, placing nothing. `'farmstead'` and `'endgame'` are
-   * the separate commons-with-coins arm's two sinks (K10/K15, 10/09/2026) and
-   * no overlay turns both economies on at once.
-   *
-   * ⚠️ UNDER THE STORE THE COIN GOES BACK TO THE SHARED SUPPLY (V5) and may
-   * be minted again; under K7 there is no supply and it simply ceases. That
-   * branch lives in `fx.spendCoins`, gated on the supply's presence.
-   */
-  | {
-      e: 'coinsSpent';
-      seat: Seat;
-      on: 'farmstead' | 'endgame' | 'build' | 'grow';
-      coins: number;
-    }
-  /**
    * A DOOR ACTION RAN. `colour` is whose door it is (which is also what a meeple
    * of that colour does), `action` is what it did, and `via` is what paid for
    * it - a card on a Notice Board, or a meeple leaving the game.
@@ -1448,30 +1218,14 @@ export type GameEvent =
       seat: Seat;
       colour: Suit;
       action: DoorAction;
-      /**
-       * ⭐ 'balloon' ADDED 12/09/2026 and it is a NAMED PASSENGER. Under an arm
-       * whose balloons pay plain actions, a flight buys a door action and is
-       * counted as one here, exactly as D4 made a commons play count as one.
-       * ⛔ SO THE DOOR MIX AND ACTION INFLATION ON SUCH AN ARM ARE NOT
-       * COMPARABLE WITH THE SHIPPED GAME'S, and no report may pool them. This
-       * field is how a reader splits them; it produces nothing at all while
-       * every balloon reward is a sized one, which is the shipped data.
-       */
-      via: 'visit' | 'meeple' | 'balloon';
+      via: 'visit' | 'meeple';
     }
   /**
-   * A MEEPLE WAS CLAIMED off an island delivery space and is now in a player's
-   * supply. `space` is the index into the tile's `meeples`, so a UI can animate
-   * the exact one and a metric can tell the 6 VP space from the 3 VP one.
+   * A MEEPLE (A WORKER) WAS CLAIMED and is now in a player's supply: off an
+   * island token (`tile` and the token's `vp`), or off the seat's own Notice
+   * Board under the meeple-loop control (`tile` and `vp` null).
    */
-  /**
-   * ⚠️ `tile` and `space` ARE NULLABLE SINCE 03/09/2026. Until the
-   * `meepleFromBag` balloon there was exactly one way to gain a meeple - taking
-   * it off an island delivery space - and the event could name that space
-   * unconditionally. A balloon meeple comes from a bag and from no space, so the
-   * two fields say null rather than lying about a tile.
-   */
-  | { e: 'meepleGained'; seat: Seat; colour: Suit; tile: string | null; space: number | null }
+  | { e: 'meepleGained'; seat: Seat; colour: Suit; tile: string | null; vp: number | null }
   /**
    * A MEEPLE WAS SPENT and has LEFT THE GAME. It goes back to no pool - there is
    * no supply to return it to - so `meepleGained` minus `meepleSpent` over a
@@ -1494,7 +1248,7 @@ export type GameEvent =
    * Emitted INSTEAD of `meepleGained`, never beside it, so the two events
    * partition every meeple that was offered to a supply. `source` says which
    * faucet overflowed: `'collect'` is taking your own board back, `'island'` is
-   * a delivery, `'balloon'` is the magenta balloon's bag draw.
+   * a delivery.
    *
    * ⭐ HANDOFF v2 ADDS FOUR SOURCES AND THEY ARE NOT OVERFLOWS (R15, R16).
    * `'build'`, `'activation'` and `'delivery'` are a meeple SPENT AS A CARD of
@@ -1511,15 +1265,7 @@ export type GameEvent =
       e: 'meepleBoxed';
       seat: Seat;
       colour: Suit;
-      source:
-        | 'collect'
-        | 'island'
-        | 'balloon'
-        | 'build'
-        | 'activation'
-        | 'delivery'
-        | 'toll'
-        | 'paymentToll';
+      source: 'collect' | 'island' | 'build' | 'activation' | 'delivery' | 'toll' | 'paymentToll';
     }
   /**
    * ⭐ A MEEPLE WAS SPENT AS A CARD OF ITS COLOUR (R15, handoff v2), which is
@@ -1608,53 +1354,37 @@ export type GameEvent =
       e: 'delivered';
       seat: Seat;
       tile: string;
-      /**
-       * The receipt taken: 6 for the first delivery space, 3 for the second.
-       * ⚠️ Under the space choice (14/09/2026) that is the SPACE and not the
-       * arrival order: a first arrival may take 3.
-       */
+      /** The token taken: its VP, its crop (`'wild'` for a wild token) and its Worker. */
       vp: number;
-      spend: Partial<Record<Suit, number>>;
-      /** The space taken. Present only under `rules.turn.deliverySpaceChoice`. */
-      space?: number;
-    }
-  | {
-      e: 'balloonMoved';
-      seat: Seat;
-      balloon: string;
-      from: Seat | 'centre';
-      /** BARN cards paid, by suit. Empty for a hand-paid flight and for a free move. */
+      crop: Suit | 'wild';
+      worker: Suit | null;
+      /**
+       * The cards paid, on the FIRST event of a delivery only (V14 takes two
+       * tokens for one payment and emits two events).
+       */
       spend: Partial<Record<Suit, number>>;
       /**
-       * HAND cards discarded to pay for it - Vegetable's alternative route
-       * (V4, V8). A COUNT and not the ids, on purpose: a barn payment is already
-       * reported as an anonymous tally, and a count is all anything downstream
-       * needs. The bots' pricer is the reason this exists at all - without it a
-       * hand-paid flight reads as costing nothing, because nothing else in the
-       * event stream charges for a card leaving a hand.
+       * Did this delivery take the higher-VP of TWO tokens? Present on a first
+       * delivery to a tile only, for the token-choice reading.
        */
-      hand: number;
-      /** True for a card effect's free move - no cards paid from anywhere. */
-      free: boolean;
+      tookHigher?: boolean;
+      /** Cards of the payment that missed the tile's named demand (the Vegetable board's allowance). */
+      wildUsed?: number;
     }
   /** A face-up discard reclaimed into a barn (the upgraded Vegetable Barn's freight refund). */
   | { e: 'discardToBarn'; seat: Seat; card: CardId }
   /**
-   * THE ISLAND'S DEMAND TOKENS CHANGED - the two events nothing in 105 cards
-   * could emit before the Vegetable rebuild. Both are fully public: the tokens
-   * sit face up (or visibly blank) on the board for everyone to read, so neither
-   * is redacted.
-   *
-   * `crate` is the index into the tile's `crates` array, so a UI can animate the
-   * exact token rather than re-diffing the tile.
+   * ⭐ TWO ISLAND TOKENS SWAPPED TILES (V5, a primitive since the Vegetable
+   * rebuild; the token island of 16/09/2026). Fully public. `token` is the
+   * index into each tile's `tokens` before the swap; each token carries its
+   * VP and its Worker with it.
    */
   | {
       e: 'demandSwapped';
       seat: Seat;
-      a: { tile: string; crate: number };
-      b: { tile: string; crate: number };
+      a: { tile: string; token: number };
+      b: { tile: string; token: number };
     }
-  | { e: 'demandFaceDown'; seat: Seat; tile: string; crate: number }
   /**
    * A card given from one seat to another (the Orchard gift family). Identity
    * travels with it.

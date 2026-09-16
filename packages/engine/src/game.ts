@@ -7,7 +7,6 @@
 import type { GameData } from '@gp/data';
 
 import {
-  balloonMoveOptions,
   bonusDrawOpen,
   buildOptions,
   deliverOptions,
@@ -15,7 +14,6 @@ import {
   doBuild,
   doDeliver,
   doDraw,
-  doMoveBalloon,
   doHarvestAction,
   doCollect,
   doSpendMeeple,
@@ -70,17 +68,8 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
     if (drawableSuits(data, state).length > 0) moves.push({ type: 'draw', seat });
     for (const o of buildOptions(data, state, seat)) {
       moves.push(
-        // ⭐ V6 (A150, 12/09/2026): the coin count rides on BOTH shapes, so a
-        // coin-paid build with no meeples in it keeps the narrow one. Absent
-        // when zero, which is what keeps a Store-off move list byte-identical.
         o.meeples === undefined
-          ? {
-              type: 'build',
-              seat,
-              card: o.card,
-              payment: o.payment,
-              ...(o.coins === undefined ? {} : { coins: o.coins }),
-            }
+          ? { type: 'build', seat, card: o.card, payment: o.payment }
           : {
               type: 'build',
               seat,
@@ -88,63 +77,44 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
               payment: o.payment,
               meeples: o.meeples,
               ...(o.wildPairs === undefined ? {} : { wildPairs: o.wildPairs }),
-              ...(o.coins === undefined ? {} : { coins: o.coins }),
             },
       );
     }
-    // ⭐ `mainAction: true` IS THE ONE PLACE IT IS SET (builder default D-C1,
-    // 10/09/2026), and it is what makes the coin-activated Farmstead a MAIN
-    // action and only a main action: the Apiary board's bought Grow pushes a
-    // `grow` task whose answers come from this same enumerator without it.
-    for (const o of growOptions(data, state, seat, { mainAction: true })) {
+    for (const o of growOptions(data, state, seat)) {
       moves.push(
-        o.coin === true
-          ? // K10: one coin, nothing placed, the Farmstead's suit power fires.
-            { type: 'grow', seat, building: o.building, payment: null, coin: true }
-          : o.coinGrow === true
-            ? // ⭐ V8/V9 (A150, 12/09/2026): one VILLAGE STORE coin, nothing
-              // placed, the building's own ability fires, and under
-              // `coinGrowOnFullBuilding` a clogged building is a legal target.
-              { type: 'grow', seat, building: o.building, payment: null, coinGrow: true }
-            : o.meeples === undefined
-              ? { type: 'grow', seat, building: o.building, payment: o.payment }
-              : {
-                  type: 'grow',
-                  seat,
-                  building: o.building,
-                  payment: null,
-                  meeples: o.meeples,
-                  ...(o.placements === undefined ? {} : { placements: o.placements }),
-                  ...(o.paymentToll === undefined ? {} : { paymentToll: o.paymentToll }),
-                },
+        o.meeples === undefined
+          ? { type: 'grow', seat, building: o.building, payment: o.payment }
+          : {
+              type: 'grow',
+              seat,
+              building: o.building,
+              payment: null,
+              meeples: o.meeples,
+              ...(o.placements === undefined ? {} : { placements: o.placements }),
+              ...(o.paymentToll === undefined ? {} : { paymentToll: o.paymentToll }),
+            },
       );
     }
     for (const building of harvestOptions(data, state, seat)) {
       moves.push({ type: 'harvest', seat, building });
     }
     for (const o of deliverOptions(data, state, seat)) {
-      // ⭐ THE SPACE CHOICE (Dean, 14/09/2026) rides as a trailing key, present
-      // only when the option named one, so a fill-order move is the same object
-      // it always was.
-      const space = o.space === undefined ? {} : { space: o.space };
+      // ⭐ THE TOKEN CHOICE (Dean, R3, 16/09/2026) rides on every move: a first
+      // delivery offers each payment once per token.
       moves.push(
         o.meeples === undefined
-          ? { type: 'deliver', seat, tile: o.tile, spend: o.spend, ...space }
+          ? { type: 'deliver', seat, tile: o.tile, spend: o.spend, token: o.token }
           : {
               type: 'deliver',
               seat,
               tile: o.tile,
               spend: o.spend,
+              token: o.token,
               meeples: o.meeples,
               ...(o.placements === undefined ? {} : { placements: o.placements }),
               ...(o.paymentToll === undefined ? {} : { paymentToll: o.paymentToll }),
-              ...space,
             },
       );
-    }
-    // The Deliver action's freight branch (DL-12): balloon moves.
-    for (const o of balloonMoveOptions(data, state, seat)) {
-      moves.push({ type: 'moveBalloon', seat, balloon: o.balloon, spend: o.spend });
     }
     // ⛔ This used to read "...and no Tier 3 ACTION card is live either": an
     // ACTION card was a main action too, so it had to suppress `pass` exactly as
@@ -200,15 +170,7 @@ export function legalMoves(data: GameData, state: GameState): Move[] {
  * seat whose only remaining option was a bonus would have had `pass` suppressed
  * and no legal move at all.
  */
-const MAIN_ACTIONS = new Set<Move['type']>([
-  'draw',
-  'build',
-  'grow',
-  'harvest',
-  'deliver',
-  'moveBalloon',
-  'pass',
-]);
+const MAIN_ACTIONS = new Set<Move['type']>(['draw', 'build', 'grow', 'harvest', 'deliver', 'pass']);
 
 /**
  * Which half of the turn a task should resume into. The start-of-turn moves -
@@ -274,8 +236,6 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
         payment: move.payment,
         ...(move.meeples === undefined ? {} : { meeples: move.meeples }),
         ...(move.wildPairs === undefined ? {} : { wildPairs: move.wildPairs }),
-        // V6 (A150): a count, re-validated and charged in `doBuild`.
-        ...(move.coins === undefined ? {} : { coins: move.coins }),
       });
       break;
     case 'grow':
@@ -283,26 +243,10 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
       // nowhere else, so that A5, A6 and A12 did not each trigger it. The card
       // is gone (v31); the rule that an action-scoped effect belongs on this
       // branch and never inside `doGrow` is not.
-      doGrow(
-        fx,
-        move.seat,
-        move.building,
-        move.payment,
-        // K10: `coin` is the only mod the ACTION ever carries, and it is the
-        // payment rather than a grant - see `GrowMods.coin`. Spread so the
-        // object is `{}` in the shipped game, exactly as it always was.
-        // ⭐ AND V8's IS THE SECOND (A150, 12/09/2026), spread the same way so
-        // the object is `{}` in the shipped game exactly as it always was.
-        {
-          ...(move.coin === true ? { coin: true } : {}),
-          ...(move.coinGrow === true ? { coinGrow: true } : {}),
-        },
-        move.meeples ?? [],
-        {
-          ...(move.placements === undefined ? {} : { placements: move.placements }),
-          ...(move.paymentToll === undefined ? {} : { paymentToll: move.paymentToll }),
-        },
-      );
+      doGrow(fx, move.seat, move.building, move.payment, {}, move.meeples ?? [], {
+        ...(move.placements === undefined ? {} : { placements: move.placements }),
+        ...(move.paymentToll === undefined ? {} : { paymentToll: move.paymentToll }),
+      });
       break;
     case 'harvest':
       // ⛔ The ActionAgain arming stood here ("Harvest is 2 buildings", the
@@ -311,24 +255,16 @@ export function apply(data: GameData, state: GameState, move: Move): Applied {
       doHarvestAction(fx, move.seat, move.building);
       break;
     case 'deliver':
-      doDeliver(
-        fx,
-        move.seat,
-        move.tile,
-        move.spend,
-        undefined,
-        1,
-        move.meeples,
-        {
+      // The token choice (16/09/2026): `doDeliver` rejects a token the tile
+      // does not hold.
+      doDeliver(fx, move.seat, move.tile, move.spend, {
+        ...(move.token === undefined ? {} : { token: move.token }),
+        ...(move.meeples === undefined ? {} : { meepleSpend: move.meeples }),
+        placement: {
           ...(move.placements === undefined ? {} : { placements: move.placements }),
           ...(move.paymentToll === undefined ? {} : { paymentToll: move.paymentToll }),
         },
-        // The space choice (14/09/2026): `doDeliver` rejects a taken space.
-        move.space,
-      );
-      break;
-    case 'moveBalloon':
-      doMoveBalloon(fx, move.seat, move.balloon, move.spend);
+      });
       break;
     case 'pass':
       // A standing move never blocks `pass` any more. It used to, for the Tier 3

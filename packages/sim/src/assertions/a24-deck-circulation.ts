@@ -183,11 +183,11 @@ export const deckCirculation: Assertion = {
     'a PREDICTION being scored, never a threshold to fail against.',
   taste: false,
   remedy:
-    `${NO_REMEDY}. ⭐ THIS IS A HYPOTHESIS TEST AND NOT A DIAL: it is the one number that can ` +
-    'tell Dean whether his own best argument for the Village Store was right. Run ' +
-    'overlays/village-store-coins-v1.overlay.json against its control ' +
-    `overlays/notice-board-visit-host-draw-by-seats-v1.overlay.json on identical ${REFERENCE.id} ` +
-    'seeds and read the DELTA on all four lines together. ⛔ RESHUFFLES FALLING IS NOT ON ITS ' +
+    `${NO_REMEDY}. ⭐ THIS IS A HYPOTHESIS TEST AND NOT A DIAL: it was written to tell Dean ` +
+    'whether his circulation argument for the Village Store was right (the Store was deleted ' +
+    'on 16/09/2026), and it still reads any rule that returns barn cards to circulation. Run ' +
+    `such an arm against its control on identical ${REFERENCE.id} seeds and read the DELTA on ` +
+    'all four lines together. ⛔ RESHUFFLES FALLING IS NOT ON ITS ' +
     'OWN THE FINDING: if the draws fell with them the game merely got shorter. Only ' +
     'reshuffles down AND draws roughly held AND the pool at a reshuffle up is the circulation ' +
     'argument coming true.',

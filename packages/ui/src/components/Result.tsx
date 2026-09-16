@@ -183,7 +183,7 @@ function Detail({ seat, zoom }: { seat: SeatScore; zoom: Zoomer }) {
             player about the board; "got there first, 4 x 6" tells them about
             their game. */}
         {seat.arrivals.map((a) => (
-          <span key={a.order} className="chip">
+          <span key={`${a.order}:${a.vpEach}`} className="chip">
             {a.order === 0
               ? 'Got there first'
               : a.order === 1

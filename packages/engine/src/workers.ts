@@ -28,8 +28,15 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import { dairyGrowsBuilt, doorActionForSuit, isMeepleCurrency, meepleSpendTiming } from '@gp/data';
+import {
+  dairyDiscount,
+  doorActionForSuit,
+  isMeepleCurrency,
+  meepleSpendTiming,
+  vegetableWildCards,
+} from '@gp/data';
 
+import type { BuildMods } from './actions.js';
 import { doorOf } from './query.js';
 import type { Fx } from './fx.js';
 import { fireHook } from './fx.js';
@@ -40,17 +47,7 @@ import type { CardId, DoorAction, Seat } from './state.js';
  * the supply (the commons route, a card onto a central board, was deleted on
  * 13/09/2026). `via` says what paid and nothing below it branches on it.
  */
-/**
- * ⭐ 'balloon' ADDED 12/09/2026 for the plain-action balloon scheme. ⛔ IT IS A
- * PASSENGER WITH A NAME: `performDoorAction` emits `doorUsed`, which is what
- * a07 (action inflation) and a16 (the door mix) count, so under an arm whose
- * balloons pay plain actions a FLIGHT NOW COUNTS AS A BOUGHT DOOR exactly as
- * D4 made a (now deleted) commons play count as one. That is the honest reading - a flight
- * does buy a door action - but it means the door mix on such an arm is not
- * comparable with the door mix on the shipped game, and no report may pool
- * them. The via field is on the event so a reader can split them.
- */
-export type DoorVia = 'visit' | 'meeple' | 'balloon';
+export type DoorVia = 'visit' | 'meeple';
 
 /**
  * WHAT A COLOUR'S DOOR BUYS: the roster's printed `action`, read through the
@@ -105,19 +102,19 @@ export function meepleActionOf(data: GameData, colour: Suit): DoorAction {
  * `docs/notice-board-visit-handoff-2026-09-10-v2.md`, as amended by Dean's
  * rulings C88 and C89 of the same evening). Live under
  * `rules.turn.visitCurrency: 'noticeBoardPower'`, where a visitor plays one
- * card onto ANY player's Notice Board and takes that board's PRINTED POWER -
- * and under `rules.economy.farmsteadCoinPower`, the superseded coins arm of
- * that morning, whose Farmstead activates for a coin into the same five.
+ * card onto ANY player's Notice Board and takes that board's PRINTED POWER.
  *
  *   Orchard    "Draw 4."                                        `orchardDraw`
- *   Dairy      "Build. You may spend cards of any crops."        `dairyWild`
+ *   Dairy      "Build, spending cards of any crops, with a
+ *               discount of 2." (R10, 16/09/2026)     `dairyDiscount`, `dairyWild`
  *   Wheat      "Harvest one of your buildings, then put 1 card
  *               from your hand into your barn."                  `wheatBarn`
  *   Apiary     "Grow a building using the top card of any deck." `apiaryPower`
  *              (ruled 14/09/2026; the S12 "Sow 2 cards from your hand onto your
  *              buildings", `apiarySows`, is `apiaryPower: 'sow'`)
- *   Vegetable  "Deliver. If you cannot, put 2 cards from your
- *               hand into your barn."                    `vegetableFallback`
+ *   Vegetable  "Deliver - 2 of the cards may be any crop. If you
+ *               cannot, put 2 cards from your hand into your
+ *               Barn." (R9, 16/09/2026)   `vegetableWildCards`, `vegetableFallback`
  *
  * ⭐ EACH IS ITS OWN SUIT'S VERB AMPLIFIED, so a board is guessable from its
  * colour before it is read, and each is worth roughly two plain actions. S13
@@ -142,20 +139,21 @@ export function meepleActionOf(data: GameData, colour: Suit): DoorAction {
  * handler, which `actions.ts` may not import.
  *
  * ⚠️ `deliverLegal` IS ANSWERED BY THE CALLER, AND ONLY THE VEGETABLE
- * BRANCH READS IT. "Deliver. If you cannot..." is a question about island
- * claims and balloon moves, and both enumerators live in `actions.ts`, which
- * this file may not import (it is imported BY it). One boolean in beats a
- * module cycle, and both call sites answer it with the same
- * `doorActionLegal(data, state, actor, 'deliver')`.
+ * BRANCH READS IT. "Deliver... If you cannot..." is a question about island
+ * payments, and that enumerator lives in `actions.ts`, which this file may not
+ * import (it is imported BY it). One boolean in beats a module cycle, and every
+ * call site answers it with `vegetableBoardCanDeliver` (actions/doors.ts),
+ * which asks WITH the board's relaxation: a seat that can pay only because 2
+ * cards may be any crop can deliver, and gets no fallback.
  */
 export function fireNoticeBoardPower(
   fx: Fx,
   actor: Seat,
   colour: Suit,
   opts: {
-    /** The card that granted this: a Farmstead under the coins arm, null for a visit. */
+    /** The card that granted this, null for a visit. */
     src: CardId | null;
-    /** Can `actor` deliver right now - an island claim or a balloon move (DL-12)? */
+    /** Can `actor` deliver right now? */
     deliverLegal: boolean;
   },
 ): void {
@@ -178,25 +176,14 @@ export function fireNoticeBoardPower(
       });
       return;
     case 'dairy':
-      // "Build. You may spend cards of any crops." ⭐ A WAIVER, NOT A
-      // DISCOUNT, and that is ruling S13 in one line: a build at a discount of
-      // 1 ALREADY waives the crop requirement (`priceOf` sets the own-suit
-      // minimum to 0 whenever a discount applies), so the morning's
-      // `dairyDiscount` power was D4 The Milking Shed word for word and the
-      // card lost its identity to it. The full card count is still paid here;
-      // only the n-of-suit half goes, through `BuildMods.substitute` - which
-      // has been "a mod with no producer" since the v31 doors went plain and
-      // now has one again.
-      fx.pushTask({
-        t: 'build',
-        pid: actor,
-        src,
-        ...(numbers.dairyWild ? { mods: { substitute: true } } : {}),
-        // ⭐ Dean's Dairy experiment (12/09/2026), shipped 'none'.
-        ...(dairyGrowsBuilt(fx.data) === 'none'
-          ? {}
-          : { thenGrow: dairyGrowsBuilt(fx.data) as 'paid' | 'paidWild' | 'free' }),
-      });
+      // ⭐ "Build, spending cards of any crops, with a discount of 2." (Dean,
+      // R10, v41, 16/09/2026.) The discount comes off the card count, and a
+      // discount above 0 already waives the n-of-suit requirement in
+      // `priceOf`; `dairyWild` waives it through `BuildMods.substitute` too, so
+      // the "any crops" half holds at a discount of 0. The board no longer
+      // Grows what it builds: `dairyGrowsBuilt` and the build task's
+      // `thenGrow` rider were deleted the same day.
+      fx.pushTask({ t: 'build', pid: actor, src, mods: dairyBoardMods(fx.data) });
       return;
     case 'wheat': {
       // "Harvest one of your buildings, then put 1 card from your hand into
@@ -209,14 +196,12 @@ export function fireNoticeBoardPower(
       // a seat with nothing worth harvesting.
       //
       // ⛔ AND IT IS EMPHATICALLY NOT W13 THE BAKERY'S CASCADE. W13 harvests
-      // EVERY loaded building; this harvests exactly one. The coins arm's
-      // Farmstead did the cascade until 10/09/2026 and that was the collision
-      // S13 named.
+      // EVERY loaded building; this harvests exactly one. The (deleted) coins
+      // arm's Farmstead did the cascade until 10/09/2026 and that was the
+      // collision S13 named.
       //
       // ⚠️ A LOADED NOTICE BOARD IS ONE OF "YOUR BUILDINGS" HERE, so this
-      // power can cash a board of your own below the `3+` minimum. That is the
-      // magenta balloon's precedent ("Harvest any building, even if it is not
-      // full") reaching the one building S8 gives a floor to, and it is a
+      // power can cash a board of your own below the `3+` minimum. It is a
       // reading the engine had to make rather than one the handoff wrote down.
       // Flagged for Dean; excluding it would have been the bigger invention.
       fx.pushTask({
@@ -263,21 +248,29 @@ export function fireNoticeBoardPower(
       fx.pushTask({ t: 'sow', pid: actor, src, remaining: numbers.apiarySows });
       return;
     case 'vegetable':
-      // "Deliver. If you cannot, put 2 cards from your hand into your barn."
-      // ⭐ ONE delivery with a fallback, and NOT the morning's two: delivering
-      // twice was V15 The International Port word for word and S13 killed it.
-      // The fallback is what makes the board never dead - Deliver is worth
-      // nothing to a payer with an empty barn (C53's standing finding), and
-      // this is the one power whose failure case SETS UP the next delivery
-      // rather than making this one.
+      // ⭐ "Deliver - 2 of the cards may be any crop. If you cannot, put 2 cards
+      // from your hand into your Barn." (Dean, R9, 16/09/2026.) ONE delivery,
+      // whose task carries the relaxation (`wildCards`), with a fallback.
+      // Delivering twice was V15 The International Port and S13 killed it. The
+      // fallback is what makes the board never dead: Deliver is worth nothing
+      // to a payer with an empty barn, and the fallback sets up the NEXT
+      // delivery instead.
+      //
+      // ⚠️ BUILDER DEFAULT, NOT RULED: on a second delivery the 2 any-crop
+      // cards may also cover the token's pair, so all 4 may be any crop. That
+      // falls out of `demandShortfall` counting every missed named card alike.
       //
       // ⚠️ THE BRANCH IS TAKEN AT FIRE TIME, not at resolution: "if you
-      // cannot" is a question about the position the power fires into. A
-      // deliver task pushed into a position with no answer would simply be
-      // dropped by the drain loop and the seat would get nothing at all, which
-      // is the reading S13 was fixing.
+      // cannot" is a question about the position the power fires into, and
+      // `deliverLegal` was asked WITH the relaxation.
       if (opts.deliverLegal) {
-        fx.pushTask({ t: 'deliver', pid: actor, src });
+        const wildCards = vegetableWildCards(fx.data);
+        fx.pushTask({
+          t: 'deliver',
+          pid: actor,
+          src,
+          ...(wildCards > 0 ? { wildCards } : {}),
+        });
       } else {
         fx.pushTask({ t: 'handToBarn', pid: actor, src, remaining: numbers.vegetableFallback });
       }
@@ -285,6 +278,19 @@ export function fireNoticeBoardPower(
     default:
       return colour satisfies never;
   }
+}
+
+/**
+ * ⭐ THE DAIRY BOARD'S BUILD MODIFIERS (R10, 16/09/2026): the discount, and the
+ * any-crops waiver. One function, because the power and its legality gate
+ * (`noticeBoardPowerLegal`) must price the same build.
+ */
+export function dairyBoardMods(data: GameData): BuildMods {
+  const discount = dairyDiscount(data);
+  return {
+    ...(discount > 0 ? { discount } : {}),
+    ...(data.rules.economy.noticeBoardPower.dairyWild ? { substitute: true } : {}),
+  };
 }
 
 /**
@@ -386,8 +392,7 @@ export function performDoorAction(fx: Fx, actor: Seat, colour: Suit, via: DoorVi
       fx.pushTask({ t: 'build', pid: actor, src: null });
       break;
     case 'deliver':
-      // The PLAIN Deliver, island or freight (a balloon move IS the Deliver
-      // action, DL-12). The hand-card-into-the-barn head this used to queue
+      // The PLAIN Deliver. The hand-card-into-the-barn head this used to queue
       // first was the door's rider and is gone.
       fx.pushTask({ t: 'deliver', pid: actor, src: null });
       break;

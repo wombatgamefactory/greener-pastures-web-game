@@ -1,8 +1,8 @@
 /**
  * The commons band: everything on the table that belongs to nobody.
  *
- * Five decks with their face-up discards, the doors legend, the island, and the
- * Aerodrome when Vegetable is at the table. The decks are never merged and
+ * Five decks with their face-up discards, the doors legend and the island. (The
+ * Aerodrome panel went with the balloons on 16/09/2026.) The decks are never merged and
  * never cross-shuffled, so they are shown as five separate spines with five
  * separate discards - the Draw action is "top of any two decks, keep both", and
  * that only reads if the five stay visibly apart.
@@ -22,7 +22,6 @@ import type { PlayerView } from '@gp/engine';
 
 import { mark } from '../session/play';
 import type { Play } from '../session/play';
-import { balloonArt } from '../view/art';
 import { SUIT_META, seatName } from '../view/suits';
 import { allDoors, doorOwner, seatSuits } from '../view/table';
 import { printedFace } from '../view/printed';
@@ -171,33 +170,6 @@ export function Commons({
             })}
           </div>
         </div>
-
-        {view.aerodrome && (
-          <div className="panel panel-aerodrome">
-            <h2 className="panel-title">Aerodrome</h2>
-            <ul className="balloons">
-              {view.aerodrome.balloons.map((balloon) => {
-                const spec = data.aerodrome.balloons.find((b) => b.id === balloon.id);
-                const parked =
-                  balloon.at === 'centre'
-                    ? 'in the centre, free to take'
-                    : `parked at ${seatName(suits[balloon.at], balloon.at, view.seat)}`;
-                const live = play?.live.balloons.has(balloon.id) ?? false;
-                return (
-                  <li
-                    key={balloon.id}
-                    className={mark(play, live).trim()}
-                    title={`${spec?.rewardText ?? balloon.id} - ${parked}`}
-                    onClick={live ? () => play?.balloon(balloon.id) : undefined}
-                  >
-                    <img src={balloonArt(balloon.id)} alt="" />
-                    <span>{spec?.rewardText ?? balloon.id}</span>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
       </div>
     </section>
   );

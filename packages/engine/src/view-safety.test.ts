@@ -48,7 +48,7 @@ const WHEAT = 1;
  * Kept in step with `packages/sim/src/bots.test.ts`, deliberately: two copies of
  * one rule is the price of the engine owning a guard it cannot import.
  */
-const NON_CARD_KEYS = new Set(['tile', 'balloon']);
+const NON_CARD_KEYS = new Set(['tile']);
 
 /**
  * Every card id a payload names, structurally rather than by pattern.
@@ -330,10 +330,8 @@ describe('a full game never offers an id the acting seat cannot see', () => {
         const seed = `view-safety-${seats}-${n}`;
         const rng = seedRng(`${seed}:policy`);
         let state = newGame(data, { seats, suits: suits.slice(0, seats), seed });
-        // ⭐ 250 -> 400 STEPS (12/09/2026), AND THE FLOOR BELOW IS UNTOUCHED ON
-        // PURPOSE. Dean's Village Store ruling puts an optional mint prompt after
-        // every delivery and flight, so a random walk now spends steps answering
-        // it, and 250 steps checked 4,581 positions against the 5,000 floor. This
+        // ⭐ 250 -> 400 STEPS (12/09/2026, when the since-deleted Village Store
+        // prompt ate steps), AND THE FLOOR BELOW IS UNTOUCHED ON PURPOSE. This
         // test is a LEAK DETECTOR: lowering the floor to fit would quietly check
         // fewer hidden-information positions, which is the wrong direction for a
         // safety net. So the budget grows and the floor holds.

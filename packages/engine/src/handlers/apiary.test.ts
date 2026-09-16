@@ -37,6 +37,7 @@ import { BASE_GAME_DATA as data } from '@gp/data';
 import type { GameData, Suit } from '@gp/data';
 import { describe, expect, it } from 'vitest';
 
+import { Fx, fireHook } from '../fx.js';
 import { apply, legalMoves } from '../game.js';
 import { answerTask, gameEndScores, growBuilding, pendingAnswers } from '../runtime.js';
 import { buildingOf, player } from '../query.js';
@@ -337,9 +338,10 @@ describe('A5 The Meadow Hive - the activation with no placement', () => {
     expect(pendingAnswers(data, grown.state)).toEqual([{ kind: 'activate', card: 'A10' }]);
 
     const fired = answerTask(data, grown.state, { kind: 'activate', card: 'A10' });
-    // A10 fired (Draw 1 per HIVE, and A5 is the one HIVE) with an empty stack.
+    // A10 fired (v42: a neighbour sow, with no rival building to take it, then
+    // Draw 3) with an empty stack.
     expect(buildingOf(fired.state, APIARY, 'A10').stack).toEqual([]);
-    expect(headDraw(fired.state)).toMatchObject({ see: 1, keep: 1, src: 'A10' });
+    expect(headDraw(fired.state)).toMatchObject({ see: 3, keep: 3, src: 'A10' });
   });
 
   /** The target set is deliberately WIDER than a GROW's: nothing is being placed. */
@@ -455,31 +457,52 @@ describe('A7 The Foraging Hive - the mandatory sow', () => {
   });
 });
 
-describe('A8 The Wild Hive - the gift that pays, and the suit’s last cross-table card', () => {
+describe('A8 The Wild Hive - two deck sows onto a neighbour, two deck cards to the barn', () => {
   /**
-   * ⛔ THE £2 IS A DRAW 1 (v31, plan section 3.3). The conversion rate is flat -
-   * both £1 and £2 read Draw 1 - so in nominal terms this card was halved after
-   * the 19/08/2026 pass had doubled it. In real terms it went up: a coin was
-   * never worth a card here, and seats ended games on about £1.
+   * ⭐ v42: "Sow 2 deck card onto a neighbour's building, then put 2 deck cards
+   * into your Barn." Builder default: two separate deck-sow choices, each onto
+   * any rival building with room (never a Notice Board), then two deck picks.
    */
-  it("puts a deck top into a neighbour's BARN and draws 1 back", () => {
+  it("sows two deck cards onto a neighbour's building, then banks two of your own", () => {
+    const s = base();
+    buildFor(data, s, APIARY, 'A8');
+    buildFor(data, s, WHEAT, 'W4'); // threshold 2
+    dealTo(data, s, APIARY, 'A4');
+    const grown = growBuilding(data, s, APIARY, 'A8', 'A4');
+    expect(grown.state.tasks.map((t) => (t.t === 'card' ? t.kind : t.t))).toEqual([
+      'sowFromDeck',
+      'deckToBarn',
+    ]);
+    const sow = grown.state.tasks[0];
+    if (sow?.t !== 'sowFromDeck') throw new Error('expected a sowFromDeck task');
+    // The Wheat seat's Notice Board W3 is never a target.
+    expect(sow.targets).toEqual([{ seat: WHEAT, card: 'W4' }]);
+    expect(sow.remaining).toBe(2);
+
+    const dairyTops = s.decks.dairy.slice(0, 2);
+    const pick = (list: TaskAnswer[]) =>
+      list.find(
+        (a) =>
+          (a.kind === 'deckSow' && a.suit === 'wheat') ||
+          (a.kind === 'card' && a.payload.suit === 'dairy'),
+      ) as TaskAnswer;
+    const done = answerAll(grown.state, pick);
+    expect(buildingOf(done, WHEAT, 'W4').stack).toHaveLength(2);
+    expect(player(done, APIARY).barn).toEqual(dairyTops);
+    expect(player(done, WHEAT).barn).toEqual([]);
+  });
+
+  it('with no neighbour building to sow onto, it still banks two deck cards', () => {
     const s = base();
     buildFor(data, s, APIARY, 'A8');
     dealTo(data, s, APIARY, 'A4');
-    const wheatTop = s.decks.wheat[0] as string;
     const grown = growBuilding(data, s, APIARY, 'A8', 'A4');
-    const gift = pendingAnswers(data, grown.state).find(
-      (a) => a.kind === 'card' && a.payload.seat === WHEAT && a.payload.suit === 'wheat',
-    );
-    const done = answerTask(data, grown.state, gift as TaskAnswer);
-    // Straight into the barn: no threshold advanced, no clog caused.
-    expect(player(done.state, WHEAT).barn).toEqual([wheatTop]);
-    // ...and the payout is a card, queued as an ordinary card-ability draw.
-    expect(headDraw(done.state)).toMatchObject({ see: 1, keep: 1, src: 'A8' });
+    expect(grown.state.tasks.map((t) => (t.t === 'card' ? t.kind : t.t))).toEqual(['deckToBarn']);
+    const done = answerAll(grown.state);
+    expect(player(done, APIARY).barn).toHaveLength(2);
   });
 
-  /** ⚠️ NO ELIGIBLE RECIPIENT MEANS NO PAYOUT - it is paid for the gift. */
-  it('draws nothing when every deck is dry', () => {
+  it('does nothing when every deck is dry', () => {
     const s = base();
     buildFor(data, s, APIARY, 'A8');
     dealTo(data, s, APIARY, 'A4');
@@ -489,7 +512,7 @@ describe('A8 The Wild Hive - the gift that pays, and the suit’s last cross-tab
     }
     const grown = growBuilding(data, s, APIARY, 'A8', 'A4');
     expect(grown.state.tasks).toHaveLength(0);
-    expect(player(grown.state, APIARY).hand).toEqual([]);
+    expect(player(grown.state, APIARY).barn).toEqual([]);
   });
 
   /**
@@ -513,54 +536,81 @@ describe('A8 The Wild Hive - the gift that pays, and the suit’s last cross-tab
   });
 });
 
-describe('A9 The Pollinator Trail - fuel the row', () => {
-  it('queues one deck-sow per HIVE with room, each naming that HIVE alone', () => {
+describe('A9 The Pollinator Trail - up to two of your other buildings', () => {
+  it('sows a deck card on up to 2 OTHER buildings with room, each at most once', () => {
     const s = base();
-    buildFor(data, s, APIARY, 'A9', 'A5', 'A7', 'A11');
+    buildFor(data, s, APIARY, 'A9', 'A5', 'A7', 'W4');
     dealTo(data, s, APIARY, 'A4');
-    loadStack(data, s, APIARY, 'A5', 2); // threshold 2: full, so skipped
+    loadStack(data, s, APIARY, 'A5', 2); // threshold 2: full, so never offered
     const grown = growBuilding(data, s, APIARY, 'A9', 'A4');
-    const sows = grown.state.tasks.filter((t) => t.t === 'sowFromDeck');
-    // A7 only: A5 is full, A9 and A11 are not HIVEs.
-    expect(sows.map((t) => (t.t === 'sowFromDeck' ? t.targets : null))).toEqual([
-      [{ seat: APIARY, card: 'A7' }],
-    ]);
-    const state = answerAll(grown.state);
-    expect(buildingOf(state, APIARY, 'A7').stack).toHaveLength(1);
+    expect(grown.state.tasks.map((t) => (t.t === 'card' ? t.kind : t.t))).toEqual(['deckSow']);
+    const onto = () => new Set(offered(grown.state).map((p) => p.card));
+    // Not A9 itself, not the full A5, not the Notice Board A3; any suit.
+    expect(onto()).toEqual(new Set(['A7', 'W4']));
+    expect(pendingAnswers(data, grown.state)).toContainEqual({ kind: 'skip' });
+
+    const first = pendingAnswers(data, grown.state).find(
+      (a) => a.kind === 'card' && a.payload.card === 'A7',
+    ) as TaskAnswer;
+    const once = answerTask(data, grown.state, first).state;
+    const next = new Set(
+      pendingAnswers(data, once).flatMap((a) => (a.kind === 'card' ? [a.payload.card] : [])),
+    );
+    expect(next).toEqual(new Set(['W4']));
+    const done = answerAll(once, (a) => a.find((x) => x.kind === 'card') ?? (a[0] as TaskAnswer));
+    expect(buildingOf(done, APIARY, 'A7').stack).toHaveLength(1);
+    expect(buildingOf(done, APIARY, 'W4').stack).toHaveLength(1);
+    expect(buildingOf(done, APIARY, 'A9').stack).toEqual(['A4']);
   });
 });
 
-describe('A10 The Cross-Pollinator - feed the hand', () => {
-  it('draws 1 for each HIVE BUILT, and The Queen’s Hive is not one', () => {
+describe("A10 The Cross-Pollinator - a hand sow onto a neighbour's building, then Draw 3", () => {
+  it("sows a hand card onto a neighbour's building, then draws 3", () => {
     const s = base();
-    buildFor(data, s, APIARY, 'A10', 'A4', 'A5', 'A13');
-    dealTo(data, s, APIARY, 'A6');
+    buildFor(data, s, APIARY, 'A10');
+    buildFor(data, s, WHEAT, 'W4');
+    dealTo(data, s, APIARY, 'A6', 'A7');
     const grown = growBuilding(data, s, APIARY, 'A10', 'A6');
-    expect(headDraw(grown.state)).toMatchObject({ see: 2, keep: 2, src: 'A10' });
+    expect(grown.state.tasks.map((t) => t.t)).toEqual(['sow', 'draw']);
+    const sow = grown.state.tasks[0];
+    if (sow?.t !== 'sow') throw new Error('expected a sow task');
+    expect(sow.targets).toEqual([{ seat: WHEAT, card: 'W4' }]);
+    expect(sow.optional).toBeUndefined();
+    expect(grown.state.tasks[1]).toMatchObject({ see: 3, keep: 3, src: 'A10' });
+
+    const sown = answerTask(data, grown.state, pendingAnswers(data, grown.state)[0] as TaskAnswer);
+    expect(buildingOf(sown.state, WHEAT, 'W4').stack).toEqual(['A7']);
+    expect(sown.audit.crossSeat).toBe(true);
   });
 
-  it('queues nothing with no HIVE built', () => {
+  it('still draws 3 when no neighbour has a building to sow onto', () => {
     const s = base();
     buildFor(data, s, APIARY, 'A10');
     dealTo(data, s, APIARY, 'A6');
     const grown = growBuilding(data, s, APIARY, 'A10', 'A6');
-    expect(grown.state.tasks).toHaveLength(0);
+    expect(grown.state.tasks).toHaveLength(1);
+    expect(headDraw(grown.state)).toMatchObject({ see: 3, keep: 3, src: 'A10' });
   });
 });
 
 describe('A11 The Wax Workshop - skim the row', () => {
-  it('takes ONE card per loaded HIVE, not one per card on the stack', () => {
+  it('takes ONE card from each FULL building, of any suit, never the Notice Board', () => {
     const s = base();
-    buildFor(data, s, APIARY, 'A11', 'A5', 'A7');
+    buildFor(data, s, APIARY, 'A11', 'A5', 'A7', 'W4');
     dealTo(data, s, APIARY, 'A4');
-    loadStack(data, s, APIARY, 'A5', 2);
-    loadStack(data, s, APIARY, 'A7', 1);
+    loadStack(data, s, APIARY, 'A5', 2); // threshold 2: full
+    loadStack(data, s, APIARY, 'A7', 1); // 1 of 3: not full, skipped
+    loadStack(data, s, APIARY, 'W4', 2, 'wheat'); // threshold 2: full
+    loadStack(data, s, APIARY, 'A3', 3, 'wheat'); // the Notice Board at 3: never
     const grown = growBuilding(data, s, APIARY, 'A11', 'A4');
-    expect(grown.state.tasks.filter((t) => t.t === 'card')).toHaveLength(2);
+    const skims = grown.state.tasks.filter((t) => t.t === 'card');
+    expect(skims.map((t) => (t.t === 'card' ? t.riders.target : null))).toEqual(['A5', 'W4']);
 
     const state = answerAll(grown.state);
     expect(buildingOf(state, APIARY, 'A5').stack).toHaveLength(1); // reopened by one
-    expect(buildingOf(state, APIARY, 'A7').stack).toHaveLength(0);
+    expect(buildingOf(state, APIARY, 'W4').stack).toHaveLength(1);
+    expect(buildingOf(state, APIARY, 'A7').stack).toHaveLength(1);
+    expect(buildingOf(state, APIARY, 'A3').stack).toHaveLength(3);
     expect(player(state, APIARY).barn).toHaveLength(2);
   });
 
@@ -575,7 +625,7 @@ describe('A11 The Wax Workshop - skim the row', () => {
     expect(drawsFrom(state, 'W16')).toBe(0);
   });
 
-  it('skips a HIVE with an empty stack', () => {
+  it('skips a building that is not full', () => {
     const s = base();
     buildFor(data, s, APIARY, 'A11', 'A5');
     dealTo(data, s, APIARY, 'A4');
@@ -626,16 +676,28 @@ describe('A12 The Honey Hut - two firings for one card', () => {
  * harvested before it can fire again.
  */
 describe("A13 The Queen's Hive - the swarm, straight into the barn", () => {
-  it('puts the top card of EACH deck into your own barn, with nothing to choose', () => {
+  it('with 3 or more Apiary buildings (itself included), banks any 3 deck cards', () => {
     const s = base();
-    buildFor(data, s, APIARY, 'A13');
+    buildFor(data, s, APIARY, 'A13', 'A5', 'A9');
     dealTo(data, s, APIARY, 'A4');
-    const tops = data.cards.suits.map((suit) => s.decks[suit][0] as string);
-
+    const tops = s.decks.dairy.slice(0, 3);
     const grown = growBuilding(data, s, APIARY, 'A13', 'A4');
-    // ⛔ ALL TARGETING IS DELETED: no sowFromDeck, no task of any kind.
+    expect(grown.state.tasks.map((t) => (t.t === 'card' ? t.kind : t.t))).toEqual(['deckToBarn']);
+    expect(new Set(offered(grown.state).map((p) => p.suit))).toEqual(new Set(data.cards.suits));
+    const done = answerAll(
+      grown.state,
+      (a) => a.find((x) => x.kind === 'card' && x.payload.suit === 'dairy') as TaskAnswer,
+    );
+    expect(player(done, APIARY).barn).toEqual(tops);
+  });
+
+  it('below the gate it does nothing: a Power card and the starters do not count', () => {
+    const s = base();
+    buildFor(data, s, APIARY, 'A13', 'A5', 'A16'); // A16 is a Power card, not a building
+    dealTo(data, s, APIARY, 'A4');
+    const grown = growBuilding(data, s, APIARY, 'A13', 'A4');
     expect(grown.state.tasks).toHaveLength(0);
-    expect(player(grown.state, APIARY).barn).toEqual(tops);
+    expect(player(grown.state, APIARY).barn).toEqual([]);
   });
 
   /**
@@ -707,13 +769,22 @@ describe('A14 The Honeycomb Tower - the faucet with its brake removed', () => {
    * on. `a14-coin-faucet` becomes `a14-card-faucet`, read against TOTAL CARDS
    * DRAWN and never against this card's own play rate.
    */
-  it('draws 1 per HIVE and nothing else happens', () => {
+  it('draws 1 per Apiary building, itself included, and nothing else happens', () => {
     const s = base();
-    buildFor(data, s, APIARY, 'A14', 'A4', 'A5');
+    buildFor(data, s, APIARY, 'A14', 'A4', 'A9', 'W4');
     dealTo(data, s, APIARY, 'A6');
     const grown = growBuilding(data, s, APIARY, 'A14', 'A6');
-    expect(headDraw(grown.state)).toMatchObject({ see: 2, keep: 2, src: 'A14' }); // two HIVEs
+    // A14, A4 and A9; W4 is not an Apiary building.
+    expect(headDraw(grown.state)).toMatchObject({ see: 3, keep: 3, src: 'A14' });
     expect(grown.state.tasks).toHaveLength(1);
+  });
+
+  it('draws at most 5 (v42 "Max 5")', () => {
+    const s = base();
+    buildFor(data, s, APIARY, 'A14', 'A4', 'A5', 'A7', 'A8', 'A9', 'A10');
+    dealTo(data, s, APIARY, 'A6');
+    const grown = growBuilding(data, s, APIARY, 'A14', 'A6');
+    expect(headDraw(grown.state)).toMatchObject({ see: 5, keep: 5, src: 'A14' });
   });
 
   /** ⛔ THE SOW IS GONE: no rival building is touched, on any board state. */
@@ -744,15 +815,15 @@ describe('A14 The Honeycomb Tower - the faucet with its brake removed', () => {
     loadStack(data, s, WHEAT, 'W4', 2, 'wheat');
     expect(growMoveFor(s, 'A14')).toBeDefined();
     const grown = growBuilding(data, s, APIARY, 'A14', 'A6');
-    expect(headDraw(grown.state)).toMatchObject({ see: 1, keep: 1, src: 'A14' });
+    expect(headDraw(grown.state)).toMatchObject({ see: 2, keep: 2, src: 'A14' });
   });
 
-  it('draws nothing with no HIVE built, and is still a legal GROW', () => {
+  it('alone it counts itself, so it still draws 1', () => {
     const s = base();
     buildFor(data, s, APIARY, 'A14');
     dealTo(data, s, APIARY, 'A6');
     const grown = growBuilding(data, s, APIARY, 'A14', 'A6');
-    expect(grown.state.tasks).toHaveLength(0);
+    expect(headDraw(grown.state)).toMatchObject({ see: 1, keep: 1, src: 'A14' });
   });
 
   /** Threshold 2, and that clog is now the only brake left on the card. */
@@ -899,7 +970,7 @@ describe("A16 The Beekeeper's Veil - stack position 2, unchanged by the rebuild"
  * no wallet to be empty), and "does not fire a second time on a Helping Hand
  * repeat" (A Helping Hand is a bonus-slot modifier now and has no repeat).
  */
-describe('A17 The Smoke Pot - a free barn card for visiting a neighbour', () => {
+describe('A17 The Smoke Pot - a deck sow onto your own building for visiting a neighbour', () => {
   /**
    * A visit that is legal for the visitor: the Wheat door needs a full building.
    * Paid in a meeple since 04/09/2026, which is exactly what the card cannot
@@ -912,39 +983,50 @@ describe('A17 The Smoke Pot - a free barn card for visiting a neighbour', () => 
     return apply(visitArm, s, visitMove(APIARY, WHEAT, 'wheat'));
   }
 
-  it('adds the top card of a deck of your choice into your BARN, free', () => {
+  /** ⭐ v42: the deck top is SOWN onto one of your buildings, not banked. */
+  it('sows the top card of a deck of your choice onto one of your buildings', () => {
     const s = armBase();
-    buildFor(visitArm, s, APIARY, 'A17');
+    buildFor(visitArm, s, APIARY, 'A17', 'A7'); // A7: threshold 3, room
     const wheatTop = s.decks.wheat[0] as string;
 
     const applied = visitTheWheatSeat(s);
-    expect(tasksFrom(applied.state, 'A17')).toHaveLength(1);
+    const tasks = tasksFrom(applied.state, 'A17');
+    expect(tasks.map((t) => t.t)).toEqual(['sowFromDeck']);
 
-    // The player chooses WHICH deck; the card is the top of it, not a choice.
-    const decks = offered(applied.state).map((p) => p.suit);
-    expect(new Set(decks)).toEqual(new Set(visitArm.cards.suits));
-
-    const buy = pendingAnswers(visitArm, applied.state).find(
-      (a) => a.kind === 'card' && a.payload.suit === 'wheat',
+    // The full A5 drops out; A7 is the one building with room.
+    const answers = pendingAnswers(visitArm, applied.state);
+    expect(new Set(answers.map((a) => (a.kind === 'deckSow' ? a.onto : null)))).toEqual(
+      new Set(['A7']),
     );
-    const state = answerTask(visitArm, applied.state, buy as TaskAnswer).state;
-    expect(player(state, APIARY).barn).toContain(wheatTop);
-    // ⚠️ THE BARN, NOT A BUILDING: no threshold of the visitor's has moved.
-    const onOwn = player(state, APIARY).tableau.reduce((n, b) => n + b.stack.length, 0);
-    expect(onOwn).toBe(2); // the two cards loaded onto A5 by the fixture, and no more
+    const sow = answers.find((a) => a.kind === 'deckSow' && a.suit === 'wheat') as TaskAnswer;
+    const state = answerTask(visitArm, applied.state, sow).state;
+    expect(buildingOf(state, APIARY, 'A7').stack).toEqual([wheatTop]);
+    expect(player(state, APIARY).barn).not.toContain(wheatTop);
+  });
+
+  /** Mandatory: the printed text says "SOW", not "you may". */
+  it('offers no skip: the text says "SOW", not "you may"', () => {
+    const s = armBase();
+    buildFor(visitArm, s, APIARY, 'A17', 'A7');
+    const applied = visitTheWheatSeat(s);
+    const answers = pendingAnswers(visitArm, applied.state);
+    expect(answers.length).toBeGreaterThan(0);
+    expect(answers).not.toContainEqual({ kind: 'skip' });
   });
 
   /**
-   * ⛔ MANDATORY, NOT OPTIONAL. The printed text says "add", not "you may", and
-   * with no price there is nothing to decline. The old card offered a skip
-   * beside its £1; asserting the skip is ABSENT is what stops it drifting back
-   * in as a courtesy.
+   * ⭐ THE ONCE-A-TURN GUARD IS GONE (Dean, 15/09/2026): a second visit in the
+   * same turn sows a second card. Driven through the hook directly.
    */
-  it('offers no skip: the text says "add", not "you may"', () => {
+  it('fires on every visit, a second one in the same turn included', () => {
     const s = armBase();
-    buildFor(visitArm, s, APIARY, 'A17');
+    buildFor(visitArm, s, APIARY, 'A17', 'A7');
     const applied = visitTheWheatSeat(s);
-    expect(pendingAnswers(visitArm, applied.state)).not.toContainEqual({ kind: 'skip' });
+    expect(applied.state.turn.firedThisTurn).not.toContain('A17');
+    const again = { ...applied.state, tasks: [] };
+    const fx = new Fx(visitArm, again, APIARY);
+    fireHook(fx, 'afterVisit', { visitor: APIARY, host: WHEAT, self: false });
+    expect(fx.state.tasks.filter((t) => 'src' in t && t.src === 'A17')).toHaveLength(1);
   });
 
   /**
@@ -995,23 +1077,20 @@ describe('A17 The Smoke Pot - a free barn card for visiting a neighbour', () => 
 });
 
 describe('the endgame cards - A19, A20, A21', () => {
-  it('A19 scores 3 for each non-Apiary building built', () => {
+  it('A19 scores 1 for each non-Apiary BUILDING built (v42)', () => {
     const s = base();
-    buildFor(data, s, APIARY, 'A19', 'A5', 'W5', 'O4');
-    // A19's 6 for the two foreign cards, plus A2 the Farmstead's 2 for A19 and
-    // A5. The two cards point in opposite directions on the same tableau, which
-    // is the one place in the suit where breadth and loyalty are both paid.
-    // ⛔ A starter can never count for either: it prints the generic
-    // starting-building icon and belongs to no crop, and since v31 there is no
-    // flipped face to give it one.
-    expect(gameEndScores(data, s)[APIARY]?.endgame).toBe(8);
+    buildFor(data, s, APIARY, 'A19', 'A5', 'W5', 'O4', 'W16');
+    // A19's 2 for the two foreign buildings (W16 is a Power card, not a
+    // building), plus A2 the Farmstead's 2 for A19 and A5.
+    expect(gameEndScores(data, s)[APIARY]?.endgame).toBe(4);
   });
 
-  it('A20 scores 2 for each HIVE built, The Queen’s Hive excluded', () => {
+  it('A20 scores 1 for each 1VP building built, of any suit (v42)', () => {
     const s = base();
-    buildFor(data, s, APIARY, 'A20', 'A4', 'A8', 'A13', 'A9');
-    // A20's 4 for A4 and A8, plus A2's 5 for the five Apiary cards built.
-    expect(gameEndScores(data, s)[APIARY]?.endgame).toBe(9);
+    buildFor(data, s, APIARY, 'A20', 'A4', 'A8', 'A13', 'A9', 'W4');
+    // A20's 3 for A4, A8 and W4 (printed 1 VP); A13 prints 3 and A9 prints 2.
+    // Plus A2's 5 for the five Apiary cards built.
+    expect(gameEndScores(data, s)[APIARY]?.endgame).toBe(8);
   });
 
   /** ⚠️ STARTERS COUNT if they hold a card - a clogged Notice Board or Service included. */
@@ -1084,10 +1163,12 @@ describe('difficulty metadata stays honest for the Apiary suit', () => {
     // holder's choice. So the suit is down to ONE cross-table card, A8, out of
     // the 18 in the deck - the plan's balance flags 8.1 and 8.2 seen from the
     // engine's side.
-    expect(cross.sort()).toEqual(['A8']);
+    // ⭐ v42: A10 sows onto a neighbour's building again, so the list is two.
+    expect(cross.sort()).toEqual(['A10', 'A8']);
 
     const s = base();
     buildFor(data, s, APIARY, 'A8');
+    buildFor(data, s, WHEAT, 'W4');
     dealTo(data, s, APIARY, 'A4');
     const grown = growBuilding(data, s, APIARY, 'A8', 'A4');
     const gifted = answerTask(

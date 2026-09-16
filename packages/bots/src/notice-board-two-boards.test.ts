@@ -62,22 +62,6 @@ const ARM: GameData = loadGameData({
     'rules.economy.cropScorerOnBarn': false,
     // Pre-flip pins (12/09/2026): this is a named inline copy of a
     // committed overlay, and a copy of a pin stops being a pin.
-    'aerodrome.moveCost.barnCards': 2,
-    'aerodrome.alwaysInPlay': false,
-    'aerodrome.flightMints': false,
-    'aerodrome.balloons.balloonDraw.reward.type': 'draw',
-    'aerodrome.balloons.balloonDraw.reward.amount': 4,
-    'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
-    'aerodrome.balloons.balloonBuild.reward.amount': 4,
-    'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
-    'aerodrome.balloons.balloonSow.reward.amount': 4,
-    'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
-    'rules.economy.storeCoinsPerCard': 0,
-    'rules.economy.coinSupplyPerPlayer': 0,
-    'rules.economy.coinPaysBuild': false,
-    'rules.economy.coinPaysSuitCost': false,
-    'rules.economy.coinPaysGrow': false,
-    'rules.economy.coinGrowOnFullBuilding': false,
     'rules.turn.visitCurrency': 'noticeBoardPower',
     'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
     'rules.turn.bonusTiming': 'start',
@@ -87,15 +71,16 @@ const ARM: GameData = loadGameData({
     'rules.economy.noticeBoardsBySeats.2': 2,
     'rules.economy.noticeBoardsBySeats.3': 1,
     'rules.economy.noticeBoardsBySeats.4': 1,
-    // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
-    // choice and the closing draw. This helper predates it, so all six are pinned
-    // off by name ('start' and null are the old inert values).
-    'rules.turn.deliveryMeepleSpace': null,
+    // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: the spend window, at its old inert
+    // values ('start' and null). The space choice was deleted on 16/09/2026.
     'rules.turn.meepleSpendTiming': 'start',
     'rules.turn.meepleSpendPerTurn': null,
     'rules.turn.meepleSpendDistinctColours': false,
-    'rules.turn.deliverySpaceChoice': false,
-    'rules.turn.closingDrawPerCrate': 0,
+    // ⛔ TOKEN ISLAND PINNED 16/09/2026: this game had no island meeple.
+    'island.tokens.workerOnVp': [],
+    // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
+    'rules.economy.noticeBoardPower.vegetableWildCards': 0,
+    'rules.economy.noticeBoardPower.dairyDiscount': 0,
   },
 });
 
@@ -107,22 +92,6 @@ const CONTROL: GameData = loadGameData({
     'rules.economy.cropScorerOnBarn': false,
     // Pre-flip pins (12/09/2026): this is a named inline copy of a
     // committed overlay, and a copy of a pin stops being a pin.
-    'aerodrome.moveCost.barnCards': 2,
-    'aerodrome.alwaysInPlay': false,
-    'aerodrome.flightMints': false,
-    'aerodrome.balloons.balloonDraw.reward.type': 'draw',
-    'aerodrome.balloons.balloonDraw.reward.amount': 4,
-    'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
-    'aerodrome.balloons.balloonBuild.reward.amount': 4,
-    'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
-    'aerodrome.balloons.balloonSow.reward.amount': 4,
-    'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
-    'rules.economy.storeCoinsPerCard': 0,
-    'rules.economy.coinSupplyPerPlayer': 0,
-    'rules.economy.coinPaysBuild': false,
-    'rules.economy.coinPaysSuitCost': false,
-    'rules.economy.coinPaysGrow': false,
-    'rules.economy.coinGrowOnFullBuilding': false,
     'rules.turn.visitCurrency': 'noticeBoardPower',
     'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
     'rules.turn.bonusTiming': 'start',
@@ -131,15 +100,16 @@ const CONTROL: GameData = loadGameData({
     'rules.economy.noticeBoardBlocks': false,
     // Pinned since the 13/09/2026 default flip gave two seats two boards.
     'rules.economy.noticeBoardsBySeats.2': 1,
-    // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
-    // choice and the closing draw. This helper predates it, so all six are pinned
-    // off by name ('start' and null are the old inert values).
-    'rules.turn.deliveryMeepleSpace': null,
+    // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: the spend window, at its old inert
+    // values ('start' and null). The space choice was deleted on 16/09/2026.
     'rules.turn.meepleSpendTiming': 'start',
     'rules.turn.meepleSpendPerTurn': null,
     'rules.turn.meepleSpendDistinctColours': false,
-    'rules.turn.deliverySpaceChoice': false,
-    'rules.turn.closingDrawPerCrate': 0,
+    // ⛔ TOKEN ISLAND PINNED 16/09/2026: this game had no island meeple.
+    'island.tokens.workerOnVp': [],
+    // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
+    'rules.economy.noticeBoardPower.vegetableWildCards': 0,
+    'rules.economy.noticeBoardPower.dairyDiscount': 0,
   },
 });
 

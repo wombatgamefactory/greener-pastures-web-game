@@ -59,7 +59,7 @@ export function readOptions(search: string): Boot | null {
     .split(',')
     .map((s) => s.trim())
     .filter((s): s is Suit => (ALL_SUITS as string[]).includes(s));
-  // Vegetable is in by default so the Aerodrome is on the table: worst-case
+  // The first suits of the list by default, Vegetable among them: worst-case
   // density is the honest case to design against.
   const suits = asked.length === seats ? asked : ALL_SUITS.slice(0, seats);
   // `finish` reuses the warm-up walk rather than adding a driver: given a depth
@@ -294,7 +294,6 @@ const EMPTY_VIEW = {
   discards: {},
   fair: [],
   island: { tiles: [] },
-  aerodrome: null,
   turn: {
     actionSpent: false,
     bonusUsed: [],

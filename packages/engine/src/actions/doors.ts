@@ -10,8 +10,9 @@
 import { canSowOnto, drawableSuits, player, workerData } from '../query.js';
 import type { CardId, DoorAction, GameState, Seat } from '../state.js';
 import type { GameData, SuitDoor, WorkerAction } from '@gp/data';
+import { vegetableWildCards } from '@gp/data';
 import { anyBuildOption } from './build.js';
-import { anyBalloonMoveOption, anyDeliverOption } from './deliver.js';
+import { anyDeliverOption } from './deliver.js';
 import { growOptions } from './grow.js';
 import { harvestOptions } from './harvest.js';
 import { withoutFirst } from './shared.js';
@@ -104,8 +105,7 @@ export function doorActionLegal(
         ).length > 0
       );
     case 'deliver':
-      // Island or freight: a balloon move IS the Deliver action (DL-12).
-      return anyDeliverOption(data, state, seat) || anyBalloonMoveOption(data, state, seat);
+      return anyDeliverOption(data, state, seat);
     default:
       return action satisfies never;
   }
@@ -125,4 +125,15 @@ function doorForAction(data: GameData, action: DoorAction): SuitDoor {
   const door = data.workers.roster.find((w) => w.action === wanted);
   if (!door) throw new Error(`No door in the roster performs ${wanted}`);
   return door;
+}
+
+/**
+ * ⭐ CAN THIS SEAT PERFORM THE VEGETABLE BOARD'S DELIVER (Dean, R9, 16/09/2026)?
+ * *"Deliver - 2 of the cards may be any crop."* Asked WITH the relaxation, so a
+ * seat that can pay only because some cards may miss the named demand is
+ * offered the delivery and never the fallback. The one spelling for both the
+ * board's legality gate and the `deliverLegal` its power is fired with.
+ */
+export function vegetableBoardCanDeliver(data: GameData, state: GameState, seat: Seat): boolean {
+  return anyDeliverOption(data, state, seat, vegetableWildCards(data));
 }

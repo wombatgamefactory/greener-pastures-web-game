@@ -4,6 +4,14 @@
  * the sheet follows for this one rebuild, which is the reverse of the standing
  * rule and is called out in the handoff.
  *
+ * ⭐ v42 (16/09/2026): the HIVE noun is gone from the card text. A9, A10, A11,
+ * A13, A14, A17, A19 and A20 were retexted; the building nouns and the shared
+ * choices they need live in buildings.ts. A8 and A10 now both sow onto a
+ * neighbour's building, so the suit has two cross-table cards again, and the
+ * paragraphs below that count HIVEs or say A8 is the only one are history. A17
+ * lost its once-per-turn guard (Dean, 15/09/2026: card text fires every time
+ * its trigger happens; the only cap left is one activation per building a turn).
+ *
  * Suit identity, in one line:
  *
  *     Everybody else pays a card into a building to fire THAT building.
@@ -87,11 +95,23 @@
 
 import type { GameData, Suit } from '@gp/data';
 
-import { activateTargets, growOptions } from '../actions.js';
+import { activateTargets } from '../actions.js';
 import type { Fx } from '../fx.js';
-import { canTakeCard, cardById, drawableSuits, foreignCropBuildings, player } from '../query.js';
-import { doGrow, markFired } from '../runtime.js';
-import type { BuildingState, CardId, GameState, Seat, TaskAnswer } from '../state.js';
+import { cardById, isHarvestable, player } from '../query.js';
+import type { CardId, Seat, TaskAnswer } from '../state.js';
+import {
+  builtBuildingsWorth,
+  cropBuildingsOf,
+  deckSowRiders,
+  deckSowTask,
+  deckToBarnTask,
+  foreignBuildingsOf,
+  growAnyAnswers,
+  isNoticeBoardCard,
+  neighbourSowTargets,
+  ownBuildings,
+  resolveGrowAny,
+} from './buildings.js';
 import { barnCropScorer, farmsteadHandler } from './farmstead.js';
 import type { CardHandler } from './types.js';
 
@@ -101,25 +121,20 @@ const HIVE_NAME = /\bHive\b/;
  * HIVE sub-type membership: the whole-word title keyword AND Tier 1, so the set
  * is exactly A4 to A8. The Queen's Hive (A13) is a Tier 3 GROW building and is
  * not a HIVE; see the docblock.
+ *
+ * ⭐ NO v42 CARD READS IT (16/09/2026). The sheet replaced "your HIVEs" with
+ * "your Apiary buildings" (`cropBuildingsOf`, buildings.ts), which counts A9-A15
+ * too. The predicate stays exported for the simulator.
  */
 export function isHiveCard(data: GameData, id: CardId): boolean {
   const c = cardById(data, id);
   return c.type === 'tier1' && HIVE_NAME.test(c.name);
 }
 
-function hives(data: GameData, state: GameState, seat: Seat): BuildingState[] {
-  return player(state, seat).tableau.filter((b) => isHiveCard(data, b.card));
-}
-
 /** Push a see-N/keep-N "Draw N" for a card ability (no draw modifier, DL-47). */
 function drawN(fx: Fx, pid: Seat, src: CardId, n: number): void {
   if (n <= 0) return;
   fx.pushTask({ t: 'draw', pid, src, see: n, keep: n, revealed: [] });
-}
-
-/** Every seat but this one, in seat order. */
-function rivals(state: GameState, seat: Seat): Seat[] {
-  return state.players.map((_, s) => s).filter((s) => s !== seat);
 }
 
 /**
@@ -211,8 +226,9 @@ export const apiaryBarn: CardHandler = {
 export const apiaryFarmstead: CardHandler = farmsteadHandler('apiary');
 
 /**
- * A3 Notice Board (starter) - "VISITOR: place 1 card here, then Sow 1 card from
- * your hand onto one of your buildings." Threshold 2, wild activation.
+ * A3 Notice Board (starter) - "Grow a building using the top card of any deck."
+ * Threshold 3+ (v42). The power is engine-level (`apiaryPower`, rules.json);
+ * the note below describes the older v31 door and is history.
  */
 export const apiaryNoticeBoard: CardHandler = {
   difficulty: {
@@ -315,62 +331,14 @@ export const gardenHive: CardHandler = {
   },
   tasks: {
     growAny: {
+      // The shared any-crop Grow (buildings.ts), exactly as O13 uses it. The
+      // coin filter that sat here went with the Village Store coin (16/09/2026).
       answers(data, state, task) {
-        // ⛔ CARD-PAID (AND MEEPLE-PAID) ONLY: A COIN DOES NOT REACH A
-        // CARD-GRANTED GROW (A150, 12/09/2026, and it is a BUILDER DECISION
-        // rather than one of Dean's rulings). V8 says a coin is a wild card for
-        // GROW, and the coin therefore reaches the GROW ACTION and the board's
-        // BOUGHT Grow - one each, capped by the fire-once guard. It stops here
-        // because the design doc's own safety argument for V9 is that "two
-        // coin-Grows a turn is the ceiling, and never the same building twice",
-        // which is what makes the full-building clog bypass safer than it reads
-        // - and O13 The Seed Bank grows EVERY one of your ORCHARDs, so a coin
-        // here would hand a whole tableau the bypass in a single turn and break
-        // that ceiling. A6 The Garden Hive prints "with a card of any crop" and
-        // names the currency on its own face besides.
-        return growOptions(data, state, task.pid, {
-          anyCrop: true,
-          exclude: [task.src],
-        })
-          .filter((o) => o.coinGrow !== true)
-          .map(
-            (o) =>
-              ({
-                kind: 'card',
-                // R15: `payment` is null and `meeples` carries the payment when a
-                // meeple paid. Both ride, for the reason the build answer's own
-                // comment gives: an answer that drops them cannot pay.
-                payload: {
-                  building: o.building,
-                  payment: o.payment,
-                  ...(o.meeples === undefined ? {} : { meeples: o.meeples }),
-                  // R17: where the paid meeple lands. Rides on the answer for the
-                  // same reason the meeples themselves do - an answer that drops
-                  // it is an answer that cannot pay.
-                  ...(o.placements === undefined ? {} : { placements: o.placements }),
-                  ...(o.paymentToll === undefined ? {} : { paymentToll: o.paymentToll }),
-                },
-              }) as TaskAnswer,
-          );
+        return growAnyAnswers(data, state, task.pid, [task.src]);
       },
       resolve(fx, task, answer) {
         if (answer.kind !== 'card') throw new Error('growAny expects a card answer');
-        doGrow(
-          fx,
-          task.pid,
-          answer.payload.building as CardId,
-          answer.payload.payment as CardId | null,
-          { anyCrop: true },
-          (answer.payload.meeples as Suit[] | undefined) ?? [],
-          {
-            ...(answer.payload.placements === undefined
-              ? {}
-              : { placements: answer.payload.placements as Partial<Record<Suit, number>>[] }),
-            ...(answer.payload.paymentToll === undefined
-              ? {}
-              : { paymentToll: answer.payload.paymentToll as Partial<Record<Suit, number>> }),
-          },
-        );
+        resolveGrowAny(fx, task.pid, answer.payload);
         return true;
       },
     },
@@ -401,7 +369,9 @@ export const foragingHive: CardHandler = {
 };
 
 /**
- * A8 The Wild Hive - "Put a deck card into a neighbour's barn and Draw 1."
+ * A8 The Wild Hive - "Sow 2 deck card onto a neighbour's building, then put 2
+ * deck cards into your Barn." (v42; was "Put a deck card into a neighbour's barn
+ * and Draw 1".)
  */
 export const wildHive: CardHandler = {
   difficulty: {
@@ -409,6 +379,15 @@ export const wildHive: CardHandler = {
     verified: { prompts: true, crossPlayer: true, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
     notes:
+      '⭐ v42. ⭐ BUILDER DEFAULT (16/09/2026): "Sow 2 deck card onto a neighbour\'s ' +
+      'building" is TWO SEPARATE deck-sow choices, each naming a deck and any rival ' +
+      'building that can take a card (never a Notice Board, S11), so both may land on the ' +
+      'same building or on two different neighbours. One `sowFromDeck` task with ' +
+      '`remaining` 2, mandatory; it is skipped when no neighbour has a building with room. ' +
+      'Then two deck-to-barn picks (`deckToBarn`, buildings.ts), each from a deck of the ' +
+      "owner's choosing, which run whether or not the sow found a target. A sow onto a " +
+      "neighbour's farm is not a visit and fires no visit reactor. The older note, about " +
+      'the barn gift that this text replaced, follows. ' +
       'The gift goes STRAIGHT INTO THEIR BARN: no threshold advanced, no clog caused, no ' +
       'argument about whether it helped. ⚠️ NO ELIGIBLE NEIGHBOUR MEANS NO PAYOUT - the ' +
       'payout is for the gift, so it lives in the resolver and the whole task auto-skips ' +
@@ -424,36 +403,36 @@ export const wildHive: CardHandler = {
       'the currency.',
   },
   activate(fx, self) {
-    fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'giftDeckTop', riders: {} });
+    const targets = neighbourSowTargets(fx.data, fx.state, self.seat);
+    if (targets.length > 0) {
+      fx.pushTask({ t: 'sowFromDeck', pid: self.seat, src: self.card, remaining: 2, targets });
+    }
+    fx.pushTask({
+      t: 'card',
+      pid: self.seat,
+      src: self.card,
+      kind: 'deckToBarn',
+      riders: { remaining: 2 },
+    });
   },
-  tasks: {
-    giftDeckTop: {
-      answers(data, state, task) {
-        const out: TaskAnswer[] = [];
-        for (const seat of rivals(state, task.pid)) {
-          for (const suit of drawableSuits(data, state)) {
-            out.push({ kind: 'card', payload: { seat, suit } });
-          }
-        }
-        return out;
-      },
-      resolve(fx, task, answer) {
-        if (answer.kind !== 'card') throw new Error('giftDeckTop expects a card answer');
-        fx.deckTopToBarn(answer.payload.seat as Seat, answer.payload.suit as Suit);
-        drawN(fx, task.pid, task.src, 1);
-        return true;
-      },
-    },
-  },
+  tasks: { deckToBarn: deckToBarnTask() },
 };
 
-/** A9 The Pollinator Trail - "GROW: Sow the top card of any deck onto each of your HIVEs." */
+/**
+ * A9 The Pollinator Trail - "Sow 1 deck card on up to 2 of your other
+ * buildings." (v42; was "onto each of your HIVEs".)
+ */
 export const pollinatorTrail: CardHandler = {
   difficulty: {
-    score: 3,
+    score: 2,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
+    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
+      '⭐ v42: up to two of your OTHER buildings (never A9 itself, never a Notice Board), ' +
+      'one deck card each, any suit. One `deckSow` task (buildings.ts): a deck and a ' +
+      'building per answer, two at most, a stop answer for "up to", and a building that ' +
+      'took a card leaves the list ("2 of your other buildings" reads as two different ' +
+      'ones). The older note follows. ' +
       'FUEL THE ROW: one sowFromDeck task per HIVE with room, each naming that HIVE alone, ' +
       "so the deck is the player's choice and the target is not. Full HIVEs are skipped " +
       'rather than banked. Targets snapshot at activation. ⛔ ITS OLD TWIN IS GONE: this ' +
@@ -463,26 +442,41 @@ export const pollinatorTrail: CardHandler = {
       'overlap at all and A9 is now the only card in the suit that fuels the row.',
   },
   activate(fx, self) {
-    for (const b of hives(fx.data, fx.state, self.seat)) {
-      if (!canTakeCard(fx.data, b)) continue;
-      fx.pushTask({
-        t: 'sowFromDeck',
-        pid: self.seat,
-        src: self.card,
-        remaining: 1,
-        targets: [{ seat: self.seat, card: b.card }],
-      });
-    }
+    const targets = ownBuildings(fx.data, fx.state, self.seat)
+      .filter((b) => b.card !== self.card && !isNoticeBoardCard(fx.data, b.card))
+      .map((b) => ({ seat: self.seat, card: b.card }));
+    fx.pushTask({
+      t: 'card',
+      pid: self.seat,
+      src: self.card,
+      kind: 'deckSow',
+      riders: deckSowRiders({
+        remaining: 2,
+        targets,
+        distinct: true,
+        optional: true,
+        emptyOnly: false,
+      }),
+    });
   },
+  tasks: { deckSow: deckSowTask() },
 };
 
-/** A10 The Cross-Pollinator - "GROW: Draw 1 for each of your HIVEs." */
+/**
+ * A10 The Cross-Pollinator - "Sow 1 card from your hand onto a neighbour's
+ * building, then Draw 3." (v42; was "Draw 1 for each of your HIVEs".)
+ */
 export const crossPollinator: CardHandler = {
   difficulty: {
-    score: 1,
-    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
+    score: 2,
+    verified: { prompts: true, crossPlayer: true, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
     notes:
+      '⭐ v42: a CROSS-TABLE card again. One hand card onto any rival building that can take ' +
+      'a card (never a Notice Board, S11), mandatory as printed and skipped only when no ' +
+      'neighbour has room or the hand is empty; then Draw 3, which is paid whether or not ' +
+      'the sow found a target (the W15/A5 "then" precedent). A sow is not a visit. The ' +
+      'older note, about the HIVE-count draw this replaced, follows. ' +
       "FEED THE HAND, and it is the tier's answer to its own problem: the whole of Tier 1 " +
       'spends cards and this is where they come back. Counts HIVEs BUILT (A4-A8), not full ' +
       'ones, so five is the ceiling. ⭐ THE HAND LIMIT IS BACK (02/09/2026) and caps the ' +
@@ -492,17 +486,30 @@ export const crossPollinator: CardHandler = {
       'with them.',
   },
   activate(fx, self) {
-    drawN(fx, self.seat, self.card, hives(fx.data, fx.state, self.seat).length);
+    const targets = neighbourSowTargets(fx.data, fx.state, self.seat);
+    if (targets.length > 0) {
+      fx.pushTask({ t: 'sow', pid: self.seat, src: self.card, remaining: 1, targets });
+    }
+    drawN(fx, self.seat, self.card, 3);
   },
 };
 
-/** A11 The Wax Workshop - "GROW: Put 1 card from each of your HIVEs into your barn." */
+/**
+ * A11 The Wax Workshop - "Put 1 card from each of your full buildings into your
+ * Barn." (v42; was "each of your HIVEs".)
+ */
 export const waxWorkshop: CardHandler = {
   difficulty: {
     score: 3,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
+    asserted: { newPrimitive: false, conditional: true, counts: true, interrupts: false },
     notes:
+      '⭐ v42: every one of your FULL buildings, any suit. ⭐ BUILDER DEFAULT (16/09/2026): ' +
+      'full means at or over its printed threshold (`isHarvestable`), threshold cards only, ' +
+      'and NEVER a Notice Board (S11: a board is a building for harvest and nothing else). ' +
+      'A11 itself counts when its own grow payment filled it. Still a move and not a ' +
+      'harvest, so each building reopens by one card and no "When Harvested" line fires. ' +
+      'The older note follows. ' +
       'SKIM THE ROW. ⚠️ ONE CARD PER HIVE, not one per card on the stack: a task per loaded ' +
       'HIVE, each choosing which of that stack goes. Not a harvest - stackCardToBarn, so no ' +
       'afterHarvest fires and the HIVE reopens by one rather than emptying. With the colour ' +
@@ -512,8 +519,8 @@ export const waxWorkshop: CardHandler = {
       'leaving stacks loaded.',
   },
   activate(fx, self) {
-    for (const b of hives(fx.data, fx.state, self.seat)) {
-      if (b.stack.length === 0) continue;
+    for (const b of ownBuildings(fx.data, fx.state, self.seat)) {
+      if (isNoticeBoardCard(fx.data, b.card) || !isHarvestable(fx.data, b)) continue;
       fx.pushTask({
         t: 'card',
         pid: self.seat,
@@ -598,13 +605,23 @@ export const honeyHut: CardHandler = {
   },
 };
 
-/** A13 The Queen's Hive - "Place the top card of each deck into your barn." Threshold 1. */
+/**
+ * A13 The Queen's Hive - "If you have 3 or more Apiary buildings, place any 3
+ * deck cards into your Barn." (v42; was "the top card of each deck".) Threshold 1.
+ */
 export const queensHive: CardHandler = {
   difficulty: {
-    score: 1,
-    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
+    score: 2,
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: true, counts: true, interrupts: false },
     notes:
+      '⭐ v42: a GATE, then three picks. The gate counts your Apiary buildings ' +
+      '(`cropBuildingsOf`, threshold cards printing the Apiary icon, so Power and Endgame ' +
+      'cards and the starters do not count) and ⭐ A13 COUNTS ITSELF (builder default, ' +
+      '16/09/2026: it is an Apiary building in your tableau). "Any 3 deck cards" is three ' +
+      '`deckToBarn` picks (buildings.ts), each the top of a deck of your choosing, the same ' +
+      'deck as often as you like. Below the gate the activation does nothing. The older ' +
+      'note follows. ' +
       'THE SWARM, and after 19/08/2026 it is the simplest card in the tier: five deck tops ' +
       'straight into your own barn, in a fixed order, with nothing to choose. ⛔ ALL ' +
       'TARGETING IS DELETED - the sowFromDeck task per deck, the per-deck whiff when no ' +
@@ -623,23 +640,30 @@ export const queensHive: CardHandler = {
       'fire again until it is harvested. That is the throttle on the whole effect.',
   },
   activate(fx, self) {
-    // No task and no choice: the quantifier is EACH DECK, the destination is
-    // fixed, and a dry deck is simply skipped by drawableSuits. Mandatory
-    // effects skip silently rather than refusing the activation (plan 8.3), and
-    // with every deck dry that means the activation happens and does nothing.
-    for (const suit of drawableSuits(fx.data, fx.state)) {
-      fx.deckTopToBarn(self.seat, suit);
-    }
+    if (cropBuildingsOf(fx.data, fx.state, self.seat, 'apiary').length < 3) return;
+    fx.pushTask({
+      t: 'card',
+      pid: self.seat,
+      src: self.card,
+      kind: 'deckToBarn',
+      riders: { remaining: 3 },
+    });
   },
+  tasks: { deckToBarn: deckToBarnTask() },
 };
 
-/** A14 The Honeycomb Tower - "Draw 1 for each of your HIVEs." Threshold 2. */
+/**
+ * A14 The Honeycomb Tower - "Draw 1 for each of your Apiary buildings, Max 5."
+ * (v42; was "each of your HIVEs".) Threshold 2.
+ */
 export const honeycombTower: CardHandler = {
   difficulty: {
     score: 1,
-    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
+      '⭐ v42: counts every Apiary building you own (`cropBuildingsOf`), A14 itself ' +
+      'included, and the draw is capped at 5 as printed. The older note follows. ' +
       '⚠️ IT WAS THE LOUDEST BALANCE RISK OF THE 19/08/2026 PASS AND THE CURRENCY IT ' +
       'PRINTED HAS SINCE BEEN DELETED, so the warning is repointed rather than dropped. ' +
       'What it said: this was THE ONLY REPEATABLE COIN FAUCET IN THE GAME, it had lost its ' +
@@ -660,7 +684,8 @@ export const honeycombTower: CardHandler = {
       'the payout fails to arrive, except a table with every deck dry.',
   },
   activate(fx, self) {
-    drawN(fx, self.seat, self.card, hives(fx.data, fx.state, self.seat).length);
+    const apiary = cropBuildingsOf(fx.data, fx.state, self.seat, 'apiary').length;
+    drawN(fx, self.seat, self.card, Math.min(5, apiary));
   },
 };
 
@@ -736,6 +761,8 @@ export const beekeepersVeil: CardHandler = {
     // ⭐ DELIBERATELY UNGUARDED, re-decided 10/09/2026 - see the notes. It
     // fires per PLACEMENT and always has; A17 and O16 gained per-turn guards
     // that day because their trigger is the bonus slot, and this one's is not.
+    // Both of those guards were removed on 15/09/2026 (card text fires every
+    // time its trigger happens), so all three now agree.
     afterPlacement(fx, event, self) {
       if (event.seat !== self.seat) return;
       if (event.stackSize !== 2) return;
@@ -745,15 +772,23 @@ export const beekeepersVeil: CardHandler = {
 };
 
 /**
- * A17 The Smoke Pot - "Whenever you place a card on a neighbour's Notice Board,
- * add the top card of any deck into your barn."
+ * A17 The Smoke Pot - "Whenever you visit a neighbour, SOW the top card of any
+ * deck onto one of your buildings." (v42; was "add the top card of any deck into
+ * your barn".)
  */
 export const smokePot: CardHandler = {
   difficulty: {
-    score: 3,
+    score: 2,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
     notes:
+      '⭐ v42: the deck top is SOWN onto one of your own buildings (any building that can ' +
+      'take a card, never a Notice Board, S11), where it used to go to the barn. One ' +
+      '`sowFromDeck` task, `remaining` 1, mandatory ("SOW", not "you may"), skipped when ' +
+      'nothing has room. VISITOR-side and neighbour-only, as before. ⭐ THE ONCE-A-TURN ' +
+      'GUARD IS GONE (Dean, 15/09/2026): card text fires every time its trigger happens, so ' +
+      'a second visit in a turn sows a second card. The paragraphs below that argue the ' +
+      'guard, and the barn destination, are history. ' +
       '⛔ IT LOST ITS PRICE AND GAINED A GATE (v31, plan section 3.3), and the plan says ' +
       'why the two had to move together: A17 priced a coin as a COST, and a cost cannot be ' +
       'halved into a draw. So the £1 is simply gone and the card is free. ' +
@@ -787,47 +822,33 @@ export const smokePot: CardHandler = {
   on: {
     afterVisit(fx, event, self) {
       if (event.visitor !== self.seat) return;
-      // "a NEIGHBOUR's Notice Board" - a self-visit is not one. This is the
-      // guard the whole card turns on; see the notes.
+      // "a NEIGHBOUR" - a self-visit is not one. False by construction in the
+      // shipped game; live under the v31 card-visit control overlay.
       if (event.self) return;
-      // ⛔ ONCE A TURN (the standing rule of 11/08/2026), and it is a real
-      // guard now rather than an accident of the slot's shape: S9 (10/09/2026)
-      // makes A Helping Hand's second bonus a second PLACEMENT, so the old
-      // "only one of the two options is a placement" argument is dead.
-      if (fx.state.turn.firedThisTurn.includes(self.card)) return;
-      markFired(fx, self.card);
-      // Pushed unconditionally and gated in the enumerator instead of here: the
-      // decks can run dry between the hook firing and the task reaching the head
-      // of the queue, and an empty answer list is auto-skipped by the drain loop.
-      fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'smokeBuy', riders: {} });
-    },
-  },
-  tasks: {
-    smokeBuy: {
-      answers(data, state) {
-        // MANDATORY, and no skip: the printed text says "add", not "you may".
-        // With every deck dry the list is empty and the drain loop drops the
-        // task, which is the same silent no-op a skip would have produced.
-        return drawableSuits(data, state).map(
-          (suit) => ({ kind: 'card', payload: { suit } }) as TaskAnswer,
-        );
-      },
-      resolve(fx, task, answer) {
-        if (answer.kind !== 'card') throw new Error('smokeBuy expects a card answer');
-        fx.deckTopToBarn(task.pid, answer.payload.suit as Suit);
-        return true;
-      },
+      const targets = ownBuildings(fx.data, fx.state, self.seat)
+        .filter((b) => !isNoticeBoardCard(fx.data, b.card))
+        .map((b) => ({ seat: self.seat, card: b.card }));
+      if (targets.length === 0) return;
+      // Targets snapshot now and are re-checked for room when the task is
+      // answered, so a building that fills in between simply drops out.
+      fx.pushTask({ t: 'sowFromDeck', pid: self.seat, src: self.card, remaining: 1, targets });
     },
   },
 };
 
-/** A19 The Honey Hall - "Game end: 3 VP for each non-Apiary building you have built." */
+/**
+ * A19 The Honey Hall - "Game end: 1 VP for each non-Apiary building you have
+ * built." (v42; was 3 VP.)
+ */
 export const honeyHall: CardHandler = {
   difficulty: {
     score: 1,
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: true },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
+      '⭐ v42: the rate falls 3 to 1. It counts BUILDINGS (`foreignBuildingsOf`, threshold ' +
+      'cards printing another crop), so a foreign Power or Endgame card no longer counts, ' +
+      'which is the builder default for "building" (16/09/2026). The older note follows. ' +
       'THE MANY FLOWERS, and it pays for your own decision on the mechanism: Apiary pays no ' +
       'crop cost to fire a building, so a foreign Tier 2 or Tier 3 in an Apiary tableau is ' +
       'a better card than it is in the tableau of the suit that printed it. Buildings ' +
@@ -838,23 +859,28 @@ export const honeyHall: CardHandler = {
       'Tier 3 and firing it every turn (risk 5).',
   },
   gameEnd(data, state, seat) {
-    return 3 * foreignCropBuildings(data, state, seat, 'apiary').length;
+    return foreignBuildingsOf(data, state, seat, 'apiary').length;
   },
 };
 
-/** A20 The Apiarist's Guild - "Game end: 2 VP for each HIVE you have built." */
+/**
+ * A20 The Apiarist's Guild - "Game end: 1 VP for each 1VP building you have
+ * built." (v42; was 2 VP for each HIVE.)
+ */
 export const apiaristsGuild: CardHandler = {
   difficulty: {
     score: 1,
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: true },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
-      'THE DEPTH OF THE APIARY: the HIVE sub-type count, which under the tier guard is A4 ' +
-      "to A8 and nothing else, capping at 10 VP. ⚠️ A13 The Queen's Hive is named Hive and " +
-      'does NOT count. Matches W21, O20 and D21 - a house convention.',
+      '⭐ v42: 1 VP for each building you have built whose PRINTED VP is exactly 1, of any ' +
+      'suit (`builtBuildingsWorth`, buildings.ts). Buildings only: a Power or Endgame card ' +
+      'printing 1 VP never counts, and on v42 the Power cards print 0 anyway. One of a ' +
+      'family with D21 (3VP buildings) and O20 (2VP buildings). It used to count HIVEs, ' +
+      'A4 to A8, at 2 VP each.',
   },
   gameEnd(data, state, seat) {
-    return 2 * hives(data, state, seat).length;
+    return builtBuildingsWorth(data, state, seat, 1);
   },
 };
 

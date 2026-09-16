@@ -40,8 +40,13 @@
  *
  * ⭐ THE COMMONS AND ITS EIGHT TEMPLATES (the six `commons*` knobs,
  * `unclaimedBoardsToCentre` and `actionUnderCommons`) WERE DELETED ON 13/09/2026
- * (Dean). `rules.economy.endgameCoinCost` and `rules.economy.farmsteadCoinPower`,
- * the coins arm's two sinks, survive because a Village Store coin can pay them.
+ * (Dean).
+ *
+ * ⭐ 16/09/2026: THE BALLOONS, THE AERODROME, THE VILLAGE STORE COIN, THE
+ * CLOSING DRAW AND THE ISLAND WILD SUBSTITUTION WERE DELETED (Dean, rulings R1,
+ * R2, R4 and R5). Every `aerodrome.*` template went, and so did
+ * `rules.turn.closingDrawPerCrate`, `island.cardsPerSubstitution`, the six Store
+ * leaves and the two dead coin knobs `endgameCoinCost` and `farmsteadCoinPower`.
  *
  * ⭐ THE NOTICE BOARD VISIT (Dean, 10/09/2026) ADDS ONE TEMPLATE, RENAMES FOUR
  * AND DELETES NONE. `rules.economy.noticeBoardBlocks` is the new one and it is
@@ -65,7 +70,7 @@
  * `rules.economy.noticeBoardsBySeats.{}` says how many Notice Boards each player
  * lays out, shipped at one each so the base changes nothing, and the arm sets
  * two at two seats only. It is a MAP rather than a boolean deliberately: it
- * matches `island.decksInPlayBySeats.{}` and `island.demandTokensBySeats.{}.*`,
+ * matches `island.decksInPlayBySeats.{}` and `island.tokens.wildBySeats.{}`,
  * which is how this codebase has always spelled a per-seat-count quantity, and a
  * later pass can sweep a third seat count without another knob. ⛔ THE LESSON IT
  * CARRIES IS THE ONE THE UNCLAIMED-BOARDS ARM MEASURED: there are only ever four
@@ -85,41 +90,21 @@
  * answers the rate, the glut, the length, the deliveries and the hook and
  * answers NOTHING about whether the game feels less tight.
  *
- * ⭐ THE VILLAGE STORE COIN AND THE DELIVERY MEEPLE (Dean, 12/09/2026, ledger
- * A150 and A151) ADD TEN TEMPLATES, RENAME NOTHING AND DELETE NOTHING, AND
- * EVERY ONE OF THEM SHIPS AT THE VALUE THAT CHANGES NOTHING. Six are the coin -
- * `rules.economy.storeCoinsPerCard` and `rules.economy.coinSupplyPerPlayer` are
- * the mint and its shared supply, and `coinPaysBuild`, `coinPaysSuitCost`,
- * `coinPaysGrow` and `coinGrowOnFullBuilding` are the two sinks split into four
- * switches. Four are the meeple - `rules.turn.deliveryMeepleSpace`,
+ * ⭐ THE DELIVERY MEEPLE (Dean, 12/09/2026, ledger A151) ADDED
  * `meepleSpendTiming`, `meepleSpendPerTurn` and `meepleSpendDistinctColours`.
+ * They ship at their arm values ('afterAction', 1, false) since 14/09/2026, and
+ * every overlay that should not move pins the old inert values by name
+ * (`'start'` and `null`, not the build handoff's `'none'` and 0, which would
+ * delete the v31 control's turn-start spend).
  *
- * ⛔ THREE OF THE TEN SHIP AT A VALUE THE BUILD HANDOFF GOT WRONG, AND THE
- * CORRECTION IS THE POINT OF THE SLICE. `docs/village-store-coins-handoff-2026-09-12-v1.md`
- * section 3 ships `meepleSpendTiming` at `'none'`, `meepleSpendPerTurn` at `0`
- * and reads `deliveryMeepleSpace`'s null as "no meeples". All three would have
- * changed the shipped game: `'none'` and `0` delete the v31 control's
- * turn-start meeple spend, which `packages/sim/fixtures/2p-v31-opening.json`
- * replays against, and a null that meant "none" would re-point the island's
- * seeding. `'start'`, `null` and "defer to `meeplesPerTile()`" are the inert
- * values, and INERT IS THE ONLY THING A SHIPPED VALUE IS FOR.
- *
- * ⛔ AND FOUR SWITCHES FOR TWO SINKS IS THE 05/09/2026 LESSON APPLIED BEFORE THE
- * FACT. Coins-for-Build and coins-for-Grow are two different bets, the
- * n-of-suit half is a third question and the full-building clause is the
- * strongest clause in the package; bundled, an arm that reads badly cannot say
- * which half did it. ⚠️ Nothing here is a second MINT, which is what every coin
- * economy in this project has died of: `storeCoinsPerCard` is the only faucet,
- * and if a future session finds itself adding another, that is the failure
- * repeating rather than a tuning.
- *
- * ⭐ 14/09/2026: DEAN RULED THE DELIVERY MEEPLE ON AND ADDED TWO ISLAND RULES,
- * AND THIS FILE GAINS TWO TEMPLATES FOR THEM: `rules.turn.deliverySpaceChoice`
- * (a delivery names either free space) and `rules.turn.closingDrawPerCrate`
- * (the delivery that fills a tile draws one card per crate). The four meeple
- * leaves above now ship at their ARM values and both new leaves ship ON, so
- * every overlay that should not move pins all six by name at the old values
- * (`'start'` and `null` for the spend window, not the handoff's `'none'` and 0).
+ * ⭐ 16/09/2026: THE TOKEN ISLAND (Dean, R3) DELETED `island.vpByDeliveryOrder`,
+ * `island.demandTokensBySeats.*`, `island.meeples.perDeliverySpace`,
+ * `island.meeples.seededSpaces`, `rules.turn.deliveryMeepleSpace` and
+ * `rules.turn.deliverySpaceChoice`, and added `island.tokens.vpValues`,
+ * `island.tokens.workerOnVp` and `island.tokens.wildBySeats.{}`. The two board
+ * retexts (R9, R10) added `noticeBoardPower.vegetableWildCards` and replaced
+ * `noticeBoardPower.dairyGrowsBuilt` with `noticeBoardPower.dairyDiscount`.
+ * An overlay still naming a deleted path now fails loudly, which is the point.
  */
 
 import { flatten } from './paths.js';
@@ -127,8 +112,7 @@ import type { Leaf } from './paths.js';
 
 /**
  * `int` and `number` are self-explanatory. `intOrNull` covers the knobs whose
- * null disables a rule outright (the wild substitution, a threshold override, an
- * unthresholded card). `intArray` covers the island's VP schedule, which is
+ * null disables a rule outright (a threshold override, an unthresholded card). `intArray` covers the island's token values, which are
  * replaced whole. `boolean` covers the enable flags and the two turn-structure
  * switches.
  *
@@ -160,10 +144,10 @@ export type KnobType =
   | 'visitCurrency'
   | 'meepleDestination'
   | 'meepleSpendTiming'
-  | 'dairyGrowsBuilt'
   | 'apiaryPower'
   | 'paymentHostChoice'
-  | 'balloonReward';
+  | 'firstPlayer'
+  | 'endOfGame';
 
 export interface KnobTemplate {
   /** Dotted path, `{}` for a wildcard segment. */
@@ -683,39 +667,6 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'alone.',
   },
   {
-    template: 'rules.turn.deliveryMeepleSpace',
-    type: 'intOrNull',
-    description:
-      '⭐ M1 OF THE DELIVERY MEEPLE (Dean, ruled 12/09/2026, ledger A151, section 5 of ' +
-      "docs/village-store-coins-2026-09-12-v2.md): WHICH OF A TILE'S DELIVERY SPACES CARRIES A " +
-      'MEEPLE AT SETUP. 1 is the rule as ruled - a random meeple on every 3 VP space, index 1 and ' +
-      'never index 0 - and claiming that space’s receipt claims the meeple. ' +
-      '⛔ null IS THE SHIPPED VALUE AND IT DOES NOT MEAN "NO MEEPLES". It means FALL THROUGH TO ' +
-      'THE EXISTING meeplesPerTile() SEEDING, UNCHANGED: the commons and the notice-board visit ' +
-      'seed none, the v31 control seeds one per delivery space and the meeple loop seeds ' +
-      'island.meeples.seededSpaces. That is the whole of its inertness, and a reader who assumes ' +
-      'null means "none" will read this leaf as already doing half the job when it does none of ' +
-      'it. ' +
-      '⛔ NO BRANCH OF PLAY MAY READ THE RAW LEAF: ask tileMeepleSpaces(data), which carries the ' +
-      'precedence (a non-null value wins outright, null defers to the existing seeding) and is the ' +
-      'one spelling every rule must use, exactly as hostDrawOnVisitAt is for the host draw. ' +
-      '⚠️ AN INDEX RATHER THAN A BOOLEAN, so space 0 can be swept if anybody ever asks. ' +
-      '⭐ THE CLAIM HALF IS ALREADY BUILT, WHICH IS WHY THIS IS ONE LEAF AND NOT A SUBSYSTEM: ' +
-      'IslandTileState.meeples is parallel to deliveredBy BY INDEX, so the seat at deliveredBy[i] ' +
-      'took meeples[i], and Dean’s rule is the 04/09/2026 island seed meeple narrowed to ' +
-      'space 1. ' +
-      '⭐ WHY IT EXISTS: THE ISLAND HAS NO DECISION IN IT. Every tile is mechanically identical, ' +
-      'no levels and no ascending VP, so the only island choice is "take 6 before 3" and it is the ' +
-      'same every time. A random reward on the second space makes taking second a real choice ' +
-      'whose value changes over the game, AND IT RESTORES THE ONLY CATCH-UP TERM THIS DESIGN EVER ' +
-      "HAD, deleted with the island's seed meeple on 09/09/2026 and never replaced. " +
-      '⛔ IT IS NOT THE MEEPLE THAT DIED AT A TABLE ON 09/09/2026 AND THERE IS A NUMBER FOR THAT: ' +
-      'second deliveries are 37.5% of receipts and players make about 4.7 deliveries a game, so ' +
-      'this mints roughly 1.8 meeples per player per game, each EARNED by taking second at a tile, ' +
-      'where the rejected version seeded five per player at setup and the complaint was precisely ' +
-      'that the bonus was always available. overlays/delivery-meeple-v1.overlay.json is the arm.',
-  },
-  {
     template: 'rules.turn.meepleSpendTiming',
     type: 'meepleSpendTiming',
     description:
@@ -789,44 +740,6 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'say-so is worth less than a run. ⚠️ Read it beside actions per turn (1.61 against a target ' +
       'of 1.5) and beside the branching bench, since it is the looser of the two rules.',
   },
-  {
-    template: 'rules.turn.deliverySpaceChoice',
-    type: 'boolean',
-    description:
-      '⭐ THE SPACE CHOICE (Dean, ruled 14/09/2026, SHIPPED true). A delivery to a tile names ' +
-      'EITHER free delivery space: the 6 VP space (index 0) or the 3 VP space (index 1), which ' +
-      'carries the delivery meeple. A first deliverer may take the 3 VP and the meeple and leave ' +
-      'the 6 VP for somebody else; the second deliverer takes whichever space is left. ' +
-      '⛔ false IS FILL ORDER EXACTLY, the rule from 09/08/2026 to 14/09/2026: no move or task ' +
-      'answer carries a space, nothing new is stored on a tile, and a state hash or replay ' +
-      'fixture under the old rules is byte-identical. ' +
-      '⭐ THE STATE: IslandTileState.deliveredSpaces, parallel to deliveredBy and present only ' +
-      'under true. deliveredBy keeps its meaning (the seats IN ARRIVAL ORDER, length = the ' +
-      'delivery count); the space a receipt took is read through deliverySpacesTaken(tile), ' +
-      'never off an index into deliveredBy. ' +
-      '⚠️ V14 The Distribution Center takes every free space on its tile and chooses nothing. ' +
-      '⚠️ A bot prices a delivery at deliver-weight times the VP plus meepleGain for the meeple, ' +
-      'so it will rarely give up 6 VP for 3 and a meeple; read a23’s first-delivery share as a ' +
-      'reading about the bots as much as about the rule.',
-  },
-  {
-    template: 'rules.turn.closingDrawPerCrate',
-    type: 'int',
-    description:
-      '⭐ THE CLOSING DRAW (Dean, ruled 14/09/2026, SHIPPED 1). The delivery that fills a tile’s ' +
-      'LAST free space, whichever index that is, draws this many cards for EACH crate token on ' +
-      'the tile, from the deck of that token’s suit. MANDATORY. 0 is off. ' +
-      '⭐ A CORNUCOPIA (wild) CRATE draws from ANY deck in play, the closer’s choice (Dean, ' +
-      '14/09/2026), and that is the only choice in the rule. ⚠️ A crate turned FACE DOWN by V6 ' +
-      'The Trade Depot draws from its PRINTED suit (still stored in tile.crates): a builder ' +
-      'default, NOT ruled by Dean. ' +
-      '⭐ A PLAIN DRAW EFFECT AND NEVER THE DRAW ACTION: it is one see-N/keep-N draw task with ' +
-      'the named decks pre-revealed (the O15 convention) and one deck pick per cornucopia, so ' +
-      'reshuffles and an empty deck behave as every other card-text draw does, and it fires ' +
-      'afterDrawKeep exactly as every card-ability draw does (no card listens to it today). ' +
-      'V14 taking both receipts closes the tile and draws. The draw resolves after the ' +
-      'receipts and the meeple and ahead of the Store exchange in the task queue.',
-  },
 
   // --- Economy -------------------------------------------------------------
   {
@@ -899,7 +812,7 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'ONLY and those two columns must reproduce the control on identical seeds. ' +
       '⭐ A MAP RATHER THAN A BOOLEAN, DELIBERATELY: it matches how this codebase already ' +
       'expresses a per-seat-count quantity (island.decksInPlayBySeats, ' +
-      'island.demandTokensBySeats) and it lets a later pass sweep "what if three seats also got ' +
+      'island.tokens.wildBySeats) and it lets a later pass sweep "what if three seats also got ' +
       'two?" without another knob. ' +
       '⭐ WHY IT EXISTS, MEASURED RATHER THAN ARGUED. Four corners of a 2x2 ran at 4,820 games ' +
       'each on 11/09/2026: self-visits ON with no centre read a bonus rate of 71.2% and a hook ' +
@@ -937,26 +850,6 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'overlays/notice-board-visit-no-self-v1.overlay.json is its control.',
   },
   {
-    template: 'rules.economy.endgameCoinCost',
-    type: 'intOrNull',
-    description:
-      "⭐ THE FIRST OF THE COINS ARM'S TWO COIN SINKS (Dean, 10/09/2026, K15), SHIPPED OFF AT null. " +
-      'Its commons mint was deleted on 13/09/2026; a Village Store coin can still pay it. null is ' +
-      'the shipped rule: the fifteen Endgame cards cost two cards of their own suit, exactly as ' +
-      'v31 priced them and exactly as the fifteen Power cards still do, so each currency ends up ' +
-      'with one kind of card. A number n prices an Endgame card at n COINS and no cards at all; ' +
-      "the arm set 3, which is Dean's proposed starting price rather than a measured one. " +
-      '⛔ THE PRICE IS A RULES KNOB AND NEVER A CARD FIELD. cards.catalogue.{}.buildCost has ' +
-      'exactly suit and wild and must keep having exactly those two - the coin third of it went ' +
-      'with the currency on 02/09/2026, and putting it back would mean a coin price could arrive ' +
-      'from a re-extract rather than from a ruling. data.test.ts asserts that shape and is the ' +
-      'thing that keeps it. ⭐ WHAT IT BUYS THE DESIGN: the second monoculture pull leaves with ' +
-      "it. K13 moves the Farmstead's own-crop scorer to the BARN rather than deleting it, so " +
-      'this cost is the ONLY pull that goes and the prediction is a SMALL move off the 82.6% to ' +
-      '83.3% own-crop build share, not a large one; a large move means the coin economy did it ' +
-      'rather than the price.',
-  },
-  {
     template: 'rules.economy.cropScorerOnBarn',
     type: 'boolean',
     description:
@@ -967,34 +860,6 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'no total moves and only the printing card changes. ⛔ NOT NEUTRAL UNDER THE COINS ARM, ' +
       'where the scorer landed nowhere (K13) and this would add VP, so pre-ruling overlays pin it ' +
       'false. The notice-board visit arm moves it to the Barn on its own (S1) regardless.',
-  },
-  {
-    template: 'rules.economy.farmsteadCoinPower',
-    type: 'boolean',
-    description:
-      "⭐ THE SECOND OF THE ARM'S TWO COIN SINKS AND THE BIGGER RULES CHANGE (Dean, 10/09/2026, " +
-      'K10-K14), SHIPPED OFF. Its commons mint was deleted on 13/09/2026; a Village Store coin can ' +
-      'still pay it. false is the shipped rule: ' +
-      'the Farmstead is an ordinary starter that prints "Game end: 1 VP for each <CROP> card you ' +
-      'have built" and does nothing during play. true makes it a BUILDING WITH NO THRESHOLD ' +
-      'whose activation cost is ONE COIN - thresholdOf returns null, it is never full and never ' +
-      'a sow target - and using it is a GROW taken as your MAIN ACTION, once per turn, with ' +
-      'nothing placed on it: "spend a coin instead of a card". Each suit has a unique power ' +
-      'worth about two plain actions, because it costs the action AND the coin. ⚠️ THE FOUR ' +
-      'NUMBERS BEHIND THEM HAVE MOVED: rules.economy.farmsteadPower was renamed ' +
-      'rules.economy.noticeBoardPower on 10/09/2026 and repointed to the five NOTICE BOARD ' +
-      'powers, so this arm reads a block that no longer describes it and its numbers have to be ' +
-      're-argued rather than inherited. ⛔ NO RENT (K14): a rival may never use your Farmstead, because a reference card ' +
-      'for five rival powers is more than the five-minute teach can carry. ' +
-      "⚠️ TWO CONSEQUENCES TO NAME BEFORE ANY RUN. (1) The Farmstead's own end-game scorer " +
-      'MOVES TO THE BARN (K13) rather than being deleted, so the monoculture pull does NOT leave ' +
-      'with it and gameEnd must score exactly what it scored before off a different card - a ' +
-      'test asserting the unchanged total against the shipped commons is the cheap proof. (2) ' +
-      'All five powers are SOLITAIRE, so the Farmstead adds nothing to the interaction budget ' +
-      "and the whole of this design's cross-table pressure sits in the middle of the table; " +
-      'read that beside the soft metric that decides all of it, whether players watch each ' +
-      "other's turns. ⭐ THE READING IT OWNS is a19's Farmstead-fires-by-suit line: if one suit " +
-      'fires twice as often as another the POWERS are mispriced, not the coins.',
   },
   {
     template: 'rules.economy.noticeBoardPower.orchardDraw',
@@ -1045,8 +910,7 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'every overlay that predates the ruling pins it. Measured on reference-v17 seeds: Dairy ' +
       'win rate 36.6% to 50.4%, Apiary 40.2% to 25.9%. ⚠️ ' +
       'EITHER GROW REVERSES THE REASONING OF C89, which kept the power a SOW so it could never ' +
-      'be a better A12 The Honey Hut or A5 The Meadow Hive, and it makes the orange board and ' +
-      'the orange balloon mean the same verb for the first time. Read the Apiary win rate, the ' +
+      'be a better A12 The Honey Hut or A5 The Meadow Hive. Read the Apiary win rate, the ' +
       'door mix and a06 together.',
   },
   {
@@ -1064,6 +928,17 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'because DELIVER IS WORTH NOTHING TO A PAYER WITH AN EMPTY BARN. A fallback that fills ' +
       'the barn sets the NEXT delivery up instead of failing. Read it beside deliveries per ' +
       'player and the barn glut, never alone.',
+  },
+  {
+    template: 'rules.economy.noticeBoardPower.vegetableWildCards',
+    type: 'int',
+    description:
+      '⭐ THE VEGETABLE NOTICE BOARD’S RELAXATION (Dean, ruling R9, 16/09/2026): "Deliver - 2 ' +
+      'of the cards may be any crop. If you cannot, put 2 cards from your hand into your ' +
+      'Barn." SHIPPED 2: in that one delivery up to this many of the 4 cards may be of any ' +
+      'crop. 0 is the plain Deliver. ⚠️ BUILDER DEFAULT, NOT RULED: on a second delivery the ' +
+      'relaxed cards may also cover the remaining token’s pair, so all 4 may be any crop. The ' +
+      'fallback (vegetableFallback) fires only when no delivery can be paid even with this.',
   },
   {
     template: 'rules.economy.noticeBoardPower.dairyWild',
@@ -1086,22 +961,17 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'binding and the power is weaker than it reads. false is the control that answers it.',
   },
   {
-    template: 'rules.economy.noticeBoardPower.dairyGrowsBuilt',
-    type: 'dairyGrowsBuilt',
+    template: 'rules.economy.noticeBoardPower.dairyDiscount',
+    type: 'int',
     description:
-      "⭐⭐ RULED IN BY DEAN, 12/09/2026, AND THE BASE IS NOW 'paidWild'. The Dairy Notice " +
-      'Board reads: BUILD, USING CARDS OF ANY CROPS, THEN YOU MAY GROW THE BUILDING YOU JUST ' +
-      'BUILT BY SPENDING ANY CARD. What the leaf selects is what happens after the Build. ' +
-      "'paid' immediately GROWs the building " +
-      'just built, paying a matching activation card as normal, so the stack advances and the ' +
-      "clog brake survives; 'paidWild' the same with the activation card wild, which is the " +
-      "AVAILABILITY fix rather than a price cut; 'free' GROWs it placing NOTHING, which is V8's " +
-      'clog bypass narrowed to one virgin target. ⛔ DEAD ON A THIRD OF THE DECK BY ' +
-      'CONSTRUCTION: the 15 Power and 15 Endgame cards have no threshold and no activation ' +
-      'type, so they cannot be Grown at all, which is what stops this becoming the cheap route ' +
-      "to the Power layer. ⚠️ 'free' is the shape measured on 12/09/2026 as the coin-Grow, " +
-      'which re-broke the barn glut and swelled hands; this is far narrower, once per visit on ' +
-      'a building that cannot be full. Read a06 and the Tier 3 harvest rate first.',
+      '⭐ THE DAIRY NOTICE BOARD’S DISCOUNT (Dean, ruling R10, v41, 16/09/2026): "Build, ' +
+      'spending cards of any crops, with a discount of 2." SHIPPED 2. The build costs this many ' +
+      'cards fewer, and any discount above 0 also waives the n-of-suit requirement in the ' +
+      'engine’s pricer. 0 is the full-price, waiver-only board of 10-15/09/2026. It REPLACES ' +
+      "dairyGrowsBuilt ('paidWild' and its siblings), deleted the same day: the board no longer " +
+      'Grows the building it builds. ⚠️ A discount of 2 is D10 The Scout’s Post’s and W7 ' +
+      'Golden Field’s price on a free action: read the Dairy win rate and the build count ' +
+      'per seat before quoting anything about the board.',
   },
   {
     template: 'rules.economy.noticeBoardPower.wheatBarn',
@@ -1121,152 +991,28 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'so read it beside the barn glut and the farm-bypass share.',
   },
   {
-    template: 'rules.economy.storeCoinsPerCard',
-    type: 'int',
-    description:
-      '⭐ THE VILLAGE STORE’S MINT, AND THERE IS EXACTLY ONE (V1, Dean ruled 12/09/2026, ledger ' +
-      'A150, docs/village-store-coins-2026-09-12-v2.md): COINS TAKEN PER ADDITIONAL BARN CARD ' +
-      'SPENT AT A DELIVERY. The arm is 1. ' +
-      '⛔ 0 IS THE SHIPPED VALUE AND IT IS THE WHOLE OFF SWITCH: NOTHING IN THE GAME MINTS A COIN. ' +
-      'Every coin economy this project has had died of a SECOND faucet or a pity rate, so this ' +
-      'being the only mint is a property to preserve rather than a coincidence to tidy. ' +
-      'THE RULE: when you make a delivery you may spend any number of additional cards FROM YOUR ' +
-      'BARN (V2) and take this many coins for each, and the exchange resolves AFTER the crate is ' +
-      'paid (V3), so a player can never convert the cards the delivery itself needs. ' +
-      '⚠️ AN INT RATHER THAN A BOOL, so the rate can be swept without another knob, which is this ' +
-      "project's established preference. " +
-      '⭐ WHY IT EXISTS, AND DEAN’S OWN ARGUMENT IS THE BETTER OF THE TWO: the barn parity trap ' +
-      'strands about 11 cards a player a game (88.8% of the time a player holds barn cards they ' +
-      'cannot afford any open tile, 84% of those one or two cards short), and played decks ' +
-      'reshuffle 7 / 6 / 4 times a game off a 12-card deck, so stranded cards SHRINK THE ' +
-      'CIRCULATING POOL rather than merely sitting there. A converted card goes to the discard and ' +
-      'comes back on the next reshuffle, so RESHUFFLES PER PLAYED DECK is the cleanest falsifiable ' +
-      'prediction in the pass: if the Store works, that number falls. ' +
-      '⛔ DO NOT BUILD THE MINT AS A SUBSET ENUMERATION. "Spend any number of cards from your ' +
-      'barn" is the POWER SET of the barn and an 11-card barn offers 2,048 conversions in one task ' +
-      'at every delivery. Build it as a repeated binary choice, "convert one more card, or stop": ' +
-      'n sequential decisions rather than 2^n, reaching every subset by a different route. A ' +
-      '116,535-move position stopped this project on 02/09/2026 and an 888,030-move one on ' +
-      '05/09/2026, and both were enumerations exactly like this. ' +
-      '⛔ AND coinEconomy() IN packages/engine/src/setup.ts MUST BE EXTENDED to include this above ' +
-      '0 (or coinSupplyPerPlayer above 0), or the wallet will not exist when the Store is on. It ' +
-      'is a serialisation question and never a rules question. ' +
-      '⚠️ THE PLACEMENT IS ON TEST RATHER THAN SETTLED (C113): docs/village-store-2026-08-19-v1.md ' +
-      'section 1 ruled out exactly this rider on Deliver as "no cost, so it is always correct". If ' +
-      'the arm shows every player converting every spare card every time, the August verdict was ' +
-      'right and the PLACEMENT is what to change. overlays/village-store-coins-v1.overlay.json is ' +
-      'the assembled arm and pins every passenger by name.',
-  },
-  {
-    template: 'rules.economy.coinSupplyPerPlayer',
-    type: 'int',
-    description:
-      '⭐ THE SHARED COIN SUPPLY, PER SEAT (V4, Dean 12/09/2026, ledger A150): the pool is this ' +
-      'times the number of players, so the arm’s 5 is 10 coins at two seats and 20 at four. ' +
-      'SHIPPED 0, which is inert twice over: there is no pool, and with storeCoinsPerCard also 0 ' +
-      'there is nothing to put in one. ' +
-      '⛔ SHARED AND CONTESTED, WITH NO PER-PLAYER HOLDING CAP: ONE PLAYER MAY HOLD ALL OF THEM. ' +
-      'Spent coins RETURN to the supply and may be minted again (V5), and an empty supply mints ' +
-      'nothing, so the pool is a recirculating bound on the whole economy rather than a per-seat ' +
-      'allowance. That bound is also what makes the mint safe to enumerate: never more than this ' +
-      'times seats conversions exist in the whole game. ' +
-      '⚠️ THE SNOWBALL RISK IS REAL BUT SMALL, and the reasoning is on the record: a shared supply ' +
-      'with no cap makes minting a race and a hoarded coin denies everybody else, but minting is ' +
-      'keyed to DELIVERIES and the seat delivering most is Orchard, who wins least (17.4% against ' +
-      "Wheat's 41.9%), so the supply flows slightly toward the seat that needs it. " +
-      '⚠️ HOW OFTEN THE SUPPLY IS EMPTY IS ONE OF THE PASS’S OWN READINGS and is C113’s test from ' +
-      'the other side: a supply that never empties is a supply that is rationing nothing. ' +
-      '⚠️ SOLO IS NOT MODELLED AT ALL and would size the pool at 5.',
-  },
-  {
-    template: 'rules.economy.coinPaysBuild',
-    type: 'boolean',
-    description:
-      '⭐ THE FIRST COIN SINK: A COIN IS A WILD CARD FOR BUILD (V6, Dean 12/09/2026, ledger A150). ' +
-      'SHIPPED false, and read only where a coin can exist, which since 12/09/2026 means ' +
-      'rules.economy.storeCoinsPerCard above 0. true lets a coin pay any or all of a build cost, ' +
-      'and POWER AND ENDGAME CARDS ARE INCLUDED (V7): they cost two cards of their own suit, so ' +
-      'two coins buys one. ' +
-      '⛔ A SEPARATE LEAF FROM coinPaysGrow BECAUSE THEY ARE TWO DIFFERENT BETS: Build converts ' +
-      'barn into TABLEAU, Grow converts barn into repeatable ABILITIES and deliberately suppresses ' +
-      'harvesting. If they go in together and the arm reads badly, nobody will know which did it, ' +
-      'which is the 05/09/2026 passenger lesson applied before the fact instead of after it. ' +
-      'overlays/village-store-coins-build-only-v1.overlay.json is the arm that isolates it. ' +
-      '⚠️ IT IS ALSO THE BRANCHING RISK OF THE WHOLE PACKAGE. Build payments are already ' +
-      'C(hand, k), and coins add every split of j coins and k-j cards, so the count becomes a sum ' +
-      'of binomials. ⭐ COINS ARE FUNGIBLE, SO THE ENUMERATOR MUST TREAT THE COIN COMPONENT AS A ' +
-      'COUNT AND NEVER AS A CHOICE OF WHICH COINS - getting that wrong is the single easiest way ' +
-      'to blow the simulator up. Run the branching bench before and after and quote seconds per ' +
-      'game beside both move populations (C99).',
-  },
-  {
-    template: 'rules.economy.coinPaysSuitCost',
-    type: 'boolean',
-    description:
-      '⭐ THE n-OF-SUIT HALF OF V6, SPLIT OFF rules.economy.coinPaysBuild ON PURPOSE (Dean, ' +
-      '12/09/2026, ledger A150). SHIPPED false. true lets a coin pay a build cost’s SUIT ' +
-      'REQUIREMENT and not only its wild slots, so three coins pays "2 apples and a wild". ' +
-      '⛔ TWO LEAVES BECAUSE "COINS PAY WILD COSTS ONLY" AND "COINS PAY EVERYTHING" ARE ' +
-      'MEANINGFULLY DIFFERENT GAMES AND IT IS ONE RUN TO FIND OUT. Read only with coinPaysBuild ' +
-      'on: a coin that pays a suit requirement but not a build is not a rule anybody has proposed. ' +
-      'overlays/village-store-coins-wild-only-v1.overlay.json is the arm that turns this half off ' +
-      'while leaving the rest of the coin standing. ' +
-      '⭐ AND IT IS THE FIRST THING PROPOSED THAT PUSHES AGAINST THE MONOCULTURE PULL: own-crop ' +
-      'build share has sat near 83% (82.6% before v31, 83.3% after), and a wild that pays a suit ' +
-      'requirement is what makes off-crop building and off-suit Powers cheap. THE OWN-CROP BUILD ' +
-      'SHARE IS THEREFORE A READING THIS LEAF OWNS, not a background number.',
-  },
-  {
-    template: 'rules.economy.coinPaysGrow',
-    type: 'boolean',
-    description:
-      '⭐ THE SECOND COIN SINK: A COIN IS A WILD CARD FOR GROW (V8, Dean 12/09/2026, ledger A150). ' +
-      "SHIPPED false. true lets a coin stand in for a building's activation card. " +
-      '⛔ THE COIN PLACES NOTHING, so the building does not advance toward its threshold and never ' +
-      'clogs, cards that trigger on a PLACEMENT do not fire (A16 The Beekeeper’s Veil is the ' +
-      'obvious one) and A21 The Wax Hall does not count a building held empty this way. ⭐ It DOES ' +
-      'fire the building’s "when activated" ability, because that is the whole point of a Grow ' +
-      '(D5), and a reader may assume otherwise precisely because no card lands. ' +
-      '⭐ THE BEST PROPERTY OF THE DESIGN IS THAT IT IS SELF-LIMITING: a building you only ever ' +
-      'coin-Grow never fills, so it is never harvested, so it never puts cards in your barn - and ' +
-      'barn cards are what make coins. Spending coins to dodge clog starves the supply of the ' +
-      'material that makes coins. ⭐ AND COINS CANNOT MULTIPLY ACTIONS: a coin changes what a Grow ' +
-      'COSTS, never how many you get, so with the fire-once-per-turn guard the ceiling is two ' +
-      'coin-Grows a turn and never the same building twice. ' +
-      '⚠️ isFull AND isHarvestable STOPPED BEING THE SAME BOOLEAN ON 10/09/2026 (S8), so whoever ' +
-      'writes the legality check must read which one a Grow actually wants rather than assuming ' +
-      'they still agree. overlays/village-store-coins-grow-only-v1.overlay.json is the arm that ' +
-      'isolates this bet from the Build one.',
-  },
-  {
-    template: 'rules.economy.coinGrowOnFullBuilding',
-    type: 'boolean',
-    description:
-      '⭐ V9, AND IT IS THE STRONGEST SINGLE CLAUSE IN THE PACKAGE (Dean, ruled 12/09/2026, ledger ' +
-      'A150): MAY A COIN-GROW TARGET A FULL BUILDING? SHIPPED false. true is THE FIRST CLOG BYPASS ' +
-      'IN THIS GAME SINCE THE MEEPLES, ruled in deliberately - Dean’s reason is that if you go ' +
-      'through all the effort of getting cards in your barn, the reward should be awesome. ' +
-      '⛔ NO BRANCH OF PLAY MAY READ THE RAW LEAF: ask coinGrowReachesFullBuildings(data), which ' +
-      'carries the precedence that this is MEANINGLESS unless rules.economy.coinPaysGrow is on. A ' +
-      'full-building Grow that no coin can pay for is not a rule, and a check reading this leaf ' +
-      'alone is right until somebody runs the build-only arm and silently wrong after. That is the ' +
-      'hostDrawOnVisitAt precedent of 12/09/2026 and the hostGift seam of the same day, which was ' +
-      'a term reading a rule off the wrong accessor and pricing a decision that could not happen. ' +
-      '⛔ A SEPARATE LEAF FROM coinPaysGrow BECAUSE IT IS THE HALF MOST LIKELY TO BE THE PROBLEM, ' +
-      'and an arm that bundles it cannot say so. Expect the board mix to move with it: the Apiary ' +
-      'board’s bought Grow reaches a full building by the same clause, and Apiary is at 12% of ' +
-      'plays today. ' +
-      '⛔ AND THE TIER 3 LAYER NEEDS RE-PRICING AGAINST IT (C110): the cost/threshold curve is ' +
-      'inverse ON PURPOSE, expensive low-threshold buildings are strong BECAUSE clog is their ' +
-      'brake, and a repeatable currency that removes the brake changes what every Tier 3 is worth. ' +
-      'Card balance, not a reason to reopen the rule and not a reason to hold up the arm. ' +
-      '⚠️ A MEEPLE GROW IS THE OPPOSITE AND THE TWO DIFFER ON PURPOSE (M8): it places its ' +
-      'activation card as normal and CAN clog.',
-  },
-  {
     template: 'rules.endGame.furtherTurnsEach',
     type: 'int',
-    description: 'Turns each other player takes after the game-end trigger.',
+    description:
+      "Turns each other player takes after the game-end trigger. Read only under endOfGame 'oneMoreTurnEach', and only 1 is implemented.",
+  },
+  {
+    template: 'rules.endGame.endOfGame',
+    type: 'endOfGame',
+    description:
+      "⭐ HOW A TRIGGERED GAME ENDS. RULED BY DEAN, 15/09/2026: 'finishRound', play on until the " +
+      'round is complete, so the game ends when the seat about to play would be the first player ' +
+      "(GameState.firstPlayer). 'oneMoreTurnEach' is every game before the ruling: every other " +
+      'player takes one more turn and the game ends when the trigger seat would play again. Every ' +
+      'overlay describing an older game pins the old value by name.',
+  },
+  {
+    template: 'rules.setup.firstPlayer',
+    type: 'firstPlayer',
+    description:
+      "⭐ WHO OPENS. RULED BY DEAN, 15/09/2026: 'random', drawn from the game's seeded RNG after " +
+      "every setup shuffle and recorded as GameState.firstPlayer. 'seat0' is every game before the " +
+      'ruling and makes no RNG call, so an overlay that pins it replays its old game move for move.',
   },
   {
     template: 'rules.endGame.deliveriesToTrigger',
@@ -1340,83 +1086,61 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
 
   // --- The island ----------------------------------------------------------
   {
-    template: 'island.vpByDeliveryOrder',
-    type: 'intArray',
-    description:
-      "The flat island in one array: entry i is the VP the (i+1)th delivery to a tile takes, and the length is how many deliveries a tile accepts. [6, 3] is the game's only remaining time gradient - first to a tile is worth double second - and it replaced both the 4/8/16 level VP and the fill-order bonus strip. Replaced whole: shortening it closes a delivery space, lengthening it opens one and forces both the new price AND a third meeple out of a 25-deep bag to be found in the same edit.",
-  },
-  {
-    template: 'island.cardsPerSubstitution',
-    type: 'intOrNull',
-    description:
-      'Cards of any crops that stand in for one card the island asked for. null restores exact matching, which is the control arm. This is the dial on the barn queue: ticket 38 proved the block is MATCHING under an all-or-nothing crate payment, not quantity, so this is the only lever that touches the actual cause. Lower is looser - at 2 the colour puzzle survives because matching is still cheaper, and the rate self-scales because only a big barn can afford to substitute.',
-  },
-  {
     template: 'island.tileRule.crates',
     type: 'int',
-    description: 'Crates printed on every tile. Each crate carries one suit demand token.',
+    description:
+      'Tokens dealt onto every island card at setup (2). The token pool must fill the tiles ' +
+      'exactly (data.test.ts), so moving this means moving the token set in the same overlay.',
   },
   {
     template: 'island.tileRule.cardsPerCrate',
     type: 'int',
     description:
-      'Barn cards of the matching suit that pay one crate. Total tile cost is crates times this, so 4 at every tile. The pair, not the tile, is the unit a player reads.',
+      "Cards one token's demand asks for (2). A delivery always costs crates times this, 4 " +
+      'barn cards, and a second delivery pays the last token plus this many cards of any crops.',
+  },
+  {
+    template: 'island.tokens.vpValues',
+    type: 'intArray',
+    description:
+      '⭐ THE TOKEN VALUES (Dean, ruling R3, 16/09/2026): one token per crop in play at each ' +
+      'value, 6 / 5 / 4 / 3, plus the wild tokens. Replaced whole. The length times the crops in ' +
+      'play plus the wild count must equal the tokens the tiles hold, so a change here needs a ' +
+      'matching change to wildBySeats or slotsBySeats.',
+  },
+  {
+    template: 'island.tokens.workerOnVp',
+    type: 'intArray',
+    description:
+      '⭐ WHICH TOKEN VALUES CARRY A WORKER (the delivery meeple), printed 3 and 4. A first ' +
+      'deliverer chooses between a higher VP token and a lower one with a free plain action. ' +
+      '[] seeds no Worker at all, which is the game without the delivery meeple.',
+  },
+  {
+    template: 'island.tokens.wildBySeats.{}',
+    type: 'int',
+    description:
+      'Wild tokens (any 2 cards) in the pool at this seat count: 0 / 2 / 4. ⚠️ BUILDER ' +
+      'DEFAULT: below the number of VP values, which wild values are used is drawn at random. ' +
+      'Raising it loosens the colour puzzle.',
   },
   {
     template: 'island.meeples.perColour',
     type: 'int',
     description:
-      '⛔ NO SUBJECT UNDER THE COMMONS (09/09/2026, C6): there are no meeples in the shipped ' +
-      'game, meeplesPerTile() returns 0 and the island seeds none, so every knob under ' +
-      "island.meeples is read only under visitCurrency 'card' or 'meeple' and moves nothing " +
-      'unless a control overlay is on. ' +
-      "Meeples of each colour in the bag. 5 was chosen because 25 is the smallest flat pool that covers a 4-seat board's 24 delivery spaces, which is a component argument rather than a design one - so it is untested in every sense. CONSEQUENCE TO READ FIRST: 24 of 25 are drawn at 4 seats, so the island's colour mix is nearly deterministic there, while at 2 seats only 12 are drawn and it is a genuine sample. Move `poolSize` with this or the two disagree and data.test.ts fails, which is what that assertion is for.",
+      "Workers of each colour in the bag. 5 was chosen because 25 is the smallest flat pool that covers a 4-seat board's 24 old delivery spaces, which is a component argument rather than a design one. Under the token island at most 12 Workers are dealt, so the bag is never close to exhausted. Move `poolSize` with this or the two disagree and data.test.ts fails, which is what that assertion is for.",
   },
   {
     template: 'island.meeples.poolSize',
     type: 'int',
     description:
-      '⛔ NO SUBJECT UNDER THE COMMONS (09/09/2026, C6): there are no meeples in the shipped ' +
-      'game, meeplesPerTile() returns 0 and the island seeds none, so every knob under ' +
-      "island.meeples is read only under visitCurrency 'card' or 'meeple' and moves nothing " +
-      'unless a control overlay is on. ' +
-      'Total meeples in the bag. Stored rather than derived precisely so that an overlay cannot half-change the pool: it must equal perColour times the number of colours, and the test says so.',
-  },
-  {
-    template: 'island.meeples.perDeliverySpace',
-    type: 'int',
-    description:
-      '⛔ NO SUBJECT UNDER THE COMMONS (09/09/2026, C6): there are no meeples in the shipped ' +
-      'game, meeplesPerTile() returns 0 and the island seeds none, so every knob under ' +
-      "island.meeples is read only under visitCurrency 'card' or 'meeple' and moves nothing " +
-      'unless a control overlay is on. ' +
-      'Meeples seeded onto each island delivery space at setup. At 1 the bag is drained to 12 / 18 / 24 by seat count; at 2 a 4-seat board would need 48 and the bag does not hold them, so raising this means raising the pool in the same overlay.',
-  },
-  {
-    template: 'island.meeples.seededSpaces',
-    type: 'intArray',
-    description:
-      '⛔ NO SUBJECT UNDER THE COMMONS (09/09/2026, C6): there are no meeples in the shipped ' +
-      'game, meeplesPerTile() returns 0 and the island seeds none, so every knob under ' +
-      "island.meeples is read only under visitCurrency 'card' or 'meeple' and moves nothing " +
-      'unless a control overlay is on. ' +
-      'WHICH delivery spaces carry a meeple under the MEEPLE ARM, as indices into ' +
-      "vpByDeliveryOrder; the 'card' game keeps reading perDeliverySpace and is untouched. " +
-      '[1] is the rule (R12): the 3 VP second delivery carries the tile’s only meeple and the ' +
-      '6 VP first pays VP alone. A list rather than a count because perDeliverySpace could say ' +
-      'how many but never WHICH, and which is the design - meeples recirculate under the arm, ' +
-      'so the island tops the loop up on the slower half of the race. [] seeds none, which is ' +
-      'the control for whether the island still needs to pay meeples at all.',
+      'Total Workers in the bag. Stored rather than derived precisely so that an overlay cannot half-change the pool: it must equal perColour times the number of colours, and the test says so.',
   },
   {
     template: 'island.meeples.faceUpAtSetup',
     type: 'boolean',
     description:
-      '⛔ NO SUBJECT UNDER THE COMMONS (09/09/2026, C6): there are no meeples in the shipped ' +
-      'game, meeplesPerTile() returns 0 and the island seeds none, so every knob under ' +
-      "island.meeples is read only under visitCurrency 'card' or 'meeple' and moves nothing " +
-      'unless a control overlay is on. ' +
-      "True: every delivery space's meeple is visible from setup, so the whole table can read which actions the island is offering and in what order before anybody delivers. That legibility is the point of the component, and false is the arm that asks how much of the meeple's pull is the information rather than the action.",
+      'Recorded and read by nothing: Workers are placed face up on their tokens, so the whole table can read which actions the island offers.',
   },
   {
     template: 'island.slotsBySeats.{}.{}',
@@ -1426,87 +1150,8 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
   {
     template: 'island.decksInPlayBySeats.{}',
     type: 'int',
-    description: 'Suit decks on the table at this seat count.',
-  },
-  {
-    template: 'island.demandTokensBySeats.{}.perSuit',
-    type: 'int',
-    description: 'Demand tokens per suit in the pool.',
-  },
-  {
-    template: 'island.demandTokensBySeats.{}.wild',
-    type: 'int',
-    description: 'Cornucopia (wild) tokens in the pool. Raising this loosens the colour puzzle.',
-  },
-
-  // --- The aerodrome -------------------------------------------------------
-  {
-    template: 'aerodrome.moveCost.barnCards',
-    type: 'int',
-    description: 'Barn cards, of differing suits, spent to move a balloon.',
-  },
-  {
-    template: 'aerodrome.handMoveCost',
-    type: 'int',
     description:
-      "Cards discarded from HAND by the alternative flight payment Vegetable's Depots print (V4, V8). The base barn cost is untouched and this is a second route in, not a discount. Its number was set when the game had a hand limit and a draw-and-discard, and v31 has neither, so the measurement behind it (flights 0.54 -> 1.22 at n=1580) was taken in a game where hand cards were dearer than they are now. Re-read before trusting it.",
-  },
-  {
-    template: 'aerodrome.balloons.{}.reward.type',
-    type: 'balloonReward',
-    description:
-      '\u2b50 WHAT A BALLOON PAYS, as a type rather than a size. Added 03/09/2026 so that a ' +
-      'reward can be REPLACED by an arm and not only resized, which is what the Vegetable question ' +
-      'needs: sweeping the amounts from 1 to 8 moved the Vegetable win rate by 0.7 of a point and ' +
-      'left its three intervals overlapping, so magnitude is measurably NOT the lever. ' +
-      "'meepleFromBag' is the one reward denominated in ACTIONS rather than cards. \u26a0\ufe0f Changing " +
-      'a type without changing `rewardText` leaves the printed card lying about itself, which ' +
-      'matters for a screenshot and not for a run - the engine reads the type, the card face reads ' +
-      'the text.',
-  },
-  {
-    template: 'aerodrome.alwaysInPlay',
-    type: 'boolean',
-    description:
-      '⭐ IS THE AERODROME IN EVERY GAME (Dean, 12/09/2026)? false is the rule as built: the ' +
-      'module needs Vegetable among the decks in play, which is 3 of 5 suits at two seats, 4 of 5 ' +
-      'at three and all 5 at four, so it is ABSENT FROM ABOUT A GAME IN FIVE and most often at ' +
-      'two seats. true applies C1 own argument to the balloons: the five Notice Boards sit in the ' +
-      'centre of every game because not every suit is in play in every game and that guarantees ' +
-      'all five actions exist in every game, and under a plain-action balloon scheme the module ' +
-      'is a second action-granting commons. ⚠️ IT IS A SETUP RULE AND NOT A COMPONENT ' +
-      'CHANGE, since the four Aerodrome cards and four balloons already exist, but it does put a ' +
-      'Vegetable-sheet component on a table with no Vegetable seat, which is a PITCH and ART ' +
-      'question as much as a rules one.',
-  },
-  {
-    template: 'aerodrome.flightMints',
-    type: 'boolean',
-    description:
-      "⭐ DOES A BALLOON FLIGHT TRIGGER THE VILLAGE STORE'S MINT (Dean, 12/09/2026)? false is " +
-      'the shipped game. The engine already treated a flight as a delivery for CARD HOOKS - ' +
-      '`landBalloon` fires `afterDeliver` with `island: false` - and NOT for the Store, because ' +
-      'only `finishDelivery` called the exchange. This leaf closes that split in the yes ' +
-      'direction. ⛔ A SECOND GATE ON TOP OF rules.economy.storeCoinsPerCard, so that the ' +
-      'village-store arm of 12/09/2026 keeps its reports and this leaf changes nothing anywhere ' +
-      'until an arm pins it true.',
-  },
-  {
-    template: 'aerodrome.balloons.{}.reward.suit',
-    type: 'cropOrWild',
-    description:
-      "⭐ WHICH CROP'S PLAIN ACTION A 'plainAction' BALLOON PAYS (Dean, 12/09/2026), and read " +
-      'by no other reward type. It routes through `performDoorAction`, the same function a central ' +
-      'Notice Board uses, so a balloon and a board of the same colour buy the same thing and the ' +
-      "player learns ONE mapping. ⚠️ 'wild' is accepted by the validator and is a DATA " +
-      'ERROR the engine throws on: the shared cropOrWild type is reused here rather than adding a ' +
-      'ninth KnobType for one leaf.',
-  },
-  {
-    template: 'aerodrome.balloons.{}.reward.amount',
-    type: 'int',
-    description:
-      'Size of a balloon reward. Matches three of the four balloons: the magenta one became "harvest any building, even if it is not full" in v31 and carries no amount, because a permission has no size.',
+      'Suit decks on the table at this seat count, which is also the number of crops the token pool is dealt from.',
   },
 
   // --- Per-card ------------------------------------------------------------

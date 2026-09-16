@@ -5,8 +5,9 @@
  *
  * ⭐ **ITS PROVENANCE IS A TABLE**, which is rare enough in this project to be
  * the first thing recorded. Dean played it on 11/09/2026 and liked it, reporting
- * that it allowed "some fun, powerful combos". THE RULE: a random meeple sits on
- * every tile's 3 VP delivery space, claiming that receipt claims the meeple, and
+ * that it allowed "some fun, powerful combos". THE RULE (on the token island
+ * since 16/09/2026): a random meeple, a WORKER, sits on every 3 and 4 VP island
+ * token, taking that token claims it, and
  * AFTER your main action you may discard ONE meeple for the PLAIN action of its
  * colour. The meeple then leaves the game.
  *
@@ -33,11 +34,9 @@
  * mapping the engine has to make (`meepleActionOf`), and the v31 control's
  * apiary meeple must go on buying its Sow.
  *
- * ⛔ **3. M1: SPACE 1 AND NEVER SPACE 0**, plus the dense slot that goes with
- * it. `meeplesPerTile` and `meepleIndexForSpace` DISAGREED about
- * `'noticeBoardPower'` until 12/09/2026 - one said "no meeples", the other
- * answered the identity - which was harmless only while nothing seeded a meeple
- * there. This rule is exactly what seeds one, so both are asserted.
+ * ⛔ **3. M1 ON THE TOKEN ISLAND: A WORKER ON EVERY 3 AND 4 VP TOKEN AND ON
+ * NO OTHER**, claimed with its token. The delivery spaces and their dense meeple
+ * slots were deleted on 16/09/2026.
  *
  * ⛔ **4. D8: A MEEPLE CAN BE UNDISCARDABLE.** An action you cannot legally
  * perform is not offered, which has survived every currency this game has had,
@@ -45,21 +44,13 @@
  * `meepleSpent` is that dead-component count, and it is a reading the instrument
  * owes rather than a bug to fix.
  *
- * ⛔ **5. INERTNESS.** At `deliveryMeepleSpace: null` and `meepleSpendTiming:
- * 'start'` the game must play exactly as it did, which is what the v31 control
- * cases at the bottom are for. Nine fixtures replay byte-identically and this
- * file is the argument for why.
+ * ⛔ **5. INERTNESS.** At `meepleSpendTiming: 'start'` the v31 control's spend
+ * must play exactly as it did, which is what the cases at the bottom are for.
  */
 
 import { describe, expect, it } from 'vitest';
 import type { GameData, Suit } from '@gp/data';
-import {
-  BASE_GAME_DATA,
-  loadGameData,
-  meepleIndexForSpace,
-  meeplesPerTile,
-  tileMeepleSpaces,
-} from '@gp/data';
+import { BASE_GAME_DATA, loadGameData } from '@gp/data';
 
 import { hasMainOption, meepleSpendOpen } from './actions.js';
 import { apply, drainTasks, legalMoves, newGame, player, taskAnswers } from './index.js';
@@ -68,7 +59,6 @@ import {
   buildFor,
   cardVisitGame,
   dealTo,
-  deliveredAt,
   deliveryMeepleDistinctGame,
   deliveryMeepleGame,
   giveMeeples,
@@ -142,69 +132,49 @@ function settle(data: GameData, state: GameState): GameState {
   return s;
 }
 
-describe('M1: a meeple on the 3 VP space of every tile', () => {
-  it('seeds exactly one meeple per tile, and the control seeds none', () => {
+/** How many island tokens carry a Worker. */
+const workersOn = (s: GameState) =>
+  s.island.tiles.flatMap((t) => t.tokens).filter((t) => t.worker !== null).length;
+
+describe('M1 on the token island: a Worker on every 3 and 4 VP token', () => {
+  it('seeds a Worker on each 3 and 4 VP token, and the control seeds none', () => {
     const armGame = newGame(arm, { seats: 2, suits: ['wheat', 'orchard'], seed: 'm1' });
-    for (const tile of armGame.island.tiles) expect(tile.meeples).toHaveLength(1);
-    expect(meeplesPerTile(arm)).toBe(1);
-    // ⛔ SPACE 1, NEVER SPACE 0. Being first at a tile is 6 VP flat; the meeple
-    // is the thing that makes taking SECOND a real choice, and it restores the
-    // only catch-up term this design ever had.
-    expect(tileMeepleSpaces(arm)).toEqual([1]);
+    for (const token of armGame.island.tiles.flatMap((t) => t.tokens)) {
+      expect(token.worker !== null, `${token.demand} ${token.vp}`).toBe(token.vp <= 4);
+    }
+    expect(workersOn(armGame)).toBe(6);
 
     const off = newGame(control, { seats: 2, suits: ['wheat', 'orchard'], seed: 'm1' });
-    for (const tile of off.island.tiles) expect(tile.meeples).toEqual([]);
-    expect(meeplesPerTile(control)).toBe(0);
-    expect(tileMeepleSpaces(control)).toEqual([]);
+    expect(workersOn(off)).toBe(0);
   });
 
-  /**
-   * ⛔ THE INCONSISTENCY THE DATA SLICE LEFT OWED, FIXED 12/09/2026.
-   * `meepleIndexForSpace` used to answer the IDENTITY for every currency but
-   * `'meeple'`, so under `'noticeBoardPower'` it claimed a meeple lived at index
-   * 1 of a tile that held none - and under M1 it would have looked past the
-   * tile's single meeple, which is stored densely at index 0. Both functions now
-   * read `tileMeepleSpaces` and cannot disagree.
-   */
-  it('maps space 1 to the dense slot 0, and space 0 to nothing at all', () => {
-    expect(meepleIndexForSpace(arm, 0)).toBe(-1);
-    expect(meepleIndexForSpace(arm, 1)).toBe(0);
-    // The control seeds nothing, so no space maps anywhere. It answered 0 and 1
-    // before the fix.
-    expect(meepleIndexForSpace(control, 0)).toBe(-1);
-    expect(meepleIndexForSpace(control, 1)).toBe(-1);
-    // The v31 control seeds both spaces, so the identity still holds there -
-    // arrived at by derivation now rather than by assumption.
-    expect(meepleIndexForSpace(v31, 0)).toBe(0);
-    expect(meepleIndexForSpace(v31, 1)).toBe(1);
-  });
-
-  /** M3: claiming the 3 VP token claims the meeple, and the 6 VP one claims none. */
-  it('pays the meeple to the SECOND deliverer and nothing to the first', () => {
+  /** M3: taking a Worker token claims the Worker, and a 5 or 6 VP token claims none. */
+  it('pays the Worker with its token and nothing with a token that has none', () => {
     const first = makeState(arm, ['wheat', 'orchard']);
     stockBarn(first, SEAT, 'wheat', 4);
     const one = apply(arm, first, { type: 'deliver', seat: SEAT, tile: 'A1', spend: { wheat: 4 } });
-    expect(one.state.players[SEAT]?.receipts).toEqual([6]);
+    expect(one.state.players[SEAT]?.receipts.map((r) => r.vp)).toEqual([6]);
     expect(one.events.some((e) => e.e === 'meepleGained')).toBe(false);
 
     const second = makeState(arm, ['wheat', 'orchard']);
-    const meeple = second.island.tiles.find((t) => t.tile === 'A1')?.meeples[0] as Suit;
-    deliveredAt(second, OTHER, 'A1');
+    const worker = second.island.tiles.find((t) => t.tile === 'A2')?.tokens[1]?.worker as Suit;
     stockBarn(second, SEAT, 'wheat', 4);
+    const held = second.players[SEAT]!.meeples[worker];
     const two = apply(arm, second, {
       type: 'deliver',
       seat: SEAT,
-      tile: 'A1',
+      tile: 'A2',
       spend: { wheat: 4 },
+      token: 1,
     });
-    expect(two.state.players[SEAT]?.receipts).toEqual([3]);
-    expect(two.state.players[SEAT]?.meeples[meeple]).toBe(1);
+    expect(two.state.players[SEAT]?.receipts.map((r) => r.vp)).toEqual([3]);
+    expect(two.state.players[SEAT]?.meeples[worker]).toBe(held + 1);
     expect(two.events).toContainEqual({
       e: 'meepleGained',
       seat: SEAT,
-      colour: meeple,
-      tile: 'A1',
-      space: 1,
+      colour: worker,
+      tile: 'A2',
+      vp: 3,
     });
   });
 });
@@ -247,7 +217,7 @@ describe('M4 and D7: the spend window is after the main action', () => {
     s.turnPlayer = SEAT;
     giveMeeples(s, SEAT, 'orchard');
     // A position with NO main action at all: every deck out, nothing in hand or
-    // barn, no loaded building and no aerodrome (Vegetable is not at the table).
+    // barn and no loaded building.
     for (const suit of arm.cards.suits) s.decks[suit] = [];
     expect(hasMainOption(arm, s, SEAT)).toBe(false);
     expect(meepleSpendOpen(arm, s)).toBe(false);
@@ -449,13 +419,7 @@ describe('M6, M7 and M8: the plain action of the colour', () => {
     expect(build?.t === 'build' ? build.mods : undefined).toBeUndefined();
   });
 
-  /**
-   * ⭐ M8: A MEEPLE GROW PLACES ITS ACTIVATION CARD AS NORMAL AND CAN CLOG,
-   * which differs ON PURPOSE from V8's coin-Grow, where the coin places nothing
-   * and the building never advances toward its threshold. Nothing in this slice
-   * builds the coin; the assertion is here so the difference is on the record
-   * from the meeple side before the other half is written.
-   */
+  /** ⭐ M8: A MEEPLE GROW PLACES ITS ACTIVATION CARD AS NORMAL AND CAN CLOG. */
   it('a meeple Grow places its activation card, so it can clog (M8)', () => {
     const s = afterAction(arm, ['apiary', 'orchard']);
     giveMeeples(s, SEAT, 'apiary');
@@ -500,10 +464,9 @@ describe('D8: a meeple can be undiscardable', () => {
 
 describe('inertness: nothing moves at the shipped values', () => {
   /**
-   * ⛔ THE GATE THIS SLICE EXISTS TO PASS. `deliveryMeepleSpace` null,
-   * `meepleSpendTiming` 'start' and `meepleSpendPerTurn` null ARE the current
-   * behaviour and not an off switch: the v31 control spends meeples at the START
-   * of its turn, unlimited, and four fixtures replay it.
+   * ⛔ `meepleSpendTiming` 'start' and `meepleSpendPerTurn` null ARE the v31
+   * control's behaviour and not an off switch: it spends meeples at the START
+   * of its turn, unlimited.
    */
   it('leaves the v31 control spending at the start of the turn, unlimited', () => {
     const s = makeState(v31, ['apiary', 'orchard']);
@@ -547,21 +510,18 @@ describe('inertness: nothing moves at the shipped values', () => {
   });
 
   /**
-   * ⚠️ RE-POINTED 14/09/2026: Dean ruled the delivery meeple ON, so the shipped
-   * game seeds M1's meeple and the no-meeple game is the reference-v18 control,
-   * `overlays/pre-delivery-meeple-v1.overlay.json`, whose seeding leaf is null.
+   * The shipped game seeds Workers on the tokens; the reference-v18 control,
+   * `overlays/pre-delivery-meeple-v1.overlay.json`, pins `workerOnVp` [] and
+   * seeds none.
    */
-  it('seeds the delivery meeple in the shipped game, and none in the reference-v18 control', () => {
-    expect(meeplesPerTile(BASE_GAME_DATA)).toBe(1);
-    expect(tileMeepleSpaces(BASE_GAME_DATA)).toEqual([1]);
-    expect(meepleIndexForSpace(BASE_GAME_DATA, 1)).toBe(0);
+  it('seeds Workers in the shipped game, and none in the reference-v18 control', () => {
+    const shipped = newGame(BASE_GAME_DATA, { seats: 2, seed: 'inert' });
+    expect(workersOn(shipped)).toBe(6);
     const before = loadGameData({
       name: 'pre-delivery-meeple-v1',
       schemaVersion: 1,
-      set: { 'rules.turn.deliveryMeepleSpace': null },
+      set: { 'island.tokens.workerOnVp': [] },
     });
-    expect(meeplesPerTile(before)).toBe(0);
-    expect(tileMeepleSpaces(before)).toEqual([]);
-    expect(meepleIndexForSpace(before, 1)).toBe(-1);
+    expect(workersOn(newGame(before, { seats: 2, seed: 'inert' }))).toBe(0);
   });
 });

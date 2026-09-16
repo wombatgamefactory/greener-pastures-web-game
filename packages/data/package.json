@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Card, island, worker and aerodrome data, plus the tuning-overlay surface the simulator varies numbers through.",
+  "description": "Card, island, worker and rules data, plus the tuning-overlay surface the simulator varies numbers through.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {

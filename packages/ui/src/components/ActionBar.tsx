@@ -26,8 +26,7 @@
  *
  * ⚠️ THE MEEPLE ZONE DRAWS NO BUTTONS AND IS NOT DECORATION. Spending a meeple
  * is done on the meeple, in your own supply, because it is a wooden piece
- * sitting in front of you - the same rule that put Freight on the balloon and
- * the card power on the card. What the zone contributes is the WINDOW: a meeple
+ * sitting in front of you - the same rule that put the card power on the card. What the zone contributes is the WINDOW: a meeple
  * may only be spent before the bonus and before the action, and once that window
  * shuts the pawns stop being clickable with nothing on screen to say why. The
  * zone head is that "why", struck through the moment the window closes, in

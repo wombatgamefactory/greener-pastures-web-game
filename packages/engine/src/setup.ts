@@ -5,10 +5,10 @@
  *
  * Setup follows rules.json and island.json: seats + 1 suit decks in play (one
  * passive), THREE starters pre-built per seat (Barn, Farmstead, Notice Board),
- * FOUR cards in hand off the seat's own deck and NOTHING IN THE BARN, the island
- * tiled by seat count with demand tokens dealt onto the crates AND A MEEPLE
- * DEALT FACE UP ONTO EVERY DELIVERY SPACE, balloons only when Vegetable is on
- * the table.
+ * FOUR cards in hand off the seat's own deck and NOTHING IN THE BARN, and the
+ * island tiled by seat count with TWO TOKENS dealt onto every tile, a WORKER
+ * face up on each 3 and 4 VP token (the token island, 16/09/2026). (The
+ * balloons and the Aerodrome were deleted on 16/09/2026.)
  *
  * ⭐ v31: no coins, no starting barn card, and the meeple deal is new. The barn
  * used to be seeded with 1 card; it now starts empty, because the barn is purely
@@ -21,27 +21,25 @@
 
 import type { GameData, Suit } from '@gp/data';
 import {
-  coinPaysBuild,
-  coinPaysGrow,
-  coinSupplyPerPlayer,
-  endgameCoinCost,
-  farmsteadCoinPower,
   hostDrawCapPerRound,
   isMeepleCurrency,
   isNoticeBoardPower,
   noticeBoardsPerSeat,
-  storeCoinsPerCard,
-  tileMeepleSpaces,
+  tokenCarriesWorker,
+  tokensPerTile,
+  wildTokensAt,
 } from '@gp/data';
 
 import { noticeBoardCardForSuit } from './query.js';
-import { seedRng, shuffle } from './rng.js';
+import { rngInt, seedRng, shuffle } from './rng.js';
+import type { RngState } from './rng.js';
 import type {
-  AerodromeState,
   CardId,
   GameState,
   IslandTileState,
+  IslandToken,
   NoticeBoardState,
+  Receipt,
   TurnState,
 } from './state.js';
 
@@ -121,83 +119,8 @@ export function meepleLoopPlayerFields(data: GameData): { noticeBoard?: NoticeBo
 }
 
 /**
- * ⭐ IS THERE A COIN ECONOMY IN THIS GAME AT ALL? (K7, Dean 10/09/2026.)
- *
- * True when ANY coin knob is on, and the OR is the point: the mints and the
- * sinks are separate knobs, and an arm that turns a sink on without a mint must
- * still have a wallet to read rather than crash in `coinsOf`. (The commons coin
- * take, K7's mint, was deleted with the commons on 13/09/2026; its two sinks
- * remain.)
- *
- * ⚠️ IT IS NOT A RULES QUESTION AND MUST NEVER BECOME ONE. Nothing about play
- * branches on this: it decides only whether the integer EXISTS, which is a
- * serialisation question (see `PlayerState.coins`). The rules branch on the
- * three knobs themselves.
- */
-export function coinEconomy(data: GameData): boolean {
-  return (
-    farmsteadCoinPower(data) ||
-    endgameCoinCost(data) !== null ||
-    // ⭐ THE VILLAGE STORE JOINS THE OR (A150, Dean 12/09/2026, V1 and V4).
-    // Its mint and its supply are two more knobs on the same wallet, and the OR
-    // is why they need no second field: a Store seat holds coins in
-    // `PlayerState.coins` exactly as a K7 seat does. BOTH leaves are named
-    // rather than one, on the same sub-arm reasoning as the three above -
-    // `village-store-coins-grow-only-v1` still mints, and a hypothetical sweep
-    // that set the supply without the rate (or the rate without the supply)
-    // must still HAVE a wallet to read zero out of rather than crash in
-    // `coinsOf`.
-    storeCoinsPerCard(data) > 0 ||
-    coinSupplyPerPlayer(data) > 0 ||
-    // ⚠️ AND ITS TWO SINKS TOO, for the reason this function's docblock
-    // already gives about K7's: an arm that turns a SINK on with no mint behind
-    // it must read zero coins for ever rather than crash in `coinsOf`. Nothing
-    // mints into such a game, so the wallet stays at 0 and no coin option is
-    // ever offered - which is a rules no-op and a serialisation yes.
-    // `coinPaysSuitCost` and `coinGrowOnFullBuilding` are deliberately NOT here:
-    // neither means anything without the sink it modifies, and
-    // `coinGrowReachesFullBuildings` says so in the data layer.
-    coinPaysBuild(data) ||
-    coinPaysGrow(data)
-  );
-}
-
-/**
- * ⭐ THE VILLAGE STORE'S SHARED SUPPLY, as a spread (V4, Dean 12/09/2026,
- * ledger A150) - the exact counterpart of `coinPlayerFields` below and absent
- * for the same reason: the key is MISSING rather than present-and-zero under
- * every game that has no Store, so serialised states, captures and the nine
- * fixtures stay byte-identical.
- *
- * ⚠️ GATED ON `coinSupplyPerPlayer` ALONE AND NOT ON `coinEconomy`, and the
- * difference is deliberate: the OTHER coin arm (K7, 10/09/2026) has no supply
- * at all - its mint conjures coins out of a cleared pile and its sinks send
- * them nowhere - so giving it a pool would invent a rule nobody ruled. This
- * field exists for the arms that size one.
- *
- * SEATS x the per-player rate: 10 at two seats, 20 at four (V4). Solo is not
- * modelled at all and would be 5, which the design doc records as an open point
- * rather than a decision.
- */
-export function coinSupplyZone(data: GameData, seats: number): { coinSupply?: number } {
-  const per = coinSupplyPerPlayer(data);
-  return per > 0 ? { coinSupply: per * seats } : {};
-}
-
-/**
- * The player field the coin arm adds, as a spread - the exact counterpart of
- * `meepleLoopPlayerFields` above and absent for the same reason: the key is
- * MISSING rather than present-and-zero under the shipped game, so its
- * serialised states, captures and fixtures stay byte-identical. Starts at 0
- * (K7: nothing but a pile mints a coin, so nobody starts with one).
- */
-export function coinPlayerFields(data: GameData): { coins?: number } {
-  return coinEconomy(data) ? { coins: 0 } : {};
-}
-
-/**
  * The player field the HOST-DRAW CAP adds, as a spread - the exact counterpart
- * of `coinPlayerFields` above and absent for the same reason: the key is
+ * of `meepleLoopPlayerFields` above and absent for the same reason: the key is
  * MISSING rather than present-and-false under every game that does not run the
  * cap, so serialised states, captures and fixtures stay byte-identical.
  *
@@ -326,21 +249,14 @@ export function dealExtraNoticeBoards(
 }
 
 /**
- * THE MEEPLE BAG: `perColour` of each of the five colours, in colour order, for
+ * THE WORKER BAG: `perColour` of each of the five colours, in colour order, for
  * the caller to shuffle.
  *
- * ⚠️ ALL FIVE COLOURS REGARDLESS OF WHO IS AT THE TABLE. A meeple of a suit
- * nobody is farming still works - the five door actions exist independently of
- * which suits the seats chose - so the bag is not filtered by `suitsInPlay`, and
- * a 2-seat game can and will deal meeples for actions no Notice Board on the
- * table grants.
- *
- * ⚠️ THE BAG IS 25 AND A 4-SEAT BOARD NEEDS 24. That is a known property and not
- * a bug to fix: at 4 seats the draw is near-exhaustive, so the island's colours
- * are almost the whole bag every game and the variance lives entirely in WHICH
- * space gets which colour; at 2 seats only 12 of 25 come out and the mix is
- * genuinely random. An overlay arm is written for the pool composition, and
- * "fixing" the 24-of-25 would silently remove the thing that arm measures.
+ * ⚠️ ALL FIVE COLOURS REGARDLESS OF WHO IS AT THE TABLE. A Worker of a suit
+ * nobody is farming still works - the five plain actions exist independently of
+ * which suits the seats chose - so the bag is not filtered by `suitsInPlay`.
+ * At most 12 of the 25 are dealt (4 seats), so the island's colours are a
+ * genuine random sample at every seat count.
  */
 export function meeplePool(data: GameData): Suit[] {
   const { perColour, colours } = data.island.meeples;
@@ -372,85 +288,74 @@ export function islandTilesInPlay(data: GameData, seats: number): string[] {
 }
 
 /**
- * The demand-token pool for this seat count: perSuit tokens for each in-play
- * suit plus the wilds. Dealt (in the order given, so the caller shuffles) onto
- * the crates tile by tile.
+ * ⭐ THE TOKEN POOL FOR THIS SEAT COUNT (Dean, ruling R3, 16/09/2026): one token
+ * per crop in play per `island.tokens.vpValues`, in that order, then the wild
+ * tokens. Workers are NOT on these yet: `buildIsland` deals them onto the
+ * tokens as it lays them out. The caller shuffles.
+ *
+ * ⚠️ BUILDER DEFAULT, NOT RULED (handoff §5 item 8): when the seat count uses
+ * fewer wild tokens than there are VP values (3 seats: 2 of 4), WHICH values
+ * are drawn at random with `rng`. With no `rng` (a test harness) the first
+ * values are taken, 6 and 5. A wild count above the value count cycles the
+ * values.
  */
-export function demandPool(data: GameData, seats: number, suitsInPlay: Suit[]): (Suit | 'wild')[] {
-  const spec = data.island.demandTokensBySeats[String(seats)];
-  if (!spec) throw new Error(`No demand token pool for ${seats} seats`);
-  if (suitsInPlay.length !== spec.suits) {
-    throw new Error(`Pool spans ${spec.suits} suits, got ${suitsInPlay.length} in play`);
+export function tokenPool(
+  data: GameData,
+  seats: number,
+  cropsInPlay: readonly Suit[],
+  rng?: RngState,
+): IslandToken[] {
+  const values = data.island.tokens.vpValues;
+  const pool: IslandToken[] = [];
+  for (const crop of cropsInPlay) {
+    for (const vp of values) pool.push({ demand: crop, vp, worker: null });
   }
-  const pool: (Suit | 'wild')[] = [];
-  for (const suit of suitsInPlay) pool.push(...Array<Suit>(spec.perSuit).fill(suit));
-  pool.push(...Array<'wild'>(spec.wild).fill('wild'));
+  const wild = wildTokensAt(data, seats);
+  let wildValues: number[];
+  if (wild >= values.length) {
+    wildValues = Array.from({ length: wild }, (_, i) => values[i % values.length] as number);
+  } else if (wild > 0 && rng !== undefined) {
+    wildValues = shuffle(rng, [...values]).slice(0, wild);
+  } else {
+    wildValues = values.slice(0, wild);
+  }
+  for (const vp of wildValues) pool.push({ demand: 'wild', vp, worker: null });
   return pool;
 }
 
 /**
- * Deal a demand-token pool onto the in-play tiles' crates and a MEEPLE POOL onto
- * their delivery spaces. Both are dealt in the order given, so the caller
- * shuffles; both throw if their pool runs short.
+ * Lay the island out: `tokensPerTile` tokens per in-play tile, dealt in the
+ * order given (so the caller shuffles), and a WORKER from `workers` (also in
+ * the order given) onto every token whose VP carries one, in deal order. Both
+ * throw if their pool runs short.
  *
- * The two deals are in one function because they are one physical setup step -
- * you lay out the island, then seed it - and because a tile is not a legal tile
- * state without both. `deliveriesPerTile(data)` meeples per tile: at 4 seats
- * that is 12 tiles times 2, which is 24 of the bag's 25 (see `meeplePool`).
+ * ⚠️ BUILDER DEFAULT: nothing stops one tile being dealt two tokens of the
+ * same crop; it then asks 4 cards of that crop on its first delivery.
  */
 export function buildIsland(
   data: GameData,
   seats: number,
-  tokens: (Suit | 'wild')[],
-  meeples: Suit[],
+  tokens: readonly IslandToken[],
+  workers: readonly Suit[],
 ): IslandTileState[] {
-  const crates = data.island.tileRule.crates;
-  // ⭐ HOW MANY MEEPLES A TILE IS SEEDED WITH IS DATA (R12), AND SINCE
-  // 12/09/2026 IT IS ONE FUNCTION (A151). `tileMeepleSpaces` carries the whole
-  // rule: the v31 control seeds every delivery space, the meeple loop seeds only
-  // the spaces named in `island.meeples.seededSpaces` - [1], the 3 VP second
-  // delivery - so a tile holds ONE meeple stored densely, and the notice-board
-  // visit seeds nothing at all (C6, and §2.6 of the notice-board
-  // handoff). `meepleIndexForSpace` is `indexOf` over the same list, so a space
-  // and its dense slot cannot disagree.
-  //
-  // ⭐ AND M1 IS THE SAME LINE (Dean, 12/09/2026): `deliveryMeepleSpace: 1` puts
-  // a random meeple on every tile's 3 VP space in WHATEVER game the arm is
-  // stacked on, which is why the belt-and-braces `isCommons(data) ? 0` that used
-  // to sit here is gone. It said the same thing the accessor says under the
-  // shipped null and the OPPOSITE of what the override says, so keeping it would
-  // have made the knob silently inert under one currency.
-  const spaces = tileMeepleSpaces(data).length;
+  const perTile = tokensPerTile(data);
   let next = 0;
-  let nextMeeple = 0;
+  let nextWorker = 0;
   return islandTilesInPlay(data, seats).map((tileId) => {
-    if (next + crates > tokens.length) {
-      throw new Error(
-        `Demand pool ran out: ${tokens.length} tokens for at least ${next + crates} crates`,
-      );
+    if (next + perTile > tokens.length) {
+      throw new Error(`Token pool ran out: ${tokens.length} tokens for at least ${next + perTile}`);
     }
-    if (nextMeeple + spaces > meeples.length) {
-      throw new Error(
-        `Meeple bag ran out: ${meeples.length} meeples for at least ${nextMeeple + spaces} delivery spaces`,
-      );
-    }
-    return {
-      tile: tileId,
-      crates: tokens.slice(next, (next += crates)),
-      meeples: meeples.slice(nextMeeple, (nextMeeple += spaces)),
-      deliveredBy: [],
-    };
+    const dealt = tokens.slice(next, (next += perTile)).map((token) => {
+      if (!tokenCarriesWorker(data, token.vp)) return { ...token, worker: null };
+      const worker = workers[nextWorker];
+      if (worker === undefined) {
+        throw new Error(`Worker bag ran out: ${workers.length} Workers for more tokens`);
+      }
+      nextWorker += 1;
+      return { ...token, worker };
+    });
+    return { tile: tileId, tokens: dealt, deliveredBy: [] };
   });
-}
-
-/**
- * All balloons start unowned in the centre - ticket 06 ruling J: no per-seat
- * parking and no draft. (The reference implementation and the rulebook park
- * one per seat; ruling J explicitly supersedes that, and the divergence is
- * flagged to the rulings audit, ticket 07.)
- */
-export function parkBalloons(order: string[]): AerodromeState {
-  return { balloons: order.map((id) => ({ id, at: 'centre' })) };
 }
 
 export function newGame(data: GameData, opts: NewGameOptions): GameState {
@@ -460,9 +365,13 @@ export function newGame(data: GameData, opts: NewGameOptions): GameState {
       `Seats must be ${data.island.seats.min}-${data.island.seats.max}, got ${seats}`,
     );
   }
-  if (data.rules.endGame.furtherTurnsEach !== 1) {
+  if (
+    data.rules.endGame.endOfGame === 'oneMoreTurnEach' &&
+    data.rules.endGame.furtherTurnsEach !== 1
+  ) {
     // The turn boundary implements "every other player takes 1 more turn" as a
-    // seat comparison; a different knob value needs a counter first.
+    // seat comparison; a different knob value needs a counter first. Under
+    // 'finishRound' (shipped 15/09/2026) the knob is not read at all.
     throw new Error('furtherTurnsEach values other than 1 are not implemented');
   }
 
@@ -559,9 +468,6 @@ export function newGame(data: GameData, opts: NewGameOptions): GameState {
     barn: decks[suit].splice(0, startingBarnCards),
     meeples: startingMeeples(data),
     ...meepleLoopPlayerFields(data),
-    // The coin wallet at 0, present only when a coin knob is on and ABSENT
-    // otherwise - see `coinPlayerFields`.
-    ...coinPlayerFields(data),
     ...hostDrawCapPlayerFields(data),
     // ⭐ THE STARTERS FIRST AND THE EXTRA BOARD(S) AFTER, which is the order
     // `noticeBoardOf` and the report lines both read through: a seat's OWN
@@ -571,51 +477,31 @@ export function newGame(data: GameData, opts: NewGameOptions): GameState {
       card,
       stack: [] as CardId[],
     })),
-    receipts: [] as number[],
+    receipts: [] as Receipt[],
   }));
 
-  // Two shuffles, two bags, one island. The demand tokens are drawn from the
-  // in-play suits; the meeples are drawn from all five colours regardless of who
-  // is at the table - see `meeplePool`.
+  // Two bags, one island. The tokens are drawn from the in-play crops (plus
+  // the wilds, whose values are drawn first when only some are used); the
+  // Workers from all five colours regardless of who is at the table - see
+  // `meeplePool`.
+  const pool = tokenPool(data, seats, suitsInPlay, rng);
   const island = {
-    tiles: buildIsland(
-      data,
-      seats,
-      shuffle(rng, demandPool(data, seats, suitsInPlay)),
-      shuffle(rng, meeplePool(data)),
-    ),
+    tiles: buildIsland(data, seats, shuffle(rng, pool), shuffle(rng, meeplePool(data))),
   };
-  // ⭐ IS THE AERODROME IN EVERY GAME? (Dean's question, 12/09/2026.) Shipped
-  // false, which is the rule as built: the module exists only when Vegetable is
-  // one of the decks in play, so it is absent from about a game in five and
-  // MOST OFTEN AT TWO SEATS, where only three of the five decks are dealt.
-  //
-  // ⭐ TRUE IS THE C1 ARGUMENT APPLIED TO THE BALLOONS. Dean's standing ruling 2
-  // of 09/09/2026 put all five Notice Boards in the centre of every game "because
-  // not every suit is in play in every game and this guarantees all five actions
-  // exist in every game", and island.json's own unresolved list records the same
-  // question answered the same way for the island's colours ("a meeple's action
-  // exists regardless of who farms its suit"). Under a plain-action balloon
-  // scheme the module IS a second action-granting commons, so the same argument
-  // reaches it. ⚠️ It is a SETUP rule and not a component change: the four
-  // Aerodrome cards and four balloons already exist.
-  const aerodrome =
-    data.aerodrome.alwaysInPlay || suitsInPlay.includes('vegetable')
-      ? parkBalloons(
-          shuffle(
-            rng,
-            data.aerodrome.balloons.map((b) => b.id),
-          ),
-        )
-      : null;
-
+  // ⭐ THE FIRST PLAYER (Dean, 15/09/2026: random). Drawn LAST, after every
+  // shuffle above, so a seed deals exactly the cards, boards and island it
+  // dealt before the ruling and only the opening seat (and the RNG state that
+  // follows it) differs. Under 'seat0' no RNG call is made and the field is
+  // left absent, so an older game is byte-identical.
+  const firstPlayer = data.rules.setup.firstPlayer === 'random' ? rngInt(rng, seats) : null;
   return {
     schema: 1,
     dataFingerprint: `${data.cards.meta.sourceSha256 ?? 'unknown'}+${opts.dataTag ?? 'base'}`,
     rng,
     seats,
     suitsInPlay,
-    turnPlayer: 0,
+    turnPlayer: firstPlayer ?? 0,
+    ...(firstPlayer === null ? {} : { firstPlayer }),
     phase: 'playing',
     endTrigger: null,
     players,
@@ -632,8 +518,6 @@ export function newGame(data: GameData, opts: NewGameOptions): GameState {
       return { id: w.id, owner: owner < 0 ? null : owner };
     }),
     island,
-    aerodrome,
-    ...coinSupplyZone(data, seats),
     turn: freshTurn(),
     tasks: [],
     resume: null,

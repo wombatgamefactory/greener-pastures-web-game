@@ -112,7 +112,7 @@ describe('narrate', () => {
       seat: 1,
       colour: 'dairy',
       tile: 'A3',
-      space: 0,
+      vp: 4,
     })?.text;
     expect(gained).toContain('Dairy');
     expect(gained).toContain('A3');
@@ -142,7 +142,15 @@ describe('narrate', () => {
   });
 
   it('reports a delivery as VP and a tile, with no coin left in it', () => {
-    const text = line({ e: 'delivered', seat: 1, tile: 'B2', vp: 6, spend: { wheat: 2 } })?.text;
+    const text = line({
+      e: 'delivered',
+      seat: 1,
+      tile: 'B2',
+      vp: 6,
+      crop: 'wheat',
+      worker: null,
+      spend: { wheat: 4 },
+    })?.text;
     expect(text).toContain('6 VP');
     expect(text).toContain('B2');
     expect(text).not.toContain('£');

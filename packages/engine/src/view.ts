@@ -14,12 +14,12 @@ import type { GameData, Suit } from '@gp/data';
 
 import { cardById, isCardId } from './query.js';
 import type {
-  AerodromeState,
   CardId,
   GameEvent,
   GameState,
   IslandState,
   NoticeBoardState,
+  Receipt,
   Resume,
   Seat,
   Task,
@@ -56,16 +56,10 @@ export interface RivalView {
    * unclear. Absent under the shipped `'card'` game, where there are no slots.
    */
   noticeBoard?: NoticeBoardState;
-  /**
-   * COINS HELD - present only when a coin knob is on (the Village Store) and
-   * FULLY PUBLIC, like the meeples above and like the coins v31 deleted: what a
-   * rival can afford is part of reading the table. ABSENT otherwise.
-   */
-  coins?: number;
   handCount: number;
   barnCount: number;
   tableau: BuildingView[];
-  receipts: number[];
+  receipts: Receipt[];
 }
 
 export interface PlayerView {
@@ -73,6 +67,8 @@ export interface PlayerView {
   seats: number;
   suitsInPlay: Suit[];
   turnPlayer: Seat;
+  /** The seat that opened (public). Absent means seat 0 - see `GameState.firstPlayer`. */
+  firstPlayer?: Seat;
   phase: 'playing' | 'ended';
   endTrigger: { seat: Seat } | null;
   you: {
@@ -80,19 +76,16 @@ export interface PlayerView {
     meeples: Record<Suit, number>;
     /** Your own five colour slots. Meeple-loop arm only - see `RivalView`. */
     noticeBoard?: NoticeBoardState;
-    /** Your own coins. Only when a coin knob is on - see `RivalView`. */
-    coins?: number;
     hand: CardId[];
     barn: Partial<Record<Suit, number>>;
     tableau: BuildingView[];
-    receipts: number[];
+    receipts: Receipt[];
   };
   rivals: RivalView[];
   decks: Record<Suit, number>;
   discards: Record<Suit, CardId[]>;
   fair: WorkerState[];
   island: IslandState;
-  aerodrome: AerodromeState | null;
   turn: TurnState;
   /** Pending tasks, with another seat's in-flight reveals and riders masked. */
   tasks: Task[];
@@ -175,16 +168,6 @@ function copyNoticeBoard(board: NoticeBoardState | undefined): { noticeBoard?: N
   };
 }
 
-/**
- * The coin count, or nothing at all under the shipped game, where a
- * `PlayerState` carries no wallet. A spread rather than an assignment so the key
- * is ABSENT and not present-and-undefined, on exactly the rule `copyNoticeBoard`
- * above states: that is what keeps the controls' views identical.
- */
-function copyCoins(coins: number | undefined): { coins?: number } {
-  return coins === undefined ? {} : { coins };
-}
-
 function buildingView(data: GameData, b: { card: CardId; stack: CardId[] }): BuildingView {
   return { card: b.card, stack: b.stack.map((id) => cardById(data, id).suit) };
 }
@@ -207,17 +190,17 @@ export function viewFor(data: GameData, state: GameState, seat: Seat): PlayerVie
     seats: state.seats,
     suitsInPlay: [...state.suitsInPlay],
     turnPlayer: state.turnPlayer,
+    ...(state.firstPlayer === undefined ? {} : { firstPlayer: state.firstPlayer }),
     phase: state.phase,
     endTrigger: state.endTrigger === null ? null : { ...state.endTrigger },
     you: {
       suit: you.suit,
       meeples: { ...you.meeples },
       ...copyNoticeBoard(you.noticeBoard),
-      ...copyCoins(you.coins),
       hand: [...you.hand],
       barn,
       tableau: you.tableau.map((b) => buildingView(data, b)),
-      receipts: [...you.receipts],
+      receipts: you.receipts.map((r) => ({ ...r })),
     },
     rivals: state.players.flatMap((p, s) =>
       s === seat
@@ -228,11 +211,10 @@ export function viewFor(data: GameData, state: GameState, seat: Seat): PlayerVie
               suit: p.suit,
               meeples: { ...p.meeples },
               ...copyNoticeBoard(p.noticeBoard),
-              ...copyCoins(p.coins),
               handCount: p.hand.length,
               barnCount: p.barn.length,
               tableau: p.tableau.map((b) => buildingView(data, b)),
-              receipts: [...p.receipts],
+              receipts: p.receipts.map((r) => ({ ...r })),
             },
           ],
     ),
@@ -246,19 +228,12 @@ export function viewFor(data: GameData, state: GameState, seat: Seat): PlayerVie
     island: {
       tiles: state.island.tiles.map((t) => ({
         ...t,
-        crates: [...t.crates],
-        // Face up from setup, so no redaction: which colour the first and second
-        // deliverer to a tile will take is public all game.
-        meeples: [...t.meeples],
+        // The tokens and their Workers are face up from setup, so there is no
+        // redaction: what every tile pays is public all game.
+        tokens: t.tokens.map((token) => ({ ...token })),
         deliveredBy: [...t.deliveredBy],
-        // The space choice (14/09/2026): public, and absent under fill order.
-        ...(t.deliveredSpaces === undefined ? {} : { deliveredSpaces: [...t.deliveredSpaces] }),
       })),
     },
-    aerodrome:
-      state.aerodrome === null
-        ? null
-        : { balloons: state.aerodrome.balloons.map((b) => ({ ...b })) },
     turn: {
       ...state.turn,
       bonusUsed: [...state.turn.bonusUsed],

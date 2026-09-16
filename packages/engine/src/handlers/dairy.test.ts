@@ -25,7 +25,7 @@ import { doBuild, freeHandSpace } from '../actions.js';
 import { Fx } from '../fx.js';
 import { apply, legalMoves } from '../game.js';
 import { answerTask, gameEndScores, growBuilding, pendingAnswers } from '../runtime.js';
-import { buildingOf, player } from '../query.js';
+import { buildingOf, canTakeCard, isFull, isHarvestable, player } from '../query.js';
 import { revealedIn } from '../state.js';
 import type { CardId, GameState, Task, TaskAnswer } from '../state.js';
 import { buildFor, dealTo, loadStack, makeState, noMeeples } from '../testkit.js';
@@ -430,6 +430,45 @@ describe('the build-modifier vocabulary', () => {
     // any one card off D4's stack, and D7's OWN stack is a legal source too.
     const piles = Object.values(done.discards).flat();
     expect(piles).toContain(stackCard);
+  });
+});
+
+describe('D5 The Churning Shed - the spent cards go onto the new building', () => {
+  /**
+   * ⭐ v42: "even if the threshold is exceeded". W9 costs three cards and prints
+   * threshold 2, so all three spent cards land and the building arrives over-full:
+   * full, harvestable, and refusing any further card.
+   */
+  it('sows every spent card onto the new building, past its threshold', () => {
+    const s = base();
+    noMeeples(s);
+    buildFor(data, s, DAIRY, 'D5');
+    dealTo(data, s, DAIRY, 'D6', 'W9', 'W4', 'W5', 'W6');
+    const grown = growBuilding(data, s, DAIRY, 'D5', 'D6');
+    const build = buildOffersOf(grown.state, 'W9').find((a) => a.payment.length === 3);
+    expect(build).toBeDefined();
+    const built = answerTask(data, grown.state, build as TaskAnswer).state;
+    expect(built.tasks.map((t) => (t.t === 'card' ? t.kind : t.t))).toEqual(['sowSpent']);
+
+    const done = answerAll(built);
+    const w9 = buildingOf(done, DAIRY, 'W9');
+    expect(w9.stack).toHaveLength(3);
+    expect(isHarvestable(data, w9)).toBe(true);
+    expect(isFull(data, w9)).toBe(true);
+    expect(canTakeCard(data, w9)).toBe(false);
+    expect(done.discards.wheat).toEqual([]);
+  });
+
+  it('a Power card has no stack, so nothing is sown and the spent cards stay discarded', () => {
+    const s = base();
+    noMeeples(s);
+    buildFor(data, s, DAIRY, 'D5');
+    dealTo(data, s, DAIRY, 'D6', 'W16', 'W4', 'W5');
+    const grown = growBuilding(data, s, DAIRY, 'D5', 'D6');
+    const build = buildOffersOf(grown.state, 'W16')[0];
+    expect(build).toBeDefined();
+    const done = answerAll(answerTask(data, grown.state, build as TaskAnswer).state);
+    expect(done.discards.wheat.length).toBeGreaterThan(0);
   });
 });
 
@@ -954,72 +993,48 @@ describe('the endgame cards - D19, D20, D21', () => {
   });
 
   /**
-   * ⛔ D21 IS REPLACED (v31, plan section 3.2). It read "2 VP for each of your
-   * starters showing its upgraded side" and lost its referent outright: there
-   * are no upgraded faces left to show. The replacement fills the one gap in an
-   * existing set - A20 scores HIVEs, O20 ORCHARDs, V20 DEPOTs, W21 FIELDs - so
-   * the five Endgame trios are symmetrical for the first time.
-   *
-   * ⚠️ AND IT IS THE CARD IT REPLACED THAT REPLACED IT, on 2026-08-12. The
-   * reasoning that moved it away then is the reasoning to watch now that it is
-   * back: "2 VP for each own-suit noun" pays most on the suit that builds most,
-   * and Dairy built 12.02 buildings a seat against a field of about 5.
+   * ⭐ D21 IS RETEXTED AGAIN (v41): "3 VP for each 3VP building you have
+   * built", of any suit. It used to count SHEDs at 2 VP each. Printed VP is
+   * read off the card, buildings only.
    */
-  it('D21 scores 2 for each SHED built', () => {
+  it('D21 scores 3 for each 3VP building built, of any suit', () => {
     const s = base();
     buildFor(data, s, DAIRY, 'D21');
-    // D2's 1 for D21 itself, and no SHED yet.
+    // D2's 1 for D21 itself, and no 3VP building yet.
     expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(1);
-    buildFor(data, s, DAIRY, 'D4', 'D5');
-    // D21's 4 for two SHEDs, plus D2's 3 for the three Dairy cards built.
-    expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(4 + 3);
+    buildFor(data, s, DAIRY, 'D13', 'W13', 'D4');
+    // D21's 6 for D13 and W13 (D4 prints 1 VP), plus D2's 3 for D21, D13, D4.
+    expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(6 + 3);
   });
 
-  /**
-   * ⚠️ SHED IS THE TITLE KEYWORD AND NOT THE TIER, so the ceiling is D4-D8 at
-   * 10 VP - the same ceiling A20 and O20 carry, on the suit that reaches it most
-   * often. A non-SHED Dairy building never counts, which is what separates this
-   * card from D20 The Counting House standing beside it.
-   */
-  it('D21 counts SHEDs only: a Dairy building that is not one scores nothing for it', () => {
+  it('D21: a 2VP building and a Power card score nothing for it', () => {
     const s = base();
     buildFor(data, s, DAIRY, 'D21', 'D10', 'D16');
-    // No SHED at all, so D21 contributes 0 and D2's 3 is the whole score.
+    // No 3VP building at all, so D21 contributes 0 and D2's 3 is the whole score.
     expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(3);
   });
 
   /**
-   * ⛔ A DEMOLISHED SHED STOPS COUNTING, which is the cost of demolishing and
+   * ⛔ A DEMOLISHED BUILDING STOPS COUNTING, which is the cost of demolishing and
    * the standing reading every "you have built" formula in the suit shares.
    */
-  it('D21 does not count a demolished SHED', () => {
+  it('D21 does not count a demolished 3VP building', () => {
     const s = base();
-    buildFor(data, s, DAIRY, 'D21', 'D4');
-    expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(2 + 2);
-    player(s, DAIRY).tableau = player(s, DAIRY).tableau.filter((b) => b.card !== 'D4');
+    buildFor(data, s, DAIRY, 'D21', 'D14');
+    expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(3 + 2);
+    player(s, DAIRY).tableau = player(s, DAIRY).tableau.filter((b) => b.card !== 'D14');
     expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(1);
   });
 
-  /**
-   * ⛔ AND IT NEVER COUNTS A STARTER, which is the trap the OLD D21 fell into
-   * from the other side. That card counted starters and nothing else, so
-   * reaching for `builtBuildings` - the noun D9, D13, D14 and D20 all share,
-   * which exists precisely to EXCLUDE starters - would have scored it 0 forever
-   * with no test of types or shapes seeing it. The v31 card reads
-   * `isShedCard`, so the hazard has swapped ends: a starter must contribute
-   * NOTHING, and three starters plus no SHED is the case that catches it.
-   */
+  /** A starter is never a building you have built, whatever it prints. */
   it('D21 never counts a starter', () => {
     const s = base();
     buildFor(data, s, DAIRY, 'D21');
-    // TWO starters, not three: no seat has a Notice Board under the commons
-    // (C1), so D3 is not in this tableau to be counted or miscounted.
-    expect(player(s, DAIRY).tableau.filter((b) => ['D1', 'D2'].includes(b.card))).toHaveLength(2);
     expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(1); // D2's own line only
   });
 });
 
-describe('the SHED keyword - D21 The Refinery is now its only reader', () => {
+describe('the SHED keyword - no card reads it since v41 (kept for the simulator)', () => {
   it('SHED means exactly the five Tier 1 cards', () => {
     const sheds = data.cards.catalogue
       .filter((c) => c.suit === 'dairy' && /\bShed\b/.test(c.name))

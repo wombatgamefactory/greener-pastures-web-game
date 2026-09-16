@@ -7,22 +7,22 @@
  * Everything except the map itself is DOM over text-free art, the same as a
  * card: the tiles carry no printed VP, coins or crate slots.
  *
- * Since the flat island (2026-08-09) THE ROWS ARE DECORATION. Every tile costs
- * the same, pays the same and is deliverable at any time, so there is no level
- * label, no lock and no per-level gradient strip. The one gradient left is per
- * tile and is drawn where it belongs - on the empty receipt slots, which show
- * what arriving in that position pays. A slope you watch shrinking is pressure;
- * the same slope discovered at the moment it costs you is a hidden wall.
+ * THE ROWS ARE DECORATION. Every tile is deliverable at any time, so there is no
+ * level label and no lock. ⭐ Since the token island (16/09/2026) a tile shows
+ * the TOKENS still on it: each token's demand, its VP and its Worker. A taken
+ * token has left the tile. ⚠️ The UI is pinned to v31 and this is the minimum
+ * to stay truthful; it has no token picker yet (the engine takes the
+ * highest-VP token when a move names none).
  */
 
 import { useEffect, useState } from 'react';
 import type { GameData, Suit } from '@gp/data';
-import { deliveriesPerTile, deliverySpacesTaken, deliveryVp } from '@gp/data';
-import type { PlayerView, Seat } from '@gp/engine';
+import { tokensPerTile } from '@gp/data';
+import type { PlayerView } from '@gp/engine';
 
 import { mark } from '../session/play';
 import type { Play } from '../session/play';
-import { cropIcon, demandTokenLayers, islandTileArt } from '../view/art';
+import { demandTokenLayers, islandTileArt } from '../view/art';
 import { SUIT_META } from '../view/suits';
 import { Meeple } from './Meeple';
 
@@ -70,14 +70,11 @@ function DemandToken({
  */
 function IslandLegend({ data }: { data: GameData }) {
   const { crates, cardsPerCrate } = data.island.tileRule;
-  const schedule = data.island.vpByDeliveryOrder;
   return (
     <p className="island-legend">
-      Every tile: {crates} crates of {cardsPerCrate}.{' '}
-      {schedule
-        .map((vp, i) => `${i === 0 ? '1st' : i === 1 ? '2nd' : `${i + 1}th`} ${vp} VP`)
-        .join(', ')}
-      , and the meeple sitting on that space.
+      Every island card: {crates} tokens. A delivery is {crates * cardsPerCrate} barn cards: both
+      tokens&apos; demands first (you choose a token), then the last token&apos;s demand plus{' '}
+      {cardsPerCrate} of any crop.
     </p>
   );
 }
@@ -103,10 +100,8 @@ export function IslandPanel({
   onDeliver?: (() => void) | undefined;
 }) {
   const rows: Level[] = [3, 2, 1];
-  const capacity = deliveriesPerTile(data);
+  const capacity = tokensPerTile(data);
   const { cardsPerCrate } = data.island.tileRule;
-  const suitOf = (seat: Seat): Suit | undefined =>
-    seat === view.seat ? view.you.suit : view.rivals.find((r) => r.seat === seat)?.suit;
 
   /*
    * ⚠️ A LIVE TILE'S CLICK MUST NOT ALSO EXPAND THE MAP, and `stopPropagation`
@@ -173,78 +168,34 @@ export function IslandPanel({
                   >
                     <img className="island-art" src={islandTileArt(tile.tile)} alt="" />
                     <div className="island-demands">
-                      {tile.crates.map((demand, i) => (
+                      {tile.tokens.map((token, i) => (
                         <span key={i} className="island-crate">
-                          <DemandToken
-                            demand={demand}
-                            faceDown={tile.faceDown?.[i] === true}
-                            size={Math.round(tileWidth * 0.34)}
-                          />
+                          <DemandToken demand={token.demand} size={Math.round(tileWidth * 0.34)} />
                           <b data-text={String(cardsPerCrate)}>{cardsPerCrate}</b>
                         </span>
                       ))}
                     </div>
-                    {/* A receipt says WHO, so a taken one carries the deliverer's
-                        crop rather than the printed rosette: the token art is one
-                        piece for every seat, and on the board the only question
-                        anyone asks of a filled slot is whose it is. An untaken one
-                        says WHAT IT PAYS, which is the whole race. */}
+                    {/* The tokens still on the tile, each with the VP it pays. */}
                     <div className="island-receipts">
-                      {Array.from({ length: capacity }, (_, i) => {
-                        // ⚠️ 14/09/2026: slot i is delivery SPACE i, and under
-                        // Dean's space choice the seat holding it is whoever took
-                        // that space, not the i-th arrival. The UI is pinned to
-                        // v31 and this is the minimum to stay truthful.
-                        const holder = deliverySpacesTaken(tile).indexOf(i);
-                        const seat = holder < 0 ? undefined : tile.deliveredBy[holder];
-                        const suit = seat === undefined ? undefined : suitOf(seat);
-                        const vp = deliveryVp(data, i);
-                        const meeple = tile.meeples[i];
-                        const taken = seat !== undefined;
-                        return (
-                          <span
-                            key={i}
-                            className={`receipt${taken ? '' : ' receipt-empty'}`}
-                            style={suit ? { background: SUIT_META[suit].pip } : undefined}
-                            title={
-                              taken
-                                ? `${suit ? SUIT_META[suit].label : `Seat ${seat}`} delivered here for ${vp} VP${
-                                    meeple ? `, and took the ${SUIT_META[meeple].label} meeple` : ''
-                                  }`
-                                : `Open: ${vp} VP${
-                                    meeple
-                                      ? `, and the ${SUIT_META[meeple].label} meeple on it`
-                                      : ''
-                                  }`
-                            }
-                          >
-                            {suit ? <img src={cropIcon(suit)} alt="" /> : <i>{vp}</i>}
-                          </span>
-                        );
-                      })}
+                      {tile.tokens.map((token, i) => (
+                        <span
+                          key={i}
+                          className="receipt receipt-empty"
+                          title={`Open: ${token.vp} VP${
+                            token.worker ? `, and the ${SUIT_META[token.worker].label} Worker` : ''
+                          }`}
+                        >
+                          <i>{token.vp}</i>
+                        </span>
+                      ))}
                     </div>
-                    {/*
-                     * ⭐ THE MEEPLES, FACE UP FROM SETUP (v31), one per delivery
-                     * space and drawn in a row of their own beneath the receipts.
-                     *
-                     * They are the island's whole new pull: which colour the
-                     * first and the second deliverer to this tile will take is
-                     * public from turn one, so a player is choosing between a
-                     * Harvest, a Draw 3 and a free Build as much as between 6 VP
-                     * and 3. Drawn on the tile rather than listed anywhere else,
-                     * because that is where they physically sit.
-                     *
-                     * ⚠️ A CLAIMED SPACE LEAVES A GAP RATHER THAN A PAWN, and the
-                     * gap is on purpose: the meeple has gone into somebody's
-                     * supply and the space is empty on the real board. The
-                     * receipt disc directly above it already says who took it.
-                     */}
+                    {/* The Workers, face up on their tokens (16/09/2026). */}
                     <div className="island-meeples" aria-hidden="true">
-                      {tile.meeples.map((colour, i) =>
-                        tile.deliveredBy[i] === undefined ? (
+                      {tile.tokens.map((token, i) =>
+                        token.worker !== null ? (
                           <Meeple
                             key={i}
-                            colour={colour}
+                            colour={token.worker}
                             size={Math.max(11, Math.round(tileWidth * 0.2))}
                             title=""
                           />

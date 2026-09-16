@@ -34,7 +34,6 @@ import {
   UNROUTED_TASK_ANSWERS,
   buildCandidates,
   buildComplete,
-  clickBalloon,
   clickBuilding,
   clickCardPower,
   clickDeck,
@@ -135,9 +134,6 @@ function reachable(position: Position, move: Move): boolean {
 
     case 'deliver':
       return has(clickTile(moves, IDLE, move.tile));
-
-    case 'moveBalloon':
-      return has(clickBalloon(moves, IDLE, move.balloon));
 
     case 'build': {
       // The panel: name the card, then add payment one click at a time.
@@ -326,8 +322,6 @@ function taskReachable(position: Position, move: Move): boolean {
       return clickBuilding(moves, { k: 'hold', card: answer.card }, answer.onto).includes(move);
     case 'deliver':
       return clickTile(moves, IDLE, answer.tile).includes(move);
-    case 'balloon':
-      return clickBalloon(moves, IDLE, answer.balloon).includes(move);
     case 'build':
       return (
         buildPanelOpens(position, answer.card) &&

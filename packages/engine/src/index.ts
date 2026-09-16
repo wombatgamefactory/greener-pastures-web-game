@@ -54,7 +54,7 @@ export {
   extraNoticeBoardsPerSeat,
   dealExtraNoticeBoards,
   islandTilesInPlay,
-  demandPool,
+  tokenPool,
   meeplePool,
   emptyMeeples,
   startingMeeples,
@@ -62,7 +62,6 @@ export {
   starterCardsFor,
   meepleLoopPlayerFields,
   buildIsland,
-  parkBalloons,
   freshTurn,
 } from './setup.js';
 export type { NewGameOptions } from './setup.js';

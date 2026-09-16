@@ -13,24 +13,21 @@ import type { GameData, Suit } from '@gp/data';
 import { seedRng } from './rng.js';
 import {
   buildIsland,
-  coinPlayerFields,
-  coinSupplyZone,
   dealExtraNoticeBoards,
-  demandPool,
   freshTurn,
   hostDrawCapPlayerFields,
   meepleLoopPlayerFields,
   meeplePool,
-  parkBalloons,
   starterCardsFor,
   startingMeeples,
+  tokenPool,
 } from './setup.js';
 import type { CardId, GameState, Move, Seat } from './state.js';
 
 /**
  * A playable state: starters built, decks full (catalogue order), fair unhired,
- * island tiled with demand tokens AND MEEPLES dealt in pool order - everything
- * deterministic, nothing consumes the rng. Players start with an empty meeple
+ * island tiled with TOKENS dealt in pool order and WORKERS from the bag in colour
+ * order - everything deterministic, nothing consumes the rng. Players start with an empty meeple
  * supply; `giveMeeples` seeds one.
  */
 export function makeState(data: GameData, suits: Suit[]): GameState {
@@ -45,10 +42,9 @@ export function makeState(data: GameData, suits: Suit[]): GameState {
   ) as GameState['discards'];
 
   const seats = suits.length;
-  const poolSpec = data.island.demandTokensBySeats[String(seats)];
   const poolSuits = [...suits, ...data.cards.suits.filter((s) => !suits.includes(s))].slice(
     0,
-    poolSpec?.suits ?? seats + 1,
+    data.island.decksInPlayBySeats[String(seats)] ?? seats + 1,
   );
   // ⭐ THE EXTRA NOTICE BOARDS of Dean's two-board fix (11/09/2026), dealt in
   // CATALOGUE ORDER rather than shuffled: `newGame` draws them from the seed
@@ -83,10 +79,6 @@ export function makeState(data: GameData, suits: Suit[]): GameState {
       // would be testing a position no real game reaches.
       meeples: startingMeeples(data),
       ...meepleLoopPlayerFields(data),
-      // The coin wallet, present only when a coin knob is on and ABSENT
-      // otherwise, exactly as `meepleLoopPlayerFields` is - see
-      // `coinPlayerFields`.
-      ...coinPlayerFields(data),
       // ABSENT unless the HOST-DRAW CAP is on, same register again - see
       // `hostDrawCapPlayerFields`. The testkit must agree with `newGame` about
       // this or a scenario silently has no latch and the cap caps nothing.
@@ -101,20 +93,14 @@ export function makeState(data: GameData, suits: Suit[]): GameState {
     decks,
     discards,
     fair: data.workers.roster.map((w) => ({ id: w.id, owner: null })),
-    // The meeple bag UNSHUFFLED, so a scenario knows exactly which colour sits
-    // on which delivery space: colour order, `perColour` of each. Nothing here
-    // consumes the rng.
+    // The token pool and the Worker bag UNSHUFFLED, so a scenario knows exactly
+    // what sits where: tokens crop by crop at 6 / 5 / 4 / 3 (so the first tile
+    // holds the first crop's 6 and 5, the second its 4 and 3, which carry the
+    // first two Workers in colour order), then the wilds. Nothing here consumes
+    // the rng.
     island: {
-      tiles: buildIsland(data, seats, demandPool(data, seats, poolSuits), meeplePool(data)),
+      tiles: buildIsland(data, seats, tokenPool(data, seats, poolSuits), meeplePool(data)),
     },
-    aerodrome: suits.includes('vegetable')
-      ? parkBalloons(data.aerodrome.balloons.map((b) => b.id))
-      : null,
-    // ⭐ THE VILLAGE STORE'S SHARED SUPPLY (V4, A150), present only when the
-    // Store is on and ABSENT otherwise,
-    // and the testkit must agree with `newGame` about it or a scenario silently
-    // has no pool and `coinSupplyLeft` throws.
-    ...coinSupplyZone(data, seats),
     turn: freshTurn(),
     tasks: [],
     resume: null,
@@ -158,30 +144,17 @@ export function cardVisitGame(): GameData {
     // unpinned leaf is how a control silently stops being the game it is named
     // after - the 05/09/2026 passenger lesson, arriving on schedule.
     set: {
+      // ⛔ TURN ORDER PINNED 16/09/2026: Dean ruled a random first player and
+      // finish-the-round on 15/09/2026; this game predates both.
+      'rules.setup.firstPlayer': 'seat0',
+      'rules.endGame.endOfGame': 'oneMoreTurnEach',
       'rules.economy.cropScorerOnBarn': false,
-      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
-      // Store ruling moved sixteen shipped leaves at once. Every helper here
-      // reproduces a game that predates it, so each leaf is pinned BY NAME at
-      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
-      // overlays, and `fixtures.test.ts` already records why that is dangerous:
-      // a copy of a pin stops being a pin. Adding the leaves in both places is
-      // the price of the copy.
-      'aerodrome.moveCost.barnCards': 2,
-      'aerodrome.alwaysInPlay': false,
-      'aerodrome.flightMints': false,
-      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
-      'aerodrome.balloons.balloonDraw.reward.amount': 4,
-      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
-      'aerodrome.balloons.balloonBuild.reward.amount': 4,
-      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
-      'aerodrome.balloons.balloonSow.reward.amount': 4,
-      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
-      'rules.economy.storeCoinsPerCard': 0,
-      'rules.economy.coinSupplyPerPlayer': 0,
-      'rules.economy.coinPaysBuild': false,
-      'rules.economy.coinPaysSuitCost': false,
-      'rules.economy.coinPaysGrow': false,
-      'rules.economy.coinGrowOnFullBuilding': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Every helper here reproduces a game that
+      // predates a ruling, so each moved leaf is pinned BY NAME at its pre-flip
+      // value (the balloon and Village Store leaves went with those systems on
+      // 16/09/2026). ⚠️ These helpers are INLINE COPIES of committed overlays, and
+      // `fixtures.test.ts` records why that is dangerous: a copy of a pin stops
+      // being a pin.
       'rules.turn.visitCurrency': 'card',
       // Pinned 13/09/2026, when the shipped default flipped to false.
       'rules.turn.selfVisitAllowed': true,
@@ -207,15 +180,14 @@ export function cardVisitGame(): GameData {
       // `overlays/v31-card-visit.overlay.json` pins the same leaf; this is the
       // engine's own copy of that control and has to agree with it.
       'rules.economy.noticeBoardThreshold': 2,
-      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
-      // choice and the closing draw. This helper predates it, so all six are pinned
-      // off by name ('start' and null are the old inert values).
-      'rules.turn.deliveryMeepleSpace': null,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: the spend window, at its old inert
+      // values ('start' and null). The space choice was deleted on 16/09/2026.
       'rules.turn.meepleSpendTiming': 'start',
       'rules.turn.meepleSpendPerTurn': null,
       'rules.turn.meepleSpendDistinctColours': false,
-      'rules.turn.deliverySpaceChoice': false,
-      'rules.turn.closingDrawPerCrate': 0,
+      // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
+      'rules.economy.noticeBoardPower.vegetableWildCards': 0,
+      'rules.economy.noticeBoardPower.dairyDiscount': 0,
     },
   });
   return cardVisitCache;
@@ -239,30 +211,17 @@ export function noticeBoardVisitGame(): GameData {
     name: 'notice-board-visit-v1',
     schemaVersion: 1,
     set: {
+      // ⛔ TURN ORDER PINNED 16/09/2026: Dean ruled a random first player and
+      // finish-the-round on 15/09/2026; this game predates both.
+      'rules.setup.firstPlayer': 'seat0',
+      'rules.endGame.endOfGame': 'oneMoreTurnEach',
       'rules.economy.cropScorerOnBarn': false,
-      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
-      // Store ruling moved sixteen shipped leaves at once. Every helper here
-      // reproduces a game that predates it, so each leaf is pinned BY NAME at
-      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
-      // overlays, and `fixtures.test.ts` already records why that is dangerous:
-      // a copy of a pin stops being a pin. Adding the leaves in both places is
-      // the price of the copy.
-      'aerodrome.moveCost.barnCards': 2,
-      'aerodrome.alwaysInPlay': false,
-      'aerodrome.flightMints': false,
-      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
-      'aerodrome.balloons.balloonDraw.reward.amount': 4,
-      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
-      'aerodrome.balloons.balloonBuild.reward.amount': 4,
-      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
-      'aerodrome.balloons.balloonSow.reward.amount': 4,
-      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
-      'rules.economy.storeCoinsPerCard': 0,
-      'rules.economy.coinSupplyPerPlayer': 0,
-      'rules.economy.coinPaysBuild': false,
-      'rules.economy.coinPaysSuitCost': false,
-      'rules.economy.coinPaysGrow': false,
-      'rules.economy.coinGrowOnFullBuilding': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Every helper here reproduces a game that
+      // predates a ruling, so each moved leaf is pinned BY NAME at its pre-flip
+      // value (the balloon and Village Store leaves went with those systems on
+      // 16/09/2026). ⚠️ These helpers are INLINE COPIES of committed overlays, and
+      // `fixtures.test.ts` records why that is dangerous: a copy of a pin stops
+      // being a pin.
       'rules.turn.visitCurrency': 'noticeBoardPower',
       'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
       // Pinned 13/09/2026, when the shipped default flipped to 2.
@@ -275,17 +234,16 @@ export function noticeBoardVisitGame(): GameData {
       'rules.turn.meepleCapPerColour': null,
       'rules.economy.noticeBoardThreshold': 3,
       'rules.economy.noticeBoardBlocks': false,
-      'rules.economy.endgameCoinCost': null,
-      'rules.economy.farmsteadCoinPower': false,
-      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
-      // choice and the closing draw. This helper predates it, so all six are pinned
-      // off by name ('start' and null are the old inert values).
-      'rules.turn.deliveryMeepleSpace': null,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: the spend window, at its old inert
+      // values ('start' and null). The space choice was deleted on 16/09/2026.
       'rules.turn.meepleSpendTiming': 'start',
       'rules.turn.meepleSpendPerTurn': null,
       'rules.turn.meepleSpendDistinctColours': false,
-      'rules.turn.deliverySpaceChoice': false,
-      'rules.turn.closingDrawPerCrate': 0,
+      // ⛔ TOKEN ISLAND PINNED 16/09/2026: this game had no island meeple.
+      'island.tokens.workerOnVp': [],
+      // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
+      'rules.economy.noticeBoardPower.vegetableWildCards': 0,
+      'rules.economy.noticeBoardPower.dairyDiscount': 0,
     },
   });
   return noticeBoardVisitCache;
@@ -311,30 +269,17 @@ export function noticeBoardTwoBoardsGame(): GameData {
     name: 'notice-board-visit-two-boards-v1',
     schemaVersion: 1,
     set: {
+      // ⛔ TURN ORDER PINNED 16/09/2026: Dean ruled a random first player and
+      // finish-the-round on 15/09/2026; this game predates both.
+      'rules.setup.firstPlayer': 'seat0',
+      'rules.endGame.endOfGame': 'oneMoreTurnEach',
       'rules.economy.cropScorerOnBarn': false,
-      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
-      // Store ruling moved sixteen shipped leaves at once. Every helper here
-      // reproduces a game that predates it, so each leaf is pinned BY NAME at
-      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
-      // overlays, and `fixtures.test.ts` already records why that is dangerous:
-      // a copy of a pin stops being a pin. Adding the leaves in both places is
-      // the price of the copy.
-      'aerodrome.moveCost.barnCards': 2,
-      'aerodrome.alwaysInPlay': false,
-      'aerodrome.flightMints': false,
-      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
-      'aerodrome.balloons.balloonDraw.reward.amount': 4,
-      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
-      'aerodrome.balloons.balloonBuild.reward.amount': 4,
-      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
-      'aerodrome.balloons.balloonSow.reward.amount': 4,
-      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
-      'rules.economy.storeCoinsPerCard': 0,
-      'rules.economy.coinSupplyPerPlayer': 0,
-      'rules.economy.coinPaysBuild': false,
-      'rules.economy.coinPaysSuitCost': false,
-      'rules.economy.coinPaysGrow': false,
-      'rules.economy.coinGrowOnFullBuilding': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Every helper here reproduces a game that
+      // predates a ruling, so each moved leaf is pinned BY NAME at its pre-flip
+      // value (the balloon and Village Store leaves went with those systems on
+      // 16/09/2026). ⚠️ These helpers are INLINE COPIES of committed overlays, and
+      // `fixtures.test.ts` records why that is dangerous: a copy of a pin stops
+      // being a pin.
       'rules.turn.visitCurrency': 'noticeBoardPower',
       'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
       'rules.turn.bonusTiming': 'start',
@@ -348,17 +293,16 @@ export function noticeBoardTwoBoardsGame(): GameData {
       'rules.economy.noticeBoardsBySeats.2': 2,
       'rules.economy.noticeBoardsBySeats.3': 1,
       'rules.economy.noticeBoardsBySeats.4': 1,
-      'rules.economy.endgameCoinCost': null,
-      'rules.economy.farmsteadCoinPower': false,
-      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
-      // choice and the closing draw. This helper predates it, so all six are pinned
-      // off by name ('start' and null are the old inert values).
-      'rules.turn.deliveryMeepleSpace': null,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: the spend window, at its old inert
+      // values ('start' and null). The space choice was deleted on 16/09/2026.
       'rules.turn.meepleSpendTiming': 'start',
       'rules.turn.meepleSpendPerTurn': null,
       'rules.turn.meepleSpendDistinctColours': false,
-      'rules.turn.deliverySpaceChoice': false,
-      'rules.turn.closingDrawPerCrate': 0,
+      // ⛔ TOKEN ISLAND PINNED 16/09/2026: this game had no island meeple.
+      'island.tokens.workerOnVp': [],
+      // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
+      'rules.economy.noticeBoardPower.vegetableWildCards': 0,
+      'rules.economy.noticeBoardPower.dairyDiscount': 0,
     },
   });
   return noticeBoardTwoBoardsCache;
@@ -389,30 +333,17 @@ export function noticeBoardHostDrawGame(n = 1): GameData {
     name: `notice-board-visit-host-draw-v1-${n}`,
     schemaVersion: 1,
     set: {
+      // ⛔ TURN ORDER PINNED 16/09/2026: Dean ruled a random first player and
+      // finish-the-round on 15/09/2026; this game predates both.
+      'rules.setup.firstPlayer': 'seat0',
+      'rules.endGame.endOfGame': 'oneMoreTurnEach',
       'rules.economy.cropScorerOnBarn': false,
-      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
-      // Store ruling moved sixteen shipped leaves at once. Every helper here
-      // reproduces a game that predates it, so each leaf is pinned BY NAME at
-      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
-      // overlays, and `fixtures.test.ts` already records why that is dangerous:
-      // a copy of a pin stops being a pin. Adding the leaves in both places is
-      // the price of the copy.
-      'aerodrome.moveCost.barnCards': 2,
-      'aerodrome.alwaysInPlay': false,
-      'aerodrome.flightMints': false,
-      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
-      'aerodrome.balloons.balloonDraw.reward.amount': 4,
-      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
-      'aerodrome.balloons.balloonBuild.reward.amount': 4,
-      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
-      'aerodrome.balloons.balloonSow.reward.amount': 4,
-      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
-      'rules.economy.storeCoinsPerCard': 0,
-      'rules.economy.coinSupplyPerPlayer': 0,
-      'rules.economy.coinPaysBuild': false,
-      'rules.economy.coinPaysSuitCost': false,
-      'rules.economy.coinPaysGrow': false,
-      'rules.economy.coinGrowOnFullBuilding': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Every helper here reproduces a game that
+      // predates a ruling, so each moved leaf is pinned BY NAME at its pre-flip
+      // value (the balloon and Village Store leaves went with those systems on
+      // 16/09/2026). ⚠️ These helpers are INLINE COPIES of committed overlays, and
+      // `fixtures.test.ts` records why that is dangerous: a copy of a pin stops
+      // being a pin.
       'rules.turn.visitCurrency': 'noticeBoardPower',
       'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
       'rules.turn.bonusTiming': 'start',
@@ -427,17 +358,16 @@ export function noticeBoardHostDrawGame(n = 1): GameData {
       'rules.economy.noticeBoardsBySeats.2': 2,
       'rules.economy.noticeBoardsBySeats.3': 1,
       'rules.economy.noticeBoardsBySeats.4': 1,
-      'rules.economy.endgameCoinCost': null,
-      'rules.economy.farmsteadCoinPower': false,
-      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
-      // choice and the closing draw. This helper predates it, so all six are pinned
-      // off by name ('start' and null are the old inert values).
-      'rules.turn.deliveryMeepleSpace': null,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: the spend window, at its old inert
+      // values ('start' and null). The space choice was deleted on 16/09/2026.
       'rules.turn.meepleSpendTiming': 'start',
       'rules.turn.meepleSpendPerTurn': null,
       'rules.turn.meepleSpendDistinctColours': false,
-      'rules.turn.deliverySpaceChoice': false,
-      'rules.turn.closingDrawPerCrate': 0,
+      // ⛔ TOKEN ISLAND PINNED 16/09/2026: this game had no island meeple.
+      'island.tokens.workerOnVp': [],
+      // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
+      'rules.economy.noticeBoardPower.vegetableWildCards': 0,
+      'rules.economy.noticeBoardPower.dairyDiscount': 0,
     },
   });
 }
@@ -466,30 +396,17 @@ export function noticeBoardHostDrawCappedGame(capped = true, n = 1): GameData {
     name: `notice-board-visit-host-draw-capped-v1-${String(capped)}-${n}`,
     schemaVersion: 1,
     set: {
+      // ⛔ TURN ORDER PINNED 16/09/2026: Dean ruled a random first player and
+      // finish-the-round on 15/09/2026; this game predates both.
+      'rules.setup.firstPlayer': 'seat0',
+      'rules.endGame.endOfGame': 'oneMoreTurnEach',
       'rules.economy.cropScorerOnBarn': false,
-      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
-      // Store ruling moved sixteen shipped leaves at once. Every helper here
-      // reproduces a game that predates it, so each leaf is pinned BY NAME at
-      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
-      // overlays, and `fixtures.test.ts` already records why that is dangerous:
-      // a copy of a pin stops being a pin. Adding the leaves in both places is
-      // the price of the copy.
-      'aerodrome.moveCost.barnCards': 2,
-      'aerodrome.alwaysInPlay': false,
-      'aerodrome.flightMints': false,
-      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
-      'aerodrome.balloons.balloonDraw.reward.amount': 4,
-      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
-      'aerodrome.balloons.balloonBuild.reward.amount': 4,
-      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
-      'aerodrome.balloons.balloonSow.reward.amount': 4,
-      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
-      'rules.economy.storeCoinsPerCard': 0,
-      'rules.economy.coinSupplyPerPlayer': 0,
-      'rules.economy.coinPaysBuild': false,
-      'rules.economy.coinPaysSuitCost': false,
-      'rules.economy.coinPaysGrow': false,
-      'rules.economy.coinGrowOnFullBuilding': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Every helper here reproduces a game that
+      // predates a ruling, so each moved leaf is pinned BY NAME at its pre-flip
+      // value (the balloon and Village Store leaves went with those systems on
+      // 16/09/2026). ⚠️ These helpers are INLINE COPIES of committed overlays, and
+      // `fixtures.test.ts` records why that is dangerous: a copy of a pin stops
+      // being a pin.
       'rules.turn.visitCurrency': 'noticeBoardPower',
       'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
       'rules.turn.bonusTiming': 'start',
@@ -505,17 +422,16 @@ export function noticeBoardHostDrawCappedGame(capped = true, n = 1): GameData {
       'rules.economy.noticeBoardsBySeats.2': 2,
       'rules.economy.noticeBoardsBySeats.3': 1,
       'rules.economy.noticeBoardsBySeats.4': 1,
-      'rules.economy.endgameCoinCost': null,
-      'rules.economy.farmsteadCoinPower': false,
-      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
-      // choice and the closing draw. This helper predates it, so all six are pinned
-      // off by name ('start' and null are the old inert values).
-      'rules.turn.deliveryMeepleSpace': null,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: the spend window, at its old inert
+      // values ('start' and null). The space choice was deleted on 16/09/2026.
       'rules.turn.meepleSpendTiming': 'start',
       'rules.turn.meepleSpendPerTurn': null,
       'rules.turn.meepleSpendDistinctColours': false,
-      'rules.turn.deliverySpaceChoice': false,
-      'rules.turn.closingDrawPerCrate': 0,
+      // ⛔ TOKEN ISLAND PINNED 16/09/2026: this game had no island meeple.
+      'island.tokens.workerOnVp': [],
+      // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
+      'rules.economy.noticeBoardPower.vegetableWildCards': 0,
+      'rules.economy.noticeBoardPower.dairyDiscount': 0,
     },
   });
 }
@@ -541,30 +457,17 @@ export function noticeBoardHostDrawBySeatsGame(): GameData {
     name: 'notice-board-visit-host-draw-by-seats-v1',
     schemaVersion: 1,
     set: {
+      // ⛔ TURN ORDER PINNED 16/09/2026: Dean ruled a random first player and
+      // finish-the-round on 15/09/2026; this game predates both.
+      'rules.setup.firstPlayer': 'seat0',
+      'rules.endGame.endOfGame': 'oneMoreTurnEach',
       'rules.economy.cropScorerOnBarn': false,
-      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
-      // Store ruling moved sixteen shipped leaves at once. Every helper here
-      // reproduces a game that predates it, so each leaf is pinned BY NAME at
-      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
-      // overlays, and `fixtures.test.ts` already records why that is dangerous:
-      // a copy of a pin stops being a pin. Adding the leaves in both places is
-      // the price of the copy.
-      'aerodrome.moveCost.barnCards': 2,
-      'aerodrome.alwaysInPlay': false,
-      'aerodrome.flightMints': false,
-      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
-      'aerodrome.balloons.balloonDraw.reward.amount': 4,
-      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
-      'aerodrome.balloons.balloonBuild.reward.amount': 4,
-      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
-      'aerodrome.balloons.balloonSow.reward.amount': 4,
-      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
-      'rules.economy.storeCoinsPerCard': 0,
-      'rules.economy.coinSupplyPerPlayer': 0,
-      'rules.economy.coinPaysBuild': false,
-      'rules.economy.coinPaysSuitCost': false,
-      'rules.economy.coinPaysGrow': false,
-      'rules.economy.coinGrowOnFullBuilding': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Every helper here reproduces a game that
+      // predates a ruling, so each moved leaf is pinned BY NAME at its pre-flip
+      // value (the balloon and Village Store leaves went with those systems on
+      // 16/09/2026). ⚠️ These helpers are INLINE COPIES of committed overlays, and
+      // `fixtures.test.ts` records why that is dangerous: a copy of a pin stops
+      // being a pin.
       'rules.turn.visitCurrency': 'noticeBoardPower',
       'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
       'rules.turn.bonusTiming': 'start',
@@ -580,147 +483,26 @@ export function noticeBoardHostDrawBySeatsGame(): GameData {
       'rules.economy.noticeBoardsBySeats.2': 2,
       'rules.economy.noticeBoardsBySeats.3': 1,
       'rules.economy.noticeBoardsBySeats.4': 1,
-      'rules.economy.endgameCoinCost': null,
-      'rules.economy.farmsteadCoinPower': false,
-      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
-      // choice and the closing draw. This helper predates it, so all six are pinned
-      // off by name ('start' and null are the old inert values).
-      'rules.turn.deliveryMeepleSpace': null,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: the spend window, at its old inert
+      // values ('start' and null). The space choice was deleted on 16/09/2026.
       'rules.turn.meepleSpendTiming': 'start',
       'rules.turn.meepleSpendPerTurn': null,
       'rules.turn.meepleSpendDistinctColours': false,
-      'rules.turn.deliverySpaceChoice': false,
-      'rules.turn.closingDrawPerCrate': 0,
+      // ⛔ TOKEN ISLAND PINNED 16/09/2026: this game had no island meeple.
+      'island.tokens.workerOnVp': [],
+      // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
+      'rules.economy.noticeBoardPower.vegetableWildCards': 0,
+      'rules.economy.noticeBoardPower.dairyDiscount': 0,
     },
   });
-}
-
-/**
- * ⭐ THE VILLAGE STORE COIN (V1 to V12, Dean 12/09/2026, ledger A150), exactly
- * as `overlays/village-store-coins-v1.overlay.json` and its three siblings set
- * it.
- *
- * THE RULE IN ONE LINE: when you make a delivery you may spend any number of
- * ADDITIONAL cards from your BARN, taking £1 each out of a SHARED supply of five
- * coins per seat; a coin is then a wild card for BUILD (including the n-of-suit
- * requirement) and for GROW (placing nothing, so a FULL building is a legal
- * target); it may never pay a visit, a Harvest or a Deliver, it scores nothing
- * and it breaks no ties; and a spent coin returns to the supply.
- *
- * ⛔ AN ARM ON TOP OF AN ARM, AND THAT MUST BE SAID EVERY TIME. C100 is open:
- * no Notice Board configuration is ruled in as the shipped game. So all twenty
- * leaves of `noticeBoardHostDrawBySeatsGame()` - the best-measured
- * configuration, 5 PASS / 1 FAIL / 11 OBSERVE - are pinned by name, and the four
- * A151 meeple leaves are pinned OFF, because the delivery meeple is a separate
- * slice and an unpinned passenger is how a control silently stops being the game
- * it is named after (05/09/2026).
- *
- * ⛔ AND TWO OF THE PINNED TWENTY ARE COIN LEAVES ON PURPOSE.
- * `endgameCoinCost` stays null and `farmsteadCoinPower` stays false: they belong
- * to the SEPARATE commons-with-coins arm of 10/09/2026 (K7 to K15) and they are
- * a second mint and a second sink. Keeping them off is what makes
- * `storeCoinsPerCard` the only faucet in the game, and every coin economy this
- * project has had died of a second faucet or a pity rate.
- *
- * `build` and `grow` turn the two sinks off in turn (the 05/09/2026 lesson
- * applied before the fact: if they go in together and the arm reads badly nobody
- * will know which did it), and `wild` is the n-of-suit question with
- * `coinPaysSuitCost` false.
- */
-export function villageStoreGame(
-  which: 'both' | 'build' | 'grow' | 'growOpen' | 'wild' = 'both',
-): GameData {
-  const build = which !== 'grow' && which !== 'growOpen';
-  const grow = which === 'both' || which === 'grow' || which === 'growOpen';
-  return loadGameData({
-    name: `village-store-coins-${which}-testkit`,
-    schemaVersion: 1,
-    set: {
-      'rules.economy.cropScorerOnBarn': false,
-      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
-      // Store ruling moved sixteen shipped leaves at once. Every helper here
-      // reproduces a game that predates it, so each leaf is pinned BY NAME at
-      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
-      // overlays, and `fixtures.test.ts` already records why that is dangerous:
-      // a copy of a pin stops being a pin. Adding the leaves in both places is
-      // the price of the copy.
-      'aerodrome.moveCost.barnCards': 2,
-      'aerodrome.alwaysInPlay': false,
-      'aerodrome.flightMints': false,
-      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
-      'aerodrome.balloons.balloonDraw.reward.amount': 4,
-      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
-      'aerodrome.balloons.balloonBuild.reward.amount': 4,
-      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
-      'aerodrome.balloons.balloonSow.reward.amount': 4,
-      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
-      // The control's twenty, unchanged and in its own order.
-      'rules.turn.visitCurrency': 'noticeBoardPower',
-      'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
-      'rules.turn.bonusTiming': 'start',
-      'rules.turn.selfVisitAllowed': false,
-      'rules.turn.hostDrawOnVisit': 1,
-      'rules.turn.hostDrawOnVisitBySeats.4': 0,
-      'rules.turn.startingMeeplesPerColour': 0,
-      'rules.turn.meepleAsCard': false,
-      'rules.turn.slotToll': null,
-      'rules.turn.meepleCapPerColour': null,
-      'rules.economy.noticeBoardThreshold': 3,
-      'rules.economy.noticeBoardBlocks': false,
-      'rules.economy.noticeBoardsBySeats.2': 2,
-      'rules.economy.noticeBoardsBySeats.3': 1,
-      'rules.economy.noticeBoardsBySeats.4': 1,
-      'rules.economy.endgameCoinCost': null,
-      'rules.economy.farmsteadCoinPower': false,
-      // The six that ARE the rule (V1, V4, V6, V8, V9).
-      'rules.economy.storeCoinsPerCard': 1,
-      'rules.economy.coinSupplyPerPlayer': 5,
-      'rules.economy.coinPaysBuild': build,
-      'rules.economy.coinPaysSuitCost': which !== 'wild' && build,
-      'rules.economy.coinPaysGrow': grow,
-      // ⭐ V9 IS ITS OWN LEAF, and `'growOpen'` is the arm that turns it off
-      // while leaving the Grow sink on: the coin still pays an activation but a
-      // CLOGGED building is out of reach. It is the strongest single clause in
-      // the package, so it must be readable on its own.
-      'rules.economy.coinGrowOnFullBuilding': grow && which !== 'growOpen',
-      // A151's four, pinned off so the delivery meeple cannot ride in.
-      'rules.turn.deliveryMeepleSpace': null,
-      'rules.turn.meepleSpendTiming': 'start',
-      'rules.turn.meepleSpendPerTurn': null,
-      'rules.turn.meepleSpendDistinctColours': false,
-      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
-      // choice and the closing draw. This helper keeps its own meeple leaves and pins the
-      // two new ones off by name.
-      'rules.turn.deliverySpaceChoice': false,
-      'rules.turn.closingDrawPerCrate': 0,
-    },
-  });
-}
-
-/** Put coins in a seat's wallet, taken out of the shared supply exactly as a mint would (V4/V5). */
-export function giveCoins(state: GameState, seat: Seat, n: number): void {
-  const p = state.players[seat];
-  if (!p) throw new Error(`No player in seat ${seat}`);
-  if (p.coins === undefined) throw new Error(`Seat ${seat} has no wallet in this game`);
-  if (state.coinSupply === undefined) throw new Error('This game has no Village Store supply');
-  if (state.coinSupply < n) throw new Error(`The supply holds ${state.coinSupply} coins, not ${n}`);
-  state.coinSupply -= n;
-  p.coins += n;
-}
-
-/** Put cards straight into a seat's barn, off their decks, for the exchange's scenarios. */
-export function barnFor(data: GameData, state: GameState, seat: Seat, ...cards: CardId[]): void {
-  for (const card of cards) {
-    state.players[seat]?.barn.push(pullFromDeck(data, state, card));
-  }
 }
 
 /**
  * ⭐ THE DELIVERY MEEPLE (M1 to M8, Dean 12/09/2026, ledger A151), exactly as
  * `overlays/delivery-meeple-v1.overlay.json` sets it.
  *
- * THE RULE IN ONE LINE: a random meeple sits on every tile's 3 VP delivery space
- * (index 1, never index 0), claiming that receipt claims the meeple, and AFTER
+ * THE RULE IN ONE LINE: a random meeple (a WORKER, since 16/09/2026) sits on
+ * every 3 and 4 VP island token, claiming that token claims it, and AFTER
  * your main action you may discard ONE meeple to take the PLAIN action of its
  * colour - wheat Harvest, vegetable Deliver, orchard Draw 2 keep both, apiary
  * GROW, dairy Build. The meeple then leaves the game for good.
@@ -728,10 +510,7 @@ export function barnFor(data: GameData, state: GameState, seat: Seat, ...cards: 
  * ⛔ AN ARM ON TOP OF AN ARM, AND THAT MUST BE SAID EVERY TIME. C100 is open:
  * no Notice Board configuration is ruled in as the shipped game, so this pins
  * all twenty leaves of `noticeBoardHostDrawBySeatsGame()` - the best-measured
- * configuration - and differs from it in exactly THREE meeple leaves. The six
- * coin leaves are pinned at their off values as well, because A150 is a separate
- * slice and an unpinned passenger is how a control silently stops being the game
- * it is named after (05/09/2026).
+ * configuration - and differs from it in exactly THREE meeple leaves.
  *
  * ⚠️ `meepleSpendDistinctColours` STAYS FALSE HERE. It is C112's alternative to
  * Dean's cap of one, and `deliveryMeepleDistinctGame()` below is that arm.
@@ -741,30 +520,17 @@ export function deliveryMeepleGame(): GameData {
     name: 'delivery-meeple-v1',
     schemaVersion: 1,
     set: {
+      // ⛔ TURN ORDER PINNED 16/09/2026: Dean ruled a random first player and
+      // finish-the-round on 15/09/2026; this game predates both.
+      'rules.setup.firstPlayer': 'seat0',
+      'rules.endGame.endOfGame': 'oneMoreTurnEach',
       'rules.economy.cropScorerOnBarn': false,
-      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
-      // Store ruling moved sixteen shipped leaves at once. Every helper here
-      // reproduces a game that predates it, so each leaf is pinned BY NAME at
-      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
-      // overlays, and `fixtures.test.ts` already records why that is dangerous:
-      // a copy of a pin stops being a pin. Adding the leaves in both places is
-      // the price of the copy.
-      'aerodrome.moveCost.barnCards': 2,
-      'aerodrome.alwaysInPlay': false,
-      'aerodrome.flightMints': false,
-      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
-      'aerodrome.balloons.balloonDraw.reward.amount': 4,
-      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
-      'aerodrome.balloons.balloonBuild.reward.amount': 4,
-      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
-      'aerodrome.balloons.balloonSow.reward.amount': 4,
-      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
-      'rules.economy.storeCoinsPerCard': 0,
-      'rules.economy.coinSupplyPerPlayer': 0,
-      'rules.economy.coinPaysBuild': false,
-      'rules.economy.coinPaysSuitCost': false,
-      'rules.economy.coinPaysGrow': false,
-      'rules.economy.coinGrowOnFullBuilding': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Every helper here reproduces a game that
+      // predates a ruling, so each moved leaf is pinned BY NAME at its pre-flip
+      // value (the balloon and Village Store leaves went with those systems on
+      // 16/09/2026). ⚠️ These helpers are INLINE COPIES of committed overlays, and
+      // `fixtures.test.ts` records why that is dangerous: a copy of a pin stops
+      // being a pin.
       'rules.turn.visitCurrency': 'noticeBoardPower',
       'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
       'rules.turn.bonusTiming': 'start',
@@ -780,18 +546,13 @@ export function deliveryMeepleGame(): GameData {
       'rules.economy.noticeBoardsBySeats.2': 2,
       'rules.economy.noticeBoardsBySeats.3': 1,
       'rules.economy.noticeBoardsBySeats.4': 1,
-      'rules.economy.endgameCoinCost': null,
-      'rules.economy.farmsteadCoinPower': false,
-      // The three that ARE the rule (M1, M4, M5).
-      'rules.turn.deliveryMeepleSpace': 1,
+      // The three spend leaves that ARE the rule (M4, M5).
       'rules.turn.meepleSpendTiming': 'afterAction',
       'rules.turn.meepleSpendPerTurn': 1,
       'rules.turn.meepleSpendDistinctColours': false,
-      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
-      // choice and the closing draw. This helper keeps its own meeple leaves and pins the
-      // two new ones off by name.
-      'rules.turn.deliverySpaceChoice': false,
-      'rules.turn.closingDrawPerCrate': 0,
+      // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
+      'rules.economy.noticeBoardPower.vegetableWildCards': 0,
+      'rules.economy.noticeBoardPower.dairyDiscount': 0,
     },
   });
 }
@@ -812,30 +573,17 @@ export function deliveryMeepleDistinctGame(): GameData {
     name: 'delivery-meeple-distinct-colours-v1',
     schemaVersion: 1,
     set: {
+      // ⛔ TURN ORDER PINNED 16/09/2026: Dean ruled a random first player and
+      // finish-the-round on 15/09/2026; this game predates both.
+      'rules.setup.firstPlayer': 'seat0',
+      'rules.endGame.endOfGame': 'oneMoreTurnEach',
       'rules.economy.cropScorerOnBarn': false,
-      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
-      // Store ruling moved sixteen shipped leaves at once. Every helper here
-      // reproduces a game that predates it, so each leaf is pinned BY NAME at
-      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
-      // overlays, and `fixtures.test.ts` already records why that is dangerous:
-      // a copy of a pin stops being a pin. Adding the leaves in both places is
-      // the price of the copy.
-      'aerodrome.moveCost.barnCards': 2,
-      'aerodrome.alwaysInPlay': false,
-      'aerodrome.flightMints': false,
-      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
-      'aerodrome.balloons.balloonDraw.reward.amount': 4,
-      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
-      'aerodrome.balloons.balloonBuild.reward.amount': 4,
-      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
-      'aerodrome.balloons.balloonSow.reward.amount': 4,
-      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
-      'rules.economy.storeCoinsPerCard': 0,
-      'rules.economy.coinSupplyPerPlayer': 0,
-      'rules.economy.coinPaysBuild': false,
-      'rules.economy.coinPaysSuitCost': false,
-      'rules.economy.coinPaysGrow': false,
-      'rules.economy.coinGrowOnFullBuilding': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Every helper here reproduces a game that
+      // predates a ruling, so each moved leaf is pinned BY NAME at its pre-flip
+      // value (the balloon and Village Store leaves went with those systems on
+      // 16/09/2026). ⚠️ These helpers are INLINE COPIES of committed overlays, and
+      // `fixtures.test.ts` records why that is dangerous: a copy of a pin stops
+      // being a pin.
       'rules.turn.visitCurrency': 'noticeBoardPower',
       'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
       'rules.turn.bonusTiming': 'start',
@@ -851,17 +599,12 @@ export function deliveryMeepleDistinctGame(): GameData {
       'rules.economy.noticeBoardsBySeats.2': 2,
       'rules.economy.noticeBoardsBySeats.3': 1,
       'rules.economy.noticeBoardsBySeats.4': 1,
-      'rules.economy.endgameCoinCost': null,
-      'rules.economy.farmsteadCoinPower': false,
-      'rules.turn.deliveryMeepleSpace': 1,
       'rules.turn.meepleSpendTiming': 'afterAction',
       'rules.turn.meepleSpendPerTurn': null,
       'rules.turn.meepleSpendDistinctColours': true,
-      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
-      // choice and the closing draw. This helper keeps its own meeple leaves and pins the
-      // two new ones off by name.
-      'rules.turn.deliverySpaceChoice': false,
-      'rules.turn.closingDrawPerCrate': 0,
+      // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
+      'rules.economy.noticeBoardPower.vegetableWildCards': 0,
+      'rules.economy.noticeBoardPower.dairyDiscount': 0,
     },
   });
 }
@@ -881,30 +624,17 @@ export function noticeBoardHostDrawSelfGame(): GameData {
     name: 'notice-board-visit-host-draw-self-probe',
     schemaVersion: 1,
     set: {
+      // ⛔ TURN ORDER PINNED 16/09/2026: Dean ruled a random first player and
+      // finish-the-round on 15/09/2026; this game predates both.
+      'rules.setup.firstPlayer': 'seat0',
+      'rules.endGame.endOfGame': 'oneMoreTurnEach',
       'rules.economy.cropScorerOnBarn': false,
-      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
-      // Store ruling moved sixteen shipped leaves at once. Every helper here
-      // reproduces a game that predates it, so each leaf is pinned BY NAME at
-      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
-      // overlays, and `fixtures.test.ts` already records why that is dangerous:
-      // a copy of a pin stops being a pin. Adding the leaves in both places is
-      // the price of the copy.
-      'aerodrome.moveCost.barnCards': 2,
-      'aerodrome.alwaysInPlay': false,
-      'aerodrome.flightMints': false,
-      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
-      'aerodrome.balloons.balloonDraw.reward.amount': 4,
-      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
-      'aerodrome.balloons.balloonBuild.reward.amount': 4,
-      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
-      'aerodrome.balloons.balloonSow.reward.amount': 4,
-      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
-      'rules.economy.storeCoinsPerCard': 0,
-      'rules.economy.coinSupplyPerPlayer': 0,
-      'rules.economy.coinPaysBuild': false,
-      'rules.economy.coinPaysSuitCost': false,
-      'rules.economy.coinPaysGrow': false,
-      'rules.economy.coinGrowOnFullBuilding': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Every helper here reproduces a game that
+      // predates a ruling, so each moved leaf is pinned BY NAME at its pre-flip
+      // value (the balloon and Village Store leaves went with those systems on
+      // 16/09/2026). ⚠️ These helpers are INLINE COPIES of committed overlays, and
+      // `fixtures.test.ts` records why that is dangerous: a copy of a pin stops
+      // being a pin.
       'rules.turn.visitCurrency': 'noticeBoardPower',
       'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
       // Pinned 13/09/2026, when the shipped default flipped to 2.
@@ -918,17 +648,16 @@ export function noticeBoardHostDrawSelfGame(): GameData {
       'rules.turn.meepleCapPerColour': null,
       'rules.economy.noticeBoardThreshold': 3,
       'rules.economy.noticeBoardBlocks': false,
-      'rules.economy.endgameCoinCost': null,
-      'rules.economy.farmsteadCoinPower': false,
-      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
-      // choice and the closing draw. This helper predates it, so all six are pinned
-      // off by name ('start' and null are the old inert values).
-      'rules.turn.deliveryMeepleSpace': null,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: the spend window, at its old inert
+      // values ('start' and null). The space choice was deleted on 16/09/2026.
       'rules.turn.meepleSpendTiming': 'start',
       'rules.turn.meepleSpendPerTurn': null,
       'rules.turn.meepleSpendDistinctColours': false,
-      'rules.turn.deliverySpaceChoice': false,
-      'rules.turn.closingDrawPerCrate': 0,
+      // ⛔ TOKEN ISLAND PINNED 16/09/2026: this game had no island meeple.
+      'island.tokens.workerOnVp': [],
+      // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
+      'rules.economy.noticeBoardPower.vegetableWildCards': 0,
+      'rules.economy.noticeBoardPower.dairyDiscount': 0,
     },
   });
 }
@@ -950,30 +679,17 @@ export function noticeBoardNoSelfGame(): GameData {
     name: 'notice-board-visit-no-self-v1',
     schemaVersion: 1,
     set: {
+      // ⛔ TURN ORDER PINNED 16/09/2026: Dean ruled a random first player and
+      // finish-the-round on 15/09/2026; this game predates both.
+      'rules.setup.firstPlayer': 'seat0',
+      'rules.endGame.endOfGame': 'oneMoreTurnEach',
       'rules.economy.cropScorerOnBarn': false,
-      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
-      // Store ruling moved sixteen shipped leaves at once. Every helper here
-      // reproduces a game that predates it, so each leaf is pinned BY NAME at
-      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
-      // overlays, and `fixtures.test.ts` already records why that is dangerous:
-      // a copy of a pin stops being a pin. Adding the leaves in both places is
-      // the price of the copy.
-      'aerodrome.moveCost.barnCards': 2,
-      'aerodrome.alwaysInPlay': false,
-      'aerodrome.flightMints': false,
-      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
-      'aerodrome.balloons.balloonDraw.reward.amount': 4,
-      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
-      'aerodrome.balloons.balloonBuild.reward.amount': 4,
-      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
-      'aerodrome.balloons.balloonSow.reward.amount': 4,
-      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
-      'rules.economy.storeCoinsPerCard': 0,
-      'rules.economy.coinSupplyPerPlayer': 0,
-      'rules.economy.coinPaysBuild': false,
-      'rules.economy.coinPaysSuitCost': false,
-      'rules.economy.coinPaysGrow': false,
-      'rules.economy.coinGrowOnFullBuilding': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Every helper here reproduces a game that
+      // predates a ruling, so each moved leaf is pinned BY NAME at its pre-flip
+      // value (the balloon and Village Store leaves went with those systems on
+      // 16/09/2026). ⚠️ These helpers are INLINE COPIES of committed overlays, and
+      // `fixtures.test.ts` records why that is dangerous: a copy of a pin stops
+      // being a pin.
       'rules.turn.visitCurrency': 'noticeBoardPower',
       'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
       // Pinned 13/09/2026, when the shipped default flipped to 2.
@@ -986,17 +702,16 @@ export function noticeBoardNoSelfGame(): GameData {
       'rules.turn.meepleCapPerColour': null,
       'rules.economy.noticeBoardThreshold': 3,
       'rules.economy.noticeBoardBlocks': false,
-      'rules.economy.endgameCoinCost': null,
-      'rules.economy.farmsteadCoinPower': false,
-      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
-      // choice and the closing draw. This helper predates it, so all six are pinned
-      // off by name ('start' and null are the old inert values).
-      'rules.turn.deliveryMeepleSpace': null,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: the spend window, at its old inert
+      // values ('start' and null). The space choice was deleted on 16/09/2026.
       'rules.turn.meepleSpendTiming': 'start',
       'rules.turn.meepleSpendPerTurn': null,
       'rules.turn.meepleSpendDistinctColours': false,
-      'rules.turn.deliverySpaceChoice': false,
-      'rules.turn.closingDrawPerCrate': 0,
+      // ⛔ TOKEN ISLAND PINNED 16/09/2026: this game had no island meeple.
+      'island.tokens.workerOnVp': [],
+      // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
+      'rules.economy.noticeBoardPower.vegetableWildCards': 0,
+      'rules.economy.noticeBoardPower.dairyDiscount': 0,
     },
   });
   return noticeBoardNoSelfCache;
@@ -1021,30 +736,17 @@ export function meepleEconomyGame(): GameData {
     name: 'meeple-economy-v1',
     schemaVersion: 1,
     set: {
+      // ⛔ TURN ORDER PINNED 16/09/2026: Dean ruled a random first player and
+      // finish-the-round on 15/09/2026; this game predates both.
+      'rules.setup.firstPlayer': 'seat0',
+      'rules.endGame.endOfGame': 'oneMoreTurnEach',
       'rules.economy.cropScorerOnBarn': false,
-      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
-      // Store ruling moved sixteen shipped leaves at once. Every helper here
-      // reproduces a game that predates it, so each leaf is pinned BY NAME at
-      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
-      // overlays, and `fixtures.test.ts` already records why that is dangerous:
-      // a copy of a pin stops being a pin. Adding the leaves in both places is
-      // the price of the copy.
-      'aerodrome.moveCost.barnCards': 2,
-      'aerodrome.alwaysInPlay': false,
-      'aerodrome.flightMints': false,
-      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
-      'aerodrome.balloons.balloonDraw.reward.amount': 4,
-      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
-      'aerodrome.balloons.balloonBuild.reward.amount': 4,
-      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
-      'aerodrome.balloons.balloonSow.reward.amount': 4,
-      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
-      'rules.economy.storeCoinsPerCard': 0,
-      'rules.economy.coinSupplyPerPlayer': 0,
-      'rules.economy.coinPaysBuild': false,
-      'rules.economy.coinPaysSuitCost': false,
-      'rules.economy.coinPaysGrow': false,
-      'rules.economy.coinGrowOnFullBuilding': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Every helper here reproduces a game that
+      // predates a ruling, so each moved leaf is pinned BY NAME at its pre-flip
+      // value (the balloon and Village Store leaves went with those systems on
+      // 16/09/2026). ⚠️ These helpers are INLINE COPIES of committed overlays, and
+      // `fixtures.test.ts` records why that is dangerous: a copy of a pin stops
+      // being a pin.
       'rules.turn.visitCurrency': 'meeple',
       // Pinned 13/09/2026, when the shipped default flipped to false.
       'rules.turn.selfVisitAllowed': true,
@@ -1056,15 +758,14 @@ export function meepleEconomyGame(): GameData {
       'rules.turn.meepleAsCardGoesTo': 'board',
       'rules.turn.slotToll': 1,
       'rules.turn.meepleCapPerColour': null,
-      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
-      // choice and the closing draw. This helper predates it, so all six are pinned
-      // off by name ('start' and null are the old inert values).
-      'rules.turn.deliveryMeepleSpace': null,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: the spend window, at its old inert
+      // values ('start' and null). The space choice was deleted on 16/09/2026.
       'rules.turn.meepleSpendTiming': 'start',
       'rules.turn.meepleSpendPerTurn': null,
       'rules.turn.meepleSpendDistinctColours': false,
-      'rules.turn.deliverySpaceChoice': false,
-      'rules.turn.closingDrawPerCrate': 0,
+      // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
+      'rules.economy.noticeBoardPower.vegetableWildCards': 0,
+      'rules.economy.noticeBoardPower.dairyDiscount': 0,
     },
   });
   return meepleEconomyCache;
@@ -1085,6 +786,21 @@ export function visitMove(seat: Seat, host: Seat, colour: Suit): Move {
   return { type: 'visit', seat, host, fee: null, meeples: [colour], colour };
 }
 
+/**
+ * The same data with `rules.turn.bonusSlotsPerTurn` set to `n`: TWO bonus plays
+ * a turn by rule rather than by card.
+ *
+ * ⭐ ADDED 16/09/2026, WHEN THE OLD A HELPING HAND WAS RETIRED. That card was
+ * the only thing that gave a seat a second play, and the tests of S9's
+ * one-use-per-board latch, S17's once-per-visit payment and the visit reactors
+ * that fire on both plays all built it to get one. They widen the slot through
+ * the knob instead, which isolates the rule under test from any card. The
+ * result is a plain copy, not frozen and not validated as an overlay.
+ */
+export function withBonusSlots(data: GameData, n = 2): GameData {
+  return { ...data, rules: { ...data.rules, turn: { ...data.rules.turn, bonusSlotsPerTurn: n } } };
+}
+
 /** Move a specific card from its deck into a hand. */
 export function dealTo(data: GameData, state: GameState, seat: Seat, ...cards: CardId[]): void {
   for (const card of cards) {
@@ -1100,21 +816,27 @@ export function buildFor(data: GameData, state: GameState, seat: Seat, ...cards:
 }
 
 /**
- * Record a free delivery by `seat` on each tile - no barn cards spent, no MEEPLE
- * claimed, no receipt VP on the player. This is how a scenario fills the island
- * without playing the deliveries out.
+ * Record a free delivery by `seat` on each tile - no barn cards spent, no
+ * Worker claimed, no receipt on the player. This is how a scenario fills the
+ * island without playing the deliveries out.
  *
- * It DOES take the tile's delivery space, and since the flat island the space
- * taken is what the VP schedule pays: seeding a tile makes the next real
- * delivery there worth 3 rather than 6. A scenario testing the first-deliverer
- * rate must seed somewhere other than the tile it is testing. It also counts
- * toward the end trigger the moment a real delivery re-reads the island, so
- * seeding six tiles for one seat arms the clock.
+ * ⭐ ON THE TOKEN ISLAND (16/09/2026) it REMOVES the tile's highest-VP token,
+ * as a real first delivery taking it would, so the next real delivery there is
+ * a SECOND delivery (the last token's demand plus 2 any). A scenario testing a
+ * first delivery must seed somewhere other than the tile it is testing. It also
+ * counts toward the end trigger the moment a real delivery re-reads the island,
+ * so seeding six tiles for one seat arms the clock.
  */
 export function deliveredAt(state: GameState, seat: Seat, ...tiles: string[]): void {
   for (const id of tiles) {
     const tile = state.island.tiles.find((t) => t.tile === id);
     if (!tile) throw new Error(`Tile ${id} is not in play`);
+    if (tile.tokens.length === 0) throw new Error(`Tile ${id} has no token left to seed`);
+    let best = 0;
+    tile.tokens.forEach((token, i) => {
+      if (token.vp > (tile.tokens[best]?.vp ?? 0)) best = i;
+    });
+    tile.tokens.splice(best, 1);
     tile.deliveredBy.push(seat);
   }
 }
@@ -1158,30 +880,17 @@ export function meepleLoopGame(): GameData {
     name: 'meeple-loop-v1',
     schemaVersion: 1,
     set: {
+      // ⛔ TURN ORDER PINNED 16/09/2026: Dean ruled a random first player and
+      // finish-the-round on 15/09/2026; this game predates both.
+      'rules.setup.firstPlayer': 'seat0',
+      'rules.endGame.endOfGame': 'oneMoreTurnEach',
       'rules.economy.cropScorerOnBarn': false,
-      // ⛔ PRE-FLIP PINS (12/09/2026). Dean's plain-action balloon and Village
-      // Store ruling moved sixteen shipped leaves at once. Every helper here
-      // reproduces a game that predates it, so each leaf is pinned BY NAME at
-      // its pre-flip value. ⚠️ These helpers are INLINE COPIES of committed
-      // overlays, and `fixtures.test.ts` already records why that is dangerous:
-      // a copy of a pin stops being a pin. Adding the leaves in both places is
-      // the price of the copy.
-      'aerodrome.moveCost.barnCards': 2,
-      'aerodrome.alwaysInPlay': false,
-      'aerodrome.flightMints': false,
-      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
-      'aerodrome.balloons.balloonDraw.reward.amount': 4,
-      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
-      'aerodrome.balloons.balloonBuild.reward.amount': 4,
-      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
-      'aerodrome.balloons.balloonSow.reward.amount': 4,
-      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
-      'rules.economy.storeCoinsPerCard': 0,
-      'rules.economy.coinSupplyPerPlayer': 0,
-      'rules.economy.coinPaysBuild': false,
-      'rules.economy.coinPaysSuitCost': false,
-      'rules.economy.coinPaysGrow': false,
-      'rules.economy.coinGrowOnFullBuilding': false,
+      // ⛔ PRE-FLIP PINS (12/09/2026). Every helper here reproduces a game that
+      // predates a ruling, so each moved leaf is pinned BY NAME at its pre-flip
+      // value (the balloon and Village Store leaves went with those systems on
+      // 16/09/2026). ⚠️ These helpers are INLINE COPIES of committed overlays, and
+      // `fixtures.test.ts` records why that is dangerous: a copy of a pin stops
+      // being a pin.
       'rules.turn.visitCurrency': 'meeple',
       // Pinned 13/09/2026, when the shipped default flipped to false.
       'rules.turn.selfVisitAllowed': true,
@@ -1194,15 +903,14 @@ export function meepleLoopGame(): GameData {
       'rules.turn.meepleAsCard': false,
       'rules.turn.slotToll': null,
       'rules.turn.meepleCapPerColour': 1,
-      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
-      // choice and the closing draw. This helper predates it, so all six are pinned
-      // off by name ('start' and null are the old inert values).
-      'rules.turn.deliveryMeepleSpace': null,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: the spend window, at its old inert
+      // values ('start' and null). The space choice was deleted on 16/09/2026.
       'rules.turn.meepleSpendTiming': 'start',
       'rules.turn.meepleSpendPerTurn': null,
       'rules.turn.meepleSpendDistinctColours': false,
-      'rules.turn.deliverySpaceChoice': false,
-      'rules.turn.closingDrawPerCrate': 0,
+      // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
+      'rules.economy.noticeBoardPower.vegetableWildCards': 0,
+      'rules.economy.noticeBoardPower.dairyDiscount': 0,
     },
   });
   return meepleLoopCache;

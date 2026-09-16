@@ -109,8 +109,6 @@ export function describeAnswer(data: GameData, answer: TaskAnswer, task?: CardTa
       }`;
     case 'deliver':
       return `island ${answer.tile}, spending ${spendText(answer.spend)}`;
-    case 'balloon':
-      return `the ${balloonWord(answer.balloon)} balloon, spending ${spendText(answer.spend)}`;
     case 'deckSow':
       return `the top ${SUIT_META[answer.suit].label} card onto ${cardName(data, answer.onto)}${seatSuffix(answer.ontoSeat)}`;
     case 'handToBarn':
@@ -202,13 +200,6 @@ function describeCardPayload(
       payload.spend as Partial<Record<Suit, number>>,
     )} for BOTH receipts`;
   }
-  // V4 / V8: a flight paid out of hand, and V8's choice of cargo.
-  if (payload.balloon !== undefined) {
-    const cards = payload.cards as string[] | undefined;
-    return cards === undefined
-      ? `the ${balloonWord(String(payload.balloon))} balloon's reward`
-      : `the ${balloonWord(String(payload.balloon))} balloon, discarding ${cardList(data, cards)}`;
-  }
   // The divert seam: a card on its way to a discard, put in the barn instead.
   if (payload.card !== undefined && payload.barn === true) {
     return `put ${cardName(data, String(payload.card))} into your barn instead`;
@@ -249,16 +240,6 @@ function describeCardPayload(
   }
   if (payload.take === true) return 'accept';
   return JSON.stringify(payload);
-}
-
-export function balloonWord(id: string): string {
-  return (
-    id
-      .replace(/balloon/i, '')
-      .replace(/[-_]/g, ' ')
-      .trim()
-      .toLowerCase() || id
-  );
 }
 
 /**
@@ -346,8 +327,6 @@ export function describeMove(data: GameData, view: PlayerView, move: Move): stri
       return `Harvest ${cardName(data, move.building)}`;
     case 'deliver':
       return `Deliver to island ${move.tile}: ${spendText(move.spend)}`;
-    case 'moveBalloon':
-      return `Bring in the ${balloonWord(move.balloon)} balloon: ${spendText(move.spend)}`;
     case 'visit':
       return visitText(data, view, move);
     // TODO(meeple-loop): owned by the ui pass.
@@ -382,7 +361,7 @@ export function describeTask(data: GameData, task: Task): string {
     case 'build':
       return 'Build a card from your hand.';
     case 'deliver':
-      return 'Deliver: choose an island tile, or bring in a balloon.';
+      return 'Deliver: choose an island tile.';
     case 'discard':
       // ⭐ NOT "your barn caps your hand at N" any more (02/09/2026). The limit
       // is one global rule and the Barn prints nothing, so naming the Barn here
@@ -403,14 +382,6 @@ export function describeTask(data: GameData, task: Task): string {
     // fails the build here.
     case 'grow':
       return 'GROW one of your buildings, paying a matching card (a bought Grow: unsupported in this interface, C59).';
-    /**
-     * ⛔ THE VILLAGE STORE'S EXCHANGE (V1, A150, 12/09/2026), unreachable in
-     * the v31 game this package plays - the same admission as `grow` above
-     * (C59): an explicit case, so a genuinely new task kind still fails the
-     * build here.
-     */
-    case 'mint':
-      return `You may exchange ${task.remaining} barn card${task.remaining === 1 ? '' : 's'} for coins at the Village Store (unsupported in this interface, C59).`;
     default:
       return task satisfies never;
   }
@@ -612,25 +583,6 @@ const FAMILIES: readonly {
     hint: 'Barn to the island',
     needsTarget: true,
     zone: 'action',
-  },
-  /*
-   * ON THE BOARD, NOT ON THE BAR (26/08/2026) - the single cut that took the
-   * main phase from nine buttons to eight, and the one worth arguing.
-   *
-   * Freight is not one of the game's actions. The five are Draw, Build, Grow,
-   * Harvest and Deliver, and `moveBalloon` is the DELIVER action's freight
-   * branch: it exists only when Vegetables is at the table, it is one of two
-   * destinations for the same action, and `MOVE_ROUTES` has always said its home
-   * is the balloon.
-   */
-  {
-    key: 'moveBalloon',
-    type: 'moveBalloon',
-    label: 'Freight',
-    hint: 'Bring in a balloon',
-    needsTarget: true,
-    zone: 'action',
-    onBoard: true,
   },
   /*
    * ON THE CARD, NOT ON THE BAR (26/08/2026). A `cardMove` is a standing move a

@@ -127,8 +127,9 @@ export function narrate(
     case 'doorUsed':
       return null;
     case 'meepleGained':
-      // A balloon meeple comes from a bag and from no tile, so the sentence has
-      // to work without one rather than printing "off island null".
+      // The event's tile is nullable (it was, for the deleted bag-draw balloon),
+      // so the sentence has to work without one rather than printing "off
+      // island null".
       return line(
         event.tile === null
           ? `${who(event.seat)} draws the ${SUIT_META[event.colour].label} meeple out of the bag`
@@ -153,11 +154,6 @@ export function narrate(
         `${who(event.seat)} delivers to island ${event.tile} for ${event.vp} VP`,
         event.seat,
       );
-    case 'balloonMoved':
-      return line(
-        `${who(event.seat)} brings in the ${event.balloon.replace('balloon', '').toLowerCase()} balloon`,
-        event.seat,
-      );
     case 'discardToBarn':
       return line(
         `${who(event.seat)} reclaims ${cardWord(data, event.card)} from the discard`,
@@ -165,12 +161,7 @@ export function narrate(
       );
     case 'demandSwapped':
       return line(
-        `${who(event.seat)} swaps the demand on island ${event.a.tile} with island ${event.b.tile}`,
-        event.seat,
-      );
-    case 'demandFaceDown':
-      return line(
-        `${who(event.seat)} turns a demand token on island ${event.tile} face down: it takes any crop now`,
+        `${who(event.seat)} swaps a token on island ${event.a.tile} with one on island ${event.b.tile}`,
         event.seat,
       );
     case 'cardGifted':

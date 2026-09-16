@@ -30,11 +30,9 @@ import { dirname, join, resolve } from 'node:path';
 import type { GameData, Overlay, Suit } from '@gp/data';
 import { BASE_GAME_DATA, loadGameData, validateOverlay } from '@gp/data';
 import {
-  anyBalloonMoveOption,
   anyBuildOption,
   anyDeliverOption,
   buildOptions,
-  balloonMoveOptions,
   deliverOptions,
   growOptions,
   harvestOptions,
@@ -130,11 +128,6 @@ for (let i = 0; i < games; i++) {
             harvestOptions(data, st, seat).length > 0,
           ],
           ['deliver', anyDeliverOption(data, st, seat), deliverOptions(data, st, seat).length > 0],
-          [
-            'balloon',
-            anyBalloonMoveOption(data, st, seat),
-            balloonMoveOptions(data, st, seat).length > 0,
-          ],
         ];
         for (const [name, gate, enumerated] of pairs) {
           if (gate !== enumerated && !disagreements.has(name)) {

@@ -58,6 +58,7 @@ import {
   makeState,
   noticeBoardNoSelfGame,
   noticeBoardTwoBoardsGame,
+  withBonusSlots,
 } from './testkit.js';
 
 const two: GameData = noticeBoardTwoBoardsGame();
@@ -198,22 +199,6 @@ describe('the arithmetic ceiling: seats * (n - 1) must be at most 5 - seats', ()
       'rules.economy.cropScorerOnBarn': false,
       // Pre-flip pins (12/09/2026): this is a named inline copy of a
       // committed overlay, and a copy of a pin stops being a pin.
-      'aerodrome.moveCost.barnCards': 2,
-      'aerodrome.alwaysInPlay': false,
-      'aerodrome.flightMints': false,
-      'aerodrome.balloons.balloonDraw.reward.type': 'draw',
-      'aerodrome.balloons.balloonDraw.reward.amount': 4,
-      'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
-      'aerodrome.balloons.balloonBuild.reward.amount': 4,
-      'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
-      'aerodrome.balloons.balloonSow.reward.amount': 4,
-      'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
-      'rules.economy.storeCoinsPerCard': 0,
-      'rules.economy.coinSupplyPerPlayer': 0,
-      'rules.economy.coinPaysBuild': false,
-      'rules.economy.coinPaysSuitCost': false,
-      'rules.economy.coinPaysGrow': false,
-      'rules.economy.coinGrowOnFullBuilding': false,
       'rules.turn.visitCurrency': 'noticeBoardPower',
       'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
       'rules.economy.noticeBoardsBySeats.2': 1, // pinned 13/09/2026: the default flipped
@@ -222,15 +207,16 @@ describe('the arithmetic ceiling: seats * (n - 1) must be at most 5 - seats', ()
       'rules.economy.noticeBoardThreshold': 3,
       'rules.economy.noticeBoardBlocks': false,
       'rules.economy.noticeBoardsBySeats.3': 2,
-      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
-      // choice and the closing draw. This helper predates it, so all six are pinned
-      // off by name ('start' and null are the old inert values).
-      'rules.turn.deliveryMeepleSpace': null,
+      // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: the spend window, at its old inert
+      // values ('start' and null). The space choice was deleted on 16/09/2026.
       'rules.turn.meepleSpendTiming': 'start',
       'rules.turn.meepleSpendPerTurn': null,
       'rules.turn.meepleSpendDistinctColours': false,
-      'rules.turn.deliverySpaceChoice': false,
-      'rules.turn.closingDrawPerCrate': 0,
+      // ⛔ TOKEN ISLAND PINNED 16/09/2026: this game had no island meeple.
+      'island.tokens.workerOnVp': [],
+      // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
+      'rules.economy.noticeBoardPower.vegetableWildCards': 0,
+      'rules.economy.noticeBoardPower.dairyDiscount': 0,
     },
   });
 
@@ -254,35 +240,20 @@ describe('the arithmetic ceiling: seats * (n - 1) must be at most 5 - seats', ()
         'rules.economy.cropScorerOnBarn': false,
         // Pre-flip pins (12/09/2026): this is a named inline copy of a
         // committed overlay, and a copy of a pin stops being a pin.
-        'aerodrome.moveCost.barnCards': 2,
-        'aerodrome.alwaysInPlay': false,
-        'aerodrome.flightMints': false,
-        'aerodrome.balloons.balloonDraw.reward.type': 'draw',
-        'aerodrome.balloons.balloonDraw.reward.amount': 4,
-        'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
-        'aerodrome.balloons.balloonBuild.reward.amount': 4,
-        'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
-        'aerodrome.balloons.balloonSow.reward.amount': 4,
-        'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
-        'rules.economy.storeCoinsPerCard': 0,
-        'rules.economy.coinSupplyPerPlayer': 0,
-        'rules.economy.coinPaysBuild': false,
-        'rules.economy.coinPaysSuitCost': false,
-        'rules.economy.coinPaysGrow': false,
-        'rules.economy.coinGrowOnFullBuilding': false,
         'rules.turn.visitCurrency': 'noticeBoardPower',
         'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
         'rules.turn.selfVisitAllowed': true, // pinned 13/09/2026: the default flipped
         'rules.economy.noticeBoardsBySeats.2': 0,
-        // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
-        // choice and the closing draw. This helper predates it, so all six are pinned
-        // off by name ('start' and null are the old inert values).
-        'rules.turn.deliveryMeepleSpace': null,
+        // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: the spend window, at its old inert
+        // values ('start' and null). The space choice was deleted on 16/09/2026.
         'rules.turn.meepleSpendTiming': 'start',
         'rules.turn.meepleSpendPerTurn': null,
         'rules.turn.meepleSpendDistinctColours': false,
-        'rules.turn.deliverySpaceChoice': false,
-        'rules.turn.closingDrawPerCrate': 0,
+        // ⛔ TOKEN ISLAND PINNED 16/09/2026: this game had no island meeple.
+        'island.tokens.workerOnVp': [],
+        // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
+        'rules.economy.noticeBoardPower.vegetableWildCards': 0,
+        'rules.economy.noticeBoardPower.dairyDiscount': 0,
       },
     });
     expect(() => newGame(none, { seats: 2, seed: 'x' })).toThrow(/at least one Notice Board/);
@@ -299,15 +270,14 @@ describe('the arithmetic ceiling: seats * (n - 1) must be at most 5 - seats', ()
         'rules.turn.visitCurrency': 'card',
         'rules.turn.selfVisitAllowed': true,
         'rules.economy.noticeBoardsBySeats.2': 2,
-        // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
-        // choice and the closing draw. This helper predates it, so all six are pinned
-        // off by name ('start' and null are the old inert values).
-        'rules.turn.deliveryMeepleSpace': null,
+        // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: the spend window, at its old inert
+        // values ('start' and null). The space choice was deleted on 16/09/2026.
         'rules.turn.meepleSpendTiming': 'start',
         'rules.turn.meepleSpendPerTurn': null,
         'rules.turn.meepleSpendDistinctColours': false,
-        'rules.turn.deliverySpaceChoice': false,
-        'rules.turn.closingDrawPerCrate': 0,
+        // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
+        'rules.economy.noticeBoardPower.vegetableWildCards': 0,
+        'rules.economy.noticeBoardPower.dairyDiscount': 0,
       },
     });
     const s = newGame(cardWithMap, { seats: 2, suits: ['wheat', 'orchard'], seed: 'tb-1' });
@@ -474,41 +444,48 @@ describe('what the enumerator offers under two boards', () => {
 });
 
 // ---------------------------------------------------------------------------
-// ⭐ A HELPING HAND COMES ALIVE AT TWO SEATS FOR THE FIRST TIME
+// ⭐ A SECOND PLAY AT TWO SEATS (S9's latch, and what the arm changes)
 // ---------------------------------------------------------------------------
 
-describe('A Helping Hand at two seats (S9’s latch, and what the arm changes)', () => {
-  /** Seat 0 farms wheat and holds A Helping Hand; seat 1 farms dairy. */
-  function helpingHandPosition(data: GameData): GameState {
+/**
+ * ⚠️ These cases were written for the old A Helping Hand's second bonus play,
+ * retired 16/09/2026. Nothing in the v42 card set gives a second play, so the
+ * slot is widened by rule (`withBonusSlots`) to keep S9's latch covered.
+ */
+describe('a second bonus play at two seats (S9’s latch, and what the arm changes)', () => {
+  const twoWide = withBonusSlots(two);
+  const controlWide = withBonusSlots(control);
+
+  /** Seat 0 farms wheat and may play twice; seat 1 farms dairy. */
+  function twoPlayPosition(data: GameData): GameState {
     const s = position(data, ['wheat', 'dairy']);
-    buildFor(data, s, 0, 'W18');
     dealTo(data, s, 0, 'D9', 'W7', 'W9', 'W10', 'W12', 'W13', 'W14');
     return s;
   }
 
   it('the second play is REACHABLE, and it must go to the OTHER board', () => {
-    const s = helpingHandPosition(two);
+    const s = twoPlayPosition(twoWide);
     // Seats wheat + dairy, so the testkit deals seat 1 the orchard board as
     // its extra: its own D3 plus O3.
-    expect(boardCards(two, s, 1)).toEqual([BOARD.dairy, BOARD.orchard]);
-    const first = apply(two, s, visit(0, 1, 'W7', BOARD.dairy));
+    expect(boardCards(twoWide, s, 1)).toEqual([BOARD.dairy, BOARD.orchard]);
+    const first = apply(twoWide, s, visit(0, 1, 'W7', BOARD.dairy));
     expect(first.state.turn.firedThisTurn).toContain(BOARD.dairy);
-    const after = autoResolve(two, first.state);
-    const second = legalMoves(two, after).filter((m) => m.type === 'visit');
+    const after = autoResolve(twoWide, first.state);
+    const second = legalMoves(twoWide, after).filter((m) => m.type === 'visit');
     expect(second.length).toBeGreaterThan(0);
     expect(second.every((m) => m.type === 'visit' && m.board === BOARD.orchard)).toBe(true);
     // And the latched board is refused by name, not merely unoffered.
     const fee = player(after, 0).hand[0] as CardId;
-    expect(() => apply(two, after, visit(0, 1, fee, BOARD.dairy))).toThrow(/already been used/);
+    expect(() => apply(twoWide, after, visit(0, 1, fee, BOARD.dairy))).toThrow(/already been used/);
   });
 
   it('⛔ and under the CONTROL it can never be taken: one board, latched, nothing left', () => {
-    const s = helpingHandPosition(control);
-    expect(boardCards(control, s, 1)).toEqual([BOARD.dairy]);
-    const first = apply(control, s, visit(0, 1, 'W7'));
-    const after = autoResolve(control, first.state);
+    const s = twoPlayPosition(controlWide);
+    expect(boardCards(controlWide, s, 1)).toEqual([BOARD.dairy]);
+    const first = apply(controlWide, s, visit(0, 1, 'W7'));
+    const after = autoResolve(controlWide, first.state);
     expect(player(after, 0).hand.length).toBeGreaterThan(0);
-    expect(legalMoves(control, after).filter((m) => m.type === 'visit')).toHaveLength(0);
+    expect(legalMoves(controlWide, after).filter((m) => m.type === 'visit')).toHaveLength(0);
   });
 });
 

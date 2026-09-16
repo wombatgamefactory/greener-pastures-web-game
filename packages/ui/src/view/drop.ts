@@ -44,7 +44,6 @@ export const DROP_ATTR = 'data-drop';
  *
  * The `null`s are the interesting half and each one is a judgement:
  *  - **tiles** take barn cards, not hand cards. A delivery is chosen, not carried.
- *  - **balloons** are freight moved by the Deliver action; nothing is placed on them.
  *  - **meeples** are wooden pieces in your own supply, spent by clicking them.
  *    Nothing is placed on a meeple and nothing ever will be.
  *  - **decks** are where cards come FROM.
@@ -58,7 +57,6 @@ export const DROP_FAMILIES = {
   buildings: 'building',
   hosts: 'host',
   tiles: null,
-  balloons: null,
   meeples: null,
   decks: null,
   hand: null,

@@ -1,96 +1,204 @@
 /**
- * A Helping Hand - one Power card per suit (W18/V18/O18/A18/D18), identical
- * text on all five copies:
+ * THE FIVE v42 HELPING HANDS (W18, A18, D18, O18, V18), one Power card per
+ * suit, sharing a name and nothing else (sheet v42, ledger A163). Built
+ * 16/09/2026.
  *
- *   "Each turn, you may take both bonus options: Draw 1 AND place a card on a
- *    Notice Board."
+ * Dean's rule for the set: *"the task you are asked to perform to qualify for
+ * the reward must be special and intentional, rather than just ordinary"*.
  *
- * REWRITTEN FOR v31 (Dean, 02/09/2026, plan section 3.1). It is now a BONUS-SLOT
- * MODIFIER and nothing else: roughly +1 card and one guaranteed door use a turn,
- * always live, with no trigger to remember.
+ *   W18  If, on your turn, you Harvest two or more of your buildings, Draw 3.
+ *   A18  If, on your turn, you fill one of your buildings, sow the top card of
+ *        any deck onto another of your buildings.
+ *   D18  If, on your turn, you Build two buildings, put the top 2 cards of any
+ *        one deck into your Barn.
+ *   O18  At the end of your turn, Draw until you have at least 3 cards in hand.
+ *   V18  After you Deliver, if your Barn has 1 or fewer cards, Draw 3.
  *
- * ⛔ WHAT IT USED TO BE, AND WHY THE SHAPE HAD TO GO. From 2026-08-10 it read
- * "When you VISIT a neighbour and use their Service, you may place a second card
- * on it to use it again", and it was the card that forced standing moves
- * (`handler.moves` / `applyMove`) into the handler API - the repeat was a real
- * optional MOVE between moves, offered by legalMoves while a gate held in
- * `turn.visit` stayed open. Every referent in that sentence is gone: there is no
- * Service, there is no wage to pay the host a second time, and `turn.visit` was
- * deleted with the gate. The denial angle it carried is gone with it - repeating
- * a visit drove the target toward its clog in half the turns - and that is worth
- * recording as a LOSS rather than a tidy-up, because it was the one card in the
- * game that let a player deliberately shut a door.
+ * Every one is owner-only and passive. Each fires every time its condition is
+ * NEWLY met (Dean, 15/09/2026: the fire-once rule is deleted), which for W18,
+ * D18 and O18 is at most once a turn by construction: a count passes 2 once,
+ * and the end of a turn happens once.
  *
- * ⭐ THE NEW SHAPE NEEDS NO HANDLER BODY AT ALL, and that is the whole of its
- * teach cost coming down. `bonusSlotsFor` (actions.ts) reads the printed rule
- * plus whatever card text grants, so "take both options" falls out of the
- * existing `bonusUsed` logic: two slots, and `bonusOpen(option)` already refuses
- * a second Draw 1 or a second placement, so the card gives ONE OF EACH and never
- * two of either. The wiring is `wireExtraBonusSlots`, called by registry.ts at
- * import time exactly as it calls `wireHookBus` - an indirection, not laziness,
- * because actions.ts may not import the registry (this file imports actions.ts,
- * and a value cycle between the two would be fragile).
+ * ⛔ THE OLD CARD IS RETIRED. From v31 to 16/09/2026 all five copies printed
+ * *"Each turn, you may take both bonus options"*, which under the notice-board
+ * visit became a SECOND PLAY onto a different board, through a
+ * `wireExtraBonusSlots` seam in actions/bonus.ts that this module installed at
+ * import time. The seam is deleted with it (see `bonusSlotsFor`). Before v31
+ * the card was a standing move ("place a second card to use the Service
+ * again"), which is why the handler API has `moves` / `applyMove` at all; no
+ * card declares them now.
  *
- * ⚠️ DUPLICATES DO NOT STACK, and the cap is written down rather than left to
- * emerge. There are exactly TWO bonus options, so a second copy could only ever
- * grant a slot with nothing legal to spend it on; capping at 1 says that in the
- * code instead of relying on `bonusOpen` to refuse it one layer down. If a third
- * bonus option is ever printed, this cap is the line to revisit.
- *
- * ⭐ AND UNDER THE TWO NEWEST DESIGNS THE SLOT HOLDS ONE OPTION, SO THE CARD
- * GRANTS A SECOND USE OF IT RATHER THAN THE OTHER HALF. `bonusOpen` exempts
- * `'commons'` (C9, 09/09/2026) and `'visit'` under `visitCurrency:
- * 'noticeBoardPower'` (S9, 10/09/2026) from its "one of each" refusal, because
- * otherwise this card would grant a seat nothing at all. ⛔ UNDER S9 THE TWO
- * PLAYS MUST GO TO DIFFERENT BOARDS - a board may be used once per turn, and
- * `enumerateNoticeBoardVisits` is where that is enforced - which is also why
- * A17 The Smoke Pot and O16 The Fruit Store gained per-turn guards that day:
- * this card is the only thing in the game that can make a placement reactor
- * fire twice in one turn.
+ * The per-turn counts are kept by the ENGINE (`turn.harvestsThisTurn` in
+ * `Fx.harvest`, `turn.buildsThisTurn` in `placeBuilt`), not by these
+ * listeners, so a Helping Hand built part-way through a turn still counts what
+ * came before it. O18 listens on `beforeTurnEnd`, a hook added for it.
  */
 
-import { wireExtraBonusSlots } from '../actions.js';
-import type { GameData } from '@gp/data';
-import { builtCopies } from '../query.js';
-import type { GameState, Seat } from '../state.js';
+import type { Suit } from '@gp/data';
+
+import type { Fx } from '../fx.js';
+import { canSowOnto, drawableSuits, player, thresholdOf } from '../query.js';
+import type { CardId, Seat, TaskAnswer } from '../state.js';
+import { isNoticeBoardCard, ownBuildings } from './buildings.js';
 import type { CardHandler } from './types.js';
 
-/** The card's shared name in cards.json - all five copies print it. */
-const HELPING_HAND = 'Helping Hand';
-
-/**
- * Extra bonus options this seat's built cards grant, on top of
- * `rules.turn.bonusSlotsPerTurn`.
- *
- * Exported for the registry to wire and for the tests to call directly; it is a
- * pure read of the tableau, so it is safe to call from an enumerator.
- */
-export function extraBonusSlots(data: GameData, state: GameState, seat: Seat): number {
-  return Math.min(1, builtCopies(data, state, seat, HELPING_HAND));
+/** A card-ability "Draw N": see N, keep N, each card from a deck of the player's choice. */
+function drawN(fx: Fx, pid: Seat, src: CardId, n: number): void {
+  fx.pushTask({ t: 'draw', pid, src, see: n, keep: n, revealed: [] });
 }
 
-/** Install the lookup. Called once, from registry.ts, at import time. */
-export function wireHelpingHand(): void {
-  wireExtraBonusSlots(extraBonusSlots);
+/** "On your turn": the listener's owner is the seat whose turn it is. */
+function onOwnTurn(fx: Fx, seat: Seat): boolean {
+  return fx.state.turnPlayer === seat;
 }
 
-export const helpingHand: CardHandler = {
+/** W18 A Helping Hand - "If, on your turn, you Harvest two or more of your buildings, Draw 3." */
+export const helpingHandWheat: CardHandler = {
   difficulty: {
     score: 2,
-    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: true, conditional: true, counts: true, interrupts: false },
     notes:
-      'Difficulty 5 to 2, and the drop is the v31 rewrite in one number. It was the hardest ' +
-      'card in the game to implement - a standing move, a turn-scoped gate, a re-entry into ' +
-      'the visit funnel and a second wage - and it is now a modifier on a counter. No prompt, ' +
-      'no move, no hook: the whole behaviour is +1 bonus option, read by bonusSlotsFor. ' +
-      'crossPlayer goes FALSE, which is worth reading rather than skipping past: the card no ' +
-      'longer does anything to anybody else by itself. What it grants is a second bonus ' +
-      'option, and whether that option is spent on a neighbour is the holder’s choice - so ' +
-      'the card now points at the hook only as strongly as the player does. ' +
-      '⚠️ IT IS THE ONE CARD IN THE GAME THAT PRINTS MORE ACTIONS, in a pass whose named ' +
-      'risk 1 is action inflation. Five copies at 2 own-suit cards each is a cheap, always-on ' +
-      '+1 card and +1 door use per turn; if actions-resolved-per-turn comes back high, this ' +
-      'is a first suspect and the dial is the cost, not the text.',
+      'Fires on the harvest that brings the count to exactly 2, so once a turn however many ' +
+      'more follow. READING: every building of yours harvested on your turn counts, by any ' +
+      'route - the Harvest action, the Wheat Notice Board, W8, W11, W12, W13 - and a Notice ' +
+      'Board is a building. The count is `turn.harvestsThisTurn`, written by `Fx.harvest` ' +
+      'before the hook, which is the new primitive. W13 The Bakery emptying several ' +
+      'buildings reaches it on its own. The draw is the ordinary Draw 3 task, the player ' +
+      'choosing each deck; a card-ability draw, so no Orchard modifier.',
+  },
+  on: {
+    afterHarvest(fx, event, self) {
+      if (event.seat !== self.seat || !onOwnTurn(fx, self.seat)) return;
+      if (fx.state.turn.harvestsThisTurn !== 2) return;
+      drawN(fx, self.seat, self.card, 3);
+    },
+  },
+};
+
+/**
+ * A18 A Helping Hand - "If, on your turn, you fill one of your buildings, sow
+ * the top card of any deck onto another of your buildings."
+ */
+export const helpingHandApiary: CardHandler = {
+  difficulty: {
+    score: 3,
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
+    notes:
+      'READING: "fill" is a card landing on one of your buildings that brings its stack to ' +
+      'EXACTLY its threshold on this placement; a stack already full (D5 sows past it) is not ' +
+      'filled again, and a Notice Board, whose 3+ is a minimum that never fills, never ' +
+      'counts. ⭐ BUILDER DEFAULT (16/09/2026, not ruled): ANY placement you make counts - a ' +
+      "GROW payment, a sow, a deck sow from one of your own cards - and A18's own sow can " +
+      'fill another building and fire it again. That chain is bounded: each fill needs a ' +
+      'non-full building and every link fills one. The sow is one `sowFromDeck` task, the ' +
+      'player choosing deck and building, onto any of your buildings bar the one just filled ' +
+      'and bar Notice Boards; it is mandatory as printed and skipped when nothing has room.',
+  },
+  on: {
+    afterPlacement(fx, event, self) {
+      if (event.seat !== self.seat || event.onto.seat !== self.seat) return;
+      if (!onOwnTurn(fx, self.seat)) return;
+      if (isNoticeBoardCard(fx.data, event.onto.card)) return;
+      const filled = player(fx.state, self.seat).tableau.find((b) => b.card === event.onto.card);
+      if (filled === undefined) return;
+      if (event.stackSize !== thresholdOf(fx.data, filled)) return;
+      const targets = ownBuildings(fx.data, fx.state, self.seat)
+        .filter((b) => b.card !== filled.card && !isNoticeBoardCard(fx.data, b.card))
+        .filter((b) => canSowOnto(fx.data, b))
+        .map((b) => ({ seat: self.seat, card: b.card }));
+      if (targets.length === 0 || drawableSuits(fx.data, fx.state).length === 0) return;
+      fx.pushTask({ t: 'sowFromDeck', pid: self.seat, src: self.card, remaining: 1, targets });
+    },
+  },
+};
+
+/**
+ * D18 A Helping Hand - "If, on your turn, you Build two buildings, put the top 2
+ * cards of any one deck into your Barn."
+ */
+export const helpingHandDairy: CardHandler = {
+  difficulty: {
+    score: 2,
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: true, conditional: true, counts: true, interrupts: false },
+    notes:
+      'Fires on the build that brings the count to exactly 2, so once a turn. ⭐ BUILDER ' +
+      'DEFAULT (16/09/2026, not ruled): "buildings" is read as ANY card built, Power and ' +
+      'Endgame cards included, because the card says Build and a Build is how they arrive; ' +
+      'D18 itself counts if it is the second build. Every route counts - the Build action, ' +
+      'the Dairy Notice Board, W7, D10, D13. The count is `turn.buildsThisTurn`, written by ' +
+      '`placeBuilt` before the hook. ONE choice, the deck, then its top two cards straight ' +
+      'to the barn (the W15 Patisserie shape); a deck that runs out mid-way reshuffles its ' +
+      'own discard as everywhere.',
+  },
+  on: {
+    afterBuild(fx, event, self) {
+      if (event.seat !== self.seat || !onOwnTurn(fx, self.seat)) return;
+      if (fx.state.turn.buildsThisTurn !== 2) return;
+      if (drawableSuits(fx.data, fx.state).length === 0) return;
+      fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'd18Deck', riders: {} });
+    },
+  },
+  tasks: {
+    d18Deck: {
+      answers(data, state) {
+        return drawableSuits(data, state).map(
+          (suit) => ({ kind: 'card', payload: { suit } }) as TaskAnswer,
+        );
+      },
+      resolve(fx, task, answer) {
+        if (answer.kind !== 'card') throw new Error('d18Deck expects a card answer');
+        const suit = answer.payload.suit as Suit;
+        for (let i = 0; i < 2; i++) fx.deckTopToBarn(task.pid, suit);
+        return true;
+      },
+    },
+  },
+};
+
+/** O18 A Helping Hand - "At the end of your turn, Draw until you have at least 3 cards in hand." */
+export const helpingHandOrchard: CardHandler = {
+  difficulty: {
+    score: 2,
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: true, conditional: true, counts: true, interrupts: true },
+    notes:
+      'The only listener on `beforeTurnEnd`, a hook added for it: `finishTurn` fires it once ' +
+      'a turn, before the hand-limit discard, and suspends the boundary while the draw is ' +
+      'answered. Draws 3 minus the hand as one Draw task, the player choosing each deck; a ' +
+      'hand of 3 or more draws nothing. Fires on every turn of its owner, whatever the turn ' +
+      "did, which makes it Orchard's floor under a hand that the visit fees keep emptying.",
+  },
+  on: {
+    beforeTurnEnd(fx, event, self) {
+      if (event.seat !== self.seat) return;
+      const short = 3 - player(fx.state, self.seat).hand.length;
+      if (short <= 0 || drawableSuits(fx.data, fx.state).length === 0) return;
+      drawN(fx, self.seat, self.card, short);
+    },
+  },
+};
+
+/** V18 A Helping Hand - "After you Deliver, if your Barn has 1 or fewer cards, Draw 3." */
+export const helpingHandVegetable: CardHandler = {
+  difficulty: {
+    score: 1,
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
+    notes:
+      'Reads the barn when `afterDeliver` fires, which is after the delivery has been paid ' +
+      'out of it. Your own deliveries only. ⭐ BUILDER DEFAULT (16/09/2026, not ruled): if a ' +
+      'second "whenever you Deliver" card (V16, a later slice) also fires, the order is the ' +
+      "active player's choice; until that exists V18 simply reads the barn as its hook runs, " +
+      'which is hook (tableau) order.',
+  },
+  on: {
+    afterDeliver(fx, event, self) {
+      if (event.seat !== self.seat) return;
+      if (player(fx.state, self.seat).barn.length > 1) return;
+      drawN(fx, self.seat, self.card, 3);
+    },
   },
 };

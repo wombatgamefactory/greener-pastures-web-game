@@ -86,9 +86,17 @@ import type { GameData, Suit } from '@gp/data';
 import { doBuild, freeHandSpace, paymentOptions, placeBuilt } from '../actions.js';
 import type { BuildMods } from '../actions.js';
 import type { Fx } from '../fx.js';
-import { canSowOnto, cardById, drawableSuits, foreignCropBuildings, player } from '../query.js';
+import {
+  canSowOnto,
+  cardById,
+  drawableSuits,
+  foreignCropBuildings,
+  player,
+  thresholdOf,
+} from '../query.js';
 import { REVEAL_RIDER, pickFromReveal, revealedIn } from '../state.js';
 import type { CardId, GameState, Seat, TaskAnswer } from '../state.js';
+import { builtBuildingsWorth } from './buildings.js';
 import { barnCropScorer, farmsteadHandler } from './farmstead.js';
 import type { CardHandler } from './types.js';
 
@@ -106,8 +114,9 @@ const CREAMERY_REVEALS = 2;
 const SHED_NAME = /\bShed\b/;
 
 /**
- * SHED sub-type membership, by whole-word title keyword (reference DL-42). The
- * Barn's build rider and D21 The Refinery both read it, so it is written once.
+ * SHED sub-type membership, by whole-word title keyword (reference DL-42).
+ * ⭐ No card reads it since v42 (16/09/2026): the Barn's build rider went in
+ * v31 and D21 now counts 3VP buildings. Kept exported for the simulator.
  */
 export function isShedCard(data: GameData, id: CardId): boolean {
   return SHED_NAME.test(cardById(data, id).name);
@@ -311,13 +320,23 @@ export const milkingShed: CardHandler = {
   },
 };
 
-/** D5 The Churning Shed - "Build. SOW the cards you spend onto the new building." */
+/**
+ * D5 The Churning Shed - "Build. SOW the cards you spend onto the new building,
+ * even if the threshold is exceeded." (v42 adds the last clause.)
+ */
 export const churningShed: CardHandler = {
   difficulty: {
     score: 4,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: true, counts: true, interrupts: false },
+    asserted: { newPrimitive: true, conditional: true, counts: true, interrupts: false },
     notes:
+      '⭐ v42: the sow no longer stops at the threshold. Every card the build spent that is ' +
+      'still face up in its discard goes onto the new building, through ' +
+      '`fx.placeFromDiscardPastThreshold` (the one primitive that waives fullness), so a ' +
+      'cheap high-threshold building can arrive over-full; a stack at or above its threshold ' +
+      'is full and harvestable as usual. Still refused: a card with no threshold (a Power or ' +
+      'Endgame card has no stack, so the task has no answers) and a Notice Board. The ' +
+      'sentence below about a full building stopping the enumeration is history. ' +
       'Alters THE RESIDUE, at home, and it is the spiciest card in the tier: the cards you ' +
       'spend land on the thing you built, so a new building can ARRIVE FULL and be harvested ' +
       "next action. Needs to know what its OWN build spent, which is what afterBuild's `src` " +
@@ -351,9 +370,10 @@ export const churningShed: CardHandler = {
         const built = task.riders.built as CardId;
         const target = player(state, task.pid).tableau.find((b) => b.card === built);
         if (!target) return [];
-        const threshold = cardById(data, built).threshold;
-        if (threshold === null || threshold === undefined) return [];
-        if (target.stack.length >= threshold) return [];
+        // "Even if the threshold is exceeded" (v42): no fullness check, only
+        // "does this card have a stack at all".
+        if (thresholdOf(data, target) === null) return [];
+        if (cardById(data, built).slot === 'noticeboard') return [];
         // Only the cards THIS build spent, and only while they are still the
         // face-up cards we discarded - no reaching into the pile's history, and
         // no reaching for one the Farmstead has already banked.
@@ -363,13 +383,13 @@ export const churningShed: CardHandler = {
       },
       resolve(fx, task, answer) {
         if (answer.kind !== 'card') throw new Error('sowSpent expects a card answer');
-        fx.placeFromDiscard(
+        fx.placeFromDiscardPastThreshold(
           task.pid,
           { seat: task.pid, card: task.riders.built as CardId },
           answer.payload.card as CardId,
         );
         // Plural: stay for the next card. The enumerator drops the task once
-        // the building fills or nothing spent is left in the discard.
+        // nothing spent is left in the discard.
         return false;
       },
     },
@@ -607,13 +627,8 @@ export const scoutsPost: CardHandler = {
                 // R15: the meeple half of the payment, as a count per colour.
                 ...(pay.meeples === undefined ? {} : { meeples: pay.meeples }),
                 ...(pay.wildPairs === undefined ? {} : { wildPairs: pay.wildPairs }),
-                // ⭐ V6 (A150, 12/09/2026): the COIN half of the payment, a
-                // count and never a choice of which coins. It rides on the
-                // answer for exactly the reason `meeples` does two lines up -
-                // an answer that dropped it is an answer that cannot pay, and
-                // `doBuild` would throw "costs N cards, got N-j" a long way
-                // from the seam that lost it.
-                ...(pay.coins === undefined ? {} : { coins: pay.coins }),
+                // The Village Store coin half of the payment stood here and went
+                // with the coin (16/09/2026).
               },
             });
           }
@@ -644,9 +659,6 @@ export const scoutsPost: CardHandler = {
               ...(answer.payload.wildPairs === undefined
                 ? {}
                 : { wildPairs: answer.payload.wildPairs as number }),
-              ...(answer.payload.coins === undefined
-                ? {}
-                : { coins: answer.payload.coins as number }),
             },
             { discount: 2 },
             task.src,
@@ -1159,13 +1171,20 @@ export const countingHouse: CardHandler = {
   },
 };
 
-/** D21 The Refinery - "Game end: 2 VP for each SHED you have built." */
+/**
+ * D21 The Refinery - "Game end: 3 VP for each 3VP building you have built."
+ * (v42; was 2 VP for each SHED.)
+ */
 export const refinery: CardHandler = {
   difficulty: {
     score: 1,
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: true },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
+      '⭐ v42: 3 VP for each building you have built whose PRINTED VP is exactly 3, of any ' +
+      'suit (`builtBuildingsWorth`, buildings.ts). Buildings only, never a Power or Endgame ' +
+      'card, never a starter. One of a family with A20 (1VP buildings) and O20 (2VP ' +
+      'buildings). The SHED count below is history. ' +
       '⛔ REPLACED (v31, plan section 3.2). It read "2 VP for each of your starters showing ' +
       'its upgraded side" and lost its referent outright: there are no upgraded faces left ' +
       'to show. The replacement fills the one gap in an existing set - A20 scores HIVEs, ' +
@@ -1184,6 +1203,6 @@ export const refinery: CardHandler = {
       '(D14) has left the tableau and stops counting, which is the cost of demolishing.',
   },
   gameEnd(data, state, seat) {
-    return 2 * player(state, seat).tableau.filter((b) => isShedCard(data, b.card)).length;
+    return 3 * builtBuildingsWorth(data, state, seat, 3);
   },
 };

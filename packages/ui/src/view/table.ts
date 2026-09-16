@@ -9,7 +9,15 @@
 
 import type { GameData, Suit, WorkerAction } from '@gp/data';
 import { doorForSuit } from '@gp/data';
-import type { BuildingView, CardId, PlayerView, RivalView, Seat, WorkerState } from '@gp/engine';
+import type {
+  BuildingView,
+  CardId,
+  PlayerView,
+  Receipt,
+  RivalView,
+  Seat,
+  WorkerState,
+} from '@gp/engine';
 
 import { printedFace } from './printed';
 
@@ -73,7 +81,7 @@ export interface Farm {
    */
   readonly meeples: Readonly<Record<Suit, number>>;
   readonly tableau: readonly BuildingView[];
-  readonly receipts: readonly number[];
+  readonly receipts: readonly Receipt[];
   readonly handCount: number;
   readonly barnCount: number;
 }
@@ -257,8 +265,8 @@ export function boardsOwnedBy(view: PlayerView, seat: Seat): WorkerState[] {
   return view.fair.filter((w) => w.owner === seat);
 }
 
-export function receiptTotal(receipts: readonly number[]): number {
-  return receipts.reduce((a, b) => a + b, 0);
+export function receiptTotal(receipts: readonly Receipt[]): number {
+  return receipts.reduce((a, r) => a + r.vp, 0);
 }
 
 /**

@@ -67,16 +67,6 @@ interface BuildAct {
    * HOW a build is being paid rather than of which cards it burns.
    */
   readonly meeples: number;
-  /**
-   * ⭐ COINS SPENT AT THE VILLAGE STORE (A150), as a COUNT. Live in the shipped
-   * game since Dean's ruling of 12/09/2026: a coin is a wild card on a build,
-   * so it is a FOURTH payment source, and exactly like the stacks and the
-   * meeples it is part of HOW a build is paid. A coin-paid build spends fewer
-   * hand cards by construction, so leaving this out of the method key made the
-   * case below compare a coin payment against a card payment and report the
-   * bot as choosing the dearer junk when it had chosen a different METHOD.
-   */
-  readonly coins: number;
 }
 
 function buildAct(move: Move): BuildAct | null {
@@ -87,7 +77,6 @@ function buildAct(move: Move): BuildAct | null {
         payment: act.payment,
         stacks: act.stacks,
         meeples: act.meeples.length,
-        coins: act.coins,
       }
     : null;
 }
@@ -102,9 +91,7 @@ function buildAct(move: Move): BuildAct | null {
  * is what prices that trade.
  */
 function sameMethod(a: BuildAct, b: BuildAct): boolean {
-  return (
-    a.card === b.card && a.stacks === b.stacks && a.meeples === b.meeples && a.coins === b.coins
-  );
+  return a.card === b.card && a.stacks === b.stacks && a.meeples === b.meeples;
 }
 
 // --- view safety -----------------------------------------------------------
@@ -117,7 +104,7 @@ function sameMethod(a: BuildAct, b: BuildAct): boolean {
  * task carries a tile in a payload today; if another one appears, it lands here
  * rather than in the violation list.
  */
-const NON_CARD_KEYS = new Set(['tile', 'balloon']);
+const NON_CARD_KEYS = new Set(['tile']);
 
 /**
  * Card ids a move names, extracted structurally rather than by pattern, for the

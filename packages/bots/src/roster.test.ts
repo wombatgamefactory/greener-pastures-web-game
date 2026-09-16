@@ -78,33 +78,6 @@ describe('weight tables', () => {
     expect(table['meepleSpend']).toBe(table['meepleGain']);
   });
 
-  it('pins the coin price to itself in both directions', () => {
-    // ⭐ K7-K15 (10/09/2026), and the same arrangement the meeple has above: one
-    // price for a coin whichever direction it travels, so the books balance and
-    // the decision to spend turns entirely on whether the thing bought beats
-    // holding it. ⚠️ It also keeps a19's headline honest - "coins spent on the
-    // Farmstead against on Endgame cards" would be reporting this table rather
-    // than the rules if the two sinks were charged at different prices, and the
-    // two sinks are charged through DIFFERENT ROUTES (the event for the probed
-    // Farmstead Grow, the `coinSpend` move term for the unprobed build), which
-    // is exactly how a pair of numbers drifts apart unnoticed.
-    const table = weightsFor('balanced');
-    expect(table['coinSpend']).toBe(table['coinWorth']);
-  });
-
-  it('leaves the coin at one argued price in every profile', () => {
-    // ⛔ NO PROFILE OVERRIDES EITHER, deliberately: the arm's own readings are
-    // the play / take split and the Farmstead-against-Endgame split, and both
-    // are the shape of result a manufactured taste flips on its own. A hoarding
-    // taste belongs in a profile the day somebody wants to bracket that reading
-    // the way `hermit` and `socialite` bracket the play rate.
-    for (const profile of Object.keys(PROFILES)) {
-      const table = weightsFor(profile);
-      expect(table['coinWorth'], `${profile}.coinWorth`).toBe(weightsFor('balanced')['coinWorth']);
-      expect(table['coinSpend'], `${profile}.coinSpend`).toBe(weightsFor('balanced')['coinSpend']);
-    }
-  });
-
   it('pins the Farmstead VP to the printed VP it sits beside', () => {
     // 1 VP through the Farmstead is 1 VP through the card, so one weight.
     const table = weightsFor('balanced');

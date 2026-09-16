@@ -25,7 +25,12 @@ import {
 } from '../query.js';
 import type { BonusOption, CardId, GameState, Move, Seat } from '../state.js';
 import { markFiredOnTurn } from '../state.js';
-import { fireNoticeBoardPower, meepleActionOf, performDoorAction } from '../workers.js';
+import {
+  dairyBoardMods,
+  fireNoticeBoardPower,
+  meepleActionOf,
+  performDoorAction,
+} from '../workers.js';
 import type { GameData, Suit } from '@gp/data';
 import {
   hostDrawCapPerRound,
@@ -37,7 +42,7 @@ import {
   meepleSpendTiming,
 } from '@gp/data';
 import { anyBuildOption } from './build.js';
-import { doorActionLegal, workerActionLegal } from './doors.js';
+import { doorActionLegal, vegetableBoardCanDeliver, workerActionLegal } from './doors.js';
 import { deckGrowOptions } from './grow.js';
 import { meepleFills, slotTollOf } from './meeples.js';
 import { withoutFirst } from './shared.js';
@@ -45,30 +50,21 @@ import { withoutFirst } from './shared.js';
 // --- The bonus slot --------------------------------------------------------
 
 /**
- * EXTRA BONUS OPTIONS granted by card text, on top of
- * `rules.turn.bonusSlotsPerTurn`.
+ * How many bonus options this seat may take this turn: `rules.turn.bonusSlotsPerTurn`,
+ * and nothing else.
  *
- * Wired at import time by the handler registry, exactly as `wireHookBus` wires
- * the hook bus in fx.ts, and for the same reason: A Helping Hand's v31 text is
- * *"Each turn, you may take both bonus options: Draw 1 AND place a card on a
- * Notice Board"*, so the number of slots is a property of a BUILT CARD - but
- * actions.ts may not import the handler registry (the Helping Hand imports
- * actions.ts for `workerActionLegal`, and a value cycle between the two would be
- * fragile). An indirection, not laziness.
- *
- * Unwired it contributes nothing, so the printed rule stands on its own and
- * every test that never touches a Helping Hand behaves identically.
+ * ⛔ THE CARD-TEXT HALF IS GONE (16/09/2026). This used to add whatever built
+ * cards granted, through a `wireExtraBonusSlots` lookup the handler registry
+ * installed at import time, and its only producer was the old A Helping Hand
+ * (W18/V18/O18/A18/D18): *"Each turn, you may take both bonus options"*, which
+ * under the notice-board visit became a SECOND PLAY onto a different board. The
+ * v42 sheet prints five different per-suit Helping Hands, none of which widens
+ * the slot, so the second play left the game and the seam was deleted with its
+ * only user rather than left wired to nothing. A future card that widens the
+ * slot needs the seam back. `seat` is kept so callers need not change.
  */
-type ExtraBonusLookup = (data: GameData, state: GameState, seat: Seat) => number;
-let extraBonusLookup: ExtraBonusLookup | null = null;
-
-export function wireExtraBonusSlots(lookup: ExtraBonusLookup): void {
-  extraBonusLookup = lookup;
-}
-
-/** How many bonus options this seat may take this turn: the printed one, plus card text. */
-export function bonusSlotsFor(data: GameData, state: GameState, seat: Seat): number {
-  return data.rules.turn.bonusSlotsPerTurn + (extraBonusLookup?.(data, state, seat) ?? 0);
+export function bonusSlotsFor(data: GameData, _state: GameState, _seat: Seat): number {
+  return data.rules.turn.bonusSlotsPerTurn;
 }
 
 /**
@@ -86,8 +82,9 @@ export function bonusSlotsFor(data: GameData, state: GameState, seat: Seat): num
  *   `'any'`    v14's "once per turn, at any point". Always open.
  *
  * With `option` given it also answers "is THIS half still available?", which is
- * what stops a seat holding a Helping Hand from taking Draw 1 twice: the card
- * grants both options, not two of either.
+ * what stopped a seat holding the old A Helping Hand (retired 16/09/2026) from
+ * taking Draw 1 twice under the controls: it granted both options, not two of
+ * either. It still matters wherever `bonusSlotsPerTurn` is above 1.
  *
  * ⭐ WHAT THE CORRECTION CHANGES, and it is not a power level. Under `'start'`
  * a door could FUEL the action after it (visit the Orchard door for Draw 3, then
@@ -106,13 +103,18 @@ export function bonusOpen(data: GameData, state: GameState, option?: BonusOption
   const turn = state.turn;
   if (turn.bonusUsed.length >= bonusSlotsFor(data, state, state.turnPlayer)) return false;
   // ⭐ THE NOTICE-BOARD VISIT IS EXEMPT FROM "ONE OF EACH" (S9, 10/09/2026):
-  // its slot holds ONE option, the visit, so
-  // refusing a second use of it would make A Helping Hand grant a seat nothing
-  // at all. What stops the two plays being the same play is not this rule but
-  // S9's ONE-USE-PER-BOARD latch in `enumerateNoticeBoardVisits`, which sends
-  // the second bonus to a DIFFERENT board. The exemption is keyed on the mode
-  // as well as the option, because `'visit'` is producible under three
-  // currencies and only this one widens the slot.
+  // its slot holds ONE option, the visit, so refusing a second use of it would
+  // make a second slot worth nothing at all. What stops two plays being the
+  // same play is not this rule but S9's ONE-USE-PER-BOARD latch in
+  // `enumerateNoticeBoardVisits`, which sends the second bonus to a DIFFERENT
+  // board. The exemption is keyed on the mode as well as the option, because
+  // `'visit'` is producible under three currencies and only this one widens
+  // the slot.
+  //
+  // ⚠️ SINCE 16/09/2026 ITS ONLY SUBJECT IS `bonusSlotsPerTurn` ABOVE 1. The
+  // card that made it live, the old A Helping Hand's second play, is retired
+  // (see `bonusSlotsFor`); in the shipped game one slot is all there is, and
+  // the tests that pin S9's latch widen the slot through that knob instead.
   if (
     option !== undefined &&
     !(option === 'visit' && isNoticeBoardPower(data)) &&
@@ -189,8 +191,8 @@ export function meepleSpendOpen(data: GameData, state: GameState): boolean {
  *
  * ⛔ **IT IS THE ONE PREDICATE THAT DECIDES WHETHER `turn.meeplesSpent` IS
  * WRITTEN**, and that is the whole of the inertness argument: the field is
- * ABSENT under the shipped game and all three named controls, exactly as
- * `PlayerState.coins` is, so no serialised state and no view moves for a rule
+ * ABSENT under the shipped game and all three named controls, so no
+ * serialised state and no view moves for a rule
  * nothing is running. Nine fixtures depend on that kind of absence.
  */
 function meepleSpendRationed(data: GameData): boolean {
@@ -270,8 +272,9 @@ export function meepleOptions(data: GameData, state: GameState, seat: Seat): Sui
  * THE GAME.
  *
  * It returns to no pool, which is the whole economy: under the v31 control the
- * island is the only source, and under M4 the only source is the 3 VP delivery
- * space, so every meeple spent is one fewer action left in the game for anybody.
+ * island is the only source, and under M4 the only source is the island's 3
+ * and 4 VP tokens (the Workers, since 16/09/2026), so every meeple spent is one
+ * fewer action left in the game for anybody.
  * Nothing here spends the bonus slot or the action - a meeple is neither - and
  * `meepleSpendOpen` is what decides which half of the turn it belongs to.
  *
@@ -504,10 +507,10 @@ export function noticeBoardPowerLegal(
       // "Draw 4." Dead only when every deck in play is exhausted.
       return drawableSuits(data, state).length > 0;
     case 'dairy':
-      // "Build. You may spend cards of any crops." The waiver is part of the
-      // gate, not just of the resolution: a hand that cannot pay the own-suit
-      // half can still pay this build, and offering it is the point.
-      return anyBuildOption(data, state, seat, hand, numbers.dairyWild ? { substitute: true } : {});
+      // "Build, spending cards of any crops, with a discount of 2" (R10,
+      // 16/09/2026). The discount and the waiver are part of the gate, not just
+      // of the resolution: the gate prices the build the power pushes.
+      return anyBuildOption(data, state, seat, hand, dairyBoardMods(data));
     case 'wheat':
       // "Harvest one of your buildings, then put 1 card from your hand into
       // your barn." EITHER leg makes it live: a building with a card on it
@@ -533,11 +536,12 @@ export function noticeBoardPowerLegal(
         numbers.apiarySows > 0 && hand.length > 0 && p.tableau.some((b) => canSowOnto(data, b))
       );
     case 'vegetable':
-      // "Deliver. If you cannot, put 2 cards from your hand into your barn."
-      // Island claim or balloon move (DL-12), else the fallback - so it is
-      // dead only for a seat that can do neither AND holds nothing.
+      // "Deliver - 2 of the cards may be any crop. If you cannot, put 2 cards
+      // from your hand into your Barn." (R9.) A delivery WITH the relaxation,
+      // else the fallback - so it is dead only for a seat that can do neither
+      // AND holds nothing.
       return (
-        doorActionLegal(data, state, seat, 'deliver') ||
+        vegetableBoardCanDeliver(data, state, seat) ||
         (numbers.vegetableFallback > 0 && hand.length > 0)
       );
     default:
@@ -561,7 +565,8 @@ export function noticeBoardPowerLegal(
  *    strictly better than a visit and took 22.2% of turns; here the five
  *    boards print five DIFFERENT powers, so your own board is one option of
  *    five and it is the one that never has what you have not got.
- *  - **S9, ONE USE PER BOARD PER TURN.** A Helping Hand's second bonus must go
+ *  - **S9, ONE USE PER BOARD PER TURN.** A second bonus (the old A Helping
+ *    Hand's, retired 16/09/2026; now only `bonusSlotsPerTurn` above 1) must go
  *    to a DIFFERENT board. The corpus records a chaining blow-up in the
  *    predecessor where five or six loads in one turn drew most of the deck.
  *  - **S8, nothing ever blocks.** `isFull` answers false for a `3+` board
@@ -605,9 +610,9 @@ export function noticeBoardPowerLegal(
  * is keyed on the BOARD'S CARD ID: no suit's board is ever on the table twice
  * (a seat's own suit is its own board and the extras are dealt from the
  * unfarmed suits without replacement), so W3 still identifies one board on one
- * farm. What changes is that A Helping Hand's second play finally has somewhere
- * to go at two seats - the rival's other board - where under the control the
- * one legal target was latched by the first play and the card granted nothing.
+ * farm. What changed was that a second play (the old A Helping Hand's, retired
+ * 16/09/2026) had somewhere to go at two seats - the rival's other board - where
+ * under the control the one legal target was latched by the first play.
  */
 function enumerateNoticeBoardVisits(
   data: GameData,
@@ -1014,8 +1019,9 @@ export function doVisit(fx: Fx, visitor: Seat, host: Seat, spend: VisitSpend): v
  *
  * ⚠️ **ONCE PER VISIT AND NOT ONCE PER TURN**, which is the second engine
  * ruling the overlay left owed. At two seats the single rival holds two boards,
- * so A Helping Hand can send a SECOND visit to the same owner in one turn and
- * they are paid for both - because they also receive two fee cards, and the
+ * so a second bonus slot (the old A Helping Hand, retired 16/09/2026, or
+ * `bonusSlotsPerTurn` above 1) can send a SECOND visit to the same owner in one
+ * turn and they are paid for both - because they also receive two fee cards, and the
  * payment is for the fee rather than for the turn. There is deliberately no
  * latch on `turn.firedThisTurn` here: a latch belongs to a CARD's text (the
  * standing rule of 11/08/2026 that no card's text fires twice in a turn) and
@@ -1177,7 +1183,7 @@ function doNoticeBoardVisit(fx: Fx, visitor: Seat, host: Seat, spend: VisitSpend
   // AND THE POWER FIRES FOR THE VISITOR.
   fireNoticeBoardPower(fx, visitor, colour, {
     src: null,
-    deliverLegal: doorActionLegal(fx.data, state, visitor, 'deliver'),
+    deliverLegal: vegetableBoardCanDeliver(fx.data, state, visitor),
   });
   fireHook(fx, 'afterWork', { actor: visitor, colour, action, via: 'visit' });
   // ⭐ S17 IS PAID LAST, AND THE QUEUE POSITION IS THE WHOLE POINT (the probe

@@ -1,18 +1,16 @@
 /**
  * The Vegetable suit, REBUILT (docs/vegetable-suit-rebuild-v4.md).
  *
- * Three things are new to the engine and they are what this file is mostly
- * about:
+ * Two things are new to the engine and they are what this file is mostly
+ * about (the balloons were deleted on 16/09/2026, and V4, V8, V16, V17 and V19
+ * are inert until the v42 texts are built):
  *
  *   1. **The island's demand tokens are mutable** - V5 swaps two, V6 turns one
  *      face down, and a face-down token pays like a cornucopia. In 105 cards
  *      nothing else writes to the shared board, so the tests check the rule from
  *      both ends: the token moves, AND a tile that could not be paid becomes
  *      payable.
- *   2. **A balloon may be paid for out of the HAND** (V4, V8), with no suit
- *      constraint - and the BASE rule, 2 barn cards of differing crops as the
- *      Deliver action, is unchanged for everybody including a Vegetable seat.
- *   3. **One delivery may take every receipt a tile has left** (V14): pay once,
+ *   2. **One delivery may take every receipt a tile has left** (V14): pay once,
  *      6 + 3 = 9 on a virgin tile, 3 on a half-claimed one, and two deliveries
  *      toward the six-delivery end trigger (ruling G).
  *
@@ -25,8 +23,7 @@
  *
  * Testkit island at 2 seats (['vegetable', 'wheat']): every tile carries TWO
  * crates of 2 cards, and the unshuffled pool deals A1/A2 = vegetable, A5/B1 =
- * wheat, B4/D1 = apiary. First to a tile takes 6, second 3. Balloons all start
- * at the centre (ruling J).
+ * wheat, B4/D1 = apiary. First to a tile takes 6, second 3.
  */
 
 import { BASE_GAME_DATA as data } from '@gp/data';
@@ -59,16 +56,6 @@ function barnTo(state: GameState, seat: Seat, ...cards: CardId[]): void {
   }
 }
 
-function balloonAt(state: GameState, id: string): Seat | 'centre' {
-  const b = state.aerodrome?.balloons.find((x) => x.id === id);
-  if (!b) throw new Error(`No balloon ${id}`);
-  return b.at;
-}
-
-function balloonMoves(state: GameState): Extract<Move, { type: 'moveBalloon' }>[] {
-  return legalMoves(data, state).filter((m) => m.type === 'moveBalloon');
-}
-
 function tile(state: GameState, id: string) {
   const t = state.island.tiles.find((x) => x.tile === id);
   if (!t) throw new Error(`Tile ${id} is not in play`);
@@ -85,93 +72,13 @@ function grow(state: GameState, seat: Seat, building: CardId, payment: CardId) {
   return growBuilding(data, state, seat, building, payment);
 }
 
-// --- The base rule, unchanged for everybody ---------------------------------
-
-describe('the balloon move as the Deliver action (DL-12)', () => {
-  // ⭐ RE-POINTED 12/09/2026, WHEN DEAN RULED THE ONE-CARD FLIGHT. A flight now
-  // costs ONE barn card of ANY crop, taken as the Deliver action, and the four
-  // balloons pay the PLAIN BASE ACTION of their colour. `mustDiffer` is still
-  // true in the data and is VACUOUS at a cost of one - there is no second card
-  // for the first to differ from - which is why no second leaf was needed.
-  // ⛔ THE REASON THE COST CAME DOWN IS THE PARITY TRAP: a crate is 2 cards of
-  // ONE crop, all or nothing, so 88.8% of barn-holding decisions cannot afford
-  // any open tile and 84% of those are one or two cards short. A ONE-CARD
-  // DELIVERY IS THE FIRST RULE THAT MAKES A SINGLE ODD BARN CARD WORTH ANYTHING.
-  it('costs ONE barn card of any crop, and the base rule is untouched', () => {
-    const s = base();
-    barnTo(s, VEG, 'V4', 'W4');
-    // Something loaded for the magenta balloon's harvest to land on: with no
-    // loaded building the `chooseBuilding` task has no legal answer and the
-    // drain loop drops it, which is the card's printed "whiffs" reading.
-    // Loaded to FULL since 12/09/2026. Every balloon now gives ONE bonus action:
-    // the plain core action of its colour (Dean's ruling). The wheat balloon's
-    // action is therefore a plain Harvest, which takes a full building or a
-    // central pile. There is no purple balloon any more, so the old "even if it
-    // is not full" reward went with it by design.
-    buildFor(data, s, VEG, 'V9');
-    loadStack(data, s, VEG, 'V9', 2, 'orchard');
-    // 4 balloons x two single-card spends ({vegetable: 1} and {wheat: 1}), which
-    // is the one-card rule: every distinct crop in the barn is its own payment.
-    expect(balloonMoves(s)).toHaveLength(8);
-
-    const magenta = balloonMoves(s).find((m) => m.balloon === 'balloonCoins') as Move;
-    const out = apply(data, s, magenta);
-    // ⛔ THE MAGENTA BALLOON IS A HARVEST BALLOON (Dean, 02/09/2026). It printed
-    // "Gain £4" and needed a NEW reward rather than a smaller one, so it now
-    // carries the relaxed harvest that used to sit on the Wheat door - the one
-    // rider from the enhanced-door era worth keeping, re-homed onto the one card
-    // in the game with room for it. Its id stays `balloonCoins` on purpose: V19
-    // scores balloons by COUNT, so a rename would have to be chased through the
-    // handler, the art and the reports for no gain. Read the id as a slot
-    // number.
-    // Since 12/09/2026 this is the WHEAT balloon and gives the plain wheat
-    // action, a Harvest reached through `performDoorAction` - the same
-    // `chooseBuilding` the Wheat board pushes.
-    expect(out.state.tasks.some((t) => t.t === 'chooseBuilding')).toBe(true);
-    // One card paid, so one card left in the barn rather than none.
-    expect(player(out.state, VEG).barn).toHaveLength(1);
-    expect(balloonAt(out.state, 'balloonCoins')).toBe(VEG);
-  });
-
-  // ⭐ THE FIRST HALF OF THIS TEST HAS NO SUBJECT SINCE 12/09/2026 and is
-  // deliberately inverted rather than deleted: at a cost of ONE card there is
-  // no "two of one suit" to refuse, so a barn of two vegetables is now a LEGAL
-  // payment and offers one spend per balloon. The second half - you may never
-  // take a balloon already in your own Aerodrome - is Dean's ruling of the same
-  // day, was already true in `movableBalloon`, and is the half worth keeping.
-  it('offers a one-card spend per crop, and never your own balloon', () => {
-    const s = base();
-    barnTo(s, VEG, 'V4', 'V5'); // two vegetables: one crop, so one spend x 4 balloons
-    expect(balloonMoves(s)).toHaveLength(4);
-
-    const t = base();
-    barnTo(t, VEG, 'V4', 'W4');
-    t.aerodrome?.balloons.forEach((b) => (b.at = VEG));
-    expect(balloonMoves(t)).toHaveLength(0);
-  });
-
-  // ⭐ RE-POINTED 12/09/2026: the red balloon is Orchard's colour and now pays
-  // Orchard's PLAIN action, which under the commons is Draw 2 keep both - not
-  // the old bespoke Draw 4. That is the whole point of the scheme: the balloons
-  // reuse the colour-to-action mapping a player already learns for the five
-  // central Notice Boards, so the module needs no reference card of its own.
-  it('the red balloon pays the plain orchard action (Draw 2, keep both)', () => {
-    const s = base();
-    barnTo(s, VEG, 'V4', 'W4');
-    const move = balloonMoves(s).find((m) => m.balloon === 'balloonDraw') as Move;
-    const out = apply(data, s, move);
-    expect(out.state.tasks[0]).toMatchObject({ t: 'draw', pid: VEG, see: 2, keep: 2 });
-  });
-});
-
 // --- The starters -----------------------------------------------------------
 
 /**
  * ⛔ THE BARN PRINTS NOTHING (v31), so its three tests collapse to one. "When
- * you build a DEPOT, Draw 2" mattered more here than in any other suit - it was
- * the main thing paying for flights, and the hand is what Vegetable is short of
- * - so this is the single biggest change to the suit and the first place to look
- * if the balloon layer goes unused.
+ * you build a DEPOT, Draw 2" mattered more here than in any other suit - the
+ * hand is what Vegetable is short of - so this was the single biggest change to
+ * the suit in v31.
  */
 describe('V1 Barn - the DEPOT build refund, deleted', () => {
   it('draws nothing when its owner builds a DEPOT, and prints no hand size', () => {
@@ -200,14 +107,11 @@ describe('V1 Barn - the DEPOT build refund, deleted', () => {
  *   2. **A head had to ride on the ANSWER, not be re-derived at resolution.** It
  *      was loaded before the payment and was frequently the only reason the
  *      payment was affordable, so an answer that dropped it was an answer the
- *      barn could not pay. `deliverAnswers` shipped exactly that bug on the day
- *      the balloon heads landed, and V14's `sweepDeliver` - which builds its own
- *      `card` payload by hand rather than getting the wiring for free - shipped
- *      it a second time.
+ *      barn could not pay. V14's `sweepDeliver` - which builds its own `card`
+ *      payload by hand rather than getting the wiring for free - shipped that bug.
  *
  * The pruning rule they shared is general and is still in the code: a rider is
- * only worth offering when it CHANGES WHAT YOU CAN PAY. `deliverOptions` still
- * de-dupes on that principle for the wild substitution.
+ * only worth offering when it CHANGES WHAT YOU CAN PAY.
  */
 describe('V2 Farmstead - the own-crop end-game scorer', () => {
   /** Deliver moves offered to a seat, for a tile. */
@@ -241,37 +145,14 @@ describe('V2 Farmstead - the own-crop end-game scorer', () => {
   it('the barn alone still pays a tile it covers', () => {
     const s = base();
     barnTo(s, VEG, 'V4', 'V5', 'V6', 'V7');
-    // ⚠️ 14/09/2026: under Dean's space choice one payment is offered once per
-    // free space, so an untouched tile offers it twice and this takes the 6 VP.
+    // ⭐ The token island (16/09/2026): one payment is offered once per token,
+    // so an untouched tile offers it twice and this takes the 6 VP token.
     const offered = deliversTo(s, VEG, 'A1');
     expect(offered).toHaveLength(2);
-    const six = offered.find((m) => m.space === 0);
+    const six = offered.find((m) => m.token === 0);
     const done = apply(data, s, six as Move).state;
     expect(player(done, VEG).barn).toHaveLength(0);
-    expect(player(done, VEG).receipts).toEqual([6]);
-  });
-
-  /**
-   * ⛔ AND A BALLOON MOVE CARRIES NO HEAD EITHER. The 19/08/2026 change widened
-   * the trigger from "When you Deliver to the island" to "When you Deliver", so
-   * a flight got its head too; both faces are gone, so a flight is the printed
-   * two barn cards of differing crops and nothing else.
-   */
-  // ⭐ INVERTED 12/09/2026. The claim it was written for - a flight carries no
-  // head - is unchanged and is still what the last line tests: the HAND cannot
-  // close a flight, only the barn can. What moved is the base cost, so ONE barn
-  // card is now a whole payment and the same position offers four moves instead
-  // of none. ⭐ That is the ruling's entire purpose: a single odd barn card,
-  // worth exactly zero against a 2-of-one-crop crate, now buys an action.
-  it('a flight is ONE barn card, and the hand still cannot pay it', () => {
-    const s = base();
-    barnTo(s, VEG, 'V4'); // one crop in the barn is now a whole flight
-    dealTo(data, s, VEG, 'W4'); // ...and the hand is still no help
-    expect(balloonMoves(s)).toHaveLength(4);
-
-    const empty = base();
-    dealTo(data, empty, VEG, 'W4'); // hand only, barn empty
-    expect(balloonMoves(empty)).toHaveLength(0);
+    expect(player(done, VEG).receipts).toEqual([{ vp: 6, crop: 'vegetable', tile: 'A1' }]);
   });
 
   /**
@@ -300,111 +181,59 @@ describe('V2 Farmstead - the own-crop end-game scorer', () => {
 
 // --- The DEPOTs -------------------------------------------------------------
 
-describe('the hand-paid flight (V4)', () => {
-  it('V4 discards 1 hand card of ANY crop and takes the reward', () => {
-    const s = base();
-    buildFor(data, s, VEG, 'V4');
-    // handMoveCost went 2 -> 1 on 2026-08-09: at 2 the printed route cost three
-    // hand cards all in (the Grow's matching card plus two discards) against the
-    // base rule's two barn cards, so it was a surcharge and went unused.
-    dealTo(data, s, VEG, 'V9'); // no differing-suit rule on the hand route
-    const out = grow(s, VEG, 'V4', 'V11');
-    const answers = pendingAnswers(data, out.state);
-    const pick = answers.find(
-      (a) => a.kind === 'card' && a.payload.balloon === 'balloonCoins',
-    ) as TaskAnswer;
-    expect(pick).toBeDefined();
-    const done = answerTask(data, out.state, pick).state;
-    expect(balloonAt(done, 'balloonCoins')).toBe(VEG);
-    expect(player(done, VEG).hand).toHaveLength(0);
-    expect(player(done, VEG).barn).toHaveLength(0); // the barn is untouched
-    // The wheat balloon gives a plain Harvest, which needs a full building or a
-    // central pile. This seat has neither, so the Harvest has no target and is
-    // drained; the flight itself still happened, which the next lines assert.
-    expect(done.tasks.some((t) => t.t === 'chooseBuilding')).toBe(false);
-    expect(done.discards.vegetable).toEqual(expect.arrayContaining(['V9']));
-  });
-
-  it('V4 auto-skips on an empty hand', () => {
-    const s = base();
-    buildFor(data, s, VEG, 'V4');
-    // `grow` deals the payment and nothing else, so the hand is empty by the
-    // time the flight asks for its fee.
-    const out = grow(s, VEG, 'V4', 'V11');
-    expect(out.state.tasks).toHaveLength(0);
+/**
+ * ⛔ THE BALLOON CARDS ARE INERT (16/09/2026, R1): the balloons and the
+ * Aerodrome were deleted, and V4, V8, V16, V17 and V19 wait for their v42
+ * texts (slice 6).
+ */
+describe('the balloon cards, inert', () => {
+  // ⛔ V6's face-down token died with the crate island on 16/09/2026, so V6
+  // joins them until its v42 handler is written (slice 6).
+  it('V4, V6, V8, V16, V17 and V19 register a handler with no behaviour', () => {
+    for (const id of ['V4', 'V6', 'V8', 'V16', 'V17', 'V19'] as CardId[]) {
+      const h = handlerFor(id);
+      expect(h, id).toBeDefined();
+      expect(h?.activate, id).toBeUndefined();
+      expect(h?.on, id).toBeUndefined();
+      expect(h?.tasks, id).toBeUndefined();
+      expect(h?.gameEnd, id).toBeUndefined();
+    }
   });
 });
 
-describe('V8 The Regional Depot - the FREE flight (retexted 19/08/2026)', () => {
-  it("costs nothing at all and takes the moved balloon's OWN reward", () => {
-    const s = base();
-    buildFor(data, s, VEG, 'V8');
-    // No fee: the "Discard 1 card" clause is gone, so an empty hand and an empty
-    // barn are both fine. `grow` deals the payment card and it goes straight
-    // onto V8's own stack, so the hand is empty when the flight resolves.
-    const out = grow(s, VEG, 'V8', 'V11');
-    const answers = pendingAnswers(data, out.state);
-    expect(answers).toHaveLength(4); // one per balloon, all at the centre
-
-    const pick = answers.find(
-      (a) => a.kind === 'card' && a.payload.balloon === 'balloonCoins',
-    ) as TaskAnswer;
-    const done = answerTask(data, out.state, pick).state;
-    expect(balloonAt(done, 'balloonCoins')).toBe(VEG);
-    // No Harvest target, as in the V4 case: this seat has no full building.
-    expect(done.tasks.some((t) => t.t === 'chooseBuilding')).toBe(false);
-    expect(player(done, VEG).hand).toHaveLength(0);
-    expect(player(done, VEG).barn).toHaveLength(0);
-    expect(done.discards.vegetable).not.toContain('V9');
-  });
-
-  it('no longer chooses a reward - "any Balloon" narrowed to "its"', () => {
-    const s = base();
-    buildFor(data, s, VEG, 'V8');
-    const out = grow(s, VEG, 'V8', 'V11');
-    const flight = pendingAnswers(data, out.state).find(
-      (a) => a.kind === 'card' && a.payload.balloon === 'balloonDraw',
-    ) as TaskAnswer;
-    const moved = answerTask(data, out.state, flight).state;
-    expect(balloonAt(moved, 'balloonDraw')).toBe(VEG);
-    // The red balloon's OWN reward fires immediately. There is no anyReward task
-    // any more, and with it goes the only thing in the game that severed
-    // reachability from cargo: you get the reward of the balloon you could reach.
-    expect(moved.tasks.some((t) => t.t === 'card' && t.kind === 'anyReward')).toBe(false);
-    // Draw 2 keep both, the plain orchard action, since 12/09/2026.
-    expect(moved.tasks[0]).toMatchObject({ t: 'draw', pid: VEG, see: 2, keep: 2 });
-  });
-
-  it('never offers a balloon already at your own Aerodrome', () => {
-    const s = base();
-    buildFor(data, s, VEG, 'V8');
-    s.aerodrome?.balloons.forEach((b) => (b.at = VEG));
-    const out = grow(s, VEG, 'V8', 'V11');
-    // Nothing to move, so the drain loop drops the task rather than wedging.
-    expect(out.state.tasks).toHaveLength(0);
-  });
-});
-
-describe('V5 The Coastal Trading Depot - SWAP two demand tokens', () => {
+describe('V5 The Coastal Trading Depot - SWAP two island tokens', () => {
   it('makes an unpayable tile payable, and is skippable', () => {
     const s = base();
     buildFor(data, s, VEG, 'V5');
-    // A barn of 4 vegetables can pay A1 (2 veg crates) but never A5 (2 wheat).
+    // A barn of 4 vegetables can pay A1 (two vegetable tokens) but never A5
+    // (two wheat tokens).
     barnTo(s, VEG, 'V4', 'V6', 'V7', 'V9');
     const out = grow(s, VEG, 'V5', 'V10');
     const answers = pendingAnswers(data, out.state);
     expect(answers).toContainEqual({ kind: 'skip' });
 
-    // Swap A5's first wheat token for A1's first vegetable token.
+    // Swap one of A5's wheat tokens for one of A1's vegetable tokens. Each token
+    // carries its VP and its Worker with it.
     const pick = answers.find((a) => {
       if (a.kind !== 'card') return false;
       const { a: x, b: y } = a.payload as { a: { tile: string }; b: { tile: string } };
       return (x.tile === 'A1' && y.tile === 'A5') || (x.tile === 'A5' && y.tile === 'A1');
     }) as TaskAnswer;
     expect(pick).toBeDefined();
+    const vpBefore = [...tile(out.state, 'A1').tokens, ...tile(out.state, 'A5').tokens]
+      .map((t) => t.vp)
+      .sort();
     const done = answerTask(data, out.state, pick).state;
-    expect(tile(done, 'A1').crates.sort()).toEqual(['vegetable', 'wheat']);
-    expect(tile(done, 'A5').crates.sort()).toEqual(['vegetable', 'wheat']);
+    const demands = (id: string) =>
+      tile(done, id)
+        .tokens.map((t) => t.demand)
+        .sort();
+    expect(demands('A1')).toEqual(['vegetable', 'wheat']);
+    expect(demands('A5')).toEqual(['vegetable', 'wheat']);
+    expect(
+      [...tile(done, 'A1').tokens, ...tile(done, 'A5').tokens].map((t) => t.vp).sort(),
+    ).toEqual(vpBefore);
+    expect(done.tasks[0]).toMatchObject({ t: 'deliver', pid: VEG });
   });
 
   it('never offers a pair of identical tokens - a no-op swap is not a choice', () => {
@@ -414,16 +243,17 @@ describe('V5 The Coastal Trading Depot - SWAP two demand tokens', () => {
     for (const answer of pendingAnswers(data, out.state)) {
       if (answer.kind !== 'card') continue;
       const { a, b } = answer.payload as {
-        a: { tile: string; crate: number };
-        b: { tile: string; crate: number };
+        a: { tile: string; token: number };
+        b: { tile: string; token: number };
       };
-      expect(tile(out.state, a.tile).crates[a.crate]).not.toBe(
-        tile(out.state, b.tile).crates[b.crate],
+      expect(a.tile).not.toBe(b.tile);
+      expect(tile(out.state, a.tile).tokens[a.token]).not.toEqual(
+        tile(out.state, b.tile).tokens[b.token],
       );
     }
   });
 
-  it('never touches a tile whose receipts are both taken', () => {
+  it('never touches a finished tile', () => {
     const s = base();
     buildFor(data, s, VEG, 'V5');
     deliveredAt(s, WHEAT, 'A1', 'A1'); // A1 is finished
@@ -432,87 +262,6 @@ describe('V5 The Coastal Trading Depot - SWAP two demand tokens', () => {
       if (answer.kind !== 'card') continue;
       const { a, b } = answer.payload as { a: { tile: string }; b: { tile: string } };
       expect([a.tile, b.tile]).not.toContain('A1');
-    }
-  });
-});
-
-describe('V6 The Trade Depot - turn a demand token FACE DOWN', () => {
-  it('IS LIVE FROM TURN ONE now - the eligibility filter is gone', () => {
-    const s = base();
-    buildFor(data, s, VEG, 'V6');
-    const out = grow(s, VEG, 'V6', 'V10');
-    // The old text was "a demand token on a tile where a receipt has already
-    // been taken", which was the TIMING DIAL: on turn one no tile had a receipt,
-    // so the task dropped and the card was inert. The sheet dropped the clause
-    // on 19/08/2026, so every open tile is a target from the first turn.
-    expect(out.state.tasks[0]).toMatchObject({ t: 'card', kind: 'faceDown', pid: VEG });
-    const answers = pendingAnswers(data, out.state);
-    expect(answers.length).toBeGreaterThan(0);
-    expect(answers.every((a) => a.kind === 'card')).toBe(true);
-  });
-
-  it('targets a VIRGIN tile, which the old text could never do', () => {
-    const s = base();
-    buildFor(data, s, VEG, 'V6');
-    const out = grow(s, VEG, 'V6', 'V10');
-    const virgin = new Set(
-      out.state.island.tiles.filter((t) => t.deliveredBy.length === 0).map((t) => t.tile),
-    );
-    const answers = pendingAnswers(data, out.state);
-    expect(answers.some((a) => a.kind === 'card' && virgin.has(a.payload.tile as string))).toBe(
-      true,
-    );
-  });
-
-  it('opens a half-run tile, and a face-down token then pays like a cornucopia', () => {
-    const s = base();
-    // ⚠️ CARD-ONLY: the parity trap this case draws is a fact about BARN cards,
-    // and a meeple pays a crate since 05/09/2026 (R15).
-    noMeeples(s);
-    buildFor(data, s, VEG, 'V6');
-    deliveredAt(s, WHEAT, 'A5'); // A5 (2 wheat crates) has one receipt taken
-    // A5 wants 4 wheat. Two wheat and two vegetables cannot pay it: the two
-    // unmatched wheat cost 2 cards each under the substitution, and there are
-    // only two spare. The parity trap in miniature.
-    barnTo(s, VEG, 'V4', 'V7', 'W4', 'W5');
-    const before = legalMoves(data, s).filter((m) => m.type === 'deliver' && m.tile === 'A5');
-    expect(before).toHaveLength(0);
-
-    const out = grow(s, VEG, 'V6', 'V10');
-    const answers = pendingAnswers(data, out.state);
-    // A5 is no longer the ONLY target - the eligibility filter went on
-    // 19/08/2026 and every open tile is offered now - so the test names it.
-    const pick = answers.find((a) => a.kind === 'card' && a.payload.tile === 'A5') as TaskAnswer;
-    expect(pick).toBeDefined();
-    const done = answerTask(data, out.state, pick).state;
-    expect(tile(done, 'A5').faceDown).toContain(true);
-    // "THEN DELIVER" (2026-08-09): opening the crate and filling it is one
-    // action now, so the delivery is queued behind the face-down and sees the
-    // island it just changed. One crate takes any 2 cards, so the same barn
-    // pays A5 exactly.
-    expect(done.tasks[0]).toMatchObject({ t: 'deliver', pid: VEG });
-    // The answer names the one space left (Dean's space choice, 14/09/2026).
-    expect(pendingAnswers(data, done)).toContainEqual({
-      kind: 'deliver',
-      tile: 'A5',
-      spend: { wheat: 2, vegetable: 2 },
-      space: 1,
-    });
-  });
-
-  it('never targets a cornucopia, an already-blank token, or a finished tile', () => {
-    // The three exclusions that SURVIVED the retext: turning a cornucopia or an
-    // already-blank token buys nothing, and a tile with both receipts taken is
-    // never re-priced retrospectively.
-    const s = makeState(data, ['vegetable', 'wheat', 'orchard']);
-    buildFor(data, s, VEG, 'V6');
-    deliveredAt(s, WHEAT, 'C3'); // C3 is the pair of cornucopias
-    deliveredAt(s, WHEAT, 'A1', 'A1'); // A1 is finished
-    const out = grow(s, VEG, 'V6', 'V10');
-    for (const answer of pendingAnswers(data, out.state)) {
-      if (answer.kind !== 'card') continue;
-      expect(answer.payload.tile).not.toBe('C3');
-      expect(answer.payload.tile).not.toBe('A1');
     }
   });
 });
@@ -643,8 +392,7 @@ describe('the Tier 2 counters', () => {
  */
 describe('the Tier 3 cards (converted from ACTION to GROW)', () => {
   it('V13 puts one deck top in the barn per DIFFERENT crop already there', () => {
-    // REPOINTED 2026-08-09. It used to recolour the barn 1:1, a job the wild
-    // substitution took over on 8 August; now it multiplies the barn and the
+    // REPOINTED 2026-08-09. It used to recolour the barn 1:1; now it multiplies the barn and the
     // multiplier is its VARIETY. No choice and no task - the crop list decides
     // the decks. The 19/08/2026 conversion left the effect untouched: V13 is the
     // pure GROW conversion of the three, with no retext behind it.
@@ -685,7 +433,7 @@ describe('the Tier 3 cards (converted from ACTION to GROW)', () => {
     expect(buildingOf(out, VEG, 'V13').stack).toEqual(['V11']);
   });
 
-  it('V14 pays once for a VIRGIN tile and sweeps BOTH receipts: 6 + 3', () => {
+  it('V14 pays once for a VIRGIN tile and takes BOTH tokens: 6 + 5', () => {
     const s = base();
     buildFor(data, s, VEG, 'V14');
     barnTo(s, VEG, 'V4', 'V5', 'V6', 'V7');
@@ -695,22 +443,20 @@ describe('the Tier 3 cards (converted from ACTION to GROW)', () => {
     ) as TaskAnswer;
     out = answerTask(data, out, pick).state;
 
-    expect(player(out, VEG).receipts).toEqual([6, 3]);
+    expect(player(out, VEG).receipts.map((r) => r.vp)).toEqual([6, 5]);
     expect(tile(out, 'A1').deliveredBy).toEqual([VEG, VEG]);
-    expect(player(out, VEG).barn).toHaveLength(0); // ONE payment
-    // ⛔ THE £1 A DELIVERY USED TO PAY IS GONE (v31): the MEEPLE on the
-    // delivery space is the reward, and V14 takes one per receipt.
-    expect(player(out, VEG).meeples).toBeDefined();
+    expect(tile(out, 'A1').tokens).toEqual([]);
+    expect(player(out, VEG).barn).toHaveLength(0); // ONE payment of 4 cards
   });
 
-  it('V14 takes ONE receipt from a half-claimed tile (Dean, 19/08/2026)', () => {
+  it('V14 takes the ONE token left on a half-finished tile (Dean, 19/08/2026)', () => {
     // "Deliver and take every receipt on the island" is ruled as: whatever
     // receipts REMAIN ON THAT TILE. Two if nobody has delivered there, one if
     // somebody has - not "every receipt on the island", and not always "both".
     const s = base();
     buildFor(data, s, VEG, 'V14');
     barnTo(s, VEG, 'V4', 'V5', 'V6', 'V7');
-    deliveredAt(s, WHEAT, 'A1'); // A1 has one receipt left
+    deliveredAt(s, WHEAT, 'A1'); // A1 has its 5 VP token left
     let out = grow(s, VEG, 'V14', 'V11').state;
     const pick = pendingAnswers(data, out).find(
       (a) => a.kind === 'card' && a.payload.tile === 'A1',
@@ -718,7 +464,8 @@ describe('the Tier 3 cards (converted from ACTION to GROW)', () => {
     expect(pick).toBeDefined();
     out = answerTask(data, out, pick).state;
 
-    expect(player(out, VEG).receipts).toEqual([3]); // the second-deliverer rate
+    // An ordinary second delivery (BUILDER DEFAULT): 2 vegetables plus 2 any.
+    expect(player(out, VEG).receipts.map((r) => r.vp)).toEqual([5]);
     expect(tile(out, 'A1').deliveredBy).toEqual([WHEAT, VEG]);
   });
 
@@ -756,7 +503,7 @@ describe('the Tier 3 cards (converted from ACTION to GROW)', () => {
     // the table outside V16.
     const s = base();
     buildFor(data, s, VEG, 'V15');
-    // Eight vegetables: enough for A1 and A2, which are two vegetable crates each.
+    // Eight vegetables: enough for A1 and A2, which hold two vegetable tokens each.
     barnTo(s, VEG, 'V4', 'V5', 'V6', 'V7', 'V9', 'V10', 'V11', 'V12');
     let out = grow(s, VEG, 'V15', 'V13').state;
     expect(out.tasks.filter((t) => t.t === 'deliver')).toHaveLength(2);
@@ -774,7 +521,8 @@ describe('the Tier 3 cards (converted from ACTION to GROW)', () => {
     ) as TaskAnswer;
     out = answerTask(data, out, second).state;
 
-    expect(player(out, VEG).receipts).toEqual([6, 6]); // one receipt each, two tiles
+    // One receipt each, two tiles, the higher token of each offered first.
+    expect(player(out, VEG).receipts.map((r) => r.vp)).toEqual([6, 4]);
     expect(player(out, VEG).barn).toHaveLength(0);
     // Nothing crossed the table.
     expect(player(out, WHEAT).barn).toHaveLength(0);
@@ -793,88 +541,13 @@ describe('the Tier 3 cards (converted from ACTION to GROW)', () => {
     // Mandatory as printed, but the drain loop drops a deliver task with no
     // payable answer - the section 8.3 convention, applied here for free.
     expect(out.tasks).toHaveLength(0);
-    expect(player(out, VEG).receipts).toEqual([6]);
+    expect(player(out, VEG).receipts.map((r) => r.vp)).toEqual([6]);
   });
 });
 
 // --- The Powers and the Endgame cards ---------------------------------------
 
-describe('the Aerodrome Powers', () => {
-  /**
-   * ⛔ THE £2 IS A DRAW 1 (v31, plan section 3.3), so in real terms the card
-   * got stronger: the raid now refunds most of a flight rather than a fifth of
-   * one. The shape is untouched - owner-scoped on `afterBalloonMove`, guarded
-   * both ways, so it can never fire on its owner's own flight.
-   *
-   * ⚠️ IT IS NOW THE ONLY PLACE IN THE SUIT THAT TOUCHES ANOTHER SEAT. V15
-   * lost its cross-table half on 19/08/2026 and D17 went owner-scoped in v31;
-   * this is what Vegetable pays the table, entire.
-   */
-  it('V16 draws for its owner when a NEIGHBOUR takes a balloon from their Aerodrome', () => {
-    const s = base();
-    buildFor(data, s, WHEAT, 'V16');
-    s.aerodrome?.balloons.forEach((b) => (b.at = WHEAT));
-    barnTo(s, VEG, 'V4', 'W4');
-    const move = balloonMoves(s).find((m) => m.balloon === 'balloonSow') as Move;
-    const out = apply(data, s, move);
-    expect(out.state.tasks.some((t) => t.t === 'draw' && t.src === 'V16')).toBe(true);
-  });
-
-  it("V16 never fires on its owner's own flight", () => {
-    const s = base();
-    buildFor(data, s, VEG, 'V16');
-    s.aerodrome?.balloons.forEach((b) => (b.at = WHEAT));
-    barnTo(s, VEG, 'V4', 'W4');
-    const move = balloonMoves(s).find((m) => m.balloon === 'balloonSow') as Move;
-    const out = apply(data, s, move);
-    expect(out.state.tasks.some((t) => t.t === 'draw' && t.src === 'V16')).toBe(false);
-  });
-
-  it('V17 draws 1 whenever its owner moves a balloon, by EITHER route', () => {
-    // The barn-paid Deliver action.
-    const s = base();
-    buildFor(data, s, VEG, 'V17');
-    barnTo(s, VEG, 'V4', 'W4');
-    const move = balloonMoves(s).find((m) => m.balloon === 'balloonSow') as Move;
-    expect(apply(data, s, move).state.tasks[0]).toMatchObject({
-      t: 'draw',
-      pid: VEG,
-      see: 1,
-      keep: 1,
-    });
-
-    // And the hand-paid Depot flight, which is what makes the card load-bearing.
-    const t = base();
-    buildFor(data, t, VEG, 'V17', 'V4');
-    dealTo(data, t, VEG, 'V9', 'V10');
-    const grown = grow(t, VEG, 'V4', 'V11');
-    const pick = pendingAnswers(data, grown.state).find(
-      (a) => a.kind === 'card' && a.payload.balloon === 'balloonSow',
-    ) as TaskAnswer;
-    const flown = answerTask(data, grown.state, pick).state;
-    expect(flown.tasks.some((x) => x.t === 'draw' && x.pid === VEG)).toBe(true);
-  });
-
-  it("V17 does not fire on a rival's flight", () => {
-    const s = base();
-    buildFor(data, s, WHEAT, 'V17');
-    barnTo(s, VEG, 'V4', 'W4');
-    const move = balloonMoves(s).find((m) => m.balloon === 'balloonSow') as Move;
-    const out = apply(data, s, move);
-    expect(out.state.tasks.filter((t) => t.t === 'draw' && t.pid === WHEAT)).toHaveLength(0);
-  });
-});
-
 describe('the endgame cards', () => {
-  it('V19 pays 2 per balloon parked at your Aerodrome', () => {
-    const s = base();
-    buildFor(data, s, VEG, 'V19');
-    // V2 the Farmstead's 1 for V19 itself is the floor under every line here.
-    expect(gameEndScores(data, s)[VEG]?.endgame).toBe(1);
-    s.aerodrome?.balloons.forEach((b, i) => (b.at = i < 3 ? VEG : WHEAT));
-    expect(gameEndScores(data, s)[VEG]?.endgame).toBe(6 + 1);
-  });
-
   it('V20 pays 2 per built DEPOT (V4-V8 by title keyword)', () => {
     const s = base();
     buildFor(data, s, VEG, 'V20', 'V4', 'V5', 'V9'); // V9 is not a Depot

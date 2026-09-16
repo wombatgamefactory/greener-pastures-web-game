@@ -57,9 +57,11 @@ describe('glossAbility, against the sheet', () => {
   });
 
   it('does not fire VISIT on VISITOR, which is the other side of the table', () => {
-    // W3 The Wheat Notice Board - "VISITOR: place 1 card here, then Harvest ..."
-    expect(terms(ability('W3'))).toEqual(['VISITOR']);
-    expect(glossAbility(data, ability('W3'))[0]?.means).toContain('your suit');
+    // The v31 Wheat Notice Board text, as a literal: sheet v42 prints the
+    // board's power with no VISITOR line, so no card on the sheet carries it.
+    const visitor = 'VISITOR: place 1 card here, then Harvest one of your full buildings.';
+    expect(terms(visitor)).toEqual(['VISITOR']);
+    expect(glossAbility(data, visitor)[0]?.means).toContain('your suit');
   });
 
   /**

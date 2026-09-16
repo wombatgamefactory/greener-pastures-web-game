@@ -16,7 +16,6 @@
 import type { GameData, Suit } from '@gp/data';
 import {
   BASE_GAME_DATA,
-  deliverySpaceChoice,
   hostDrawOnVisit,
   isMeepleCurrency,
   isNoticeBoardPower,
@@ -26,7 +25,6 @@ import {
 import { ENGINE_VERSION, RULES_EDITION } from '@gp/engine';
 import { LADDER, POLICY_IDS } from '@gp/bots';
 
-import { aerodromeInPlay } from './assertions/a12-balloon-raid.js';
 import { deckSizes } from './assertions/a24-deck-circulation.js';
 import { cutList, funnel } from './cutlist.js';
 import type { CutRow, FunnelRow } from './cutlist.js';
@@ -1070,15 +1068,14 @@ function giveawaySection({ pooled }: ReportInput): string[] {
 }
 
 /**
- * THE SKY, THE MANIFEST AND THE RACE - the five lines the Vegetable rebuild's
- * pass conditions need and no previous run recorded (2026-08-09).
+ * THE MANIFEST AND THE RACE - the lines the Vegetable rebuild's pass conditions
+ * need and no previous run recorded (2026-08-09). (The balloon lines went with
+ * the balloons on 16/09/2026.)
  *
  * Like the giveaway section, these are general questions asked of the whole
- * table rather than Vegetable diagnostics: how much freight flies (the balloon
- * has been the table's orphan sink since it existed, and this rebuild is the
- * first change that gives one suit a second way in), whether the island's colour
- * puzzle is still decided once by the bag, and whether anybody is racing for a
- * tile - the flat island's only remaining time gradient.
+ * table rather than Vegetable diagnostics: whether the island's colour puzzle is
+ * still decided once by the bag, and whether anybody is racing for a tile - the
+ * flat island's only remaining time gradient.
  *
  * ⚠️ NO NOISE FLOOR YET for any of them. Run --noise before reading a movement
  * in one as a finding.
@@ -1090,83 +1087,16 @@ function giveawaySection({ pooled }: ReportInput): string[] {
  */
 function freightSection({ data, pooled }: ReportInput): string[] {
   const games = pooled.ended;
-  const out = [THIN, 'THE SKY, THE MANIFEST AND THE RACE  (ended games)', THIN, ''];
+  const out = [THIN, 'THE MANIFEST AND THE RACE  (ended games)', THIN, ''];
   if (games.length === 0) {
     out.push('  no ended games', '');
     return out;
   }
-  // MEANS, not medians: only a Vegetable seat can build the cards that fly on
-  // hand cards or touch a demand token, so most cells have none and the median
-  // of every line here is a structural 0 that says nothing.
+  // MEANS, not medians: only a Vegetable seat can build the cards that touch a
+  // demand token, so most cells have none and the median of every line here is
+  // a structural 0 that says nothing.
   const per = (f: (g: GameMetrics) => number) => mean(games.map(f));
-  const vegGames = games.filter((g) => g.suits.includes('vegetable'));
-  const aeroGames = games.filter((g) => aerodromeInPlay(data, g));
 
-  out.push(
-    `  balloon moves per game                ${num(
-      per((g) => g.balloonMoves),
-      2,
-    )}` +
-      `   (games with the Aerodrome in play: ${num(mean(aeroGames.map((g) => g.balloonMoves)), 2)})`,
-  );
-  out.push(
-    `    of which the Vegetable seat's       ${num(vegSeatShare(vegGames), 2)}` +
-      `   (its share of the table's, against an even ${num(evenShare(vegGames), 2)})`,
-  );
-  out.push(
-    `    paid out of HAND (V4, V8)           ${num(
-      per((g) => sum(g.handFlightsBySeat)),
-      2,
-    )}` +
-      `   (the suit's own route in; ⚠️ IT COUNTS CARDS, so a flight at ` +
-      `aerodrome.handMoveCost 0 reads ZERO here and is not a dead Depot)`,
-  );
-  // ⭐ WHICH BALLOON, AND NOBODY HAD ASKED BEFORE (12/09/2026). Every earlier
-  // reading of this module is a table total, so four even rewards and one
-  // reward carrying three passengers look identical. The `balloonMoved` event
-  // has always named the balloon; this only folds it. ⛔ IT COUNTS MOVES AND
-  // NOT VALUE: the magenta balloon has no `amount`, so it cannot be swept by
-  // sky-dull-v1 or sky-rich-v1 and its share moves for reasons the other three
-  // share do not.
-  {
-    const byId = new Map<string, number>();
-    for (const g of games) {
-      for (const [id, n] of Object.entries(g.balloonMovesById)) {
-        byId.set(id, (byId.get(id) ?? 0) + n);
-      }
-    }
-    const total = [...byId.values()].reduce((a, b) => a + b, 0);
-    if (total > 0) {
-      const order = data.aerodrome.balloons.map((b) => b.id);
-      const seen = [...byId.keys()].filter((id) => !order.includes(id));
-      const line = [...order, ...seen]
-        .map((id) => {
-          const n = byId.get(id) ?? 0;
-          // ⚠️ NOT `rewardText`. An arm may REPLACE a reward type without
-          // rewriting the printed face - the knob's own note says so - so the
-          // text lies about the run whenever it does. Print what the engine
-          // will actually do.
-          const b = data.aerodrome.balloons.find((x) => x.id === id);
-          const reward =
-            b === undefined
-              ? '?'
-              : b.reward.type === 'plainAction'
-                ? `plain ${b.reward.suit ?? '?'} action`
-                : (b.rewardText ?? b.reward.type);
-          // ⭐ LABELLED BY COLOUR, NOT BY ID (12/09/2026). Since Dean's ruling the
-          // four balloons ARE the four core-action colours and there is no
-          // purple balloon, but the wheat balloon's internal id is still
-          // `balloonCoins`, a name two currencies out of date. A reader of this
-          // line should see "wheat", not a coin that does not exist. The id is
-          // kept internally because renaming it is a scripted rewrite across the
-          // handlers, the tests and every overlay that pins it by path.
-          return `${b?.colour ?? id} ${pct(n / total)} (${reward})`;
-        })
-        .join('   ');
-      out.push(`    by BALLOON, of ${total} moves:  ${line}`);
-    }
-  }
-  out.push('');
   // DELIVERIES BY SUIT. Not a Vegetable diagnostic either, though it was added
   // for one: the island carries most of a winning score, so a suit's delivery
   // count is close to its scoring rate, and this is the line that says whether a
@@ -1212,56 +1142,39 @@ function freightSection({ data, pooled }: ReportInput): string[] {
   // share (assertion 8's last detail line), because the Farmstead's VP is what
   // that share is now paying for.
   out.push(
-    `  demand tokens altered per game        ` +
-      `${num(
-        per((g) => g.demandSwaps + g.demandFaceDowns),
-        2,
-      )}` +
-      `   (swap ${num(
-        per((g) => g.demandSwaps),
-        2,
-      )}, face down ${num(
-        per((g) => g.demandFaceDowns),
-        2,
-      )})`,
-  );
-  out.push(
-    `  deliveries only payable because of one ${num(
-      per((g) => g.deliveriesUnlockedByAlteration),
+    `  island tokens swapped per game (V5)   ${num(
+      per((g) => g.demandSwaps),
       2,
-    )}` + `   - the number that says whether the rules earned their keep`,
+    )}`,
   );
   out.push('');
-  // ⭐ ARRIVAL ORDER (14/09/2026). Under fill order arrival IS the space and
-  // the VP in brackets is what each arrival took; under Dean's space choice a
-  // first arrival may take the 3 VP space, so the brackets would lie and the
-  // line says which space the first arrivals took instead.
+  // ⭐ THE TOKEN ISLAND (16/09/2026): arrival order at a tile, the token choice
+  // a first delivery makes, and receipts by token value.
   const firsts = sum(games.map((g) => sum(g.receiptsByArrivalBySeat.map((r) => r[0] ?? 0))));
   const seconds = sum(games.map((g) => sum(g.receiptsByArrivalBySeat.map((r) => r[1] ?? 0))));
-  const schedule = data.island.vpByDeliveryOrder;
+  const choices = sum(games.map((g) => sum(g.firstChoicesBySeat)));
   out.push(
-    deliverySpaceChoice(data)
-      ? `  receipts by arrival order             first ${firsts}   second ${seconds}` +
-          `   first share ${pct(firsts / Math.max(1, firsts + seconds), 1)}` +
-          `   first arrivals leaving the ${schedule[0] ?? 0} VP space ${pct(
-            sum(games.map((g) => sum(g.firstArrivalsPassingSixBySeat))) / Math.max(1, firsts),
-            1,
-          )}`
-      : `  receipts by fill order                first ${firsts} (${schedule[0] ?? 0} VP)` +
-          `   second ${seconds} (${schedule[1] ?? 0} VP)` +
-          `   first share ${pct(firsts / Math.max(1, firsts + seconds), 1)}`,
-  );
-  out.push('');
-  out.push(
-    "A hand-paid flight is the Vegetable rebuild's privilege and nothing else may use it, so the",
+    `  receipts by arrival order             first ${firsts}   second ${seconds}` +
+      `   first share ${pct(firsts / Math.max(1, firsts + seconds), 1)}`,
   );
   out.push(
-    'third line is the direct test of whether the Depots are being played at all. The demand-token',
+    `  first-delivery token choices          ${choices}   took the higher VP ${pct(
+      sum(games.map((g) => sum(g.firstTookHigherBySeat))) / Math.max(1, choices),
+      1,
+    )}   lower for a Worker ${sum(games.map((g) => sum(g.firstLowerForWorkerBySeat)))}`,
+  );
+  const values = data.island.tokens.vpValues;
+  const byVp = (vp: number) =>
+    sum(games.map((g) => sum(g.receiptsByVpBySeat.map((r) => r[String(vp)] ?? 0))));
+  out.push(
+    `  receipts by token value               ${values.map((vp) => `${vp} VP ${byVp(vp)}`).join('   ')}` +
+      `   wild-token receipts ${sum(games.map((g) => sum(g.wildTokenReceiptsBySeat)))}`,
   );
   out.push(
-    "lines are the first time in 105 cards that the island's colour puzzle has changed after setup;",
+    `  Vegetable board relaxation (R9)       ${sum(
+      games.map((g) => sum(g.vegetableWildDeliveriesBySeat)),
+    )} deliveries, ${sum(games.map((g) => sum(g.vegetableWildCardsBySeat)))} cards of any crop`,
   );
-  out.push('if the last of them is near zero, V5 and V6 are rules nobody needed.');
   out.push('');
   return out;
 }
@@ -1277,7 +1190,7 @@ function freightSection({ data, pooled }: ReportInput): string[] {
  *
  * MEANS, not medians, and per DAIRY SEAT rather than per game: most cells have
  * no Dairy seat at all, so a table-wide median is a structural 0 that says
- * nothing - the same reasoning the freight section states for the balloons.
+ * nothing - the same reasoning the manifest section states for its lines.
  */
 function dairySection({ pooled }: ReportInput): string[] {
   const games = pooled.ended;
@@ -1469,24 +1382,6 @@ function bySuit(
     });
   }
   return per.length === 0 ? NaN : mean(per);
-}
-
-/** Balloon moves made by the seats actually farming Vegetable, per game. */
-function vegSeatShare(games: readonly GameMetrics[]): number {
-  const per: number[] = [];
-  for (const g of games) {
-    let mine = 0;
-    g.suits.forEach((suit, seat) => {
-      if (suit === 'vegetable') mine += g.balloonMovesBySeat[seat] ?? 0;
-    });
-    per.push(g.balloonMoves === 0 ? 0 : mine / g.balloonMoves);
-  }
-  return per.length === 0 ? NaN : mean(per);
-}
-
-/** What one seat's share would be if every chair flew equally. */
-function evenShare(games: readonly GameMetrics[]): number {
-  return games.length === 0 ? NaN : mean(games.map((g) => 1 / g.seats));
 }
 
 /** ORCHARDs built, counted only in the seats that actually farmed Orchard. */

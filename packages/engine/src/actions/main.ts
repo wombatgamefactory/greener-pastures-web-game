@@ -8,7 +8,7 @@ import { drawableSuits } from '../query.js';
 import type { GameState, Seat } from '../state.js';
 import type { GameData } from '@gp/data';
 import { anyBuildOption } from './build.js';
-import { anyBalloonMoveOption, anyDeliverOption } from './deliver.js';
+import { anyDeliverOption } from './deliver.js';
 import { growOptions } from './grow.js';
 import { harvestOptions } from './harvest.js';
 
@@ -30,7 +30,6 @@ export function hasMainOption(data: GameData, state: GameState, seat: Seat): boo
     anyBuildOption(data, state, seat) ||
     growOptions(data, state, seat).length > 0 ||
     harvestOptions(data, state, seat).length > 0 ||
-    anyDeliverOption(data, state, seat) ||
-    anyBalloonMoveOption(data, state, seat)
+    anyDeliverOption(data, state, seat)
   );
 }

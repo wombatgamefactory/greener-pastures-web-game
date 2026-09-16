@@ -64,42 +64,9 @@
  * ACT's own shape rather than a knob read - which is the rule `Scratch.meepleArm`
  * states and the only gate that cannot drift from the rule it stands for.
  *
- * ## ⭐ THE COIN-ACTIVATED FARMSTEAD (10/09/2026) - NO NEW ACT, ONE NEW FIELD
- *
- *   - `grow.coin` - the COIN-ACTIVATED FARMSTEAD (K10). A main-action Grow that
- *     places nothing and costs one coin instead of a card.
- *
- * ⚠️ **ABSENT OR FALSE UNTIL ITS KNOB IS ON**, so every other game reduces to
- * exactly the pre-10/09/2026 arithmetic, which the fixtures in @gp/sim assert.
- *
- * ## ⭐ THE VILLAGE STORE (12/09/2026) - NO NEW ACT, TWO NEW FIELDS
- *
- * `docs/village-store-coins-2026-09-12-v2.md`, rules V1 to V12, ledger A150,
- * built as an ARM and not as the default. The Store mints a coin per spare barn
- * card at a delivery and the coin is a wild card for exactly two things, and
- * neither of them is a new kind of thing a seat can DO:
- *
- *   - `build.coins` - the BUILD sink (V6). Coins in a build payment, as a COUNT.
- *   - `grow.coinGrow` - the GROW sink (V8/V9). A Grow paid with one coin that
- *     PLACES NOTHING, so the building never advances and a FULL one is a legal
- *     target.
- *
- * ⚠️ **THE MINT NEEDS NOTHING HERE AND THAT IS WORTH SAYING SO NOBODY GOES
- * LOOKING.** It is a `mint` TASK whose answers name a SUIT (five plus a skip,
- * whatever the barn holds), so it arrives as the `cardTask` act that already
- * exists. What it is WORTH is priced in `terms.ts`, off the head task rather
- * than off the payload, because three other cards already answer `card` with a
- * `suit`.
- *
- * ⚠️ **AND NEITHER FIELD IS THE MEEPLE'S.** M8 says a MEEPLE Grow places its
- * activation card as normal and CAN clog; V8 says a COIN Grow places nothing.
- * The two new rules of 12/09/2026 differ there on purpose, which is why
- * `coinGrow` is its own flag and not a widening of `meeples`.
- *
- * ⚠️ **BOTH FIELDS ARE 0 OR FALSE UNTIL THE STORE'S OWN LEAVES ARE ON**, and
- * each of the six is independently switchable, so `-build-only-v1` produces no
- * `coinGrow` and `-grow-only-v1` produces no `coins`. Gate on the ACT's shape
- * and never on a knob, and never on the assembled arm.
+ * ⛔ THE COIN FIELDS (`build.coins`, `grow.coin`, `grow.coinGrow`) AND THE
+ * `balloon` ACT WERE DELETED ON 16/09/2026 with the Village Store, the coins
+ * arm and the balloons (Dean, R1 and R2).
  */
 
 import type { Suit } from '@gp/data';
@@ -158,33 +125,6 @@ export type Act =
        * cost twice what a single meeple costs, exactly as it does on a visit.
        */
       meeples: readonly Suit[];
-      /**
-       * ⭐ **THE VILLAGE STORE'S BUILD SINK, AS A COUNT** (V6, A150, Dean
-       * 12/09/2026): how many of this payment's resources were paid in COINS
-       * rather than in cards. 0 in every game with `rules.economy.coinPaysBuild`
-       * off, and 0 on every build a seat paid entirely in cards.
-       *
-       * ⛔ **A COUNT AND NEVER A LIST, WHICH IS THE ENGINE'S RULE REPEATED
-       * HERE RATHER THAN A CONVENIENCE.** Coins are fungible, so a payment names
-       * HOW MANY and never WHICH, and `BuildOption.coins` carries the branching
-       * argument in full: enumerating them by identity would multiply an
-       * already-`C(hand, k)` list by a second binomial. Nothing downstream may
-       * expand this the way `meepleList` expands a meeple vector.
-       *
-       * ⛔ **AND IT IS WHY `handSpend` CANNOT BE THE ONLY CHARGE ON A
-       * BUILD.** `cardsLeavingHand` counts `payment.length`, so a build paid
-       * with three coins and no cards reads as FREE and a bot holding coins
-       * would take every card it was offered. `coinSpend` charges this and is
-       * the only thing that does: a build is not on `isProbed`, so its
-       * `coinsSpent` event never reaches `priceEvent`.
-       *
-       * ⚠️ **DISJOINT FROM K15's ENDGAME COIN PRICE, WHICH IS WHAT LETS ONE
-       * TERM CHARGE BOTH.** `priceOf` puts K15's coins on the PRICE and never on
-       * the option, so this field is set by V6's loop alone; and no overlay
-       * turns `endgameCoinCost` and `storeCoinsPerCard` on together, because
-       * that would be a second mint beside a second sink.
-       */
-      coins: number;
     }
   /**
    * ⭐ `payment` IS NULL WHEN A MEEPLE PAID (R15), AND THAT IS NOT A SENTINEL -
@@ -195,73 +135,11 @@ export type Act =
    * and the two that do are `handSpend` (no card leaves the hand) and
    * `growSpend` (there is no card to junk-rank).
    */
-  /**
-   * ⭐ **`coin` IS THE COIN-ACTIVATED FARMSTEAD (K10, Dean 10/09/2026), AND IT
-   * IS A THIRD WAY FOR `payment` TO BE NULL.**
-   *
-   * Under `rules.economy.farmsteadCoinPower` the Farmstead is a building with
-   * no threshold whose activation cost is ONE COIN, fired as your MAIN action,
-   * once per turn, with nothing placed on it. So `payment` is null for the same
-   * reason R15's meeple-paid Grow has a null payment - no card left the hand -
-   * and every term that already gates on that null keeps working unchanged
-   * (`handSpend` charges nothing, `growSpend` has no card to rank).
-   *
-   * ⚠️ **THE FLAG IS CARRIED ANYWAY, AND THE REASON IS THAT THE NULL IS NOW
-   * AMBIGUOUS.** `payment === null` used to mean exactly one thing (a meeple
-   * paid); it now means "a meeple paid OR a coin paid", and the two cost
-   * different currencies at different weights. Nothing in the shipped table has
-   * to tell them apart yet - the two knobs are mutually exclusive in every
-   * overlay anybody has written, and the coin's price is charged inside the
-   * rollout rather than by a move term (see `priceEvent`'s `coinsSpent`) - but a
-   * term that ever needs to should read this flag rather than re-derive it from
-   * a knob, which is the same rule `Scratch.meepleArm` states.
-   *
-   * `false` on every task-answer Grow and under both controls, so the arm is
-   * gated by the ACT's own shape.
-   */
-  /**
-   * ⭐ **`coinGrow` IS THE VILLAGE STORE'S GROW SINK (V8/V9, A150, Dean
-   * 12/09/2026), AND IT IS THE FOURTH WAY FOR `payment` TO BE NULL** - after a
-   * card, a meeple (R15) and K10's Farmstead coin.
-   *
-   * ⛔ **IT IS NOT `coin` ABOVE AND THE TWO MUST NEVER BE MERGED.** K10's
-   * `coin` is the coin-activated Farmstead suit power, a main action
-   * on ONE named building, and `observe.ts` counts `move.coin === true` as a
-   * Farmstead firing; folding V8's coin-Grow into it would put every coin-Grow
-   * in the game into a metric that means something else. The two knobs are
-   * mutually exclusive in every overlay anybody has written.
-   *
-   * ⛔ **WHAT THE FLAG IS ACTUALLY FOR, AND IT IS ONE TERM:
-   * `growCompletes`.** V8 says the coin PLACES NOTHING, so the stack does not
-   * advance, the building never fills and never clogs, and under V9 a building
-   * that is ALREADY full is a legal target. `fillsBuilding` asks
-   * `stack + 1 >= threshold` and knows nothing about what paid, so without this
-   * flag a coin-Grow would collect the +3 for completing a building it does not
-   * touch - and worst of all it would collect it on the V9 clog bypass, where
-   * `stack >= threshold` already. Every other term is right by construction: the
-   * null payment already zeroes `handSpend` and `growSpend`, and what the coin
-   * COSTS arrives inside the rollout as `coinsSpent` (a Grow is on `isProbed`).
-   *
-   * ⚠️ **THERE IS NO CLOG COST TO REMOVE IN THIS TABLE, WHICH IS THE
-   * THING TO UNDERSTAND BEFORE ADDING ONE.** Filling a building is scored
-   * POSITIVE here (`growCompletes` +3), because a full building is a Harvest
-   * waiting to happen and a harvest is barn cards at `harvest` 1.5 each. So "a
-   * coin-Grow has no clog cost" is priced by DECLINING THAT CREDIT and by
-   * nothing else, and the design's own self-limiting property falls out of the
-   * same arithmetic: a building you only ever coin-Grow never fills, so it is
-   * never harvested, so it never puts cards in your barn, and barn cards are
-   * what make coins.
-   *
-   * `false` on every task-answer Grow that predates the Store and under every
-   * control, so the sink is gated by the ACT's own shape.
-   */
   | {
       a: 'grow';
       building: CardId;
       payment: CardId | null;
       meeples: readonly Suit[];
-      coin: boolean;
-      coinGrow: boolean;
     }
   | { a: 'harvest'; building: CardId }
   /**
@@ -276,13 +154,12 @@ export type Act =
       spend: Spend;
       meeples: readonly Suit[];
       /**
-       * ⭐ THE DELIVERY SPACE THE MOVE NAMES (Dean's space choice, 14/09/2026),
-       * present only when the engine named one. Absent means the lowest free
-       * space, which is fill order.
+       * ⭐ THE TOKEN THE MOVE TAKES (the token island, 16/09/2026): an index
+       * into the tile's `tokens`. Absent means the highest-VP token, which is
+       * what the engine takes when a caller names none.
        */
-      space?: number;
+      token?: number;
     }
-  | { a: 'balloon'; balloon: string; spend: Spend }
   /**
    * THE INTERACTION HALF OF THE BONUS SLOT: one card from hand onto a Notice
    * Board, then that board's suit action. `self` is `host === seat` - see the
@@ -439,10 +316,6 @@ function actOfAnswer(answer: TaskAnswer): Act {
     // effect are card-paid by construction, even under R15. If either answer
     // ever grows one, these two lines are where it arrives - and `meepleSpend`
     // already claims `task`, so the price would follow without a term change.
-    // ⭐ V6 (12/09/2026): the answer carries `coins` for exactly the reason
-    // it carries `meeples` - every route into a build has to carry the whole
-    // payment or none - so the act reads it here as well. A dairy door's Build
-    // and D7's are both this line.
     case 'build':
       return {
         a: 'build',
@@ -450,17 +323,12 @@ function actOfAnswer(answer: TaskAnswer): Act {
         payment: answer.payment,
         stacks: (answer.stacks ?? []).length,
         meeples: NO_MEEPLES,
-        coins: answer.coins ?? 0,
       };
     // A Grow answered through a task is the same act as a Grow played as a
-    // move. `meeples` is always empty and `coin` is false by rule (K10: the
-    // coin-activated Farmstead is a main action only).
+    // move, and `meeples` is always empty.
     //
-    // ⭐ `coinGrow` RIDES ACROSS HERE, WHICH `coin` DOES NOT (V8, A150,
-    // 12/09/2026): a task-bought Grow IS coin-payable.
-    //
-    // The Apiary retext's deck-paid Grow (14/09/2026) arrives as `payment` null
-    // and `coinGrow` false: no hand card leaves, so `handSpend` and `growSpend`
+    // The Apiary retext's deck-paid Grow (14/09/2026) arrives as `payment`
+    // null: no hand card leaves, so `handSpend` and `growSpend`
     // charge nothing, and the Grow is probed like every other.
     case 'grow':
       return {
@@ -468,8 +336,6 @@ function actOfAnswer(answer: TaskAnswer): Act {
         building: answer.building,
         payment: answer.payment,
         meeples: NO_MEEPLES,
-        coin: false,
-        coinGrow: answer.coinGrow === true,
       };
     case 'deliver':
       return {
@@ -477,10 +343,8 @@ function actOfAnswer(answer: TaskAnswer): Act {
         tile: answer.tile,
         spend: answer.spend,
         meeples: NO_MEEPLES,
-        ...(answer.space === undefined ? {} : { space: answer.space }),
+        ...(answer.token === undefined ? {} : { token: answer.token }),
       };
-    case 'balloon':
-      return { a: 'balloon', balloon: answer.balloon, spend: answer.spend };
     case 'deckSow':
       return { a: 'deckSow', suit: answer.suit, onto: answer.onto };
     case 'handToBarn':
@@ -516,9 +380,6 @@ export function actOf(move: Move): Act {
         payment: move.payment,
         stacks: 0,
         meeples: meepleList(move.meeples),
-        // ⭐ V6: a COUNT, absent on the move when none was paid, and never
-        // expanded into a list - see the field's own note.
-        coins: move.coins ?? 0,
       };
     case 'grow':
       return {
@@ -526,11 +387,6 @@ export function actOf(move: Move): Act {
         building: move.building,
         payment: move.payment,
         meeples: move.meeples ?? NO_MEEPLES,
-        // ⭐ K10: `true` or ABSENT on the move, never `false`, so the read is a
-        // strict comparison and the act carries a plain boolean either way.
-        coin: move.coin === true,
-        // ⭐ V8/V9, spelled the same way and kept strictly apart from it.
-        coinGrow: move.coinGrow === true,
       };
     case 'harvest':
       return { a: 'harvest', building: move.building };
@@ -540,10 +396,8 @@ export function actOf(move: Move): Act {
         tile: move.tile,
         spend: move.spend,
         meeples: meepleList(move.meeples),
-        ...(move.space === undefined ? {} : { space: move.space }),
+        ...(move.token === undefined ? {} : { token: move.token }),
       };
-    case 'moveBalloon':
-      return { a: 'balloon', balloon: move.balloon, spend: move.spend };
     case 'visit':
       // ⭐ `meeples` IS THE ARM'S CURRENCY MADE VISIBLE TO THE TERM TABLE, and
       // the empty array is the `'card'` game. One meeple for a plain visit, TWO

@@ -371,7 +371,7 @@ function meepleArm({ data, pooled }: MeasureContext): Measurement {
         }`,
       `meeples boxed by the CAP ALONE (the v1-comparable figure): ${num(boxed / games.length, 2)} ` +
         `a game, ${boxed} in all. By source: ${[...bySource]
-          .filter(([source]) => source === 'collect' || source === 'island' || source === 'balloon')
+          .filter(([source]) => source === 'collect' || source === 'island')
           .sort((a, b) => b[1] - a[1])
           .map(([source, n]) => `${source} ${n}`)
           .join('  ')}. By colour: ${[...byColour]

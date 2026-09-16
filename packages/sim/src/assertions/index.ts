@@ -106,48 +106,13 @@
  * NO MODE GATE, after a22.
  *
  * ⭐ AND THREE MORE JOINED ON 12/09/2026 WITH THE VILLAGE STORE COIN (V1 to
- * V12, ledger row A150), and THREE rather than one because they are three
- * questions with three different lifetimes, on the a23/a24 precedent set the
- * same day.
- *
- * `a25-village-store-coin` is the BALANCE SHEET, in the register a21 uses: one mint (barn cards converted at a delivery), one shared recirculating
- * supply and how often it holds nothing, and TWO sinks split by name - coins on
- * a build (V6/V7) and coin-GROWS split from card-Grows (V8) with ⛔ the ones
- * that fired on a FULL building (V9) on their own line, because V9 is the
- * strongest single clause in the package and is the first clog bypass in this
- * game since the meeples. It exists as a page because every coin economy this
- * project has shipped died of a second faucet or a pity rate, and O17 The Fruit
- * Basket had already opened one loop before the rule was a day old. The Store's
- * events are read off `board === 'store'` and off `on` being `'build'` or
- * `'grow'`.
- *
- * `a26-store-conversion` is LEDGER ROW C113 and it is the single most important
- * line in the pass: ⛔ DOES EVERY PLAYER CONVERT EVERY SPARE CARD EVERY TIME?
- * `docs/village-store-2026-08-19-v1.md` section 1 ruled this exact rider-on-
- * Deliver placement out in August ("no cost, so it is always correct, breaks
- * everything"), Dean's answer of 12/09/2026 is that a valid delivery is a
- * precondition and the capped shared supply bounds the reward, and ⛔ THE
- * OBJECTION SURVIVES AS A TEST. It prints three shares - windows that converted
- * at all, convertible cards actually converted, and windows that took ALL of
- * them - and near-100% on all three is the August verdict confirmed, with the
- * PLACEMENT rather than the price being what to change. ⚠️ Its own header says
- * what it cannot do: a bot that always takes a free thing is not proof a human
- * would, so the reading is a CEILING on how automatic the decision is and not a
- * measurement of its weight. It is a separate page from a25 because its subject
- * is a PLACEMENT rather than a currency, and it dies if the exchange moves while
- * a25 lives on.
- *
- * `a27-coin-hand` is the one the handoff DOES NOT ASK FOR: the build discovered
- * it. A coin sink PAYS NO CARD, so cards stop leaving the hand - worst hand 11
- * under the control against 15 under `grow-only` at the bench, driving the
- * end-of-turn discard enumeration to C(15,8) = 6,435 legal moves against 789.
- * ⭐ IT IS THE SAME SHAPE THAT BROKE THE PROJECT ON 02/09/2026, when deleting
- * the hand limit produced a 116,535-move position and 91-second games. ⛔ And
- * the instrument UNDERSTATES it: the engine's `handLimit` is the SIMULATOR'S
- * bound (C7) and the table plays with none, so every line is a FLOOR and every
- * line says so. ⚠️ It reads the same four hand counters as a21 and a22 and the
- * three are never three findings - a21 carries the CONTROL's hand, a22 splits
- * them by crop, and this page asks what a cardless sink does.
+ * V12, ledger row A150): `a25-village-store-coin` (the balance sheet),
+ * `a26-store-conversion` (ledger row C113, the placement test) and
+ * `a27-coin-hand` (what a sink that pays no card does to a hand). ⛔ Dean
+ * deleted the Store on 16/09/2026 (R2): a25 and a26 are TOMBSTONED, and a27
+ * was RE-CUT as `a27-hand-bound`, which keeps the hand-against-the-bound and
+ * worst-discard readings that never needed a coin and that no other page
+ * prints. `a12-balloon-raid` was tombstoned the same day with the balloons (R1).
  *
  * ⭐ THE SAME PASS RESTORED a08-the-hook, WHICH HAD PRINTED "NO SUBJECT" SINCE
  * 09/09/2026. The boards are owned again and a visit has a HOST again, so the
@@ -156,18 +121,17 @@
  * changed meaning rather than going quiet - it carries the FARM traffic under
  * that mode.
  *
- * Ids are never reused, so the suite is 2, 4-9, 11-13, 15-18, 20-27 and the gaps
- * are the tombstones and a19. Six carry a threshold and can FAIL; fourteen are
+ * Ids are never reused, so the suite is 2, 4-9, 11, 13, 15-18, 20-24 and 27, and
+ * the gaps are the tombstones. Six carry a threshold and can FAIL; the rest are
  * OBSERVE, because
  * the design names no number for them and a snapshot of our own first run is
  * not a threshold. That split is not a gap in the work - it is ticket 11
  * section 2 doing its job.
  *
- * ⚠️ SEVERAL OF THE TWENTY-TWO REPORT "NO SUBJECT" UNDER WHICHEVER MODE THEY
+ * ⚠️ SEVERAL OF THE NINETEEN REPORT "NO SUBJECT" UNDER WHICHEVER MODE THEY
  * WERE NOT WRITTEN FOR, and the pattern is deliberate rather than a special
- * case: a18 says so under both controls, a20 and a21 say so everywhere but the
- * notice-board visit, and a25, a26 and a27 say so everywhere but a Village
- * Store arm. A branch is never
+ * case: a18 says so under both controls, and a20 and a21 say so everywhere but
+ * the notice-board visit. A branch is never
  * deleted while a control still exercises it; a mode where a reading has
  * nothing to measure says NO SUBJECT and points at whatever owns the question
  * there. ⭐ a22 IS THE ONE THAT NEVER DOES, and it is the only one: every
@@ -183,7 +147,6 @@ import { doorMix } from './a07-door-mix.js';
 import { theHook } from './a08-the-hook.js';
 import { wheatIdentity } from './a09-wheat-identity.js';
 import { dairyNoBuild } from './a11-dairy-no-build.js';
-import { balloonRaid } from './a12-balloon-raid.js';
 import { supplyLock } from './a13-supply-lock.js';
 import { meepleEconomy } from './a15-meeple-economy.js';
 import { actionInflation } from './a16-action-inflation.js';
@@ -194,9 +157,7 @@ import { hostDraw } from './a21-host-draw.js';
 import { cropDiagnosis } from './a22-crop-diagnosis.js';
 import { deliveryMeeple } from './a23-delivery-meeple.js';
 import { deckCirculation } from './a24-deck-circulation.js';
-import { villageStoreCoin } from './a25-village-store-coin.js';
-import { storeConversion } from './a26-store-conversion.js';
-import { coinHand } from './a27-coin-hand.js';
+import { handBound } from './a27-hand-bound.js';
 import type { Assertion } from './types.js';
 
 export const WATCHLIST: readonly Assertion[] = [
@@ -208,7 +169,6 @@ export const WATCHLIST: readonly Assertion[] = [
   theHook,
   wheatIdentity,
   dairyNoBuild,
-  balloonRaid,
   supplyLock,
   meepleEconomy,
   actionInflation,
@@ -219,9 +179,7 @@ export const WATCHLIST: readonly Assertion[] = [
   cropDiagnosis,
   deliveryMeeple,
   deckCirculation,
-  villageStoreCoin,
-  storeConversion,
-  coinHand,
+  handBound,
 ];
 
 export type { Assertion, MeasureContext, Measurement, Verdict } from './types.js';

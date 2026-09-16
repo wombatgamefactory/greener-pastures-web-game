@@ -73,6 +73,7 @@ import {
   noticeBoardHostDrawGame,
   noticeBoardHostDrawSelfGame,
   noticeBoardTwoBoardsGame,
+  withBonusSlots,
 } from './testkit.js';
 
 /** The arm: the two-board game plus S17 at its ruled value of 1. */
@@ -416,29 +417,31 @@ describe('⛔ a self-visit is never paid the host draw', () => {
 // ---------------------------------------------------------------------------
 
 describe('S17 is paid ONCE PER VISIT and never latched to the turn', () => {
-  it('A Helping Hand sends a SECOND visit to the same owner, and they are paid twice', () => {
+  it('a SECOND visit to the same owner in one turn is paid twice', () => {
     // ⭐ REACHABLE ONLY UNDER THE TWO-BOARD ARM, and only at two seats: S9
     // latches one use per BOARD per turn, so a second visit needs a second
     // board, and at two seats the single rival holds both. The host is paid
     // for both because they also receive two fee cards - the payment is for
     // the fee, not for the turn.
-    const s = position(arm, ['wheat', 'dairy']);
-    buildFor(arm, s, 0, 'W18');
-    dealTo(arm, s, 0, 'D9', 'W7', 'W9', 'W10', 'W12', 'W13', 'W14');
-    dealTo(arm, s, 1, 'D7', 'D11');
-    expect(boardCards(arm, s, 1)).toEqual([BOARD.dairy, BOARD.orchard]);
+    // ⚠️ The second play came from the old A Helping Hand until it was
+    // retired on 16/09/2026; the slot is now widened by rule to keep the case.
+    const wide = withBonusSlots(arm);
+    const s = position(wide, ['wheat', 'dairy']);
+    dealTo(wide, s, 0, 'D9', 'W7', 'W9', 'W10', 'W12', 'W13', 'W14');
+    dealTo(wide, s, 1, 'D7', 'D11');
+    expect(boardCards(wide, s, 1)).toEqual([BOARD.dairy, BOARD.orchard]);
     const hostHandBefore = player(s, 1).hand.length;
 
-    const first = apply(arm, s, visit(0, 1, 'W7', BOARD.dairy));
+    const first = apply(wide, s, visit(0, 1, 'W7', BOARD.dairy));
     expect(hostDraws(first.state)).toHaveLength(1);
-    const afterFirst = settle(arm, first.state);
+    const afterFirst = settle(wide, first.state);
 
-    const second = legalMoves(arm, afterFirst.state).filter((m) => m.type === 'visit');
+    const second = legalMoves(wide, afterFirst.state).filter((m) => m.type === 'visit');
     expect(second.length).toBeGreaterThan(0);
     expect(second.every((m) => m.type === 'visit' && m.board === BOARD.orchard)).toBe(true);
-    const out = apply(arm, afterFirst.state, second[0] as Move);
+    const out = apply(wide, afterFirst.state, second[0] as Move);
     expect(hostDraws(out.state)).toHaveLength(1);
-    const afterSecond = settle(arm, out.state);
+    const afterSecond = settle(wide, out.state);
 
     // TWO labelled draws, both to the host, and two cards in their hand that
     // no fee and no action of theirs put there.
@@ -478,10 +481,10 @@ describe('⚠️ W17 The Pie Shop beside S17: what a W17 owner actually draws', 
 
     const settled = settle(arm, out.state);
     expect(player(settled.state, 1).hand.length).toBe(hostHandBefore + 2);
-    // ⚠️ AND THE TWO ARE ASYMMETRIC, WHICH IS THE HALF WORTH KNOWING: W17
-    // carries the standing once-a-turn latch (11/08/2026) and S17 does not, so
-    // a W17 owner visited TWICE in one turn draws three and not four.
-    expect(settled.state.turn.firedThisTurn).toContain('W17');
+    // ⭐ NO LONGER ASYMMETRIC (Dean, 15/09/2026): W17 lost its once-a-turn
+    // latch with the fire-once rule, so a W17 owner visited TWICE in one turn
+    // draws four, exactly as the rule and the card each pay per visit.
+    expect(settled.state.turn.firedThisTurn).not.toContain('W17');
   });
 
   it('under the CONTROL the same owner draws ONE: the card alone', () => {

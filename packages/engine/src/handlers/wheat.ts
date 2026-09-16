@@ -3,6 +3,14 @@
  * texts are quoted from cards.json (the sheet is the single source of truth for
  * wording).
  *
+ * ⭐ v42 (16/09/2026): the sheet dropped the FIELD noun from card text, so W6 and
+ * W12 now read "your Wheat buildings" (`cropBuildingsOf`, buildings.ts), and
+ * "HARVEST:" prints as "When Harvested:". W9, W10, W13 and W15 were retexted.
+ * W16 and W17 lost the once-per-turn guard: Dean ruled on 15/09/2026 that card
+ * text fires every time its trigger happens, and the only per-turn cap left is
+ * that a building activates at most once a turn (the runtime keeps that).
+ * `isFieldCard` survives for W21 The Bread Hall (a later slice) and the sim.
+ *
  * Suit identity: Harvest, and the rebuild's whole thesis is that the identity was
  * never in doubt - the INTERVAL was. Every Tier 1 FIELD reads on two lines:
  *
@@ -73,9 +81,15 @@
 import type { GameData, Suit } from '@gp/data';
 
 import type { Fx } from '../fx.js';
-import { cardById, cropOf, drawableSuits, player } from '../query.js';
-import { markFired } from '../runtime.js';
-import type { BuildingState, CardId, GameState, Seat } from '../state.js';
+import { cardById, cropOf, drawableSuits, isHarvestable, player } from '../query.js';
+import type { BuildingState, CardId, GameState, Seat, TaskAnswer } from '../state.js';
+import {
+  cropBuildingsOf,
+  deckSowRiders,
+  deckSowTask,
+  isNoticeBoardCard,
+  ownBuildings,
+} from './buildings.js';
 import { barnCropScorer, farmsteadHandler } from './farmstead.js';
 import type { CardHandler } from './types.js';
 
@@ -138,11 +152,6 @@ function harvestedSelf(
   self: { seat: Seat; card: CardId },
 ): boolean {
   return event.seat === self.seat && event.building === self.card;
-}
-
-/** The seat's buildings holding 1 or more cards - W12's and W13's printed gate. */
-function loadedBuildings(state: GameState, seat: Seat): BuildingState[] {
-  return player(state, seat).tableau.filter((b) => b.stack.length >= 1);
 }
 
 /**
@@ -267,7 +276,8 @@ export const wheatNoticeBoard: CardHandler = {
 };
 
 /**
- * W4 Wheat Field - "Draw 1. / HARVEST: Put 1 card from your hand into your barn."
+ * W4 Wheat Field - "Draw 1. / When Harvested: Put 1 card from your hand into
+ * your Barn." (v42 wording; behaviour unchanged.)
  */
 export const wheatField: CardHandler = {
   difficulty: {
@@ -307,8 +317,9 @@ export const wheatField: CardHandler = {
 };
 
 /**
- * W5 Rye Field - "Draw 1. / HARVEST: Draw 2. Sow 1 deck card onto this FIELD."
- * The last FIELD in the suit that prints the seed line (v30, 19/08/2026).
+ * W5 Rye Field - "Draw 1. / When Harvested: Draw 2. Sow 1 deck card onto this
+ * building." (v42 wording; behaviour unchanged.) The last card in the suit that
+ * prints the seed line (v30, 19/08/2026).
  */
 export const ryeField: CardHandler = {
   difficulty: {
@@ -332,7 +343,8 @@ export const ryeField: CardHandler = {
 };
 
 /**
- * W6 Barley Field - "Draw 1. / HARVEST: Sow 1 card onto each of your FIELDs."
+ * W6 Barley Field - "Draw 1. / When Harvested: Sow 1 card from your hand onto
+ * each of your Wheat buildings." (v42)
  */
 export const barleyField: CardHandler = {
   difficulty: {
@@ -340,6 +352,10 @@ export const barleyField: CardHandler = {
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
+      '⭐ v42: "each of your Wheat buildings", no longer "each of your FIELDs", so a Wheat ' +
+      'Tier 2 or Tier 3 card takes a sow as well, and the text says "from your hand" again. ' +
+      'One task per Wheat building you own at the moment of harvest, in tableau order. ' +
+      'The older note follows. ' +
       "The suit's placement payoff, and its ONLY colour-control card: the sow comes from " +
       'your HAND, so you choose the crop, where every other Wheat sow comes blind off a ' +
       'deck. That is the printed decision between volume and colour, and it matters ' +
@@ -360,13 +376,13 @@ export const barleyField: CardHandler = {
   on: {
     afterHarvest(fx, event, self) {
       if (!harvestedSelf(event, self)) return;
-      for (const field of ownFields(fx.data, fx.state, self.seat)) {
+      for (const b of cropBuildingsOf(fx.data, fx.state, self.seat, 'wheat')) {
         fx.pushTask({
           t: 'sow',
           pid: self.seat,
           src: self.card,
           remaining: 1,
-          targets: [{ seat: self.seat, card: field.card }],
+          targets: [{ seat: self.seat, card: b.card }],
         });
       }
     },
@@ -453,49 +469,64 @@ export const heritageField: CardHandler = {
   },
 };
 
-/** W9 Mill House - "Sow the top card of any deck onto each of your FIELDs." */
+/**
+ * W9 Mill House - "Sow a deck card on up to 3 of your buildings that are empty."
+ * (v42; was "Sow the top card of any deck onto each of your FIELDs".)
+ */
 export const millHouse: CardHandler = {
   difficulty: {
     score: 2,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
+    asserted: { newPrimitive: false, conditional: true, counts: true, interrupts: false },
     notes:
-      'The supply card the scaling layer needs: one deck-top per FIELD, so a wide Wheat ' +
-      'farm advances every FIELD one step for one action. One task per FIELD rather than ' +
-      'one task with a count, because the deck is chosen per card and a full FIELD has to ' +
-      'drop out on its own.',
+      '⭐ v42: up to three of your buildings whose stack is EMPTY, any suit, one deck card ' +
+      'each. One `deckSow` task (buildings.ts) asks for one deck and one building at a ' +
+      'time, three times at most, with a stop answer ("up to"); a building that took a card ' +
+      'leaves the list, and "empty" is re-checked as each card lands. Never a Notice Board ' +
+      '(S11) and never a Power or Endgame card (no stack). W9 itself holds its own grow ' +
+      'payment when this fires, so it is never one of its own targets. The older reading, ' +
+      'one deck top per FIELD, was the supply card the scaling layer needed; the new text ' +
+      'trades the scale for a reach across every suit.',
   },
   activate(fx, self) {
-    for (const field of ownFields(fx.data, fx.state, self.seat)) {
-      fx.pushTask({
-        t: 'sowFromDeck',
-        pid: self.seat,
-        src: self.card,
-        remaining: 1,
-        targets: [{ seat: self.seat, card: field.card }],
-      });
-    }
+    const targets = ownBuildings(fx.data, fx.state, self.seat)
+      .filter((b) => !isNoticeBoardCard(fx.data, b.card))
+      .map((b) => ({ seat: self.seat, card: b.card }));
+    fx.pushTask({
+      t: 'card',
+      pid: self.seat,
+      src: self.card,
+      kind: 'deckSow',
+      riders: deckSowRiders({
+        remaining: 3,
+        targets,
+        distinct: true,
+        optional: true,
+        emptyOnly: true,
+      }),
+    });
   },
+  tasks: { deckSow: deckSowTask() },
 };
 
-/** W10 The Furrow - "Put your entire hand into your barn." */
+/** W10 The Furrow - "Put exactly 3 cards from your hand into your Barn." (v42) */
 export const furrow: CardHandler = {
   difficulty: {
     score: 1,
-    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'No task: there is no choice, which is exactly why the card is cheap to build. It ' +
-      'scales on your hand size, on how much you have drawn and on how badly you need ' +
-      'freight, and it charges a whole turn of options to do it. Watch-list: an empty hand ' +
-      'cannot visit, so a Furrow turn is a turn the hook does not get - assertion 6 in the ' +
-      "rebuild doc is a Wheat seat's visits per turn against the table.",
+      "⭐ v42: exactly three hand cards, of the owner's choosing, where it used to take the " +
+      'whole hand with no choice. One `handToBarn` task with `remaining` 3, not optional ' +
+      '("exactly"). ⭐ BUILDER DEFAULT (16/09/2026): a hand of fewer than three banks what ' +
+      'it has, rather than making the card illegal to grow; the task is sized to ' +
+      'min(3, hand) so it never waits on a card that is not there. Watch-list: an empty ' +
+      'hand cannot visit, so a Furrow turn can still cost the hook a turn.',
   },
   activate(fx, self) {
-    // Copy first: handToBarn mutates the hand it is iterating.
-    for (const card of [...player(fx.state, self.seat).hand]) {
-      fx.handToBarn(self.seat, card);
-    }
+    const n = Math.min(3, player(fx.state, self.seat).hand.length);
+    if (n === 0) return;
+    fx.pushTask({ t: 'handToBarn', pid: self.seat, src: self.card, remaining: n });
   },
 };
 
@@ -536,13 +567,21 @@ export const bakehouse: CardHandler = {
   },
 };
 
-/** W12 Crop Rotation - "Harvest every FIELD with 1 or more cards on it." */
+/**
+ * W12 Crop Rotation - "Harvest every Wheat building with 1 or more cards on it."
+ * (v42; was "every FIELD".)
+ */
 export const cropRotation: CardHandler = {
   difficulty: {
     score: 2,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: true, counts: true, interrupts: false },
     notes:
+      '⭐ v42: every one of your Wheat buildings (`cropBuildingsOf`), not every FIELD, so ' +
+      'the Tier 2 and Tier 3 Wheat cards are harvested too. ⭐ BUILDER DEFAULT ' +
+      '(16/09/2026): W12 IS a Wheat building, and its grow payment is on its stack when ' +
+      'this fires, so it harvests ITSELF, exactly as W13 always has. The older note, which ' +
+      'said it never harvests itself because it is not a FIELD, follows. ' +
       'The payoff card the FIELDs are the supply for: every FIELD fires its harvest line ' +
       'at once, so the more FIELDs you own the cheaper each payoff gets. "1 or more" is ' +
       'printed rather than implied, and it EARNS ITS WORDS AGAIN AS OF v30 (19/08/2026): ' +
@@ -555,7 +594,7 @@ export const cropRotation: CardHandler = {
       'dial is a cap on the number of FIELDs it reaches.',
   },
   activate(fx, self) {
-    const ready = ownFields(fx.data, fx.state, self.seat)
+    const ready = cropBuildingsOf(fx.data, fx.state, self.seat, 'wheat')
       .filter((b) => b.stack.length >= 1)
       .map((b) => b.card);
     harvestCascade(fx, self.seat, ready);
@@ -564,7 +603,7 @@ export const cropRotation: CardHandler = {
 
 /**
  * W13 The Bakery - "Harvest every one of your buildings, however many cards are
- * on them." Threshold 1, activation wild.
+ * on them (including 0)." (v42) Threshold 1, activation wild.
  */
 export const bakery: CardHandler = {
   difficulty: {
@@ -572,6 +611,13 @@ export const bakery: CardHandler = {
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: true, counts: true, interrupts: true },
     notes:
+      '⭐ v42 adds "(including 0)": an EMPTY building is harvested too. ⭐ BUILDER DEFAULT ' +
+      '(16/09/2026): harvesting an empty building moves nothing but IS a harvest, so its ' +
+      'own "When Harvested:" line fires (W4-W8 pay out off an empty stack) and so do the ' +
+      '"whenever you harvest" cards (W16 draws once per building). A Notice Board is ' +
+      'never harvested below its 3+ minimum, by this card or any other; Power and ' +
+      'Endgame cards are not buildings and are skipped. The older note follows, and its ' +
+      'claim that the Notice Board unclogs here now holds only at 3 or more cards. ' +
       '⛔ NO LONGER AN ACTION CARD (19/08/2026). The ACTION concept was RETIRED from the ' +
       'game on Dean\'s ruling - "The concept of an ACTION was never requested. They are all ' +
       'GROW." - and W13 was the first card ever written in that shape, so it is the one ' +
@@ -591,10 +637,13 @@ export const bakery: CardHandler = {
       'nothing is a choice the owner made rather than a move the engine offered.',
   },
   activate(fx, self) {
+    const every = ownBuildings(fx.data, fx.state, self.seat).filter(
+      (b) => !isNoticeBoardCard(fx.data, b.card) || isHarvestable(fx.data, b),
+    );
     harvestCascade(
       fx,
       self.seat,
-      loadedBuildings(fx.state, self.seat).map((b) => b.card),
+      every.map((b) => b.card),
     );
   },
 };
@@ -679,15 +728,20 @@ export const pizzeria: CardHandler = {
 };
 
 /**
- * W15 The Patisserie - "Put the top card of each deck into your barn."
- * Threshold 1, activation wild.
+ * W15 The Patisserie - "Put 3 deck cards of one deck into your Barn." (v42; was
+ * "the top card of each deck".) Threshold 1, activation wild.
  */
 export const patisserie: CardHandler = {
   difficulty: {
-    score: 1,
-    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: true, counts: true, interrupts: false },
+    score: 2,
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
+      '⭐ v42: ONE choice, the deck, then its top three cards straight to the barn. A ' +
+      'custom `patisserieDeck` task answers one deck per live deck on the table (at most ' +
+      'five answers), and the three cards come off that deck one at a time, so a deck that ' +
+      'runs out mid-way reshuffles its own discard as everywhere. It is a colour-control ' +
+      'card now, where it used to deliver a rainbow barn. The older note follows. ' +
       'No choice at all - every deck in play, one card each, straight to the barn. "Each ' +
       'deck" is each deck ON THE TABLE with cards left (the discard reshuffles as ' +
       'everywhere), so it scales with the seat count and delivers a rainbow barn in one ' +
@@ -705,23 +759,44 @@ export const patisserie: CardHandler = {
       'played deck is the number most likely to move badly.',
   },
   activate(fx, self) {
-    for (const suit of liveDecks(fx.data, fx.state)) fx.deckTopToBarn(self.seat, suit);
+    if (liveDecks(fx.data, fx.state).length === 0) return;
+    fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'patisserieDeck', riders: {} });
+  },
+  tasks: {
+    patisserieDeck: {
+      answers(data, state) {
+        return liveDecks(data, state).map(
+          (suit) => ({ kind: 'card', payload: { suit } }) as TaskAnswer,
+        );
+      },
+      resolve(fx, task, answer) {
+        if (answer.kind !== 'card') throw new Error('patisserieDeck expects a card answer');
+        const suit = answer.payload.suit as Suit;
+        for (let i = 0; i < 3; i++) fx.deckTopToBarn(task.pid, suit);
+        return true;
+      },
+    },
   },
 };
 
-/** Decks on the table with cards left - the market's rule, and W15's "each deck". */
+/** Decks on the table with cards left - the market's rule, and W15's "one deck". */
 function liveDecks(data: GameData, state: GameState): Suit[] {
   return drawableSuits(data, state).filter((s) => state.suitsInPlay.includes(s));
 }
 
-/** W16 The Granary - "Whenever you harvest, Draw 1. Once per turn." */
+/** W16 The Granary - "Whenever you harvest, Draw 1." */
 export const granary: CardHandler = {
   difficulty: {
-    score: 3,
+    score: 1,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: true, counts: true, interrupts: false },
+    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'RULING (decided): once per harvest, not once per building - otherwise The Bakery ' +
+      '⭐ THE ONCE-PER-TURN GUARD IS GONE (Dean, 15/09/2026): card text fires every time ' +
+      'its trigger happens, and each building harvested is its own trigger, so W13 The ' +
+      'Bakery emptying five buildings draws five. The only per-turn cap left in the game ' +
+      'is that a building activates at most once a turn, and the runtime keeps that. The ' +
+      'older note below argued the guard and is history. ' +
+      'RULING (superseded 15/09/2026): once per harvest, not once per building - otherwise The Bakery ' +
       'draws eight. The guard USED to be the event stream (fire only if this is the first ' +
       "`harvested` of the seat's in the current apply), and this note documented its own " +
       'hole: a harvest CHAINED through a task answer (W8, W11) is a separate apply and ' +
@@ -740,8 +815,6 @@ export const granary: CardHandler = {
   on: {
     afterHarvest(fx, event, self) {
       if (event.seat !== self.seat) return;
-      if (fx.state.turn.firedThisTurn.includes(self.card)) return;
-      markFired(fx, self.card);
       drawN(fx, self.seat, self.card, 1);
     },
   },
@@ -764,6 +837,10 @@ export const pieShop: CardHandler = {
     verified: { prompts: false, crossPlayer: true, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
     notes:
+      '⭐ THE ONCE-A-TURN GUARD IS GONE (Dean, 15/09/2026): card text fires every time its ' +
+      'trigger happens, so two visits in one turn (A Helping Hand at two seats, where one ' +
+      'rival holds both boards) draw two. The paragraph below that argues the guard is ' +
+      'history. ' +
       '⛔ RE-KEYED 04/09/2026, AND THE OLD HANDLER WAS A DEAD CARD. It used to listen on ' +
       "`afterPlacement` for a rival placing a card on one of the owner's buildings, which " +
       'was the v31 visit fee landing on the Notice Board plus the odd cross-table sow (A8). ' +
@@ -800,8 +877,6 @@ export const pieShop: CardHandler = {
       // False by construction under the meeple currency; live under the v31
       // card-visit control overlay.
       if (event.self) return;
-      if (fx.state.turn.firedThisTurn.includes(self.card)) return;
-      markFired(fx, self.card);
       drawN(fx, self.seat, self.card, 1);
     },
   },

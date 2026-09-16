@@ -62,16 +62,39 @@
  * buy nothing and would hand a future renamer the power to change three cards'
  * behaviour by editing a name. The test file pins the agreement, which is what
  * catches it if a rename ever breaks the tie again.
+ *
+ * ⭐ v42 (16/09/2026): THE ORCHARD NOUN IS GONE FROM THE CARD TEXT, and so is
+ * every reader of `isOrchardCard` bar the simulator. The Tier 1 cards are GROVEs
+ * by name (The Apple Grove and so on; the handler exports keep their old
+ * identifiers), and the cards that counted ORCHARDs now read "your Orchard
+ * buildings" (`cropBuildingsOf`, buildings.ts, O7 and O10), "one of your
+ * buildings" (O11), "up to 2 of your other buildings" (O13) or a VP value (O20).
+ * O16 lost its once-per-turn guard (Dean, 15/09/2026: card text fires every
+ * time its trigger happens); O17 keeps its own, because it PRINTS "Once per
+ * turn". The paragraphs above that say ORCHARD are history.
  */
 
 import type { GameData, Suit } from '@gp/data';
 
-import { freeHandSpace, growOptions } from '../actions.js';
-import type { GrowOption } from '../actions.js';
+import { freeHandSpace } from '../actions.js';
 import type { Fx } from '../fx.js';
-import { buildingOf, canSowOnto, cardById, drawableSuits, player } from '../query.js';
-import { doGrow, markFired } from '../runtime.js';
-import type { BuildingState, CardId, GameState, Seat, TaskAnswer } from '../state.js';
+import {
+  buildingOf,
+  canSowOnto,
+  cardById,
+  drawableSuits,
+  isHarvestable,
+  player,
+} from '../query.js';
+import { markFired } from '../runtime.js';
+import type { CardId, GameState, Seat, TaskAnswer } from '../state.js';
+import {
+  builtBuildingsWorth,
+  cropBuildingsOf,
+  growAnyAnswers,
+  ownBuildings,
+  resolveGrowAny,
+} from './buildings.js';
 import { barnCropScorer, farmsteadHandler } from './farmstead.js';
 import type { CardHandler, CustomTask } from './types.js';
 
@@ -80,22 +103,13 @@ import type { CardHandler, CustomTask } from './types.js';
  * five TIER 1 cards and nothing else. Since the v30 renames that set is also
  * exactly the set of cards whose names contain the whole word "Orchard", so
  * this no longer contradicts the printed names - it is the same answer reached
- * by a route a rename cannot move. Four cards depend on this definition - O1's
- * build refund, O11's harvest loop, O13's grow loop and O20's endgame count -
- * and they must all read the same one.
+ * by a route a rename cannot move. ⭐ No card reads it since v42 (16/09/2026):
+ * O7, O10, O11, O13 and O20 were all retexted off the noun. Kept exported for
+ * the simulator.
  */
 export function isOrchardCard(data: GameData, id: CardId): boolean {
   const card = cardById(data, id);
   return card.suit === 'orchard' && card.type === 'tier1';
-}
-
-/** The seat's built ORCHARDs, in tableau order. All five print a threshold. */
-function ownOrchards(data: GameData, state: GameState, seat: Seat): BuildingState[] {
-  return player(state, seat).tableau.filter((b) => isOrchardCard(data, b.card));
-}
-
-function builtOrchardCount(data: GameData, state: GameState, seat: Seat): number {
-  return ownOrchards(data, state, seat).length;
 }
 
 /** Push a see-N/keep-N "Draw N" for a card ability (each card from any deck; no Farmstead modifier, DL-47). */
@@ -239,14 +253,14 @@ export const orchardNoticeBoard: CardHandler = {
   },
 };
 
-/** O4 The Apple Orchard - "Draw 2." */
+/** O4 The Apple Grove - "Draw 2." (Named The Apple Orchard until v36.) */
 export const appleOrchard: CardHandler = {
   difficulty: {
     score: 1,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'The naked skeleton at half price: every other ORCHARD is this plus one conversion. ' +
+      'The naked skeleton at half price: every other Tier 1 GROVE is this plus one conversion. ' +
       'At cost 1 with the Barn refunding 2 it is the only card-POSITIVE build in the suit.',
   },
   activate(fx, self) {
@@ -254,7 +268,7 @@ export const appleOrchard: CardHandler = {
   },
 };
 
-/** O5 The Pear Orchard - "Draw 2, then SOW 1 card from your hand onto this ORCHARD." */
+/** O5 The Pear Grove - "Draw 2, then SOW 1 card from your hand onto this building." */
 export const pearOrchard: CardHandler = {
   difficulty: {
     score: 2,
@@ -280,7 +294,7 @@ export const pearOrchard: CardHandler = {
 };
 
 /**
- * O6 The Cherry Orchard - "Draw 2, then give 1 card to a neighbour and Draw 1."
+ * O6 The Cherry Grove - "Draw 2, then give 1 card to a neighbour and Draw 1."
  *
  * ⛔ The £1 is a Draw 1 (v31, plan section 3.3). The shape is untouched: the
  * payout still fires only when a card actually crosses the table, which is the
@@ -324,13 +338,21 @@ export const cherryOrchard: CardHandler = {
   },
 };
 
-/** O7 The Golden Orchard - "Draw 2, then you may Harvest one of your ORCHARDs." */
+/**
+ * O7 The Golden Grove - "Draw 2, then you may Harvest one of your Orchard
+ * buildings." (v42 wording; named The Golden Orchard until v36.)
+ */
 export const goldenOrchard: CardHandler = {
   difficulty: {
     score: 2,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: true },
     notes:
+      '⭐ v42: any of your Orchard buildings (`cropBuildingsOf`), not just the Tier 1 ' +
+      'ones. ⭐ THE GATE IS NOW THE PLAIN FULL HARVEST (16/09/2026): the text prints no ' +
+      '"however many cards", so the chooser uses the `full` filter, where the older ' +
+      'handler used `loaded` (1 or more cards) against its own note that "it does not ' +
+      'skip the stack". The older note follows. ' +
       "Converts into an ACTION: the suit's self-harvest valve, which every non-Wheat suit " +
       'needs or its engine clog-locks. It does not skip the stack, it only saves the ' +
       'Harvest action. "One of your ORCHARDs" is the chooseBuilding `loaded` gate narrowed ' +
@@ -343,15 +365,15 @@ export const goldenOrchard: CardHandler = {
       t: 'chooseBuilding',
       pid: self.seat,
       src: self.card,
-      filter: 'loaded',
-      targets: ownOrchards(fx.data, fx.state, self.seat).map((b) => b.card),
+      filter: 'full',
+      targets: cropBuildingsOf(fx.data, fx.state, self.seat, 'orchard').map((b) => b.card),
       optional: true,
       then: 'harvest',
     });
   },
 };
 
-/** O8 The Heritage Orchard - "Draw 2, then you may Build." */
+/** O8 The Heritage Grove - "Draw 2, then you may Build." */
 export const heritageOrchard: CardHandler = {
   difficulty: {
     score: 3,
@@ -444,13 +466,18 @@ function standTask(): CustomTask {
   };
 }
 
-/** O10 The Cider House - "SOW 1 card from your hand onto each of your ORCHARDs." */
+/**
+ * O10 The Cider House - "SOW 1 card from your hand onto each of your Orchard
+ * buildings." (v42; was "each of your ORCHARDs".)
+ */
 export const ciderHouse: CardHandler = {
   difficulty: {
     score: 2,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
+      '⭐ v42: one hand sow onto each of your Orchard buildings (`cropBuildingsOf`), every ' +
+      'tier, O10 itself included when it has room. The older note follows. ' +
       'The noun is ORCHARDS YOU HAVE BUILT - the only Tier 2 whose clause grows with the ' +
       'tableau, which is what the tier is for. W9 The Mill House is the precedent (a deck ' +
       'top onto each FIELD); this one is HAND-sourced, so it is the colour-control card of ' +
@@ -461,7 +488,7 @@ export const ciderHouse: CardHandler = {
       'ladder, accepted deliberately as the lesser fault.',
   },
   activate(fx, self) {
-    for (const b of ownOrchards(fx.data, fx.state, self.seat)) {
+    for (const b of cropBuildingsOf(fx.data, fx.state, self.seat, 'orchard')) {
       fx.pushTask({
         t: 'sow',
         pid: self.seat,
@@ -474,15 +501,23 @@ export const ciderHouse: CardHandler = {
 };
 
 /**
- * O11 The Harvest Market - "Harvest every ORCHARD, however many cards are on
- * it, then Draw 1 for each card harvested."
+ * O11 The Harvest Market - "Harvest one of your buildings, then Draw 1 for each
+ * card harvested." (v42; was "Harvest every ORCHARD, however many cards are on
+ * it".)
  */
 export const harvestMarket: CardHandler = {
   difficulty: {
-    score: 3,
+    score: 2,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
+      '⭐ v42: ONE building, and the plain harvest gate. A custom `marketHarvest` task ' +
+      'offers every building of yours that is harvestable right now (`isHarvestable`: at ' +
+      'or over its threshold, which for a Notice Board means 3 or more cards), of any ' +
+      'suit, O11 itself included when its payment filled it. Mandatory as printed; with no ' +
+      'target the task has no answers and is dropped. The answer harvests that building ' +
+      'and then draws one card per card it held, counted before the harvest. The older ' +
+      'note, about the every-ORCHARD cascade this replaced, follows. ' +
       'The noun is CARDS ON YOUR ORCHARDS. BUFFED 19/08/2026 (v30 group E): "this ORCHARD" ' +
       'became "EVERY ORCHARD", which turns a self-emptying valve into the suit\'s payoff ' +
       'card - one action clears the whole grove and pays a card for every card cleared. ' +
@@ -504,27 +539,36 @@ export const harvestMarket: CardHandler = {
       'empty it, is a two-card loop that pays cards both ways.',
   },
   activate(fx, self) {
-    // Snapshot first (W12's shape): harvesting mutates the tableau, and the
-    // draw is one lump for the whole loop rather than one task per building.
-    const targets = ownOrchards(fx.data, fx.state, self.seat)
-      .filter((b) => b.stack.length > 0)
-      .map((b) => b.card);
-    let harvested = 0;
-    for (const card of targets) {
-      harvested += buildingOf(fx.state, self.seat, card).stack.length;
-      fx.harvest(self.seat, card);
-    }
-    drawN(fx, self.seat, self.card, harvested);
+    fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'marketHarvest', riders: {} });
+  },
+  tasks: {
+    marketHarvest: {
+      answers(data, state, task) {
+        return ownBuildings(data, state, task.pid)
+          .filter((b) => isHarvestable(data, b))
+          .map((b) => ({ kind: 'building', card: b.card }) as TaskAnswer);
+      },
+      resolve(fx, task, answer) {
+        if (answer.kind !== 'building') throw new Error('marketHarvest expects a building answer');
+        const harvested = buildingOf(fx.state, task.pid, answer.card).stack.length;
+        fx.harvest(task.pid, answer.card);
+        drawN(fx, task.pid, task.src, harvested);
+        return true;
+      },
+    },
   },
 };
 
-/** O12 The Fruit Press - "Put any number of cards from your hand into your barn." */
+/** O12 The Fruit Press - "Put up to 4 cards from your hand into your Barn." (Dean, v37.) */
 export const fruitPress: CardHandler = {
   difficulty: {
     score: 1,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
+      '⭐ CAPPED AT 4 (Dean, v37): one optional `handToBarn` task sized to min(4, hand), ' +
+      'so the stop answer is how "up to" is read. The older note says "any number" and is ' +
+      'history on that point. ' +
       'The noun is CARDS IN YOUR HAND, and one of only three routes this suit has to the ' +
       "barn (the others being O7's harvest and O17's build-payment divert, which since v31 " +
       'reaches build payments alone rather than every discard) - Orchard is rich in cards ' +
@@ -535,32 +579,15 @@ export const fruitPress: CardHandler = {
       'both are in the arm as printed and they will compete in it.',
   },
   activate(fx, self) {
-    const n = player(fx.state, self.seat).hand.length;
+    const n = Math.min(4, player(fx.state, self.seat).hand.length);
     if (n === 0) return;
     fx.pushTask({ t: 'handToBarn', pid: self.seat, src: self.card, remaining: n, optional: true });
   },
 };
 
-/** The ORCHARDs O13 could still grow: the plain Grow enumerator, narrowed. */
-function seedBankGrowOptions(
-  data: GameData,
-  state: GameState,
-  seat: Seat,
-  done: readonly CardId[],
-): GrowOption[] {
-  // ⛔ AND NEVER A COIN-PAID ONE (V8, A150, 12/09/2026) - a BUILDER DECISION
-  // rather than one of Dean's rulings. The coin reaches the GROW ACTION and the
-  // board's BOUGHT Grow, one each, capped by the fire-once guard; the design
-  // doc's safety argument for V9's clog bypass is that "two coin-Grows a turn
-  // is the ceiling", and this card grows EVERY ORCHARD you own, so letting a
-  // coin in here would hand a whole tableau the bypass in one turn.
-  return growOptions(data, state, seat).filter(
-    (o) => o.coinGrow !== true && isOrchardCard(data, o.building) && !done.includes(o.building),
-  );
-}
-
 /**
- * O13 The Seed Bank - "GROW each of your ORCHARDs."
+ * O13 The Seed Bank - "GROW up to 2 of your other buildings, using any suit."
+ * (v41; was "GROW each of your ORCHARDs".)
  *
  * Renamed from The Grand Orchard on 19/08/2026 (v30 group C) - the rename that
  * closed the D1 ruling in the file header.
@@ -571,6 +598,14 @@ export const seedBank: CardHandler = {
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: true, conditional: true, counts: true, interrupts: true },
     notes:
+      '⭐ v41/v42: UP TO TWO of your OTHER buildings, any tier and any suit, each a real ' +
+      'GROW paid with a hand card of ANY crop - the shared `growAnyAnswers` / ' +
+      '`resolveGrowAny` pair in buildings.ts, the same any-crop Grow A6 The Garden Hive ' +
+      'uses. One task with `remaining` 2 and a stop answer; it re-queues itself behind ' +
+      "each activation's own tasks, and a building grown once is marked fired and drops " +
+      'out, so it never grows the same one twice. Never O13 itself, never a Notice Board ' +
+      '(growOptions excludes the board slot). The older note, about "each ORCHARD" paid ' +
+      'with matching cards, follows. ' +
       'The hard one, and the card that attacks the measured problem in the whole game: GROW ' +
       'happens about 3.6 times per player per game and fires the printed ability on 58 of ' +
       '105 cards, so this buys the TRIGGER in bulk instead of inflating a payload. Each ' +
@@ -602,32 +637,14 @@ export const seedBank: CardHandler = {
       pid: self.seat,
       src: self.card,
       kind: 'seedBankGrow',
-      riders: { done: [] },
+      riders: { remaining: 2 },
     });
   },
   tasks: {
     seedBankGrow: {
       answers(data, state, task) {
-        const done = (task.riders.done as CardId[]) ?? [];
-        // R15: a step of the loop may be paid with a meeple, in which case
-        // `payment` is null and `meeples` carries it. Both ride in the payload
-        // so `resolve` can hand `doGrow` exactly what the enumerator offered.
-        const out = seedBankGrowOptions(data, state, task.pid, done).map(
-          (o) =>
-            ({
-              kind: 'card',
-              payload: {
-                building: o.building,
-                payment: o.payment,
-                ...(o.meeples === undefined ? {} : { meeples: o.meeples }),
-                // R17: where the paid meeple lands. Rides on the answer for the
-                // same reason the meeples themselves do - an answer that drops
-                // it is an answer that cannot pay.
-                ...(o.placements === undefined ? {} : { placements: o.placements }),
-                ...(o.paymentToll === undefined ? {} : { paymentToll: o.paymentToll }),
-              },
-            }) as TaskAnswer,
-        );
+        if ((task.riders.remaining as number) <= 0) return [];
+        const out = growAnyAnswers(data, state, task.pid, [task.src]);
         if (out.length === 0) return [];
         out.push({ kind: 'skip' });
         return out;
@@ -635,32 +652,19 @@ export const seedBank: CardHandler = {
       resolve(fx, task, answer) {
         if (answer.kind === 'skip') return true;
         if (answer.kind !== 'card') throw new Error('seedBankGrow expects a card answer');
-        const building = answer.payload.building as CardId;
-        doGrow(
-          fx,
-          task.pid,
-          building,
-          answer.payload.payment as CardId | null,
-          {},
-          (answer.payload.meeples as Suit[] | undefined) ?? [],
-          {
-            ...(answer.payload.placements === undefined
-              ? {}
-              : { placements: answer.payload.placements as Partial<Record<Suit, number>>[] }),
-            ...(answer.payload.paymentToll === undefined
-              ? {}
-              : { paymentToll: answer.payload.paymentToll as Partial<Record<Suit, number>> }),
-          },
-        );
+        resolveGrowAny(fx, task.pid, answer.payload);
+        const remaining = (task.riders.remaining as number) - 1;
         // Re-queued AFTER the activation's own tasks (pushTask appends), so the
         // cards a grow draws are in hand before the next one is chosen.
-        fx.pushTask({
-          t: 'card',
-          pid: task.pid,
-          src: task.src,
-          kind: 'seedBankGrow',
-          riders: { done: [...((task.riders.done as CardId[]) ?? []), building] },
-        });
+        if (remaining > 0) {
+          fx.pushTask({
+            t: 'card',
+            pid: task.pid,
+            src: task.src,
+            kind: 'seedBankGrow',
+            riders: { remaining },
+          });
+        }
         return true;
       },
     },
@@ -876,16 +880,22 @@ export const gardenLibrary: CardHandler = {
 };
 
 /**
- * O16 The Fruit Store - "Whenever you VISIT a neighbour, Draw 1."
+ * O16 The Fruit Store - "Whenever you visit a neighbour, Draw 1."
  *
  * Renamed from The Orchard Keeper on 19/08/2026 (v30 group C).
  */
 export const fruitStore: CardHandler = {
   difficulty: {
     score: 3,
-    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
     notes:
+      '⭐ v42 (16/09/2026): TWO CHANGES. The once-per-turn guard is gone (Dean, ' +
+      '15/09/2026: card text fires every time its trigger happens). And the draw is an ' +
+      "ordinary Draw 1 with the player's choice of deck, as W16 and W17 draw, where it " +
+      'was a choiceless own-suit autoDraw: the "DL-67" reason below was a v36 reading, and ' +
+      'the v42 text says "Draw 1" like every other card. The paragraphs below that argue ' +
+      'the guard and the autoDraw are history. ' +
       'THE MOST IMPORTANT SINGLE EDIT IN THE REBUILD, and it is a one-word guard flip: the ' +
       'card used to pay Orchard for BEING VISITED, on the suit whose entire measured ' +
       'advantage is being visited. It now pays for GOING OUT. Fires once per visit the ' +
@@ -912,12 +922,7 @@ export const fruitStore: CardHandler = {
       // Without it this card would draw on every bonus slot its owner ever
       // spends, with nobody else at the table involved at all.
       if (event.self) return;
-      // ⛔ ONCE A TURN (the standing rule of 11/08/2026), added 10/09/2026
-      // because S9 gives a turn two visit placements and this card had no
-      // guard at all.
-      if (fx.state.turn.firedThisTurn.includes(self.card)) return;
-      markFired(fx, self.card);
-      fx.autoDraw(self.seat, 1);
+      drawN(fx, self.seat, self.card, 1);
     },
   },
 };
@@ -1097,18 +1102,17 @@ export const fruitHall: CardHandler = {
       'honest replacement: it used to count DID YOU CONVERT and it now counts DID YOU ' +
       "ACCUMULATE, which states Orchard's identity - patient accumulation - directly. " +
       '⚠️ THE DIVISOR IS THE DIAL AND IT IS THE FIRST THING TO SWEEP (the plan says so). ' +
-      '⭐ RE-READ IT AGAINST THE HAND LIMIT, back at a flat 12 since 02/09/2026: this card ' +
-      'is now CAPPED AT 4 VP, because 12 cards is the most a seat can be holding when the ' +
-      'game is scored. That is a different card from the uncapped one v31 wrote, and the ' +
-      'divisor should be swept WITH rules.turn.handLimit rather than against it - the two ' +
-      'numbers set the ceiling together. It still scores on the ONE zone nothing forces a ' +
-      'player to empty. ' +
+      '⭐ AT THE TABLE THERE IS NO HAND LIMIT, so the card is uncapped there. In the ENGINE ' +
+      'the hand is bounded by `rules.turn.handLimit` (7 today, an instrument bound and not ' +
+      'a rule), which caps this card at 2 VP in simulation; any reading of it off the ' +
+      'simulator is a reading about the instrument. It still scores on the ONE zone ' +
+      'nothing forces a player to empty. ' +
       'It is also the exact inverse of what every other suit is doing at game end - ' +
       'everybody else is trying to get cards out of their hand and onto the island - which ' +
       'is both what makes it a real decision and what makes it dangerous. ' +
       '⚠️ It pairs with O21 The Harvest Festival, which counts the same resource in ' +
-      "everybody ELSE'S hands at a divisor of 2. A seat holding both is paid for a table " +
-      'that never spends, and 3-versus-2 is the only thing separating the two cards.',
+      "everybody ELSE'S hands, and since v39 at the same divisor of 3. A seat holding both " +
+      'is paid for a table that never spends.',
   },
   gameEnd(_data, state, seat) {
     return Math.floor(player(state, seat).hand.length / 3);
@@ -1116,12 +1120,12 @@ export const fruitHall: CardHandler = {
 };
 
 /**
- * O20 Crop Diversity - "Game end: 2 VP for each ORCHARD you have built."
+ * O20 Crop Diversity - "Game end: 2 VP for each 2VP building you have built."
+ * (v41; was "2 VP for each ORCHARD".)
  *
- * Renamed from The Orchard Archive on 19/08/2026 (v30 group C). ⚠️ The new name
- * says the opposite of what the card does - it pays for DEPTH in one crop, not
- * for diversity - which is an art-and-theme question, not an engine one, but it
- * is worth Dean seeing written down before the art is commissioned.
+ * Renamed from The Orchard Archive on 19/08/2026 (v30 group C). The old worry
+ * that the name said the opposite of the card (depth in one crop) has eased:
+ * a 2VP building may be of any suit.
  */
 export const cropDiversity: CardHandler = {
   difficulty: {
@@ -1129,6 +1133,10 @@ export const cropDiversity: CardHandler = {
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: true },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
+      '⭐ v41: 2 VP for each building you have built whose PRINTED VP is exactly 2, of ' +
+      'any suit (`builtBuildingsWorth`, buildings.ts). Buildings only, never a Power or ' +
+      'Endgame card, never a starter. One of a family with A20 (1VP) and D21 (3VP). The ' +
+      'ORCHARD count below is history. ' +
       'Counts THE DEPTH OF THE GROVE, and matches W21 The Bread Hall exactly. It counts ' +
       'ORCHARDs rather than barn cards on purpose: the barn is scored at game end and ' +
       'delivering empties it, so any barn-counting endgame card would pay you for holding ' +
@@ -1141,24 +1149,27 @@ export const cropDiversity: CardHandler = {
       "suit's strongest single plan.",
   },
   gameEnd(data, state, seat) {
-    return 2 * builtOrchardCount(data, state, seat);
+    return 2 * builtBuildingsWorth(data, state, seat, 2);
   },
 };
 
-/** O21 The Harvest Festival - "Game end: 1 VP for every 2 cards in other players' hands." */
+/**
+ * O21 The Harvest Festival - "Game end: 1 VP for every 3 cards in other
+ * players' hands." (v39; the divisor was 2.)
+ */
 export const harvestFestival: CardHandler = {
   difficulty: {
     score: 1,
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: true },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
-      "Counts THE TABLE'S ABUNDANCE: floor(total rival hand cards / 2) - one pool across " +
+      "Counts THE TABLE'S ABUNDANCE: floor(total rival hand cards / 3) - one pool across " +
       'all rivals, not per player. The one endgame card in the game that pays its owner for ' +
       'the state of everybody else, which is what makes it the natural partner of a suit ' +
       'that spends its turns handing cards across the table.',
   },
   gameEnd(_data, state, seat) {
     const total = state.players.reduce((sum, p, s) => (s === seat ? sum : sum + p.hand.length), 0);
-    return Math.floor(total / 2);
+    return Math.floor(total / 3);
   },
 };

@@ -10,7 +10,8 @@
  * `the card buy`, `buy at market`, every upgrade test, the Special Orders 2-card
  * visit, the coin payouts and wages, and the end-of-turn discard. What replaced
  * them is at the bottom of "the bonus slot" and in "the meeple phase". Nothing
- * about the island, the wild substitution or the end trigger changed.
+ * about the island or the end trigger changed. (The wild substitution, the
+ * balloons and the Village Store were deleted on 16/09/2026.)
  *
  * ⭐ ONE OF THOSE SUITES CAME BACK THE SAME DAY. The end-of-turn discard is live
  * again in "the turn boundary", against a flat `rules.turn.handLimit` of 12
@@ -25,7 +26,7 @@ import { anyDeliverOption, deliverOptions, islandDeliveriesBy, tileLevel } from 
 import { apply, isOver, legalMoves, newGame } from './game.js';
 import { cardById } from './query.js';
 import { seedRng, rngInt } from './rng.js';
-import { answerTask, pendingAnswers, score } from './runtime.js';
+import { score } from './runtime.js';
 import { freshTurn, islandTilesInPlay, meeplePool } from './setup.js';
 import type { GameEvent, GameState, Move } from './state.js';
 import {
@@ -51,31 +52,6 @@ const ORCHARD = 1;
  */
 function base(): GameState {
   return makeState(data, ['wheat', 'orchard']);
-}
-
-/**
- * ⭐ DECLINE THE VILLAGE STORE (12/09/2026). Dean ruled the Store into the
- * shipped game, so every delivery now queues an OPTIONAL `mint` task that asks
- * whether to sell spare barn cards for coins. Tests whose subject is the ISLAND
- * are not about that question, so they answer it with the explicit decline the
- * task always offers (D3: declining is explicit, never an empty list) and carry
- * on. Answering it rather than clearing `tasks` by hand keeps the engine's own
- * drain loop honest.
- */
-function declineStore(state: GameState): GameState {
-  let s = state;
-  for (;;) {
-    const head = s.tasks[0];
-    if (head?.t === 'mint') {
-      s = answerTask(data, s, { kind: 'skip' }).state;
-    } else if (head?.t === 'draw' && head.via === 'closingDraw') {
-      // ⭐ THE CLOSING DRAW (Dean, 14/09/2026) is mandatory and queues AHEAD of
-      // the Store, so a case that closes a tile keeps its cards and moves on.
-      s = answerTask(data, s, pendingAnswers(data, s)[0]!).state;
-    } else {
-      return s;
-    }
-  }
 }
 
 /**
@@ -127,12 +103,22 @@ describe('newGame', () => {
     expect(state.decks[passive]).toHaveLength(18);
     // Bookend rule at 2 seats: A1 A2 A5 / B1 B4 / D1.
     expect(state.island.tiles.map((t) => t.tile)).toEqual(['A1', 'A2', 'A5', 'B1', 'B4', 'D1']);
-    // 12 demand tokens over 12 crates - 6 tiles of 2 since the flat island -
-    // only in-play suits and wilds.
-    const tokens = state.island.tiles.flatMap((t) => t.crates);
+    // ⭐ THE TOKEN ISLAND (16/09/2026): 12 tokens, two per tile, one per crop in
+    // play per VP value and no wilds at two seats.
+    const tokens = state.island.tiles.flatMap((t) => t.tokens);
     expect(tokens).toHaveLength(12);
+    for (const t of state.island.tiles) expect(t.tokens).toHaveLength(2);
     for (const tok of tokens) {
-      expect(tok === 'wild' || state.suitsInPlay.includes(tok)).toBe(true);
+      expect(tok.demand !== 'wild' && state.suitsInPlay.includes(tok.demand)).toBe(true);
+    }
+    for (const crop of state.suitsInPlay) {
+      expect(
+        tokens
+          .filter((t) => t.demand === crop)
+          .map((t) => t.vp)
+          .sort(),
+        crop,
+      ).toEqual([3, 4, 5, 6]);
     }
     // Every door is owned from setup by the suit that brought it, and a door
     // whose suit is absent has no owner at all.
@@ -146,92 +132,55 @@ describe('newGame', () => {
   });
 
   /**
-   * THE MEEPLE DEAL (v31). One per delivery space, face up, drawn from a bag of
-   * 25 that is NOT filtered by who is at the table - a meeple of a suit nobody
-   * is farming still performs its action, so the island can and does hand out
-   * colours no Notice Board on the table grants.
+   * ⭐ THE WORKERS (the delivery meeple on the token island, 16/09/2026): one on
+   * every 3 and 4 VP token and none on the 5 and 6, drawn from a bag of 25 that
+   * is NOT filtered by who is at the table.
    */
-  // ⚠️ RE-POINTED 14/09/2026: Dean ruled the DELIVERY MEEPLE on (M1), so the
-  // shipped island seeds ONE meeple per tile, on its 3 VP space, stored densely
-  // at index 0. The no-meeple island of C6 is the reference-v18 game and is
-  // asserted under overlays/pre-delivery-meeple-v1.overlay.json's leaf.
-  it('seeds ONE delivery meeple per tile (M1), and none before 14/09/2026', () => {
+  it('puts a Worker on every 3 and 4 VP token and on no other', () => {
     const state = newGame(data, { seats: 2, suits: ['wheat', 'apiary'], seed: 'meeples' });
-    for (const t of state.island.tiles) expect(t.meeples).toHaveLength(1);
-    expect(state.island.tiles.every((t) => t.deliveredSpaces === undefined)).toBe(true);
+    const tokens = state.island.tiles.flatMap((t) => t.tokens);
+    for (const tok of tokens) {
+      expect(tok.worker !== null, `${tok.demand} ${tok.vp}`).toBe(tok.vp <= 4);
+    }
+    expect(tokens.filter((t) => t.worker !== null)).toHaveLength(6);
     const before = loadGameData({
       name: 'pre-delivery-meeple',
       schemaVersion: 1,
-      set: { 'rules.turn.deliveryMeepleSpace': null },
+      set: { 'island.tokens.workerOnVp': [] },
     });
     const old = newGame(before, { seats: 2, suits: ['wheat', 'apiary'], seed: 'meeples' });
-    expect(old.island.tiles.flatMap((t) => t.meeples)).toEqual([]);
-    // The bag is still described in the data because every meeple game draws from it.
+    expect(old.island.tiles.flatMap((t) => t.tokens).filter((t) => t.worker !== null)).toEqual([]);
     expect(meeplePool(data)).toHaveLength(data.island.meeples.poolSize);
   });
 
-  // The v31 island, one meeple on each of the two delivery spaces, still runs
-  // under the control overlay and is still bounded by the same bag.
-  it('deals both delivery spaces under the v31 card-visit control', () => {
-    const control = cardVisitGame();
-    const state = newGame(control, { seats: 2, suits: ['wheat', 'apiary'], seed: 'meeples' });
-    expect(state.island.tiles.flatMap((t) => t.meeples)).toHaveLength(12);
-    for (const t of state.island.tiles) expect(t.meeples).toHaveLength(2);
-    for (const p of state.players) expect(Object.values(p.meeples)).toEqual([0, 0, 0, 0, 0]);
-  });
-
   /**
-   * The bag is 25 and a 4-seat board needs 24, so the draw is near-exhaustive
-   * there and genuinely random at 2 seats. That asymmetry is a KNOWN PROPERTY
-   * with an overlay arm written for it, not a bug: pinning it here is what stops
-   * somebody "fixing" the bag to fit the board and silently deleting the thing
-   * the arm measures.
+   * The seat scaling of worksheet `Island`: 9 tiles and 18 tokens with 2 wilds
+   * at three seats, 12 and 24 with 4 wilds at four. ⚠️ BUILDER DEFAULT: at
+   * three seats WHICH two wild values are used is drawn from the seed.
    */
-  it('draws 12 of the bag at four seats (M1), and 24 under the v31 control', () => {
-    const opts = {
+  it('scales the token pool by seat count, wilds included', () => {
+    const three = newGame(data, { seats: 3, suits: ['wheat', 'apiary', 'dairy'], seed: 'three' });
+    const t3 = three.island.tiles.flatMap((t) => t.tokens);
+    expect(three.island.tiles).toHaveLength(9);
+    expect(t3).toHaveLength(18);
+    expect(t3.filter((t) => t.demand === 'wild')).toHaveLength(2);
+    const four = newGame(data, {
       seats: 4,
       suits: ['wheat', 'apiary', 'orchard', 'dairy'] as Suit[],
       seed: 'big',
-    };
-    const four = newGame(data, opts);
-    // ⭐ THE COMPONENT QUESTION IS ANSWERED BY DELETION (C6, 09/09/2026). The
-    // meeple economy needed 5 per player plus 1 per tile - 32 pieces at four
-    // seats against a printed bag of 25, which was ledger row C54 - and the
-    // commons needs none at all. The bag is still DESCRIBED in the data, at 25,
-    // because both meeple controls draw from it and the arms have to keep
-    // running; nothing in the shipped game touches it.
-    // ⚠️ 14/09/2026: the delivery meeple ships, one per tile, 12 of the 25.
-    expect(four.island.tiles.flatMap((t) => t.meeples)).toHaveLength(12);
-    expect(data.island.meeples.poolSize).toBe(25);
-    expect(newGame(cardVisitGame(), opts).island.tiles.flatMap((t) => t.meeples)).toHaveLength(24);
-  });
-
-  it('parks balloons only when Vegetable is on the table', () => {
-    const withVeg = newGame(data, { seats: 2, suits: ['vegetable', 'dairy'], seed: 'v' });
-    expect(withVeg.aerodrome?.balloons).toHaveLength(4);
-    // Ruling J: all four start unowned in the centre - no per-seat parking.
-    expect(withVeg.aerodrome?.balloons.filter((b) => b.at === 'centre')).toHaveLength(4);
-    // At 4 seats all five decks are on the table, so the Aerodrome is always in play.
-    const four = newGame(data, {
-      seats: 4,
-      suits: ['wheat', 'apiary', 'orchard', 'dairy'],
-      seed: 'n',
     });
-    expect(four.suitsInPlay).toContain('vegetable');
-    expect(four.aerodrome).not.toBeNull();
-    // ⭐ INVERTED 12/09/2026: the Aerodrome is in EVERY game (Dean's ruling,
-    // `aerodrome.alwaysInPlay`), on C1's own argument that a module granting
-    // core actions should exist whatever suits are dealt. So a two-seat game
-    // that leaves Vegetable out STILL parks its balloons in the centre.
-    for (let i = 0; i < 20; i++) {
-      const s = newGame(data, { seats: 2, suits: ['wheat', 'apiary'], seed: `n${i}` });
-      if (!s.suitsInPlay.includes('vegetable')) {
-        expect(s.aerodrome).not.toBeNull();
-        expect(s.aerodrome?.balloons.every((b) => b.at === 'centre')).toBe(true);
-        return;
-      }
-    }
-    throw new Error('no seed left Vegetable out in 20 tries');
+    const t4 = four.island.tiles.flatMap((t) => t.tokens);
+    expect(four.island.tiles).toHaveLength(12);
+    expect(t4).toHaveLength(24);
+    expect(
+      t4
+        .filter((t) => t.demand === 'wild')
+        .map((t) => t.vp)
+        .sort(),
+    ).toEqual([3, 4, 5, 6]);
+    // Half of all tokens carry a Worker at four seats: 12 of the bag's 25.
+    expect(t4.filter((t) => t.worker !== null)).toHaveLength(12);
+    expect(data.island.meeples.poolSize).toBe(25);
   });
 
   it('tiles the island for every seat count', () => {
@@ -372,128 +321,127 @@ describe('main actions through apply', () => {
   });
 
   /**
-   * ⭐ THE ISLAND PAYS A MEEPLE, NOT A COIN (v31), AND SINCE 04/09/2026 IT PAYS
-   * IT ON THE SECOND DELIVERY ONLY (R12). One meeple per TILE, on the 3 VP
-   * space: being first is worth 6 VP flat, being second is 3 VP plus a stored
-   * action. It is a top-up on the slower half of the race rather than a flat
-   * reward on both, and the reason it could shrink is that a spent meeple no
-   * longer leaves the game - it moves onto a neighbour's board and comes home on
-   * their Collect, so the island stopped having to be the whole supply.
+   * ⭐ THE TOKEN ISLAND (Dean, R3, 16/09/2026). The testkit island at two seats,
+   * dealt in pool order: A1 [wheat 6, wheat 5], A2 [wheat 4 + Worker, wheat 3 +
+   * Worker], A5 [orchard 6, orchard 5], B1 [orchard 4, orchard 3], B4
+   * [vegetable 6, vegetable 5], D1 [vegetable 4, vegetable 3], Workers from the
+   * bag in colour order (wheat first).
+   *
+   * A FIRST delivery pays BOTH tokens' demands and CHOOSES which token to take;
+   * the token leaves the tile, becomes a receipt that keeps its crop, and hands
+   * over its Worker.
    */
-  // ⚠️ RE-POINTED 14/09/2026: the delivery meeple ships (M1), so the second
-  // space pays 3 VP AND its meeple again, the design's catch-up term restored.
-  // A move that names no space takes the lowest free one.
-  it('deliver pays crates from the barn and takes the next receipt, and the 3 VP space its meeple', () => {
+  it('a first delivery pays both demands and takes the chosen token, with its Worker', () => {
     const state = base();
-    // Testkit island at 2 seats: A1 holds [wheat, wheat], so 4 wheat.
-    const meeple = state.island.tiles.find((t) => t.tile === 'A1')!.meeples[0]!;
     stockBarn(state, WHEAT, 'wheat', 4);
-    const applied = apply(data, state, deliverA1({ wheat: 4 }));
-    // First to this tile, so the head of the schedule: 6 VP, and VP alone.
-    expect(applied.state.players[WHEAT]!.receipts).toEqual([6]);
-    expect(applied.state.players[WHEAT]!.barn).toHaveLength(0);
-    expect(applied.events.some((e) => e.e === 'meepleGained')).toBe(false);
-    expect(applied.state.island.tiles.find((t) => t.tile === 'A1')?.deliveredBy).toEqual([WHEAT]);
-    expect(applied.state.endTrigger).toBeNull();
-
-    // Second to the SAME tile takes the second entry - 3 VP - AND the tile's
-    // meeple. Space 1 is the seeded one, so this is where the free action is.
-    const s2 = applied.state;
-    s2.turn = freshTurn();
-    s2.turnPlayer = ORCHARD;
-    stockBarn(s2, ORCHARD, 'wheat', 4);
-    const out = apply(data, declineStore(s2), {
+    const choices = legalMoves(data, state).filter((m) => m.type === 'deliver' && m.tile === 'A2');
+    // One payment, two tokens: the 4 VP token is offered first.
+    expect(choices.map((m) => (m.type === 'deliver' ? m.token : null))).toEqual([0, 1]);
+    const worker = state.island.tiles.find((t) => t.tile === 'A2')!.tokens[1]!.worker!;
+    const held = state.players[WHEAT]!.meeples[worker];
+    const out = apply(data, state, {
       type: 'deliver',
-      seat: ORCHARD,
-      tile: 'A1',
+      seat: WHEAT,
+      tile: 'A2',
       spend: { wheat: 4 },
+      token: 1,
     });
-    expect(out.state.players[ORCHARD]!.receipts).toEqual([3]);
+    expect(out.state.players[WHEAT]!.receipts).toEqual([{ vp: 3, crop: 'wheat', tile: 'A2' }]);
+    expect(out.state.players[WHEAT]!.barn).toHaveLength(0);
+    expect(out.state.players[WHEAT]!.meeples[worker]).toBe(held + 1);
     expect(out.events).toContainEqual({
       e: 'meepleGained',
-      seat: ORCHARD,
-      colour: meeple,
-      tile: 'A1',
-      space: 1,
+      seat: WHEAT,
+      colour: worker,
+      tile: 'A2',
+      vp: 3,
     });
+    const delivered = out.events.find((e) => e.e === 'delivered');
+    expect(delivered).toMatchObject({ vp: 3, crop: 'wheat', tookHigher: false });
+    const a2 = out.state.island.tiles.find((t) => t.tile === 'A2')!;
+    expect(a2.tokens).toEqual([{ demand: 'wheat', vp: 4, worker: 'wheat' }]);
+    expect(a2.deliveredBy).toEqual([WHEAT]);
+    expect(out.state.endTrigger).toBeNull();
+  });
+
+  it('a token with no Worker pays VP alone', () => {
+    const state = base();
+    stockBarn(state, WHEAT, 'wheat', 4);
+    const out = apply(data, state, { ...deliverA1({ wheat: 4 }), token: 0 } as Move);
+    expect(out.state.players[WHEAT]!.receipts).toEqual([{ vp: 6, crop: 'wheat', tile: 'A1' }]);
+    expect(out.events.some((e) => e.e === 'meepleGained')).toBe(false);
+    expect(out.events.find((e) => e.e === 'delivered')).toMatchObject({ tookHigher: true });
   });
 
   /**
-   * THE CAP (R4), on the island side. A seat starts holding one of every colour,
-   * so the FIRST island meeple a seat ever takes is a duplicate by construction
-   * and goes straight to the box. That is 89% of the design's measured waste
-   * arriving on Collect rather than here, but the island path has to obey the
-   * same ceiling or the cap would be a rule about one source.
+   * ⭐ THE SECOND DELIVERY pays the remaining token's demand PLUS 2 cards of ANY
+   * crops (the revealed "2 any"), which may differ. The tile is then finished.
    */
-  /**
-   * ⛔ INVERTED 05/09/2026, AND THE INVERSION IS THE POINT. This case used to
-   * pin the supply cap refusing an island meeple. **There is no cap any more**
-   * (Dean: *"let's just remove the cap completely - there is no limit to how
-   * many or what colour meeple you can hold"*), so the same position now has to
-   * assert the opposite: the meeple is KEPT and nothing is boxed.
-   *
-   * The cap's refusal path is not left uncovered - it is still a knob, both
-   * controls pin a number, and `meeple-loop.test.ts` exercises the boxing from
-   * the board and from the island under the v1 loop's cap of one.
-   */
-  it('keeps an island meeple of a colour the seat already holds: there is no cap (R4)', () => {
-    // ⚠️ ON THE MEEPLE ARM SINCE 09/09/2026. The commons seeds no meeple on any
-    // island space (C6), so the position this case needs cannot occur in the
-    // shipped game at all - but the no-cap ruling is Dean's and the branch is
-    // still one knob away, so the case moves rather than going away.
-    const state = makeState(meepleArm, ['wheat', 'orchard']);
-    const meeple = state.island.tiles.find((t) => t.tile === 'A1')!.meeples[0]!;
-    deliveredAt(state, ORCHARD, 'A1'); // so WHEAT takes the second, seeded space
+  it('a second delivery pays the last token plus 2 of any crops, and finishes the tile', () => {
+    const state = base();
     stockBarn(state, WHEAT, 'wheat', 4);
-    giveMeeples(state, WHEAT, meeple, 1);
-    expect(state.players[WHEAT]!.meeples[meeple]).toBe(2);
-    const out = apply(meepleArm, state, deliverA1({ wheat: 4 }));
-    expect(out.state.players[WHEAT]!.meeples[meeple]).toBe(3); // a third, and a fourth would be fine
+    const s = apply(data, state, { ...deliverA1({ wheat: 4 }), token: 0 } as Move).state;
+    s.turn = freshTurn();
+    s.turnPlayer = ORCHARD;
+    noMeeples(s);
+    stockBarn(s, ORCHARD, 'wheat', 2);
+    stockBarn(s, ORCHARD, 'apiary', 1);
+    stockBarn(s, ORCHARD, 'dairy', 1);
+    const offered = deliverOptions(data, s, ORCHARD).filter((o) => o.tile === 'A1');
+    expect(offered).toEqual([{ tile: 'A1', token: 0, spend: { wheat: 2, apiary: 1, dairy: 1 } }]);
+    const out = apply(data, s, {
+      type: 'deliver',
+      seat: ORCHARD,
+      tile: 'A1',
+      spend: { wheat: 2, apiary: 1, dairy: 1 },
+      token: 0,
+    });
+    expect(out.state.players[ORCHARD]!.receipts).toEqual([{ vp: 5, crop: 'wheat', tile: 'A1' }]);
+    const a1 = out.state.island.tiles.find((t) => t.tile === 'A1')!;
+    expect(a1.tokens).toEqual([]);
+    expect(a1.deliveredBy).toEqual([WHEAT, ORCHARD]);
+    // The pair is still owed in its crop.
+    const t = apply(data, state, { ...deliverA1({ wheat: 4 }), token: 0 } as Move).state;
+    t.turn = freshTurn();
+    t.turnPlayer = ORCHARD;
+    noMeeples(t);
+    stockBarn(t, ORCHARD, 'wheat', 1);
+    stockBarn(t, ORCHARD, 'apiary', 3);
+    expect(deliverOptions(data, t, ORCHARD).some((o) => o.tile === 'A1')).toBe(false);
+  });
+
+  /**
+   * THE CAP (R4), on the island side, under the meeple-economy control. ⛔
+   * There is no cap any more (Dean, 05/09/2026), so a Worker of a colour the
+   * seat already holds is KEPT and nothing is boxed.
+   */
+  it('keeps an island Worker of a colour the seat already holds: there is no cap (R4)', () => {
+    const state = makeState(meepleArm, ['wheat', 'orchard']);
+    const worker = state.island.tiles.find((t) => t.tile === 'A2')!.tokens[0]!.worker!;
+    stockBarn(state, WHEAT, 'wheat', 4);
+    giveMeeples(state, WHEAT, worker, 1);
+    const held = state.players[WHEAT]!.meeples[worker];
+    const out = apply(meepleArm, state, {
+      type: 'deliver',
+      seat: WHEAT,
+      tile: 'A2',
+      spend: { wheat: 4 },
+      token: 0,
+    });
+    expect(out.state.players[WHEAT]!.meeples[worker]).toBe(held + 1);
     expect(out.events.some((e) => e.e === 'meepleBoxed')).toBe(false);
     expect(out.events).toContainEqual({
       e: 'meepleGained',
       seat: WHEAT,
-      colour: meeple,
-      tile: 'A1',
-      space: 1,
+      colour: worker,
+      tile: 'A2',
+      vp: 4,
     });
   });
 
   /**
-   * The v31 island under the control overlay: BOTH spaces carry a meeple and
-   * both are claimed, which is the shape `island.meeples.perDeliverySpace`
-   * still describes.
-   */
-  it('pays a meeple on both spaces under the v31 card-visit control', () => {
-    const control = cardVisitGame();
-    const state = makeState(control, ['wheat', 'orchard']);
-    const first = state.island.tiles.find((t) => t.tile === 'A1')!.meeples[0]!;
-    stockBarn(state, WHEAT, 'wheat', 4);
-    const applied = apply(control, state, deliverA1({ wheat: 4 }));
-    expect(applied.state.players[WHEAT]!.receipts).toEqual([6]);
-    expect(applied.state.players[WHEAT]!.meeples[first]).toBe(1);
-    expect(applied.events).toContainEqual({
-      e: 'meepleGained',
-      seat: WHEAT,
-      colour: first,
-      tile: 'A1',
-      space: 0,
-    });
-  });
-
-  it('the meeples on a tile are never mutated: the record is deliveredBy', () => {
-    const state = base();
-    stockBarn(state, WHEAT, 'wheat', 4);
-    const before = [...state.island.tiles.find((t) => t.tile === 'A1')!.meeples];
-    const after = apply(data, state, deliverA1({ wheat: 4 })).state;
-    // The printed schedule stays put; who took which space is `deliveredBy`.
-    expect(after.island.tiles.find((t) => t.tile === 'A1')?.meeples).toEqual(before);
-  });
-
-  /**
-   * The clock. One seat's Nth island delivery ends the game, counted across the
-   * whole island and per seat - so a rival racing does not arm your trigger, and
-   * the two receipts on one tile count as two.
+   * The clock. One seat's Nth receipt ends the game, counted per seat - so a
+   * rival racing does not arm your trigger.
    */
   it('the end fires on a sixth island delivery by ONE seat, not on six across the table', () => {
     const s = base();
@@ -503,9 +451,17 @@ describe('main actions through apply', () => {
     expect(islandDeliveriesBy(s, WHEAT)).toBe(5);
     expect(s.endTrigger).toBeNull();
 
-    // 8 wheat pays any tile outright under the wild substitution, whatever its
-    // crates ask for, so the sixth delivery does not depend on the demand deal.
-    stockBarn(s, WHEAT, 'wheat', 8);
+    // Stock exactly what D1's tokens ask for, so the sixth delivery does not
+    // depend on the deal.
+    const d1 = s.island.tiles.find((t) => t.tile === 'D1')!;
+    for (const token of d1.tokens) {
+      stockBarn(
+        s,
+        WHEAT,
+        token.demand === 'wild' ? 'wheat' : token.demand,
+        data.island.tileRule.cardsPerCrate,
+      );
+    }
     const sixth = legalMoves(data, s).find((m) => m.type === 'deliver' && m.tile === 'D1');
     expect(sixth).toBeDefined();
     const out = apply(data, s, sixth as Move);
@@ -531,101 +487,68 @@ describe('main actions through apply', () => {
     const state = base();
     stockBarn(state, WHEAT, 'wheat', 12);
     const move: Move = { type: 'deliver', seat: WHEAT, tile: 'A1', spend: { wheat: 4 } };
-    let s = declineStore(apply(data, state, move).state);
+    let s = apply(data, state, move).state;
     s.turn = freshTurn();
     s.turnPlayer = WHEAT;
-    s = declineStore(apply(data, s, move).state);
+    // The second pays wheat for the pair AND wheat for the 2 any.
+    s = apply(data, s, move).state;
+    expect(s.players[WHEAT]!.receipts.map((r) => r.vp)).toEqual([6, 5]);
     s.turn = freshTurn();
     s.turnPlayer = WHEAT;
     expect(legalMoves(data, s).some((m) => m.type === 'deliver' && m.tile === 'A1')).toBe(false);
-    expect(() => apply(data, s, move)).toThrow(/no delivery slots/);
+    expect(() => apply(data, s, move)).toThrow(/no tokens left/);
   });
 
   /**
-   * The wild substitution: "when you pay the island, any single card it asks for
-   * may instead be paid with 2 cards of any crops".
-   *
-   * The testkit island puts [wheat, wheat] on A1, so A1 wants 4 wheat. That
-   * gives the payment shapes the rule creates - 4 wheat, 3 wheat + 2 anything,
-   * and 8 anything - and lets the parity trap it exists to break be shown
-   * directly: a barn holding THREE wheat used to be worth nothing against A1.
+   * ⭐ NO WILD SUBSTITUTION (Dean, 16/09/2026, R4): a named token takes exactly
+   * its crop. A1 wants 4 wheat, and a barn holding three wheat and two apiary
+   * pays nothing.
    */
-  it('pays a demanded card with 2 of any crops, at every shape', () => {
+  it('pays a named token only with its own crop', () => {
     const exact = base();
     stockBarn(exact, WHEAT, 'wheat', 4);
     expect(apply(data, exact, deliverA1({ wheat: 4 })).state.players[WHEAT]!.barn).toHaveLength(0);
 
-    // One card short, which is the 84% case, and it now delivers.
-    const half = base();
-    stockBarn(half, WHEAT, 'wheat', 3);
-    stockBarn(half, WHEAT, 'apiary', 2);
-    expect(anyDeliverOption(data, half, WHEAT)).toBe(true);
-    apply(data, half, deliverA1({ wheat: 3, apiary: 2 }));
-
-    // No wheat at all: every demanded card substituted, 8 of anything. The flat
-    // island caps that at 8 - it used to be 12 at a Level 3 tile.
-    const none = base();
-    stockBarn(none, WHEAT, 'apiary', 6);
-    stockBarn(none, WHEAT, 'orchard', 2);
-    apply(data, none, deliverA1({ apiary: 6, orchard: 2 }));
-
-    // And the rate is a real price, so short change is still refused.
-    expect(() => apply(data, half, deliverA1({ wheat: 3, apiary: 1 }))).toThrow(/does not pay/);
-  });
-
-  it('offers substituted payments as real moves, deduped, and never over-substitutes', () => {
-    const s = base();
-    // ⚠️ CARD-ONLY: a meeple pays an island crate since 05/09/2026 (R15), and the
-    // five a seat starts with would multiply the spends this case counts.
-    noMeeples(s);
-    stockBarn(s, WHEAT, 'wheat', 3);
-    stockBarn(s, WHEAT, 'apiary', 2);
-    // ⚠️ 14/09/2026: under the space choice every spend is offered once per
-    // free space, so the dedupe is read on ONE space.
-    const spends = deliverOptions(data, s, WHEAT)
-      .filter((o) => o.tile === 'A1' && (o.space ?? 0) === 0)
-      .map((o) => JSON.stringify(o.spend));
-    // Exactly one: the minimum substitution, and the only surplus it can draw
-    // filler from is the pair of apiary. Paying more when 5 cards will do is
-    // legal but strictly worse, so it is not offered.
-    expect(spends).toEqual([JSON.stringify({ wheat: 3, apiary: 2 })]);
-    expect(new Set(spends).size).toBe(spends.length);
-  });
-
-  it('cardsPerSubstitution null restores exact matching - the control arm', () => {
-    const strict = loadGameData({
-      name: 'no-wild-substitution',
-      schemaVersion: 1,
-      set: { 'island.cardsPerSubstitution': null },
-    });
-    const s = makeState(strict, ['wheat', 'orchard']);
-    // ⚠️ CARD-ONLY, as above: the substitution is off in this arm, but a meeple
-    // is a payment in its own right and would pay the crate the barn cannot.
-    noMeeples(s);
-    stockBarn(s, WHEAT, 'wheat', 3);
-    stockBarn(s, WHEAT, 'apiary', 2);
-    expect(anyDeliverOption(strict, s, WHEAT)).toBe(false);
-    expect(() =>
-      apply(strict, s, {
-        type: 'deliver',
-        seat: WHEAT,
-        tile: 'A1',
-        spend: { wheat: 3, apiary: 2 },
-      }),
-    ).toThrow(/ONE suit/);
+    const short = base();
+    noMeeples(short);
+    stockBarn(short, WHEAT, 'wheat', 3);
+    stockBarn(short, WHEAT, 'apiary', 2);
+    expect(anyDeliverOption(data, short, WHEAT)).toBe(false);
+    expect(() => apply(data, short, deliverA1({ wheat: 3, apiary: 1 }))).toThrow(/does not pay/);
   });
 
   /**
-   * The flat island's one gradient, and the properties that make it the rule
-   * rather than an implementation detail:
-   *  - it is PER TILE, so a rival taking your tile costs you 3 VP while a rival
-   *    taking a different tile costs you nothing. That is what makes it a race
-   *    over a specific square of board rather than a queue you join;
-   *  - it is the WHOLE receipt, not a bonus on top of a printed value. There is
-   *    nothing left to add it to;
-   *  - it never runs out and never reaches zero, so no delivery is a dead move.
+   * ⭐ A WILD TOKEN TAKES ANY 2 CARDS (Dean, 15/09/2026): they may be of
+   * different crops. A1 is re-dealt as [wheat 6, wild 5] for the case, and a
+   * wild receipt keeps the crop 'wild'.
    */
-  it('the receipt is decided by arrival order at that tile, per tile', () => {
+  it('pays a wild token with any cards of any crops, and offers each mix', () => {
+    const s = base();
+    noMeeples(s);
+    s.island.tiles.find((t) => t.tile === 'A1')!.tokens[1] = {
+      demand: 'wild',
+      vp: 5,
+      worker: null,
+    };
+    stockBarn(s, WHEAT, 'wheat', 2);
+    stockBarn(s, WHEAT, 'apiary', 1);
+    stockBarn(s, WHEAT, 'orchard', 1);
+    const spends = deliverOptions(data, s, WHEAT)
+      .filter((o) => o.tile === 'A1' && o.token === 1)
+      .map((o) => o.spend);
+    expect(spends).toEqual([{ wheat: 2, apiary: 1, orchard: 1 }]);
+    const out = apply(data, s, {
+      ...deliverA1({ wheat: 2, apiary: 1, orchard: 1 }),
+      token: 1,
+    } as Move);
+    expect(out.state.players[WHEAT]!.receipts).toEqual([{ vp: 5, crop: 'wild', tile: 'A1' }]);
+    // The named wheat token is still owed in wheat.
+    expect(() => apply(data, s, deliverA1({ wheat: 1, apiary: 1, orchard: 2 }))).toThrow(
+      /does not pay/,
+    );
+  });
+
+  it('the receipt is the token chosen, per tile, highest first when none is named', () => {
     const s = base();
     stockBarn(s, WHEAT, 'wheat', 8);
     stockBarn(s, ORCHARD, 'wheat', 8);
@@ -636,66 +559,35 @@ describe('main actions through apply', () => {
       spend: { wheat: 4 },
     });
     const nextTurn = (state: GameState, seat: number) => {
-      state = declineStore(state);
       state.turn = freshTurn();
       state.turnPlayer = seat;
       return state;
     };
+    const vps = (state: GameState, seat: number) => state.players[seat]!.receipts.map((r) => r.vp);
 
-    // Wheat gets to A1 first: the head of the schedule.
     let g = apply(data, s, deliver(WHEAT, 'A1')).state;
-    expect(g.players[WHEAT]!.receipts).toEqual([6]);
-
-    // Orchard goes to a DIFFERENT tile and is first there, so it takes 6 too.
-    // Under the old level queue this was the second delivery to Level 1 and
-    // would have been docked; per tile, it is not.
+    expect(vps(g, WHEAT)).toEqual([6]);
     g = apply(data, nextTurn(g, ORCHARD), deliver(ORCHARD, 'A2')).state;
-    expect(g.players[ORCHARD]!.receipts).toEqual([6]);
-
-    // Orchard follows Wheat onto A1: second at that tile, so 3.
+    expect(vps(g, ORCHARD)).toEqual([4]);
     g = apply(data, nextTurn(g, ORCHARD), deliver(ORCHARD, 'A1')).state;
-    expect(g.players[ORCHARD]!.receipts).toEqual([6, 3]);
-
-    // And Wheat following Orchard onto A2 is second there, also 3 - the schedule
-    // is a property of the tile, not of the player or of how late it is.
+    expect(vps(g, ORCHARD)).toEqual([4, 5]);
     g = apply(data, nextTurn(g, WHEAT), deliver(WHEAT, 'A2')).state;
-    expect(g.players[WHEAT]!.receipts).toEqual([6, 3]);
+    expect(vps(g, WHEAT)).toEqual([6, 3]);
   });
 
-  it('island.vpByDeliveryOrder is the schedule AND the capacity - the control arm', () => {
+  it('island.tokens is the dial on what the tokens pay and carry', () => {
     const flat = loadGameData({
-      name: 'flat-receipts',
+      name: 'flat-tokens',
       schemaVersion: 1,
-      set: { 'island.vpByDeliveryOrder': [5, 4] },
+      set: { 'island.tokens.vpValues': [5, 5, 4, 4], 'island.tokens.workerOnVp': [] },
     });
     const s = makeState(flat, ['wheat', 'orchard']);
+    expect(s.island.tiles.flatMap((t) => t.tokens).every((t) => t.worker === null)).toBe(true);
     stockBarn(s, WHEAT, 'wheat', 4);
     const out = apply(flat, s, { type: 'deliver', seat: WHEAT, tile: 'A1', spend: { wheat: 4 } });
-    expect(out.state.players[WHEAT]!.receipts).toEqual([5]);
-
-    // Shortening the array closes a delivery space - and it deals one fewer
-    // meeple with it. There is no second knob to keep in step, which is the
-    // reason it is one array. Under the shipped rules the tile's only meeple
-    // sits on space 1 (island.meeples.seededSpaces is [1]), so a one-space tile
-    // carries NONE at all: `meeplesPerTile` filters the seeded indices against
-    // the spaces that actually exist rather than trusting the data to agree.
-    const single = loadGameData({
-      name: 'one-delivery-per-tile',
-      schemaVersion: 1,
-      set: { 'island.vpByDeliveryOrder': [6] },
-    });
-    const t = makeState(single, ['wheat', 'orchard']);
-    expect(t.island.tiles.every((tile) => tile.meeples.length === 0)).toBe(true);
-    stockBarn(t, WHEAT, 'wheat', 8);
-    const u = apply(single, t, {
-      type: 'deliver',
-      seat: WHEAT,
-      tile: 'A1',
-      spend: { wheat: 4 },
-    }).state;
-    u.turn = freshTurn();
-    u.turnPlayer = WHEAT;
-    expect(legalMoves(single, u).some((m) => m.type === 'deliver' && m.tile === 'A1')).toBe(false);
+    expect(out.state.players[WHEAT]!.receipts.map((r) => r.vp)).toEqual([5]);
+    // Equal VP: no token choice is recorded for the reading.
+    expect(out.events.find((e) => e.e === 'delivered')).not.toHaveProperty('tookHigher');
   });
 
   /**
@@ -723,26 +615,7 @@ describe('main actions through apply', () => {
     const top = legalMoves(data, s).find((m) => m.type === 'deliver' && m.tile === 'D1');
     expect(top).toBeDefined();
     const out = apply(data, s, top as Move);
-    expect(out.state.players[WHEAT]!.receipts).toEqual([6]);
-  });
-
-  it('a balloon move is not an island delivery, so it never arms the clock', () => {
-    // The freight branch of Deliver (DL-12) never touches the island, so it
-    // takes no receipt space, claims no meeple, and does not count toward the
-    // end trigger.
-    const s = makeState(data, ['vegetable', 'wheat']);
-    stockBarn(s, 0, 'wheat', 1);
-    stockBarn(s, 0, 'apiary', 1);
-    const move = legalMoves(data, s).find((m) => m.type === 'moveBalloon');
-    expect(move).toBeDefined();
-    const before = { ...s.players[0]!.meeples };
-    const after = apply(data, s, move as Move).state;
-    expect(after.island.tiles.every((t) => t.deliveredBy.length === 0)).toBe(true);
-    expect(after.players[0]!.receipts).toEqual([]);
-    // The supply is untouched, which is the claim - not that it is empty. Every
-    // seat starts holding one of each colour (R3), so "no meeple was claimed"
-    // has to be read as a delta rather than as a zero.
-    expect(after.players[0]!.meeples).toEqual(before);
+    expect(out.state.players[WHEAT]!.receipts.map((r) => r.tile)).toEqual(['D1']);
   });
 
   it('pass is offered only when no main action is legal', () => {
@@ -1267,23 +1140,16 @@ describe('views and redaction', () => {
   });
 
   /**
-   * A face-down demand token is PUBLIC. It sits on the board as a visible blank,
-   * so it must cross the view boundary unredacted for every seat - and the
-   * failure mode the Vegetable rebuild's ticket names is precisely a swap that
-   * renders correctly for the acting seat and wrongly for everybody else.
-   * `viewFor` spreads the tile, so this holds by construction; asserting it is
-   * what stops a future redaction pass quietly dropping the flag. The same
-   * applies to the meeples, which are face up from setup.
+   * The island's tokens and their Workers are PUBLIC: they sit face up from
+   * setup, so they must cross the view boundary unredacted for every seat.
+   * Asserting it is what stops a future redaction pass quietly dropping them.
    */
-  it('shows a face-down demand token and every meeple to every seat', () => {
+  it('shows every island token and Worker to every seat', () => {
     const state = base();
-    const tile = state.island.tiles[0]!;
-    tile.faceDown = tile.crates.map((_, i) => i === 0);
+    const tile = state.island.tiles[1]!;
     for (let seat = 0; seat < state.players.length; seat++) {
       const seen = viewFor(data, state, seat).island.tiles.find((t) => t.tile === tile.tile);
-      expect(seen?.faceDown, `seat ${seat}`).toEqual(tile.faceDown);
-      expect(seen?.crates, `seat ${seat}`).toEqual(tile.crates);
-      expect(seen?.meeples, `seat ${seat}`).toEqual(tile.meeples);
+      expect(seen?.tokens, `seat ${seat}`).toEqual(tile.tokens);
     }
   });
 
@@ -1311,6 +1177,9 @@ describe('views and redaction', () => {
   });
 });
 
+/** A receipt of this VP (the token island's records, 16/09/2026). */
+const R = (vp: number) => ({ vp, crop: 'wheat' as const, tile: 'A1' });
+
 describe('scoring', () => {
   /**
    * ⭐ THE TIE-BREAK CHANGED IN v31 (§1.3): total VP, then CARDS IN HAND PLUS
@@ -1322,8 +1191,8 @@ describe('scoring', () => {
    */
   it('ranks by VP, then cards in hand plus barn', () => {
     const state = base();
-    state.players[WHEAT]!.receipts.push(6);
-    state.players[ORCHARD]!.receipts.push(6); // tied on VP
+    state.players[WHEAT]!.receipts.push(R(6));
+    state.players[ORCHARD]!.receipts.push(R(6)); // tied on VP
     dealTo(data, state, ORCHARD, 'O5', 'O6'); // two more cards of stock
     stockBarn(state, WHEAT, 'wheat', 1);
     const result = score(data, state);
@@ -1333,8 +1202,8 @@ describe('scoring', () => {
 
   it('the hand and the barn count together, not separately', () => {
     const state = base();
-    state.players[WHEAT]!.receipts.push(6);
-    state.players[ORCHARD]!.receipts.push(6);
+    state.players[WHEAT]!.receipts.push(R(6));
+    state.players[ORCHARD]!.receipts.push(R(6));
     dealTo(data, state, WHEAT, 'W4', 'W5'); // 2 in hand, 0 in barn
     stockBarn(state, ORCHARD, 'orchard', 3); // 0 in hand, 3 in barn
     expect(score(data, state).ranking).toEqual([ORCHARD, WHEAT]);
@@ -1342,8 +1211,8 @@ describe('scoring', () => {
 
   it('falls through to receipt count when VP and stock both tie', () => {
     const state = base();
-    state.players[WHEAT]!.receipts.push(6); // 6 VP from one receipt
-    state.players[ORCHARD]!.receipts.push(3, 3); // 6 VP from two
+    state.players[WHEAT]!.receipts.push(R(6)); // 6 VP from one receipt
+    state.players[ORCHARD]!.receipts.push(R(3), R(3)); // 6 VP from two
     const result = score(data, state);
     expect(result.seats[WHEAT]!.total).toBe(result.seats[ORCHARD]!.total);
     expect(result.ranking).toEqual([ORCHARD, WHEAT]);
@@ -1364,7 +1233,7 @@ describe('scoring', () => {
   it('has exactly three VP sources', () => {
     const state = base();
     buildFor(data, state, WHEAT, 'W4');
-    state.players[WHEAT]!.receipts.push(6);
+    state.players[WHEAT]!.receipts.push(R(6));
     const s = score(data, state).seats[WHEAT]!;
     expect(s.total).toBe(s.printed + s.receipts + s.endgame);
     expect(s.printed).toBe(cardById(data, 'W4').printedVp);
@@ -1510,7 +1379,6 @@ describe('full games', () => {
   it('plays a 3-player game with Vegetable in play to the end', () => {
     const { state } = playFullGame('game-b', 3, ['vegetable', 'wheat', 'apiary']);
     expect(state.phase).toBe('ended');
-    expect(state.aerodrome).not.toBeNull();
   });
 
   it('replays (seed, move list) to a bit-identical final state', () => {

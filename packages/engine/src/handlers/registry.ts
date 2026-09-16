@@ -56,7 +56,13 @@ import {
   tradingShed,
   versatileShed,
 } from './dairy.js';
-import { helpingHand, wireHelpingHand } from './helpingHand.js';
+import {
+  helpingHandApiary,
+  helpingHandDairy,
+  helpingHandOrchard,
+  helpingHandVegetable,
+  helpingHandWheat,
+} from './helpingHand.js';
 import type { CardHandler } from './types.js';
 import {
   appleOrchard,
@@ -156,7 +162,7 @@ const HANDLERS = new Map<CardId, CardHandler>([
   ['W19', wheatExchange],
   ['W20', grandGranary],
   ['W21', breadHall],
-  // Vegetable - the full suit plus the Aerodrome module (ticket 19).
+  // Vegetable - the full suit (V4, V8, V16, V17 and V19 inert since 16/09/2026).
   ['V1', vegetableBarn],
   ['V2', vegetableFarmstead],
   ['V3', vegetableNoticeBoard],
@@ -240,13 +246,13 @@ const HANDLERS = new Map<CardId, CardHandler>([
   ['D19', cheeseHall],
   ['D20', countingHouse],
   ['D21', refinery],
-  // One Power card per suit, shared name, identical text on all five copies -
-  // one handler object, five registrations.
-  ['W18', helpingHand],
-  ['V18', helpingHand],
-  ['O18', helpingHand],
-  ['A18', helpingHand],
-  ['D18', helpingHand],
+  // A Helping Hand: one Power card per suit, shared name, five different texts
+  // since v42 (16/09/2026) - five handlers.
+  ['W18', helpingHandWheat],
+  ['V18', helpingHandVegetable],
+  ['O18', helpingHandOrchard],
+  ['A18', helpingHandApiary],
+  ['D18', helpingHandDairy],
 ]);
 
 export function handlerFor(card: CardId): CardHandler | undefined {
@@ -261,9 +267,6 @@ export function registeredCards(): CardId[] {
 // wiring it here avoids a value cycle between the two modules.
 wireHookBus(handlerFor);
 
-// The same pattern, for the same reason: `bonusSlotsFor` (actions.ts) has to ask
-// whether a seat has built A Helping Hand, and actions.ts may not import this
-// registry - helpingHand.ts imports actions.ts, so a value cycle between the two
-// would be fragile. Unwired, the printed one-bonus-a-turn rule stands on its own
-// and every test that never builds a Helping Hand behaves identically.
-wireHelpingHand();
+// ⛔ `wireHelpingHand()` WAS CALLED HERE until 16/09/2026. It installed the old
+// A Helping Hand's second bonus play into `bonusSlotsFor`; that card is retired
+// and the seam went with it (see handlers/helpingHand.ts).

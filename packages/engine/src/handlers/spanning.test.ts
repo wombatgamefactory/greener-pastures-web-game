@@ -241,11 +241,12 @@ describe('2. The Bakery (W13) - a Tier 3 GROW whose ability is a whole-farm casc
   });
 
   /**
-   * The cross-handler case the rebuild's ruling turns on: The Granary fires
-   * ONCE per harvest action, not once per building, or a Bakery over eight
-   * buildings draws eight cards.
+   * The cross-handler case the rebuild's ruling used to turn on: The Granary
+   * fired ONCE per harvest action. ⭐ REVERSED (Dean, 15/09/2026): card text
+   * fires every time its trigger happens, and each building harvested is its
+   * own trigger, so a Bakery over three buildings draws three.
    */
-  it('fires The Granary (W16) once for the whole cascade, not once per building', () => {
+  it('fires The Granary (W16) once for EVERY building the cascade harvests', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W13', 'W16', 'W4', 'W5');
     loadStack(data, s, WHEAT, 'W4', 2, 'apiary');
@@ -255,14 +256,12 @@ describe('2. The Bakery (W13) - a Tier 3 GROW whose ability is a whole-farm casc
 
     expect(buildingOf(applied.state, WHEAT, 'W4').stack).toEqual([]);
     expect(buildingOf(applied.state, WHEAT, 'W5').stack).toEqual([]);
-    // Three buildings harvested now, not two - W13's own fee is the third - so
-    // the guard has MORE to stop than it did, and the number is unmoved. The
-    // Granary contributes exactly one Draw 1; the rest of the queue is W4's and
-    // W5's own harvest lines.
+    // Three buildings harvested - W13's own fee is the third - so the Granary
+    // queues three Draw 1s beside W4's and W5's own harvest lines.
     const granaryDraws = applied.state.tasks.filter(
       (t) => t.t === 'draw' && t.src === 'W16' && t.see === 1,
     );
-    expect(granaryDraws).toHaveLength(1);
+    expect(granaryDraws).toHaveLength(3);
   });
 });
 
@@ -378,14 +377,24 @@ describe('4. The Herb Hive (A4) - a count of its own stack, the fee included', (
  * and it was the one card in the game that let a player deliberately shut a
  * door. Nothing replaces it.
  *
- * The new text - "Each turn, you may take both bonus options: Draw 1 AND place a
- * card on a Notice Board" - needs no handler body at all. `bonusSlotsFor`
+ * ⛔ AND THE v31 CARD IS RETIRED TOO (16/09/2026): v42 prints five different
+ * per-suit Helping Hands (helpingHand.test.ts). What follows describes the v31
+ * text. It - "Each turn, you may take both bonus options: Draw 1 AND place a
+ * card on a Notice Board" - needed no handler body at all. `bonusSlotsFor`
  * (actions.ts) reads the printed rule plus whatever card text grants, and
  * `bonusOpen(option)` already refuses a second Draw or a second placement, so
  * "one of each and never two of either" falls out of the existing `bonusUsed`
  * list. `standingMoves` is what proves the old shape is gone.
  */
-describe('5. A Helping Hand (W18) - the bonus-slot modifier', () => {
+describe('5. A Helping Hand (W18) - the second bonus play is retired', () => {
+  /**
+   * ⛔ RETIRED 16/09/2026. From v31 the card read "Each turn, you may take both
+   * bonus options", and under the notice-board visit that became a second play
+   * onto a different board. The v42 sheet prints five different per-suit cards
+   * (handlers/helpingHand.ts, tested in helpingHand.test.ts), none of which
+   * widens the slot, so the cases below pin the ABSENCE of the old grant under
+   * the two controls where it used to show.
+   */
   it('contributes no standing move at all, where it was the only card that did', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W18');
@@ -395,67 +404,9 @@ describe('5. A Helping Hand (W18) - the bonus-slot modifier', () => {
     expect(handlerFor('W18')?.applyMove).toBeUndefined();
   });
 
-  /**
-   * ⭐ THE TWO OPTIONS ARE VISIT AND COLLECT SINCE 04/09/2026 (R7, R11), and the
-   * card is unchanged by that: it grants ONE OF EACH, whatever the two happen to
-   * be. `bonusSlotsFor` reads the printed rule plus whatever card text grants
-   * and `bonusOpen(option)` refuses a second of either, so nothing in the
-   * handler had to move when the pair did.
-   */
-  it('grants a SECOND bonus option: Collect and a Visit in the same turn', () => {
+  it('grants no second bonus option under the meeple arm: Collect, then nothing', () => {
     const s = armBase();
-    buildFor(visitArm, s, WHEAT, 'W18');
-    const collected = answerAll(
-      apply(visitArm, s, { type: 'collect', seat: WHEAT }).state,
-      undefined,
-      visitArm,
-    );
-    expect(collected.turn.bonusUsed).toEqual(['collect']);
-    const visits = legalMoves(visitArm, collected).filter((m) => m.type === 'visit');
-    expect(visits.length).toBeGreaterThan(0);
-  });
-
-  it('never grants two of the SAME option: the card says both, not twice', () => {
-    const s = armBase();
-    buildFor(visitArm, s, WHEAT, 'W18');
-    const collected = answerAll(
-      apply(visitArm, s, { type: 'collect', seat: WHEAT }).state,
-      undefined,
-      visitArm,
-    );
-    expect(collected.turn.bonusUsed).toEqual(['collect']);
-    expect(legalMoves(visitArm, collected).some((m) => m.type === 'collect')).toBe(false);
-  });
-
-  /**
-   * ⭐ AND UNDER THE COMMONS THE RULE IS THE OTHER ONE (C8, 09/09/2026). That
-   * slot holds ONE option, so "one of each" would grant a seat nothing at all;
-   * the card buys a SECOND PLAY onto a central board instead, and never a third.
-   * `commons.test.ts` is where that pair of cases lives, and this comment is the
-   * signpost between them - the two readings must never be quoted as one.
-   */
-
-  /**
-   * ⚠️ DUPLICATES DO NOT STACK, and the cap is deliberate rather than emergent.
-   * There are exactly two bonus options, so a second copy could only ever grant
-   * a slot with nothing legal to spend it on; capping at 1 says that in the code
-   * instead of relying on `bonusOpen` to refuse it one layer down. Under the old
-   * text duplicates DID stack - two built copies allowed two repeats a visit -
-   * so this is a real change, not a restatement.
-   */
-  it('a second copy grants nothing: two built Helping Hands are still two options', () => {
-    const s = armBase();
-    buildFor(visitArm, s, WHEAT, 'W18', 'A18'); // one from each suit, same card
-    const collected = answerAll(
-      apply(visitArm, s, { type: 'collect', seat: WHEAT }).state,
-      undefined,
-      visitArm,
-    );
-    expect(legalMoves(visitArm, collected).some((m) => m.type === 'collect')).toBe(false);
-  });
-
-  it('a seat with no copy built gets exactly one bonus option', () => {
-    const s = armBase();
+    buildFor(visitArm, s, WHEAT, 'W18', 'A18');
     const collected = answerAll(
       apply(visitArm, s, { type: 'collect', seat: WHEAT }).state,
       undefined,
@@ -466,9 +417,7 @@ describe('5. A Helping Hand (W18) - the bonus-slot modifier', () => {
     expect(legalMoves(visitArm, collected).some((m) => m.type === 'collect')).toBe(false);
   });
 
-  // The same shape on the v31 control, where the pair is Draw 1 and a card
-  // visit. The card's rule is "one of each", not "one Draw and one placement".
-  it('grants one of each under the v31 card-visit control too', () => {
+  it('grants no second bonus option under the v31 card-visit control either', () => {
     const control = cardVisitGame();
     const s = makeState(control, ['wheat', 'apiary']);
     buildFor(control, s, WHEAT, 'W18', 'W9');
@@ -480,8 +429,11 @@ describe('5. A Helping Hand (W18) - the bonus-slot modifier', () => {
       const answers = pendingAnswers(control, drawn);
       drawn = answerTask(control, drawn, answers[0] as TaskAnswer).state;
     }
-    expect(drawn.turn.bonusUsed).toEqual(['draw']);
-    expect(legalMoves(control, drawn).some((m) => m.type === 'visit')).toBe(true);
+    // The one slot is spent, so the turn has ended rather than offering the
+    // other half.
+    expect(legalMoves(control, drawn).some((m) => m.seat === WHEAT && m.type === 'visit')).toBe(
+      false,
+    );
     expect(legalMoves(control, drawn).some((m) => m.type === 'bonusDraw')).toBe(false);
   });
 });
@@ -491,7 +443,10 @@ describe('6. The Wheat Exchange (W19) - end-game scoring', () => {
     const s = base();
     // W19 itself (wheat) plus an apiary and an orchard building: three crops.
     buildFor(data, s, WHEAT, 'W19', 'A9', 'O9');
-    player(s, WHEAT).receipts.push(4, 8);
+    player(s, WHEAT).receipts.push(
+      { vp: 4, crop: 'wheat', tile: 'A1' },
+      { vp: 8, crop: 'wheat', tile: 'A2' },
+    );
 
     const scores = gameEndScores(data, s);
     const wheat = scores[WHEAT]!;
@@ -553,15 +508,11 @@ describe('difficulty metadata stays honest', () => {
     expect(a4.prompts).toBe(true);
     expect(a4.crossPlayer).toBe(false);
 
-    // ⛔ HELPING HAND: ALL THREE FLAGS FLIPPED OR STAYED FALSE (v31). It was
-    // "no prompt (it is a standing MOVE), crosses the table" with addsMoves
-    // true; the rewrite is a bonus-slot modifier with no body, so it adds no
-    // moves and - the reading worth pausing on - it is no longer crossPlayer
-    // either. The card does nothing to anybody by itself; whether the extra
-    // option is spent on a neighbour is the holder's choice, so it points at
-    // the hook only as strongly as the player does.
+    // ⭐ HELPING HAND (v42, 16/09/2026): W18 now PROMPTS - "Draw 3" is a draw
+    // task - where the retired bonus-slot modifier had no body at all. It still
+    // adds no moves and touches nobody else's zones.
     const hand = handlerFor('W18')!.difficulty.verified;
-    expect(hand.prompts).toBe(false);
+    expect(hand.prompts).toBe(true);
     expect(hand.crossPlayer).toBe(false);
     expect(hand.addsMoves).toBe(false);
   });
@@ -1029,21 +980,25 @@ describe('the Apiary rebuild: rulings that live between two cards', () => {
     // ⚠️ CARD-ONLY, as in the A5 case above: a meeple-paid GROW also ignores the
     // clog, so the contrast needs the supply empty.
     noMeeples(s);
-    buildFor(data, s, SEAT, 'A12', 'A10', 'A11');
-    dealTo(data, s, SEAT, 'A4');
+    // ⭐ v42: A11 now skims EVERY full building, which would move a card off
+    // A10 and blur the point, so the second target is A4 The Herb Hive (a draw
+    // that reads its own stack and moves nothing).
+    buildFor(data, s, SEAT, 'A12', 'A10', 'A4');
+    dealTo(data, s, SEAT, 'A6');
     loadStack(data, s, SEAT, 'A10', 2); // threshold 2: full and clogged
-    loadStack(data, s, SEAT, 'A11', 2);
+    loadStack(data, s, SEAT, 'A4', 4); // threshold 4: full and clogged
     expect(growOptions(data, s, SEAT).some((o) => o.building === 'A10')).toBe(false);
 
-    const grown = growBuilding(data, s, SEAT, 'A12', 'A4');
+    const grown = growBuilding(data, s, SEAT, 'A12', 'A6');
     expect(
       pendingAnswers(data, grown.state)
         .flatMap((a) => (a.kind === 'activate' ? [a.card] : []))
         .sort(),
-    ).toEqual(['A10', 'A11']);
+    ).toEqual(['A10', 'A4']);
     const state = fireEverything(grown.state);
     expect(buildingOf(state, SEAT, 'A10').stack).toHaveLength(2);
-    expect([...state.turn.firedThisTurn].sort()).toEqual(['A10', 'A11', 'A12']);
+    expect(buildingOf(state, SEAT, 'A4').stack).toHaveLength(4);
+    expect([...state.turn.firedThisTurn].sort()).toEqual(['A10', 'A12', 'A4']);
   });
 
   /**
@@ -1285,7 +1240,11 @@ describe('the Wheat rebalance: rulings that live between two cards', () => {
    * guard saw a fresh event stream and fired again. Two harvests, two cards. The
    * turn-scoped guard sees one turn and pays once.
    */
-  it('W16 + W8: a harvest CHAINED through a task answer draws ONCE, where it drew twice', () => {
+  // ⭐ THE THREE W16 CASES BELOW ARE INVERTED (Dean, 15/09/2026): card text
+  // fires every time its trigger happens, so the Granary draws once per
+  // building harvested, by any route. The notes above them describe the guard
+  // that was removed and are history.
+  it('W16 + W8: a harvest CHAINED through a task answer draws again', () => {
     const s = wheatState();
     buildFor(data, s, WHEAT, 'W16', 'W8', 'W5');
     loadStack(data, s, WHEAT, 'W8', 2, 'apiary'); // threshold 2: full
@@ -1306,9 +1265,9 @@ describe('the Wheat rebalance: rulings that live between two cards', () => {
     // opposite sides of the same guard question and gave opposite answers - a
     // no-op is not a firing.
     expect(player(drained.state, WHEAT).barn).toHaveLength(4);
-    expect(drained.state.turn.firedThisTurn).toContain('W16');
+    expect(drained.state.turn.firedThisTurn).not.toContain('W16');
     expect(drained.state.turn.firedThisTurn).not.toContain('W2');
-    expect(drained.draws).toBe(1);
+    expect(drained.draws).toBe(2);
   });
 
   /**
@@ -1318,7 +1277,7 @@ describe('the Wheat rebalance: rulings that live between two cards', () => {
    * apply" is now "this card has fired this turn", and these two are where the
    * two rules agree.
    */
-  it('W16 + W12 / W13: a cascade over several buildings still draws ONCE', () => {
+  it('W16 + W12 / W13: a cascade draws once per building it harvests', () => {
     // W12 Crop Rotation, fired by a GROW: both FIELDs harvested inside one apply.
     const rotation = wheatState();
     buildFor(data, rotation, WHEAT, 'W16', 'W12', 'W4', 'W5');
@@ -1338,11 +1297,15 @@ describe('the Wheat rebalance: rulings that live between two cards', () => {
     // back. W2 the Farmstead adds nothing here: the fee was the seat's only
     // card, so its listener saw an empty hand at both harvests and skipped
     // silently both times, before the Granary's draw had been answered.
+    // ⭐ v42: W12 is a Wheat building, so it harvests itself too (its loaded
+    // card and the payment): 2 + 2 + 2, plus the card W4 banks = 7, and three
+    // Granary draws.
     expect(buildingOf(grown.state, WHEAT, 'W4').stack).toEqual([]);
     expect(buildingOf(grown.state, WHEAT, 'W5').stack).toHaveLength(1);
+    expect(buildingOf(grown.state, WHEAT, 'W12').stack).toEqual([]);
     expect(grown.state.turn.firedThisTurn).not.toContain('W2');
-    expect(player(grown.state, WHEAT).barn).toHaveLength(5);
-    expect(grown.draws).toBe(1);
+    expect(player(grown.state, WHEAT).barn).toHaveLength(7);
+    expect(grown.draws).toBe(3);
 
     // W13 The Bakery. Its own spanning case is §2 above; what is added here is
     // that the number survived the guard swap - and, since 19/08/2026, that it
@@ -1355,7 +1318,7 @@ describe('the Wheat rebalance: rulings that live between two cards', () => {
     loadStack(data, bakery, WHEAT, 'W5', 2, 'apiary');
     dealTo(data, bakery, WHEAT, 'W6');
     const baked = drainCountingGranary(growBuilding(data, bakery, WHEAT, 'W13', 'W6').state);
-    expect(baked.draws).toBe(1);
+    expect(baked.draws).toBe(3);
   });
 
   /**
@@ -1385,7 +1348,7 @@ describe('the Wheat rebalance: rulings that live between two cards', () => {
    * The ruling itself is still untouched: one turn, one Granary draw, whichever
    * harvest gets there first. What changed is which harvest can get there.
    */
-  it('W16 + the Wheat door: a door harvest is INSIDE the once-per-turn budget', () => {
+  it('W16 + the Wheat door: a door harvest draws as well as the main one', () => {
     // On its own it is a harvest like any other, and it pays.
     const alone = armWheatState();
     buildFor(visitArm, alone, WHEAT, 'W16', 'W4');
@@ -1394,7 +1357,7 @@ describe('the Wheat rebalance: rulings that live between two cards', () => {
     expect(solo.draws).toBe(1);
 
     // The main action first, then the bonus slot - the only order the turn
-    // structure now allows. The main harvest pays; the door one does not.
+    // structure now allows. Both harvests pay (15/09/2026: no per-turn budget).
     const both = makeState(visitArm, ['wheat', 'apiary']);
     buildFor(visitArm, both, WHEAT, 'W16', 'W4', 'W5');
     loadStack(visitArm, both, WHEAT, 'W4', 2, 'apiary');
@@ -1406,9 +1369,8 @@ describe('the Wheat rebalance: rulings that live between two cards', () => {
     );
     expect(main.draws).toBe(1);
     const door = drainCountingGranary(doorHarvest(main.state).state, undefined, visitArm);
-    expect(door.draws).toBe(0);
-    // And the second harvest genuinely happened: W4 emptied and reseeded with
-    // the fee. The 0 is the guard, not an action that found nothing to take.
+    expect(door.draws).toBe(1);
+    // And the second harvest genuinely happened: W4 emptied.
     expect(buildingOf(door.state, WHEAT, 'W4').stack).toHaveLength(0);
 
     // The old order is now illegal, and that is the rule rather than an
@@ -1434,8 +1396,7 @@ describe('the Wheat rebalance: rulings that live between two cards', () => {
    * became the enhancement: a door buys a WHOLE CORE ACTION for one card, which
    * is a far bigger prize than any rider was. So there is no relaxation
    * anywhere - not on the card, not on the door - and the only gates left in
-   * the game are the ones a CARD prints for itself (W8, W11, W12, W13) plus the
-   * magenta balloon's "harvest any building, even if it is not full".
+   * the game are the ones a CARD prints for itself (W8, W11, W12, W13).
    *
    * ⚠️ THE RULING IS NOT REFUTED, IT IS UNEMPLOYED, and now completely so:
    * Wheat was its instance, the Orchard draw modifier where it was last proved

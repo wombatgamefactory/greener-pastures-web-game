@@ -1,6 +1,6 @@
 {
   "name": "ladder-compressed",
-  "description": "Dean's proposal, 2026-08-09: drop the top of the cost curve instead of adding an upgrade rule. Tier 1 costs 1-2 cards, Tier 2 costs 2-3, Tier 3 costs 3-4, and nothing in the game costs 5 or 6. Every Tier 2 and Tier 3 card is 3-of-suit plus wilds today, so the suit gate is left alone as the tier signature and the WILD component is what comes off: T2 3+0 -> 2+0 and 3+1 -> 3+0, T3 3+2 -> 3+0 and 3+3 -> 3+1. A6 The Garden Hive, the one 3-cost Tier 1, comes to 2. A PRICE arm, not a power arm: it tests whether affordability alone gets the upper tiers into play, and whether anything else moves when it does. ⛔ PASSENGERS PINNED 12/09/2026: Dean's plain-action balloon and Village Store ruling moved sixteen shipped leaves at once. This overlay predates that flip and every report taken against it does too, so each of those leaves is pinned here BY NAME at its PRE-FLIP value. Without it an arm read as a delta against a pre-flip base would silently gain a one-card flight, an always-present Aerodrome and a live coin economy. That is the 05/09/2026 passenger lesson: an overlay that should not move with the shipped default has to pin every knob the flip moved. ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the delivery meeple ON as the shipped default (rules.turn.deliveryMeepleSpace 1, meepleSpendTiming 'afterAction', meepleSpendPerTurn 1, meepleSpendDistinctColours false) together with two new island rules, the space choice (rules.turn.deliverySpaceChoice true: a delivery names either free space) and the closing draw (rules.turn.closingDrawPerCrate 1: filling a tile draws one card per crate). This overlay predates it, so all six leaves are pinned here BY NAME at their pre-ruling values (deliveryMeepleSpace null, meepleSpendTiming 'start', meepleSpendPerTurn null, meepleSpendDistinctColours false, deliverySpaceChoice false, closingDrawPerCrate 0; 'start' and null are the old inert values, not 'none' and 0) and it still replays its own game.",
+  "description": "Dean's proposal, 2026-08-09: drop the top of the cost curve instead of adding an upgrade rule. Tier 1 costs 1-2 cards, Tier 2 costs 2-3, Tier 3 costs 3-4, and nothing in the game costs 5 or 6. Every Tier 2 and Tier 3 card is 3-of-suit plus wilds today, so the suit gate is left alone as the tier signature and the WILD component is what comes off: T2 3+0 -> 2+0 and 3+1 -> 3+0, T3 3+2 -> 3+0 and 3+3 -> 3+1. A6 The Garden Hive, the one 3-cost Tier 1, comes to 2. A PRICE arm, not a power arm: it tests whether affordability alone gets the upper tiers into play, and whether anything else moves when it does. ⛔ PASSENGERS PINNED 12/09/2026: Dean's plain-action balloon and Village Store ruling moved sixteen shipped leaves at once. This overlay predates that flip and every report taken against it does too, so each of those leaves is pinned here BY NAME at its PRE-FLIP value. Without it an arm read as a delta against a pre-flip base would silently gain a one-card flight, an always-present Aerodrome and a live coin economy. That is the 05/09/2026 passenger lesson: an overlay that should not move with the shipped default has to pin every knob the flip moved. ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the delivery meeple ON as the shipped default (rules.turn.deliveryMeepleSpace 1, meepleSpendTiming 'afterAction', meepleSpendPerTurn 1, meepleSpendDistinctColours false) together with two new island rules, the space choice (rules.turn.deliverySpaceChoice true: a delivery names either free space) and the closing draw (rules.turn.closingDrawPerCrate 1: filling a tile draws one card per crate). This overlay predates it, so all six leaves are pinned here BY NAME at their pre-ruling values (deliveryMeepleSpace null, meepleSpendTiming 'start', meepleSpendPerTurn null, meepleSpendDistinctColours false, deliverySpaceChoice false, closingDrawPerCrate 0; 'start' and null are the old inert values, not 'none' and 0) and it still replays its own game. Since 16/09/2026 the balloons, the Aerodrome, the Village Store, the closing draw and the wild substitution are deleted from the engine, so this overlay no longer replays the game it was recorded on. Its pins for the balloons and the Aerodrome, the Village Store and the closing draw were removed with them. ⚠️ 16/09/2026, THE TOKEN ISLAND AND THE TURN-ORDER RULINGS: the island is now two tokens per tile (Dean, R3: a first delivery pays both demands and chooses its token, a second pays the last token plus 2 any; Workers sit on the 3 and 4 VP tokens), and the Vegetable and Dairy boards were retexted (R9, R10), so this overlay's pins of rules.turn.deliverySpaceChoice, rules.turn.deliveryMeepleSpace were removed with the delivery spaces. It pins rules.economy.noticeBoardPower.vegetableWildCards 0 and dairyDiscount 0 by name, and island.tokens.workerOnVp [] because its game had no island meeple, and it now starts with seat 0 and gives one more turn each (rules.setup.firstPlayer 'seat0', rules.endGame.endOfGame 'oneMoreTurnEach'). It no longer replays the game it was recorded on, and nothing measured before 16/09/2026 is comparable as a level.",
   "schemaVersion": 1,
   "set": {
     "cards.catalogue.A6.buildCost.suit": 2,
@@ -75,28 +75,14 @@
     "cards.catalogue.W14.buildCost.wild": 1,
     "cards.catalogue.W15.buildCost.suit": 3,
     "cards.catalogue.W15.buildCost.wild": 0,
-    "aerodrome.moveCost.barnCards": 2,
-    "aerodrome.alwaysInPlay": false,
-    "aerodrome.flightMints": false,
-    "aerodrome.balloons.balloonDraw.reward.type": "draw",
-    "aerodrome.balloons.balloonDraw.reward.amount": 4,
-    "aerodrome.balloons.balloonBuild.reward.type": "buildDiscount",
-    "aerodrome.balloons.balloonBuild.reward.amount": 4,
-    "aerodrome.balloons.balloonSow.reward.type": "sowFromHand",
-    "aerodrome.balloons.balloonSow.reward.amount": 4,
-    "aerodrome.balloons.balloonCoins.reward.type": "harvestAny",
-    "rules.economy.storeCoinsPerCard": 0,
-    "rules.economy.coinSupplyPerPlayer": 0,
-    "rules.economy.coinPaysBuild": false,
-    "rules.economy.coinPaysSuitCost": false,
-    "rules.economy.coinPaysGrow": false,
-    "rules.economy.coinGrowOnFullBuilding": false,
     "rules.economy.cropScorerOnBarn": false,
-    "rules.turn.deliveryMeepleSpace": null,
     "rules.turn.meepleSpendTiming": "start",
     "rules.turn.meepleSpendPerTurn": null,
     "rules.turn.meepleSpendDistinctColours": false,
-    "rules.turn.deliverySpaceChoice": false,
-    "rules.turn.closingDrawPerCrate": 0
+    "island.tokens.workerOnVp": [],
+    "rules.economy.noticeBoardPower.vegetableWildCards": 0,
+    "rules.economy.noticeBoardPower.dairyDiscount": 0,
+    "rules.setup.firstPlayer": "seat0",
+    "rules.endGame.endOfGame": "oneMoreTurnEach"
   }
 }

@@ -28,8 +28,7 @@ import type { GameData } from '@gp/data';
  *
  * So a Wheat seat's Harvest is the strict printed rule like everybody else's,
  * and the only relaxations left in the game are the ones a CARD prints for
- * itself (W11, W12) plus the magenta balloon's "harvest any building, even if it
- * is not full".
+ * itself (W11, W12).
  */
 
 /**
@@ -42,8 +41,8 @@ import type { GameData } from '@gp/data';
  *
  * ⚠️ NOTHING PASSES A FLOOR ANY MORE. The Wheat door did until v31 (via the
  * `chooseBuilding` task's `relaxedMin` rider, which the 'harvestable' filter
- * still routes through). The parameter stays because the balloon's `harvestAny`
- * and the printed exceptions need the same union, and because a gate and the
+ * still routes through). The parameter stays because the printed exceptions need
+ * the same union, and because a gate and the
  * action it gates must be handed the SAME modifiers - a mismatch here refused a
  * perfectly legal harvest for a few hours on 19/08/2026 and was not local, it
  * reached five call sites.

@@ -61,10 +61,6 @@ export function islandTileArtZoom(tile: string): string {
   return art(`island/zoom/${tile.toLowerCase()}.webp`);
 }
 
-export function aerodromeArt(): string {
-  return art('aerodrome/board.webp');
-}
-
 /** The box cover, 800x800. The start screen's hero, and its own backdrop. */
 export function logoArt(): string {
   return art('logo.webp');
@@ -100,10 +96,6 @@ export function demandTokenLayers(demand: Suit | 'wild', faceDown = false): stri
   // empty crate slot, because no cornucopia token art existed. Ticket 33 built
   // the real one, so all six demands are now one painted token.
   return [token(`demand-${demand}`)];
-}
-
-export function balloonArt(balloonId: string): string {
-  return token(`balloon-${balloonId}`);
 }
 
 /** The crop icon a card prints: its suit's sheaf/apple/etc, or the wild cornucopia. */

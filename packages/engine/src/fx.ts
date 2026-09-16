@@ -14,17 +14,9 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import { isMeepleCurrency, storeCoinsPerCard } from '@gp/data';
+import { isMeepleCurrency } from '@gp/data';
 
-import {
-  cardById,
-  canTakeCard,
-  coinsOf,
-  coinSupplyLeft,
-  drawableSuits,
-  noticeBoardSlots,
-  player,
-} from './query.js';
+import { cardById, canTakeCard, drawableSuits, noticeBoardSlots, player } from './query.js';
 import { shuffle } from './rng.js';
 import type {
   CardId,
@@ -32,6 +24,7 @@ import type {
   GameEvent,
   GameState,
   IslandTileState,
+  Receipt,
   Seat,
   Task,
 } from './state.js';
@@ -77,13 +70,13 @@ export class Fx {
   // replacement in kind: coins were fungible, continuous and could be saved
   // indefinitely, while a meeple is one of five colours, buys exactly one
   // specific action, and leaves the game when it is used. Nothing mints a
-  // meeple; the island's delivery spaces are the only source, seeded once at
-  // setup from a bag of 25.
+  // meeple; the island's 3 and 4 VP tokens are the only source (a WORKER on
+  // each, since 16/09/2026), seeded once at setup from a bag of 25.
 
   /**
-   * Claim a meeple into a seat's supply: off an island delivery space
-   * (`doDeliver`), out of the magenta balloon's bag, or off your own Notice
-   * Board (`collectBoard` below routes through here).
+   * Claim a meeple into a seat's supply: a Worker off an island token
+   * (`finishDelivery`, with the token's VP) or off your own Notice Board
+   * (`collectBoard` below routes through here, with no tile and no VP).
    *
    * ⭐ THE SUPPLY CAP IS APPLIED HERE AND NOWHERE ELSE (R4). A meeple of a
    * colour the seat is already at the cap on is RETURNED TO THE BOX and
@@ -106,8 +99,8 @@ export class Fx {
     seat: Seat,
     colour: Suit,
     tile: string | null,
-    space: number | null,
-    source: 'island' | 'collect' | 'balloon' = 'island',
+    vp: number | null,
+    source: 'island' | 'collect' = 'island',
   ): boolean {
     this.touch(seat);
     const p = player(this.state, seat);
@@ -121,7 +114,7 @@ export class Fx {
       }
     }
     p.meeples[colour] += 1;
-    this.emit({ e: 'meepleGained', seat, colour, tile, space });
+    this.emit({ e: 'meepleGained', seat, colour, tile, vp });
     return true;
   }
 
@@ -352,14 +345,13 @@ export class Fx {
    * Cards into a hand.
    *
    * ⭐ `via` IS OPTIONAL AND IS A LABEL: `'hostDraw'` is S17's (Dean,
-   * 11/09/2026), the cards the OWNER of a visited Notice Board takes, and
-   * `'closingDraw'` (Dean, 14/09/2026) is the draw for filling a tile's last
-   * delivery space. It is passed through to the event and nothing else - the
+   * 11/09/2026), the cards the OWNER of a visited Notice Board takes. It is
+   * passed through to the event and nothing else - the
    * cards arrive in the hand identically either way, which is the point.
    * Omitted by every one of the dozen other callers, so the emitted event is
    * byte-identical to what it was for all of them.
    */
-  cardsToHand(seat: Seat, cards: CardId[], via?: 'hostDraw' | 'closingDraw'): void {
+  cardsToHand(seat: Seat, cards: CardId[], via?: 'hostDraw'): void {
     if (cards.length === 0) return;
     this.touch(seat);
     player(this.state, seat).hand.push(...cards);
@@ -448,7 +440,7 @@ export class Fx {
   /**
    * Spend barn cards by per-suit tally (barn identity is inert): the first
    * matching ids leave the barn for their suits' discards. The Deliver funnel
-   * and the balloon move both pay through here.
+   * pays through here.
    */
   spendFromBarn(seat: Seat, spend: Partial<Record<Suit, number>>): CardId[] {
     this.touch(seat);
@@ -595,62 +587,34 @@ export class Fx {
     this.emit({ e: 'deckToBarn', seat, suit, card });
   }
 
-  // --- the island's demand tokens ----------------------------------------
+  // --- the island's tokens ------------------------------------------------
   //
-  // The first primitives in the game that write to the shared board rather than
-  // to a player's own zones. Both are Vegetable's (V5 and V6) and nothing else
-  // reaches them. Legality lives in actions.ts beside `tileHasRoom`, because it
-  // is the same question every delivery path already asks; these two verbs do
-  // the moving and say so in the event stream.
+  // The one primitive that writes to the shared board rather than to a
+  // player's own zones. V5 is its caller. Legality lives in
+  // actions/deliver.ts (`tokenSwapOptions`); this verb does the moving and says
+  // so in the event stream.
 
   /**
-   * V5 The Coastal Trading Depot: exchange the demand tokens on two crates.
-   *
-   * The FACE-DOWN FLAG TRAVELS WITH THE TOKEN, because physically it is the
-   * token that moves - a blank token swapped onto another tile is still blank
-   * there. Same tile is legal (the crates just trade places, which is a no-op the
-   * enumerator declines to offer).
+   * ⭐ V5's SWAP ON THE TOKEN ISLAND (16/09/2026): exchange two tokens between
+   * two DIFFERENT tiles. Each token carries its demand, its VP and its Worker,
+   * because physically it is the token that moves. `token` is an index into
+   * each tile's `tokens`.
    */
-  swapDemandTokens(
+  swapIslandTokens(
     seat: Seat,
-    a: { tile: string; crate: number },
-    b: { tile: string; crate: number },
+    a: { tile: string; token: number },
+    b: { tile: string; token: number },
   ): void {
+    if (a.tile === b.tile) throw new Error('A token swap needs two different island cards');
     const ta = this.tileDraft(a.tile);
     const tb = this.tileDraft(b.tile);
-    const ca = ta.crates[a.crate];
-    const cb = tb.crates[b.crate];
-    if (ca === undefined) throw new Error(`Tile ${a.tile} has no crate ${a.crate}`);
-    if (cb === undefined) throw new Error(`Tile ${b.tile} has no crate ${b.crate}`);
-    const downA = ta.faceDown?.[a.crate] === true;
-    const downB = tb.faceDown?.[b.crate] === true;
-    ta.crates[a.crate] = cb;
-    tb.crates[b.crate] = ca;
-    this.setFaceDown(ta, a.crate, downB);
-    this.setFaceDown(tb, b.crate, downA);
+    const xa = ta.tokens[a.token];
+    const xb = tb.tokens[b.token];
+    if (xa === undefined) throw new Error(`Tile ${a.tile} has no token ${a.token}`);
+    if (xb === undefined) throw new Error(`Tile ${b.tile} has no token ${b.token}`);
+    ta.tokens[a.token] = xb;
+    tb.tokens[b.token] = xa;
     this.emit({ e: 'demandSwapped', seat, a: { ...a }, b: { ...b } });
-  }
-
-  /**
-   * V6 The Trade Depot: turn one demand token face down, after which it accepts
-   * cards of any crops at the normal rate. Idempotence is not silently allowed -
-   * turning an already-blank token is a wasted effect, so the enumerator never
-   * offers it and this throws if it is asked for anyway.
-   */
-  turnDemandFaceDown(seat: Seat, tileId: string, crate: number): void {
-    const tile = this.tileDraft(tileId);
-    if (tile.crates[crate] === undefined) throw new Error(`Tile ${tileId} has no crate ${crate}`);
-    if (tile.faceDown?.[crate] === true)
-      throw new Error(`${tileId} crate ${crate} is already down`);
-    this.setFaceDown(tile, crate, true);
-    this.emit({ e: 'demandFaceDown', seat, tile: tileId, crate });
-  }
-
-  /** Write one entry of a tile's parallel flags, materialising the array on first use. */
-  private setFaceDown(tile: IslandTileState, crate: number, down: boolean): void {
-    if (!down && tile.faceDown === undefined) return;
-    tile.faceDown ??= tile.crates.map(() => false);
-    tile.faceDown[crate] = down;
   }
 
   private tileDraft(tileId: string): IslandTileState {
@@ -696,99 +660,25 @@ export class Fx {
     this.land(from, onto, card);
   }
 
-  // --- coins (the Village Store, and the coins arm's two K7 sinks) ---------
-  //
-  // ⛔ THIS IS NOT v31's `gainCoins` / `payCoins` COMING BACK. The commons
-  // coin take (K8) was deleted with the commons on 13/09/2026, so the one mint
-  // left is the Village Store's `mintFromBarn`.
-
   /**
-   * Add coins to a seat's pile. Private to the mint below by convention rather
-   * than by keyword: a second caller here IS a second faucet.
-   * `coinsOf` throws when the arm is off, so a stray call cannot quietly create
-   * a wallet.
+   * D5 The Churning Shed (v42): sow a face-up discarded card onto a building
+   * "even if the threshold is exceeded". `placeFromDiscard` with the one check
+   * the card waives, fullness, taken out; everything else still refuses. A card
+   * with no threshold has no stack, and a Notice Board is never a sow target
+   * (S11). A stack pushed past its threshold is full and harvestable, because
+   * both predicates read `>=`. Same landing tail, so placement reactors fire.
    */
-  private gainCoins(seat: Seat, n: number): void {
-    if (n <= 0) return;
-    this.touch(seat);
-    player(this.state, seat).coins = coinsOf(this.state, seat) + n;
-  }
-
-  /**
-   * ⭐ THE VILLAGE STORE'S MINT, ONE CARD AT A TIME (V1/V2/V4/V5, Dean
-   * 12/09/2026, ledger A150): one card of `suit` leaves the payer's BARN for
-   * that suit's DISCARD, and `rules.economy.storeCoinsPerCard` coins come OUT OF
-   * THE SHARED SUPPLY into the payer's wallet.
-   *
-   * ⛔ A SUIT AND NOT A CARD ID, because barn identity is inert - see
-   * `spendFromBarn` just above, which has taken "the first matching id" for a
-   * per-suit tally since the barn existed. That is what caps the mint task's
-   * answer list at five suits plus a skip whatever the barn holds, and it is the
-   * reason the exchange is not a power-set enumeration.
-   *
-   * ⛔ D1: TO THE SUIT'S DISCARD AND NEVER OUT OF THE GAME. Returning stranded
-   * cards to circulation is the Store's whole argument - the barn parity trap
-   * strands about eleven cards a player a game and played decks reshuffle 7 / 6
-   * / 4 times off a twelve-card deck - and out-of-game would do the opposite.
-   * `reshuffles per played deck` is the falsifiable prediction: if the Store
-   * works, it FALLS.
-   *
-   * ⛔ AND IT GOES THROUGH `fx.discard` AND NOT THROUGH `divertOrDiscard` OR
-   * `discardOrDivert`. A card lifted back out of the exchange by a divert would
-   * leave its owner holding the coin AND the card: a SECOND MINT, free, once a
-   * turn. O17 The Fruit Basket was restricted to a hand discard on the same day
-   * for the same reason (A150). Every coin economy this project has had died of
-   * a second faucet.
-   *
-   * ⚠️ D4: THE SUPPLY IS A CEILING, NOT A PRECONDITION. It pays what it has -
-   * the last coin of a supply still buys a card at a rate of 1 - and the caller
-   * stops when it is empty rather than refusing the whole exchange. Returns the
-   * coins actually minted, which is 0 only if the caller failed to check.
-   */
-  mintFromBarn(seat: Seat, suit: Suit): number {
-    const rate = storeCoinsPerCard(this.data);
-    if (rate <= 0) throw new Error('There is no Village Store in this game');
-    const left = coinSupplyLeft(this.state);
-    if (left <= 0) throw new Error('The Village Store supply is empty');
-    const barn = player(this.state, seat).barn;
-    const at = barn.findIndex((id) => cardById(this.data, id).suit === suit);
-    if (at < 0) throw new Error(`Seat ${seat}'s barn has no ${suit} card to exchange`);
-    this.touch(seat);
-    const [card] = barn.splice(at, 1) as [CardId];
-    this.discard([card]);
-    const coins = Math.min(rate, left);
-    this.state.coinSupply = left - coins;
-    this.gainCoins(seat, coins);
-    this.emit({ e: 'coinsMinted', seat, board: 'store', coins, card });
-    return coins;
-  }
-
-  /**
-   * ⭐ A SINK (K10 or K15): take `n` coins off a seat and say which of the two
-   * uses took them. The enumerators have already refused the move if the seat
-   * cannot pay - a seat short of coins is never offered the Farmstead as a Grow
-   * target or the Endgame card as a build - so a throw here is a funnel
-   * catching a move `legalMoves` never made, which is the discipline the whole
-   * file is written on.
-   */
-  spendCoins(seat: Seat, on: 'farmstead' | 'endgame' | 'build' | 'grow', n: number): void {
-    const held = coinsOf(this.state, seat);
-    if (n <= 0) throw new Error(`A coin sink costs at least one coin, got ${n}`);
-    if (held < n) throw new Error(`Seat ${seat} has ${held} coins, not ${n}`);
-    this.touch(seat);
-    player(this.state, seat).coins = held - n;
-    // ⭐ V5 (A150, 12/09/2026): A SPENT COIN RETURNS TO THE SHARED SUPPLY AND
-    // MAY BE MINTED AGAIN. So the pool is recirculating rather than a countdown,
-    // and the sum of the supply and every wallet is invariant for the whole
-    // game - which is the identity the tests assert and the reason a run can
-    // read "how often was the supply empty" as a measure of PRESSURE rather
-    // than of exhaustion.
-    //
-    // ⚠️ GATED ON THE FIELD'S PRESENCE: a game with a coin sink on and no
-    // Store supply has nowhere to return a coin to, and `coinSupplyLeft` would
-    // throw.
-    if (this.state.coinSupply !== undefined) this.state.coinSupply += n;
-    this.emit({ e: 'coinsSpent', seat, on, coins: n });
+  placeFromDiscardPastThreshold(from: Seat, onto: CardInPlay, card: CardId): void {
+    const printed = cardById(this.data, onto.card);
+    if (printed.threshold === null || printed.slot === 'noticeboard') {
+      throw new Error(`${onto.card} cannot be sown onto`);
+    }
+    this.buildingDraft(onto);
+    const pile = this.state.discards[cardById(this.data, card).suit];
+    const i = pile.indexOf(card);
+    if (i < 0) throw new Error(`${card} is not in its discard`);
+    pile.splice(i, 1);
+    this.land(from, onto, card);
   }
 
   private land(from: Seat, onto: CardInPlay, card: CardId): void {
@@ -879,6 +769,12 @@ export class Fx {
       source: 'tableau',
       owner: seat,
     });
+    // ⭐ W18's count (v42), kept before the hook so a listener reads this
+    // harvest in it. Only the turn player's own buildings count: "on your turn,
+    // you Harvest ... your buildings".
+    if (seat === this.state.turnPlayer) {
+      this.state.turn.harvestsThisTurn = (this.state.turn.harvestsThisTurn ?? 0) + 1;
+    }
     fireHook(this, 'afterHarvest', { seat, building: buildingCard, cards });
   }
 
@@ -912,22 +808,24 @@ export interface HookEvents {
   afterHarvest: { seat: Seat; building: CardId; cards: CardId[] };
   afterPlacement: { seat: Seat; onto: CardInPlay; card: CardId; stackSize: number };
   /**
-   * Any Deliver: an island delivery (island: true, tile set) or a balloon move
-   * (island: false) - both, because moving a balloon IS the Deliver action
-   * (DL-12). `cards` are the ids actually spent ([] for a free card-effect
-   * move), so the freight-refund family can reclaim one. Island-only cards
-   * (V16) guard on `island`; the Vegetable Farmstead deliberately does not.
+   * Any Deliver. `island` is always true since the balloons were deleted
+   * (16/09/2026) and `tile` is always set; both are kept so the payload shape
+   * does not move under the handlers. `cards` are the ids actually spent.
    */
   afterDeliver: {
     seat: Seat;
     island: boolean;
     tile?: string;
     cards: CardId[];
-    /** R15: meeples that paid part of the crate, per colour. Boxed, never barned. */
+    /**
+     * ⭐ THE RECEIPT(S) THIS DELIVERY TOOK (the token island, 16/09/2026): one
+     * for an ordinary delivery, two for V14's "take every receipt". The hook
+     * still fires ONCE per delivery.
+     */
+    receipts: Receipt[];
+    /** R15: meeples that paid part of the payment, per colour. Boxed, never barned. */
     meeples?: Partial<Record<Suit, number>>;
   };
-  /** A balloon changed Aerodrome. `from` is where it left - V17 draws when that was its owner's port. */
-  afterBalloonMove: { seat: Seat; balloon: string; from: Seat | 'centre' };
   /**
    * A visit landed on the host's Notice Board (fee placed, slot spent), fired
    * before the door action resolves - O16 The Orchard Keeper reacts host-side.
@@ -962,8 +860,7 @@ export interface HookEvents {
     actor: Seat;
     colour: Suit;
     action: DoorAction;
-    /** 'balloon' added 12/09/2026; see the note on `doorUsed` in state.ts. */
-    via: 'visit' | 'meeple' | 'balloon';
+    via: 'visit' | 'meeple';
   };
   /**
    * A card landed in a tableau, by ANY path - the Build action, a Worker's
@@ -983,23 +880,28 @@ export interface HookEvents {
      * card by card. Its one false producer (the commons 'spend' variant's Dairy
      * leg) was deleted with the commons on 13/09/2026.
      *
-     * ⛔ IT EXISTS FOR O17 THE FRUIT BASKET AND FOR THE VILLAGE STORE'S SAKE.
-     * O17 was restricted on 12/09/2026 to *"a card you discard FROM YOUR
-     * HAND"*, because the Store's exchange (V1) spends BARN cards and a card
-     * that could be reclaimed out of an exchange would be a SECOND MINT, once
-     * a turn, free, on every turn its owner delivers. Every coin economy this
-     * project has had died of a second faucet. The exchange does not route
-     * through this hook at all - it discards directly - so the restriction is
-     * belt as well as braces, and the braces are what this flag is: it is the
-     * one live case where a build payment is not a hand spend, and a future
-     * route that pays a build out of a barn would land here and be refused
-     * rather than quietly re-open the loop.
+     * ⛔ IT EXISTS FOR O17 THE FRUIT BASKET. O17 was restricted on 12/09/2026
+     * to *"a card you discard FROM YOUR HAND"*, so that the Village Store's
+     * barn exchange (deleted 16/09/2026) could never become a second mint. A
+     * future route that pays a build out of a barn would land here and be
+     * refused rather than quietly re-open a loop.
      *
      * ⚠️ D5 The Churning Shed and D6 The Trading Shed read the same payment
      * and are DELIBERATELY NOT gated on it: Dean ruled O17's face, not theirs.
      */
     fromHand: boolean;
   };
+  /**
+   * ⭐ THE TURN IS ABOUT TO END (16/09/2026, for O18 A Helping Hand: *"At the
+   * end of your turn, Draw until you have at least 3 cards in hand."*).
+   *
+   * Fired by `finishTurn` (turnflow.ts) ONCE per turn, latched on
+   * `turn.endHooksDone`, and BEFORE the hand-limit discard, so a card it draws
+   * is counted against the limit. A listener that pushes a task suspends the
+   * boundary, which resumes on the next settle and skips the hook. `seat` is
+   * the seat whose turn is ending; the listener guards its own scope.
+   */
+  beforeTurnEnd: { seat: Seat };
 }
 
 export type HookName = keyof HookEvents;

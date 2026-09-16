@@ -35,7 +35,7 @@ import { num, pct, sum } from '../stats.js';
  * ## What counts, and what deliberately does not
  *
  * `mainActionsBySeat` (`observe.ts`): ONE per turn, by rule - draw, build,
- * grow, harvest, deliver, moveBalloon, whichever the seat took. Plus
+ * grow, harvest or deliver, whichever the seat took. Plus
  * `boughtDoorActionsBySeat`: every `doorUsed` event, whichever route paid for
  * it - a card fee under `visitCurrency: 'card'`, a meeple visit under
  * `'meeple'`. **COLLECT AND THE FREE DRAW 1 ARE DELIBERATELY EXCLUDED and

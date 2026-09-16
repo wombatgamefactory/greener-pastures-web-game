@@ -62,44 +62,21 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import { cropScorerOnBarn, farmsteadCoinPower, isNoticeBoardPower } from '@gp/data';
+import { cropScorerOnBarn, isNoticeBoardPower } from '@gp/data';
 
-import { doorActionLegal } from '../actions.js';
-import type { CardInPlay, Fx } from '../fx.js';
 import { cropBuildings } from '../query.js';
 import type { GameState, Seat } from '../state.js';
-import { fireNoticeBoardPower } from '../workers.js';
 import type { CardHandler } from './types.js';
 
 /**
- * ⭐ WHICH GAMES FIRE A NOTICE BOARD POWER AT ALL, in one predicate, because
- * two very different routes reach the same five branches and confusing them is
- * how a knob rename becomes a rules change.
- *
- *  - `rules.economy.farmsteadCoinPower` is the SUPERSEDED coins arm of the
- *    morning of 10/09/2026 (K10-K12): the FARMSTEAD carries the power, its
- *    activation cost is one coin, it is your MAIN action and nothing is placed
- *    on it. The gate stays because a branch whose only producer is a knob at
- *    its shipped value is a control, not dead code - and because the coins
- *    measurement is what this design is read against.
- *  - `rules.turn.visitCurrency: 'noticeBoardPower'` is the arm of that evening
- *    (S1-S16): the NOTICE BOARD carries the power, a visitor buys it with one
- *    card from hand, and the power fires for the VISITOR while the card lands
- *    on the HOST. That route never reaches this file - `doVisit` calls
- *    `fireNoticeBoardPower` directly.
- *
- * ⚠️ THE TWO ARMS NOW SHARE ONE SET OF NUMBERS AND THREE OF THE FIVE
- * CHANGED MEANING UNDER THEM (S13, C88, C89). The coins arm's powers were
- * Draw 3 / build at a discount of 1 / GROW 2 / harvest every loaded building /
- * deliver twice; they are now Draw 4 / build with the crops waived / SOW 2 /
- * harvest one and bank a card / deliver-or-bank-two. That is deliberate and it
- * is named rather than silent: `rules.economy.farmsteadPower` was RENAMED
- * rather than copied, on the handoff's own reasoning that a knob whose name no
- * longer describes it is worse than a new one, and the coins arm's numbers
- * therefore have to be re-argued rather than inherited if it is ever re-run.
+ * ⭐ DOES THIS GAME PUT THE SUIT POWERS ON THE NOTICE BOARDS? Under
+ * `rules.turn.visitCurrency: 'noticeBoardPower'` the NOTICE BOARD carries the
+ * power and the Farmstead is an inert receipt tray. (The coins arm of
+ * 10/09/2026, `farmsteadCoinPower`, which put the powers on a coin-activated
+ * Farmstead, was deleted on 16/09/2026.)
  */
 function powersLive(data: GameData): boolean {
-  return farmsteadCoinPower(data) || isNoticeBoardPower(data);
+  return isNoticeBoardPower(data);
 }
 
 /**
@@ -166,55 +143,21 @@ export function farmsteadHandler(crop: Suit): CardHandler {
         'endgame is true and every other flag false: no prompt, no hook, no move, and ' +
         'nothing cross-table, which is exactly what a starter with one printed line should ' +
         'look like. ' +
-        '⚠️ THE FLAGS DESCRIBE THE SHIPPED CARD AND NEITHER ARM. Under ' +
-        'rules.economy.farmsteadCoinPower (the superseded coins arm, 10/09/2026) this card ' +
-        'is a coin-activated suit power that PROMPTS through four of its five faces and ' +
-        'scores NOTHING at game end; under rules.turn.visitCurrency noticeBoardPower (the ' +
-        'notice-board visit of the same evening, S1/S4) it is a token tray with no rules ' +
-        'text at all, which is difficulty 0 and not 1. They are left as they are ' +
-        'deliberately: the difficulty score is a teach-cost proxy for the game as shipped, ' +
-        'and neither arm is shipped.',
+        '⚠️ THE FLAGS DESCRIBE THE v31 CARD. Under rules.turn.visitCurrency ' +
+        'noticeBoardPower (S1/S4) it is a token tray with no rules text at all, which is ' +
+        'difficulty 0 and not 1.',
     },
     /**
-     * ⭐ THE COIN-ACTIVATED SUIT POWER (K10-K12), and it exists on the
-     * shipped card only as this guard: with `farmsteadCoinPower` off the
-     * Farmstead has no activation type at all (`cards.json` prints null), so
-     * `growOptions` skips it, `activateOnly` refuses it and nothing in the
-     * game can reach this callback.
-     *
-     * ⛔ AND IT STAYS THE COINS ARM'S ROUTE ONLY. Under the notice-board
-     * visit the powers belong to the NOTICE BOARD and are bought by a visitor
-     * with a card, so `doVisit` fires them directly; the Farmstead is inert
-     * there (S1/S4) and this callback must not become a second way in.
-     */
-    activate(fx: Fx, self: CardInPlay): void {
-      if (!farmsteadCoinPower(fx.data)) return;
-      fireNoticeBoardPower(fx, self.seat, crop, {
-        src: self.card,
-        deliverLegal: doorActionLegal(fx.data, fx.state, self.seat, 'deliver'),
-      });
-    },
-
-    /**
-     * ⛔ AND THE SCORER IS OFF UNDER BOTH ARMS: *"Game end: 1 VP for each
-     * `<CROP>` card you have built"* MOVES TO THE BARN.
-     *
-     * Under `farmsteadCoinPower` (K13, ruled 10/09/2026) it moved because a
-     * card cannot be three things and the Farmstead had become a suit power,
-     * and it had nowhere to land - so that arm's game-end total is the shipped
-     * total minus exactly this term, which `commons.test.ts` asserts by name.
-     * Under the notice-board visit (S1) it moves for the same reason and DOES
-     * land: `barnCropScorer` above is wired onto all five Barns, so the term
-     * survives and the arm's scores stay comparable with the shipped game's.
+     * ⛔ THE SCORER IS OFF UNDER THE NOTICE-BOARD VISIT: *"Game end: 1 VP for
+     * each `<CROP>` card you have built"* MOVES TO THE BARN (S1), where
+     * `barnCropScorer` above pays the identical term.
      */
     gameEnd(data: GameData, state: GameState, seat: Seat): number {
       // ⭐ AND SINCE 13/09/2026 THE SHIPPED FARMSTEAD SCORES NOTHING EITHER: it
       // is the receipt tray, and the Barn prints the scorer (`cropScorerOnBarn`).
       // Under the commons the move is score-neutral - `barnCropScorer` pays the
       // identical term - so no seat's total changes. ⛔ The two conditions are
-      // kept SEPARATE on purpose: `powersLive` still silences the Farmstead
-      // under the coins arm, where the term lands NOWHERE, and that arm pins
-      // `cropScorerOnBarn` false so the Barn does not pick it up.
+      // kept SEPARATE on purpose: each is a separate ruling that moves the term.
       if (powersLive(data) || cropScorerOnBarn(data)) return 0;
       return cropBuildings(data, state, seat, crop).length;
     },

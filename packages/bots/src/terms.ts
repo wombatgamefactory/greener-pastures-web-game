@@ -124,27 +124,15 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import {
-  deliveryVp,
-  endgameCoinCost,
-  freeDeliverySpaces,
-  hostDrawOnVisitAt,
-  meepleIndexForSpace,
-} from '@gp/data';
-import type { CardId, Move, MoveType } from '@gp/engine';
+import { hostDrawOnVisitAt } from '@gp/data';
+import type { CardId, IslandToken, Move, MoveType } from '@gp/engine';
 
 import type { Act } from './acts.js';
 import { spendSize } from './acts.js';
 import { cardValue, totalValue } from './junk.js';
 import type { Outcomes } from './outcome.js';
 import type { Scratch } from './scratch.js';
-import {
-  cardById,
-  handSpendCost,
-  meepleWorth,
-  mintStrandsDelivery,
-  thresholdOfView,
-} from './scratch.js';
+import { cardById, handSpendCost, meepleWorth, thresholdOfView } from './scratch.js';
 
 export interface Term {
   readonly name: string;
@@ -273,7 +261,6 @@ function isProbed(act: Act): boolean {
     case 'visit':
     case 'spendMeeple':
     case 'cardMove':
-    case 'balloon':
     case 'activate':
       return true;
     default:
@@ -282,64 +269,53 @@ function isProbed(act: Act): boolean {
 }
 
 /**
- * THE DELIVERY SPACE THIS ACT TAKES: the one the move names under Dean's space
- * choice (14/09/2026), else the lowest free space, which is fill order. null for
- * a tile with no room, which never reaches here because a full tile offers no
- * move.
+ * ⭐ THE TOKEN THIS DELIVERY TAKES (the token island, 16/09/2026): the one the
+ * move names, else the highest-VP token, which is what the engine takes when a
+ * caller names none. null for a tile with no token left, which never reaches
+ * here because a finished tile offers no move.
  */
-function deliverySpaceOf(s: Scratch, tileId: string, named: number | undefined): number | null {
+function tokenOf(s: Scratch, tileId: string, named: number | undefined): IslandToken | null {
   const tile = s.view.island.tiles.find((t) => t.tile === tileId);
-  if (tile === undefined) return null;
-  return named ?? freeDeliverySpaces(s.data, tile)[0] ?? null;
+  if (tile === undefined || tile.tokens.length === 0) return null;
+  if (named !== undefined) return tile.tokens[named] ?? null;
+  let best: IslandToken | null = null;
+  for (const token of tile.tokens) if (best === null || token.vp > best.vp) best = token;
+  return best;
 }
 
 /**
- * The receipt a delivery to this tile would take, read off the SPACE it takes.
- * Under fill order that is how many seats have already delivered there, exactly
- * as this read before 14/09/2026; under the space choice it is the space the
- * move names, so a first arrival taking the 3 VP space is priced at 3.
- */
-function deliverVpOf(s: Scratch, tileId: string, named: number | undefined): number {
-  const space = deliverySpaceOf(s, tileId, named);
-  return space === null ? 0 : deliveryVp(s.data, space);
-}
-
-/**
- * THE MEEPLE THIS DELIVERY WOULD CLAIM - the colour sitting face up on the
- * delivery space it takes.
+ * ⭐ THE WORKER'S PRICE IN THE TOKEN CHOICE, MADE EXPLICIT (16/09/2026).
  *
- * ⛔ THROUGH `meepleIndexForSpace`, AND IT USED TO INDEX `tile.meeples` BY
- * `deliveredBy.length` (fixed 14/09/2026). A tile stores its meeples DENSELY:
- * under the delivery meeple (M1) and the meeple loop the one meeple for space 1
- * sits at index 0, so the old read credited the meeple to the FIRST delivery and
- * nothing to the second, which is the space that actually claims it. It was
- * right only under the v31 control, where every space is seeded and the mapping
- * is the identity, and that control reads identically now. ⚠️ Every bot number
- * published off `delivery-meeple-v1`, its C112 sibling and the meeple loop was
- * priced with the old read.
+ * A first delivery chooses between two tokens, and the bot scores each as
  *
- * ⚠️ IT READS ONE SPACE AND V14 CAN TAKE TWO. The Depot that claims BOTH
- * receipts on a tile also claims both meeples, and this returns only the first,
- * so a V14 delivery is under-priced by one meeple. Left as an understatement
- * rather than special-cased, on this file's standing rule that a term describes
- * a move and never a card - and the safe direction, since the alternative is a
- * bot that over-rates a card it happens to know about.
+ *     deliver x token VP  +  meepleGain x meepleWorth(Worker colour)
+ *
+ * so a Worker is worth `meepleGain` (2.5) points when its action is live for
+ * this seat and `meepleGain x MEEPLE_LATENT` (1.0) when it is not, against
+ * `deliver` (3) points per VP. ONE WORKER IS THEREFORE PRICED AT ABOUT 0.83 VP
+ * (0.33 VP when latent), which is the existing pin "a meeple is worth one hand
+ * card" (`weights.ts`) and was NOT re-tuned for this rule. The token set's
+ * smallest gap between a Worker token and a Worker-less one is 1 VP (a 4 VP
+ * Worker token against a 5 VP token), and a 1 VP gap is worth 3 points against
+ * a live Worker's 2.5, so AT THESE WEIGHTS A BOT NEVER TAKES THE LOWER-VP
+ * TOKEN. A "higher-VP token share" of 100% is a statement about this price,
+ * not about the rule. The honest value of a plain action on reference-v19 is
+ * nearer 1 VP (a winning score of about 55 over about 52 actions), which would
+ * make the 4 VP Worker token against the 5 VP token a coin toss; that is a
+ * reason to sweep the dial, not a number this file may set. `meepleGain` is the dial, and it is pinned to
+ * `meepleSpend`, the hoarding knob, so sweep the two together.
  */
-function meepleAtTile(s: Scratch, tileId: string, named: number | undefined): Suit | null {
-  const tile = s.view.island.tiles.find((t) => t.tile === tileId);
-  const space = deliverySpaceOf(s, tileId, named);
-  if (tile === undefined || space === null) return null;
-  const slot = meepleIndexForSpace(s.data, space);
-  return slot < 0 ? null : (tile.meeples[slot] ?? null);
+function tokenWorkerWorth(s: Scratch, token: IslandToken | null): number {
+  return token === null || token.worker === null ? 0 : meepleWorth(s, token.worker);
 }
 
 /**
  * Cards this act takes out of the seat's STORED FREIGHT, by whichever exit
  * (ticket 48).
  *
- * Three routes and one price. A tile's card cost is fixed by its crates
- * (`crates x cardsPerCrate`) and a wild crate changes which suit pays rather
- * than how many, so this cannot order the spends for one tile - measured over
+ * Three routes and one price. A delivery's card cost is fixed
+ * (`deliveryCost`, 4 on the token island) and a wild token changes which suit
+ * pays rather than how many, so this cannot order the spends for one tile - measured over
  * 391 real (decision, tile) pairs it never once varied within a tile. What it
  * prices is the resource leaving.
  *
@@ -349,39 +325,7 @@ function meepleAtTile(s: Scratch, tileId: string, named: number | undefined): Su
  * the seat the same thing, and D7's whole printed fork is that a stack card is
  * either freight or building material and never both.
  */
-/**
- * ⛔ **IS THIS ANSWER THE VILLAGE STORE'S EXCHANGE?** (V1/V2, A150, Dean
- * 12/09/2026.)
- *
- * ⛔ **IT IS READ OFF THE HEAD TASK AND NEVER OFF THE PAYLOAD, WHICH IS THE
- * WHOLE OF THE CARE THIS FUNCTION NEEDS.** The mint's answers are
- * `{ kind: 'card', payload: { suit } }` - a SUIT and not a card, which is the
- * second half of the engine's bound on the enumeration - so they arrive as the
- * `cardTask` act. **Four other seams in the game already answer `card` with a
- * `suit`**: A11 The Wax Workshop picking which crop comes off a HIVE, A17 The
- * Smoke Pot taking a deck top into a barn, the Apiary gift of a deck top, and
- * two of Dairy's deck reads. Sniffing the payload would have priced every one
- * of them as a coin mint. `tasks[0]` is the head, which is the only task
- * `legalMoves` ever offers an answer to.
- *
- * ⛔ **STRUCTURALLY FALSE WHEN THE STORE IS OFF.** `finishDelivery` is the
- * only producer of a `mint` task and it pushes one only under
- * `rules.economy.storeCoinsPerCard > 0`, so no control and no fixture can reach
- * a true here.
- */
-function mintSuit(act: Act, s: Scratch): Suit | null {
-  if (act.a !== 'cardTask') return null;
-  if (s.view.tasks[0]?.t !== 'mint') return null;
-  const suit = act.payload['suit'];
-  return typeof suit === 'string' ? (suit as Suit) : null;
-}
-
-function barnCardsSpent(act: Act, s: Scratch): number {
-  // ⭐ THE STORE'S EXCHANGE IS THE BARN'S FOURTH EXIT (V2, 12/09/2026), and
-  // it is charged here for the reason the other three are: one store, one price.
-  // Exactly one card leaves per answer - the mint is a repeated binary choice
-  // and not a subset - so this is 1 and never a count.
-  if (mintSuit(act, s) !== null) return 1;
+function barnCardsSpent(act: Act): number {
   switch (act.a) {
     // ⭐ R15: `spend` IS WHAT THE ISLAND WAS PAID AND NOT WHAT THE BARN PAID.
     // A meeple pays its share of a crate straight out of the supply, so the
@@ -613,14 +557,8 @@ export const TERMS: readonly Term[] = [
      * `-0.5` against a `-spendSize` feature, so the product paid the bot 0.5 a
      * card for delivering to the tile that ate MORE freight; `buildBarn` (ticket
      * 47) charged D8's barn leg properly but only there; and a balloon move's
-     * two barn cards were charged nothing at all. One store, three exits, three
-     * different answers.
-     *
-     * The third exit, the balloon, is charged at this same weight but not from
-     * here: ticket 49 made a balloon move PROBED, so its freight is taken off
-     * the `balloonMoved` event beside the reward that freight bought - which is
-     * also where a balloon moved by a card effect INSIDE a rollout gets charged,
-     * so one route serves both. Charging it here as well would take it twice.
+     * two barn cards (the balloons were deleted on 16/09/2026) were charged
+     * nothing at all. One store, three exits, three different answers.
      *
      * **It stays a COUNT, and it deliberately does not read `demandSuits`**
      * (ticket 51). The hand has an ordering sibling beside its count charge
@@ -655,25 +593,10 @@ export const TERMS: readonly Term[] = [
      * payability across 215 moves, 0.16 a game**. Both channels' ceilings are
      * below the noise floor a paired A/B could resolve, which is why one was
      * never run.
-     *
-     * ⛔ **THE BARN HAS A FOURTH EXIT SINCE 12/09/2026 AND IT IS THE FIRST
-     * ONE WITH AN ORDERING SIBLING** (V1/V2, A150, the Village Store). The
-     * exchange takes barn cards one at a time for GBP 1 each, and this term
-     * charges exactly one card per answer - one store, one price, the whole
-     * point of the consolidation above.
-     *
-     * ⚠️ **AND THE PAYABILITY FEATURE THAT TICKET 52 MEASURED AS TOO SMALL TO
-     * BUILD IS BUILT FOR THIS EXIT ALONE**, as `mintStrands`. The three exits 52
-     * measured cannot empty a barn: a delivery spends what a crate asks, a build
-     * takes at most D7's stack leg, a balloon burns two. **The Store can take the
-     * whole barn in one tail, on the turn the barn is at its fullest, offered
-     * once per card**, so the regret 52 priced at 0.16 tiles a game is not the
-     * regret here. Read the two together: 52 stands for the exits it measured and
-     * is not overturned.
      */
     name: 'barnSpend',
     claims: ['deliver', 'build', ...ACTION_AND_TASK],
-    feature: (act, s) => -barnCardsSpent(act, s),
+    feature: (act) => -barnCardsSpent(act),
     cost: true,
   },
   {
@@ -695,32 +618,31 @@ export const TERMS: readonly Term[] = [
      * profile goes blind to three of the five things v31 changed.
      */
     name: 'outcome',
-    claims: ['grow', 'visit', 'spendMeeple', 'cardMove', 'moveBalloon', ...ACTION_AND_TASK],
+    claims: ['grow', 'visit', 'spendMeeple', 'cardMove', ...ACTION_AND_TASK],
     feature: (act, _s, move, o) => (isProbed(act) ? o.value(move) : 0),
   },
 
   // --- the island -----------------------------------------------------------
   {
     // DL-78. The one rule that makes a game terminate, so it carries the
-    // biggest feature in the table: the VP this delivery would actually take.
+    // biggest feature in the table: the VP of the token this delivery takes.
     //
-    // Since the flat island (2026-08-09) that is no longer a property of the
-    // tile but of its fill order - 6 for arriving first, 3 for second - so this
-    // one feature carries the whole race. It is why the bot prefers a fresh tile
-    // to a half-taken one without any term saying so.
+    // ⭐ THE TOKEN ISLAND (16/09/2026): the VP is printed on the token, so the
+    // feature is the token the move names. Its Worker is priced beside it by
+    // `meepleGain`; see `tokenWorkerWorth` for the price and what it implies.
     name: 'deliver',
     claims: ['deliver', ...ACTION_AND_TASK],
-    feature: (act, s) => (act.a === 'deliver' ? deliverVpOf(s, act.tile, act.space) : 0),
+    feature: (act, s) => (act.a === 'deliver' ? (tokenOf(s, act.tile, act.token)?.vp ?? 0) : 0),
   },
   {
     /**
-     * ⭐ **THE MEEPLE THE ISLAND HANDS OVER** (v31), and the reason a delivery
-     * is not simply worth its VP any more.
+     * ⭐ **THE WORKER THE ISLAND HANDS OVER** (a meeple on the 3 and 4 VP
+     * tokens since 16/09/2026), and the reason a delivery is not simply worth
+     * its VP.
      *
-     * The island's coin is gone; every delivery space carries a meeple instead,
-     * face up from setup, so which colour a tile will pay is public all game and
-     * choosing WHICH tile to deliver to is now partly a choice of which free
-     * action to store. A bot blind to this would pick tiles on VP and freight
+     * The Worker sits face up on its token from setup, so which colour a token
+     * will pay is public all game and choosing WHICH token to take is partly a
+     * choice of which free action to store. The price is `tokenWorkerWorth`. A bot blind to this would pick tiles on VP and freight
      * alone and the whole face-up-meeple design would measure as decorative -
      * the same failure mode the demand tokens hit before ticket 52.
      *
@@ -769,24 +691,8 @@ export const TERMS: readonly Term[] = [
         return worth;
       }
       if (act.a !== 'deliver') return 0;
-      const colour = meepleAtTile(s, act.tile, act.space);
-      return colour === null ? 0 : meepleWorth(s, colour);
+      return tokenWorkerWorth(s, tokenOf(s, act.tile, act.token));
     },
-  },
-  {
-    /**
-     * The freight branch: a Deliver action that moves a balloon instead. Pays
-     * 2 differing barn cards and is never an island delivery.
-     *
-     * The flat taste for taking one at all, and nothing more - ticket 49 moved
-     * what the move is WORTH into the probe (its printed reward) and what it
-     * COSTS into the pricer (its two barn cards), so this is the exact twin of
-     * `grow`: a preference about the action, with the outcome priced where the
-     * outcome is. Its default weight is 0; see `weights.ts`.
-     */
-    name: 'balloon',
-    claims: ['moveBalloon', ...ACTION_AND_TASK],
-    feature: (act) => (act.a === 'balloon' ? 1 : 0),
   },
 
   // --- the meeple supply ----------------------------------------------------
@@ -912,196 +818,6 @@ export const TERMS: readonly Term[] = [
     cost: true,
   },
 
-  // --- the coins (K7-K15, 10/09/2026, and the Village Store) ----------------
-  {
-    /**
-     * ⭐ **WHAT A COIN IS WORTH** (K8, Dean 10/09/2026; the Village Store, V1,
-     * A150, 12/09/2026).
-     *
-     * `checkWeightTable` holds both ways: every weight must name a real term and
-     * every term must have a weight, and the pricer reads its numbers out of the
-     * same table by term name (`weight(w, 'coinWorth')`), including for a
-     * `coinsMinted` event reached inside a rollout.
-     *
-     * ⚠️ **IF A SECOND MINT IS EVER ADDED, THIS IS WHERE IT GOES** - and read
-     * K7 first, because every earlier coin economy in this project died of a
-     * second faucet.
-     *
-     * ⛔ **THE STORE'S MINT IS NOT PROBED, WHICH IS WHY THIS FEATURE IS NOT
-     * ZERO.** It is a `mint` TASK, answered one card at a time - a repeated
-     * binary choice rather than the power set of the barn - and a task answer is
-     * not probed, so **`coinsMinted` never reaches a pricer for it and this is
-     * the only place to credit it.**
-     *
-     * ⛔ **A MINT ANSWER SCORED +1 AGAINST A SKIP AT -1 BEFORE THIS**, on
-     * `cardTask`'s flat taste for taking an optional offer, so every bot
-     * converted every barn card at every delivery and **C113 - the arm's own
-     * test, "if every player converts every spare card every time, the August
-     * verdict on this placement was right" - would have come back yes as a fact
-     * about this table.** The flat taste is now declined for a mint (see
-     * `cardTask`) and the exchange is priced instead: `coinWorth` for the coin,
-     * `barnSpend` for the card, `mintStrands` for the card that was not spare.
-     */
-    name: 'coinWorth',
-    claims: ACTION_AND_TASK,
-    // Exactly one coin per answer, by rule: V1's exchange is one card for GBP 1
-    // and the task is re-bounded at every answer against the shared supply (D4).
-    feature: (act, s) => (mintSuit(act, s) === null ? 0 : 1),
-  },
-  {
-    /**
-     * ⭐ **THE ENDGAME CARD'S COIN PRICE (K15, Dean 10/09/2026), AND IT IS
-     * CHARGED HERE RATHER THAN IN THE PRICER FOR ONE REASON: A BUILD IS NOT
-     * PROBED.**
-     *
-     * Under `rules.economy.endgameCoinCost` the fifteen Endgame cards cost that
-     * many COINS and ZERO CARDS, so a build move for one carries an EMPTY
-     * payment - and `handSpend`, `buildSpend` and `barnSpend` all read a payment
-     * by count, so every one of them prices it at nothing. Left alone, an
-     * Endgame card would be free to a bot holding three coins, it would take
-     * every one it was offered, and a19's "coins spent on the Farmstead against
-     * on Endgame cards" would be reporting this omission rather than the rules.
-     *
-     * The COIN-ACTIVATED FARMSTEAD (K10) is deliberately NOT charged here, and
-     * the split is exactly the probed / unprobed line and nothing else - the
-     * same rule `meeplesLeavingSupply` states in the other direction. A Grow is
-     * on `isProbed`, so its `coinsSpent` event reaches `priceEvent` inside the
-     * rollout of the very move that spent it and is charged there; charge it
-     * here as well and the Farmstead would cost two coins in the bot's books
-     * and never fire. A build is NOT on `isProbed`, so its `coinsSpent` never
-     * reaches a pricer at all and this is the only place left to charge it.
-     *
-     * ⚠️ **THE TWO ROUTES ARE DISJOINT, WHICH IS WHY "EXACTLY ONCE" HOLDS.** A
-     * build reached INSIDE a rollout (the dairy board's Build door, or the
-     * Dairy Farmstead's own power) is a task resolved during another move's
-     * probe, and its coin is charged by the event; a build chosen AS THE MOVE -
-     * either spelling, the main action or the task answer - is scored by this
-     * term and never rolled out. No decision can see both.
-     *
-     * ⛔ **STRUCTURALLY ZERO WHEN THE ARM IS OFF**: `endgameCoinCost` is null in
-     * the shipped game and under both controls, so the guard returns before it
-     * reads a card and the term cannot move a fixture.
-     *
-     * ## ⭐ THE VILLAGE STORE'S BUILD SINK ARRIVES HERE TOO (V6, A150, 12/09/2026)
-     *
-     * **For exactly the same reason, stated once more because it is the reason
-     * this term exists at all: A BUILD IS NOT PROBED.** Under
-     * `rules.economy.coinPaysBuild` a coin pays any part of a build cost, and
-     * under `coinPaysSuitCost` it pays the n-of-suit half as well, so a card
-     * costing "2 apples and a wild" is payable with three coins and NO CARDS.
-     * `cardsLeavingHand` counts `act.payment.length`, `buildSpend` ranks the
-     * cards in it and `barnSpend` counts D7's stack leg, so **all three read a
-     * fully coin-paid build as free**, and a bot holding coins would take every
-     * card it was offered and never keep one for a Grow.
-     *
-     * ⭐ **THE COIN IS A COUNT AND THE CHARGE IS LINEAR IN IT**, which is the
-     * engine's own rule carried through: coins are fungible, a payment names how
-     * many and never which, so three coins costs three times one coin and there
-     * is nothing here to order.
-     *
-     * ⛔ **THE GROW SINK IS DELIBERATELY NOT CHARGED HERE, AND THE LINE IS
-     * THE SAME PROBED / UNPROBED ONE K10's FARMSTEAD SITS ON.** V8's coin-Grow
-     * is a `grow`, which IS on `isProbed`, so its `coinsSpent` event reaches
-     * `priceEvent` inside the rollout of the very move that spent it. Charge it
-     * here as well and a coin-Grow would cost two coins in the bot's books and
-     * the Grow sink would read empty - which is the failure the whole slice
-     * exists to avoid, because an arm whose new rule is never used reads exactly
-     * like its control.
-     *
-     * ⚠️ **THE TWO KNOBS ARE DISJOINT AND THAT IS WHY ONE TERM MAY ADD
-     * BOTH.** K15's coin price lives on the PRICE (`priceOf`) and never reaches
-     * `BuildOption.coins`, so `act.coins` is set by V6's loop alone; and no
-     * overlay turns `endgameCoinCost` and `storeCoinsPerCard` on together,
-     * because that is a second mint beside a second sink. If one ever does, this
-     * is the line that would charge an Endgame card twice.
-     *
-     * ⛔ **AND EACH OF THE SIX COIN LEAVES IS INDEPENDENTLY SWITCHABLE.**
-     * Nothing here reads a knob: it reads `act.coins`, which the engine can only
-     * set with `coinPaysBuild` on, so `-grow-only-v1` (no Build sink) and
-     * `-wild-only-v1` (no n-of-suit half) both price correctly without this term
-     * knowing they exist. **Gate on the act's shape and never on the assembled
-     * arm.**
-     */
-    name: 'coinSpend',
-    claims: ['build', ...ACTION_AND_TASK],
-    feature: (act, s) => {
-      if (act.a !== 'build') return 0;
-      // V6: the Store's coins, a count, and 0 on every build paid in cards.
-      const store = -act.coins;
-      const coins = endgameCoinCost(s.data);
-      if (coins === null) return store;
-      return cardById(s.data, act.card).type === 'endgame' ? store - coins : store;
-    },
-    cost: true,
-  },
-
-  {
-    /**
-     * ⛔ **THE ONE THING THAT DECIDES WHETHER THE VILLAGE STORE'S HEADLINE
-     * READING IS ABOUT THE RULES OR ABOUT THIS FILE** (V1/V2, A150, Dean
-     * 12/09/2026): would converting THIS barn card cost a delivery the barn can
-     * pay for today?
-     *
-     * ⭐ **THE DESIGN'S OWN ARGUMENT NAMES THIS FEATURE AND NO OTHER.** The
-     * Store exists for the barn parity trap - a crate is two cards of one named
-     * crop, all or nothing, so a single odd card is worth exactly zero and
-     * **88.8% of the time a player holds barn cards that cannot afford any open
-     * tile, 84% of those one or two cards short**. A card is SPARE when losing it
-     * costs no payable tile and DEAR when it does, and nothing else about a barn
-     * card is worth reading (ticket 51: the block is matching under an
-     * all-or-nothing payment, not quantity).
-     *
-     * ⛔ **WITHOUT IT THE BOT EMPTIES ITS BARN AT EVERY DELIVERY.** The mint
-     * is offered once per card down to `min(barn, supply)`, and a coin priced
-     * above a flat barn card is a positive trade every time, so a bot with no
-     * sense of what a card was FOR converts the lot - including the second half
-     * of the crate it was two cards from paying. That would answer C113 ("if
-     * every player converts every spare card every time, the August verdict on
-     * this placement was right") with the instrument's own behaviour, and it
-     * would depress deliveries, the island clock and the game length with it.
-     *
-     * ## WHERE THE WEIGHT SITS, AND THE BAND IT HAS TO LAND IN
-     *
-     * The exchange's standing net without this term is `coinWorth` 1.2 minus
-     * `barnSpend` 0.5 = **+0.7**, against `skip` at **-1.0**. So the whole job of
-     * this number is to move a stranding conversion from +0.7 to below -1.0,
-     * which is **anything above 1.7**; below it the term does nothing at all.
-     * `mintStrands` ships at **3**, the same number `growCompletes` and `build`
-     * carry - "one whole structural step of this engine" - which leaves 1.3
-     * points of margin either side of the switch rather than sitting on its
-     * edge:
-     *
-     *     conversion that strands nothing   +0.7   taken (skip is -1.0)
-     *     conversion that costs a tile      -2.3   refused
-     *
-     * ⚠️ **IT IS A THRESHOLD AND NOT AN ESTIMATE, AND THAT IS THE HONEST
-     * description.** A payable tile is not a delivery lost - the barn refills -
-     * so 3 is not "what a tile is worth"; it is the smallest round number in this
-     * table that closes the option cleanly. If `coinWorth` is ever re-measured
-     * upward (see its own docblock: 1.2 is a FLOOR carried over from a weaker
-     * coin), **re-read this**, because the band's floor moves with it: the switch
-     * is at `coinWorth - barnSpend + skip`.
-     *
-     * ⚠️ **AND IT IS ONE STEP DEEP.** Each answer is scored against the barn
-     * as it then stands, so a seat converting three cards asks three separate
-     * questions and none of them looks ahead. Greedy in the same way every other
-     * term here is, and safe in the direction that matters: the first conversion
-     * that would break a crate is refused, so the crate survives.
-     *
-     * ⛔ **STRUCTURALLY ZERO WHEN THE STORE IS OFF.** Only `finishDelivery`
-     * pushes a `mint` task and only under `storeCoinsPerCard > 0`, so this
-     * multiplies a zero in the shipped game and under every control, which is
-     * what lets a new weight land without moving one of the nine fixtures.
-     */
-    name: 'mintStrands',
-    claims: ACTION_AND_TASK,
-    feature: (act, s) => {
-      const suit = mintSuit(act, s);
-      return suit !== null && mintStrandsDelivery(s, suit) ? -1 : 0;
-    },
-    cost: true,
-  },
-
   // --- the barn supply line -------------------------------------------------
   {
     /**
@@ -1153,49 +869,13 @@ export const TERMS: readonly Term[] = [
   },
   {
     /**
-     * ⛔ **A COIN-GROW NEVER COMPLETES ANYTHING, AND THIS LINE IS THE WHOLE
-     * OF HOW V8 AND V9 ARE PRICED** (A150, Dean 12/09/2026).
-     *
-     * A coin-Grow PLACES NOTHING: the ability fires and the stack does not
-     * advance, so the building never fills and never clogs, and under V9 a
-     * building already AT its threshold is a legal target. `fillsBuilding` asks
-     * `stack + 1 >= threshold` and cannot see what paid, so without the guard a
-     * coin-Grow would collect +3 for filling a building it does not touch - and
-     * it would collect it hardest on exactly the clause the arm exists to
-     * measure, because a V9 bypass fires on a stack that is already at or over
-     * the threshold and `fillsBuilding` reads TRUE there for the first time in
-     * this game's history. **A card-Grow can never target a full building, so
-     * that branch has never been exercised before.**
-     *
-     * ⭐ **AND THERE IS NO CLOG COST HERE TO REMOVE, WHICH IS WHAT A READER
-     * COMING FROM THE DESIGN DOCUMENT WILL BE LOOKING FOR.** The document's V9
-     * argument is that a coin-Grow dodges clog; in THIS table filling a building
-     * is a REWARD (+3, because a full building is a Harvest waiting to happen
-     * and a harvest is barn cards at `harvest` 1.5 each), not a charge. So "no
-     * clog cost" is priced by declining the credit and by nothing else, and the
-     * arithmetic that falls out is exactly the trade Dean ruled in:
-     *
-     *     coin-Grow minus card-Grow
-     *       + `handSpend` 2.5      no card leaves the hand
-     *       + `growSpend`          no card to junk-rank
-     *       - `growCompletes` 3    only when the card-Grow would have filled it
-     *       - `coinSpend` 1.2      charged inside the rollout, a Grow is probed
-     *
-     * so a bot takes the coin when the building is NOT one card short and the
-     * card when it is - which is right, because the card that fills it buys a
-     * Harvest - and on a FULL building the coin is the only Grow on offer at
-     * all, priced by whatever the ability fires through `outcome`.
-     *
-     * ⭐ **THE SELF-LIMITING PROPERTY THE DESIGN CALLS ITS BEST FEATURE IS
-     * VISIBLE TO THE BOT THROUGH THIS ZERO.** A building only ever coin-Grown
-     * never fills, so it is never harvested, so it never puts cards in a barn -
-     * and barn cards are the only thing that mints coins. Nothing had to be added
-     * to say so: the bot simply never collects the +3 or the harvest behind it.
+     * A Grow that FILLS its building is worth one structural step: a full
+     * building is a Harvest waiting to happen, and a harvest is barn cards at
+     * `harvest` each. `fillsBuilding` asks `stack + 1 >= threshold`.
      */
     name: 'growCompletes',
     claims: ['grow', ...ACTION_AND_TASK],
-    feature: (act, s) =>
-      act.a === 'grow' && !act.coinGrow && fillsBuilding(s, act.building) ? 1 : 0,
+    feature: (act, s) => (act.a === 'grow' && fillsBuilding(s, act.building) ? 1 : 0),
   },
   {
     // GROW's card payment was the one main-action cost with no term against it:
@@ -2019,9 +1699,9 @@ export const TERMS: readonly Term[] = [
      * `marketPayability` when v31 deleted the market that shared it.
      *
      * Its whole feature lives in `outcome.ts`'s `deliverabilityValue`, which is
-     * why the entry here has none: V5 swaps two of the island's demand tokens
-     * and V6 turns one face down, neither moves anything in the acting seat's
-     * own zones, and both would price at exactly zero without a positional read
+     * why the entry here has none: V5 swaps two of the island's tokens, which
+     * moves nothing in the acting seat's own zones and would price at exactly
+     * zero without a positional read
      * off the probe. This entry exists so the weight has a term to belong to and
      * `checkWeightTable` can see it.
      */
@@ -2066,20 +1746,10 @@ export const TERMS: readonly Term[] = [
      * producer: the DIVERT seam answers `card` to put a limbo card into your own
      * barn instead of discarding it (O17 The Fruit Basket). Scored above `skip`
      * so the bot takes the barn card rather than binning it.
-     *
-     * ⛔ **THE VILLAGE STORE'S MINT IS THE ONE `card` ANSWER THIS FLAT TASTE
-     * MUST NOT REACH** (V1, A150, 12/09/2026). The +1 is a thumb for "take an
-     * optional offer you cannot otherwise price", and the exchange IS priced -
-     * `coinWorth` for the coin it gains, `barnSpend` for the card it costs,
-     * `mintStrands` for the card that was not spare. Leaving the thumb on top
-     * would be the double-counting this package warns about everywhere else, and
-     * it is not harmless: +1 against `skip`'s -1 is a two-point head start, and
-     * it would take the mint from "refused when it breaks a crate" back to
-     * "always". **C113 is the reading that turns on this line.**
      */
     name: 'cardTask',
     claims: ACTION_AND_TASK,
-    feature: (act, s) => (act.a === 'cardTask' && mintSuit(act, s) === null ? 1 : 0),
+    feature: (act) => (act.a === 'cardTask' ? 1 : 0),
   },
   {
     // Only legal when no main action is, so the weight never picks between

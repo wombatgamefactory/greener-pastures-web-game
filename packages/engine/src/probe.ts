@@ -146,11 +146,11 @@ function probeAt(data: GameData, state: GameState, seat: Seat, budget: ProbeBudg
     const post = applied.state;
     const head = post.tasks[0];
     const mine = head !== undefined && head.pid === seat && post.phase === 'playing';
-    // The gate on the deliverability reading: a demand token actually moved.
-    // Off the events, never off a card id, and skipped entirely otherwise - the
-    // scan walks every tile against every nomination of its wild crates, which
-    // is far too dear to pay on all 96 applies a decision may spend.
-    const shifted = applied.events.some((e) => e.e === 'demandSwapped' || e.e === 'demandFaceDown');
+    // The gate on the deliverability reading: an island token actually moved
+    // (V5's swap). Off the events, never off a card id, and skipped entirely
+    // otherwise - the scan walks every tile, which is too dear to pay on all 96
+    // applies a decision may spend.
+    const shifted = applied.events.some((e) => e.e === 'demandSwapped');
 
     return {
       events: redactEvents(applied.events, seat),

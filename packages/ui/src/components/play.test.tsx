@@ -70,7 +70,6 @@ function staticPlay(view: PlayerView, moves: readonly Move[], intent: Intent): P
     cardPower: noop,
     host: noop,
     tile: noop,
-    balloon: noop,
     meeple: noop,
     deck: noop,
   };
@@ -501,7 +500,6 @@ describe('the turn bar is small enough, and still reaches everything', () => {
     const ELSEWHERE: Record<string, string> = {
       task: 'the prompt',
       cardMove: 'a badge on the card that offers it',
-      moveBalloon: 'the balloon itself, in the Aerodrome',
       spendMeeple: 'the pawn in your own meeple supply',
       pass: 'the exits zone',
       endTurn: 'the exits zone',
@@ -516,18 +514,12 @@ describe('the turn bar is small enough, and still reaches everything', () => {
       expect(missing).toEqual([]);
 
       /*
-       * Freight lost its button because the balloon is its home and the balloon
-       * is already a live target. That is only true if the resolver says so, and
-       * this is the same `liveTargets` the Aerodrome renders its glow from - so
-       * a change that stopped lighting balloons would fail here even though the
-       * bar is untouched.
+       * The meeple lost its button because the pawn in your own supply IS its
+       * home, which is only true if the resolver lights it. Same `liveTargets`
+       * the supply renders its glow from.
        */
       const live = liveTargets(snap.view, snap.moves, { k: 'idle' });
       for (const move of snap.moves) {
-        if (move.type === 'moveBalloon') expect(live.balloons.has(move.balloon)).toBe(true);
-        // The same argument for the meeple: it lost its button because the pawn
-        // in your own supply IS its home, which is only true if the resolver
-        // lights it. Same `liveTargets` the supply renders its glow from.
         if (move.type === 'spendMeeple') expect(live.meeples.has(move.colour)).toBe(true);
       }
     }

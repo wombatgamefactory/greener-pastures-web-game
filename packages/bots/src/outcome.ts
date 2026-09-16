@@ -195,7 +195,7 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
      * ⚠️ That is only safe while `spendMeeple` is the ONLY thing that can spend
      * a meeple, which it is - no card in the 105 touches the supply. If one
      * ever does, this line becomes a silent hole and the charge has to move
-     * here, exactly as `balloonMoved`'s freight did in ticket 49.
+     * here, exactly as the (deleted) balloon's freight did in ticket 49.
      */
     case 'meepleSpent':
       return 0;
@@ -358,47 +358,14 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
       // `built` arriving on the other action. Blind: a count off the event's own
       // spend, never a card.
       const freight = weight(w, 'barnSpend') * spendSize(event.spend);
-      // `event.vp` is already the fill-order gradient since the flat island - 6
-      // for arriving first at this tile, 3 for second - so the race is priced by
-      // the receipt itself with no taste weight of its own. That is deliberate:
-      // a bot given a separate appetite for going first would be tuned to chase
-      // the gradient rather than measuring whether the gradient is worth chasing.
+      // `event.vp` is the VP printed on the token taken (the token island,
+      // 16/09/2026), so the receipt prices itself with no taste weight of its
+      // own.
       //
-      // The MEEPLE the same delivery hands over arrives as its own
-      // `meepleGained` event, above, so nothing about it is added here.
+      // The WORKER the same token carries arrives as its own `meepleGained`
+      // event, above, so nothing about it is added here.
       return weight(w, 'deliver') * event.vp - freight;
     }
-
-    case 'balloonMoved':
-      // Ticket 49. The last barn exit that was free: a balloon eats 2 differing
-      // barn cards, where the same cards delivered to the island are charged by
-      // `barnSpend` (ticket 48) and burnt on a build are charged by it too (47).
-      // Read off the event's own spend rather than the printed `moveCost`,
-      // because V16 moves a balloon for nothing and an invented cost would price
-      // that move as if it paid.
-      //
-      // Neither half of what the move is WORTH is here, and both omissions are
-      // deliberate. The reward is a task `grantBalloonReward` pushes, so the
-      // rollout walks it, which is the whole of this ticket; the flat `balloon`
-      // taste stays a MOVE term, the way `grow`'s does, because a taste is a
-      // thing a seat has about an action rather than a thing that happens in a
-      // position - and paying it here as well would charge it twice.
-      //
-      // THE HAND LEG IS THE VEGETABLE REBUILD'S (2026-08-09) and it is not
-      // optional. V4 and V8 pay for a flight out of the HAND, and nothing else
-      // in the event stream charges for a card leaving a hand: `removeFromHand`
-      // emits nothing and `cardsDiscarded` is priced at zero because whatever
-      // sent the cards there is already paying for them. So without this a
-      // hand-paid flight read as FREE - full balloon reward, no cost - and the
-      // bots dumped their hands for balloons. Measured: it cost the Vegetable
-      // seat 12 points of win rate. Charged at `handSpend` against a COUNT, the
-      // same shape and the same weight the `built` event charges its payment at,
-      // and blind for the same reason.
-      if (event.seat !== me) return 0;
-      return (
-        -weight(w, 'barnSpend') * spendSize(event.spend) -
-        weight(w, 'handSpend') * handSpendCost(s, event.hand)
-      );
 
     case 'built':
       // Priced for happening plus the catalogue's MEAN printed VP, never for
@@ -438,13 +405,11 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
         weight(w, 'handSpend') * handSpendCost(s, event.payment.length)
       );
 
-    // THE MUTABLE DEMAND TOKENS (V5, V6) are priced POSITIONALLY, not here.
-    // Their whole effect is on the shared board, so there is no delta in the
-    // acting seat's own resources for an event price to read and they would
-    // score exactly zero - see `deliverabilityValue` below and the note on
-    // `Probe.deliverable`.
+    // V5's TOKEN SWAP is priced POSITIONALLY, not here. Its whole effect is on
+    // the shared board, so there is no delta in the acting seat's own
+    // resources for an event price to read and it would score exactly zero -
+    // see `deliverabilityValue` below and the note on `Probe.deliverable`.
     case 'demandSwapped':
-    case 'demandFaceDown':
       return 0;
 
     /**
@@ -563,56 +528,6 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
      */
     case 'boardCollected':
       return 0;
-
-    /**
-     * ⭐ **THE MINT.** A flat count times one weight, because unlike a meeple a
-     * coin has no colour: every coin buys the same things, so there is nothing
-     * for a per-seat `meepleWorth`-style read to tell apart. The Village Store's
-     * mint is an unprobed task (see `coinWorth` in `terms.ts`), so this is
-     * reached only when a mint happens inside another move's rollout.
-     */
-    case 'coinsMinted':
-      return event.seat === me ? weight(w, 'coinWorth') * event.coins : 0;
-
-    /**
-     * ⭐ **THE COIN LEAVING (K10/K15), CHARGED HERE FOR THE PROBED SINK AND
-     * DELIBERATELY NOT FOR THE UNPROBED ONE.**
-     *
-     * A coin has exactly two sinks and they sit on opposite sides of this file's
-     * one structural line:
-     *
-     *   - **the Farmstead's suit power (K10) is a GROW, and a GROW is PROBED**,
-     *     so this event arrives inside the rollout of the very move that spent
-     *     the coin and the charge belongs HERE. What the coin BUYS - the Draw 3,
-     *     the double GROW, the Harvest of every building, the discounted Build,
-     *     the second Deliver - arrives as those actions' own events in the same
-     *     rollout, so the two halves of the exchange are priced against each
-     *     other exactly as a door's are.
-     *   - **an Endgame card (K15) is a BUILD, and a BUILD IS NOT PROBED**, so a
-     *     build CHOSEN AS THE MOVE never produces a rollout at all and this line
-     *     never sees its coin; the `coinSpend` MOVE term charges that route
-     *     instead, and its own comment carries the argument. A build resolved
-     *     INSIDE another move's rollout - the Dairy Farmstead's own power, say -
-     *     does reach this line and is charged here, which is right and is not a
-     *     double: the move being scored is the `grow`, and `coinSpend` does not
-     *     claim it.
-     *
-     * ⚠️ **THAT IS THE `meepleSpent` TRAP READ THE OTHER WAY UP, AND IT IS WHY
-     * BOTH LINES EXIST.** `meepleSpent` prices at 0 here because its only
-     * producer is unprobed and a move term already charges it; a coin has one
-     * producer on each side of the line, so it takes one of each and the two are
-     * disjoint by construction. A decision can never see both: a build reached
-     * inside a rollout is a task during another move's probe, and a build chosen
-     * as the move is never rolled out.
-     *
-     * ⛔ **IF THE ENDGAME BUILD IS EVER PUT ON `isProbed`, DELETE THE
-     * `coinSpend` TERM IN THE SAME EDIT** or every Endgame card will cost six
-     * coins in the bot's books and none will ever be built. The charge is
-     * `on: 'endgame'`-blind on purpose - it prices what left, not what it
-     * bought - so this line needs no change when that day comes.
-     */
-    case 'coinsSpent':
-      return event.seat === me ? -weight(w, 'coinSpend') * event.coins : 0;
 
     // A door action's worth arrives as that action's own events, so scoring the
     // fact that a door ran would double count. Same for `visited`: the fee is
@@ -759,9 +674,9 @@ function pendingDrawValue(probe: ReturnType<Prober>, s: Scratch, w: WeightTable)
  * THE DELIVERABILITY TERM (the Vegetable rebuild, 2026-08-09).
  *
  * `priceEvent` reads what happened to the acting seat's own zones, which is the
- * right rule for 103 of 105 cards and prices the other two at exactly zero: V5
- * swaps two of the island's demand tokens and V6 turns one face down, and
- * neither moves a card, a meeple or a receipt. Left alone, the bots would never
+ * right rule for nearly every card and prices V5 at exactly zero: it swaps two
+ * of the island's tokens (V6's face-down token was deleted on 16/09/2026), and
+ * moves no card, meeple or receipt. Left alone, the bots would never
  * play two of the five Depots, the arm would report them at ~0% and the report
  * would read as a design failure when it is a pricing gap. Change 8's log
  * records the identical trap on Orchard: *"the pricer had to be FIXED before the
@@ -910,22 +825,6 @@ function effectKey(move: Move, act: Act): string {
     // The colour IS the action, and nothing else about the move varies.
     case 'spendMeeple':
       return `meeple:${act.colour}`;
-    /**
-     * The same collapse, and it is what makes probing a balloon affordable
-     * (ticket 49). A decision is offered 8.4 balloon moves on average and up to
-     * 40 - every balloon crossed with every way to pick 2 differing barn suits -
-     * against a whole-decision budget of 96 applies shared with the grows, the
-     * visits and the meeples. All the ways to pay for one balloon grant the same reward, so
-     * keying on the balloon collapses 8.4 probes to 3.2.
-     *
-     * The one thing that survives the collapse is measured rather than assumed:
-     * over 4917 real (decision, balloon) pairs the spend moved the valuation in
-     * 6.6%, by at most 2.50 - the upgraded Vegetable Barn, which hands back one
-     * just-spent Vegetable. The first enumerated spend's rollout stands for all
-     * of them, which is the same bargain `grow` strikes with its payment card.
-     */
-    case 'balloon':
-      return `balloon:${act.balloon}`;
     default:
       return JSON.stringify(move);
   }

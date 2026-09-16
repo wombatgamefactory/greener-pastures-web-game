@@ -22,15 +22,14 @@ import { data as control } from '../session/table';
 import { printedFace } from './printed';
 
 describe('printedFace, against the sheet', () => {
-  it('W1 the Barn: starter icon, no cost bar, no threshold, and no text at all', () => {
+  it('W1 the Barn: starter icon, no cost bar, no threshold, and the own-crop scorer', () => {
     const face = printedFace(data, 'W1');
     expect(face.identityIcon).toBe('starter');
     expect(face.threshold).toBeNull();
     expect(face.convert).toBeNull();
-    // ⭐ THE WHOLE v31 BARN. It printed a hand size, a build rider and a GBP 2
-    // upgrade price; it is now simply where cards ready for delivery are stored,
-    // so every one of those is empty and the card carries no bar.
-    expect(face.abilityText).toBe('');
+    // Sheet v42: the Barn prints the own-crop scorer (moved off the Farmstead)
+    // and still carries no cost bar.
+    expect(face.abilityText).toBe('Game end: 1 VP for each Wheat card you have built.');
     expect(face.cost).toEqual([]);
     expect(face.costIcon).toBeNull();
   });
@@ -58,14 +57,14 @@ describe('printedFace, against the sheet', () => {
     }
   });
 
-  it('W2 the Farmstead: an end-game scorer, no stack, and its own crop named', () => {
+  it('W2 the Farmstead: the receipt tray, no stack, and no scoring', () => {
     const face = printedFace(data, 'W2');
     expect(face.threshold).toBeNull();
     expect(face.activation).toBeNull();
-    expect(face.abilityText).toBe('Game end: 1 VP for each Wheat card you have built.');
+    expect(face.abilityText).toBe('Store Receipts here. Collect 6 to trigger end of the game.');
   });
 
-  it('W3 Notice Board: wild activation, the CONVERT arrow, and the printed 2', () => {
+  it('W3 Notice Board: wild activation, the CONVERT arrow, and the printed 3+', () => {
     const face = printedFace(data, 'W3');
     expect(face.activation).toBe('wild');
     expect(face.convert).toBe('convert');
@@ -80,13 +79,14 @@ describe('printedFace, against the sheet', () => {
     // number this print-versus-render file is about. Comparing against
     // BASE_GAME_DATA would now assert that the shipped ARM matches a v31 card
     // face, which is a claim nobody wants to be true.
-    expect(face.threshold).toBe(2);
+    //
+    // ⚠️ SHEET v42 (16/09/2026) PRINTS `3+`, extracted as 3, so the printed
+    // face now matches the base rule and NOT the v31 control the UI is pinned
+    // to (2). That divergence is the UI hybrid (C129), stated here so it
+    // cannot be discovered by accident.
+    expect(face.threshold).toBe(3);
+    expect(face.threshold).toBe(data.rules.economy.noticeBoardThreshold);
     expect(control.rules.economy.noticeBoardThreshold).toBe(2);
-    expect(face.threshold).toBe(control.rules.economy.noticeBoardThreshold);
-    // And the divergence itself, stated so it cannot be discovered by
-    // accident: the base override is 3 and the printed face is 2 until
-    // `Isle-of-Farms-v36.xlsm` catches up.
-    expect(data.rules.economy.noticeBoardThreshold).toBe(3);
   });
 
   it('W10 The Furrow: two wheat and a cornucopia, in that order', () => {
@@ -176,8 +176,7 @@ describe('printedFace, across the whole catalogue', () => {
     for (const face of every) {
       expect(typeof face.abilityText).toBe('string');
     }
-    // And the ones that exist to carry text actually carry some. The five Barns
-    // are the deliberate exception in the other direction, asserted above.
+    // And the ones that exist to carry text actually carry some.
     for (const card of data.cards.catalogue) {
       if (card.type !== 'power' && card.type !== 'endgame') continue;
       expect(printedFace(data, card.id).abilityText.length).toBeGreaterThan(0);

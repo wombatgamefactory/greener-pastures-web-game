@@ -4,18 +4,20 @@
     "kind": "generated",
     "generatedBy": "tools/extract_cards.py",
     "sourceSheet": "worksheet 'cards' of the designer spreadsheet (kept outside this repo)",
-    "sourceSha256": "c6efa96430c2c4dc8cc53103bd5dab8051954bacf3561429f9cd45a3b2c697a0",
+    "sourceSha256": "067f7e376a0064cbcb088189f51967dfe8756be63e15ca7a580dd14c9bfabf93",
     "notes": [
       "buildCost is derived from the @cost1..@cost6 icon columns, which are authoritative; the sheet's 'Build Cost' text column is lossy (it prints a total and does not say which crops satisfy it).",
       "A suit has THREE starters - Barn (ref 1), Farmstead (ref 2), Notice Board (ref 3) - plus the 18-card deck (refs 4..21). 105 cards total (15 starters + 90 deck).",
       "Schema 2 (design changes v31, 02/09/2026) is FLAT: every card is one object with no nested per-side block. Starters lost their upgraded side along with the starter-upgrade rule; the hand-limit field went with the hand limit, the starter-upgrade price went with the upgrade, and the money term of a build cost went with money itself. A build cost is now exactly {suit, wild}. Anything the schema-1 shape carried and this one does not is deliberate, not missing.",
-      "Starters are not bought: buildCost is null and printedVp is 0 on all fifteen. The Barn prints no text (abilityText is the empty string), the Farmstead prints one end-game line scoring its own crop, and the Notice Board is the only loadable starter (threshold 2, wild activation), whose VISITOR line grants that suit's door action.",
+      "Starters (sheet v42) are not bought: buildCost is null and printedVp is 0 on all fifteen. The Barn prints the own-crop scorer ('Game end: 1 VP for each <CROP> card you have built.'). The Farmstead prints the six receipt-slot line and no scoring. The Notice Board prints its suit's power and the threshold '3+', a minimum that never blocks, written here as the number 3; a visitor pays any card and the board is never a GROW target. Starter activationType is pinned (Barn and Farmstead null, Notice Board 'wild'); the sheet's 'wild' and '1 resource' on the board are decoration.",
+      "Rows are selected by the sheet's 'Needed' column (1 per card), not by 'Qty'. The Barn and Farmstead rows print their name as the first line of 'Ability'; it is moved into name.",
+      "Power cards print no VP on v42 (printedVp 0).",
       "Every Power and Endgame card costs 2 cards of its own suit ({suit: 2, wild: 0}). Money does not exist in the game from v31, so no monetary term reaches this file; a money icon still printed on the sheet's cost bar is reported as an error rather than absorbed.",
       "No card text is ever rewritten here. The sheet is the single source of truth for wording, so the web game and the physical game cannot drift apart on rules text; the tuning overlay carries numbers and flags only. A ruling that changes wording is applied to the sheet first, then re-extracted.",
       "Every card carries `enabled: true`. It is a tuning-overlay flag, not a printed property: switching a card off is how a paired comparison run asks whether the game is better without it.",
-      "abilityTrigger is keyword detection over the printed text, not a resolved ruling. needsDesignReview=true means 0 or >1 triggers matched, and those cards are re-read by hand when their handlers are written. Starters carry no trigger at all - the Farmstead's end-game VP is counted by the engine's scoring pass off the card's identity, not off this array.",
+      "abilityTrigger is keyword detection over the printed text, not a resolved ruling. needsDesignReview=true means 0 or >1 triggers matched, and those cards are re-read by hand when their handlers are written. Starters carry no trigger at all - the Barn's end-game VP is counted by the engine's scoring pass off the card's identity, not off this array. A 'When Harvested:' rider line (W4-W8, v42) is read like the old 'HARVEST:' label, so those cards stay ['onActivate'].",
       "The one STRUCTURAL trigger is `action`: a tier card with printed text but no threshold and no activation type can be neither grown nor sown, so its text fires as a MAIN ACTION instead - taken in place of Draw, Build, Grow, Harvest or Deliver. The sheet prints no prefix for it, which is why it is read off the shape of the card rather than off a keyword.",
-      "The Deliver trigger has TWO keys: onDeliver ('When you Deliver...', fires on island claims and balloon moves) and onDeliverIsland ('When you Deliver to the island...', island claims only)."
+      "The Deliver trigger has TWO keys: onDeliver ('When you Deliver...') and onDeliverIsland ('When you Deliver to the island...'). Balloons were deleted on 16/09/2026, so both fire on island deliveries only."
     ]
   },
   "suits": [
@@ -38,7 +40,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "",
+      "abilityText": "Game end: 1 VP for each Apiary card you have built.",
       "abilityTrigger": [],
       "needsDesignReview": false
     },
@@ -54,7 +56,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Game end: 1 VP for each Apiary card you have built.",
+      "abilityText": "Store Receipts here. Collect 6 to trigger end of the game.",
       "abilityTrigger": [],
       "needsDesignReview": false
     },
@@ -68,9 +70,9 @@
       "enabled": true,
       "buildCost": null,
       "activationType": "wild",
-      "threshold": 2,
+      "threshold": 3,
       "printedVp": 0,
-      "abilityText": "VISITOR: place 1 card here, then Sow 1 card from your hand onto one of your buildings.",
+      "abilityText": "Grow a building using the top card of any deck.",
       "abilityTrigger": [],
       "needsDesignReview": false
     },
@@ -168,7 +170,7 @@
       "activationType": "apiary",
       "threshold": 2,
       "printedVp": 1,
-      "abilityText": "Put a deck card into a neighbour's barn and Draw 1.",
+      "abilityText": "Sow 2 deck card onto a neighbour's building, then put 2 deck cards into your Barn.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -188,7 +190,7 @@
       "activationType": "apiary",
       "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Sow the top card of any deck onto each of your HIVEs.",
+      "abilityText": "Sow 1 deck card on up to 2 of your other buildings.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -208,7 +210,7 @@
       "activationType": "apiary",
       "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Draw 1 for each of your HIVEs.",
+      "abilityText": "Sow 1 card from your hand onto a neighbour's building, then Draw 3.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -228,7 +230,7 @@
       "activationType": "apiary",
       "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Put 1 card from each of your HIVEs into your barn.",
+      "abilityText": "Put 1 card from each of your full buildings into your Barn.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -268,7 +270,7 @@
       "activationType": "wild",
       "threshold": 1,
       "printedVp": 3,
-      "abilityText": "Place the top card of each deck into your barn.",
+      "abilityText": "If you have 3 or more Apiary buildings, place any 3 deck cards into your Barn.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -288,7 +290,7 @@
       "activationType": "wild",
       "threshold": 2,
       "printedVp": 3,
-      "abilityText": "Draw 1 for each of your HIVEs.",
+      "abilityText": "Draw 1 for each of your Apiary buildings, Max 5.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -327,7 +329,7 @@
       },
       "activationType": null,
       "threshold": null,
-      "printedVp": 1,
+      "printedVp": 0,
       "abilityText": "Whenever you place a card that brings a building's stack to 2 cards, Draw 1.",
       "abilityTrigger": [
         "passive"
@@ -347,8 +349,8 @@
       },
       "activationType": null,
       "threshold": null,
-      "printedVp": 1,
-      "abilityText": "Whenever you place a card on a neighbour's Notice Board, add the top card of any deck into your barn.",
+      "printedVp": 0,
+      "abilityText": "Whenever you visit a neighbour, SOW the top card of any deck onto one of your buildings.",
       "abilityTrigger": [
         "passive"
       ],
@@ -367,8 +369,8 @@
       },
       "activationType": null,
       "threshold": null,
-      "printedVp": 1,
-      "abilityText": "Each turn, you may take both bonus options: Draw 1 AND place a card on a Notice Board.",
+      "printedVp": 0,
+      "abilityText": "If, on your turn, you fill one of your buildings, sow the top card of any deck onto another of your buildings.",
       "abilityTrigger": [
         "passive"
       ],
@@ -388,7 +390,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Game end: 3 VP for each non-Apiary building you have built.",
+      "abilityText": "Game end: 1 VP for each non-Apiary building you have built.",
       "abilityTrigger": [
         "gameEnd"
       ],
@@ -408,7 +410,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Game end: 2 VP for each HIVE you have built.",
+      "abilityText": "Game end: 1 VP for each 1VP building you have built.",
       "abilityTrigger": [
         "gameEnd"
       ],
@@ -446,7 +448,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "",
+      "abilityText": "Game end: 1 VP for each Dairy card you have built.",
       "abilityTrigger": [],
       "needsDesignReview": false
     },
@@ -462,7 +464,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Game end: 1 VP for each Dairy card you have built.",
+      "abilityText": "Store Receipts here. Collect 6 to trigger end of the game.",
       "abilityTrigger": [],
       "needsDesignReview": false
     },
@@ -476,9 +478,9 @@
       "enabled": true,
       "buildCost": null,
       "activationType": "wild",
-      "threshold": 2,
+      "threshold": 3,
       "printedVp": 0,
-      "abilityText": "VISITOR: place 1 card here, then Build.",
+      "abilityText": "Build, spending cards of any crops with a discount of 2.",
       "abilityTrigger": [],
       "needsDesignReview": false
     },
@@ -516,7 +518,7 @@
       "activationType": "dairy",
       "threshold": 3,
       "printedVp": 1,
-      "abilityText": "Build. SOW the cards you spend onto the new building.",
+      "abilityText": "Build. SOW the cards you spend onto the new building, even if the threshold is exceeded.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -696,7 +698,7 @@
       "activationType": "wild",
       "threshold": 1,
       "printedVp": 3,
-      "abilityText": "Demolish one of your buildings. Place 3 deck cards into your barn.",
+      "abilityText": "Demolish one of your buildings. Place 3 deck cards into your Barn.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -735,7 +737,7 @@
       },
       "activationType": null,
       "threshold": null,
-      "printedVp": 1,
+      "printedVp": 0,
       "abilityText": "Whenever you Build, Draw 1.",
       "abilityTrigger": [
         "passive"
@@ -755,7 +757,7 @@
       },
       "activationType": null,
       "threshold": null,
-      "printedVp": 1,
+      "printedVp": 0,
       "abilityText": "When you build a card that is not Dairy, Draw 1.",
       "abilityTrigger": [
         "passive"
@@ -775,8 +777,8 @@
       },
       "activationType": null,
       "threshold": null,
-      "printedVp": 1,
-      "abilityText": "Each turn, you may take both bonus options: Draw 1 AND place a card on a Notice Board.",
+      "printedVp": 0,
+      "abilityText": "If, on your turn, you Build two buildings, put the top 2 cards of any one deck into your Barn.",
       "abilityTrigger": [
         "passive"
       ],
@@ -836,7 +838,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Game end: 2 VP for each SHED you have built.",
+      "abilityText": "Game end: 3 VP for each 3VP building you have built.",
       "abilityTrigger": [
         "gameEnd"
       ],
@@ -854,7 +856,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "",
+      "abilityText": "Game end: 1 VP for each Orchard card you have built.",
       "abilityTrigger": [],
       "needsDesignReview": false
     },
@@ -870,7 +872,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Game end: 1 VP for each Orchard card you have built.",
+      "abilityText": "Store Receipts here. Collect 6 to trigger end of the game.",
       "abilityTrigger": [],
       "needsDesignReview": false
     },
@@ -884,9 +886,9 @@
       "enabled": true,
       "buildCost": null,
       "activationType": "wild",
-      "threshold": 2,
+      "threshold": 3,
       "printedVp": 0,
-      "abilityText": "VISITOR: place 1 card here, then Draw 3.",
+      "abilityText": "Draw 4.",
       "abilityTrigger": [],
       "needsDesignReview": false
     },
@@ -894,7 +896,7 @@
       "id": "O4",
       "suit": "orchard",
       "type": "tier1",
-      "name": "The Apple Orchard",
+      "name": "The Apple Grove",
       "inDeck": true,
       "enabled": true,
       "buildCost": {
@@ -914,7 +916,7 @@
       "id": "O5",
       "suit": "orchard",
       "type": "tier1",
-      "name": "The Pear Orchard",
+      "name": "The Pear Grove",
       "inDeck": true,
       "enabled": true,
       "buildCost": {
@@ -924,7 +926,7 @@
       "activationType": "orchard",
       "threshold": 4,
       "printedVp": 1,
-      "abilityText": "Draw 2, then SOW 1 card from your hand onto this ORCHARD.",
+      "abilityText": "Draw 2, then SOW 1 card from your hand onto this building.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -934,7 +936,7 @@
       "id": "O6",
       "suit": "orchard",
       "type": "tier1",
-      "name": "The Cherry Orchard",
+      "name": "The Cherry Grove",
       "inDeck": true,
       "enabled": true,
       "buildCost": {
@@ -954,7 +956,7 @@
       "id": "O7",
       "suit": "orchard",
       "type": "tier1",
-      "name": "The Golden Orchard",
+      "name": "The Golden Grove",
       "inDeck": true,
       "enabled": true,
       "buildCost": {
@@ -964,7 +966,7 @@
       "activationType": "orchard",
       "threshold": 3,
       "printedVp": 1,
-      "abilityText": "Draw 2, then you may Harvest one of your ORCHARDs.",
+      "abilityText": "Draw 2, then you may Harvest one of your Orchard buildings.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -974,7 +976,7 @@
       "id": "O8",
       "suit": "orchard",
       "type": "tier1",
-      "name": "The Heritage Orchard",
+      "name": "The Heritage Grove",
       "inDeck": true,
       "enabled": true,
       "buildCost": {
@@ -1024,7 +1026,7 @@
       "activationType": "orchard",
       "threshold": 2,
       "printedVp": 2,
-      "abilityText": "SOW 1 card from your hand onto each of your ORCHARDs.",
+      "abilityText": "SOW 1 card from your hand onto each of your Orchard buildings.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1044,7 +1046,7 @@
       "activationType": "orchard",
       "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Harvest every ORCHARD, however many cards are on it, then Draw 1 for each card harvested.",
+      "abilityText": "Harvest one of your buildings, then Draw 1 for each card harvested.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1064,7 +1066,7 @@
       "activationType": "orchard",
       "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Put any number of cards from your hand into your barn.",
+      "abilityText": "Put up to 4 cards from your hand into your Barn.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1084,7 +1086,7 @@
       "activationType": "wild",
       "threshold": 1,
       "printedVp": 3,
-      "abilityText": "GROW each of your ORCHARDs.",
+      "abilityText": "GROW up to 2 of your other buildings, using any suit.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1143,7 +1145,7 @@
       },
       "activationType": null,
       "threshold": null,
-      "printedVp": 1,
+      "printedVp": 0,
       "abilityText": "Whenever you VISIT a neighbour, Draw 1.",
       "abilityTrigger": [
         "passive"
@@ -1163,8 +1165,8 @@
       },
       "activationType": null,
       "threshold": null,
-      "printedVp": 1,
-      "abilityText": "Once per turn, instead of discarding a card you spend, put it into your barn.",
+      "printedVp": 0,
+      "abilityText": "Once per turn, instead of discarding a card you spend from your hand, put it into your Barn.",
       "abilityTrigger": [
         "passive"
       ],
@@ -1183,8 +1185,8 @@
       },
       "activationType": null,
       "threshold": null,
-      "printedVp": 1,
-      "abilityText": "Each turn, you may take both bonus options: Draw 1 AND place a card on a Notice Board.",
+      "printedVp": 0,
+      "abilityText": "At the end of your turn, Draw until you have at least 3 card in hand.",
       "abilityTrigger": [
         "passive"
       ],
@@ -1224,7 +1226,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Game end: 2 VP for each ORCHARD you have built.",
+      "abilityText": "Game end: 2 VP for each 2VP building you have built.",
       "abilityTrigger": [
         "gameEnd"
       ],
@@ -1244,7 +1246,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Game end: 1 VP for every 2 cards in other players' hands.",
+      "abilityText": "Game end: 1 VP for every 3 cards in other players' hands.",
       "abilityTrigger": [
         "gameEnd"
       ],
@@ -1262,7 +1264,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "",
+      "abilityText": "Game end: 1 VP for each Vegetable card you have built.",
       "abilityTrigger": [],
       "needsDesignReview": false
     },
@@ -1278,7 +1280,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Game end: 1 VP for each Vegetable card you have built.",
+      "abilityText": "Store Receipts here. Collect 6 to trigger end of the game.",
       "abilityTrigger": [],
       "needsDesignReview": false
     },
@@ -1292,9 +1294,9 @@
       "enabled": true,
       "buildCost": null,
       "activationType": "wild",
-      "threshold": 2,
+      "threshold": 3,
       "printedVp": 0,
-      "abilityText": "VISITOR: place 1 card here, then Deliver.",
+      "abilityText": "Deliver - 2 of the cards may be any crop. If you cannot, put 2 cards from your hand into your Barn.",
       "abilityTrigger": [],
       "needsDesignReview": false
     },
@@ -1312,7 +1314,7 @@
       "activationType": "vegetable",
       "threshold": 2,
       "printedVp": 1,
-      "abilityText": "Discard 1 card to move a Balloon to your Aerodrome and take its reward.",
+      "abilityText": "If your barn has 3 or fewer cards, place a deck card into your barn.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1332,7 +1334,7 @@
       "activationType": "vegetable",
       "threshold": 2,
       "printedVp": 1,
-      "abilityText": "You may swap two demand tokens on the island, then Deliver.",
+      "abilityText": "You may swap two demand tokens between 2 islands, then Deliver.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1352,7 +1354,7 @@
       "activationType": "vegetable",
       "threshold": 3,
       "printedVp": 1,
-      "abilityText": "Turn an island demand token face down, then Deliver.",
+      "abilityText": "Swap up to 2 cards between your hand and your Barn, then Draw 1.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1392,7 +1394,7 @@
       "activationType": "vegetable",
       "threshold": 3,
       "printedVp": 1,
-      "abilityText": "Move a Balloon to your Aerodrome and take its reward.",
+      "abilityText": "Discard a card from your Barn. Draw 4 of that crop.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1412,7 +1414,7 @@
       "activationType": "vegetable",
       "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Draw 2, then put 1 card from your hand into your barn.",
+      "abilityText": "Draw 2, then put 1 card from your hand into your Barn.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1432,7 +1434,7 @@
       "activationType": "vegetable",
       "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Draw 1 for each receipt you have taken.",
+      "abilityText": "Discard up to 2 cards from your Barn. For each card discarded, perform the base action of that crop.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1452,7 +1454,7 @@
       "activationType": "vegetable",
       "threshold": 2,
       "printedVp": 2,
-      "abilityText": "SOW 1 for every card in your Barn.",
+      "abilityText": "For every card in your Barn, move a card of the same crop from any of your buildings into your Barn.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1472,7 +1474,7 @@
       "activationType": "vegetable",
       "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Put 1 card from your hand into your barn for each DEPOT you have built.",
+      "abilityText": "Discard a card from your Barn. Perform the Notice Board action of that crop.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1492,7 +1494,7 @@
       "activationType": "wild",
       "threshold": 1,
       "printedVp": 3,
-      "abilityText": "For each different crop in your barn, put the top card of that crop's deck into your barn.",
+      "abilityText": "For each different crop in your Barn, put the top card of that crop's deck into your Barn.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1506,13 +1508,13 @@
       "inDeck": true,
       "enabled": true,
       "buildCost": {
-        "suit": 3,
+        "suit": 2,
         "wild": 1
       },
       "activationType": "wild",
       "threshold": 1,
       "printedVp": 3,
-      "abilityText": "Deliver and take every receipt on the island.",
+      "abilityText": "Deliver and take every receipt on the island card, then destroy this building.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1532,7 +1534,7 @@
       "activationType": "wild",
       "threshold": 1,
       "printedVp": 3,
-      "abilityText": "Deliver Twice",
+      "abilityText": "Discard 1 card from your Barn, then Build a card of the same crop from your hand for free.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1551,8 +1553,8 @@
       },
       "activationType": null,
       "threshold": null,
-      "printedVp": 1,
-      "abilityText": "Whenever a neighbour moves a Balloon from your Aerodrome, Draw 1.",
+      "printedVp": 0,
+      "abilityText": "Whenever you Deliver, put the top card of any deck into your Barn.",
       "abilityTrigger": [
         "passive"
       ],
@@ -1571,8 +1573,8 @@
       },
       "activationType": null,
       "threshold": null,
-      "printedVp": 1,
-      "abilityText": "Whenever you move a Balloon, Draw 1.",
+      "printedVp": 0,
+      "abilityText": "Whenever you discard a card from your Barn, Draw 1.",
       "abilityTrigger": [
         "passive"
       ],
@@ -1591,8 +1593,8 @@
       },
       "activationType": null,
       "threshold": null,
-      "printedVp": 1,
-      "abilityText": "Each turn, you may take both bonus options: Draw 1 AND place a card on a Notice Board.",
+      "printedVp": 0,
+      "abilityText": "After you Deliver, if your Barn has 1 or fewer cards, Draw 3.",
       "abilityTrigger": [
         "passive"
       ],
@@ -1612,7 +1614,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Game end: 2 VP for each Balloon at your Aerodrome.",
+      "abilityText": "Game end: 3 VP for each pair of RECEIPTs with the same crop.",
       "abilityTrigger": [
         "gameEnd"
       ],
@@ -1632,7 +1634,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Game end: 2 VP for each DEPOT you have built.",
+      "abilityText": "Game end: 2 VP for each RECEIPT worth 4 or less.",
       "abilityTrigger": [
         "gameEnd"
       ],
@@ -1652,7 +1654,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Game end: 1 VP for every 2 cards in your barn.",
+      "abilityText": "Game end: 3 VP for each vegetable RECEIPT.",
       "abilityTrigger": [
         "gameEnd"
       ],
@@ -1670,7 +1672,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "",
+      "abilityText": "Game end: 1 VP for each Wheat card you have built.",
       "abilityTrigger": [],
       "needsDesignReview": false
     },
@@ -1686,7 +1688,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Game end: 1 VP for each Wheat card you have built.",
+      "abilityText": "Store Receipts here. Collect 6 to trigger end of the game.",
       "abilityTrigger": [],
       "needsDesignReview": false
     },
@@ -1700,9 +1702,9 @@
       "enabled": true,
       "buildCost": null,
       "activationType": "wild",
-      "threshold": 2,
+      "threshold": 3,
       "printedVp": 0,
-      "abilityText": "VISITOR: place 1 card here, then Harvest one of your full buildings.",
+      "abilityText": "Harvest one of your buildings, then put 1 card from your hand into your Barn.",
       "abilityTrigger": [],
       "needsDesignReview": false
     },
@@ -1720,7 +1722,7 @@
       "activationType": "wheat",
       "threshold": 2,
       "printedVp": 1,
-      "abilityText": "Draw 1.\nHARVEST: Put 1 card from your hand into your barn.",
+      "abilityText": "Draw 1.\nWhen Harvested: Put 1 card from your hand into your Barn.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1740,7 +1742,7 @@
       "activationType": "wheat",
       "threshold": 2,
       "printedVp": 1,
-      "abilityText": "Draw 1.\nHARVEST: Draw 2. Sow 1 deck card onto this FIELD.",
+      "abilityText": "Draw 1.\nWhen Harvested: Draw 2. Sow 1 deck card onto this building.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1760,7 +1762,7 @@
       "activationType": "wheat",
       "threshold": 3,
       "printedVp": 1,
-      "abilityText": "Draw 1.\nHARVEST: Sow 1 card onto each of your FIELDs.",
+      "abilityText": "Draw 1.\nWhen Harvested: Sow 1 card from your hand onto each of your Wheat buildings.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1780,7 +1782,7 @@
       "activationType": "wheat",
       "threshold": 3,
       "printedVp": 1,
-      "abilityText": "Draw 1.\nHARVEST: Build, at a discount of 2.",
+      "abilityText": "Draw 1.\nWhen Harvested: Build, at a discount of 2.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1800,7 +1802,7 @@
       "activationType": "wheat",
       "threshold": 2,
       "printedVp": 1,
-      "abilityText": "Draw 1\nHARVEST: Harvest another of your buildings, even if not full.",
+      "abilityText": "Draw 1\nWhen Harvested: Harvest another of your buildings, even if not full.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1820,7 +1822,7 @@
       "activationType": "wheat",
       "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Sow the top card of any deck onto each of your FIELDs.",
+      "abilityText": "Sow a deck card on up to 3 of your buildings that are empty.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1840,7 +1842,7 @@
       "activationType": "wheat",
       "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Put your entire hand into your barn.",
+      "abilityText": "Put exactly 3 cards from your hand into your Barn.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1880,7 +1882,7 @@
       "activationType": "wheat",
       "threshold": 2,
       "printedVp": 2,
-      "abilityText": "Harvest every FIELD with 1 or more cards on it.",
+      "abilityText": "Harvest every Wheat building with 1 or more cards on it.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1900,7 +1902,7 @@
       "activationType": "wild",
       "threshold": 1,
       "printedVp": 3,
-      "abilityText": "Harvest every one of your buildings, however many cards are on them.",
+      "abilityText": "Harvest every one of your buildings, however many cards are on them (including 0).",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1940,7 +1942,7 @@
       "activationType": "wild",
       "threshold": 1,
       "printedVp": 3,
-      "abilityText": "Put the top card of each deck into your barn.",
+      "abilityText": "Put 3 deck cards of one deck into your Barn.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -1959,7 +1961,7 @@
       },
       "activationType": null,
       "threshold": null,
-      "printedVp": 1,
+      "printedVp": 0,
       "abilityText": "Whenever you harvest, Draw 1.",
       "abilityTrigger": [
         "passive"
@@ -1979,8 +1981,8 @@
       },
       "activationType": null,
       "threshold": null,
-      "printedVp": 1,
-      "abilityText": "Whenever a neighbour places a card on one of your buildings, Draw 1.",
+      "printedVp": 0,
+      "abilityText": "Whenever a neighbour visits you, Draw 1.",
       "abilityTrigger": [
         "passive"
       ],
@@ -1999,8 +2001,8 @@
       },
       "activationType": null,
       "threshold": null,
-      "printedVp": 1,
-      "abilityText": "Each turn, you may take both bonus options: Draw 1 AND place a card on a Notice Board.",
+      "printedVp": 0,
+      "abilityText": "If, on your turn, you Harvest two or more of your buildings, Draw 3.",
       "abilityTrigger": [
         "passive"
       ],
@@ -2060,7 +2062,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Game end: 2 VP for each FIELD you have built.",
+      "abilityText": "Game end: 2 VP for each different RECEIPT suit you have delivered.",
       "abilityTrigger": [
         "gameEnd"
       ],

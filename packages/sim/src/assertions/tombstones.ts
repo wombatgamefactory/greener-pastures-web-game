@@ -69,6 +69,20 @@ export const RETIRED: readonly Tombstone[] = [
       'for not spending will beat every sink you build.',
   },
   {
+    id: 12,
+    title: 'Balloon raid compensation',
+    retired: '16/09/2026 (the balloons and the Aerodrome deleted)',
+    why:
+      'Added by ticket 06 ruling J: moving a balloon off a rival Aerodrome cost barn cards and ' +
+      'the raided seat received NOTHING, so the raid was a pure take, and this page reported the ' +
+      "raid frequency and raided seats' final scores against never-raided seats, as an OBSERVE " +
+      'because a score gap can run either way causally. Last read on reference-v17: 13.55 raids ' +
+      'a game, and raided seats scoring level with the rest (40.9 against 40.9). THE SUBJECT IS ' +
+      'GONE: Dean deleted the balloons and the Aerodrome on 16/09/2026 (R1). The lesson it ' +
+      'carried: a card that pays for being raided (V16) or for a parked fleet (V19) changes what ' +
+      'a raid gap MEANS, so read the cards before reading the gap.',
+  },
+  {
     id: 14,
     title: 'The bonus slot, five ways',
     retired: '02/09/2026 (v31), and immediately replaced by assertion 17',
@@ -95,8 +109,36 @@ export const RETIRED: readonly Tombstone[] = [
       'and the Endgame cards, with the coins left dead in a wallet at game end. It printed NO ' +
       'SUBJECT under every mode this project ever shipped. THE SUBJECT IS GONE: Dean deleted ' +
       'the commons outright on 13/09/2026, and with it rules.turn.commonsTake and its only ' +
-      'mint. The lesson it carried is a25-village-store-coin’s now: every coin economy ' +
-      'this project has shipped died of a second faucet or a pity rate, so a currency owes the ' +
-      'reader its whole balance sheet on one page.',
+      'mint. The lesson it carried passed to a25-village-store-coin (itself retired ' +
+      '16/09/2026): every coin economy this project has shipped died of a second faucet or a ' +
+      'pity rate, so a currency owes the reader its whole balance sheet on one page.',
+  },
+  {
+    id: 25,
+    title: 'The Village Store coin: one mint, two sinks and a shared supply (A150)',
+    retired: '16/09/2026 (the Village Store deleted)',
+    why:
+      'The balance sheet of the Village Store coin (V1-V12, ledger A150): one mint, a barn card ' +
+      'converted for a coin at a delivery; a shared supply of 5 a player that spent coins ' +
+      'returned to; and two sinks, a coin as a wild card for BUILD and for GROW, with the ' +
+      'coin-Grow on a FULL building (V9) on its own line. Last read on reference-v17: 12.91 ' +
+      'coins minted per player per game (3.05 per delivery), spent 49.6% on builds and 31.9% on ' +
+      'Grows, 2.39 coins dead per player at game end, and the supply empty on 3.2% of turns. THE ' +
+      'SUBJECT IS GONE: Dean deleted the Store on 16/09/2026 (R2). The lesson stands for any ' +
+      'future currency: a sink that pays no card stops cards leaving the hand, and a V9-style ' +
+      'clause is a clog bypass that removes the brake a whole card tier was priced against.',
+  },
+  {
+    id: 26,
+    title: 'C113: does every player convert every spare card every time? (A150)',
+    retired: '16/09/2026 (the Village Store deleted)',
+    why:
+      "The Store's placement test: August's verdict on a rider on Deliver was 'no cost, so it is " +
+      "always correct', and this page read the share of exchange windows that converted at all " +
+      'and the share that converted EVERY convertible card. Last read on reference-v17: 97.5% ' +
+      'of windows converted and 92.7% took every card, which confirmed the objection as a ' +
+      'CEILING (a bot always takes a free thing; a human may not bother). THE SUBJECT IS GONE: ' +
+      'Dean deleted the Store on 16/09/2026 (R2). The lesson: an optional prompt that is taken ' +
+      'nearly every time is a rule that has not earned its interruption.',
   },
 ];

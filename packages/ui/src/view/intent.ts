@@ -171,22 +171,6 @@ export function clickBuilding(moves: readonly Move[], intent: Intent, building: 
         (held === null || move.payment === held)
       ) {
         actions.push(move);
-      } else if (
-        // ⭐ THE VILLAGE STORE'S COIN GROW (A150, live in the shipped game since
-        // Dean's ruling of 12/09/2026). It holds no card either - a coin places
-        // nothing, so `payment` is null exactly as R15's meeple grow was - but
-        // unlike the meeple it IS a rule of the shipped game, so it has to be
-        // reachable. It is offered on a click of the building with NO card
-        // held, which is the only gesture that does not already mean "pay with
-        // this card". ⚠️ The meeple grow above stays filtered: `coinGrow` is
-        // what separates the two, and only the coin grow carries it.
-        canGrow &&
-        move.building === building &&
-        move.payment === null &&
-        move.coinGrow === true &&
-        held === null
-      ) {
-        actions.push(move);
       }
     }
   }
@@ -257,21 +241,6 @@ export function clickTile(moves: readonly Move[], intent: Intent, tile: string):
   return [...actions, ...answers];
 }
 
-/** A balloon: the Deliver action's freight branch (DL-12), or a deliver task's balloon answer. */
-export function clickBalloon(moves: readonly Move[], intent: Intent, balloon: string): Move[] {
-  const canMove = armed(intent, 'moveBalloon');
-  const actions: Move[] = [];
-  const answers: Move[] = [];
-  for (const move of moves) {
-    if (move.type === 'moveBalloon') {
-      if (canMove && move.balloon === balloon) actions.push(move);
-    } else if (move.type === 'task' && move.answer.kind === 'balloon') {
-      if (move.answer.balloon === balloon) answers.push(move);
-    }
-  }
-  return [...actions, ...answers];
-}
-
 /**
  * ONE MEEPLE OF THIS COLOUR, spent (v31). Made on the meeple in your own supply,
  * for the same reason a card power is made on the card: it is a component in
@@ -313,7 +282,6 @@ export interface Live {
    */
   readonly hosts: ReadonlySet<Seat>;
   readonly tiles: ReadonlySet<string>;
-  readonly balloons: ReadonlySet<string>;
   /** Meeple colours in your supply that can be spent right now. */
   readonly meeples: ReadonlySet<Suit>;
   readonly decks: ReadonlySet<Suit>;
@@ -325,7 +293,6 @@ const EMPTY_LIVE: Live = {
   buildings: new Set(),
   hosts: new Set(),
   tiles: new Set(),
-  balloons: new Set(),
   meeples: new Set(),
   decks: new Set(),
   hand: new Set(),
@@ -369,11 +336,6 @@ export function liveTargets(view: PlayerView, moves: readonly Move[], intent: In
     if (clickTile(moves, intent, tile.tile).length > 0) tiles.add(tile.tile);
   }
 
-  const balloons = new Set<string>();
-  for (const balloon of view.aerodrome?.balloons ?? []) {
-    if (clickBalloon(moves, intent, balloon.id).length > 0) balloons.add(balloon.id);
-  }
-
   const meeples = new Set<Suit>();
   for (const colour of Object.keys(view.you.meeples) as Suit[]) {
     if (clickMeeple(moves, colour).length > 0) meeples.add(colour);
@@ -388,7 +350,6 @@ export function liveTargets(view: PlayerView, moves: readonly Move[], intent: In
     buildings,
     hosts,
     tiles,
-    balloons,
     meeples,
     decks,
     hand: liveHand(view, moves, intent),
@@ -707,7 +668,6 @@ export const MOVE_ROUTES = {
   grow: 'building',
   harvest: 'building',
   deliver: 'island-tile',
-  moveBalloon: 'balloon',
   visit: 'visit-panel',
   // TODO(meeple-loop): owned by the ui pass. Collect is a bonus-slot button
   // beside Draw 1, so it routes where bonusDraw routes until that pass gives

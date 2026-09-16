@@ -47,13 +47,15 @@
 import type { Card, DoorAction, GameData, Suit } from '@gp/data';
 import type { BuildingView, CardId, PlayerView } from '@gp/engine';
 import {
-  deliveriesPerTile,
+  deliveryCost,
+  demandShortfall,
   doorActionForSuit,
   isMeepleAsCard,
   isMeepleCurrency,
   isNoticeBoardPower,
   meepleSpendTiming,
   noticeBoardBlocks,
+  tileDemand,
 } from '@gp/data';
 
 import { magpieTarget } from './magpie.js';
@@ -392,8 +394,8 @@ export interface Scratch {
    */
   readonly farmsteadCrop: Suit | null;
   /**
-   * Suits a tile with a free receipt space still wants. Wild crates count for
-   * every suit in play.
+   * Suits a tile with a token left still names. A wild token, or the "2 any"
+   * of a half-finished tile, counts for every suit in play.
    *
    * It used to be filtered by the per-player level gate, and ticket 53 measured
    * that filter rather than arguing it: gated and ungated were different sets in
@@ -513,141 +515,22 @@ function starterSlotOf(card: Card): string | null {
 }
 
 /**
- * Can this barn tally pay for this tile? The engine's `anyDeliverOption`
- * arithmetic, re-stated over the view: named crates covered outright, then
- * every crate-sized block of surplus in one suit covers one wild. Demand
- * tokens are dealt from in-play suits only, so one pass over `suits` both
- * checks coverage and counts wild capacity.
+ * Could this seat pay for ANY tile that still holds a token, out of its barn?
+ * The engine's `anyDeliverOption` arithmetic, re-stated over the view through
+ * the one payment rule (`tileDemand`): the named demand met in full and the
+ * total at least the delivery cost (the token island, 16/09/2026).
  */
-function tallyPays(
-  suits: readonly Suit[],
-  tally: Partial<Record<Suit, number>>,
-  base: Partial<Record<Suit, number>>,
-  wilds: number,
-  per: number,
-): boolean {
-  let wildCapacity = 0;
-  for (const suit of suits) {
-    const surplus = (tally[suit] ?? 0) - (base[suit] ?? 0);
-    if (surplus < 0) return false;
-    wildCapacity += Math.floor(surplus / per);
-  }
-  return wildCapacity >= wilds;
-}
-
-/**
- * A tile's demand, over the view: named crates as cards, plus a count of the
- * crates that will take anything.
- *
- * THE FACE-DOWN TOKENS BELONG HERE (the Vegetable rebuild, 2026-08-09). V6 turns
- * a demand token blank and a blank token accepts any crops at the normal rate,
- * which is exactly what a cornucopia does - so both must count as wild capacity
- * or the bots would keep reading a tile as unpayable after somebody opened it.
- * Mirrors the engine's `namedDemand`, and both readers below go through it so
- * the two cannot learn the rule separately.
- */
-function demandOf(
-  tile: { crates: readonly (Suit | 'wild')[]; faceDown?: readonly boolean[] },
-  per: number,
-): { base: Partial<Record<Suit, number>>; wilds: number } {
-  const base: Partial<Record<Suit, number>> = {};
-  let wilds = 0;
-  for (const [i, crate] of tile.crates.entries()) {
-    if (crate === 'wild' || tile.faceDown?.[i] === true) wilds += 1;
-    else base[crate] = (base[crate] ?? 0) + per;
-  }
-  return { base, wilds };
-}
-
-/** Could this seat pay for ANY tile with a free receipt space, out of its barn? */
 function canDeliverNow(data: GameData, view: PlayerView): boolean {
-  const per = data.island.tileRule.cardsPerCrate;
+  const barn = view.you.barn;
+  let total = 0;
+  for (const n of Object.values(barn)) total += n ?? 0;
+  if (total < deliveryCost(data)) return false;
   for (const tile of view.island.tiles) {
-    if (tile.deliveredBy.length >= deliveriesPerTile(data)) continue;
-    const { base, wilds } = demandOf(tile, per);
-    if (tallyPays(view.suitsInPlay, view.you.barn, base, wilds, per)) return true;
+    if (tile.tokens.length === 0) continue;
+    const { base } = tileDemand(data, tile.tokens);
+    if (demandShortfall(base, barn) === 0) return true;
   }
   return false;
-}
-
-/**
- * ⛔ **HOW MANY OPEN TILES THIS BARN COULD PAY FOR RIGHT NOW, and the same
- * arithmetic `canDeliverNow` runs, counted rather than short-circuited** (the
- * Village Store, A150, 12/09/2026).
- *
- * `less` removes ONE card of that suit before counting, which is the whole of
- * what `mintStrandsDelivery` needs: the Store's exchange takes barn cards one at
- * a time and the question at every one of them is whether THIS card was spare.
- */
-function payableTiles(data: GameData, view: PlayerView, less: Suit | null): number {
-  const per = data.island.tileRule.cardsPerCrate;
-  const tally: Partial<Record<Suit, number>> = { ...view.you.barn };
-  if (less !== null) {
-    const held = tally[less] ?? 0;
-    if (held <= 0) return 0;
-    tally[less] = held - 1;
-  }
-  let n = 0;
-  for (const tile of view.island.tiles) {
-    if (tile.deliveredBy.length >= deliveriesPerTile(data)) continue;
-    const { base, wilds } = demandOf(tile, per);
-    if (tallyPays(view.suitsInPlay, tally, base, wilds, per)) n += 1;
-  }
-  return n;
-}
-
-/**
- * ⛔ **WOULD CONVERTING ONE BARN CARD OF THIS SUIT AT THE VILLAGE STORE COST
- * THIS SEAT A DELIVERY IT CAN PAY FOR TODAY?** (V1/V2, A150, Dean 12/09/2026.)
- *
- * ⭐ **IT IS THE ONE FEATURE THAT DECIDES WHETHER THE STORE'S OWN HEADLINE
- * READING MEANS ANYTHING.** C113 is the arm's test: *"if the arm shows every
- * player converting every spare card every time, the August verdict on this
- * placement was right."* A bot that cannot tell a stranded card from the second
- * half of a crate converts its whole barn at every delivery, and the answer to
- * C113 comes back yes - as a fact about this file rather than about the rules.
- *
- * ⭐ **AND THE DESIGN'S OWN WORDS NAME EXACTLY THIS FEATURE.** The Store
- * exists for the barn parity trap: a crate is two cards of one named crop, all
- * or nothing, so a single odd card is worth exactly zero and 88.8% of the time a
- * barn cannot afford any open tile. **A card is spare when losing it costs no
- * payable tile, and dear when it does.** Nothing else about a barn card is worth
- * reading, which is ticket 51's finding restated: the block is MATCHING under an
- * all-or-nothing payment, not quantity, and a binary "is this suit demanded"
- * cannot see the difference.
- *
- * ⚠️ **IT IS TICKET 52's PAYABILITY FEATURE, WHICH THAT TICKET NAMED AND
- * DELIBERATELY DID NOT BUILD.** 52 measured the prize on the exits that existed
- * then - the island, D8's build leg and the balloon - at 9 tiles of payability
- * across 215 moves, 0.16 a game, below the floor a paired A/B could resolve, so
- * it was never written. **The Store is a fourth exit and it is not in that
- * class**: it is the only one that can empty a barn in a single tail, it fires
- * on the turn the barn is at its fullest, and it is offered once per card.
- *
- * ⚠️ **IT IS A ONE-STEP READ AND NOT A PLAN.** The exchange is a repeated
- * binary choice, so a seat converting three cards asks this three times, each
- * against the barn as it then stands; nothing here looks ahead to the third
- * conversion from the first. That is the same greedy shape every other term in
- * this package has, and it is safe in the direction that matters: the first
- * conversion that would break a crate is refused, so the crate survives.
- *
- * ⛔ **STRUCTURALLY DEAD WHEN THE STORE IS OFF.** Nothing pushes a `mint`
- * task outside `rules.economy.storeCoinsPerCard > 0`, so this is never called in
- * the shipped game or under any control, and the nine fixtures cannot see it.
- */
-export function mintStrandsDelivery(s: Scratch, suit: Suit): boolean {
-  const before = payableTiles(s.data, s.view, null);
-  if (before === 0) return false;
-  return payableTiles(s.data, s.view, suit) < before;
-}
-
-/** Two differing barn suits and a balloon that is not already on your Aerodrome. */
-function canMoveBalloonNow(view: PlayerView): boolean {
-  if (view.aerodrome === null) return false;
-  if (!view.aerodrome.balloons.some((b) => b.at !== view.seat)) return false;
-  let suits = 0;
-  for (const count of Object.values(view.you.barn)) if ((count ?? 0) > 0) suits += 1;
-  return suits >= 2;
 }
 
 /**
@@ -736,8 +619,7 @@ function doorReady(
       // scan, and errs generous.
       return you.hand.length > 0;
     case 'deliver':
-      // Island or freight: a balloon move IS the Deliver action (DL-12).
-      return canDeliverNow(data, view) || canMoveBalloonNow(view);
+      return canDeliverNow(data, view);
     default:
       return action satisfies never;
   }
@@ -882,12 +764,13 @@ export function makeScratch(data: GameData, view: PlayerView): Scratch {
     if (slot === 'farmstead') farmsteadCrop = card.suit;
   }
 
+  // The crops the island still names. A wild token, or the "2 any" a
+  // half-finished tile reveals, takes every crop in play.
   const demandSuits = new Set<Suit>();
-  const per = data.island.tileRule.cardsPerCrate;
   for (const tile of view.island.tiles) {
-    if (tile.deliveredBy.length >= deliveriesPerTile(data)) continue;
-    const { base, wilds } = demandOf(tile, per);
-    if (wilds > 0) for (const suit of view.suitsInPlay) demandSuits.add(suit);
+    if (tile.tokens.length === 0) continue;
+    const { base, any } = tileDemand(data, tile.tokens);
+    if (any > 0) for (const suit of view.suitsInPlay) demandSuits.add(suit);
     for (const suit of Object.keys(base) as Suit[]) demandSuits.add(suit);
   }
 

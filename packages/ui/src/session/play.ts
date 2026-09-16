@@ -20,7 +20,6 @@ import type { CardId, Move, MoveType, PlayerView, Seat } from '@gp/engine';
 import {
   IDLE,
   buildComplete,
-  clickBalloon,
   clickBuilding,
   clickCardPower,
   clickDeck,
@@ -76,7 +75,6 @@ export interface Play {
   /** A farm's Notice Board as a visit target. ⚠️ `seat` may be your own. */
   host(seat: Seat): void;
   tile(id: string): void;
-  balloon(id: string): void;
   /** Spend one meeple of this colour from your own supply. */
   meeple(colour: Suit): void;
   deck(suit: Suit): void;
@@ -291,10 +289,6 @@ export function usePlay(host: PlayHost): Play {
       tile: (id) => {
         if (inert) return;
         resolve(clickTile(moves, effective, id), 'Which crops?');
-      },
-      balloon: (id) => {
-        if (inert) return;
-        resolve(clickBalloon(moves, effective, id), 'Pay which two barn cards?');
       },
       meeple: (colour) => {
         if (inert) return;

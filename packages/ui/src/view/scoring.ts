@@ -29,7 +29,6 @@
  */
 
 import type { GameData } from '@gp/data';
-import { deliverySpacesTaken } from '@gp/data';
 import type { GameScore, PlayerView, ScoreBreakdown, Seat } from '@gp/engine';
 
 import { printedFace } from './printed';
@@ -129,32 +128,33 @@ export interface ScoreReport {
 }
 
 /**
- * Where a seat's receipts came from, read off the island rather than off the
- * receipt values. Since the flat island a delivery's VP is decided entirely by
- * its index in the tile's `deliveredBy` list, and that list is public, so the
- * whole of island scoring multiplies back out of what is on the table. Nothing
- * has to be stored per delivery for this to work - which is what keeps the
- * `agrees` check honest, the whole reason this re-derives rather than reading
- * the engine's number.
+ * Where a seat's receipts came from: each receipt's ARRIVAL ORDER at its tile
+ * (read off the tile's public `deliveredBy`) and the VP printed on its token
+ * (the token island, 16/09/2026: the VP is on the token, not the arrival).
+ * Grouped by (arrival, VP), first-in first.
  */
-function arrivalsFor(data: GameData, view: PlayerView, seat: Seat): ArrivalTally[] {
-  const counts = new Map<number, number>();
-  for (const tile of view.island.tiles) {
-    // ⚠️ 14/09/2026: the VP follows the SPACE each receipt took, which is the
-    // arrival order only without Dean's space choice.
-    const spaces = deliverySpacesTaken(tile);
-    tile.deliveredBy.forEach((who, arrival) => {
+function arrivalsFor(_data: GameData, view: PlayerView, seat: Seat): ArrivalTally[] {
+  const seen = new Map<string, number>();
+  const counts = new Map<string, { order: number; vpEach: number; count: number }>();
+  for (const receipt of farmOf(view, seat).receipts) {
+    const tile = view.island.tiles.find((t) => t.tile === receipt.tile);
+    const k = seen.get(receipt.tile) ?? 0;
+    seen.set(receipt.tile, k + 1);
+    let order = 0;
+    let hits = 0;
+    (tile?.deliveredBy ?? []).forEach((who, i) => {
       if (who !== seat) return;
-      const order = spaces[arrival] ?? arrival;
-      counts.set(order, (counts.get(order) ?? 0) + 1);
+      if (hits === k) order = i;
+      hits += 1;
     });
+    const key = `${order}:${receipt.vp}`;
+    const row = counts.get(key) ?? { order, vpEach: receipt.vp, count: 0 };
+    row.count += 1;
+    counts.set(key, row);
   }
-  return [...counts.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([order, count]) => {
-      const vpEach = data.island.vpByDeliveryOrder[order] ?? 0;
-      return { order, count, vpEach, vp: count * vpEach };
-    });
+  return [...counts.values()]
+    .sort((a, b) => a.order - b.order || b.vpEach - a.vpEach)
+    .map(({ order, count, vpEach }) => ({ order, count, vpEach, vp: count * vpEach }));
 }
 
 function seatScore(

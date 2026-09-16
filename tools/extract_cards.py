@@ -18,22 +18,30 @@ and says nothing about which crops satisfy it).
 
 SCHEMA 2 (design changes v31, 02/09/2026). Every card is a single FLAT object -
 there is no `faces` key and no `handSize`, `upgradeCostCoins` or `coins` anywhere.
+The starter facts below are those of sheet v42 (16/09/2026).
 
+  * ROW SELECTION. A row is a card when its `Needed` column is 1 (one row per
+    physical card; all 105 rows carry it). `Qty` is NOT read: on v42 it is 0 on
+    most rows. Any non-blank row that is not selected is reported by name.
   * A suit has THREE starters - Barn (ref 1), Farmstead (ref 2), Notice Board
     (ref 3) - plus an 18-card shuffled deck (refs 4..21). 105 cards in total.
-  * Starters are SINGLE-FACED. v31 deleted all fifteen upgraded "U" rows from the
-    sheet along with the starter-upgrade rule itself, so a `U` row reaching this
-    script means an old sheet was passed in, and it is reported as an error
-    rather than absorbed. Starters are not bought: they print no build cost and
-    carry no cost icons, and their printed VP is 0.
-  * The Barn prints NO text at all (it is simply where cards ready for delivery
-    are stored), so its `abilityText` is the empty string.
-  * The Farmstead prints one end-game line, "Game end: 1 VP for each <CROP> card
-    you have built."; it holds no cards, so it prints no threshold.
-  * The Notice Board is the only loadable starter: threshold 2, wild activation,
-    and its VISITOR line grants that suit's door action.
+  * Starters are SINGLE-FACED. A `U` row means a pre-v31 sheet and is an error.
+    Starters are not bought: `buildCost` is null and printed VP is 0.
+  * The Barn and Farmstead rows leave `Name` blank and print the name as the
+    first line of `Ability`; that line becomes `name` and is removed from the
+    text.
+  * The Barn prints the own-crop scorer, "Game end: 1 VP for each <CROP> card
+    you have built."
+  * The Farmstead prints the six-receipt-slot line and no scoring.
+  * The Notice Board prints its suit's power and the threshold `3+`, a minimum
+    that never blocks, parsed here to the number 3. A visitor pays any card and
+    the board is never a GROW target. The sheet's `wild` activation and
+    `1 resource` build cost on the board are sheet decoration.
+  * A starter's `activationType` is pinned to what the engine has always read
+    (null, null, 'wild'), and the sheet is checked against the pin.
   * COINS ARE GONE from the game. A coin cost icon or a `£` in any card text is a
     stale sheet, and both are reported as errors.
+  * Nothing is written to cards.json when a fatal check fails.
 
 Keys are camelCase here so the JSON is the TypeScript shape with no mapping layer.
 """
@@ -69,6 +77,11 @@ COL_HEADERS = {
 COST_HEADERS = ["@cost%d" % i for i in range(1, 7)]
 TOTAL_COST_HEADER = "total_cost"
 CARD_NUM_HEADER = "Card#"
+# One row per physical card carries `Needed` 1. `Qty` is deliberately not read:
+# on v42 it is 0 on 75 of the 105 card rows, the Barn and Farmstead rows among
+# them. (The 95-card extract of 16/09/2026 was caused by those rows leaving
+# `Name` blank, not by `Qty`; see STARTER_NAMES.)
+NEEDED_HEADER = "Needed"
 
 TYPES = {"Starter": "starter", "Tier 1": "tier1", "Tier 2": "tier2",
          "Tier 3": "tier3", "Power": "power", "Endgame": "endgame"}
@@ -86,6 +99,25 @@ STARTER_SLOT_BY_NUM = {1: "barn", 2: "farmstead", 3: "noticeboard"}
 # prints the plus sign and the cell is text rather than a number. The previous
 # pin of 2 was a v31 fact and it described a different card.
 NOTICE_BOARD_THRESHOLD = "3+"
+# `Card.threshold` is `number | null` in packages/data/src/types.ts, so the
+# printed `3+` is written to the JSON as the number 3. The plus sign is a rule
+# (a minimum, never a block) that the engine carries in
+# `rules.economy.noticeBoardBlocks`, not in the card data.
+NOTICE_BOARD_THRESHOLD_VALUE = 3
+
+# The printed name of each starter. v42 leaves `Name` blank on the Barn and
+# Farmstead rows and prints the name as the first line of `Ability`.
+STARTER_NAMES = {"barn": "Barn", "farmstead": "Farmstead", "noticeboard": "Notice Board"}
+
+# The engine-facing activation type of each starter, pinned to the value
+# cards.json has always carried. The sheet prints `wild` on the Notice Board as
+# decoration (a visitor pays any card); it is checked against this pin, never
+# trusted over it.
+STARTER_ACTIVATION = {"barn": None, "farmstead": None, "noticeboard": "wild"}
+
+# Build-cost text the sheet prints on a starter as decoration. A starter is
+# never bought, so `buildCost` stays null whatever this says.
+STARTER_BUILD_COST_DECORATION = {"noticeboard": "1 resource"}
 
 # Every Power and Endgame card costs 2 cards of its OWN suit from v31; no coins,
 # no wilds. Pinned for the same reason as the Notice Board threshold.
@@ -116,7 +148,7 @@ FATAL_MARKERS = ("expected", "cannot be loaded", "Notice Board", "unrecognised s
 def resolve_columns(ws):
     """Map every column this script reads onto its letter, by matching header text.
 
-    Returns (col, cost_cols, total_cost, card_num). Exits naming the header if the
+    Returns (col, cost_cols, total_cost, card_num, needed). Exits naming the header if the
     sheet does not carry it, because a `None` here is indistinguishable from an
     empty cell and would be absorbed into the extract rather than reported.
     """
@@ -127,14 +159,14 @@ def resolve_columns(ws):
             header.setdefault(str(v).strip(), get_column_letter(i))
 
     missing = [h for h in list(COL_HEADERS.values()) + COST_HEADERS
-               + [TOTAL_COST_HEADER, CARD_NUM_HEADER] if h not in header]
+               + [TOTAL_COST_HEADER, CARD_NUM_HEADER, NEEDED_HEADER] if h not in header]
     if missing:
         sys.exit("sheet worksheet 'cards' is missing %d required column header(s): %s"
                  % (len(missing), ", ".join(missing)))
 
     return ({k: header[h] for k, h in COL_HEADERS.items()},
             [header[h] for h in COST_HEADERS],
-            header[TOTAL_COST_HEADER], header[CARD_NUM_HEADER])
+            header[TOTAL_COST_HEADER], header[CARD_NUM_HEADER], header[NEEDED_HEADER])
 
 
 def sheet_path():
@@ -211,8 +243,9 @@ TRIGGER_PATTERNS = [
     ("autoHarvest", r"automatically harvests"),
     ("onHarvest", r"when (?:this card is )?harvested"),
     # The Deliver trigger vocabulary has two levels, selected by printed phrase.
-    # "When you Deliver..." fires on island claims AND balloon moves;
-    # "When you Deliver to the island..." fires on island claims only.
+    # Balloons were deleted from the game on 16/09/2026, so both now fire on
+    # island deliveries only; the two keys are kept because the sheet still
+    # prints both phrases.
     ("onDeliverIsland", r"when you deliver to the island"),
     ("onDeliver", r"when you deliver(?! to the island)"),
 ]
@@ -220,6 +253,16 @@ TRIGGER_PATTERNS = [
 # `activationSurcharge`, both matched "must pay £1 to ...". Coins are gone, no
 # card carries that wording any more, and a pattern that can never match is a
 # pattern nobody maintains - so they went with the currency.
+
+# A HARVEST RIDER LABEL. W4-W8 print a first line (the GROW effect) and then a
+# labelled second line naming what happens when the FIELD is harvested. Up to
+# v41 the label was `HARVEST:`; v42 prints `When Harvested:`. The detector has
+# always read the labelled rider as part of an activated building (one
+# trigger, `onActivate`) - the rider is implemented inside the suit handler,
+# and nothing dispatches on `abilityTrigger` - so the new label is folded back
+# to the old one before matching, keeping these cards' triggers unchanged
+# rather than flagging them `['onActivate', 'onHarvest']` for review.
+HARVEST_RIDER_LABEL = re.compile(r"(?m)^\s*when harvested\s*:")
 
 
 def triggers_for(card_type, text, threshold=None, activation=None):
@@ -234,8 +277,8 @@ def triggers_for(card_type, text, threshold=None, activation=None):
     with text and no way to be activated fires as a main action instead.
 
     Starters return no trigger. That is unchanged from schema 1, and it is worth
-    naming because the v31 Farmstead is an end-game scorer: its VP is counted by
-    the engine's scoring pass off the card's identity, not off this array.
+    naming because the Barn prints an end-game scorer: its VP is counted by the
+    engine's scoring pass off the card's identity, not off this array.
     """
     if card_type == "power":
         low = (text or "").lower()
@@ -249,7 +292,7 @@ def triggers_for(card_type, text, threshold=None, activation=None):
     if threshold is None and activation is None:
         return ["action"], False
 
-    low = text.lower()
+    low = HARVEST_RIDER_LABEL.sub("harvest:", text.lower())
     found = [name for name, pat in TRIGGER_PATTERNS if re.search(pat, low)]
     starts_on_harvest = re.match(
         r"^\s*(this building automatically|when (?:this card is )?harvested)", low)
@@ -259,57 +302,67 @@ def triggers_for(card_type, text, threshold=None, activation=None):
     return found, ambiguous
 
 
-def check_starter(card, warnings):
-    """Check the printed stats of one starter against what the rules require.
+def check_starter(card, sheet, warnings):
+    """Check one starter against the v42 facts (re-pointed 16/09/2026).
 
-    ALL THREE ASSERTIONS WERE RE-POINTED ON 10/09/2026 for the Notice Board
-    visit (S1-S4, S8 and S12 of docs/notice-board-visit-handoff-2026-09-10-v2.md,
-    landed on the sheet at v36). Each of them previously encoded a v31 fact, and
-    v31's three starters did three different jobs from these, so every one of
-    them was inverted by the design rather than merely out of date. Left alone
-    they fired on all fifteen starters of a correct sheet.
+    `card` is the record being written; `sheet` holds the RAW printed cells
+    (`threshold`, `activation`, `buildCostText`), which the record does not keep.
 
-    The three starters now do exactly one job each:
+      * NOTICE BOARD: the visit target. Prints its suit's power and the threshold
+        `3+` (a minimum that never blocks; written as 3). A visitor pays any card
+        and the board is never a GROW target, so the printed `wild` activation
+        and `1 resource` build cost are sheet decoration, checked against pins.
+      * BARN: prints the own-crop scorer, "Game end: 1 VP for each <CROP> card
+        you have built." No threshold, no activation.
+      * FARMSTEAD: prints the six-receipt-slot line and no scoring. No
+        threshold, no activation.
 
-      * The NOTICE BOARD is the visit target and the only loadable starter. It
-        prints its suit's POWER (S12), a threshold of `3+` (S8) and NO activation
-        cost at all: a visitor pays any card from hand, so there is nothing for an
-        activation cost to say, and the board is never a GROW target (S11).
-        Was: threshold 2 / wild activation, printing a VISITOR line.
-      * The BARN holds harvested cards and prints the end-game scoring line that
-        used to sit on the Farmstead.
-        Was: the Barn prints no text at all (v31, ledger A31).
-      * The FARMSTEAD is inert. It holds the island receipt tokens in six printed
-        slots (S4) and prints no rules text, no threshold and no activation cost.
-        Was: the Farmstead prints its end-game line.
+    Every warning here names the Notice Board or the word "starter", so each is
+    fatal (FATAL_MARKERS).
     """
     slot, cid = card["slot"], card["id"]
+    if slot is None:
+        return
+    label = "%s: starter %s" % (cid, STARTER_NAMES[slot])
+
+    if card["name"] != STARTER_NAMES[slot]:
+        warnings.append("%s: printed name is %r" % (label, card["name"]))
+
+    pinned = STARTER_ACTIVATION[slot]
+    if sheet["activation"] != pinned:
+        warnings.append("%s: sheet prints activation %r, pinned engine value is %r"
+                        % (label, sheet["activation"], pinned))
+
+    decoration = STARTER_BUILD_COST_DECORATION.get(slot)
+    if sheet["buildCostText"] not in (None, decoration):
+        warnings.append("%s: sheet prints build cost %r; a starter is never bought"
+                        % (label, sheet["buildCostText"]))
 
     if slot == "noticeboard":
-        if str(card["threshold"] or "") != NOTICE_BOARD_THRESHOLD:
-            warnings.append(
-                "%s: Notice Board must print threshold %r, the floor the owner harvests "
-                "at (sheet says %r)" % (cid, NOTICE_BOARD_THRESHOLD, card["threshold"]))
-        if card["activationType"] is not None:
-            warnings.append(
-                "%s: Notice Board must print NO activation cost - a visitor pays any card "
-                "from hand and the board is never a GROW target (sheet says %r)"
-                % (cid, card["activationType"]))
-        if not card["abilityText"]:
-            warnings.append("%s: Notice Board prints no power line" % cid)
+        if str(sheet["threshold"] or "").strip() != NOTICE_BOARD_THRESHOLD:
+            warnings.append("%s: must print threshold %r, the floor the owner harvests "
+                            "at (sheet says %r)"
+                            % (label, NOTICE_BOARD_THRESHOLD, sheet["threshold"]))
+        if not card["abilityText"] or card["abilityText"].upper().startswith("VISITOR"):
+            warnings.append("%s: must print its suit's power (sheet says %r)"
+                            % (label, card["abilityText"]))
         return
 
-    if card["threshold"] is not None or card["activationType"] is not None:
-        warnings.append("%s: the %s cannot be loaded, so it must print no threshold and "
-                        "no activation type (sheet says %r / %r)"
-                        % (cid, slot, card["threshold"], card["activationType"]))
+    if sheet["threshold"] is not None:
+        warnings.append("%s: cannot be loaded, so it must print no threshold (sheet "
+                        "says %r)" % (label, sheet["threshold"]))
 
-    if slot == "barn" and not card["abilityText"]:
-        warnings.append("%s: expected the Barn's end-game line, found no text" % cid)
-    if slot == "farmstead" and card["abilityText"]:
-        warnings.append("%s: the Farmstead prints nothing at all - it holds the island "
-                        "receipt tokens and nothing else - but the sheet still says %r"
-                        % (cid, card["abilityText"]))
+    text = card["abilityText"]
+    if slot == "barn":
+        scorer = "Game end: 1 VP for each %s card you have built." % card["suit"].capitalize()
+        if text != scorer:
+            warnings.append("%s: must print the own-crop scorer %r (sheet says %r)"
+                            % (label, scorer, text))
+    if slot == "farmstead":
+        low = text.lower()
+        if "receipt" not in low or "6" not in low or "vp" in low:
+            warnings.append("%s: must print the six-receipt-slot line and no scoring "
+                            "(sheet says %r)" % (label, text))
 
 
 def g_cardnum(ws, card_num_col, r):
@@ -323,20 +376,32 @@ def main():
     digest = hashlib.sha256(xlsm.read_bytes()).hexdigest()
     wb = openpyxl.load_workbook(xlsm, data_only=True)
     ws = wb["cards"]
-    col, cost_cols, total_cost_col, card_num_col = resolve_columns(ws)
+    col, cost_cols, total_cost_col, card_num_col, needed_col = resolve_columns(ws)
 
-    cards, warnings, uncached = {}, [], []
+    cards, warnings, uncached, skipped = {}, [], [], []
 
     for r in range(2, ws.max_row + 1):
         def g(c, _r=r):
             return ws["%s%d" % (col[c], _r)].value
 
         suit, ref, ctype, name = g("suit"), g("ref"), g("type"), g("name")
-        if not (suit and ref and ctype and name):
-            if ctype == "Free Port":
-                warnings.append("r%d: skipped '%s' row -- the Aerodrome is a per-player "
-                                "board, not a deck card; it lives in data/aerodrome.json"
-                                % (r, ctype))
+        needed = ws["%s%d" % (needed_col, r)].value
+
+        # ROW SELECTION is by `Needed`, never by `Qty` and never by `Name`. v42
+        # leaves `Name` blank on the ten Barn and Farmstead rows, and the old
+        # "every field filled" filter dropped them without a word (a 95-card
+        # extract). Every non-blank row that is not selected is now named.
+        if needed in (None, "", 0):
+            if any(v not in (None, "") for v in (suit, ref, ctype, name)):
+                skipped.append("r%d %s %s (%s, Needed=%r)"
+                               % (r, ref or "-", clean(name) or "-", ctype or "-", needed))
+            continue
+        if needed != 1:
+            warnings.append("r%d %s: Needed=%r, expected 1 (one row per physical card)"
+                            % (r, ref, needed))
+        if not (suit and ref and ctype):
+            warnings.append("r%d %s: a Needed row is missing Suit/Ref/Type, expected all "
+                            "three (suit=%r ref=%r type=%r)" % (r, name, suit, ref, ctype))
             continue
         if ctype not in TYPES:
             warnings.append("r%d: skipped unknown type %r" % (r, ctype))
@@ -398,23 +463,44 @@ def main():
             slot = STARTER_SLOT_BY_NUM.get(int(re.sub(r"\D", "", ref) or 0))
             if not slot:
                 warnings.append("r%d %s: unrecognised starter ref" % (r, ref))
-            if icons or clean(g("buildCostText")):
-                warnings.append("r%d %s: a starter is not bought, so it must print no build "
-                                "cost and carry no cost icons (found %s / %r)"
-                                % (r, ref, dict(cost), clean(g("buildCostText"))))
+            if icons:
+                warnings.append("r%d %s: a starter is not bought, so it must carry no cost "
+                                "icons (found %s)" % (r, ref, dict(cost)))
             if vp:
                 warnings.append("r%d %s: starter printed VP is %s, expected 0" % (r, ref, vp))
+            # v42 prints the Barn and Farmstead names as the first line of
+            # `Ability` and leaves `Name` blank. The heading is lifted into
+            # `name` so the text carries the rules line alone.
+            name = clean(name)
+            if not name and slot and text:
+                first, _, rest = text.partition("\n")
+                if first.strip() == STARTER_NAMES[slot]:
+                    name, text = first.strip(), rest.strip()
             cards[(suit, ref)] = {
                 "id": ref, "suit": suit, "type": "starter", "slot": slot,
-                "name": clean(name), "inDeck": False, "enabled": True,
+                "name": name, "inDeck": False, "enabled": True,
                 "buildCost": None,
-                "activationType": activation, "threshold": threshold,
+                "activationType": STARTER_ACTIVATION.get(slot),
+                "threshold": (NOTICE_BOARD_THRESHOLD_VALUE if slot == "noticeboard"
+                              else None),
                 "printedVp": 0,
                 "abilityText": text or "",
                 "abilityTrigger": [], "needsDesignReview": False,
             }
-            check_starter(cards[(suit, ref)], warnings)
+            check_starter(cards[(suit, ref)],
+                          {"threshold": threshold, "activation": activation,
+                           "buildCostText": clean(g("buildCostText"))},
+                          warnings)
             continue
+
+        if isinstance(threshold, float) and threshold.is_integer():
+            threshold = int(threshold)
+        if threshold is not None and not isinstance(threshold, int):
+            if str(threshold).strip().isdigit():
+                threshold = int(str(threshold).strip())
+            else:
+                warnings.append("r%d %s: threshold %r, expected a whole number"
+                                % (r, ref, threshold))
 
         trigger, ambiguous = triggers_for(ctype, text, threshold, activation)
         build_cost = {"suit": cost["suit"], "wild": cost["wild"]}
@@ -482,11 +568,19 @@ def main():
                 " money term of a build cost went with money itself. A build cost is now"
                 " exactly {suit, wild}. Anything the schema-1 shape carried and this one"
                 " does not is deliberate, not missing.",
-                "Starters are not bought: buildCost is null and printedVp is 0 on all"
-                " fifteen. The Barn prints no text (abilityText is the empty string), the"
-                " Farmstead prints one end-game line scoring its own crop, and the Notice"
-                " Board is the only loadable starter (threshold 2, wild activation), whose"
-                " VISITOR line grants that suit's door action.",
+                "Starters (sheet v42) are not bought: buildCost is null and printedVp is 0"
+                " on all fifteen. The Barn prints the own-crop scorer ('Game end: 1 VP for"
+                " each <CROP> card you have built.'). The Farmstead prints the six"
+                " receipt-slot line and no scoring. The Notice Board prints its suit's"
+                " power and the threshold '3+', a minimum that never blocks, written here"
+                " as the number 3; a visitor pays any card and the board is never a GROW"
+                " target. Starter activationType is pinned (Barn and Farmstead null,"
+                " Notice Board 'wild'); the sheet's 'wild' and '1 resource' on the board"
+                " are decoration.",
+                "Rows are selected by the sheet's 'Needed' column (1 per card), not by"
+                " 'Qty'. The Barn and Farmstead rows print their name as the first line of"
+                " 'Ability'; it is moved into name.",
+                "Power cards print no VP on v42 (printedVp 0).",
                 "Every Power and Endgame card costs 2 cards of its own suit"
                 " ({suit: 2, wild: 0}). Money does not exist in the game from v31, so no"
                 " monetary term reaches this file; a money icon still printed on the"
@@ -502,49 +596,63 @@ def main():
                 "abilityTrigger is keyword detection over the printed text, not a resolved"
                 " ruling. needsDesignReview=true means 0 or >1 triggers matched, and those"
                 " cards are re-read by hand when their handlers are written. Starters carry"
-                " no trigger at all - the Farmstead's end-game VP is counted by the"
-                " engine's scoring pass off the card's identity, not off this array.",
+                " no trigger at all - the Barn's end-game VP is counted by the engine's"
+                " scoring pass off the card's identity, not off this array. A"
+                " 'When Harvested:' rider line (W4-W8, v42) is read like the old"
+                " 'HARVEST:' label, so those cards stay ['onActivate'].",
                 "The one STRUCTURAL trigger is `action`: a tier card with printed text but"
                 " no threshold and no activation type can be neither grown nor sown, so its"
                 " text fires as a MAIN ACTION instead - taken in place of Draw, Build, Grow,"
                 " Harvest or Deliver. The sheet prints no prefix for it, which is why it is"
                 " read off the shape of the card rather than off a keyword.",
-                "The Deliver trigger has TWO keys: onDeliver ('When you Deliver...', fires on"
-                " island claims and balloon moves) and onDeliverIsland ('When you Deliver to"
-                " the island...', island claims only).",
+                "The Deliver trigger has TWO keys: onDeliver ('When you Deliver...') and"
+                " onDeliverIsland ('When you Deliver to the island...'). Balloons were"
+                " deleted on 16/09/2026, so both fire on island deliveries only.",
             ],
         },
         "suits": sorted(by_suit),
         "catalogue": ordered,
     }
     out = out_path()
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    is_baseline = out.resolve() == OUT.resolve()
 
     review = [c["id"] for c in ordered if c["needsDesignReview"]]
     shuffled = sum(c["inDeck"] for c in ordered)
-    print("wrote %s: %d cards (%d shuffled, %d starters)"
-          % (out, len(ordered), shuffled, len(ordered) - shuffled))
+    print("extracted %d cards (%d shuffled, %d starters)"
+          % (len(ordered), shuffled, len(ordered) - shuffled))
     print("source sha256: %s" % digest)
     print("per suit: %s" % dict(by_suit))
     print("ambiguous abilityTrigger (%d): %s" % (len(review), " ".join(review)))
+    if skipped:
+        print("\nskipped %d non-blank row(s) with no Needed count:" % len(skipped))
+        for s in skipped:
+            print("  - %s" % s)
     if warnings:
         print("\n%d warning(s):" % len(warnings))
         for w in warnings:
             print("  - %s" % w)
+
+    # The fatal check runs BEFORE anything is written, so a failing run leaves
+    # cards.json exactly as it was (it used to be overwritten and then the run
+    # failed).
     fatal = [w for w in warnings if any(m in w for m in FATAL_MARKERS)]
-    if fatal and out != OUT:
-        # FATAL_MARKERS guard the GAME's invariants, and they must keep doing
-        # that for `cards.json`. A `--out` copy is a proof render of whatever
-        # the sheet currently says, and the sheet is allowed to be mid-thought:
-        # a Notice Board at 3 is an experiment being drawn, not corrupt data.
-        # Refusing to draw it would make the renderer useless exactly when a
-        # designer most wants to see the change.
-        print("")
-        print("%d of those break a rule the GAME enforces. Writing anyway: %s is a "
+    if fatal and is_baseline:
+        print("\n%d of those break a rule the GAME enforces. Nothing written; %s is "
+              "unchanged." % (len(fatal), out))
+        return 1
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    # Bytes, not text: write_text would turn every newline into CRLF on Windows.
+    out.write_bytes((json.dumps(doc, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
+    print("\nwrote %s" % out)
+    if fatal:
+        # A `--out` copy that is not cards.json is a proof render of whatever the
+        # sheet currently says (tools/sheet-cards.mjs relies on this), and the
+        # sheet is allowed to be mid-thought. Refusing to draw it would make the
+        # renderer useless exactly when a designer most wants to see the change.
+        print("%d of those break a rule the GAME enforces. Written anyway: %s is a "
               "proof copy, not the baseline." % (len(fatal), out.name))
-        return 0
-    return 1 if fatal else 0
+    return 0
 
 
 if __name__ == "__main__":

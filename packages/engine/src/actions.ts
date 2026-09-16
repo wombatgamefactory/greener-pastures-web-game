@@ -25,7 +25,7 @@
  *   actions/draw.ts ....... Draw 2, keep both
  *   actions/grow.ts ....... activation and targets
  *   actions/harvest.ts .... your full buildings OR a central pile
- *   actions/deliver.ts .... the island, demand tokens, the wild substitution, the Aerodrome
+ *   actions/deliver.ts .... the island and its demand tokens
  *   actions/doors.ts ...... shared action legality
  *   actions/bonus.ts ...... the bonus slot, THE COMMONS, and the 'spend' variant
  *   actions/main.ts ....... hasMainOption
@@ -60,26 +60,19 @@ export { doDraw } from './actions/draw.js';
 export type { DeckGrowOption, GrowOption, GrowOptionMods } from './actions/grow.js';
 export { activateTargets, deckGrowOptions, growOptions, meeplePairs } from './actions/grow.js';
 export { doHarvestAction, harvestOptions } from './actions/harvest.js';
-export type { BalloonMoveOption, DeliverOption, DemandRef } from './actions/deliver.js';
+export type { DeliverChoice, DeliverOption, DemandRef, TokenRef } from './actions/deliver.js';
 export {
-  anyBalloonMoveOption,
   anyDeliverOption,
-  balloonMoveOptions,
   deliverAnswers,
-  deliverDemands,
   deliverOptions,
-  demandFaceDownOptions,
-  demandSwapOptions,
   doDeliver,
-  doMoveBalloon,
-  doMoveBalloonFromHand,
-  grantBalloonReward,
-  handBalloonMoveOptions,
   islandDeliveriesBy,
   payableTileCount,
   tileHasRoom,
+  tokenChoices,
+  tokenSwapOptions,
 } from './actions/deliver.js';
-export { doorActionLegal, workerActionLegal } from './actions/doors.js';
+export { doorActionLegal, vegetableBoardCanDeliver, workerActionLegal } from './actions/doors.js';
 export type { CollectOption, VisitOption, VisitSpend } from './actions/bonus.js';
 export {
   anyVisitOption,
@@ -97,6 +90,5 @@ export {
   meepleSpendOpen,
   noticeBoardPowerLegal,
   visitOptions,
-  wireExtraBonusSlots,
 } from './actions/bonus.js';
 export { hasMainOption } from './actions/main.js';

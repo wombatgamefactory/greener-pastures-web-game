@@ -81,6 +81,26 @@ Add to `FRAGILE` in the script any property that
 
 `reports/` is private (gitignored), so the renders never ship.
 
+## `sim-dashboard.py` - the watch list as one page
+
+Turns a watchlist report (and optionally its paired arms) into a self-contained HTML
+dashboard in `reports/`, laid out the same way every time: what needs attention, the
+verdict, the bands, the series, suits, economy, seats and bots, the action mix, the cut list
+and the paired-arm deltas marked against the noise floor.
+
+```
+python tools/sim-dashboard.py                              # latest base run + its noise floor
+python tools/sim-dashboard.py --before 2026-09-16          # latest base run before that day
+python tools/sim-dashboard.py --baseline reports/<run>.txt \
+    --arms reports/<control>.txt reports/<arm>.txt ...     # first arm is the control
+```
+
+The noise floor for each set is the latest `noise-*` report on that set's reference, unless
+`--noise` / `--arms-noise` name one. The page layout lives in `sim-dashboard-template.html`.
+It parses report TEXT, so a reworded line can drop a reading: anything it could not find is
+printed as a parse warning, both on the console and in the page footer. Output is never
+overwritten; a rebuild of the same run gets `-v2`, `-v3`.
+
 ## Tuning overlays
 
 Not a tool, but this is where the extract's numbers get varied.

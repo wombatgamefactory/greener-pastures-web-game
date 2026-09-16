@@ -9,7 +9,6 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import { coinGrowReachesFullBuildings, coinPaysGrow, farmsteadCoinPower } from '@gp/data';
 
 import { assertPlacementMatches, doVisit, meepleAsCard } from './actions.js';
 import { clonePlain } from './clone.js';
@@ -17,7 +16,7 @@ import { Fx } from './fx.js';
 import type { FxAudit } from './fx.js';
 import { handlerFor } from './handlers/registry.js';
 import type { CardMove } from './handlers/types.js';
-import { canTakeCard, cardById, coinsOf, faceOf, player } from './query.js';
+import { canTakeCard, cardById, faceOf, player } from './query.js';
 import type { CardId, GameEvent, GameState, Seat, Task, TaskAnswer } from './state.js';
 import { markFiredOnTurn } from './state.js';
 import { drainTasks, popTask, resolveTask, taskAnswers } from './tasks.js';
@@ -44,57 +43,10 @@ export interface GrowMods {
    */
   anyCrop?: boolean;
   /**
-   * ⭐ K10 (Dean, 10/09/2026): THE PAYMENT IS ONE COIN AND THE TARGET IS THIS
-   * SEAT'S OWN FARMSTEAD. `payment` is null, `meeples` is empty, nothing is
-   * placed on the stack, and the suit power on the Farmstead's face fires
-   * through the ordinary `activate` hook.
-   *
-   * ⚠️ IT SITS ON `GrowMods` RATHER THAN ON A SIXTH ARGUMENT, and the
-   * interface's own title - "what granted this GROW, when it was not the plain
-   * action" - stretches to cover it: a coin-paid Grow IS the plain Grow action,
-   * bought with the other currency. The alternative was widening `payment` to
-   * `CardId | 'coin' | null`, which would have put a string sentinel through
-   * every re-validation in `doGrow` and through the move shape besides.
-   *
-   * ⛔ MAIN-ACTION ONLY (builder default D-C1). Nothing here enforces that -
-   * the enumerator does, through `GrowOptionMods.mainAction` - because the
-   * funnel's job is to check what the MOVE needs, and what the move needs is a
-   * coin, a Farmstead and an unfired latch.
-   */
-  coin?: boolean;
-  /**
-   * ⭐ V8/V9 (A150, Dean 12/09/2026): THE PAYMENT IS ONE VILLAGE STORE COIN
-   * AND THE TARGET IS ANY OF THIS SEAT'S BUILDINGS WITH A PRINTED ACTIVATION
-   * TYPE. `payment` is null, `meeples` is empty, NOTHING IS PLACED - so the
-   * stack does not advance, the building never clogs, and under
-   * `coinGrowReachesFullBuildings` a building already at its threshold is a
-   * legal target: the first clog bypass in this game since the meeples, ruled in
-   * deliberately.
-   *
-   * ⛔ IT IS NOT `coin` ABOVE. That is K10, the other coin arm's FARMSTEAD
-   * suit power - a different knob, one legal target and a different sink label.
-   * They are mutually exclusive by construction and each says so, because
-   * merging them would put every coin-Grow into a metric that counts Farmstead
-   * firings.
-   *
-   * ⭐ D5: THE "WHEN ACTIVATED" ABILITY FIRES. That is the whole point of a
-   * Grow. ⚠️ What does not fire is anything keyed on a PLACEMENT (A16 The
-   * Beekeeper's Veil), because a coin places nothing, and A21 The Wax Hall does
-   * not count a building held empty by coin-Grows. Both are ruled in with eyes
-   * open - section 4 of the design doc.
-   *
-   * ⛔ MAIN ACTION OR BOUGHT, EITHER. Unlike K10 there is no `mainAction`
-   * gate: V8 says a coin is a wild card for GROW, and the Apiary board's bought
-   * Grow is a Grow. The fire-once-per-turn guard is what bounds it, so two
-   * coin-Grows a turn is the ceiling and never the same building twice.
-   */
-  coinGrow?: boolean;
-  /**
    * ⭐ DEAN'S DAIRY EXPERIMENT, 'free' (12/09/2026). The Dairy Notice Board
    * GROWs the building its own Build just made, paying NOTHING and placing
-   * NOTHING. ⚠️ It is V8's shape without V8's price and without V9: the target
-   * is a building created this instant, so it can never be full and the
-   * full-building question has no subject here.
+   * NOTHING. The target is a building created this instant, so it can never be
+   * full.
    */
   freeGrow?: boolean;
   /**
@@ -147,62 +99,9 @@ export function doGrow(
   if (cardById(fx.data, building).slot === 'noticeboard') {
     throw new Error('The Notice Board is never a Grow target');
   }
-  // ⭐ THE COIN-PAID GROW (K10, Dean 10/09/2026): the Farmstead's activation
-  // cost is ONE COIN, it is your MAIN action, once per turn, and NOTHING IS
-  // PLACED ON IT. It returns before every card-and-meeple check below, on the
-  // same shape the meeple branch uses further down, because none of them has a
-  // subject: there is no payment card to match against an activation type, and
-  // no card to place means the full-building gate does not apply - the
-  // Farmstead has no threshold at all (its printed `threshold` is null, so
-  // `thresholdOf` already answers null and `canTakeCard` already answers
-  // false), which is why the gate would otherwise refuse it every time.
-  //
-  // ⚠️ EVERY GATE THE ENUMERATOR APPLIED IS RE-ASKED HERE, including the
-  // once-per-turn latch, because a re-validation must ask what the move NEEDS
-  // and never trust the window the caller consumed. The enumerator FILTERS on
-  // the same three facts and this THROWS on them, which is the file's standing
-  // division of labour.
-  if (mods.coin === true) {
-    if (!farmsteadCoinPower(fx.data)) {
-      throw new Error('A coin pays for a GROW only under rules.economy.farmsteadCoinPower');
-    }
-    if (payment !== null || meeples.length > 0) {
-      throw new Error('A coin-paid GROW pays no card and no meeple');
-    }
-    if (cardById(fx.data, building).slot !== 'farmstead') {
-      throw new Error(`${building} is not a Farmstead: only a Farmstead is activated with a coin`);
-    }
-    if (fx.state.turn.firedThisTurn.includes(building)) {
-      throw new Error(`${building} has already fired this turn`);
-    }
-    if (coinsOf(fx.state, seat) < 1)
-      throw new Error(`Seat ${seat} has no coin to activate ${building}`);
-    fx.spendCoins(seat, 'farmstead', 1);
-    markFired(fx, building);
-    handlerFor(building)?.activate?.(fx, { seat, card: building });
-    return;
-  }
-  // ⭐ THE VILLAGE STORE'S COIN-GROW (V8/V9, A150, Dean 12/09/2026). It
-  // returns before every card-and-meeple check below on exactly the shape K10's
-  // branch above uses, and for the same reason: there is no payment card to
-  // match against an activation type and nothing is placed.
-  //
-  // ⚠️ EVERY GATE THE ENUMERATOR APPLIED IS RE-ASKED HERE, which is this
-  // file's standing division of labour - the enumerator FILTERS on these facts
-  // and this THROWS on them - because a re-validation must ask what the move
-  // NEEDS and never trust the window the caller consumed.
-  //
-  // ⛔ THE FULL-BUILDING GATE READS `canTakeCard`, THE CLOG QUESTION, and asks
-  // `coinGrowReachesFullBuildings`, the COMBINING accessor, never the raw
-  // `coinGrowOnFullBuilding` leaf. `growOptions` says why at length.
-  //
-  // ⚠️ K10's BRANCH RETURNS ABOVE THIS ONE, so `mods.coin` cannot also be set
-  // here and no both-coins check is written: the two economies are pinned apart
-  // in every overlay, and if they were ever run together the FARMSTEAD would
-  // simply keep its own rule and every other building would get this one.
-  // ⭐ DEAN'S DAIRY EXPERIMENT, 'free'. Same shape as the coin-Grow below and
-  // no coin: the Build that granted it is the price, and the target is the
-  // building that Build just created.
+  // ⭐ DEAN'S DAIRY EXPERIMENT, 'free': the Build that granted it is the price,
+  // and the target is the building that Build just created. Every gate the
+  // enumerator applied is re-asked here and thrown on.
   if (mods.freeGrow === true) {
     if (payment !== null || meeples.length > 0) {
       throw new Error('A free GROW pays no card and no meeple');
@@ -237,30 +136,6 @@ export function doGrow(
     if (b.stack.length === before) {
       throw new Error(`The ${suit} deck and discard are empty: nothing pays for ${building}`);
     }
-    markFired(fx, building);
-    handlerFor(building)?.activate?.(fx, { seat, card: building });
-    return;
-  }
-  if (mods.coinGrow === true) {
-    if (!coinPaysGrow(fx.data)) {
-      throw new Error('A coin pays for a GROW only under rules.economy.coinPaysGrow');
-    }
-    if (payment !== null || meeples.length > 0) {
-      throw new Error('A coin-paid GROW pays no card and no meeple');
-    }
-    const type = faceOf(fx.data, b).activationType;
-    if (type === null) throw new Error(`${building} has no activation type`);
-    if (!canTakeCard(fx.data, b) && !coinGrowReachesFullBuildings(fx.data)) {
-      throw new Error(`${building} is full: a coin reaches one only under coinGrowOnFullBuilding`);
-    }
-    if (fx.state.turn.firedThisTurn.includes(building)) {
-      throw new Error(`${building} has already fired this turn`);
-    }
-    if (coinsOf(fx.state, seat) < 1) {
-      throw new Error(`Seat ${seat} has no coin to activate ${building}`);
-    }
-    // V5: the coin goes back to the shared supply, inside `spendCoins`.
-    fx.spendCoins(seat, 'grow', 1);
     markFired(fx, building);
     handlerFor(building)?.activate?.(fx, { seat, card: building });
     return;
@@ -527,7 +402,7 @@ export function gameEndScores(data: GameData, state: GameState): ScoreBreakdown[
     // with it, so printed VP is once again exactly what is on the table. All
     // fifteen starters print 0 (v31), so a seat's printed line is its deck cards.
     const printed = p.tableau.reduce((sum, b) => sum + faceOf(data, b).printedVp, 0);
-    const receipts = p.receipts.reduce((sum, vp) => sum + vp, 0);
+    const receipts = p.receipts.reduce((sum, r) => sum + r.vp, 0);
     const endgameCards = p.tableau.flatMap((b) => {
       const formula = handlerFor(b.card)?.gameEnd;
       return formula ? [{ card: b.card, vp: formula(data, state, seat) }] : [];

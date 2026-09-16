@@ -8,7 +8,6 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  balloonArt,
   cardArt,
   cardArtZoom,
   cropIcon,
@@ -33,7 +32,6 @@ describe('art paths', () => {
       islandTileArt('A1'),
       token('coin'),
       frame('vp'),
-      balloonArt('balloonDraw'),
     ]) {
       expect(url.startsWith(`${BASE}art/`)).toBe(true);
     }

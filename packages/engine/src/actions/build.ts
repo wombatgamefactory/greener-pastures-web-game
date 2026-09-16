@@ -9,15 +9,10 @@
 
 import type { Fx } from '../fx.js';
 import { fireHook } from '../fx.js';
-import { cardById, coinsOf, player } from '../query.js';
+import { cardById, player } from '../query.js';
 import type { BuildingState, CardId, GameState, Seat } from '../state.js';
 import type { GameData, Suit } from '@gp/data';
-import {
-  coinPaysBuild,
-  coinPaysSuitCost,
-  endgameCoinCost,
-  meepleAsCardGoesToBoard,
-} from '@gp/data';
+import { meepleAsCardGoesToBoard } from '@gp/data';
 import type { MeepleFill, ResolvedPlacement } from './meeples.js';
 import {
   NO_MEEPLES,
@@ -52,7 +47,7 @@ import { subsets } from './shared.js';
  *    afford is not a choice, it is a paragraph of teach for nothing.
  */
 export interface BuildMods {
-  /** Card count reduction (the cream balloon, the Builder's Yard, D4/D9/D11/D12). Waives the own-suit half. */
+  /** Card count reduction (the Builder's Yard, D4/D9/D11/D12). Waives the own-suit half. */
   discount?: number;
   /**
    * ANY CARD PAYS ANY SLOT: the own-suit minimum is waived and a hand card's
@@ -109,31 +104,6 @@ export interface BuildOption {
   placements?: Partial<Record<Suit, number>>[];
   /** R17: extra meeples burned to place onto occupied slots. Boxed, by colour. */
   paymentToll?: Partial<Record<Suit, number>>;
-  /**
-   * ⭐ V6 (A150, Dean 12/09/2026): HOW MANY COINS PAY FOR THIS BUILD, as a
-   * COUNT. Absent when none do, so a Store-off option is byte-identical to a
-   * 11/09/2026 one.
-   *
-   * ⛔ **A COUNT AND NEVER A CHOICE OF WHICH COINS, AND THAT IS THE SINGLE
-   * EASIEST WAY TO BLOW THIS ENUMERATOR UP.** Coins are fungible: paying two of
-   * them is ONE payment, not C(coins, 2). Build payments are already C(hand, k)
-   * and a `coins` field holding ids would multiply that by a second binomial.
-   * A 116,535-move position stopped this project on 02/09/2026 and an
-   * 888,030-move one on 05/09/2026, both through this function.
-   *
-   * ⚠️ WHAT IT DOES COST is one option per SPLIT: for a cost of k the
-   * enumerator offers every j coins with k-j cards, so the payment count for one
-   * card becomes a sum of binomials rather than one. That is bounded by the hand
-   * limit and by coins held, and it is measured rather than assumed - see the
-   * bench readings in the A150 report.
-   *
-   * ⛔ IT PAYS THE n-OF-SUIT HALF ONLY UNDER `coinPaysSuitCost` (V6's second
-   * half, its own knob): "coins pay wild costs only" and "coins pay everything"
-   * are meaningfully different games and it is one run to find out which.
-   * ⭐ V7 needs no code: an Endgame card costs 2 cards of its own suit (v31),
-   * so `coinPaysSuitCost` alone is what lets 2 coins buy one.
-   */
-  coins?: number;
 }
 
 /**
@@ -177,37 +147,14 @@ export interface BuildOption {
  * where O17's v31 text wants to hook.
  */
 
-/**
- * How many cards a build actually costs under its modifiers - and, under K15
- * alone, how many COINS instead.
- *
- * ⭐ THE COIN PRICE IS A RULES KNOB AND NEVER A CARD FIELD (K15, Dean
- * 10/09/2026). `rules.economy.endgameCoinCost` re-prices the fifteen Endgame
- * cards at that many COINS and ZERO CARDS; the fifteen Power cards keep their
- * two-own-suit cost, so each currency buys one kind of card. `Card.buildCost`
- * holds exactly `suit` and `wild` - its coin third went with the currency on
- * 02/09/2026 - and `data.test.ts` asserts that on purpose, because a coin price
- * arriving from a re-extract rather than from a ruling is exactly the drift
- * that guard exists to catch. So the branch is HERE, in the one function every
- * build route prices through, and not in the catalogue.
- *
- * ⚠️ A DISCOUNT CANNOT TOUCH A COIN PRICE, and the early return is how that is
- * said. A discount is measured in cards ("Build at a discount of 1"), a coin
- * price has no cards in it, and D4 The Milking Shed taking a coin off an
- * Endgame card would be a rate nobody wrote. The own-suit minimum goes to 0 for
- * the same reason: there is no payment for it to constrain.
- */
+/** How many cards a build actually costs under its modifiers. */
 export function priceOf(
   data: GameData,
   card: CardId,
   mods: BuildMods,
-): { cardsNeeded: number; ownSuitMin: number; coins?: number } | null {
+): { cardsNeeded: number; ownSuitMin: number } | null {
   const cost = cardById(data, card).buildCost;
   if (!cost) return null;
-  const coins = endgameCoinCost(data);
-  if (coins !== null && cardById(data, card).type === 'endgame') {
-    return { cardsNeeded: 0, ownSuitMin: 0, coins };
-  }
   const discount = mods.discount ?? 0;
   const totalCards = cost.suit + cost.wild;
   const cardsNeeded = Math.max(0, totalCards - discount);
@@ -324,41 +271,15 @@ function stackFills(groups: readonly CardId[][], k: number): CardId[][] {
  */
 const STACK_WILD_VALUE = 2;
 
-/**
- * ⭐ THE VILLAGE STORE'S BUILD SINK, AS THE ENUMERATOR NEEDS IT (V6, A150,
- * Dean 12/09/2026): how many coins this seat could put into a build payment, and
- * whether they may fill the n-of-suit half.
- *
- * Null when the sink is off OR the seat is broke, so that every loop below can
- * skip the whole thing on one check and the Store-off enumeration is
- * byte-identical, iteration for iteration, to 11/09/2026. That is the same
- * discipline `NO_MEEPLES` keeps for R15 and it is what makes the controls
- * bit-reproducible rather than merely equivalent.
- *
- * ⚠️ `coinsOf` THROWS WITHOUT A WALLET, so `coinPaysBuild` is checked first
- * and `coinEconomy` (setup.ts) names that leaf: a sink switched on with no mint
- * behind it still gets a wallet, reads 0 and offers nothing.
- */
-function coinsForBuild(
-  data: GameData,
-  state: GameState,
-  seat: Seat,
-): { held: number; paysSuit: boolean } | null {
-  if (!coinPaysBuild(data)) return null;
-  const held = coinsOf(state, seat);
-  return held > 0 ? { held, paysSuit: coinPaysSuitCost(data) } : null;
-}
-
 export function paymentsFor(
   data: GameData,
   card: CardId,
   hand: readonly CardId[],
   groups: readonly CardId[][],
-  price: { cardsNeeded: number; ownSuitMin: number; coins?: number },
+  price: { cardsNeeded: number; ownSuitMin: number },
   fills: readonly MeepleFill[] = NO_MEEPLES,
   supply: Readonly<Record<Suit, number>> | null = null,
   place: ((counts: Partial<Record<Suit, number>>) => ResolvedPlacement[]) | null = null,
-  coinPay: { held: number; paysSuit: boolean } | null = null,
 ): BuildOption[] {
   const suit = cardById(data, card).suit;
   const out: BuildOption[] = [];
@@ -387,102 +308,61 @@ export function paymentsFor(
           // Every meeple spent pays one resource, except the paired ones, which
           // pay one between two.
           const paidBefore = fromStacks + (fill.total - pairs);
-          // ⭐ V6's LOOP, AND WHEN THE STORE IS OFF IT RUNS EXACTLY ONCE WITH
-          // j = 0 (A150, 12/09/2026). `coinPay` is null under every game with no
-          // Build sink and under every seat holding no coins, so `maxCoins` is 0,
-          // `k` is the count this line always asked for and the emitted ORDER is
-          // unchanged. That is what keeps the control arms bit-reproducible
-          // rather than merely equivalent - the same guarantee R15's `fills` loop
-          // gives one level out.
-          //
-          // ⛔ j IS A COUNT OF COINS AND NEVER A CHOICE OF WHICH COINS. See
-          // `BuildOption.coins`: coins are fungible, so two coins is ONE payment,
-          // and enumerating them by identity would multiply an already-C(hand, k)
-          // list by a second binomial.
-          //
-          // ⚠️ THE CEILING HAS TWO HALVES. The obvious one is what the seat
-          // holds and what the cost still needs. The other is `paysSuit`: with
-          // `coinPaysSuitCost` off a coin fills only the WILD half of a cost, so
-          // it may never displace more than `cardsNeeded - ownSuitMin`
-          // resources, and `own` below does not count it.
-          const wildSlots = price.cardsNeeded - price.ownSuitMin;
-          const maxCoins =
-            coinPay === null
-              ? 0
-              : Math.min(
-                  coinPay.held,
-                  price.cardsNeeded - paidBefore,
-                  coinPay.paysSuit ? price.cardsNeeded : wildSlots,
-                );
-          for (let coins = 0; coins <= maxCoins; coins++) {
-            const k = price.cardsNeeded - paidBefore - coins;
-            if (k < 0 || k > hand.length) continue;
-            for (const payment of subsets(hand, k)) {
-              // RULED 19/08/2026 (Dean): "the card counts as ANY card - including
-              // wild". So a stack card is a true wildcard - its STACK_WILD_VALUE
-              // resources fill OWN-CROP slots exactly as readily as wild ones, and
-              // its printed suit is irrelevant. Hand cards still have to actually
-              // BE the crop; only the stack is wild. ⭐ AND SO DOES A MEEPLE
-              // (R15): a yellow meeple is a WHEAT card and pays a Wheat
-              // requirement, not an any-colour one. The wild half of the rule is
-              // the PAIR, and it is counted separately below.
-              // Counted rather than filtered: this runs once per enumerated
-              // payment, and `filter().length` allocated an array per option for a
-              // number.
-              let own = fromStacks + ownMeeples + pairs;
-              for (const c of payment) if (cardById(data, c).suit === suit) own += 1;
-              // ⭐ V6's SECOND HALF, AND IT IS ITS OWN KNOB. Under
-              // `coinPaysSuitCost` a coin is a true wildcard and fills an own-crop
-              // slot exactly as readily as a wild one - "2 apples and a wild" is
-              // payable with three coins - which is the first thing anybody has
-              // proposed that makes off-crop building and off-suit Powers cheap,
-              // and therefore the first lever aimed at the 83% own-crop build
-              // share. With the knob off, a coin pays the wild half only and this
-              // line adds nothing.
-              if (coinPay?.paysSuit === true) own += coins;
-              if (own < price.ownSuitMin) continue;
-              // ⭐ A PAIR IS OFFERED ONLY WHERE THE COST NEEDS IT. Drop one and
-              // the own count falls by one while the payment gets one hand card
-              // CHEAPER - so a pair that was not required is a strictly dominated
-              // way to pay, and offering it would multiply the build list for a
-              // choice no player would make. Given `own >= ownSuitMin`, minimality
-              // is exactly `own === ownSuitMin`.
-              if (pairs > 0 && own > price.ownSuitMin) continue;
-              // ⭐ AND A PAIR IS THE LAST RESORT, on the same sentence
-              // `enumerateMeepleVisits` and `growOptions` use: SPEND THE EXACT
-              // COLOUR FIRST, pair only when you have run out of it. Without this
-              // line a seat holding a yellow meeple is offered every way of
-              // paying a Wheat slot with two OTHER meeples beside the obvious
-              // one, which multiplies the build list by the supply for a payment
-              // that costs two tokens to do one token's job. It is a real choice
-              // in the abstract - you may want to keep the yellow for a door -
-              // but it is not a choice worth the branching factor, and it is
-              // recorded as a deliberate reduction rather than an oversight.
-              if (pairs > 0 && supply !== null && ownMeeples < (supply[suit] ?? 0)) continue;
-              const base: BuildOption =
-                stacks.length > 0 ? { card, payment, stacks } : { card, payment };
-              // V6: absent when no coin paid, so a Store-off option is
-              // byte-identical to a 11/09/2026 one, key for key.
-              if (coins > 0) base.coins = coins;
-              if (fill.total === 0) {
-                out.push(base);
-                continue;
-              }
-              base.meeples = fill.counts;
-              if (pairs > 0) base.wildPairs = pairs;
-              if (place === null) {
-                out.push(base);
-                continue;
-              }
-              // ⭐ R17 EXPANDS ONE PAYMENT INTO ONE OPTION PER SPREAD. The
-              // meeples are the same; where they land is not, and Dean ruled the
-              // host is chosen per meeple. A spread that cannot pay its own toll
-              // out of what is left of the supply is simply not returned, which
-              // is how "you may not place on top without the extra meeple"
-              // becomes a legality rather than a check.
-              for (const spot of place(fill.counts)) {
-                out.push({ ...base, placements: spot.boards, paymentToll: spot.toll });
-              }
+          const k = price.cardsNeeded - paidBefore;
+          if (k < 0 || k > hand.length) continue;
+          for (const payment of subsets(hand, k)) {
+            // RULED 19/08/2026 (Dean): "the card counts as ANY card - including
+            // wild". So a stack card is a true wildcard - its STACK_WILD_VALUE
+            // resources fill OWN-CROP slots exactly as readily as wild ones, and
+            // its printed suit is irrelevant. Hand cards still have to actually
+            // BE the crop; only the stack is wild. ⭐ AND SO DOES A MEEPLE
+            // (R15): a yellow meeple is a WHEAT card and pays a Wheat
+            // requirement, not an any-colour one. The wild half of the rule is
+            // the PAIR, and it is counted separately below.
+            // Counted rather than filtered: this runs once per enumerated
+            // payment, and `filter().length` allocated an array per option for a
+            // number.
+            let own = fromStacks + ownMeeples + pairs;
+            for (const c of payment) if (cardById(data, c).suit === suit) own += 1;
+            if (own < price.ownSuitMin) continue;
+            // ⭐ A PAIR IS OFFERED ONLY WHERE THE COST NEEDS IT. Drop one and
+            // the own count falls by one while the payment gets one hand card
+            // CHEAPER - so a pair that was not required is a strictly dominated
+            // way to pay, and offering it would multiply the build list for a
+            // choice no player would make. Given `own >= ownSuitMin`, minimality
+            // is exactly `own === ownSuitMin`.
+            if (pairs > 0 && own > price.ownSuitMin) continue;
+            // ⭐ AND A PAIR IS THE LAST RESORT, on the same sentence
+            // `enumerateMeepleVisits` and `growOptions` use: SPEND THE EXACT
+            // COLOUR FIRST, pair only when you have run out of it. Without this
+            // line a seat holding a yellow meeple is offered every way of
+            // paying a Wheat slot with two OTHER meeples beside the obvious
+            // one, which multiplies the build list by the supply for a payment
+            // that costs two tokens to do one token's job. It is a real choice
+            // in the abstract - you may want to keep the yellow for a door -
+            // but it is not a choice worth the branching factor, and it is
+            // recorded as a deliberate reduction rather than an oversight.
+            if (pairs > 0 && supply !== null && ownMeeples < (supply[suit] ?? 0)) continue;
+            const base: BuildOption =
+              stacks.length > 0 ? { card, payment, stacks } : { card, payment };
+            if (fill.total === 0) {
+              out.push(base);
+              continue;
+            }
+            base.meeples = fill.counts;
+            if (pairs > 0) base.wildPairs = pairs;
+            if (place === null) {
+              out.push(base);
+              continue;
+            }
+            // ⭐ R17 EXPANDS ONE PAYMENT INTO ONE OPTION PER SPREAD. The
+            // meeples are the same; where they land is not, and Dean ruled the
+            // host is chosen per meeple. A spread that cannot pay its own toll
+            // out of what is left of the supply is simply not returned, which
+            // is how "you may not place on top without the extra meeple"
+            // becomes a legality rather than a check.
+            for (const spot of place(fill.counts)) {
+              out.push({ ...base, placements: spot.boards, paymentToll: spot.toll });
             }
           }
         }
@@ -490,15 +370,6 @@ export function paymentsFor(
     }
   }
   return out;
-}
-
-/**
- * Can this seat pay a coin price at all? True for every card in the shipped
- * game, where `price.coins` is never set. K15's one gate, asked wherever a
- * build is enumerated or probed.
- */
-function coinsAffordable(state: GameState, seat: Seat, price: { coins?: number }): boolean {
-  return price.coins === undefined || coinsOf(state, seat) >= price.coins;
 }
 
 /**
@@ -565,34 +436,13 @@ export function buildOptions(
   // decision. Identical output either way; this only stops paying for the check
   // in the position where it cannot be needed.
   const seen = sources.length > 1 ? new Set<string>() : null;
-  // ⭐ V6 (A150): hoisted out of the card loop, because what a seat HOLDS does
-  // not change while it decides what to build. Null under every game with the
-  // Build sink off, which is what makes the loop below byte-identical.
-  const coinPay = coinsForBuild(data, state, seat);
   cardLoop: for (const id of cards) {
     const price = priceOf(data, id, mods);
     if (!price) continue;
-    // ⭐ K15: AN ENDGAME CARD COSTS COINS, so a seat short of them is never
-    // offered it - the gate is a filter here rather than a throw in `doBuild`,
-    // on the file's standing rule that the enumerators are the single source of
-    // legality. `coinsAffordable` reads `coinsOf`, which throws when the arm is
-    // off, so it is only ever asked when `price.coins` is set and the wallet
-    // therefore exists.
-    if (!coinsAffordable(state, seat, price)) continue;
     // Hoisted: the hand-minus-this-card list was rebuilt once per SOURCE.
     const rest = cards.filter((h) => h !== id);
     for (const groups of sources) {
-      for (const option of paymentsFor(
-        data,
-        id,
-        rest,
-        groups,
-        price,
-        fills,
-        p.meeples,
-        place,
-        coinPay,
-      )) {
+      for (const option of paymentsFor(data, id, rest, groups, price, fills, p.meeples, place)) {
         if (seen !== null) {
           // Sorted because two sources can reach the same multiset by different
           // orders.
@@ -604,10 +454,6 @@ export function buildOptions(
             // are different payments, so the meeple vector is part of the key.
             data.cards.suits.map((x) => option.meeples?.[x] ?? 0).join(''),
             option.wildPairs ?? 0,
-            // V6: two payments spending the same cards but different numbers of
-            // coins are different payments, on exactly the reasoning the meeple
-            // vector above carries.
-            option.coins ?? 0,
             // R17: two payments that spend the same meeples on different boards
             // are different moves.
             (option.placements ?? [])
@@ -641,23 +487,13 @@ export function paymentOptions(
   payment: CardId[];
   meeples?: Partial<Record<Suit, number>>;
   wildPairs?: number;
-  /** V6 (A150): coins in the payment, as a COUNT. See `BuildOption.coins`. */
-  coins?: number;
 }[] {
   const price = priceOf(data, card, mods);
   if (!price) return [];
-  // K15: a coin-priced Endgame card revealed off a deck top is buildable only
-  // by a seat holding the coins, exactly as one in the hand is. D10 The Scout's
-  // Post is the only caller and its build runs through `doBuild` like any
-  // other, so the price is charged there; this is the offer half.
-  if (!coinsAffordable(state, seat, price)) return [];
   // R15 reaches D10 too, because D10 is a BUILD and R15 says build costs. It
   // is the cheapest case in the game - the discount waives the own-suit half -
   // so in practice a meeple only ever pays the wild half here.
   const p = player(state, seat);
-  // ⭐ V6 REACHES D10 TOO (A150), on exactly the sentence R15's comment above
-  // uses: D10 is a BUILD and V6 says build costs. The coin is charged in
-  // `doBuild` like every other payment, so this is only the offer half.
   return paymentsFor(
     data,
     card,
@@ -667,12 +503,10 @@ export function paymentOptions(
     fillsFor(data, state, seat),
     p.meeples,
     null,
-    coinsForBuild(data, state, seat),
   ).map((o) => ({
     payment: o.payment,
     ...(o.meeples === undefined ? {} : { meeples: o.meeples }),
     ...(o.wildPairs === undefined ? {} : { wildPairs: o.wildPairs }),
-    ...(o.coins === undefined ? {} : { coins: o.coins }),
   }));
 }
 
@@ -693,32 +527,13 @@ export function anyBuildOption(
   const p = player(state, seat);
   const cards = hand ?? p.hand;
   const asCard = meepleAsCard(data);
-  const coinPay = coinsForBuild(data, state, seat);
   return cards.some((id) => {
     const price = priceOf(data, id, mods);
     if (!price) return false;
-    // K15, and the gate has to be here as well as in `buildOptions`: a gate
-    // that asks a WIDER question than its enumerator says yes where no move
-    // exists, which is the failure this function's own comment below records
-    // costing two crashed games on 04/09/2026.
-    if (!coinsAffordable(state, seat, price)) return false;
     const suit = cardById(data, id).suit;
     const others = cards.filter((h) => h !== id);
     const own = others.filter((c) => cardById(data, c).suit === suit).length;
-    // ⭐ V6's FAST PATH (A150), and with the Store off it is EXACTLY the test
-    // that stood here before: `coinPay` is null, so `payableWithCoins` reduces
-    // to `others.length >= cardsNeeded && own >= ownSuitMin`, term for term.
-    if (payableWithCoins(price, others.length, own, coinPay)) return true;
-    // ⛔ AND WHEN BOTH CURRENCIES ARE LIVE THE GATE ASKS THE ENUMERATOR. The
-    // arithmetic above and `payableWithMeeples` below each model ONE of them, so
-    // a cost payable only by mixing coins and meeples would be enumerable and
-    // not gated - a gate NARROWER than its enumerator, which offers a door and
-    // then finds no move behind it. No overlay turns both on (every Store arm
-    // pins `meepleAsCard` false), so this line costs nothing today and is the
-    // honest answer the day one does.
-    if (coinPay !== null && asCard) {
-      return buildOptions(data, state, seat, hand, mods, 1).length > 0;
-    }
+    if (others.length >= price.cardsNeeded && own >= price.ownSuitMin) return true;
     if (!asCard) return false;
     if (!payableWithMeeples(data, p.meeples, suit, price, others.length, own)) return false;
     // ⛔ R17 CAN MAKE A PAYABLE COST UNPLACEABLE, and the gate has to know.
@@ -771,37 +586,6 @@ function placementOpen(data: GameData, state: GameState, seat: Seat): boolean {
     }
   }
   return false;
-}
-
-/**
- * ⭐ THE FAST PATH'S V6 HALF (A150, Dean 12/09/2026): could this seat pay
- * `price` out of its hand plus its coins?
- *
- * ⚠️ IT MUST AGREE WITH `paymentsFor` EXACTLY, in both directions, on
- * exactly the rule `payableWithMeeples` below states and for the same reason: a
- * gate wider than its enumerator hands a visitor a door with no legal move
- * behind it, and that crashed two games in 4,820 on 04/09/2026.
- *
- * The greedy is exact because every resource costs the same. Fill the own-suit
- * minimum from hand cards first; a shortfall is payable in coins ONLY under
- * `coinPaysSuitCost`; what is left of the hand and the wallet is the wild pool.
- *
- * ⭐ WITH `coinPay` NULL IT IS THE PRE-STORE TEST, TERM FOR TERM:
- * `own >= ownSuitMin` and `handCount >= cardsNeeded`. That equality is what
- * keeps the control arms byte-identical rather than merely equivalent, so a
- * change here that "simplifies" it is a change to every control.
- */
-function payableWithCoins(
-  price: { cardsNeeded: number; ownSuitMin: number },
-  handCount: number,
-  ownHand: number,
-  coinPay: { held: number; paysSuit: boolean } | null,
-): boolean {
-  const fromHand = Math.min(ownHand, price.ownSuitMin);
-  const ownShort = price.ownSuitMin - fromHand;
-  const coins = coinPay === null ? 0 : coinPay.held;
-  if (ownShort > 0 && (coinPay?.paysSuit !== true || ownShort > coins)) return false;
-  return handCount - fromHand + (coins - ownShort) >= price.cardsNeeded - price.ownSuitMin;
 }
 
 /**
@@ -891,30 +675,9 @@ export function doBuild(
   if (2 * wildPairs > meepleTotal - ownMeeples) {
     throw new Error(`${card} cannot form ${wildPairs} wild pairs from that payment`);
   }
-  // ⭐ V6: THE COIN HALF OF THE PAYMENT, RE-VALIDATED AGAINST THE SAME
-  // ARITHMETIC THE ENUMERATOR USED (A150, Dean 12/09/2026). `apply` must accept
-  // exactly what `legalMoves` offered and nothing wider, which is the standing
-  // division of labour in this file: the enumerator FILTERS and the funnel
-  // THROWS. A count, never a choice of which coins - see `BuildOption.coins`.
-  const coins = choice.coins ?? 0;
-  if (coins > 0) {
-    if (!coinPaysBuild(fx.data)) {
-      throw new Error('A coin pays for a build only under rules.economy.coinPaysBuild');
-    }
-    const held = coinsOf(fx.state, seat);
-    if (held < coins) throw new Error(`Seat ${seat} has ${held} coins, not ${coins}`);
-    // With `coinPaysSuitCost` off a coin fills only the WILD half of a cost, so
-    // a payment leaning on more coins than the cost has wild slots is a payment
-    // the enumerator never offered.
-    if (!coinPaysSuitCost(fx.data) && coins > price.cardsNeeded - price.ownSuitMin) {
-      throw new Error(`${card} has only ${price.cardsNeeded - price.ownSuitMin} wild slots`);
-    }
-  }
   // D7's rate: a card off a building is worth STACK_WILD_VALUE of the cost.
   // A meeple is worth one, except a pair, which is worth one between two.
-  // ⭐ AND A COIN IS WORTH ONE (V6), which is the whole of its arithmetic.
-  const paid =
-    payment.length + STACK_WILD_VALUE * stacks.length + (meepleTotal - wildPairs) + coins;
+  const paid = payment.length + STACK_WILD_VALUE * stacks.length + (meepleTotal - wildPairs);
   if (paid !== price.cardsNeeded) {
     throw new Error(`${card} costs ${price.cardsNeeded} cards, got ${paid}`);
   }
@@ -927,28 +690,11 @@ export function doBuild(
     payment.filter((id) => cardById(fx.data, id).suit === c.suit).length +
     STACK_WILD_VALUE * stacks.length +
     ownMeeples +
-    wildPairs +
-    // V6's own-suit half, under its own knob. Mirrors `paymentsFor` exactly.
-    (coinPaysSuitCost(fx.data) ? coins : 0);
+    wildPairs;
   if (own < price.ownSuitMin) {
     throw new Error(`${card} needs ${price.ownSuitMin} ${c.suit} cards in payment`);
   }
 
-  // ⭐ K15's PRICE, CHARGED IN THE FUNNEL: the coins come off before the card
-  // lands, and `fx.spendCoins` re-checks the balance, so an Endgame card the
-  // enumerator would not have offered cannot be built through a task answer or
-  // a hand-rolled move. The `built` event is UNCHANGED and its `payment` is
-  // simply empty - a coin price is zero cards - so nothing downstream that
-  // counts builds or reads what a build spent has to learn a second shape.
-  if (price.coins !== undefined) fx.spendCoins(seat, 'endgame', price.coins);
-  // ⭐ V6's CHARGE, AND IT IS ONE CALL FOR THE WHOLE COIN COMPONENT (A150).
-  // One `coinsSpent` event per BUILD rather than per coin, because a payment
-  // names a count and there is no such thing as which coin. Charged before the
-  // card leaves the hand, exactly as K15's price above is, so a payment the
-  // enumerator would not have offered cannot slip through a hand-rolled move.
-  // ⭐ AND THE COINS GO BACK TO THE SHARED SUPPLY (V5): `spendCoins` does that
-  // wherever a supply exists, so the pool recirculates.
-  if (coins > 0) fx.spendCoins(seat, 'build', coins);
   fx.removeFromHand(seat, card);
   for (const id of payment) fx.removeFromHand(seat, id);
   // ⭐ THE MEEPLES GO TO THE BOX AND NOWHERE ELSE (R15). They are taken out
@@ -1024,9 +770,9 @@ export function placeBuilt(
    * ⭐ A150 (12/09/2026): did `payment` come out of the HAND? Defaults true,
    * which is every build in the game bar one - `doCommonsSpendBuild` pays out
    * of a central pile and passes false. It travels to the `afterBuild` hook,
-   * where O17 The Fruit Basket now reads it: the card was restricted to *"a
+   * where O17 The Fruit Basket reads it: the card was restricted to *"a
    * card you discard FROM YOUR HAND"* so that the Village Store's barn
-   * exchange can never become a second mint. See the hook field's own comment.
+   * exchange (deleted 16/09/2026) could never become a second mint. See the hook field's own comment.
    */
   paymentFromHand = true,
 ): void {
@@ -1037,6 +783,12 @@ export function placeBuilt(
   // Ledger onto the general `turn.firedThisTurn` rule and the field lost its
   // only reader, so it is gone. `src` still travels to the hook, which is what
   // D5 and D6 read to react to their OWN build.
+  //
+  // ⭐ D18's count (v42), kept before the hook so a listener reads this build
+  // in it. Only the turn player's builds count: "on your turn, you Build".
+  if (seat === fx.state.turnPlayer) {
+    fx.state.turn.buildsThisTurn = (fx.state.turn.buildsThisTurn ?? 0) + 1;
+  }
   fireHook(fx, 'afterBuild', { seat, card, payment, src, fromHand: paymentFromHand });
 }
 

@@ -38,6 +38,7 @@
 import type { GameData } from '@gp/data';
 
 import { bonusOpen, handLimitOf, hasBonusOption, meepleOptions } from './actions.js';
+import { fireHook } from './fx.js';
 import type { Fx } from './fx.js';
 import { player } from './query.js';
 import { standingMoves } from './runtime.js';
@@ -117,9 +118,11 @@ export function settleTurn(data: GameData, draft: GameState, fx: Fx): void {
 }
 
 /**
- * The NextPlayer checkpoint: discard down to the hand limit, advance the seat,
- * and end the game when the seat about to play is the end-trigger player again
- * (every other player has then had exactly one more turn).
+ * The NextPlayer checkpoint: fire the end-of-turn hook once, discard down to
+ * the hand limit, advance the seat, and end the game once it is triggered and
+ * the rule in `gameIsOver` says the last turn has been played (since
+ * 15/09/2026 the round is finished; before, every other player had one more
+ * turn).
  *
  * ⭐ THE DISCARD IS BACK (Dean, 02/09/2026), and it is the ONLY place the hand
  * limit is enforced. That is the rule, not an implementation detail: you may
@@ -129,9 +132,10 @@ export function settleTurn(data: GameData, draft: GameState, fx: Fx): void {
  * your turn ends.
  *
  * It is also the one place in the turn boundary that can SUSPEND: it pushes a
- * `discard` task, sets `resume: 'turnflow'` and returns, and the next settle
- * runs the boundary again from the top. Anything added below this line must
- * survive being reached on a second pass.
+ * `discard` task (or the end-of-turn hook pushes one of its own), sets
+ * `resume: 'turnflow'` and returns, and the next settle runs the boundary again
+ * from the top. Anything added below this line must survive being reached on a
+ * second pass; the hook does, through `turn.endHooksDone`.
  *
  * ⚠️ THE COST OF THIS BRANCH IS C(hand, excess), enumerated in `taskAnswers`.
  * It is bounded only because the hand it reads was itself bounded by the
@@ -140,6 +144,19 @@ export function settleTurn(data: GameData, draft: GameState, fx: Fx): void {
  */
 function finishTurn(data: GameData, draft: GameState, fx: Fx): void {
   const seat = draft.turnPlayer;
+  // ⭐ THE END-OF-TURN HOOK (16/09/2026), ahead of the discard so that a card
+  // it draws is counted against the limit. Latched on `endHooksDone` BEFORE it
+  // fires, because a listener that pushes a task suspends this function and the
+  // next settle re-enters it from the top: the second pass must skip straight
+  // to the discard. O18 A Helping Hand is the only listener.
+  if (draft.turn.endHooksDone !== true) {
+    draft.turn.endHooksDone = true;
+    fireHook(fx, 'beforeTurnEnd', { seat });
+    if (draft.tasks.length > 0) {
+      draft.resume = 'turnflow';
+      return;
+    }
+  }
   const limit = handLimitOf(data, draft, seat);
   if (limit !== null && player(draft, seat).hand.length > limit) {
     fx.pushTask({ t: 'discard', pid: seat, downTo: limit });
@@ -148,7 +165,7 @@ function finishTurn(data: GameData, draft: GameState, fx: Fx): void {
   }
   const next = (seat + 1) % draft.seats;
   fx.emit({ e: 'turnEnded', seat, next });
-  if (draft.endTrigger !== null && next === draft.endTrigger.seat) {
+  if (gameIsOver(data, draft, next)) {
     draft.phase = 'ended';
     fx.emit({ e: 'gameEnded' });
     return;
@@ -156,6 +173,36 @@ function finishTurn(data: GameData, draft: GameState, fx: Fx): void {
   draft.turnPlayer = next;
   draft.turn = freshTurn();
   clearHostDrawLatch(draft, next);
+}
+
+/**
+ * The seat that opened the game: `GameState.firstPlayer`, absent (seat 0) in
+ * every game played under `rules.setup.firstPlayer: 'seat0'`.
+ */
+export function firstPlayerOf(state: GameState): Seat {
+  return state.firstPlayer ?? 0;
+}
+
+/**
+ * ⭐ DOES THE GAME END BEFORE `next` PLAYS? Only once the end is triggered,
+ * and then by `rules.endGame.endOfGame`:
+ *
+ *  - `'finishRound'` (Dean, 15/09/2026, shipped): the round is finished, so
+ *    the game ends when `next` would open a new round. A trigger by the last
+ *    seat of a round ends the game at once.
+ *  - `'oneMoreTurnEach'` (every game before the ruling): the game ends when the
+ *    trigger seat would play again, so every other seat has had one more turn.
+ *
+ * Both are seat comparisons on public state; neither needs a counter.
+ */
+function gameIsOver(data: GameData, state: GameState, next: Seat): boolean {
+  if (state.endTrigger === null) return false;
+  switch (data.rules.endGame.endOfGame) {
+    case 'finishRound':
+      return next === firstPlayerOf(state);
+    case 'oneMoreTurnEach':
+      return next === state.endTrigger.seat;
+  }
 }
 
 /**

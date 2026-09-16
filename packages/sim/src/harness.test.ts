@@ -319,41 +319,27 @@ describe('the watch-list suite', () => {
     // stranded count being D8 arriving as a number) and a24 asks whether a RULE
     // lubricates the deck (Dean's circulation argument, ledger A150: reshuffles
     // per played deck against 7 / 6 / 4, which FALLS if the Village Store
-    // works). They share no counter and they have opposite mode gates: a23
-    // reports NO SUBJECT wherever rules.turn.deliveryMeepleSpace is null, which
-    // is every mode this project has shipped, and a24 has NO MODE GATE at all,
+    // works). They share no counter: a23 prints its Worker lines only where an
+    // island token carries a Worker (island.tokens.workerOnVp, 16/09/2026),
+    // and a24 has NO MODE GATE at all,
     // which it shares only with a22 because every currency this codebase has
     // shuffles decks and fills barns. They also have different lifetimes: a23
     // dies with the meeple if Dean drops it a second time, where a24 outlives
     // every rule in this pass.
     // ⭐ AND 25, 26 AND 27 JOINED ON 12/09/2026 WITH THE VILLAGE STORE COIN
-    // (V1 to V12, ledger row A150), as THREE ids rather than one, on the rule
-    // this test guards. They are three questions with three different subjects
-    // and three different lifetimes, and folding any two of them together would
-    // put a currency, a placement and an instrument bound behind one headline.
-    // a25 is the BALANCE SHEET (one mint, one shared recirculating supply, two
-    // sinks split by name, with V9's full-building coin-Grows on their own line
-    // because that clause is the first clog bypass since the meeples) and it is
-    // a NEW id rather than a re-point of 19, which is the same rule that gave 18
-    // and 20 theirs: a19 measured the SEPARATE commons-with-coins arm of
-    // 10/09/2026, and re-pointing it would silently change what every archived
-    // report naming it was saying. a26 is LEDGER ROW C113 and its subject
-    // is a PLACEMENT rather than a currency - docs/village-store-2026-08-19-v1.md
-    // section 1 ruled a rider on Deliver out in August and the design of
-    // 12/09/2026 is a rider on Deliver - so it dies if the exchange ever moves
-    // while a25 lives on. a27 is the one section 7 of the handoff does NOT ask
-    // for: a coin sink pays no card, so cards stop leaving the hand, which is
-    // the shape that produced a 116,535-move position on 02/09/2026. ⛔ All
-    // three report NO SUBJECT wherever rules.economy.storeCoinsPerCard is 0,
-    // which is every mode this project has ever shipped.
+    // (V1 to V12, ledger row A150), as three questions: the balance sheet, the
+    // placement test (C113) and what a sink that pays no card does to a hand.
+    // ⛔ ON 16/09/2026 DEAN DELETED THE STORE (R2) AND THE BALLOONS (R1): 25,
+    // 26 and 12 (the balloon raid) are TOMBSTONED, and 27 was RE-CUT as
+    // `a27-hand-bound`, keeping the hand-against-the-bound and worst-discard
+    // readings that never needed a coin. Its id is unchanged because its
+    // subject, the instrument's hand bound, is the same one.
     const live = rows.map((r) => r.assertion.id);
-    expect(live).toEqual([
-      2, 4, 5, 6, 7, 8, 9, 11, 12, 13, 15, 16, 17, 18, 20, 21, 22, 23, 24, 25, 26, 27,
-    ]);
+    expect(live).toEqual([2, 4, 5, 6, 7, 8, 9, 11, 13, 15, 16, 17, 18, 20, 21, 22, 23, 24, 27]);
     expect(new Set(live).size, 'a duplicate id').toBe(live.length);
 
     const buried = RETIRED.map((t) => t.id);
-    expect(buried).toEqual([1, 3, 10, 14, 19]);
+    expect(buried).toEqual([1, 3, 10, 12, 14, 19, 25, 26]);
     for (const id of buried) expect(live, `id ${id} was reused`).not.toContain(id);
 
     // Every number from 1 to the highest live id is claimed by exactly one of
@@ -396,7 +382,7 @@ describe('the watch-list suite', () => {
     }
   });
 
-  it('marks exactly the eleven taste-sensitive assertions', () => {
+  it('marks exactly the nine taste-sensitive assertions', () => {
     // Taste-sensitive means "one archetype could produce this number on its
     // own", and the mirrors re-measure it. It was four; v31 made it six, and
     // all three of that pass's new assertions are on the list for the same
@@ -421,20 +407,12 @@ describe('the watch-list suite', () => {
     // stall rate without the mirror spread beside it is a number one archetype
     // could be producing alone.
     //
-    // ⭐ AND 25, 26 AND 27 JOIN THEM (12/09/2026) WITH THE VILLAGE STORE COIN,
-    // and 26 is the reason the flag exists at all. Its whole question is whether
-    // a player ever DECLINES a free conversion (C113), which is a share of what
-    // one archetype chose to do with an optional task - so without the mirror
-    // spread beside it, a near-total conversion rate could be one taste's habit
-    // rather than the rules making declining pointless. ⛔ AND IT IS THE PAGE
-    // THAT MOST NEEDS THE SECOND OPINION: a bot that always takes a free thing
-    // is not proof a human would. 25 rides on the same choice one layer down -
-    // every coin in the game comes out of that task, so the mint, both sinks and
-    // the dead-coin line are all shares of it - and 27's hand size is the
-    // clearest thing a taste produces on its own, since a hermit hoards where a
-    // socialite spends.
+    // ⭐ 25, 26 AND 27 JOINED THEM (12/09/2026) WITH THE VILLAGE STORE COIN. 25
+    // and 26 were retired with the Store on 16/09/2026; 27 stays, because its
+    // hand size is the clearest thing a taste produces on its own, since a
+    // hermit hoards where a socialite spends.
     expect(rows.filter((r) => r.assertion.taste).map((r) => r.assertion.id)).toEqual([
-      2, 8, 11, 15, 16, 17, 18, 20, 25, 26, 27,
+      2, 8, 11, 15, 16, 17, 18, 20, 27,
     ]);
   });
 

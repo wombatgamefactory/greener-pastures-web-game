@@ -355,48 +355,11 @@ export function slotBlocked(state: GameState, seat: Seat, colour: Suit): boolean
 }
 
 /**
- * A SEAT'S COINS, under the Village Store (and the deleted coins arm's K7 sinks).
- *
- * Throws rather than returning 0, for exactly the reason `noticeBoardSlots`
- * does: a coin game with no wallet is a setup that never ran, and
- * a silent 0 would quietly make every Endgame card unbuildable and every
- * Farmstead power unusable for the whole run, which reads as a design finding
- * rather than as the bug it is. `PlayerState.coins` is absent by design under
- * the shipped game - see its comment - so nothing on that path may call this.
- */
-export function coinsOf(state: GameState, seat: Seat): number {
-  const coins = player(state, seat).coins;
-  if (coins === undefined) throw new Error(`Seat ${seat} has no coins in this game`);
-  return coins;
-}
-
-/**
- * ⭐ HOW MANY COINS ARE STILL IN THE VILLAGE STORE'S SHARED SUPPLY (V4/V5,
- * Dean 12/09/2026, ledger A150).
- *
- * ⛔ **THROWS WHEN THE STORE IS ON AND THE FIELD IS MISSING**, in exactly the
- * register `coinsOf` above is written in, and for a sharper reason than either:
- * a silent 0 would make the mint a no-op for the whole run and read as "nobody
- * wanted to convert", which is a DESIGN FINDING rather than the setup bug it
- * would be. C113 is the question this arm exists to answer and it is read off
- * the conversion rate, so a zero that means "no supply object" and a zero that
- * means "the table drained it" must never be the same number.
- *
- * `GameState.coinSupply` is absent by design under every game with no Store -
- * see its comment - so nothing on that path may call this.
- */
-export function coinSupplyLeft(state: GameState): number {
-  const left = state.coinSupply;
-  if (left === undefined) throw new Error('There is no Village Store supply in this game');
-  return left;
-}
-
-/**
  * ⭐ HAS THIS SEAT ALREADY TAKEN ITS ONE HOST DRAW SINCE ITS OWN LAST TURN -
  * THE HOST-DRAW CAP ONLY (`rules.turn.hostDrawCapPerRound`).
  *
  * ⛔ **THROWS WHEN THE CAP IS ON AND THE FIELD IS MISSING**, in the register
- * `coinsOf` above is written in: the field is absent under every game that does
+ * `noticeBoardSlots` is written in: the field is absent under every game that does
  * not run the cap, so the optionality is real, and routing every read through
  * one accessor is what stops it reaching a rule as a silent `undefined` that
  * would read as "not yet paid" for ever and cap nothing at all.

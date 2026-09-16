@@ -44,10 +44,23 @@ import {
   taskAnswers,
 } from './index.js';
 import type { CardId, GameState, Move, Seat } from './state.js';
-import { buildFor, dealTo, loadStack, makeState, noticeBoardVisitGame } from './testkit.js';
+import {
+  buildFor,
+  dealTo,
+  loadStack,
+  makeState,
+  noticeBoardVisitGame,
+  withBonusSlots,
+} from './testkit.js';
 import { loadGameData } from '@gp/data';
 
 const arm: GameData = noticeBoardVisitGame();
+/**
+ * The arm with TWO bonus plays a turn, by rule. The old A Helping Hand was the
+ * only card that granted a second play and it was retired on 16/09/2026, so the
+ * cases whose subject is a two-play turn widen the slot through the knob.
+ */
+const wide: GameData = withBonusSlots(arm);
 
 /** The arm with the `3+` rule taken away: an ordinary clogging board (S8's control). */
 const blocking: GameData = loadGameData({
@@ -57,22 +70,6 @@ const blocking: GameData = loadGameData({
     'rules.economy.cropScorerOnBarn': false,
     // Pre-flip pins (12/09/2026): this is a named inline copy of a
     // committed overlay, and a copy of a pin stops being a pin.
-    'aerodrome.moveCost.barnCards': 2,
-    'aerodrome.alwaysInPlay': false,
-    'aerodrome.flightMints': false,
-    'aerodrome.balloons.balloonDraw.reward.type': 'draw',
-    'aerodrome.balloons.balloonDraw.reward.amount': 4,
-    'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
-    'aerodrome.balloons.balloonBuild.reward.amount': 4,
-    'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
-    'aerodrome.balloons.balloonSow.reward.amount': 4,
-    'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
-    'rules.economy.storeCoinsPerCard': 0,
-    'rules.economy.coinSupplyPerPlayer': 0,
-    'rules.economy.coinPaysBuild': false,
-    'rules.economy.coinPaysSuitCost': false,
-    'rules.economy.coinPaysGrow': false,
-    'rules.economy.coinGrowOnFullBuilding': false,
     'rules.turn.visitCurrency': 'noticeBoardPower',
     'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
     'rules.economy.noticeBoardsBySeats.2': 1, // pinned 13/09/2026: the default flipped
@@ -84,17 +81,16 @@ const blocking: GameData = loadGameData({
     'rules.turn.meepleCapPerColour': null,
     'rules.economy.noticeBoardThreshold': 3,
     'rules.economy.noticeBoardBlocks': true,
-    'rules.economy.endgameCoinCost': null,
-    'rules.economy.farmsteadCoinPower': false,
-    // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
-    // choice and the closing draw. This helper predates it, so all six are pinned
-    // off by name ('start' and null are the old inert values).
-    'rules.turn.deliveryMeepleSpace': null,
+    // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: the spend window, at its old inert
+    // values ('start' and null). The space choice was deleted on 16/09/2026.
     'rules.turn.meepleSpendTiming': 'start',
     'rules.turn.meepleSpendPerTurn': null,
     'rules.turn.meepleSpendDistinctColours': false,
-    'rules.turn.deliverySpaceChoice': false,
-    'rules.turn.closingDrawPerCrate': 0,
+    // ⛔ TOKEN ISLAND PINNED 16/09/2026: this game had no island meeple.
+    'island.tokens.workerOnVp': [],
+    // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
+    'rules.economy.noticeBoardPower.vegetableWildCards': 0,
+    'rules.economy.noticeBoardPower.dairyDiscount': 0,
   },
 });
 
@@ -106,22 +102,6 @@ const noSelf: GameData = loadGameData({
     'rules.economy.cropScorerOnBarn': false,
     // Pre-flip pins (12/09/2026): this is a named inline copy of a
     // committed overlay, and a copy of a pin stops being a pin.
-    'aerodrome.moveCost.barnCards': 2,
-    'aerodrome.alwaysInPlay': false,
-    'aerodrome.flightMints': false,
-    'aerodrome.balloons.balloonDraw.reward.type': 'draw',
-    'aerodrome.balloons.balloonDraw.reward.amount': 4,
-    'aerodrome.balloons.balloonBuild.reward.type': 'buildDiscount',
-    'aerodrome.balloons.balloonBuild.reward.amount': 4,
-    'aerodrome.balloons.balloonSow.reward.type': 'sowFromHand',
-    'aerodrome.balloons.balloonSow.reward.amount': 4,
-    'aerodrome.balloons.balloonCoins.reward.type': 'harvestAny',
-    'rules.economy.storeCoinsPerCard': 0,
-    'rules.economy.coinSupplyPerPlayer': 0,
-    'rules.economy.coinPaysBuild': false,
-    'rules.economy.coinPaysSuitCost': false,
-    'rules.economy.coinPaysGrow': false,
-    'rules.economy.coinGrowOnFullBuilding': false,
     'rules.turn.visitCurrency': 'noticeBoardPower',
     'rules.economy.noticeBoardPower.apiaryPower': 'sow', // pinned 14/09/2026: the default flipped
     'rules.economy.noticeBoardsBySeats.2': 1, // pinned 13/09/2026: the default flipped
@@ -133,17 +113,16 @@ const noSelf: GameData = loadGameData({
     'rules.turn.meepleCapPerColour': null,
     'rules.economy.noticeBoardThreshold': 3,
     'rules.economy.noticeBoardBlocks': false,
-    'rules.economy.endgameCoinCost': null,
-    'rules.economy.farmsteadCoinPower': false,
-    // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: Dean ruled the meeple ON with the space
-    // choice and the closing draw. This helper predates it, so all six are pinned
-    // off by name ('start' and null are the old inert values).
-    'rules.turn.deliveryMeepleSpace': null,
+    // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: the spend window, at its old inert
+    // values ('start' and null). The space choice was deleted on 16/09/2026.
     'rules.turn.meepleSpendTiming': 'start',
     'rules.turn.meepleSpendPerTurn': null,
     'rules.turn.meepleSpendDistinctColours': false,
-    'rules.turn.deliverySpaceChoice': false,
-    'rules.turn.closingDrawPerCrate': 0,
+    // ⛔ TOKEN ISLAND PINNED 16/09/2026: this game had no island meeple.
+    'island.tokens.workerOnVp': [],
+    // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
+    'rules.economy.noticeBoardPower.vegetableWildCards': 0,
+    'rules.economy.noticeBoardPower.dairyDiscount': 0,
   },
 });
 
@@ -295,19 +274,18 @@ describe('S5-S10: what the enumerator offers', () => {
   });
 
   it('S9: a board may be used ONCE per turn, so the second bonus goes elsewhere', () => {
-    const s = position(arm, ['wheat', 'orchard', 'dairy']);
-    // A Helping Hand is the only card in the game that widens the slot.
-    buildFor(arm, s, 0, 'W18');
-    dealTo(arm, s, 0, 'W7', 'W9');
-    const first = apply(arm, s, visit(0, 1, 'W7'));
+    // Two plays by rule: nothing in the v42 card set widens the slot.
+    const s = position(wide, ['wheat', 'orchard', 'dairy']);
+    dealTo(wide, s, 0, 'W7', 'W9');
+    const first = apply(wide, s, visit(0, 1, 'W7'));
     expect(first.state.turn.firedThisTurn).toContain(BOARD.orchard);
     // The Orchard power leaves a draw task pending, so the queue has to drain
     // before `legalMoves` offers anything but task answers.
-    const after = autoResolve(arm, first.state);
-    const second = legalMoves(arm, after).filter((m) => m.type === 'visit');
+    const after = autoResolve(wide, first.state);
+    const second = legalMoves(wide, after).filter((m) => m.type === 'visit');
     expect(second.length).toBeGreaterThan(0);
     expect(second.some((m) => m.type === 'visit' && m.host === 1)).toBe(false);
-    expect(() => apply(arm, after, visit(0, 1, 'W9'))).toThrow(/already been used/);
+    expect(() => apply(wide, after, visit(0, 1, 'W9'))).toThrow(/already been used/);
   });
 
   it('S8: a deep board is still offered, because nothing ever blocks', () => {
@@ -489,7 +467,7 @@ describe('S12: the five powers, bought with a card', () => {
   it('Vegetable: delivers if it can, and banks vegetableFallback cards when it cannot', () => {
     const s = position(arm, ['wheat', 'vegetable', 'orchard']);
     dealTo(arm, s, 0, 'W7', 'W9', 'W10');
-    // An empty barn and no balloon of this seat's: the fallback fires.
+    // An empty barn: the fallback fires.
     const out = apply(arm, s, visit(0, 1, 'W7'));
     const bank = out.state.tasks.find((t) => t.t === 'handToBarn');
     expect(bank?.t === 'handToBarn' ? bank.remaining : null).toBe(
@@ -659,44 +637,48 @@ describe('S16: A21 counts the Notice Board, A16 fires on a visit placement', () 
 // ---------------------------------------------------------------------------
 
 describe('no card s text fires twice in a turn, now that a turn holds two visits', () => {
-  /** A position where seat 0 holds A Helping Hand and can visit two boards. */
+  /** A position where seat 0 may play twice (by rule) and can visit two boards. */
   function twoVisits(reactor: CardId, suits: Suit[]): GameState {
-    const s = position(arm, suits);
-    buildFor(arm, s, 0, 'W18', reactor);
-    dealTo(arm, s, 0, 'W7', 'W9');
+    const s = position(wide, suits);
+    buildFor(wide, s, 0, reactor);
+    dealTo(wide, s, 0, 'W7', 'W9');
     return s;
   }
 
-  it('A17 The Smoke Pot fires once, not twice', () => {
+  // ⭐ INVERTED (Dean, 15/09/2026): the fire-once rule is deleted. Card text
+  // fires every time its trigger happens, so both visit reactors fire on BOTH
+  // visits; the only per-turn cap left is one activation per building.
+  it('A17 The Smoke Pot fires on both visits (v42: a deck sow onto your own building)', () => {
     const s = twoVisits('A17', ['wheat', 'orchard', 'dairy']);
-    const first = apply(arm, s, visit(0, 1, 'W7'));
-    expect(first.state.tasks.some((t) => t.t === 'card' && t.kind === 'smokeBuy')).toBe(true);
-    const drained = autoResolve(arm, first.state);
-    expect(drained.turn.firedThisTurn).toContain('A17');
-    const second = apply(arm, drained, visit(0, 2, 'W9'));
-    expect(second.state.tasks.some((t) => t.t === 'card' && t.kind === 'smokeBuy')).toBe(false);
+    buildFor(wide, s, 0, 'W4'); // threshold 2: somewhere for both sows to land
+    const smoke = (tasks: GameState['tasks']) =>
+      tasks.some((t) => t.t === 'sowFromDeck' && t.src === 'A17');
+    const first = apply(wide, s, visit(0, 1, 'W7'));
+    expect(smoke(first.state.tasks)).toBe(true);
+    const drained = autoResolve(wide, first.state);
+    expect(drained.turn.firedThisTurn).not.toContain('A17');
+    const second = apply(wide, drained, visit(0, 2, 'W9'));
+    expect(smoke(second.state.tasks)).toBe(true);
   });
 
-  it('O16 The Fruit Store draws once, not twice', () => {
+  it('O16 The Fruit Store draws on both visits', () => {
     const s = twoVisits('O16', ['wheat', 'orchard', 'dairy']);
-    const first = autoResolve(arm, apply(arm, s, visit(0, 1, 'W7')).state);
-    expect(first.turn.firedThisTurn).toContain('O16');
-    const handAfterFirst = player(first, 0).hand.length;
-    const second = apply(arm, first, visit(0, 2, 'W9'));
-    // The Dairy board's power is a Build, which draws nothing, so any card that
-    // arrived would have been O16's second firing.
-    expect(player(second.state, 0).hand.length).toBe(handAfterFirst - 1);
+    const first = autoResolve(wide, apply(wide, s, visit(0, 1, 'W7')).state);
+    expect(first.turn.firedThisTurn).not.toContain('O16');
+    const second = apply(wide, first, visit(0, 2, 'W9'));
+    // v42: an ordinary Draw 1 task with the player's choice of deck.
+    expect(second.state.tasks.some((t) => t.t === 'draw' && t.src === 'O16')).toBe(true);
   });
 
   it('A16 The Beekeeper s Veil is deliberately NOT capped, and fires on both', () => {
     // Two hosts whose powers are never dead for this seat: Wheat (a card into
     // the barn) and Orchard (Draw 4).
-    const s = position(arm, ['apiary', 'wheat', 'orchard']);
-    buildFor(arm, s, 0, 'W18', 'A16');
-    loadStack(arm, s, 1, BOARD.wheat, 1, 'dairy');
-    loadStack(arm, s, 2, BOARD.orchard, 1, 'dairy');
-    dealTo(arm, s, 0, 'A7', 'A9', 'A11');
-    const first = apply(arm, s, visit(0, 1, 'A7'));
+    const s = position(wide, ['apiary', 'wheat', 'orchard']);
+    buildFor(wide, s, 0, 'A16');
+    loadStack(wide, s, 1, BOARD.wheat, 1, 'dairy');
+    loadStack(wide, s, 2, BOARD.orchard, 1, 'dairy');
+    dealTo(wide, s, 0, 'A7', 'A9', 'A11');
+    const first = apply(wide, s, visit(0, 1, 'A7'));
     expect(first.state.tasks.some((t) => t.t === 'draw' && t.src === 'A16')).toBe(true);
     // The first bonus's tasks are cleared rather than played out, so the second
     // visit reaches the same hand the first one left; what is under test is the
@@ -704,7 +686,7 @@ describe('no card s text fires twice in a turn, now that a turn holds two visits
     const mid = first.state;
     mid.tasks = [];
     expect(mid.turn.firedThisTurn).not.toContain('A16');
-    const second = apply(arm, mid, visit(0, 2, 'A9'));
+    const second = apply(wide, mid, visit(0, 2, 'A9'));
     // It fires a SECOND time in the same turn, which is the decision this test
     // pins: A16 is a placement reactor, not a visit reactor.
     expect(second.state.tasks.some((t) => t.t === 'draw' && t.src === 'A16')).toBe(true);

@@ -62,17 +62,6 @@ const MEEPLE_SPEND_TIMING_VALUES: ReadonlySet<string> = new Set<string>([
 ]);
 
 /**
- * The closed value set behind `noticeBoardPower.dairyGrowsBuilt` (Dean's Dairy
- * experiment, 12/09/2026). 'none' is the shipped value and changes nothing.
- */
-const DAIRY_GROWS_BUILT_VALUES: ReadonlySet<string> = new Set<string>([
-  'none',
-  'paid',
-  'paidWild',
-  'free',
-]);
-
-/**
  * The closed value set behind `noticeBoardPower.apiaryPower` (Dean's Apiary
  * retext, ruled 14/09/2026). 'deckGrowWild' is the shipped value; 'sow' is the
  * pre-ruling power every older overlay pins.
@@ -82,6 +71,18 @@ const APIARY_POWER_VALUES: ReadonlySet<string> = new Set<string>([
   'deckGrow',
   'deckGrowWild',
 ]);
+
+/**
+ * The closed value set behind `rules.setup.firstPlayer` (Dean, 15/09/2026).
+ * `'random'` is shipped; `'seat0'` is every game before the ruling.
+ */
+const FIRST_PLAYER_VALUES: ReadonlySet<string> = new Set<string>(['random', 'seat0']);
+
+/**
+ * The closed value set behind `rules.endGame.endOfGame` (Dean, 15/09/2026).
+ * `'finishRound'` is shipped; `'oneMoreTurnEach'` is every game before the ruling.
+ */
+const END_OF_GAME_VALUES: ReadonlySet<string> = new Set<string>(['finishRound', 'oneMoreTurnEach']);
 
 /**
  * The closed value set behind `visitCurrency`, kept here for the same reason as
@@ -107,16 +108,6 @@ const VISIT_CURRENCY_VALUES: ReadonlySet<string> = new Set<string>([
   'card',
   'meeple',
   'noticeBoardPower',
-]);
-
-/** The closed value set behind `balloonReward`, kept here for the same reason. */
-const BALLOON_REWARD_VALUES: ReadonlySet<string> = new Set<string>([
-  'draw',
-  'buildDiscount',
-  'sowFromHand',
-  'harvestAny',
-  'meepleFromBag',
-  'plainAction',
 ]);
 
 /** Bumped when the meaning of a knob path changes, not when a knob is added. */
@@ -181,14 +172,14 @@ function typeMatches(type: KnobType, value: Leaf): boolean {
       return typeof value === 'string' && MEEPLE_DESTINATION_VALUES.has(value);
     case 'meepleSpendTiming':
       return typeof value === 'string' && MEEPLE_SPEND_TIMING_VALUES.has(value);
-    case 'dairyGrowsBuilt':
-      return typeof value === 'string' && DAIRY_GROWS_BUILT_VALUES.has(value);
     case 'apiaryPower':
       return typeof value === 'string' && APIARY_POWER_VALUES.has(value);
     case 'paymentHostChoice':
       return typeof value === 'string' && PAYMENT_HOST_VALUES.has(value);
-    case 'balloonReward':
-      return typeof value === 'string' && BALLOON_REWARD_VALUES.has(value);
+    case 'firstPlayer':
+      return typeof value === 'string' && FIRST_PLAYER_VALUES.has(value);
+    case 'endOfGame':
+      return typeof value === 'string' && END_OF_GAME_VALUES.has(value);
   }
 }
 
@@ -197,7 +188,7 @@ function typeMatches(type: KnobType, value: Leaf): boolean {
  * would fail anyway as unknown knobs; this exists so the error says WHY instead
  * of implying the path was mistyped.
  */
-const TEXT_LEAF = /\.(name|abilityText|actionText|rewardText|note|sourceSheet)$/;
+const TEXT_LEAF = /\.(name|abilityText|actionText|note|sourceSheet)$/;
 
 function describe(value: Leaf): string {
   return Array.isArray(value) ? `[${value.join(', ')}]` : JSON.stringify(value);

@@ -14,14 +14,13 @@
  * 105 cards.
  */
 
-import type { GameData, Suit } from '@gp/data';
+import type { GameData } from '@gp/data';
 
 import {
   buildOptions,
   deliverAnswers,
   doBuild,
   doDeliver,
-  doMoveBalloon,
   deckGrowOptions,
   growOptions,
   harvestOptions,
@@ -30,14 +29,7 @@ import {
 import type { BuildMods } from './actions.js';
 import type { Fx } from './fx.js';
 import { fireHook } from './fx.js';
-import {
-  canSowOnto,
-  cardById,
-  coinSupplyLeft,
-  drawableSuits,
-  fullBuildings,
-  player,
-} from './query.js';
+import { canSowOnto, drawableSuits, fullBuildings, player } from './query.js';
 import { activateOnly, doGrow } from './runtime.js';
 import type { BuildingRef, CardId, GameState, Seat, Task, TaskAnswer } from './state.js';
 import { handlerFor } from './handlers/registry.js';
@@ -242,44 +234,28 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
     }
 
     case 'grow': {
-      // CARD-PAID AND COIN-PAID OPTIONS - see the task's own note. A MEEPLE-paid
-      // Grow is still excluded: it carries placement riders this answer has no
-      // field for, and no mode that pushes this task has meeples in it.
-      //
-      // ⭐ THE COIN IS IN (V8, A150, 12/09/2026), and it is a rules reading
-      // rather than a convenience: a coin is a wild card for GROW, and the
-      // board's bought Grow is a Grow. It cannot multiply actions - the
-      // fire-once guard caps a turn at one coin-Grow here and one as the main
-      // action, never the same building twice.
-      //
-      // ⚠️ K10's `coin` STAYS OUT and needs no filter, because `growOptions`
-      // offers the Farmstead only under `mods.mainAction` and this caller does
-      // not pass it: a bonus may never buy a suit power (D-C1).
+      // CARD-PAID OPTIONS ONLY. A MEEPLE-paid Grow is excluded: it carries
+      // placement riders this answer has no field for, and no mode that pushes
+      // this task has meeples in it.
       //
       // ⭐ THE APIARY RETEXT'S DECK-PAID GROW (14/09/2026) answers from its own
       // list, the same one the board's gate reads, and never mixes with a
-      // hand-paid or coin-paid option: the power names the deck.
+      // hand-paid option: the power names the deck.
       if (task.fromDeck !== undefined) {
         const deckOut: TaskAnswer[] = deckGrowOptions(
           data,
           state,
           task.pid,
           task.fromDeck === 'wild',
-        )
-          .filter((o) => task.target === undefined || o.building === task.target)
-          .map((o) => ({ kind: 'grow', building: o.building, payment: null, deckSuit: o.suit }));
+        ).map((o) => ({ kind: 'grow', building: o.building, payment: null, deckSuit: o.suit }));
         if (task.optional === true && deckOut.length > 0) deckOut.push({ kind: 'skip' });
         return deckOut;
       }
-      const out: TaskAnswer[] = growOptions(data, state, task.pid, {
-        ...(task.target === undefined ? {} : { onlyBuilding: task.target }),
-        ...(task.wildActivation === true ? { anyCrop: true } : {}),
-      })
-        .filter((o) => o.payment !== null || o.coinGrow === true)
-        .map((o) =>
-          o.coinGrow === true
-            ? ({ kind: 'grow', building: o.building, payment: null, coinGrow: true } as TaskAnswer)
-            : ({ kind: 'grow', building: o.building, payment: o.payment as CardId } as TaskAnswer),
+      const out: TaskAnswer[] = growOptions(data, state, task.pid)
+        .filter((o) => o.payment !== null)
+        .map(
+          (o) =>
+            ({ kind: 'grow', building: o.building, payment: o.payment as CardId }) as TaskAnswer,
         );
       if (task.optional === true && out.length > 0) out.push({ kind: 'skip' });
       return out;
@@ -297,10 +273,6 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
             ...(o.wildPairs === undefined ? {} : { wildPairs: o.wildPairs }),
             ...(o.placements === undefined ? {} : { placements: o.placements }),
             ...(o.paymentToll === undefined ? {} : { paymentToll: o.paymentToll }),
-            // ⭐ V6 (A150, 12/09/2026): a build BOUGHT through a door or granted
-            // by a card is still a build, so a coin pays for it too. It has to
-            // ride here or the answer cannot pay - see `TaskAnswer.build.coins`.
-            ...(o.coins === undefined ? {} : { coins: o.coins }),
           }) as TaskAnswer,
       );
       if (task.optional === true && out.length > 0) out.push({ kind: 'skip' });
@@ -308,8 +280,7 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
     }
 
     case 'deliver': {
-      // Island deliveries AND balloon moves - one Deliver action (DL-12).
-      const out = deliverAnswers(data, state, task.pid);
+      const out = deliverAnswers(data, state, task.pid, task.wildCards ?? 0);
       if (task.optional === true && out.length > 0) out.push({ kind: 'skip' });
       return out;
     }
@@ -335,43 +306,6 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
         (card) => ({ kind: 'handToBarn', card }) as TaskAnswer,
       );
       if (task.optional === true && out.length > 0) out.push({ kind: 'skip' });
-      return out;
-    }
-
-    /**
-     * ⭐ THE VILLAGE STORE'S EXCHANGE, ONE CARD AT A TIME (V1, A150,
-     * 12/09/2026). See the task's own docblock in `state.ts` for why this is a
-     * repeated binary choice and not a subset enumeration.
-     *
-     * ⛔ **THE BOUND ON THIS LIST IS THE NUMBER OF SUITS PLUS ONE, SIX**, and
-     * it does not grow with the barn. The answer names a SUIT because barn
-     * identity is inert (`fx.spendFromBarn` takes the first matching id), so a
-     * twenty-card barn holding all five crops offers six answers, exactly as a
-     * five-card one does. It is the same reduction `stackGroupsOf` makes for a
-     * build payment, and a test asserts it: the failure this project keeps
-     * repeating is an enumeration that looks fine at three cards in a unit test
-     * and falls over at n=1580.
-     *
-     * ⚠️ AN EMPTY SUPPLY RETURNS AN EMPTY LIST AND THE DRAIN LOOP DROPS THE
-     * TASK, which IS D4's "stop rather than refuse": whatever was converted
-     * before the supply ran out stands.
-     */
-    case 'mint': {
-      const suits = new Set<Suit>();
-      if (coinSupplyLeft(state) > 0 && task.remaining > 0) {
-        for (const id of player(state, task.pid).barn) suits.add(cardById(data, id).suit);
-      }
-      // Suit order off the catalogue rather than off the barn, so the
-      // enumeration order is fixed and a replay is byte-identical whatever
-      // order the cards arrived in. Enumeration order reaches the bots'
-      // tie-break, so this is load-bearing rather than tidy.
-      const out: TaskAnswer[] = data.cards.suits
-        .filter((suit) => suits.has(suit))
-        .map((suit) => ({ kind: 'card', payload: { suit } }) as TaskAnswer);
-      // D3: DECLINING IS EXPLICIT. Always offered when anything is, and never a
-      // lone answer - an empty list is a task with nothing to ask, which the
-      // drain loop removes.
-      if (out.length > 0) out.push({ kind: 'skip' });
       return out;
     }
 
@@ -457,8 +391,6 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
       // branch deliberately do NOT run here: a door buys the placement and the
       // ability, not whatever the ACTION used to add on top (there is nothing
       // left in v31 that does, and the constraint is permanent - see `doGrow`).
-      // V8 (A150): a coin-paid bought Grow places nothing and may reach a full
-      // building. `doGrow` re-validates every gate the enumerator filtered on.
       if (answer.deckSuit !== undefined) {
         if (task.fromDeck === undefined) throw new Error('This Grow is not paid off a deck');
         doGrow(fx, task.pid, answer.building, null, {
@@ -468,19 +400,7 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
         return true;
       }
       if (task.fromDeck !== undefined) throw new Error('A deck-paid Grow must name a deck');
-      doGrow(
-        fx,
-        task.pid,
-        answer.building,
-        answer.payment,
-        answer.coinGrow === true
-          ? { coinGrow: true }
-          : // Dean's Dairy experiment, 'paidWild': the enumerator offered a wild
-            // activation card, so the re-validation must be told the same thing.
-            task.wildActivation === true
-            ? { anyCrop: true }
-            : {},
-      );
+      doGrow(fx, task.pid, answer.building, answer.payment, {});
       return true;
     }
 
@@ -498,59 +418,30 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
           ...(answer.wildPairs === undefined ? {} : { wildPairs: answer.wildPairs }),
           ...(answer.placements === undefined ? {} : { placements: answer.placements }),
           ...(answer.paymentToll === undefined ? {} : { paymentToll: answer.paymentToll }),
-          // V6 (A150): the coin count the answer carried, re-validated in
-          // `doBuild` against the same arithmetic the enumerator used.
-          ...(answer.coins === undefined ? {} : { coins: answer.coins }),
         },
         buildModsFor(fx.state, task),
         task.src,
       );
-      // ⭐ DEAN'S DAIRY EXPERIMENT (12/09/2026), absent under every shipped
-      // rule. GROW the building this Build just made. ⛔ A card with no
-      // activation type cannot be Grown at all, which is every Power and every
-      // Endgame, a third of the deck, so the clause is simply dead on them.
-      if (task.thenGrow !== undefined && cardById(fx.data, answer.card).activationType !== null) {
-        if (task.thenGrow === 'free') {
-          doGrow(fx, task.pid, answer.card, null, { freeGrow: true });
-        } else {
-          fx.pushTask({
-            t: 'grow',
-            pid: task.pid,
-            src: task.src,
-            optional: true,
-            target: answer.card,
-            ...(task.thenGrow === 'paidWild' ? { wildActivation: true } : {}),
-          });
-        }
-      }
       return true;
     }
 
     case 'deliver': {
       if (answer.kind === 'skip' && task.optional === true) return true;
       if (answer.kind === 'deliver') {
-        doDeliver(
-          fx,
-          task.pid,
-          answer.tile,
-          answer.spend,
-          undefined,
-          1,
-          answer.meeples,
-          {
+        // The token choice (16/09/2026) and the Vegetable board's relaxation
+        // (R9), both enumerated by `deliverAnswers`.
+        doDeliver(fx, task.pid, answer.tile, answer.spend, {
+          ...(answer.token === undefined ? {} : { token: answer.token }),
+          ...(task.wildCards === undefined ? {} : { wildCards: task.wildCards }),
+          ...(answer.meeples === undefined ? {} : { meepleSpend: answer.meeples }),
+          placement: {
             ...(answer.placements === undefined ? {} : { placements: answer.placements }),
             ...(answer.paymentToll === undefined ? {} : { paymentToll: answer.paymentToll }),
           },
-          // The space choice (14/09/2026), enumerated by `deliverAnswers`.
-          answer.space,
-        );
+        });
         return true;
       }
-      if (answer.kind === 'balloon') {
-        doMoveBalloon(fx, task.pid, answer.balloon, answer.spend);
-        return true;
-      }
-      throw new Error('deliver expects a deliver or balloon answer');
+      throw new Error('deliver expects a deliver answer');
     }
 
     case 'sowFromDeck': {
@@ -600,22 +491,6 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
       fx.stashCard(task.pid, card);
       task.cards = task.cards.filter((c) => c !== card);
       return task.cards.length === 0;
-    }
-
-    /**
-     * ⭐ ONE CARD OUT OF THE BARN, ONE COIN OUT OF THE SUPPLY (V1/V5, A150).
-     *
-     * The task is done when the payer says stop, when `remaining` runs out or
-     * when the supply does - the last of those being D4, and it is checked HERE
-     * rather than only in the answers so that the state a policy sees and the
-     * state the funnel enforces cannot disagree.
-     */
-    case 'mint': {
-      if (answer.kind === 'skip') return true;
-      if (answer.kind !== 'card') throw new Error('mint expects a card or skip answer');
-      fx.mintFromBarn(task.pid, answer.payload['suit'] as Suit);
-      task.remaining -= 1;
-      return task.remaining <= 0 || coinSupplyLeft(fx.state) <= 0;
     }
 
     case 'card': {

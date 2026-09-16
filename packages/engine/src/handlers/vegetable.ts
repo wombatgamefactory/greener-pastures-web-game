@@ -3,36 +3,20 @@
  * docs/handoff-vegetable-engine-build.md). Card texts are quoted from cards.json
  * (the sheet is the single source of truth for wording).
  *
- * Suit identity: Deliver, and the rebuild's thesis is one line:
+ * Suit identity: Deliver. ⛔ The rebuild's second outlet, the balloons, was
+ * deleted on 16/09/2026 (R1), and V4, V8, V16, V17 and V19 are inert until the
+ * v42 Vegetable texts are built (slice 6).
  *
- *     The island eats your barn. The balloon eats your hand.
- *     Vegetable is the only farm that can feed both at once.
+ * Structural things this suit brought to the engine:
  *
- * In the drafts before this one both outlets ate BARN cards, so a Vegetable seat
- * chose every turn between flying freight and scoring it. Paying for flights out
- * of the HAND removes the choice, and it is the change that made the suit work.
- *
- * Three structural things are new to the engine here, and two of them are the
- * suit:
- *
- *   1. **The island's demand tokens are MUTABLE.** V5 swaps two of them, V6
- *      turns one face down (and a face-down token accepts any crops). In 105
- *      cards nothing else touches the colour puzzle after setup - it is decided
- *      once, by the bag, before anybody has played a card. V5 and V6 ARE the
- *      suit; if they were ever cut for implementation cost the suit would go
- *      back to being four other suits wearing a green hat. Engine seams:
- *      `namedDemand` (one disjunction), `demandSwapOptions`, and the two Fx
- *      verbs. V6's own target list moved INTO this file on 19/08/2026
- *      (`faceDownTargets`), because the card dropped its eligibility filter and
- *      `demandFaceDownOptions` in actions.ts still enforces it.
- *   2. **A balloon may be paid for out of the HAND** (V4, V8), via
- *      `doMoveBalloonFromHand`. A sibling of `doMoveBalloon`, never a branch
- *      inside it: the base rule - 2 barn cards of differing crops, spent as the
- *      Deliver action - is unchanged for everybody, Vegetable included.
- *   3. **One delivery may take EVERY receipt a tile has left** (V14), which is
- *      `doDeliver`'s `receipts` argument and falls out of `deliveredBy` being an
- *      ordered list: pay once, push the seat as many times as the tile has room
- *      for, and 6 + 3 = 9 with no scoring rule of its own.
+ *   1. **The island's tokens are MUTABLE.** V5 swaps two of them between two
+ *      island cards (the token island, 16/09/2026: each token keeps its VP and
+ *      its Worker). Engine seams: `tokenSwapOptions` and `fx.swapIslandTokens`.
+ *      ⛔ V6's face-down token was deleted with the crate island; v42's V6
+ *      prints something else and its handler is owed (slice 6).
+ *   2. **One delivery may take EVERY receipt a tile has left** (V14), which is
+ *      `doDeliver`'s `takeAll` choice: pay the same 4 cards once and take both
+ *      tokens, or the last one.
  *
  * DEPOT is a sub-type derived from the whole-word title keyword, following the
  * reference (DL-42) and matching Wheat's FIELD and Orchard's ORCHARD: V4-V8, the
@@ -57,20 +41,15 @@
  */
 
 import type { GameData, Suit } from '@gp/data';
-import { deliveriesPerTile } from '@gp/data';
 
 import {
   barnTally,
-  demandSwapOptions,
   deliverOptions,
   doDeliver,
-  doMoveBalloon,
-  doMoveBalloonFromHand,
-  handBalloonMoveOptions,
   islandDeliveriesBy,
-  tileHasRoom,
+  tokenSwapOptions,
 } from '../actions.js';
-import type { DemandRef } from '../actions.js';
+import type { TokenRef } from '../actions.js';
 import type { Fx } from '../fx.js';
 import { cardById, drawableSuits, player } from '../query.js';
 import type { BuildingState, CardId, GameState, Seat, TaskAnswer } from '../state.js';
@@ -100,74 +79,12 @@ function liveDecks(data: GameData, state: GameState): Suit[] {
 }
 
 /**
- * THE HAND-PAID FLIGHT, V4's and V4's alone since 19/08/2026: pick the printed
- * number of hand cards and a balloon that is not already yours, discard the
- * cards, take the balloon and its reward.
- *
- * It used to be shared with V8, which paid the same fee for the reward of ANY
- * balloon. V8's retext deleted both halves of that - no fee, and the reward is
- * the moved balloon's own - so it now goes through `doMoveBalloon` with a null
- * spend (a card effect's FREE move) and this helper has one caller left. Kept as
- * a helper rather than inlined because the fee count is data (`handMoveCost`)
- * and a second hand-paid flight is a plausible card.
- *
- * READING: the text is imperative ("Discard 1 card to move a Balloon"), so it is
- * MANDATORY when it can be paid and auto-skips when it cannot - the drain loop
- * drops a task with no legal answer, which is the only way an empty hand or an
- * empty sky can decline it. That is the same reading the suit's imperative cards
- * have always taken, and it is honest to the card: a Grow spent on a Depot is
- * spent to fly.
- */
-function flightAnswers(data: GameData, state: GameState, pid: Seat): TaskAnswer[] {
-  return handBalloonMoveOptions(data, state, pid).map(
-    (o) => ({ kind: 'card', payload: { balloon: o.balloon, cards: o.cards } }) as TaskAnswer,
-  );
-}
-
-function takeFlight(fx: Fx, pid: Seat, answer: TaskAnswer): string {
-  if (answer.kind !== 'card') throw new Error('a flight expects a card answer');
-  const { balloon, cards } = answer.payload as { balloon: string; cards: CardId[] };
-  doMoveBalloonFromHand(fx, pid, balloon, cards);
-  return balloon;
-}
-
-/**
- * V6's targets since 19/08/2026: one face-up, non-cornucopia token per tile that
- * still has a receipt space.
- *
- * A LOCAL COPY OF `demandFaceDownOptions` MINUS ONE LINE, and the line is the
- * whole retext. actions.ts still filters to tiles where a receipt has already
- * been taken, which was V6's timing dial until the sheet dropped the clause;
- * this file owns the card, so the card's own eligibility lives here rather than
- * being asserted twice. Everything else is deliberately identical - the room
- * check, the cornucopia and already-blank exclusions, and the per-tile dedupe by
- * token VALUE (two vegetable crates on one tile are one choice, not two).
- */
-function faceDownTargets(data: GameData, state: GameState): DemandRef[] {
-  const out: DemandRef[] = [];
-  for (const tile of state.island.tiles) {
-    if (!tileHasRoom(data, tile)) continue;
-    const seen = new Set<string>();
-    for (let i = 0; i < tile.crates.length; i++) {
-      const value = tile.faceDown?.[i] === true ? 'down' : (tile.crates[i] as string);
-      if (value === 'wild' || value === 'down') continue;
-      if (seen.has(value)) continue;
-      seen.add(value);
-      out.push({ tile: tile.tile, crate: i });
-    }
-  }
-  return out;
-}
-
-/**
  * V1 Barn (starter) - prints NOTHING (v31).
  *
  * ⛔ Both lines went: the hand size with the hand limit itself, and the build
  * rider ("When you build a DEPOT, Draw 2") with the other four. It mattered more
- * here than anywhere else - it was the main thing paying for flights, and the
- * hand is what this suit is short of - so losing it is the single biggest change
- * to Vegetable in v31 and the first place to look if the balloon layer goes
- * unused. The upgraded face's freight refund had already gone on 19/08/2026,
+ * here than anywhere else - the hand is what this suit is short of - so losing
+ * it was the single biggest change to Vegetable in v31. The upgraded face's freight refund had already gone on 19/08/2026,
  * taking the suit's only use of the reclaimDiscard primitive with it; O17 The
  * Fruit Basket is the primitive's caller now. *
  * ⭐ THE HAND LIMIT CAME BACK ON 02/09/2026 AND THIS CARD DID NOT. The
@@ -204,9 +121,8 @@ export const vegetableBarn: CardHandler = {
    *
    * ⚠️ AND IT IS SILENT IN EVERY OTHER GAME. `barnCropScorer` answers 0
    * unless `rules.turn.visitCurrency` is `'noticeBoardPower'`, so the shipped
-   * commons, the v31 control, the meeple controls and the coins arm all score
-   * exactly as they did - the Farmstead keeps the line in the first four and
-   * loses it with nowhere to go in the fifth (K13). The two are gated by the
+   * commons, the v31 control and the meeple controls all score exactly as they
+   * did - the Farmstead keeps the line. The two are gated by the
    * same predicate from opposite sides, so the term can never be scored twice
    * or dropped.
    */
@@ -231,8 +147,7 @@ export const vegetableBarn: CardHandler = {
  * was worth 1.5 VP a game in a suit that needed four. A suit power belongs
  * UPSTREAM of that suit's bottleneck. And A HEAD HAD TO RIDE ON THE ANSWER
  * rather than be re-derived at resolution, because it was frequently the only
- * reason the payment was affordable; `deliverAnswers` shipped exactly that bug
- * on the day the balloon heads landed.
+ * reason the payment was affordable.
  *
  * ⚠️ A stopgap `deckToBarn` task briefly lived in this handler, firing off
  * `afterDeliver`, and was deleted the same day for the circle above. If a future
@@ -251,72 +166,46 @@ export const vegetableNoticeBoard: CardHandler = {
     asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
       'No behaviour here: the fee landing, the door action and the clog at threshold 2 are ' +
-      'all engine-level, and the door is the PLAIN Deliver - island or freight, since a ' +
-      'balloon move IS the Deliver action (DL-12). ' +
+      'all engine-level, and the door is the PLAIN Deliver. ' +
       '⛔ Its coin payoff and its hand-card-into-the-barn rider are both gone (v31). ' +
       '⚠️ IT IS THE DOOR MOST LIKELY TO BE DEAD FOR A VISITOR, and the engine rules that a ' +
-      'door which can do nothing is not offered: a seat with an empty barn and no movable ' +
-      'balloon simply is not shown this board. That is a real lockout - a seat can be shut ' +
+      'door which can do nothing is not offered: a seat with an empty barn simply is not ' +
+      'shown this board. That is a real lockout - a seat can be shut ' +
       "out of the bonus slot's interaction half entirely - and `bonusDraw` is what backstops " +
       'it.',
   },
 };
 
 /**
- * V4 The Market Stall Depot - "Discard 1 card to move a Balloon to your
- * Aerodrome and take its reward."
+ * V4 The Market Stall Depot (v39: "Discard 1 card to move a Balloon ...").
+ *
+ * ⛔ INERT SINCE 16/09/2026: the balloons and the Aerodrome were deleted (R1).
  */
+// v42 handler owed (slice 6)
 export const marketStallDepot: CardHandler = {
   difficulty: {
-    score: 3,
-    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: true, conditional: false, counts: false, interrupts: false },
+    score: 1,
+    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'THE HAND-PAID FLIGHT, and the cheapest card in the suit at cost 1. It forced ' +
-      'doMoveBalloonFromHand: a sibling of doMoveBalloon, not a branch inside it, so the base ' +
-      'rule (2 barn cards of DIFFERING crops, spent as the Deliver action) is untouched for ' +
-      'everybody including a Vegetable seat taking the plain action. No suit constraint on the ' +
-      "fee - the differing-crops rule is what makes the barn payment the table's orphan sink, " +
-      'and this route is deliberately unfussy so the fee is the worst two cards in hand. ' +
-      'DECIDED (handoff §5): a hand-paid flight still fires afterDeliver with island: false, ' +
-      'because moving a balloon IS the Deliver action (DL-12) and one funnel is worth more than ' +
-      'the purity. THAT DECISION BECAME OBSERVABLE ON 19/08/2026: the Farmstead dropped its ' +
-      '`island` guard when its text widened to "When you Deliver", so an upgraded Vegetable seat ' +
-      'now gets a deck card into the barn every time this Depot flies. Two cards for one hand ' +
-      'card, which is the ladder working, not a bug. ' +
-      'Mandatory when it can be paid; auto-skips on an empty hand or an empty sky.',
-  },
-  activate(fx, self) {
-    fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'flight', riders: {} });
-  },
-  tasks: {
-    flight: {
-      answers(data, state, task) {
-        return flightAnswers(data, state, task.pid);
-      },
-      resolve(fx, task, answer) {
-        takeFlight(fx, task.pid, answer);
-        return true;
-      },
-    },
+      'Inert: its balloon text died with the balloons on 16/09/2026. v42 handler owed (slice 6).',
   },
 };
 
-/** V5 The Coastal Trading Depot - "You may swap two demand tokens on the island." */
+/** V5 The Coastal Trading Depot - "You may swap two demand tokens between 2 islands, then Deliver." */
 export const coastalTradingDepot: CardHandler = {
   difficulty: {
     score: 4,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: true, conditional: true, counts: false, interrupts: false },
     notes:
-      'THE FIRST CARD IN THE GAME THAT WRITES TO THE SHARED BOARD. It forced the mutable ' +
-      'demand tokens: fx.swapDemandTokens plus demandSwapOptions, with the whole of the rule ' +
-      'living in one disjunction in namedDemand. ' +
-      'LEGALITY: both tiles must still have a receipt space (tileHasRoom), so a delivery already ' +
-      'made is never retrospectively re-priced. Any two crates otherwise, same tile included. ' +
-      'The options are de-duped by the island configuration each swap would produce, because ' +
-      'crate ORDER carries no rule - offering two indistinguishable boards would double an ' +
-      'already large answer list. A pair of identical tokens is a no-op and is never offered. ' +
+      'THE FIRST CARD IN THE GAME THAT WRITES TO THE SHARED BOARD: fx.swapIslandTokens plus ' +
+      'tokenSwapOptions. ⭐ ON THE TOKEN ISLAND (16/09/2026) two tokens on two DIFFERENT island ' +
+      'cards trade places, each keeping its VP and its Worker; a finished tile holds nothing, so ' +
+      'a delivery already made is never re-priced. ⚠️ BUILDER DEFAULT: the lone token of a ' +
+      'half-finished tile may be swapped. A pair of identical tokens is a no-op and is never ' +
+      'offered. v42 prints "You may swap two demand tokens between 2 islands, then Deliver"; ' +
+      'the full v42 handler pass is owed (slice 6). ' +
       '"You may", so a skip is offered whenever there is anything to skip. ' +
       "⚠️ THE BOTS CANNOT JUDGE THIS CARD'S DENIAL USE. outcome.ts prices what the acting seat " +
       'GAINS and never rival harm (a deliberate law of the instrument), so every swap a bot ' +
@@ -346,7 +235,11 @@ export const coastalTradingDepot: CardHandler = {
   tasks: {
     swapDemand: {
       answers(data, state) {
-        const out: TaskAnswer[] = demandSwapOptions(data, state).map(
+        // ⭐ The token island (16/09/2026): two tokens on two DIFFERENT island
+        // cards, each keeping its VP and Worker. v42's text is "You may swap two
+        // demand tokens between 2 islands, then Deliver", which this already
+        // is; the full v42 handler pass is owed (slice 6).
+        const out: TaskAnswer[] = tokenSwapOptions(data, state).map(
           ([a, b]) => ({ kind: 'card', payload: { a, b } }) as TaskAnswer,
         );
         if (out.length > 0) out.push({ kind: 'skip' });
@@ -355,74 +248,28 @@ export const coastalTradingDepot: CardHandler = {
       resolve(fx, task, answer) {
         if (answer.kind === 'skip') return true;
         if (answer.kind !== 'card') throw new Error('swapDemand expects a card answer');
-        const { a, b } = answer.payload as { a: DemandRef; b: DemandRef };
-        fx.swapDemandTokens(task.pid, a, b);
+        const { a, b } = answer.payload as { a: TokenRef; b: TokenRef };
+        fx.swapIslandTokens(task.pid, a, b);
         return true;
       },
     },
   },
 };
 
-/** V6 The Trade Depot - "Turn an island demand token face down, then Deliver." */
+/** V6 The Trade Depot - v42: "Swap up to 2 cards between your hand and your Barn, then Draw 1." */
 export const tradeDepot: CardHandler = {
   difficulty: {
-    score: 2,
-    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: true, conditional: false, counts: false, interrupts: false },
+    score: 1,
+    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'The other half of the mutable demand tokens, and the one that points OUTWARD: a ' +
-      'face-down token opens a crate for the whole table and the Vegetable seat is simply first ' +
-      'in the queue. Theme: the second buyer is not fussy. ' +
-      'THE ELIGIBILITY FILTER IS GONE (19/08/2026). The card used to read "a demand token on a ' +
-      'tile where a receipt has already been taken", and that clause was the TIMING DIAL, not ' +
-      'flavour - it is what Dean\'s "this feels like a Tier 2 power" was answered with instead of ' +
-      'a roster move. The card could not fire on turn one because no tile had a receipt yet, and ' +
-      'it came alive exactly when the race started; it also protected what the island is FOR, by ' +
-      'keeping the colour puzzle hard while it mattered and soft only where the race was already ' +
-      'over. The sheet dropped it, so ANY token on any open tile is now a legal target and the ' +
-      'card is live from turn one. Two knock-on effects to watch in the arm: the parity trap it ' +
-      'relieves is now relievable before anybody has committed a barn to a colour, and V14 no ' +
-      'longer sits at the opposite end of the island from it (V14 wanted a VIRGIN tile and this ' +
-      'wanted a half-filled one, so the two used to be incapable of competing; both are now ' +
-      'unrestricted). The difficulty score drops 3 -> 2 with the condition: the card is a plain ' +
-      'pick-a-token now. ' +
-      'ENUMERATED LOCALLY (faceDownTargets, this file) rather than through demandFaceDownOptions, ' +
-      'which still carries the receipt filter and belongs to a shared file this pass does not ' +
-      'own. An illegal target is still never offered: a cornucopia and an already-blank token ' +
-      'are both skipped, because turning either buys nothing, and a tile with no receipt space ' +
-      'left is never re-priced retrospectively. ' +
-      'Mandatory as printed. It can now only be targetless on an island of cornucopias and blanks, ' +
-      'in which case the drain loop drops the task and the Deliver behind it still runs. ' +
-      '"THEN DELIVER" ADDED 2026-08-09 (Dean), same reasoning as V5: the card was bottom of its ' +
-      'band at 22% built and fired 0.0 times a game, because a GROW that produces nothing loses ' +
-      'to any GROW that draws. Opening the crate and filling it is one action. ' +
-      '⚠️ THE THRESHOLD IS STILL 3. It survived the 2026-08-09 review (3 -> 2 was recommended and ' +
-      'the Deliver was approved instead) and it is now the only brake left on a card that has ' +
-      'lost its timing gate. If V6 turns out to be the card that dissolves the colour puzzle, ' +
-      'the threshold is the dial, not the text.',
+      'Inert since 16/09/2026: its face-down demand token died with the crate island, and the ' +
+      'v42 text is a hand/barn swap. v42 handler owed (slice 6).',
   },
-  activate(fx, self) {
-    fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'faceDown', riders: {} });
-    // Queued after the face-down, so the delivery sees the opened crate. The
-    // face-down is mandatory but can have no legal target, in which case the
-    // drain loop drops it and the delivery still runs (the W15/A5 precedent).
-    fx.pushTask({ t: 'deliver', pid: self.seat, src: self.card });
-  },
-  tasks: {
-    faceDown: {
-      answers(data, state) {
-        return faceDownTargets(data, state).map(
-          (ref) => ({ kind: 'card', payload: { ...ref } }) as TaskAnswer,
-        );
-      },
-      resolve(fx, task, answer) {
-        if (answer.kind !== 'card') throw new Error('faceDown expects a card answer');
-        const { tile, crate } = answer.payload as { tile: string; crate: number };
-        fx.turnDemandFaceDown(task.pid, tile, crate);
-        return true;
-      },
-    },
-  },
+  // v42 handler owed (slice 6). The face-down token this card turned was
+  // deleted with the crate island on 16/09/2026, and v42's V6 prints "Swap up
+  // to 2 cards between your hand and your Barn, then Draw 1", so the card is
+  // INERT until that handler is written.
 };
 
 /** V7 The Export Depot - "Harvest one of your buildings, then Deliver." */
@@ -436,7 +283,7 @@ export const exportDepot: CardHandler = {
       'self-harvest valve, which every non-Wheat suit needs or its engine clog-locks. ' +
       'STRICT FULL GATE: "one of your buildings" prints no exception, and W11/W12/W13 all spell ' +
       'theirs out in words ("however many cards are on it"), so this is the plain full filter. ' +
-      'The Deliver is the full action - island claims AND balloon moves (DL-12) - and auto-skips ' +
+      'The Deliver is the full action and auto-skips ' +
       'when nothing is payable. The harvest resolves first because tasks answer in queue order, ' +
       'so its cards are in the barn before the delivery enumerates; on the W15/A5 "then" ' +
       'precedent the delivery still runs if the harvest had no target. ' +
@@ -461,63 +308,18 @@ export const exportDepot: CardHandler = {
 };
 
 /**
- * V8 The Regional Depot - "Move a Balloon to your Aerodrome and take its
- * reward."
+ * V8 The Regional Depot (v39: "Move a Balloon to your Aerodrome ...").
+ *
+ * ⛔ INERT SINCE 16/09/2026: the balloons and the Aerodrome were deleted (R1).
  */
+// v42 handler owed (slice 6)
 export const regionalDepot: CardHandler = {
   difficulty: {
-    score: 2,
-    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
+    score: 1,
+    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'TWO SUBTRACTIONS ON 19/08/2026, and they pull in opposite directions - read them ' +
-      'separately or the card looks like a straight buff, which it is not. ' +
-      'CHEAPER: the discard is gone. The old card read "Discard 1 card to move a Balloon to your ' +
-      'Aerodrome and take the reward of any Balloon"; the fee has been deleted outright, so the ' +
-      'flight is now free of everything except the GROW that fired it (the matching card into ' +
-      'the stack, plus the action). This is the one Depot that flies without spending hand. ' +
-      'WEAKER, AND THIS IS THE HALF TO NOTICE: "the reward of any Balloon" narrowed to "its ' +
-      'reward" - the reward of the balloon you actually moved. That was the whole card. Balloon ' +
-      'rewards are welded to colours (Draw 4 / Build at a discount of 4 / Sow 4 from hand / Gain ' +
-      '£4), so which reward you can have is an accident of where the balloons are parked, and V8 ' +
-      'was the only thing in the game that severed reachability from cargo. It is now V4 without ' +
-      'the fee, at one more build cost and one more threshold, and the ladder between them is a ' +
-      'price ladder rather than a power ladder. Whether that leaves it worth Tier 1 slot 5 is an ' +
-      'arm question. ' +
-      "The suppression seam went with it: landBalloon's `grantReward` flag existed for this card " +
-      'alone and now has no caller. It stays in actions.ts - a shared file - and its docstring ' +
-      'still names V8; that note is stale and is on the handoff list. ' +
-      'ROUTED THROUGH doMoveBalloon WITH A NULL SPEND, which is the engine\'s "a card effect ' +
-      'moved this for free" path: no cards leave any zone, but the raid hook and the deliver ' +
-      'hook both still fire, so V16 still pays a raided neighbour and V17 still draws. Not ' +
-      'doMoveBalloonFromHand with an empty fee, which would throw on the cost check. ' +
-      '⚠️ RULING H, OWED BY DEAN, IS PARTLY ANSWERED BY THE RETEXT: the magenta balloon\'s "Gain ' +
-      '£4" is a solitaire coin faucet, which the coin rule forbids, and V8 could previously ' +
-      'target it DELIBERATELY. It can now only reach it by moving magenta itself, which any ' +
-      'balloon move can do. The fault was always the reward and not the card, and it is now the ' +
-      "reward's alone. Still worth reporting the £4 balloon's take rate in the arm.",
-  },
-  activate(fx, self) {
-    fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'freeFlight', riders: {} });
-  },
-  tasks: {
-    freeFlight: {
-      answers(_data, state, task) {
-        const aero = state.aerodrome;
-        if (!aero) return [];
-        // The shared source rule: the centre or a rival's Aerodrome, never your
-        // own. Enumerated here as well as asserted in movableBalloon, so an
-        // empty sky drops the task instead of wedging it.
-        return aero.balloons
-          .filter((b) => b.at !== task.pid)
-          .map((b) => ({ kind: 'card', payload: { balloon: b.id } }) as TaskAnswer);
-      },
-      resolve(fx, task, answer) {
-        if (answer.kind !== 'card') throw new Error('freeFlight expects a card answer');
-        doMoveBalloon(fx, task.pid, answer.payload.balloon as string, null);
-        return true;
-      },
-    },
+      'Inert: its balloon text died with the balloons on 16/09/2026. v42 handler owed (slice 6).',
   },
 };
 
@@ -532,10 +334,9 @@ export const merchantGuild: CardHandler = {
       'for each different crop in your barn" and it fired 0.0 times a game at a 7-8% play rate, ' +
       'bottom of its band and flagged FUEL. The metric was the fault: the median barn is 1.5 in ' +
       'the middle third of a game and 2.0 in the last, because the barn is a PIPE (54 cards a ' +
-      'game flow through it by harvest) and not a store, and the wild substitution is what keeps ' +
-      'the level down. A "for each X" with nothing raising X is a lottery ticket (docs/innovation.md). ' +
+      'game flow through it by harvest) and not a store. A "for each X" with nothing raising X is a lottery ticket (docs/innovation.md). ' +
       'What replaces it is flat and upstream, and it is the suit in one line: Draw refills the ' +
-      'hand, which flights and visits both eat, and the card into the barn loads the thing the ' +
+      'hand, which visits eat, and the card into the barn loads the thing the ' +
       'island eats. It can never read zero. The handToBarn tail is a task so it can be skipped ' +
       'on an empty hand rather than wedging. A card-ability draw, so the Orchard modifier does ' +
       'not apply (DL-47).',
@@ -701,28 +502,26 @@ function refillCrops(data: GameData, state: GameState, seat: Seat): Suit[] {
   return live.filter((suit) => (tally[suit] ?? 0) > 0);
 }
 
-/** V14 The Distribution Center - "Deliver and take every receipt on the island." */
+/** V14 The Distribution Center - "Deliver and take every receipt on the island card." (v42 adds "then destroy this building", slice 6) */
 export const distributionCenter: CardHandler = {
   difficulty: {
     score: 3,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: true, conditional: true, counts: true, interrupts: false },
     notes:
-      'CHEAPER THAN IT READS, because deliveredBy is a Seat[] IN ORDER and the seat at index i ' +
-      'took vpByDeliveryOrder[i]. So a sweep is: pay the tile ONCE and push the seat as many ' +
-      'times as the tile has room for - 6 + 3 = 9 with no scoring rule of its own. That is ' +
-      "doDeliver's `receipts` argument, which defaults to 1 for every other delivery in the " +
-      'game. It emits one `delivered` event per receipt so nothing counting deliveries has to ' +
-      'learn about the sweep, and fires afterDeliver ONCE, because it is one Deliver and the ' +
-      'Farmstead pays per delivery rather than per receipt. ' +
-      'ISLAND ONLY: no balloon branch, because a balloon has no receipts. ' +
+      '⭐ ON THE TOKEN ISLAND (16/09/2026) IT IS THE takeAll CHOICE OF doDeliver: pay the tile ' +
+      'ONCE (the same 4 cards a first delivery pays) and take every token it still holds, both ' +
+      'on a virgin tile, the last one on a half-finished tile (an ordinary second delivery, ' +
+      '⚠️ BUILDER DEFAULT). It emits one `delivered` event per token so nothing counting ' +
+      'receipts has to learn about the sweep, and fires afterDeliver ONCE with both receipts, ' +
+      'because it is one Deliver. v42 adds "then destroy this building" and a cost of 3: owed ' +
+      'in slice 6. ' +
       '⚠️ RETEXTED AND RE-RULED ON 19/08/2026, AND THE RULING OVERRIDES THE PRINTED TEXT. The ' +
       'card now reads "Deliver and take EVERY RECEIPT ON THE ISLAND", which taken literally ' +
       'would empty the board. Dean has ruled it: it takes whatever receipts REMAIN ON THE TILE ' +
       'IT DELIVERED TO - two if nobody has delivered there, one if somebody has. Not "every ' +
-      'receipt on the island", and not always "both". So the count is read off the live tile at ' +
-      'resolve (deliveriesPerTile minus deliveredBy.length) rather than hard-coded, which is ' +
-      'also what keeps it honest under an overlay that changes the per-tile capacity. ' +
+      'receipt on the island", and not always "both". So the tokens are read off the live tile ' +
+      'at resolve rather than hard-coded. ' +
       'THE VIRGIN-TILE RESTRICTION IS GENUINELY GONE. The old card read "Deliver to a tile where ' +
       'nobody has delivered, and take both of its receipts", and the enumerator (virginDeliveries) ' +
       'filtered the shared option set down to untouched tiles. It now enumerates every payable ' +
@@ -730,10 +529,8 @@ export const distributionCenter: CardHandler = {
       'receipt. That makes it strictly more flexible and slightly less explosive: the 9-point ' +
       'double is now a choice you can miss rather than the only thing the card does, and a seat ' +
       'holding V14 for a virgin tile is choosing to wait rather than being forced to. ' +
-      'It also ends the happy accident that V6 and V14 pointed at opposite ends of the island; ' +
-      'both are unrestricted now. ' +
-      'The wild substitution and the face-down tokens still compose for free, because the ' +
-      'answers are filtered off deliverOptions rather than re-derived. ' +
+      'The answers are filtered off deliverOptions rather than re-derived, one per (tile, ' +
+      'payment), because the card takes every token and names none. ' +
       '⚠️ RULING G, OWED BY DEAN: two receipts count as TWO deliveries toward the six-delivery ' +
       'end trigger, which is what islandDeliveriesBy does for free and is the recommendation. ' +
       'The trigger check runs after BOTH pushes. If Dean rules the other way it is a real change ' +
@@ -747,22 +544,32 @@ export const distributionCenter: CardHandler = {
   tasks: {
     sweepDeliver: {
       answers(data, state, task) {
-        return deliverOptions(data, state, task.pid).map(
-          (o) =>
-            ({
-              kind: 'card',
-              // ⛔ THE TWO HEADS ARE GONE WITH THE VEGETABLE FARMSTEAD (v31), and
-              // the warning they carried is kept because it will recur the next
-              // time anything rides on a delivery. This is a `card` payload
-              // rather than the shared `deliver` answer, so it does NOT get the
-              // wiring in tasks.ts for free and has to carry every rider by
-              // hand - `deckHead` was missed exactly that way when it landed,
-              // crashing roughly 4% of games with "no <crop> card left to spend"
-              // on a spend that was only ever affordable because a deck card was
-              // supposed to arrive first.
-              payload: { tile: o.tile, spend: o.spend },
-            }) as TaskAnswer,
-        );
+        // One answer per (tile, payment): the token choice does not apply,
+        // because the card takes every token the tile holds.
+        const seen = new Set<string>();
+        return deliverOptions(data, state, task.pid)
+          .filter((o) => {
+            const key = `${o.tile}|${JSON.stringify(o.spend)}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          })
+          .map(
+            (o) =>
+              ({
+                kind: 'card',
+                // ⛔ THE TWO HEADS ARE GONE WITH THE VEGETABLE FARMSTEAD (v31), and
+                // the warning they carried is kept because it will recur the next
+                // time anything rides on a delivery. This is a `card` payload
+                // rather than the shared `deliver` answer, so it does NOT get the
+                // wiring in tasks.ts for free and has to carry every rider by
+                // hand - `deckHead` was missed exactly that way when it landed,
+                // crashing roughly 4% of games with "no <crop> card left to spend"
+                // on a spend that was only ever affordable because a deck card was
+                // supposed to arrive first.
+                payload: { tile: o.tile, spend: o.spend },
+              }) as TaskAnswer,
+          );
       },
       resolve(fx, task, answer) {
         if (answer.kind !== 'card') throw new Error('sweepDeliver expects a card answer');
@@ -770,14 +577,12 @@ export const distributionCenter: CardHandler = {
           tile: string;
           spend: Partial<Record<Suit, number>>;
         };
-        // "Every receipt" = every receipt THIS TILE has left (Dean, 19/08/2026).
-        // Read off the live island rather than assumed, so the card takes 2 from
-        // a virgin tile, 1 from a half-claimed one, and stays correct under an
-        // overlay that changes deliveriesPerTile.
-        const target = fx.state.island.tiles.find((t) => t.tile === tile);
-        if (!target) throw new Error(`Tile ${tile} is not in play`);
-        const receipts = deliveriesPerTile(fx.data) - target.deliveredBy.length;
-        doDeliver(fx, task.pid, tile, spend, undefined, receipts);
+        // "Every receipt" = every token THIS TILE still holds (Dean,
+        // 19/08/2026): both on a virgin tile for the one 4-card payment, the
+        // last one on a half-finished tile (an ordinary second delivery,
+        // ⚠️ BUILDER DEFAULT). v42 adds "then destroy this building": owed in
+        // slice 6.
+        doDeliver(fx, task.pid, tile, spend, { takeAll: true });
         return true;
       },
     },
@@ -806,8 +611,7 @@ export const internationalPort: CardHandler = {
       'other people. ' +
       'TWO SEPARATE DELIVERS, not one delivery scoring twice, which is the whole difference ' +
       'between this and V14. Each is a plain deliver task off the shared enumerator, so each is ' +
-      'PAID for separately, TARGETED separately, takes ONE receipt, and may be an island claim ' +
-      'or a balloon move independently of the other (DL-12). Two tasks rather than one task with ' +
+      'PAID for separately, TARGETED separately, and takes ONE receipt. Two tasks rather than one task with ' +
       'a budget of 2, because the deliver task has no budget field and does not need one - the ' +
       'queue is the counter. ' +
       'MANDATORY AS PRINTED, and it auto-skips per delivery: the drain loop drops a deliver task ' +
@@ -830,75 +634,50 @@ export const internationalPort: CardHandler = {
 };
 
 /**
- * V16 The Market Signal Tower - "Whenever a neighbour moves a Balloon from your
- * Aerodrome, Draw 1."
+ * V16 The Market Signal Tower (v39: "Whenever a neighbour moves a Balloon ...").
+ *
+ * ⛔ INERT SINCE 16/09/2026: the balloons and the Aerodrome were deleted (R1).
  */
+// v42 handler owed (slice 6)
 export const marketSignalTower: CardHandler = {
   difficulty: {
-    score: 2,
-    verified: { prompts: false, crossPlayer: true, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
+    score: 1,
+    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'It pays for BEING RAIDED, and since v31 it pays in cards (plan section 3.3). ' +
-      'Owner-scoped on the afterBalloonMove hook, guarded both ways - the balloon left THIS ' +
-      "seat's Aerodrome and somebody else took it - so it can never fire on its owner's own " +
-      "flight. crossPlayer: it fires for its owner mid a rival's turn, and it is now the " +
-      'ONLY place in the suit that happens, D17 and V15 having gone owner-scoped. ' +
-      'Together with V19 and re-flying, it makes a parked balloon worth three different ' +
-      'things you can only have one of: 2 VP if you keep it, a card if a neighbour comes for ' +
-      'it, or a fresh reward if you fly it out again. That triangle costs no rules at all. ' +
-      '⚠️ £2 became Draw 1, so in real terms the card got stronger: the raid now refunds ' +
-      'most of a flight rather than a fifth of one. ' +
-      '⚠️ Assertion 12 (a12-balloon-raid) reports the score gap for raided seats, and this card ' +
-      'plus V19 deliberately make being raided profitable. Re-read it before believing it.',
-  },
-  on: {
-    afterBalloonMove(fx, event, self) {
-      if (event.from !== self.seat || event.seat === self.seat) return;
-      drawN(fx, self.seat, self.card, 1);
-    },
+      'Inert: its balloon text died with the balloons on 16/09/2026. v42 handler owed (slice 6).',
   },
 };
 
-/** V17 The Dockworker's Union - "Whenever you move a Balloon, Draw 1." */
+/**
+ * V17 The Dockworker's Union (v39: "Whenever you move a Balloon, Draw 1.").
+ *
+ * ⛔ INERT SINCE 16/09/2026: the balloons and the Aerodrome were deleted (R1).
+ */
+// v42 handler owed (slice 6)
 export const dockworkersUnion: CardHandler = {
   difficulty: {
-    score: 2,
-    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: true },
+    score: 1,
+    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'LOAD-BEARING RATHER THAN DECORATIVE, and the first card a Vegetable seat should buy. A ' +
-      'flight costs 2 hand cards and this refunds 1, which is the difference between the balloon ' +
-      'layer being affordable and being a hand-shredder. ' +
-      'ACTOR-scoped, and it fires on EVERY move the owner makes - the plain barn-paid Deliver ' +
-      "action, a hand-paid Depot flight, V8's - because the hook is one and the card names no " +
-      'route. That is the mirror image of the Farmstead, which fires only on the ISLAND half; ' +
-      'between them they split the Deliver action in two, and that split is why "a balloon move ' +
-      'IS the Deliver action" has to stay printed in the rulebook.',
-  },
-  on: {
-    afterBalloonMove(fx, event, self) {
-      if (event.seat !== self.seat) return;
-      drawN(fx, self.seat, self.card, 1);
-    },
+      'Inert: its balloon text died with the balloons on 16/09/2026. v42 handler owed (slice 6).',
   },
 };
 
-/** V19 The Market Gazette - "Game end: 2 VP for each Balloon at your Aerodrome." */
+/**
+ * V19 The Market Gazette (v39: "Game end: 2 VP for each Balloon at your Aerodrome.").
+ *
+ * ⛔ INERT SINCE 16/09/2026: the balloons and the Aerodrome were deleted (R1).
+ */
+// v42 handler owed (slice 6)
 export const marketGazette: CardHandler = {
   difficulty: {
     score: 1,
-    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: true },
-    asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
+    verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'The fleet you kept, and the third corner of the parked-balloon triangle (see V16). Caps ' +
-      'at 8 with all four balloons, which against a winning score of ~38 is a lot - but holding ' +
-      'four means never re-flying one, and every rival with a Depot can come and take them. ' +
-      'Reads the module directly, so it is simply worth 0 in a game with no Vegetable seat, ' +
-      'which cannot happen: only a Vegetable seat can build it.',
-  },
-  gameEnd(_data, state, seat) {
-    return 2 * (state.aerodrome?.balloons.filter((b) => b.at === seat).length ?? 0);
+      'Inert: its balloon text died with the balloons on 16/09/2026. v42 handler owed (slice 6).',
   },
 };
 

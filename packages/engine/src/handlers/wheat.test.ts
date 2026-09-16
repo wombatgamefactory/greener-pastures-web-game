@@ -423,6 +423,20 @@ describe('Tier 1 - the five FIELDs, both printed lines each', () => {
   });
 
   /**
+   * ⭐ v42: "each of your Wheat buildings", so a Wheat Tier 2 takes a sow too,
+   * and a foreign building and the Notice Board do not.
+   */
+  it('W6 Barley Field (v42): one sow per Wheat building of any tier, never a foreign one', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W6', 'W9', 'A9');
+    dealTo(data, s, WHEAT, 'W7', 'W8');
+    fill(s, 'W6');
+    const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W6' });
+    const sows = applied.state.tasks.filter((t) => t.t === 'sow');
+    expect(sows.map((t) => (t.t === 'sow' ? t.targets : null))).toEqual([own('W6'), own('W9')]);
+  });
+
+  /**
    * ⛔ SIMPLIFIED 19/08/2026 (v30, group D). The GROW used to add TWO cards -
    * your payment plus the top of a deck - which is what made threshold 3 fill in
    * one activation from a seed. Both the deck sow and the seed are gone, so the
@@ -522,32 +536,73 @@ describe('Tier 1 - the five FIELDs, both printed lines each', () => {
 });
 
 describe('Tier 2', () => {
-  it('W9 Mill House: one deck-top sow per FIELD you own', () => {
+  /**
+   * ⭐ v42: "Sow a deck card on up to 3 of your buildings that are empty." One
+   * deck and one building per answer, a stop answer, each building at most once,
+   * and only a stack that is empty when the card lands. Never the Notice Board.
+   */
+  it('W9 Mill House (v42): up to three EMPTY buildings of any suit, one deck card each', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W9', 'W4', 'W5', 'A9');
+    dealTo(data, s, WHEAT, 'W6');
+    loadStack(data, s, WHEAT, 'W5', 1, 'apiary'); // not empty: never a target
+    const grown = growBuilding(data, s, WHEAT, 'W9', 'W6');
+    expect(grown.state.tasks.map((t) => (t.t === 'card' ? t.kind : t.t))).toEqual(['deckSow']);
+
+    const answers = pendingAnswers(data, grown.state);
+    const onto = new Set(
+      answers.flatMap((a) => (a.kind === 'card' ? [a.payload.card as string] : [])),
+    );
+    // W9 holds its own payment and W5 a card; W3 is a Notice Board (S11).
+    expect([...onto].sort()).toEqual(['A9', 'W4']);
+    expect(answers).toContainEqual({ kind: 'skip' });
+
+    const pick = (list: TaskAnswer[]) =>
+      list.find((a) => a.kind === 'card') ?? (list[0] as TaskAnswer);
+    const done = answerAll(grown.state, pick);
+    expect(buildingOf(done, WHEAT, 'W4').stack).toHaveLength(1);
+    expect(buildingOf(done, WHEAT, 'A9').stack).toHaveLength(1);
+    expect(buildingOf(done, WHEAT, 'W5').stack).toHaveLength(1);
+    expect(buildingOf(done, WHEAT, 'W3').stack).toHaveLength(0);
+  });
+
+  it('W9 Mill House (v42): the stop answer ends it after one card', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W9', 'W4', 'W5');
     dealTo(data, s, WHEAT, 'W6');
-    loadStack(data, s, WHEAT, 'W9', 1, 'apiary'); // threshold 2: the payment fills it
     const grown = growBuilding(data, s, WHEAT, 'W9', 'W6');
-    const sows = grown.state.tasks.filter((t) => t.t === 'sowFromDeck');
-    expect(sows).toHaveLength(2);
-    expect(sows.map((t) => (t.t === 'sowFromDeck' ? t.targets : null))).toEqual([
-      own('W4'),
-      own('W5'),
-    ]);
-    const done = answerAll(grown.state);
-    expect(buildingOf(done, WHEAT, 'W4').stack).toHaveLength(1);
-    expect(buildingOf(done, WHEAT, 'W5').stack).toHaveLength(1);
+    const first = pendingAnswers(data, grown.state).find((a) => a.kind === 'card') as TaskAnswer;
+    const one = answerTask(data, grown.state, first).state;
+    expect(one.tasks).toHaveLength(1);
+    const stopped = answerTask(data, one, { kind: 'skip' }).state;
+    expect(stopped.tasks).toHaveLength(0);
+    const loaded =
+      buildingOf(stopped, WHEAT, 'W4').stack.length + buildingOf(stopped, WHEAT, 'W5').stack.length;
+    expect(loaded).toBe(1);
   });
 
-  it('W10 The Furrow: the entire hand into the barn, with no choice at all', () => {
+  it('W10 The Furrow (v42): exactly three hand cards of your choosing, no stop answer', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W10');
-    dealTo(data, s, WHEAT, 'W4', 'W5', 'W6', 'W7');
+    dealTo(data, s, WHEAT, 'W4', 'W5', 'W6', 'W7', 'W8');
     loadStack(data, s, WHEAT, 'W10', 1, 'apiary'); // threshold 2
-    const grown = growBuilding(data, s, WHEAT, 'W10', 'W7');
-    expect(grown.audit.tasksPushed).toBe(0);
-    expect(player(grown.state, WHEAT).hand).toEqual([]);
-    expect(player(grown.state, WHEAT).barn).toEqual(['W4', 'W5', 'W6']);
+    const grown = growBuilding(data, s, WHEAT, 'W10', 'W8');
+    expect(grown.state.tasks).toEqual([{ t: 'handToBarn', pid: WHEAT, src: 'W10', remaining: 3 }]);
+    expect(pendingAnswers(data, grown.state).some((a) => a.kind === 'skip')).toBe(false);
+    const done = answerAll(grown.state);
+    expect(player(done, WHEAT).barn).toHaveLength(3);
+    expect(player(done, WHEAT).hand).toHaveLength(1);
+  });
+
+  it('W10 The Furrow (v42): a hand of fewer than three banks what it has', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W10');
+    dealTo(data, s, WHEAT, 'W4', 'W8');
+    const grown = growBuilding(data, s, WHEAT, 'W10', 'W8');
+    expect(grown.state.tasks).toEqual([{ t: 'handToBarn', pid: WHEAT, src: 'W10', remaining: 1 }]);
+    const done = answerAll(grown.state);
+    expect(player(done, WHEAT).barn).toEqual(['W4']);
+    expect(player(done, WHEAT).hand).toEqual([]);
   });
 
   /**
@@ -584,31 +639,29 @@ describe('Tier 2', () => {
     expect(pendingAnswers(data, grown.state)).toContainEqual({ kind: 'building', card: 'W4' });
   });
 
-  it('W12 Crop Rotation: every FIELD with 1 or more cards, never itself', () => {
+  /**
+   * ⭐ v42: "every Wheat building", so W12 is one of its own targets (its grow
+   * payment is on it), and a foreign building is not.
+   */
+  it('W12 Crop Rotation (v42): every loaded Wheat building, itself included, never a foreign one', () => {
     const s = base();
-    buildFor(data, s, WHEAT, 'W12', 'W4', 'W5', 'W6');
+    buildFor(data, s, WHEAT, 'W12', 'W4', 'W5', 'W6', 'A9');
     dealTo(data, s, WHEAT, 'W7');
     loadStack(data, s, WHEAT, 'W4', 1, 'apiary'); // partial
     loadStack(data, s, WHEAT, 'W5', 2, 'apiary'); // full
+    loadStack(data, s, WHEAT, 'A9', 1, 'orchard'); // foreign: stays
     // W6 left empty: nothing to harvest there.
     loadStack(data, s, WHEAT, 'W12', 1, 'apiary'); // threshold 2
     const grown = growBuilding(data, s, WHEAT, 'W12', 'W7');
     expect(buildingOf(grown.state, WHEAT, 'W4').stack).toEqual([]);
     expect(buildingOf(grown.state, WHEAT, 'W5').stack).toEqual([]);
-    expect(player(grown.state, WHEAT).barn).toHaveLength(3);
-    // W12 is not a FIELD: its own stack survives its own cascade.
-    expect(buildingOf(grown.state, WHEAT, 'W12').stack).toHaveLength(2);
+    expect(buildingOf(grown.state, WHEAT, 'W12').stack).toEqual([]);
+    expect(buildingOf(grown.state, WHEAT, 'A9').stack).toHaveLength(1);
+    // 1 + 2 + W12's own 2.
+    expect(player(grown.state, WHEAT).barn).toHaveLength(5);
   });
 });
 
-/**
- * ⛔ THE ACTION CARD IS GONE (19/08/2026). Dean's ruling - "The concept of an
- * ACTION was never requested. They are all GROW." - turns all three of these
- * into ordinary owner-activated buildings, so the first test in this block is
- * the old one with every assertion inverted, and the rest drive the cards
- * through a GROW instead of a `cardMove`. What each card DOES is unchanged
- * except on W14, which was separately rewritten to its printed text.
- */
 describe('Tier 3 - three ordinary GROW buildings', () => {
   it('all three print a threshold and a wild activation, so all three are grown', () => {
     for (const id of ['W13', 'W14', 'W15']) {
@@ -633,6 +686,30 @@ describe('Tier 3 - three ordinary GROW buildings', () => {
     expect(buildingOf(grown.state, WHEAT, 'W13').stack).toEqual([]);
     expect(player(grown.state, WHEAT).barn).toContain('W20');
     expect(player(grown.state, WHEAT).barn).toHaveLength(4); // 1 + 2 + its own fee
+  });
+
+  /**
+   * ⭐ v42 "(including 0)": an EMPTY building is harvested, so its own "When
+   * Harvested" line fires; a Notice Board below its 3+ minimum is not.
+   */
+  it('W13 The Bakery (v42): empty buildings are harvested too, a Notice Board only at 3+', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W13', 'W5'); // W5 empty
+    loadStack(data, s, WHEAT, 'W3', 2, 'apiary'); // the Notice Board, below 3
+    const grown = growTier3(s, 'W13');
+    const harvested = grown.events.flatMap((e) => (e.e === 'harvested' ? [e.building] : []));
+    expect(harvested.sort()).toEqual(['W13', 'W5']);
+    // W5's "When Harvested: Draw 2" fired off an empty stack.
+    expect(grown.state.tasks).toContainEqual(
+      expect.objectContaining({ t: 'draw', src: 'W5', see: 2 }),
+    );
+    expect(buildingOf(grown.state, WHEAT, 'W3').stack).toHaveLength(2);
+
+    const t = base();
+    buildFor(data, t, WHEAT, 'W13');
+    loadStack(data, t, WHEAT, 'W3', 3, 'apiary');
+    const full = growTier3(t, 'W13');
+    expect(buildingOf(full.state, WHEAT, 'W3').stack).toEqual([]);
   });
 
   /**
@@ -714,14 +791,21 @@ describe('Tier 3 - three ordinary GROW buildings', () => {
     expect(player(done, WHEAT).hand).toHaveLength(4);
   });
 
-  it('W15 The Patisserie: the top card of every live deck, straight to the barn', () => {
+  it('W15 The Patisserie (v42): one deck chosen, its top three cards to the barn', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W15');
-    const tops = data.cards.suits.map((suit) => s.decks[suit][0]);
+    const tops = s.decks.dairy.slice(0, 3);
     const grown = growTier3(s, 'W15');
-    expect(grown.audit.tasksPushed).toBe(0);
-    // The fee is on the stack, never in the barn: only the deck tops arrive.
-    expect(player(grown.state, WHEAT).barn).toEqual(tops);
+    expect(grown.state.tasks).toHaveLength(1);
+    const answers = pendingAnswers(data, grown.state);
+    expect(answers).toHaveLength(data.cards.suits.length);
+    const done = answerTask(data, grown.state, {
+      kind: 'card',
+      payload: { suit: 'dairy' },
+    } as TaskAnswer).state;
+    // The fee is on the stack, never in the barn: only the deck cards arrive.
+    expect(player(done, WHEAT).barn).toEqual(tops);
+    expect(done.tasks).toEqual([]);
   });
 
   /**
@@ -767,7 +851,10 @@ describe('the Power cards', () => {
       payment: ['W5'],
     });
     expect(applied.state.tasks.filter((t) => t.t === 'draw' && t.src === 'W1')).toEqual([]);
-    expect(cardById(data, 'W1').abilityText).toBe('');
+    // v42 prints the own-crop scorer on the Barn (A105) and nothing else.
+    expect(cardById(data, 'W1').abilityText).toBe(
+      'Game end: 1 VP for each Wheat card you have built.',
+    );
     expect(handlerFor('W1')?.on).toBeUndefined();
   });
 
@@ -783,7 +870,11 @@ describe('the Power cards', () => {
     expect(applied.state.tasks.filter((t) => t.t === 'draw' && t.src === 'W1')).toEqual([]);
   });
 
-  it('W16 The Granary: once per harvest ACTION, not once per building', () => {
+  /**
+   * ⭐ THE ONCE-PER-TURN GUARD IS GONE (Dean, 15/09/2026): card text fires every
+   * time its trigger happens, and each building harvested is its own trigger.
+   */
+  it('W16 The Granary: draws once for EVERY building harvested', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W16', 'W12', 'W4', 'W5');
     dealTo(data, s, WHEAT, 'W7');
@@ -792,7 +883,9 @@ describe('the Power cards', () => {
     loadStack(data, s, WHEAT, 'W12', 1, 'apiary');
     const grown = growBuilding(data, s, WHEAT, 'W12', 'W7');
     const granary = grown.state.tasks.filter((t) => t.t === 'draw' && t.src === 'W16');
-    expect(granary).toHaveLength(1);
+    // W4, W5 and W12 itself (v42: W12 is a Wheat building).
+    expect(granary).toHaveLength(3);
+    expect(grown.state.turn.firedThisTurn).not.toContain('W16');
   });
 
   /**
@@ -838,25 +931,22 @@ describe('the Power cards', () => {
   });
 
   /**
-   * THE ONCE-A-TURN GUARD (rule 12(c), 2026-08-11: no card's text fires twice in
-   * a turn), on the shared `turn.firedThisTurn` list. Nothing in the shipped
-   * turn can produce two visits - one bonus slot, and A Helping Hand grants one
-   * Visit AND one Collect rather than two of either - so this drives the hook
-   * directly to prove the guard rather than pretending a second visit is
-   * reachable.
+   * ⭐ THE ONCE-A-TURN GUARD IS GONE (Dean, 15/09/2026): a second visit in the
+   * same turn draws a second card. Driven through the hook directly, as the old
+   * guard test was.
    */
-  it('W17 The Pie Shop: fires once a turn, however many visits land', () => {
+  it('W17 The Pie Shop: fires on every visit, a second one in the same turn included', () => {
     const s = armBase();
     buildFor(visitArm, s, WHEAT, 'W17');
     buildFor(visitArm, s, APIARY, 'A5');
     loadStack(visitArm, s, APIARY, 'A5', 2, 'orchard');
     s.turnPlayer = APIARY;
     const once = apply(visitArm, s, visitMove(APIARY, WHEAT, 'wheat'));
-    expect(once.state.turn.firedThisTurn).toContain('W17');
+    expect(once.state.turn.firedThisTurn).not.toContain('W17');
     const again = { ...once.state, tasks: [] };
     const fx = new Fx(visitArm, again, APIARY);
     fireHook(fx, 'afterVisit', { visitor: APIARY, host: WHEAT, self: false });
-    expect(fx.state.tasks.some((t) => t.t === 'draw' && t.src === 'W17')).toBe(false);
+    expect(fx.state.tasks.some((t) => t.t === 'draw' && t.src === 'W17')).toBe(true);
   });
 
   /**
