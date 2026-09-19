@@ -513,10 +513,15 @@ export function noticeBoardPowerLegal(
       // of the resolution: the gate prices the build the power pushes.
       return anyBuildOption(data, state, seat, hand, dairyBoardMods(data));
     case 'wheat':
-      // "Harvest one of your buildings, then put 1 card from your hand into
-      // your barn." EITHER leg makes it live: a building the harvest gate
-      // accepts, or a card left in hand for the barn. That second leg is
-      // ruling C88's whole purpose.
+      // ⭐⭐ "Harvest one of your buildings, even if it is 1 card short of
+      // full." (Dean, 19/09/2026, sheet v44 - REPLACES C88's "...then put 1
+      // card from your hand into your barn", see `wheatHarvestGate`'s and
+      // `wheatBarn`'s knob comments for the ruling in full, including the
+      // Notice-Board-at-2 reversal of the 15/09/2026 rule.) `wheatBarn` ships
+      // 0, so on the shipped game only the first leg can make this live; the
+      // `|| (numbers.wheatBarn > 0 && ...)` half is dead weight on the
+      // default and survives only for the pre-19/09 pin (C88's whole purpose
+      // there: a card left in hand for the barn when no building qualifies).
       //
       // ⛔ THE GATE AND THE TASK MUST ASK THE SAME QUESTION. The task pushes
       // `filter: numbers.wheatHarvestGate`, so this must read the same leaf and

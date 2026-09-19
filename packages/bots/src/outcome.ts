@@ -253,10 +253,13 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
       // D14: the building leaves the tableau and becomes freight.
       return event.seat === me ? weight(w, 'harvest') : 0;
 
-    // ⭐ v42's barn cards LEAVING a barn (16/09/2026): V8, V10, V12 and V15
-    // discard one, V6 swaps one into the hand. Charged at the same harvest rate
-    // a card arriving is paid, so a discard is never free; the card V6 hands
+    // Barn cards LEAVING a barn by discard. Charged at the same harvest rate a
+    // card arriving is paid, so a discard is never free; the card V6 hands
     // over is also priced at the blind hand rate `cardsToHand` uses.
+    // ⭐ v45 RETEXT (19/09/2026, tasks/v45-rulings-v1.md): V10 and V12 no
+    // longer discard from the barn (R1, R4 - the barn is only counted, never
+    // spent). V8 and V15 are this event's only producers now; V6 still swaps
+    // one into the hand via `barnToHand` below.
     case 'barnDiscarded':
       return event.seat === me ? -weight(w, 'harvest') : 0;
     case 'barnToHand':

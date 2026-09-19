@@ -228,7 +228,7 @@ describe('V4 The Market Stall Depot - a deck card into a small barn', () => {
   });
 });
 
-describe('V6 The Trade Depot - swap up to 2 hand and barn cards, then Draw 1', () => {
+describe('V6 The Trade Depot - swap up to 2 hand and barn cards, then Draw 2 (v45)', () => {
   it('swaps one for one, twice at most, then draws', () => {
     const s = base();
     buildFor(data, s, VEG, 'V6');
@@ -236,7 +236,8 @@ describe('V6 The Trade Depot - swap up to 2 hand and barn cards, then Draw 1', (
     dealTo(data, s, VEG, 'A4');
     let out = grow(s, VEG, 'V6', 'V10').state;
     expect(out.tasks[0]).toMatchObject({ t: 'card', kind: 'tradeSwap' });
-    expect(out.tasks[1]).toMatchObject({ t: 'draw', src: 'V6', see: 1, keep: 1 });
+    // v45 (19/09/2026): Draw 2, was Draw 1 on v42.
+    expect(out.tasks[1]).toMatchObject({ t: 'draw', src: 'V6', see: 2, keep: 2 });
     const answers = pendingAnswers(data, out);
     // One answer per (hand card, barn crop), plus a skip.
     expect(answers).toContainEqual({ kind: 'skip' });
@@ -254,13 +255,13 @@ describe('V6 The Trade Depot - swap up to 2 hand and barn cards, then Draw 1', (
     expect(out.tasks[0]).toMatchObject({ t: 'draw', src: 'V6' });
   });
 
-  it('may swap nothing and still draws 1', () => {
+  it('may swap nothing and still draws 2', () => {
     const s = base();
     buildFor(data, s, VEG, 'V6');
     barnTo(s, VEG, 'W4');
     dealTo(data, s, VEG, 'A4');
     const out = answerTask(data, grow(s, VEG, 'V6', 'V10').state, { kind: 'skip' }).state;
-    expect(out.tasks[0]).toMatchObject({ t: 'draw', src: 'V6', see: 1 });
+    expect(out.tasks[0]).toMatchObject({ t: 'draw', src: 'V6', see: 2, keep: 2 });
     expect(barnCrops(out, VEG)).toEqual(['wheat']);
   });
 });
@@ -423,59 +424,67 @@ describe('the Tier 2 counters', () => {
   });
 });
 
-describe('V10 The Supply House - discard up to 2, a plain action for each', () => {
-  it("discards two, then queues each crop's plain action in discard order", () => {
+describe('V10 The Supply House - draw 1 per barn card, mandatory and uncapped (v45, R1-R3)', () => {
+  it('draws once per barn card, one draw task per crop present, and nothing leaves the barn (R1)', () => {
     const s = base();
     buildFor(data, s, VEG, 'V10');
-    barnTo(s, VEG, 'O4', 'D4', 'W4');
-    let out = grow(s, VEG, 'V10', 'V11').state;
-    // "Up to": a skip is offered from the first answer.
-    expect(pendingAnswers(data, out)).toContainEqual({ kind: 'skip' });
-    out = answerWith(out, { suit: 'orchard' }).state;
-    expect(out.tasks[0]).toMatchObject({ t: 'card', kind: 'barnDiscard' });
-    dealTo(data, out, VEG, 'D5', 'D6'); // something to build with
-    out = answerWith(out, { suit: 'dairy' }).state;
-    expect(barnCrops(out, VEG)).toEqual(['wheat']);
-    // Orchard is Draw 2 (the plain Draw), Dairy is the plain Build.
+    barnTo(s, VEG, 'O4', 'O5', 'D4');
+    const out = grow(s, VEG, 'V10', 'V11').state;
+    // No task of its own: there is no choice left for the barn to decide. One
+    // draw task per crop present - `data.cards.suits` order (dairy before
+    // orchard), not barn order.
     expect(out.tasks.map((t) => [t.t, srcOf(t)])).toEqual([
       ['draw', 'V10'],
-      ['build', 'V10'],
+      ['draw', 'V10'],
     ]);
-    expect(out.tasks[0]).toMatchObject({ see: 2, keep: 2 });
+    const sizes = out.tasks.map((t) => (t.t === 'draw' ? t.see : -1)).sort();
+    expect(sizes).toEqual([1, 2]); // 1 dairy card, 2 orchard cards
+    for (const t of out.tasks) {
+      if (t.t !== 'draw') continue;
+      const suits = t.revealed.map((id) => cardById(data, id).suit);
+      expect(new Set(suits).size).toBe(1); // each task is a single crop
+    }
+    // R1: the barn cards STAY, so the card can fire again next turn.
+    expect(barnCrops(out, VEG)).toEqual(['dairy', 'orchard', 'orchard']);
   });
 
-  it('a skip after one discard performs one action', () => {
-    const s = base();
-    buildFor(data, s, VEG, 'V10');
-    barnTo(s, VEG, 'O4', 'D4');
-    let out = grow(s, VEG, 'V10', 'V11').state;
-    out = answerWith(out, { suit: 'orchard' }).state;
-    out = answerTask(data, out, { kind: 'skip' }).state;
-    expect(out.tasks.map((t) => [t.t, srcOf(t)])).toEqual([['draw', 'V10']]);
-    expect(barnCrops(out, VEG)).toEqual(['dairy']);
-  });
-
-  it('an Apiary card is a GROW, and the barn emptying ends the step', () => {
-    const s = base();
-    buildFor(data, s, VEG, 'V10', 'V4');
-    barnTo(s, VEG, 'A4');
-    let out = grow(s, VEG, 'V10', 'V11').state;
-    dealTo(data, out, VEG, 'V9');
-    out = answerWith(out, { suit: 'apiary' }).state;
-    expect(out.tasks[0]).toMatchObject({ t: 'grow', src: 'V10' });
-    // V10 has already activated this turn, so only V4 can be grown.
-    const targets = pendingAnswers(data, out).map((a) => (a.kind === 'grow' ? a.building : null));
-    expect(targets).toContain('V4');
-    expect(targets).not.toContain('V10');
-  });
-
-  it('skipping at once does nothing', () => {
+  it('the draw is mandatory: no skip is ever offered (R2)', () => {
     const s = base();
     buildFor(data, s, VEG, 'V10');
     barnTo(s, VEG, 'O4');
-    const out = answerTask(data, grow(s, VEG, 'V10', 'V11').state, { kind: 'skip' }).state;
+    const out = grow(s, VEG, 'V10', 'V11').state;
+    expect(pendingAnswers(data, out)).not.toContainEqual({ kind: 'skip' });
+  });
+
+  it('a barn of six draws six, uncapped (R3)', () => {
+    const s = base();
+    buildFor(data, s, VEG, 'V10');
+    barnTo(s, VEG, 'O4', 'O5', 'O6', 'O7', 'O8', 'O9');
+    const out = grow(s, VEG, 'V10', 'V11').state;
+    expect(out.tasks).toHaveLength(1);
+    const draw = out.tasks[0];
+    expect(draw).toMatchObject({ t: 'draw', src: 'V10', see: 6, keep: 6 });
+    const revealed = draw?.t === 'draw' ? draw.revealed : [];
+    expect(revealed).toHaveLength(6);
+    expect(revealed.every((id) => cardById(data, id).suit === 'orchard')).toBe(true);
+    expect(barnCrops(out, VEG)).toHaveLength(6); // R1: still all six, untouched
+  });
+
+  it('a crop whose deck has run dry draws only what is left', () => {
+    const s = base();
+    buildFor(data, s, VEG, 'V10');
+    barnTo(s, VEG, 'O4', 'O5');
+    s.decks.orchard = []; // deck AND discard both empty: nothing left to draw
+    const out = grow(s, VEG, 'V10', 'V11').state;
+    expect(out.tasks).toHaveLength(0); // drawFromCropDeck pushes nothing on zero cards taken
+    expect(barnCrops(out, VEG)).toEqual(['orchard', 'orchard']);
+  });
+
+  it('does nothing on an empty barn', () => {
+    const s = base();
+    buildFor(data, s, VEG, 'V10');
+    const out = grow(s, VEG, 'V10', 'V11').state;
     expect(out.tasks).toHaveLength(0);
-    expect(barnCrops(out, VEG)).toEqual(['orchard']);
   });
 });
 
@@ -534,8 +543,8 @@ describe('V11 The Market Master - move stack cards to the barn, per barn card', 
   });
 });
 
-describe("V12 The Auction House - discard a barn card, that crop's board power", () => {
-  it("an Orchard card is the Orchard board's Draw 4, with no visit", () => {
+describe('V12 The Auction House - the Notice Board action of a suit in your Barn, for free (v45, R4)', () => {
+  it("an Orchard card is the Orchard board's Draw 4, with no visit and no discard", () => {
     const s = base();
     buildFor(data, s, VEG, 'V12');
     barnTo(s, VEG, 'O4');
@@ -548,9 +557,38 @@ describe("V12 The Auction House - discard a barn card, that crop's board power",
     // Not a visit: no fee placed, no visited event, no board latched.
     expect(after.events.some((e) => e.e === 'visited' || e.e === 'cardPlaced')).toBe(false);
     expect(after.state.turn.bonusUsed).toEqual([]);
+    // R4: the barn only named the suit. Nothing was discarded.
+    expect(after.events.some((e) => e.e === 'barnDiscarded')).toBe(false);
+    expect(barnCrops(after.state, VEG)).toEqual(['orchard']);
   });
 
-  it('a Vegetable card asks "can you deliver" AFTER the discard: the fallback', () => {
+  it('names a suit in the Barn for free: nothing is discarded, spent or moved (R4)', () => {
+    const s = base();
+    buildFor(data, s, VEG, 'V12');
+    barnTo(s, VEG, 'O4', 'O5');
+    const after = answerWith(grow(s, VEG, 'V12', 'V10').state, { suit: 'orchard' });
+    expect(barnCrops(after.state, VEG)).toEqual(['orchard', 'orchard']);
+    expect(after.events.some((e) => e.e === 'barnDiscarded')).toBe(false);
+  });
+
+  it('offers one answer per suit present in the Barn, and no skip (mandatory choice)', () => {
+    const s = base();
+    buildFor(data, s, VEG, 'V12');
+    barnTo(s, VEG, 'O4', 'D4');
+    const out = grow(s, VEG, 'V12', 'V10').state;
+    const answers = pendingAnswers(data, out);
+    expect(answers).not.toContainEqual({ kind: 'skip' });
+    expect(answers.filter((a) => a.kind === 'card')).toHaveLength(2);
+  });
+
+  it('does nothing on an empty barn', () => {
+    const s = base();
+    buildFor(data, s, VEG, 'V12');
+    const out = grow(s, VEG, 'V12', 'V10').state;
+    expect(out.tasks).toHaveLength(0);
+  });
+
+  it('a Vegetable card asks "can you deliver" when the power fires: the fallback', () => {
     const s = base();
     buildFor(data, s, VEG, 'V12');
     barnTo(s, VEG, 'V5');
@@ -653,7 +691,8 @@ describe('the Tier 3 cards (converted from ACTION to GROW)', () => {
     expect(player(out, VEG).tableau.some((b) => b.card === 'V14')).toBe(false);
     expect(out.discards.vegetable).toEqual(expect.arrayContaining(['V14', 'V11']));
     expect(after.events).toContainEqual({ e: 'demolished', seat: VEG, card: 'V14' });
-    // V17 does not fire: neither the payment nor the demolition is a barn discard.
+    // Not a barn discard either way (R6), and moot for V17 since v45: it no
+    // longer reads discards at all, and mid-turn it has no chance to fire.
     expect(after.events.some((e) => e.e === 'barnDiscarded')).toBe(false);
     expect(out.tasks.some((t) => srcOf(t) === 'V17')).toBe(false);
     // It scores nothing now: the printed 3 is gone, and so is its Barn-scorer line.
@@ -778,36 +817,55 @@ describe('V16 and V17, the Power cards', () => {
     expect(out.tasks.map((t) => srcOf(t)).sort()).toEqual(['V16', 'V18']);
     expect(out.tasks.find((t) => srcOf(t) === 'V18')).toMatchObject({ t: 'draw', see: 3 });
   });
+});
 
-  it("V17 draws 1 for every barn discard of its owner, beside the card's own effect", () => {
-    const s = base();
-    buildFor(data, s, VEG, 'V17', 'V10');
-    barnTo(s, VEG, 'O4', 'O5');
-    let out = grow(s, VEG, 'V10', 'V11').state;
-    out = answerWith(out, { suit: 'orchard' }).state;
-    out = answerWith(out, { suit: 'orchard' }).state;
-    const draws = out.tasks.filter((t) => t.t === 'draw');
-    expect(draws.filter((t) => t.src === 'V17')).toHaveLength(2);
-    expect(draws.filter((t) => t.src === 'V10')).toHaveLength(2);
-    expect(out.tasks.find((t) => srcOf(t) === 'V17')).toMatchObject({ see: 1, keep: 1 });
-  });
-
-  it("V17 never fires on a delivery payment (R6), nor on a rival's discard", () => {
+/**
+ * V17 The Dockworker's Union - v45 (19/09/2026, R5): "If, at the end of your
+ * turn, your Barn is empty, place any deck card into your Barn." The card no
+ * longer listens on `afterBarnDiscard` at all (V8 and V15 keep that hook), so
+ * it is tested through the turn boundary rather than through a discard.
+ */
+describe("V17 The Dockworker's Union - empty Barn at end of turn (v45, R5)", () => {
+  it('fires at the end of a turn with an empty Barn, and the only choice is the deck', () => {
     const s = base();
     buildFor(data, s, VEG, 'V17');
-    barnTo(s, VEG, 'V4', 'V5', 'V6', 'V7');
-    const out = deliverA1(s);
-    expect(out.events.some((e) => e.e === 'barnDiscarded')).toBe(false);
-    expect(out.state.tasks.some((t) => srcOf(t) === 'V17')).toBe(false);
+    s.turn.actionSpent = true;
+    const out = apply(data, s, { type: 'endTurn', seat: VEG }).state;
+    expect(out.resume).toBe('turnflow'); // beforeTurnEnd suspended the boundary
+    expect(out.tasks[0]).toMatchObject({ t: 'card', src: 'V17', kind: 'deckToBarn' });
+    expect(pendingAnswers(data, out)).not.toContainEqual({ kind: 'skip' }); // mandatory
+    const done = answerWith(out, { suit: 'wheat' }).state;
+    expect(barnCrops(done, VEG)).toEqual(['wheat']);
+  });
 
-    const t = base();
-    buildFor(data, t, VEG, 'V17');
-    buildFor(data, t, WHEAT, 'V8');
-    barnTo(t, WHEAT, 'W4');
-    dealTo(data, t, WHEAT, 'V9');
-    const rival = growBuilding(data, t, WHEAT, 'V8', 'V9').state;
-    const after = answerWith(rival, { suit: 'wheat' }).state;
-    expect(after.tasks.some((x) => srcOf(x) === 'V17')).toBe(false);
+  it('fires on the very first turn, before the Barn has ever been touched', () => {
+    // The game starts with an empty barn, so this is the common case rather
+    // than an edge case (the audit's "resolved without asking" answer).
+    const s = base();
+    buildFor(data, s, VEG, 'V17');
+    expect(player(s, VEG).barn).toHaveLength(0);
+    s.turn.actionSpent = true;
+    const out = apply(data, s, { type: 'endTurn', seat: VEG }).state;
+    expect(out.tasks[0]).toMatchObject({ t: 'card', src: 'V17', kind: 'deckToBarn' });
+  });
+
+  it('does not fire when the Barn holds even one card at the end of turn', () => {
+    const s = base();
+    buildFor(data, s, VEG, 'V17');
+    barnTo(s, VEG, 'V4');
+    s.turn.actionSpent = true;
+    const out = apply(data, s, { type: 'endTurn', seat: VEG }).state;
+    expect(out.tasks.some((t) => srcOf(t) === 'V17')).toBe(false);
+    expect(barnCrops(out, VEG)).toEqual(['vegetable']);
+  });
+
+  it("never fires on a rival's turn end", () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'V17');
+    s.turn.actionSpent = true;
+    const out = apply(data, s, { type: 'endTurn', seat: VEG }).state;
+    expect(out.tasks.some((t) => srcOf(t) === 'V17')).toBe(false);
+    expect(out.turnPlayer).toBe(WHEAT);
   });
 });
 
@@ -890,9 +948,11 @@ describe('difficulty metadata stays honest across the suit', () => {
 
   it('the three Tier 3 cards print a threshold and a wild activation type', () => {
     // The sheet is what makes them growable; the handlers only supply `activate`.
+    // v45 (19/09/2026): V13 and V15 rose from threshold 1 to 2; V14 stayed at 1.
+    const thresholds: Partial<Record<CardId, number>> = { V13: 2, V14: 1, V15: 2 };
     for (const id of ['V13', 'V14', 'V15'] as CardId[]) {
       const card = cardById(data, id);
-      expect(card.threshold, id).toBe(1);
+      expect(card.threshold, id).toBe(thresholds[id]);
       expect(card.activationType, id).toBe('wild');
       expect(card.abilityTrigger, id).toEqual(['onActivate']);
       expect(handlerFor(id)?.activate, id).toBeTypeOf('function');

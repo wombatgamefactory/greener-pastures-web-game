@@ -407,6 +407,20 @@ export function liveTargets(view: PlayerView, moves: readonly Move[], intent: In
   for (const b of view.you.tableau) {
     if (clickBuilding(moves, intent, b.card).length > 0) buildings.add(b.card);
   }
+  // ⚠️ RIVAL BUILDINGS TOO, ADDED 19/09/2026 - a pre-existing gap, not new
+  // behaviour. `clickBuilding` has matched a `sow`/`deckSow` answer's `onto`
+  // by card id alone, regardless of owner, since the Apiary suit rebuild gave
+  // A10, A11 and A13 a cross-table sow onto a neighbour's building - but this
+  // loop only ever fed it YOUR OWN tableau, so a rival building's DOM element
+  // could never actually light up or accept a drop, even though clicking it
+  // (the non-drag path) already worked. Caught by `drop.test.ts`'s "every sow
+  // answer" sweep once a bot corpus happened to reach a position exercising
+  // one of these cards; nothing about the fix is specific to that card.
+  for (const rival of view.rivals) {
+    for (const b of rival.tableau) {
+      if (clickBuilding(moves, intent, b.card).length > 0) buildings.add(b.card);
+    }
+  }
 
   // Mid-visit the only host that matters is the one being visited: the panel
   // owns the rest of the decision, and lighting the others invites a click that

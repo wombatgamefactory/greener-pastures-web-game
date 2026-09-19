@@ -1,7 +1,8 @@
 /**
  * THE FIVE HELPING HANDS (W18, A18, D18, O18, V18), one Power card per suit,
  * sharing a name and nothing else (ledger A163). Built 16/09/2026 off the v42
- * sheet; D18 RETEXTED on v44 (18/09/2026).
+ * sheet; D18 RETEXTED on v44 (18/09/2026) and its WORDING ONLY re-saved again
+ * 19/09/2026 (sheet still v44, SHA-256 43d559c2...).
  *
  * Dean's rule for the set: *"the task you are asked to perform to qualify for
  * the reward must be special and intentional, rather than just ordinary"*.
@@ -9,9 +10,13 @@
  *   W18  If, on your turn, you Harvest two or more of your buildings, Draw 3.
  *   A18  If, on your turn, you fill one of your buildings, sow the top card of
  *        any deck onto another of your buildings.
- *   D18  Whenever you build a card that costs 3 or more resources, add 1 of
- *        those cards to your Barn. (v44; was "If, on your turn, you Build two
- *        buildings, put the top 2 cards of any one deck into your Barn.")
+ *   D18  Whenever you build a card with a cost of 3 or more, add 1 of those
+ *        cards to your Barn. (19/09/2026 wording; was "...a card that costs 3
+ *        or more resources..." on the 18/09/2026 save, and before that "If,
+ *        on your turn, you Build two buildings, put the top 2 cards of any
+ *        one deck into your Barn.") ⚠️ TEXT ONLY: `resources` meant the
+ *        printed @cost icon total then and `cost` means the same total now -
+ *        see the handler's own note for why that reading was already right.
  *   O18  At the end of your turn, Draw until you have at least 3 cards in hand.
  *   V18  After you Deliver, if your Barn has 1 or fewer cards, Draw 3.
  *
@@ -20,8 +25,8 @@
  * and O18 is at most once a turn by construction: a count passes 2 once, and
  * the end of a turn happens once. ⚠️ D18 IS THE EXCEPTION SINCE v44: its
  * condition is per-build, not a running count, so a turn that builds two
- * cards each costing 3 or more resources fires it TWICE - the deleted
- * fire-once rule working as intended, not a bug.
+ * cards each costing 3 or more fires it TWICE - the deleted fire-once rule
+ * working as intended, not a bug.
  *
  * ⛔ THE OLD CARD IS RETIRED. From v31 to 16/09/2026 all five copies printed
  * *"Each turn, you may take both bonus options"*, which under the notice-board
@@ -92,8 +97,9 @@ export const helpingHandWheat: CardHandler = {
 };
 
 /**
- * A18 A Helping Hand - "If, on your turn, you fill one of your buildings, sow
- * the top card of any deck onto another of your buildings."
+ * A18 A Helping Hand - "If, on your turn, you fill a building, you may sow a
+ * deck card onto another of your buildings." (v44, 18/09/2026: gained "you
+ * may"; was "you fill one of your buildings, sow the top card of any deck".)
  */
 export const helpingHandApiary: CardHandler = {
   difficulty: {
@@ -110,10 +116,10 @@ export const helpingHandApiary: CardHandler = {
       'non-full building and every link fills one. The sow is one `sowFromDeck` task, the ' +
       'player choosing deck and building, onto any of your buildings bar the one just filled ' +
       'and bar Notice Boards; skipped when nothing has room. ' +
-      '⚠️ DECLINABLE SINCE 18/09/2026 (`optional: true`), against the printed "sow", not ' +
-      '"you may": every `sowFromDeck` push shipped skippable that day to fix a UI dead end ' +
-      '(a human had no answer to give at all), on the `handToBarn` precedent. A ruling on ' +
-      'whether THIS card in particular should stay mandatory is still owed.',
+      '⭐ OPTIONAL (`optional: true`), RE-CONFIRMED 19/09/2026: THE PRINTED TEXT GOVERNS ' +
+      '(Dean) - a sow is declinable if and only if the card says "may", and the v44 sheet ' +
+      'retexted this card to "you may sow", so the flag that the 18/09/2026 blanket fix set ' +
+      'is now correct for the right reason instead of by accident.',
   },
   on: {
     afterPlacement(fx, event, self) {
@@ -141,10 +147,15 @@ export const helpingHandApiary: CardHandler = {
 };
 
 /**
- * D18 A Helping Hand - "Whenever you build a card that costs 3 or more
- * resources, add 1 of those cards to your Barn." RETEXTED ON v44
- * (18/09/2026, sheet diff off v42): the old "Build two buildings, count to 2"
- * card is gone, and so is its once-a-turn shape.
+ * D18 A Helping Hand - "Whenever you build a card with a cost of 3 or more,
+ * add 1 of those cards to your Barn." RETEXTED ON v44 (18/09/2026, sheet diff
+ * off v42): the old "Build two buildings, count to 2" card is gone, and so is
+ * its once-a-turn shape. ⚠️ RE-SAVED 19/09/2026, WORDING ONLY: the printed
+ * sentence dropped "resources" ("...costs 3 or more resources..." became
+ * "...a card with a cost of 3 or more..."), which if anything makes the
+ * PRINTED-COST reading below more obviously right - "a card with a cost of
+ * 3 or more" names a property of the card face, not of what was paid for it.
+ * No behaviour changed; only the two quotes above and this one moved.
  */
 export const helpingHandDairy: CardHandler = {
   difficulty: {

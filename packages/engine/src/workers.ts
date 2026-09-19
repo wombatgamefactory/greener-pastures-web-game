@@ -107,8 +107,10 @@ export function meepleActionOf(data: GameData, colour: Suit): DoorAction {
  *   Orchard    "Draw 4."                                        `orchardDraw`
  *   Dairy      "Build, spending cards of any crops, with a
  *               discount of 2." (R10, 16/09/2026)     `dairyDiscount`, `dairyWild`
- *   Wheat      "Harvest one of your buildings, then put 1 card
- *               from your hand into your barn."                  `wheatBarn`
+ *   Wheat      "Harvest one of your buildings, even if it is 1
+ *               card short of full." (ruled 19/09/2026)  `wheatHarvestGate`
+ *              (retires `wheatBarn`, the old hand-to-barn rider - see its
+ *              knob comment for the Notice-Board-at-2 reversal)
  *   Apiary     "Grow a building using the top card of any deck." `apiaryPower`
  *              (ruled 14/09/2026; the S12 "Sow 2 cards from your hand onto your
  *              buildings", `apiarySows`, is `apiaryPower: 'sow'`)
@@ -186,24 +188,39 @@ export function fireNoticeBoardPower(
       fx.pushTask({ t: 'build', pid: actor, src, mods: dairyBoardMods(fx.data) });
       return;
     case 'wheat': {
-      // "Harvest one of your buildings, then put 1 card from your hand into
-      // your barn." ⛔ RULING C88 (Dean, 10/09/2026): S12 printed *"Harvest
-      // any one of your buildings, however many cards are on it"*, which is
-      // W11 The Bakehouse word for word, so the POWER moved and the CARD kept
-      // its identity. ONE building, at any stack size - `filter: 'loaded'` is
-      // that sentence, the same gate W11 and W13 print - and then a card from
-      // the hand into the barn, which is the leg that keeps the power live for
-      // a seat with nothing worth harvesting.
+      // ⭐⭐ RETEXTED (Dean, 19/09/2026, sheet v44): *"Harvest one of your
+      // buildings, even if it is 1 card short of full."* This REPLACES ruling
+      // C88's power (Dean, 10/09/2026: *"Harvest one of your buildings, then
+      // put 1 card from your hand into your barn"*), which itself moved off
+      // S12 because S12's wording was W11 The Bakehouse word for word. The
+      // hand-to-barn leg is GONE - the new text prints no second clause - so
+      // this is one task, not two, and `wheatBarn` (the count that leg banked)
+      // is RETIRED to 0 (see its knob comment). ONE building, gated by
+      // `wheatHarvestGate`, now shipped `'nearFull'` rather than `'loaded'`.
       //
-      // ⛔ AND IT IS EMPHATICALLY NOT W13 THE BAKERY'S CASCADE. W13 harvests
-      // EVERY loaded building; this harvests exactly one. The (deleted) coins
-      // arm's Farmstead did the cascade until 10/09/2026 and that was the
-      // collision S13 named.
+      // ⭐⭐⭐ THE NOTICE-BOARD-AT-2 REVERSAL, RULED THE SAME DAY, 19/09/2026:
+      // Dean read "1 card short of full" against a `3+` Notice Board by
+      // treating the board's 3 as its fill level, so the board is harvestable
+      // through THIS power at 2 cards. **THIS REVERSES THE STANDING RULE OF
+      // 15/09/2026** ("the Wheat board harvests only a full building or a 3+
+      // Notice Board", CLAUDE.md §0/§2.2/§2.13: "a Notice Board is never
+      // harvested below 3 by any card"). That sentence is now FALSE for W3
+      // specifically - it stands everywhere else (the plain Harvest action,
+      // every other card). `wheatHarvestable(data, b, 'nearFull')` in
+      // `query.ts` computes exactly `threshold - 1`, which is 2 for a `3+`
+      // board and needed no special case; it is the general reading of "1
+      // short of full" applied to a board whose fill level is 3.
       //
-      // ⚠️ A LOADED NOTICE BOARD IS ONE OF "YOUR BUILDINGS" HERE, so this
-      // power can cash a board of your own below the `3+` minimum. It is a
-      // reading the engine had to make rather than one the handoff wrote down.
-      // Flagged for Dean; excluding it would have been the bigger invention.
+      // ⛔ THIS IS ALSO NARROWER THAN THE `'loaded'` GATE THIS POWER SHIPPED
+      // WITH UNTIL TODAY (ledger C97: a reading the engine had to make, never
+      // ruled, that let this power cash ANY loaded building - including your
+      // own Notice Board at a single card). `'nearFull'` closes that reading
+      // for ordinary buildings (threshold - 1 or more, not 1 or more) but
+      // narrows rather than closes it for the Notice Board itself, which is
+      // why C97 stays open rather than resolved.
+      //
+      // ⛔ STILL EMPHATICALLY NOT W13 THE BAKERY'S CASCADE. W13 harvests EVERY
+      // loaded building; this harvests exactly one.
       fx.pushTask({
         t: 'chooseBuilding',
         pid: actor,
@@ -211,7 +228,19 @@ export function fireNoticeBoardPower(
         filter: numbers.wheatHarvestGate,
         then: 'harvest',
       });
-      fx.pushTask({ t: 'handToBarn', pid: actor, src, remaining: numbers.wheatBarn });
+      // ⛔ GUARDED ON `> 0`, UNLIKE THE OTHER SUITS' handToBarn PUSHES: this is
+      // the one place `wheatBarn` can legitimately be 0 (its retired, shipped
+      // value), and `taskAnswers` for `handToBarn` does not consult
+      // `remaining` before offering every hand card - an unconditional push at
+      // remaining 0 would hand a seat a live, pointless prompt instead of
+      // being auto-skipped by the drain loop. Kept as a live branch (not
+      // deleted outright) so `overlays/notice-board-visit-v1.overlay.json`,
+      // `overlays/v31-card-visit.overlay.json` and every other overlay or
+      // `testkit.ts` helper pinning `wheatBarn: 1` (beside `wheatHarvestGate:
+      // 'loaded'`) still replay the pre-19/09 game.
+      if (numbers.wheatBarn > 0) {
+        fx.pushTask({ t: 'handToBarn', pid: actor, src, remaining: numbers.wheatBarn });
+      }
       return;
     }
     case 'apiary':
@@ -372,12 +401,22 @@ export function performDoorAction(fx: Fx, actor: Seat, colour: Suit, via: DoorVi
       // The fix, if the Apiary board takes no traffic, is `from: 'deck'` in the
       // data - not a cheaper door - and this branch already handles it.
       if (door.sow?.from === 'deck') {
+        // ⚠️ MANDATORY (`optional: false`), CORRECTED 19/09/2026: THE PRINTED
+        // TEXT GOVERNS (Dean) - a sow is declinable if and only if the card
+        // says "may". This door has no card text of its own (it grants the
+        // Apiary board's plain SOW action, `door.sow`), so it follows the
+        // same rule the Apiary GROW power itself keeps: no "may" anywhere,
+        // mandatory. This reverses the 18/09/2026 change that set every
+        // `sowFromDeck` push skippable across all five sites as one blanket
+        // fix for a UI dead end; the fix is gone and each site now matches
+        // the text it stands for (A8 The Wild Hive and W5 Rye Field are the
+        // other two mandatory sites, A17 and A18 the two that print "may").
         fx.pushTask({
           t: 'sowFromDeck',
           pid: actor,
           src: null,
           remaining: door.sow.amount,
-          optional: true,
+          optional: false,
         });
       } else {
         fx.pushTask({ t: 'sow', pid: actor, src: null, remaining: door.sow?.amount ?? 1 });

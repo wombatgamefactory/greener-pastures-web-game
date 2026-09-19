@@ -12,6 +12,17 @@
  * W21 counts receipt crops since v42, so no card text reads `isFieldCard` any
  * more; it stays exported from the engine's public surface.
  *
+ * ⭐ v45 (19/09/2026, tasks/v45-rulings-v1.md): three more retexts. W5's HARVEST
+ * loses its seed line and moves to a flat "Draw 3" - the LAST card in the file
+ * to print the seed-corn line, so `reseed()` is deleted outright rather than
+ * kept for a caller that no longer exists. W13 The Bakery no longer harvests
+ * itself ("each of your OTHER buildings ... not this one"), which means the
+ * card it is paid with now stays stuck on its own stack - a deliberate
+ * self-clog (R10), not a bug. W16 The Granary gains a condition, "if you have
+ * 5 or fewer cards" (hand only, R7), checked FRESH at the moment each draw
+ * would fire rather than once per turn (R8), so a cascade can stop paying
+ * part way through as the hand fills.
+ *
  * Suit identity: Harvest, and the rebuild's whole thesis is that the identity was
  * never in doubt - the INTERVAL was. Every Tier 1 FIELD reads on two lines:
  *
@@ -26,7 +37,8 @@
  * GROW, harvest, GROW, harvest) survives on W5 alone, and everywhere else the
  * FIELD starts each cycle empty. That is a real slowdown, taken deliberately for
  * teach cost: five cards printing a second sentence about deck tops was the
- * densest paragraph in the suit. `reseed` stays written once, for W5 and W4.
+ * densest paragraph in the suit. ⛔ `reseed` is GONE (v45, 19/09/2026): W5 was
+ * the last card calling it and the sheet has dropped the line from W5 too.
  *
  * The other structural thing to know here:
  *
@@ -81,6 +93,7 @@
 
 import type { GameData, Suit } from '@gp/data';
 
+import { fireHook } from '../fx.js';
 import type { Fx } from '../fx.js';
 import { cardById, cropOf, drawableSuits, isHarvestable, player } from '../query.js';
 import type { CardId, GameState, Seat, TaskAnswer } from '../state.js';
@@ -107,48 +120,18 @@ function drawN(fx: Fx, pid: Seat, src: CardId, n: number): void {
 }
 
 /**
- * The shared FIELD line: **"Sow 1 deck card onto this FIELD"** - sow the top card
- * of any deck onto THE FIELD THAT JUST HARVESTED.
- *
- * ⚠️ NO LONGER SHARED BY FIVE CARDS (v30, 19/08/2026). The sheet prints it on W5
- * alone: W6, W7 and W8 dropped it in the group D simplification pass. It stays a
- * function rather than being inlined into W5 because W4 still calls it - see the
- * ⚠️ on W4, where the handler and the printed text disagree and a ruling is owed.
- *
- * ⚠️ NARROWED BY THE WHEAT REBALANCE (2026-08-12). It used to target every FIELD
- * the seat owned, which let a wide Wheat farm aim each seed at whichever FIELD
- * was closest to full and turn one harvest into the next one. `src` is the
- * harvesting building, so the seed now lands back where it came from and
- * nowhere else. The card's own loop is untouched - the FIELD it just emptied
- * always has room, so the seed never fails to land - but the seat can no longer
- * pick, and the number of FIELDs stops multiplying the line.
- *
- * A task rather than an inline call because a choice remains: which deck. It
- * skips itself silently if the target somehow has no room, which is normal
- * rather than an error - the drain loop drops a task with no legal answer.
- *
- * ⚠️ DECLINABLE SINCE 18/09/2026 (`optional: true`), against the printed "Sow
- * 1", not "you may sow": every `sowFromDeck` push shipped skippable that day
- * to fix a UI dead end (a human had no answer to give at all), on the
- * `handToBarn` precedent. A ruling on whether THIS card in particular should
- * stay mandatory is still owed.
- *
- * Two things fall out of the narrowing, both good. The old caveat about a FIELD
- * BUILT after the push (W7's "Build ... Sow 1 FIELD") is moot, because the
- * target is fixed at push time and is never a new building - and moot twice
- * over now that W7 prints no seed line at all. And the task drops from a
- * two-part choice to a one-part one: TEACH COST GOES DOWN.
+ * ⛔ THE SHARED FIELD LINE IS GONE (v45, 19/09/2026, housekeeping beside R6-R10
+ * in tasks/v45-rulings-v1.md): **"Sow 1 deck card onto this FIELD"** used to sow
+ * the top card of any deck onto THE FIELD THAT JUST HARVESTED, via a
+ * file-local `reseed()` helper. W5 Rye Field was the last card printing the
+ * line (v30, 19/08/2026, took it off W6/W7/W8; W4 lost its own call the same
+ * week) and the v45 sheet drops it from W5 too - "Draw 1. / When Harvested:
+ * Draw 3." is the whole card now - so `reseed()` lost its only caller and is
+ * deleted rather than kept unreferenced. The shared deck-sow PRIMITIVE this
+ * built on, `deckSowTask`/`deckSowRiders` (buildings.ts), stays: A18 Helping
+ * Hand still uses it, and the history above (narrowed target, mandatory
+ * wording) is a record of what THIS card did, not of the primitive.
  */
-function reseed(fx: Fx, seat: Seat, src: CardId): void {
-  fx.pushTask({
-    t: 'sowFromDeck',
-    pid: seat,
-    src,
-    remaining: 1,
-    targets: [{ seat, card: src }],
-    optional: true,
-  });
-}
 
 /** Is this hook event THIS building being harvested by its own owner? */
 function harvestedSelf(
@@ -256,8 +239,17 @@ export const wheatBarn: CardHandler = {
 export const wheatFarmstead: CardHandler = farmsteadHandler('wheat');
 
 /**
- * W3 Notice Board (starter) - "VISITOR: place 1 card here, then Harvest one of
- * your full buildings." Threshold 2, wild activation.
+ * W3 Notice Board (starter) - shipped text, sheet v44 (19/09/2026): "Harvest
+ * one of your buildings, even if it is 1 card short of full." Threshold `3+`,
+ * wild activation.
+ *
+ * ⚠️ STALE HISTORY, KEPT FOR THE RECORD: this docstring used to describe the
+ * v31-era board ("VISITOR: place 1 card here, then Harvest one of your full
+ * buildings", threshold 2, a £1-or-door choice) - a game three rulings out of
+ * date (C88 of 10/09/2026 moved the board's power off a plain full-buildings
+ * Harvest and onto its own text; the two-board visit of 11/09/2026 changed
+ * who may be visited; today's retext changed the text again). None of that
+ * survives; read the current mechanism below.
  */
 export const wheatNoticeBoard: CardHandler = {
   difficulty: {
@@ -265,17 +257,17 @@ export const wheatNoticeBoard: CardHandler = {
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'No behaviour here: the whole visit - the fee landing on the board, the door action ' +
-      'that follows and the clog at threshold 2 - is engine-level (doVisit in actions.ts, ' +
-      'performDoorAction in workers.ts, the action itself in workers.json). ' +
-      '⛔ THE COIN PAYOFF AND THE RELAXED HARVEST ARE BOTH GONE (v31). The board used to ' +
-      'offer a visitor a choice of £1 or the door; there is one payoff now, which is why ' +
-      'the printed text lost its OR. And the door is the PLAIN Harvest - full buildings ' +
-      'only - where it carried "2 or more cards, even if not full" from 19/08/2026: the ' +
-      'bonus slot became the enhancement, so stacking a rider on top of a whole free core ' +
-      'action was pricing a sweetener into a deal that no longer needed one. ' +
-      '⚠️ Its threshold of 2 is the only economy number left in the game and the one lever ' +
-      'ever measured to move the suit balance; see rules.json.',
+      'No behaviour here: the whole visit - the fee landing on the board, the harvest that ' +
+      "follows and the board's own `3+` never-clogs threshold - is engine-level. The fee and " +
+      'the door dispatch are `doVisit`/`doNoticeBoardVisit` in `actions/bonus.ts`; the power ' +
+      "itself, this card's real behaviour, is the 'wheat' case of `fireNoticeBoardPower` in " +
+      '`workers.ts`, gated by `rules.economy.noticeBoardPower.wheatHarvestGate` (SHIPPED ' +
+      "'nearFull' since 19/09/2026; see that knob's comment in `types.ts`/`knobs.ts` for the " +
+      'ruling in full, including the reversal of the 15/09/2026 rule that a Notice Board is ' +
+      'never harvested below 3). `wheatBarn`, the old hand-to-barn rider, is retired to 0 the ' +
+      'same day. ' +
+      '⚠️ Threshold `3+` is a MINIMUM, never blocks, and the board is never full for the ' +
+      'ordinary Harvest gate - see `noticeBoardThreshold` / `noticeBoardBlocks` in rules.json.',
   },
 };
 
@@ -321,9 +313,12 @@ export const wheatField: CardHandler = {
 };
 
 /**
- * W5 Rye Field - "Draw 1. / When Harvested: Draw 2. Sow 1 deck card onto this
- * building." (v42 wording; behaviour unchanged.) The last card in the suit that
- * prints the seed line (v30, 19/08/2026).
+ * W5 Rye Field - "Draw 1. / When Harvested: Draw 3." (v45, 19/09/2026: was
+ * "Draw 2. Sow 1 deck card onto this building." - the sow line is deleted and
+ * the harvest draw moves 2 to 3, its only remaining number. W5 was the last
+ * card in the suit printing the seed line (v30, 19/08/2026), so `reseed()` has
+ * no caller left anywhere in the file and is deleted with it - see the note
+ * where it used to live, above `harvestedSelf`.)
  */
 export const ryeField: CardHandler = {
   difficulty: {
@@ -340,8 +335,7 @@ export const ryeField: CardHandler = {
   on: {
     afterHarvest(fx, event, self) {
       if (!harvestedSelf(event, self)) return;
-      drawN(fx, self.seat, self.card, 2);
-      reseed(fx, self.seat, self.card);
+      drawN(fx, self.seat, self.card, 3);
     },
   },
 };
@@ -615,13 +609,21 @@ export const bakery: CardHandler = {
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: true, counts: true, interrupts: true },
     notes:
-      '⭐ v42 adds "(including 0)": an EMPTY building is harvested too. ⭐ BUILDER DEFAULT ' +
-      '(16/09/2026): harvesting an empty building moves nothing but IS a harvest, so its ' +
-      'own "When Harvested:" line fires (W4-W8 pay out off an empty stack) and so do the ' +
-      '"whenever you harvest" cards (W16 draws once per building). A Notice Board is ' +
-      'never harvested below its 3+ minimum, by this card or any other; Power and ' +
-      'Endgame cards are not buildings and are skipped. The older note follows, and its ' +
-      'claim that the Notice Board unclogs here now holds only at 3 or more cards. ' +
+      '⭐ v45 RETEXT (19/09/2026, R6 and R10, tasks/v45-rulings-v1.md): "Harvest each of ' +
+      'your OTHER buildings (not this one) with at least 1 card on it" - two changes from ' +
+      'v42\'s "every one of your buildings, however many cards are on them (including 0)". ' +
+      'First, the gate is now "1 or more", not "including 0": an empty building is no ' +
+      'longer harvested, so its own "When Harvested:" line and the "whenever you harvest" ' +
+      'cards (W16) fire only for a building that actually held something. Second, W13 IS ' +
+      'NO LONGER IN ITS OWN SET (self-excluded by card id, not by the stack-size filter) - ' +
+      'the whole reason the old note had to explain why harvesting itself was correct is ' +
+      'moot, because it does not happen any more. ⭐ THE CONSEQUENCE (R10, Dean shown and ' +
+      'accepted, ship as written, no workaround): W13 is threshold 1 and now excludes ' +
+      'itself, so the card paid to grow it stays on its own stack and W13 clogs on its own ' +
+      'fee every single use - an ordinary Harvest is needed before it can fire again. The ' +
+      'old face scooped its own payment straight back; this one does not. A Notice Board ' +
+      'is still never harvested below its 3+ minimum, by this card or any other; Power and ' +
+      'Endgame cards are still not buildings and are still skipped. ' +
       '⛔ NO LONGER AN ACTION CARD (19/08/2026). The ACTION concept was RETIRED from the ' +
       'game on Dean\'s ruling - "The concept of an ACTION was never requested. They are all ' +
       'GROW." - and W13 was the first card ever written in that shape, so it is the one ' +
@@ -629,25 +631,25 @@ export const bakery: CardHandler = {
       '`applyMove`, with `applyMove` setting `turn.actionSpent` itself and `moves` gating ' +
       'on it being unspent. All of it is deleted. The card is now an ordinary GROW ' +
       'building at threshold 1 with a wild activation, so it costs a card and the main ' +
-      'action like everything else, and one card fills it - so the loop is grow, cascade, ' +
-      'and the cascade takes the payment straight back off it. ' +
-      '"Every one of your buildings" means every one: the Notice Board and the Service ' +
-      'unclog too, which is the largest part of what the card is for, and W13 ITSELF is in ' +
-      'the set (the grow payment is on its stack before the ability fires, so the card ' +
-      'harvests its own fee into the barn - correct, and worth knowing before it reads as ' +
-      'a bug). It prompts through what it harvests. Order cannot matter - per-harvest ' +
-      'listeners see each harvest separately. It no longer needs a "have I anything to ' +
-      'harvest" gate: an empty farm makes the cascade a no-op, and a GROW that does ' +
-      'nothing is a choice the owner made rather than a move the engine offered.',
+      'action like everything else. ' +
+      '"Each of your OTHER buildings" - the Notice Board and the Service unclog too, which ' +
+      'is the largest part of what the card is for. It prompts through what it harvests. ' +
+      'Order cannot matter - per-harvest listeners see each harvest separately. It no ' +
+      'longer needs a "have I anything to harvest" gate: a farm with nothing else loaded ' +
+      'makes the cascade a no-op, and a GROW that does nothing is a choice the owner made ' +
+      'rather than a move the engine offered.',
   },
   activate(fx, self) {
-    const every = ownBuildings(fx.data, fx.state, self.seat).filter(
-      (b) => !isNoticeBoardCard(fx.data, b.card) || isHarvestable(fx.data, b),
+    const others = ownBuildings(fx.data, fx.state, self.seat).filter(
+      (b) =>
+        b.card !== self.card &&
+        b.stack.length >= 1 &&
+        (!isNoticeBoardCard(fx.data, b.card) || isHarvestable(fx.data, b)),
     );
     harvestCascade(
       fx,
       self.seat,
-      every.map((b) => b.card),
+      others.map((b) => b.card),
     );
   },
 };
@@ -791,15 +793,31 @@ function liveDecks(data: GameData, state: GameState): Suit[] {
 /** W16 The Granary - "Whenever you harvest, Draw 1." */
 export const granary: CardHandler = {
   difficulty: {
-    score: 1,
+    score: 2,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
+    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
     notes:
+      '⭐ v45 RETEXT (19/09/2026, R7 and R8, tasks/v45-rulings-v1.md): the draw is now ' +
+      'conditional, "if you have 5 or fewer cards" - HAND ONLY (R7), never the barn or a ' +
+      "building's stack - and the condition is checked FRESH at the moment this card's " +
+      'draw would actually happen, not once per turn and not at the moment the harvest ' +
+      'fires (R8). That is why the push below (`afterHarvest`) queues a CUSTOM task ' +
+      '(`granaryDraw`) rather than calling `drawN` straight away: every harvest in a ' +
+      'cascade (W13, W12) is still synchronous, so pushing an unconditional draw at push ' +
+      'time would see the SAME hand size for every building in the cascade and could ' +
+      "never stop partway through. `granaryDraw`'s `answers()` is instead computed fresh " +
+      'each time this task reaches the head of the queue (`taskAnswers`/`drainTasks`, ' +
+      'tasks.ts), by which point every task queued in front of it - including an EARLIER ' +
+      'granaryDraw from the same cascade - has already resolved and changed the hand. ' +
+      'That is what makes "fresh each time" possible without a second guard, and it is ' +
+      'the deliberate brake on the W13-plus-W16 combination the ruling names: a cascade ' +
+      'stops paying itself the moment the hand crosses 5. ' +
       '⭐ THE ONCE-PER-TURN GUARD IS GONE (Dean, 15/09/2026): card text fires every time ' +
       'its trigger happens, and each building harvested is its own trigger, so W13 The ' +
-      'Bakery emptying five buildings draws five. The only per-turn cap left in the game ' +
-      'is that a building activates at most once a turn, and the runtime keeps that. The ' +
-      'older note below argued the guard and is history. ' +
+      'Bakery emptying several buildings can draw several times - now capped only by the ' +
+      'hand condition above, not by a per-turn count. The only per-turn cap left in the ' +
+      'game is that a building activates at most once a turn, and the runtime keeps that. ' +
+      'The older note below argued the guard and is history. ' +
       'RULING (superseded 15/09/2026): once per harvest, not once per building - otherwise The Bakery ' +
       'draws eight. The guard USED to be the event stream (fire only if this is the first ' +
       "`harvested` of the seat's in the current apply), and this note documented its own " +
@@ -819,7 +837,43 @@ export const granary: CardHandler = {
   on: {
     afterHarvest(fx, event, self) {
       if (event.seat !== self.seat) return;
-      drawN(fx, self.seat, self.card, 1);
+      fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'granaryDraw', riders: {} });
+    },
+  },
+  tasks: {
+    granaryDraw: {
+      /**
+       * The condition, evaluated fresh: HAND ONLY (R7), 5 or fewer. Reads
+       * `state` live rather than anything snapshotted at push time, which is
+       * the whole mechanism - see the docblock above.
+       */
+      answers(data, state, task) {
+        if (player(state, task.pid).hand.length > 5) return [];
+        return drawableSuits(data, state).map(
+          (suit) => ({ kind: 'card', payload: { suit } }) as TaskAnswer,
+        );
+      },
+      /**
+       * Resolved IN ONE STEP, unlike `drawN`'s ordinary see-N/keep-N task:
+       * this must land the card in the hand synchronously, in the same
+       * `answerTask` call that answers it, because the NEXT `granaryDraw` in
+       * a cascade reads the hand fresh as soon as this one is popped (R8). A
+       * two-phase draw (choose deck, then a separate keep step) would leave
+       * the hand unchanged until its second step and the freshness would
+       * never bite. `fireHook('afterDrawKeep', ...)` is called by hand for
+       * the same reason `drawN`'s task does - nothing in the catalogue
+       * listens to it yet, but this is a real draw and should look like one.
+       */
+      resolve(fx, task, answer) {
+        if (answer.kind !== 'card') throw new Error('granaryDraw expects a card answer');
+        const suit = answer.payload.suit as Suit;
+        const card = fx.takeDeckTop(suit);
+        if (card !== null) {
+          fx.cardsToHand(task.pid, [card]);
+          fireHook(fx, 'afterDrawKeep', { seat: task.pid, cards: [card] });
+        }
+        return true;
+      },
     },
   },
 };

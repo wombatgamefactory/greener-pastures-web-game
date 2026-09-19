@@ -451,10 +451,18 @@ describe('the notice board visit', () => {
   // replaces `dairyGrowsBuilt`, so the count moved from seven to eight
   // DELIBERATELY, and the test failing first is the mechanism working.
   //
-  // ⭐ 19/09/2026: `wheatHarvestGate` is new, for Dean's Wheat board retext
-  // ("Harvest a building that is full, or 1 card from full"). It SHIPS AT
-  // 'loaded', the pre-existing behaviour ledger C97 flagged, so adding it
-  // moves no measured number - eight to nine, deliberately.
+  // ⭐ 19/09/2026: `wheatHarvestGate` is new, for Dean's Wheat board retext,
+  // sheet v44: *"Harvest one of your buildings, even if it is 1 card short of
+  // full."* It shipped its FIRST commit at 'loaded' (the pre-existing
+  // behaviour ledger C97 flagged, so adding the key alone moved no measured
+  // number - eight to nine, deliberately) and RULED IN THE SAME DAY at
+  // 'nearFull' - full, or one card from full, which reaches a `3+` Notice
+  // Board at 2 cards rather than 1 (⭐⭐ THE NOTICE-BOARD-AT-2 REVERSAL: this
+  // is narrower than 'loaded' for ordinary buildings but still reaches the
+  // board C97 flagged, so C97 stays open). `wheatBarn` IS RETIRED THE SAME
+  // DAY: the new text prints no hand-to-barn clause, so it ships at 0 and
+  // survives only for the overlays and testkit helpers that pin 1 to keep
+  // replaying the pre-19/09 game (see `packages/engine/src/testkit.ts`).
   it('carries the nine Notice Board power leaves, and offers all nine as knobs', () => {
     expect(BASE_GAME_DATA.rules.economy.noticeBoardPower).toEqual({
       orchardDraw: 4,
@@ -464,8 +472,8 @@ describe('the notice board visit', () => {
       vegetableWildCards: 2,
       dairyWild: true,
       dairyDiscount: 1,
-      wheatBarn: 1,
-      wheatHarvestGate: 'loaded',
+      wheatBarn: 0,
+      wheatHarvestGate: 'nearFull',
     });
     expect(dairyDiscount(BASE_GAME_DATA)).toBe(1);
     expect(vegetableWildCards(BASE_GAME_DATA)).toBe(2);

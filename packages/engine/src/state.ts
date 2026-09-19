@@ -596,16 +596,31 @@ export type Task =
        */
       targets?: BuildingRef[];
       /**
-       * ⚠️ SHIPPED AS DECLINABLE (18/09/2026, to-do 2.2's "stuck" fix): every
-       * push site sets this true, even the several card texts printed as a
-       * plain "SOW", not "you may sow" - `wildHive` (A8), `smokePot` (A17) and
-       * `helpingHandApiary` (A18) all say so in their own notes, on the
-       * `handToBarn` precedent ("always optional in practice, so it can never
-       * be a downside"). A human was stranded with no way to answer at all
-       * (the UI cannot fabricate a skip the engine never enumerates); the fix
-       * chosen is to make the whole family skippable rather than plumb a
-       * click path for every targets/deck combination. If a future card wants
-       * a genuinely mandatory deck-sow, this defaults to undefined = required.
+       * ⚠️ THE PRINTED TEXT GOVERNS (Dean, 19/09/2026, correcting the
+       * 18/09/2026 "stuck" fix below): a `sowFromDeck` push is declinable if
+       * and only if its card says "may". `smokePot` (A17) and
+       * `helpingHandApiary` (A18) print "you may (S)ow" on the v44 sheet and
+       * set this true; `wildHive` (A8), `reseed` (W5, wheat.ts) and the
+       * generic Apiary-board door path (workers.ts) print no "may" and set
+       * this false (undefined also means required). Each site's own notes
+       * say which and why.
+       *
+       * The 18/09/2026 change this replaces had set every push site true,
+       * even the several printed as a plain "SOW": a human was stranded with
+       * no way to answer at all when a task had genuinely nothing legal to
+       * do (the UI cannot fabricate a skip the engine never enumerates), and
+       * the fix chosen that day was to make the whole family skippable
+       * rather than plumb a click path for every targets/deck combination.
+       * That blanket fix is gone. ⚠️ UNRESOLVED TENSION: the drain loop
+       * already auto-skips a task with zero legal answers regardless of this
+       * flag (tasks.ts top-of-file note), which reads as though the
+       * "stranded human" case should never arise on `optional: false` either
+       * - to-do 2.2 is not re-read here and nobody has reconciled the two
+       * notes. If the stuck state comes back on a mandatory site, read
+       * to-do 2.2 before re-widening this flag rather than repeating the
+       * blanket fix. Until then, read `optional` as ordinary declinability
+       * only: whether the player may decline a choice that DOES have a
+       * legal answer.
        */
       optional?: boolean;
       /**

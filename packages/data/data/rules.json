@@ -5,6 +5,7 @@
     "generatedBy": null,
     "sourceSheet": null,
     "notes": [
+      "⭐⭐⭐⭐ 19/09/2026: THE v45 SHEET RETEXTS FIVE FACES (Dean; docs at tasks/v45-rulings-v1.md and tasks/v45-ambiguity-audit-v1.md; cards.json re-extracted off Isle-of-Farms-v45.xlsm). (1) W5 Rye Field's HARVEST moves from \"Draw 2. Sow 1 deck card onto this building.\" to \"Draw 3.\": the seed line is gone, so the file-local reseed helper in wheat.ts loses its only caller and is deleted. (2) W13 The Bakery is retexted from \"Harvest every one of your buildings, however many cards are on them (including 0)\" to \"Harvest each of your OTHER buildings (not this one) with at least 1 card on it\" (R6, R10): it no longer harvests itself, a Notice Board is still never harvested below 3, and W13 now clogs on its own activation fee every use (an intended brake, not a bug). (3) W16 The Granary gains a condition, \"Whenever you harvest, if you have 5 or fewer cards, Draw 1\" (R7, R8): the count is the owner's HAND ONLY, checked fresh at the moment each draw would fire, so a cascade (W13, W12) can stop paying part way through as the hand fills. (4) and (5) A19 The Honey Hall and A20 The Apiarist's Guild each print a new \"(Max 5)\" cap on their existing count, added as two new tunable knobs on the economy.grandGranaryCap pattern (R9): honeyHallCap and apiaristsGuildCap, both shipped at 5, one per card because the three capped cards count different things.",
       "⭐⭐⭐⭐ 18/09/2026: THE v44 SHEET LANDS FOUR TEXT CHANGES (Dean; cards.json re-extracted off Isle-of-Farms-v44.xlsm). (1) W20 The Grand Granary now prints its cap on its own face, \"Game end: 1 VP for each building you have built (Max 5VP)\": economy.grandGranaryCap moves from null (the arm added 16/09/2026 to test the cap before any sheet change) to the SHIPPED value 5. (2) The Dairy Notice Board's discount is cut from 2 to 1: economy.noticeBoardPower.dairyDiscount moves from 2 to 1, read the same way (a build at this board costs this many cards fewer, and any discount above 0 still waives the n-of-suit requirement). D4 The Milking Shed's \"Build at a discount of 1\" is unchanged from v42 and needed no code change. (3) O4 The Apple Grove moves from \"Draw 2\" to \"Draw 3\" - a plain text/number change on the existing Draw task, no new knob. (4) D18 A Helping Hand is RETEXTED from the count-to-2 \"If, on your turn, you Build two buildings, put the top 2 cards of any one deck into your Barn\" to \"Whenever you build a card that costs 3 or more resources, add 1 of those cards to your Barn\" - a new handler shape (packages/engine/src/handlers/helpingHand.ts): it fires on EVERY qualifying build in a turn rather than once, reads the PRINTED (undiscounted) cost off the built card, and lets its owner choose which spent card goes to the barn via the same discard-reclaim route as D5/D6/O17.",
       "⭐⭐⭐ 16/09/2026: TWO TABLE RULINGS OF 15/09/2026 REACH THE ENGINE (Dean, Rule book v3). (1) setup.firstPlayer 'random': the first player is drawn from the game's seeded RNG after every setup shuffle and recorded as GameState.firstPlayer; 'seat0' is the old rule and makes no RNG call. (2) endGame.endOfGame 'finishRound': once the end is triggered, play continues until the round is complete, so the game ends when the seat about to play would be the first player; 'oneMoreTurnEach' is the old rule (every other player takes furtherTurnsEach = 1 more turn), and furtherTurnsEach is read only under it. Every overlay describing an older game must pin firstPlayer 'seat0' and endOfGame 'oneMoreTurnEach' by name. The same pass retires the old A Helping Hand (the second bonus play) and builds the five v42 per-suit Helping Hands W18, A18, D18, O18 and V18.",
       "⭐⭐⭐ 16/09/2026: THE BALLOONS, THE AERODROME, THE VILLAGE STORE COIN, THE CLOSING DRAW AND THE ISLAND WILD SUBSTITUTION ARE DELETED FROM THE ENGINE (Dean, rulings R1, R2, R4 and R5 of docs/vegetable-token-island-handoff-2026-09-16-v1.md). The code is gone, not parked behind a knob: aerodrome.json, rules.turn.closingDrawPerCrate, island.cardsPerSubstitution and the economy leaves storeCoinsPerCard, coinSupplyPerPlayer, coinPaysBuild, coinPaysSuitCost, coinPaysGrow and coinGrowOnFullBuilding went with it, and so did the two dead coin knobs endgameCoinCost and farmsteadCoinPower, which only ever sat at their off values. Notes below that describe any of those systems describe the previous game.",
@@ -95,6 +96,8 @@
     },
     "cropScorerOnBarn": true,
     "grandGranaryCap": 5,
+    "honeyHallCap": 5,
+    "apiaristsGuildCap": 5,
     "noticeBoardPower": {
       "orchardDraw": 4,
       "apiarySows": 2,
@@ -103,8 +106,8 @@
       "vegetableWildCards": 2,
       "dairyWild": true,
       "dairyDiscount": 1,
-      "wheatBarn": 1,
-      "wheatHarvestGate": "loaded"
+      "wheatBarn": 0,
+      "wheatHarvestGate": "nearFull"
     }
   },
   "endGame": {

@@ -297,141 +297,20 @@ describe('the Wheat Farmstead (W2) - the own-crop end-game scorer', () => {
   });
 });
 
-describe('the shared FIELD line - "Sow 1 FIELD from the deck"', () => {
-  it("reseeds the just-harvested FIELD off a deck of the owner's choosing", () => {
-    const s = base();
-    buildFor(data, s, WHEAT, 'W5'); // threshold 2
-    fill(s, 'W5');
-    const expected = s.decks.orchard[0];
-
-    const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W5' });
-    expect(buildingOf(applied.state, WHEAT, 'W5').stack).toEqual([]);
-    const reseed = applied.state.tasks.find((t) => t.t === 'sowFromDeck');
-    expect(reseed).toMatchObject({ src: 'W5', remaining: 1, targets: own('W5') });
-
-    // Answer the Draw 2 first (it was queued ahead), then the reseed.
-    let state = answerAll(applied.state, (answers) => {
-      const seed = answers.find((a) => a.kind === 'deckSow' && a.suit === 'orchard');
-      return (seed ?? answers[0]) as TaskAnswer;
-    });
-    expect(buildingOf(state, WHEAT, 'W5').stack).toEqual([expected]);
-    // Which is the whole point: with the seed down, ONE grow refills it.
-    const pay = state.decks.wheat[0] as string;
-    dealTo(data, state, WHEAT, pay);
-    state = growBuilding(data, state, WHEAT, 'W5', pay).state;
-    expect(buildingOf(state, WHEAT, 'W5').stack).toHaveLength(2);
-  });
-
-  /**
-   * ⚠️ DECLINABLE SINCE 18/09/2026 (to-do 2.2's "stuck" fix): every
-   * `sowFromDeck` task now enumerates a `{ kind: 'skip' }` answer alongside
-   * its real ones, and applying it clears the task and changes nothing else.
-   * W5's reseed is the simplest live push site (one target, `remaining` 1),
-   * so it carries both halves of the coverage: decline leaves the FIELD
-   * empty, accept seeds it, and nothing else about the position moves either
-   * way.
-   */
-  it('offers a skip on the reseed, and declining changes nothing but clearing the task', () => {
-    const s = base();
-    buildFor(data, s, WHEAT, 'W5'); // threshold 2
-    fill(s, 'W5');
-
-    const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W5' });
-    // Walk past W5's own Draw 2 (pushed ahead of the reseed) to reach it.
-    let queued = applied.state;
-    for (let guard = 0; guard < 8 && queued.tasks[0]?.t !== 'sowFromDeck'; guard++) {
-      queued = answerTask(data, queued, pendingAnswers(data, queued)[0] as TaskAnswer).state;
-    }
-    expect(queued.tasks[0]?.t).toBe('sowFromDeck');
-    const answers = pendingAnswers(data, queued);
-    const skip = answers.find((a) => a.kind === 'skip');
-    expect(skip).toBeDefined();
-    // At least one real deck-sow answer sits alongside the skip.
-    expect(answers.some((a) => a.kind === 'deckSow')).toBe(true);
-
-    const declined = answerTask(data, queued, skip as TaskAnswer).state;
-    expect(declined.tasks.some((t) => t.t === 'sowFromDeck')).toBe(false);
-    // Declining is a pure clear: the FIELD stays empty and the barn/hand are
-    // untouched by the skip itself.
-    expect(buildingOf(declined, WHEAT, 'W5').stack).toEqual([]);
-    expect(player(declined, WHEAT).barn).toEqual(player(queued, WHEAT).barn);
-    expect(player(declined, WHEAT).hand).toEqual(player(queued, WHEAT).hand);
-
-    // Accepting instead, from the same position, still seeds the FIELD.
-    const deckSow = answers.find((a) => a.kind === 'deckSow') as TaskAnswer;
-    const accepted = answerTask(data, queued, deckSow).state;
-    expect(buildingOf(accepted, WHEAT, 'W5').stack).toHaveLength(1);
-  });
-
-  /**
-   * ⛔ NARROWED BY THE REBALANCE (2026-08-12), and this is the shape that can
-   * see it: a second FIELD, owned, empty and with room to spare. The seed used
-   * to be aimable at ANY FIELD the seat owned, which let a wide farm point every
-   * harvest's seed at whichever FIELD was closest to full and turn one harvest
-   * into the next one. The target is now fixed at push time to the building that
-   * just harvested, so the number of FIELDs stops multiplying the line - and the
-   * task drops from a two-part choice (which FIELD, which deck) to a one-part
-   * one, which is teach cost going down as well as power coming off.
-   */
-  it('never lands on another FIELD, however much room that FIELD has', () => {
-    const s = base();
-    buildFor(data, s, WHEAT, 'W5', 'W4'); // both threshold 2; W4 left empty
-    fill(s, 'W5');
-
-    const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W5' });
-    const reseed = applied.state.tasks.find((t) => t.t === 'sowFromDeck');
-    // EXACTLY one target, asserted as the whole array: this is the assertion
-    // the narrowing is about, so a `toMatchObject` subset would not hold it.
-    expect(reseed?.t === 'sowFromDeck' && reseed.targets).toEqual(own('W5'));
-    // And the choice actually OFFERED is only ever "which deck". Walk the queue
-    // to the reseed (W5's own Draw 2 was pushed ahead of it) and read it there:
-    // a target the enumerator would still accept is the only way this could rot.
-    let queued = applied.state;
-    for (let guard = 0; guard < 8 && queued.tasks[0]?.t !== 'sowFromDeck'; guard++) {
-      queued = answerTask(data, queued, pendingAnswers(data, queued)[0] as TaskAnswer).state;
-    }
-    const seeds = pendingAnswers(data, queued);
-    expect(seeds.length).toBeGreaterThan(0);
-    // The task is declinable since 18/09/2026, so a `skip` rides alongside
-    // the real answers; every non-skip one is still only ever "which deck".
-    const deckSeeds = seeds.filter((a) => a.kind === 'deckSow');
-    expect(deckSeeds.length).toBeGreaterThan(0);
-    expect(deckSeeds.every((a) => a.kind === 'deckSow' && a.onto === 'W5')).toBe(true);
-
-    // Where the card actually went, not just where it was aimed.
-    const done = answerAll(applied.state, (a) => a[0] as TaskAnswer);
-    expect(buildingOf(done, WHEAT, 'W5').stack).toHaveLength(1);
-    expect(buildingOf(done, WHEAT, 'W4').stack).toEqual([]);
-  });
-
-  it('skips silently when no FIELD has room', () => {
-    const s = base();
-    buildFor(data, s, WHEAT, 'W4', 'W5');
-    fill(s, 'W4');
-    fill(s, 'W5'); // both FIELDs full; W5 empties on harvest, W4 stays clogged
-    // Empty every deck so the reseed has nothing to draw either.
-    for (const suit of data.cards.suits) {
-      s.decks[suit] = [];
-      s.discards[suit] = [];
-    }
-    const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W5' });
-    expect(answerAll(applied.state).tasks).toEqual([]);
-  });
-});
-
 describe('Tier 1 - the five FIELDs, both printed lines each', () => {
   /**
-   * ⛔ THE RESEED IS GONE (19/08/2026, and this test's name went with it). The
-   * sheet reads "Draw 1. / HARVEST: Put 1 card from your hand into your barn."
-   * and stops there; the handler went on calling `reseed` for a week after the
-   * line came off the print, and Dean ruled the sheet correct.
+   * ⛔ THE RESEED IS GONE (19/08/2026 off W4, and 19/09/2026 off W5 too, v45 -
+   * see the `reseed()` deletion note in wheat.ts). The sheet reads "Draw 1. /
+   * HARVEST: Put 1 card from your hand into your barn." and stops there; the
+   * handler went on calling `reseed` for a week after the line came off the
+   * print for W4, and Dean ruled the sheet correct.
    *
    * It is not housekeeping. The reseed is what kept every FIELD at 1 card or
    * more, which is what made the old relaxed harvest gate legal essentially
    * always. With the gate gone from the suit too (see the W2 block above),
    * Wheat's harvest is now genuinely gated on filling a building. `reseed`
-   * still exists and W5 Rye Field still calls it - it is printed on exactly one
-   * card now.
+   * no longer exists at all: W5 Rye Field was the last card calling it and the
+   * v45 sheet dropped the seed line from W5 as well.
    */
   it('W4 Wheat Field: GROW draws 1; HARVEST banks a hand card and no longer reseeds', () => {
     const s = base();
@@ -461,12 +340,14 @@ describe('Tier 1 - the five FIELDs, both printed lines each', () => {
     expect(player(done, WHEAT).barn).toHaveLength(3);
   });
 
-  it('W5 Rye Field: HARVEST draws 2', () => {
+  /** v45 (19/09/2026): the seed line is gone and the draw moves 2 to 3. */
+  it('W5 Rye Field: HARVEST draws 3, and no reseed rides along', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W5');
     fill(s, 'W5');
     const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W5' });
-    expect(applied.state.tasks[0]).toMatchObject({ t: 'draw', see: 2, keep: 2, src: 'W5' });
+    expect(applied.state.tasks[0]).toMatchObject({ t: 'draw', see: 3, keep: 3, src: 'W5' });
+    expect(applied.state.tasks.some((t) => t.t === 'sowFromDeck')).toBe(false);
   });
 
   it('W6 Barley Field: HARVEST sows one HAND card onto each of your FIELDs', () => {
@@ -741,7 +622,14 @@ describe('Tier 3 - three ordinary GROW buildings', () => {
     }
   });
 
-  it('W13 The Bakery: one GROW empties every loaded building, itself included', () => {
+  /**
+   * v45 RETEXT (19/09/2026, R6 and R10): "each of your OTHER buildings ...
+   * not this one". W13's own fee therefore stays on its own stack - a
+   * deliberate self-clog, not a bug (the old face scooped it straight back;
+   * this one no longer harvests itself at all, so an ordinary Harvest is
+   * needed before W13 can fire again).
+   */
+  it('W13 The Bakery (v45): one GROW empties every OTHER loaded building, never itself', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W13', 'W4', 'W5'); // W13 threshold 1
     loadStack(data, s, WHEAT, 'W4', 1, 'apiary'); // 1 of 2: not full, harvested anyway
@@ -749,28 +637,26 @@ describe('Tier 3 - three ordinary GROW buildings', () => {
     const grown = growTier3(s, 'W13');
     expect(buildingOf(grown.state, WHEAT, 'W4').stack).toEqual([]);
     expect(buildingOf(grown.state, WHEAT, 'W5').stack).toEqual([]);
-    // Its own fee is on its own stack when the ability fires, so the cascade
-    // takes it straight back off again and into the barn. Correct, not a bug.
-    expect(buildingOf(grown.state, WHEAT, 'W13').stack).toEqual([]);
-    expect(player(grown.state, WHEAT).barn).toContain('W20');
-    expect(player(grown.state, WHEAT).barn).toHaveLength(4); // 1 + 2 + its own fee
+    // R10: its own fee is NOT harvested back - the whole point of the retext.
+    expect(buildingOf(grown.state, WHEAT, 'W13').stack).toEqual(['W20']);
+    expect(player(grown.state, WHEAT).barn).toHaveLength(3); // 1 (W4) + 2 (W5)
   });
 
   /**
-   * ⭐ v42 "(including 0)": an EMPTY building is harvested, so its own "When
-   * Harvested" line fires; a Notice Board below its 3+ minimum is not.
+   * v45 RETEXT (19/09/2026, R6): "with at least 1 card on it" replaces v42's
+   * "however many cards ... (including 0)", so an EMPTY building is no longer
+   * harvested; a Notice Board still needs 3+ (the standing rule, unchanged).
    */
-  it('W13 The Bakery (v42): empty buildings are harvested too, a Notice Board only at 3+', () => {
+  it('W13 The Bakery (v45): an empty building is skipped, a Notice Board only at 3+', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W13', 'W5'); // W5 empty
     loadStack(data, s, WHEAT, 'W3', 2, 'apiary'); // the Notice Board, below 3
     const grown = growTier3(s, 'W13');
     const harvested = grown.events.flatMap((e) => (e.e === 'harvested' ? [e.building] : []));
-    expect(harvested.sort()).toEqual(['W13', 'W5']);
-    // W5's "When Harvested: Draw 2" fired off an empty stack.
-    expect(grown.state.tasks).toContainEqual(
-      expect.objectContaining({ t: 'draw', src: 'W5', see: 2 }),
-    );
+    // Nothing at all: not W13 (excludes itself), not the empty W5, not the
+    // sub-3 Notice Board.
+    expect(harvested).toEqual([]);
+    expect(buildingOf(grown.state, WHEAT, 'W13').stack).toEqual(['W20']);
     expect(buildingOf(grown.state, WHEAT, 'W3').stack).toHaveLength(2);
 
     const t = base();
@@ -941,8 +827,14 @@ describe('the Power cards', () => {
   /**
    * ⭐ THE ONCE-PER-TURN GUARD IS GONE (Dean, 15/09/2026): card text fires every
    * time its trigger happens, and each building harvested is its own trigger.
+   *
+   * v45 (19/09/2026, R7/R8): the push itself is still unconditional - one
+   * `granaryDraw` task per building harvested, queued regardless of hand size.
+   * The condition ("5 or fewer cards") is evaluated when each task is
+   * actually RESOLVED, not when it is pushed, which is what lets a cascade
+   * stop paying part way through (see the two tests below).
    */
-  it('W16 The Granary: draws once for EVERY building harvested', () => {
+  it('W16 The Granary: queues a draw check for EVERY building harvested', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W16', 'W12', 'W4', 'W5');
     dealTo(data, s, WHEAT, 'W7');
@@ -950,10 +842,66 @@ describe('the Power cards', () => {
     loadStack(data, s, WHEAT, 'W5', 2, 'apiary');
     loadStack(data, s, WHEAT, 'W12', 1, 'apiary');
     const grown = growBuilding(data, s, WHEAT, 'W12', 'W7');
-    const granary = grown.state.tasks.filter((t) => t.t === 'draw' && t.src === 'W16');
+    const granary = grown.state.tasks.filter(
+      (t) => t.t === 'card' && t.kind === 'granaryDraw' && t.src === 'W16',
+    );
     // W4, W5 and W12 itself (v42: W12 is a Wheat building).
     expect(granary).toHaveLength(3);
     expect(grown.state.turn.firedThisTurn).not.toContain('W16');
+  });
+
+  /** R7: the condition is the owner's HAND ONLY, and it fires at 5 or fewer. */
+  it('W16 The Granary: fires when the hand is 5 or fewer cards', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W16', 'W9'); // W9: no harvest-time text of its own
+    dealTo(data, s, WHEAT, 'A4', 'A5', 'A6', 'A7', 'A8'); // hand of 5, right at the floor
+    fill(s, 'W9');
+    const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W9' });
+    expect(pendingAnswers(data, applied.state).length).toBeGreaterThan(0);
+    const done = answerAll(applied.state);
+    expect(player(done, WHEAT).hand).toHaveLength(6); // the 5 kept, plus the draw
+  });
+
+  /** R7: over 5 and the draw is silent, dropped by the engine's own drain loop. */
+  it('W16 The Granary: stays silent when the hand is more than 5 cards', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W16', 'W9');
+    dealTo(data, s, WHEAT, 'A4', 'A5', 'A6', 'A7', 'A8', 'A9'); // hand of 6
+    fill(s, 'W9');
+    const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W9' });
+    expect(applied.state.tasks).toEqual([]);
+    expect(player(applied.state, WHEAT).hand).toHaveLength(6);
+  });
+
+  /**
+   * R8: the count is taken FRESH each time this card's draw would happen, not
+   * once per turn - so a cascade (here W13's, excluding itself since v45)
+   * stops paying part way through as the hand fills. All three `granaryDraw`
+   * tasks are pushed together, synchronously, during W13's own cascade,
+   * before any of them resolve - it is resolving the FIRST one that fills the
+   * hand and turns the other two silent, exactly as the ruling describes.
+   */
+  it('W16 The Granary: a cascade stops paying part way through as the hand fills', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W13', 'W16', 'W9', 'W10', 'W11');
+    loadStack(data, s, WHEAT, 'W9', 1, 'orchard');
+    loadStack(data, s, WHEAT, 'W10', 1, 'orchard');
+    loadStack(data, s, WHEAT, 'W11', 1, 'orchard');
+    dealTo(data, s, WHEAT, 'A4', 'A5', 'A6', 'A7', 'A8', 'A9'); // hand of 6
+    const grown = growBuilding(data, s, WHEAT, 'W13', 'A4'); // pays 1: hand -> 5
+    expect(player(grown.state, WHEAT).hand).toHaveLength(5);
+    expect(
+      grown.state.tasks.filter((t) => t.t === 'card' && t.kind === 'granaryDraw'),
+    ).toHaveLength(3);
+
+    // Resolving the first (hand 5, live) fills the hand to 6; the drain loop
+    // then re-checks the next task fresh at 6, finds nothing legal, and drops
+    // it silently - and the one after that too.
+    const answer = pendingAnswers(data, grown.state)[0] as TaskAnswer;
+    const done = answerTask(data, grown.state, answer).state;
+    expect(done.tasks).toEqual([]);
+    expect(player(done, WHEAT).hand).toHaveLength(6); // exactly ONE draw fired
+    expect(player(done, WHEAT).barn).toHaveLength(3); // W9, W10, W11's single cards
   });
 
   /**

@@ -97,7 +97,7 @@ import type { GameData, Suit } from '@gp/data';
 
 import { activateTargets } from '../actions.js';
 import type { Fx } from '../fx.js';
-import { cardById, isHarvestable, player } from '../query.js';
+import { canSowOnto, cardById, isHarvestable, player } from '../query.js';
 import type { CardId, Seat, TaskAnswer } from '../state.js';
 import {
   builtBuildingsWorth,
@@ -384,14 +384,29 @@ export const wildHive: CardHandler = {
       'building that can take a card (never a Notice Board, S11), so both may land on the ' +
       'same building or on two different neighbours. One `sowFromDeck` task with ' +
       '`remaining` 2; the task auto-drops when no neighbour has a building with room. ' +
-      '⚠️ DECLINABLE SINCE 18/09/2026 (`optional: true`), against the printed "Sow 2", not ' +
-      '"you may": every `sowFromDeck` push shipped skippable that day to fix a UI dead end ' +
-      '(a human had no answer to give at all), on the `handToBarn` precedent. A ruling on ' +
-      'whether THIS card in particular should stay mandatory is still owed. ' +
-      'Then two deck-to-barn picks (`deckToBarn`, buildings.ts), each from a deck of the ' +
-      "owner's choosing, which run whether or not the sow found a target. A sow onto a " +
-      "neighbour's farm is not a visit and fires no visit reactor. The older note, about " +
-      'the barn gift that this text replaced, follows. ' +
+      '⚠️ MANDATORY (`optional: false`), CORRECTED 19/09/2026: THE PRINTED TEXT GOVERNS ' +
+      '(Dean) - a sow is declinable if and only if the card says "may", and A8 prints ' +
+      '"Sow 2", not "you may sow". This reverses the 18/09/2026 change that set every ' +
+      '`sowFromDeck` push skippable across all five sites as one blanket fix; that blanket ' +
+      'fix is gone and the text decides site by site now (A17 and A18 print "may" and stay ' +
+      'optional, the generic door path below prints no card text of its own and stays ' +
+      'mandatory to match this and W5). ' +
+      '⭐ THE BARN IS GATED ON THE SOW, RULED 19/09/2026 (Dean, his words): "the sow is ' +
+      'mandatory. IF you cannot sow, you cannot place cards in your barn." "Cannot sow" is ' +
+      'read as: no neighbour owns a non-full, non-Notice-Board building right now ' +
+      '(`neighbourSowTargets` filtered live through `canSowOnto`) - the same room test the ' +
+      'sow task already applies to each of its own targets, just checked once up front to ' +
+      'decide whether to push anything at all. When it fails, THE WHOLE CARD IS A NO-OP: ' +
+      'neither task is pushed, so there is no sow and no barn gift. (A rarer failure - a ' +
+      'neighbour DOES have room but every deck and its discard are dry when the mandatory ' +
+      'sow task is actually answered - is not this gate; the sow task itself then finds no ' +
+      'legal answer and auto-drops with nothing sown, while the barn task, already pushed, ' +
+      'still runs. Untested; a ruling on whether that should also block the barn is owed if ' +
+      'it ever matters at the table.) ' +
+      'When it does not fail: one `sowFromDeck` task with `remaining` 2, then two deck-to- ' +
+      "barn picks (`deckToBarn`, buildings.ts), each from a deck of the owner's choosing. A " +
+      "sow onto a neighbour's farm is not a visit and fires no visit reactor. The older " +
+      'note, about the barn gift that this text replaced, follows. ' +
       'The gift goes STRAIGHT INTO THEIR BARN: no threshold advanced, no clog caused, no ' +
       'argument about whether it helped. ⚠️ NO ELIGIBLE NEIGHBOUR MEANS NO PAYOUT - the ' +
       'payout is for the gift, so it lives in the resolver and the whole task auto-skips ' +
@@ -408,16 +423,21 @@ export const wildHive: CardHandler = {
   },
   activate(fx, self) {
     const targets = neighbourSowTargets(fx.data, fx.state, self.seat);
-    if (targets.length > 0) {
-      fx.pushTask({
-        t: 'sowFromDeck',
-        pid: self.seat,
-        src: self.card,
-        remaining: 2,
-        targets,
-        optional: true,
-      });
-    }
+    const canSow = targets.some((ref) => {
+      const b = fx.state.players[ref.seat]?.tableau.find((x) => x.card === ref.card);
+      return b !== undefined && canSowOnto(fx.data, b);
+    });
+    // "Cannot sow" (Dean, 19/09/2026): no neighbour has a non-full building
+    // right now. The whole card is a no-op then - no sow task, no barn task.
+    if (!canSow) return;
+    fx.pushTask({
+      t: 'sowFromDeck',
+      pid: self.seat,
+      src: self.card,
+      remaining: 2,
+      targets,
+      optional: false,
+    });
     fx.pushTask({
       t: 'card',
       pid: self.seat,
@@ -796,8 +816,11 @@ export const smokePot: CardHandler = {
       '⭐ v42: the deck top is SOWN onto one of your own buildings (any building that can ' +
       'take a card, never a Notice Board, S11), where it used to go to the barn. One ' +
       '`sowFromDeck` task, `remaining` 1, skipped when nothing has room. ' +
-      '⚠️ DECLINABLE SINCE 18/09/2026 (`optional: true`), against the printed "SOW", not ' +
-      '"you may": see the Wild Hive note above, same fix, same open ruling. ' +
+      '⭐ OPTIONAL (`optional: true`), RE-CONFIRMED 19/09/2026: THE PRINTED TEXT GOVERNS ' +
+      '(Dean) - a sow is declinable if and only if the card says "may", and the v44 sheet ' +
+      'retexted this card to "you may SOW", so the flag that the 18/09/2026 blanket fix set ' +
+      'is now correct for the right reason instead of by accident. Contrast the Wild Hive ' +
+      '(A8) above, whose text prints no "may" and went back to mandatory the same day. ' +
       'VISITOR-side and neighbour-only, as before. ⭐ THE ONCE-A-TURN ' +
       'GUARD IS GONE (Dean, 15/09/2026): card text fires every time its trigger happens, so ' +
       'a second visit in a turn sows a second card. The paragraphs below that argue the ' +
@@ -858,7 +881,8 @@ export const smokePot: CardHandler = {
 
 /**
  * A19 The Honey Hall - "Game end: 1 VP for each non-Apiary building you have
- * built." (v42; was 3 VP.)
+ * built. (Max 5)" (v45, 19/09/2026: the "(Max 5)" cap is new; v42 was
+ * uncapped at 1 VP each.)
  */
 export const honeyHall: CardHandler = {
   difficulty: {
@@ -866,9 +890,14 @@ export const honeyHall: CardHandler = {
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: true },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
+      '⭐ v45 (R9, tasks/v45-rulings-v1.md): the printed "(Max 5)" is a new tunable number, ' +
+      '`rules.economy.honeyHallCap`, on the `grandGranaryCap` pattern (W20) - shipped 5, its ' +
+      'own knob rather than shared with A20 `apiaristsGuildCap`, because the two cards count ' +
+      'different things. null would be uncapped, which is how the card read before this ' +
+      'ruling. The older v42 note follows. ' +
       '⭐ v42: the rate falls 3 to 1. It counts BUILDINGS (`foreignBuildingsOf`, threshold ' +
       'cards printing another crop), so a foreign Power or Endgame card no longer counts, ' +
-      'which is the builder default for "building" (16/09/2026). The older note follows. ' +
+      'which is the builder default for "building" (16/09/2026). ' +
       'THE MANY FLOWERS, and it pays for your own decision on the mechanism: Apiary pays no ' +
       'crop cost to fire a building, so a foreign Tier 2 or Tier 3 in an Apiary tableau is ' +
       'a better card than it is in the tableau of the suit that printed it. Buildings ' +
@@ -879,13 +908,16 @@ export const honeyHall: CardHandler = {
       'Tier 3 and firing it every turn (risk 5).',
   },
   gameEnd(data, state, seat) {
-    return foreignBuildingsOf(data, state, seat, 'apiary').length;
+    const count = foreignBuildingsOf(data, state, seat, 'apiary').length;
+    const cap = data.rules.economy.honeyHallCap;
+    return cap === null ? count : Math.min(cap, count);
   },
 };
 
 /**
  * A20 The Apiarist's Guild - "Game end: 1 VP for each 1VP building you have
- * built." (v42; was 2 VP for each HIVE.)
+ * built. (Max 5)" (v45, 19/09/2026: the "(Max 5)" cap is new; v42 was
+ * uncapped at 1 VP each.)
  */
 export const apiaristsGuild: CardHandler = {
   difficulty: {
@@ -893,6 +925,11 @@ export const apiaristsGuild: CardHandler = {
     verified: { prompts: false, crossPlayer: false, addsMoves: false, endgame: true },
     asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
+      '⭐ v45 (R9, tasks/v45-rulings-v1.md): the printed "(Max 5)" is a new tunable number, ' +
+      '`rules.economy.apiaristsGuildCap`, on the `grandGranaryCap` pattern (W20) - shipped 5, ' +
+      'its own knob rather than shared with A19 `honeyHallCap`, because the two cards count ' +
+      'different things. null would be uncapped, which is how the card read before this ' +
+      'ruling. The older v42 note follows. ' +
       '⭐ v42: 1 VP for each building you have built whose PRINTED VP is exactly 1, of any ' +
       'suit (`builtBuildingsWorth`, buildings.ts). Buildings only: a Power or Endgame card ' +
       'printing 1 VP never counts, and on v42 the Power cards print 0 anyway. One of a ' +
@@ -900,7 +937,9 @@ export const apiaristsGuild: CardHandler = {
       'A4 to A8, at 2 VP each.',
   },
   gameEnd(data, state, seat) {
-    return builtBuildingsWorth(data, state, seat, 1);
+    const count = builtBuildingsWorth(data, state, seat, 1);
+    const cap = data.rules.economy.apiaristsGuildCap;
+    return cap === null ? count : Math.min(cap, count);
   },
 };
 

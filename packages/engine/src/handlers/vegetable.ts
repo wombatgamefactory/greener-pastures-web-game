@@ -17,17 +17,26 @@
  *   2. **One delivery may take EVERY receipt a tile has left** (V14), which is
  *      `doDeliver`'s `takeAll` choice: pay the same 4 cards once and take both
  *      tokens, or the last one.
- *   3. **"Discard a card from your Barn"** (V8, V10, V12, V15): one shared step,
- *      `barnDiscardTask` in buildings.ts, through `Fx.discardFromBarn`, which
- *      fires the `afterBarnDiscard` hook V17 listens to. ⛔ R6: a delivery
- *      payment is never a barn discard, and V14's demolition is not one either.
+ *   3. **"Discard a card from your Barn"** (V8, V15 only, since sheet v45 -
+ *      19/09/2026): one shared step, `barnDiscardTask` in buildings.ts,
+ *      through `Fx.discardFromBarn`, which fires the `afterBarnDiscard` hook.
+ *      ⛔ R6: a delivery payment is never a barn discard, and V14's demolition
+ *      is not one either. ⚠️ V10 and V12 used to share this step and no
+ *      longer do (v45): both now only COUNT the barn, never spend it (R1,
+ *      R4). V8 and V15 are the hook's only listeners now; V17 moved off it
+ *      onto `beforeTurnEnd` the same day (item 8 below).
  *   4. **A barn card into the hand** (V6): `Fx.barnToHand`, by crop.
  *   5. **A card off a building into the barn without a harvest** (V11):
  *      `Fx.stackCardToBarn`, which already existed.
  *   6. **A board power by crop without a visit** (V12): `fireNoticeBoardPower`
  *      (workers.ts), which places no card, fires no `afterVisit` and latches no
- *      board, so it is no visit: no fee, and no W17, O16 or A17.
+ *      board, so it is no visit: no fee, and no W17, O16 or A17. ⭐ v45: the
+ *      power is FREE (R4) - the barn only names which suits are on offer, and
+ *      nothing is discarded to pay for it.
  *   7. **Receipts by crop and value** (V19, V20, V21; W21 in wheat.ts).
+ *   8. **An end-of-turn condition on an empty Barn** (V17, v45): a second
+ *      listener on `beforeTurnEnd` (fx.ts), the hook `finishTurn` (turnflow.ts)
+ *      already fires once a turn, for O18 A Helping Hand.
  *
  * ⛔ THE DEPOT SUB-TYPE IS GONE FROM THIS FILE (v42). V12 and V20 were its only
  * readers and neither prints the word any more; v41 took the building nouns off
@@ -37,9 +46,11 @@
  * requested. They are all GROW."). V13, V14 and V15 used to be the suit's three
  * standing-move ACTION cards - no threshold, no activation type, one `cardMove`
  * whose `applyMove` set `turn.actionSpent` before it did anything else. They are
- * now ordinary owner-activated buildings: the sheet gives all three threshold 1
- * and a wild activation type, so a GROW pays one card of ANY crop into the stack
- * and the printed ability fires from `activate`. Nothing in this file spends the
+ * now ordinary owner-activated buildings, all three with a wild activation
+ * type, so a GROW pays one card of ANY crop into the stack and the printed
+ * ability fires from `activate`. ⚠️ The sheet gave all three threshold 1 at
+ * first; v45 (19/09/2026) raised V13 and V15 to threshold 2, leaving V14
+ * alone at 1. Nothing in this file spends the
  * action any more - GROW *is* the action and the grow runtime books it - and
  * `actionMoves`, `actionMove` and `actionOpen` have left the file with it.
  *
@@ -49,6 +60,22 @@
  * once-per-harvest-cycle rather than once-per-turn. And each of them now costs a
  * card as well as the action, which is a price the ACTION shape never paid - so
  * the conversion is a nerf on tempo even where the printed text got stronger.
+ *
+ * ⭐ SHEET v45 (19/09/2026, Dean's rulings R1-R5, `tasks/v45-rulings-v1.md`):
+ * eight faces move. V6 draws 2 instead of 1. V10 is completely retexted - no
+ * more discard, no more per-crop plain action: it counts the barn by crop and
+ * draws that many cards of each crop, mandatory and uncapped, off a barn left
+ * exactly as it was (R1-R3). V12 is completely retexted too: the barn only
+ * NAMES a suit whose Notice Board power you may take, for FREE, nothing
+ * discarded (R4). V16 keeps its behaviour outright - "any deck card" was
+ * already "the top card of a deck of your choice" (R5) - only its printed
+ * words moved. V17 is completely retexted, from "draw 1 whenever you discard
+ * a barn card" to "if your Barn is empty at the end of your turn, place a
+ * deck top card into it" (also R5), so it moves off `afterBarnDiscard` onto
+ * `beforeTurnEnd`. V11, V13 and V15 gain a threshold only - 2 to 3, 1 to 2
+ * and 1 to 2 respectively - with no change to any printed effect; V12's
+ * threshold also rises, 2 to 3, alongside its retext. `pushPlainAction` is
+ * deleted with V10's old text, its only caller.
  */
 
 import type { GameData, Suit } from '@gp/data';
@@ -109,47 +136,24 @@ function pushBarnDiscard(
 }
 
 /**
- * ⭐ THE PLAIN ACTION OF A CROP (V10's "base action", v42): wheat Harvest,
- * vegetable Deliver, orchard Draw 2, apiary GROW, dairy Build - the Worker
- * mapping. It reads the roster through `doorActionOf` and maps the Apiary's
- * `sow` to a Grow UNCONDITIONALLY: `meepleActionOf` makes the same mapping only
- * under `meepleSpendTiming: 'afterAction'`, which is a Worker knob and not a
- * card's business. Deliberately not `performDoorAction`, which emits
- * `doorUsed` and fires `afterWork` as a door or Worker use.
+ * ⭐ THE PLAIN ACTION OF A CROP: wheat Harvest, vegetable Deliver, orchard
+ * Draw 2, apiary GROW, dairy Build - the Worker mapping. It reads the roster
+ * through `doorActionOf` and maps the Apiary's `sow` to a Grow
+ * UNCONDITIONALLY: `meepleActionOf` makes the same mapping only under
+ * `meepleSpendTiming: 'afterAction'`, which is a Worker knob and not a card's
+ * business. Deliberately not `performDoorAction`, which emits `doorUsed` and
+ * fires `afterWork` as a door or Worker use.
+ *
+ * ⚠️ UNCALLED SINCE SHEET v45 (19/09/2026): this was V10 The Supply House's
+ * "base action" mapping (`pushPlainAction`, deleted the same day with its only
+ * caller when V10 was retexted to a plain per-crop draw, R1-R3). Left in place
+ * because it is a small, already-proven utility and no card currently needs
+ * it removed, but nothing in the engine calls it right now - flag this for a
+ * future pass if it stays dead.
  */
 export function plainActionOf(data: GameData, crop: Suit): DoorAction {
   const action = doorActionOf(data, crop);
   return action === 'sow' ? 'grow' : action;
-}
-
-/** Queue the plain action of a crop for `seat`, as granted by the card `src`. */
-function pushPlainAction(fx: Fx, seat: Seat, src: CardId, crop: Suit): void {
-  const action = plainActionOf(fx.data, crop);
-  switch (action) {
-    case 'draw': {
-      const { see, keep } = fx.data.rules.turn.baseDraw;
-      fx.pushTask({ t: 'draw', pid: seat, src, see, keep, revealed: [] });
-      return;
-    }
-    case 'harvest':
-      fx.pushTask({ t: 'chooseBuilding', pid: seat, src, filter: 'harvestable', then: 'harvest' });
-      return;
-    case 'grow':
-      fx.pushTask({ t: 'grow', pid: seat, src });
-      return;
-    case 'build':
-      fx.pushTask({ t: 'build', pid: seat, src });
-      return;
-    case 'deliver':
-      fx.pushTask({ t: 'deliver', pid: seat, src });
-      return;
-    case 'sow':
-      // Unreachable: `plainActionOf` maps it away. Kept so the switch stays total.
-      fx.pushTask({ t: 'grow', pid: seat, src });
-      return;
-    default:
-      return action satisfies never;
-  }
 }
 
 /** A seat's receipts (the token island, R7). */
@@ -351,7 +355,10 @@ export const coastalTradingDepot: CardHandler = {
   },
 };
 
-/** V6 The Trade Depot - v42: "Swap up to 2 cards between your hand and your Barn, then Draw 1." */
+/**
+ * V6 The Trade Depot - v45 (19/09/2026): "Swap up to 2 cards between your hand
+ * and your Barn, then Draw 2." (was "...then Draw 1" on v42.)
+ */
 export const tradeDepot: CardHandler = {
   difficulty: {
     score: 2,
@@ -365,9 +372,9 @@ export const tradeDepot: CardHandler = {
       'each its own optional answer: one re-entrant `tradeSwap` task with a skip, never a ' +
       'subset enumeration. The barn card leaves BEFORE the hand card arrives, so a same-crop ' +
       'swap really hands over a different card. The swapped hand card is not a delivery and ' +
-      'not a discard. Then Draw 1, the ordinary draw task with the deck chosen, which runs ' +
-      'whether or not anything was swapped. Replaces the v39 face-down token, which died with ' +
-      'the crate island on 16/09/2026.',
+      'not a discard. ⭐ THEN DRAW 2 (v45, 19/09/2026; was Draw 1 on v42), the ordinary draw ' +
+      'task with the deck chosen, which runs whether or not anything was swapped. Replaces the ' +
+      'v39 face-down token, which died with the crate island on 16/09/2026.',
   },
   activate(fx, self) {
     fx.pushTask({
@@ -377,7 +384,7 @@ export const tradeDepot: CardHandler = {
       kind: 'tradeSwap',
       riders: { remaining: 2 },
     });
-    drawN(fx, self.seat, self.card, 1);
+    drawN(fx, self.seat, self.card, 2);
   },
   tasks: {
     tradeSwap: {
@@ -493,36 +500,40 @@ export const merchantGuild: CardHandler = {
 };
 
 /**
- * V10 The Supply House - v42: "Discard up to 2 cards from your Barn. For each
- * card discarded, perform the base action of that crop."
+ * V10 The Supply House - v45 (19/09/2026): "For each card in your Barn, draw 1
+ * of that suit." (was "Discard up to 2 cards from your Barn. For each card
+ * discarded, perform the base action of that crop." on v42.)
  */
 export const supplyHouse: CardHandler = {
   difficulty: {
-    score: 3,
+    score: 2,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: true, conditional: true, counts: true, interrupts: true },
+    asserted: { newPrimitive: false, conditional: true, counts: true, interrupts: false },
     notes:
-      '"BASE ACTION" IS THE PLAIN ACTION (handoff §3): wheat Harvest, vegetable Deliver, ' +
-      'orchard Draw 2, apiary GROW, dairy Build (`plainActionOf`, the Worker mapping). ' +
-      '⚠️ BUILDER DEFAULT: EVERY DISCARD FIRST, THEN THE ACTIONS IN DISCARD ORDER. The ' +
-      'handoff allows "any order"; discard order is the simpler of the two and the player ' +
-      'controls it by choosing which crop to discard first. Discarding first means a card ' +
-      'harvested into the barn by the first action can never be discarded by this card. ' +
-      '"Up to", so the barn-discard step offers a skip at each of its two answers; a skip ' +
-      'after one discard performs one action. Each discard triggers V17. Each action is the ' +
-      'ordinary task for it (chooseBuilding harvestable, deliver, draw at `baseDraw`, grow, ' +
-      'build), so one with nothing legal drops silently. A Grow cannot pick V10 itself, which ' +
-      'has already activated this turn. ' +
-      '⚠️ THE BRANCHING RISK (handoff §7): a discarded Apiary card is a Grow, and a Grow ' +
-      'activates another building; the once-per-turn activation cap bounds the chain.',
+      "⭐ RETEXTED ON SHEET v45 (Dean's rulings R1-R3, `tasks/v45-rulings-v1.md`). THE BARN " +
+      'CARDS STAY (R1): nothing is discarded, spent or moved, so this is a permanent faucet the ' +
+      'size of the barn and can fire again next turn off the same cards. THE DRAW IS ' +
+      'MANDATORY AND UNCAPPED (R2, R3): every barn card draws, no "up to", no skip, and a barn ' +
+      'of six draws six - shipped exactly as printed for this measurement run, not softened for ' +
+      'the simulator. `barnTally` counts the barn by crop WITHOUT touching it, and each count ' +
+      'runs once through `drawFromCropDeck` (the V8 shape: taken now, then handed to an ' +
+      'ordinary draw task with the cards pre-revealed), so a crop whose deck runs dry simply ' +
+      'draws what is left. NO TASK OF ITS OWN: there is no choice anywhere in the card, so it ' +
+      'is one loop over the tally rather than a re-entrant task. ' +
+      '⚠️ IMPLEMENTATION NOTE FROM DEAN, NOT SOFTENED HERE: the engine hand bound is 7 and the ' +
+      "end-of-turn overflow discard is already the simulator's single largest cost; a forced " +
+      'multi-card draw off a full barn pushes on that directly, and that cost is reported ' +
+      'rather than capped away. ' +
+      '⛔ THE OLD SHAPE IS GONE: no discard, no "up to", no per-crop plain action. ' +
+      '`pushPlainAction` loses its only caller here and is deleted with it; `plainActionOf` is ' +
+      'left in place but is presently uncalled anywhere in the engine.',
   },
   activate(fx, self) {
-    pushBarnDiscard(fx, self, 2, true);
-  },
-  tasks: {
-    barnDiscard: barnDiscardTask((fx, task, crops) => {
-      for (const crop of crops) pushPlainAction(fx, task.pid, task.src, crop);
-    }),
+    const tally = barnTally(fx.data, fx.state, self.seat);
+    for (const suit of fx.data.cards.suits) {
+      const n = tally[suit] ?? 0;
+      if (n > 0) drawFromCropDeck(fx, self.seat, self.card, suit, n);
+    }
   },
 };
 
@@ -595,40 +606,60 @@ export const marketMaster: CardHandler = {
 };
 
 /**
- * V12 The Auction House - v42: "Discard a card from your Barn. Perform the
- * Notice Board action of that crop."
+ * V12 The Auction House - v45 (19/09/2026): "Perform the Notice Board action
+ * of any suit you have in your Barn." (was "Discard a card from your Barn.
+ * Perform the Notice Board action of that crop." on v42.) Threshold 3 (was 2).
  */
 export const auctionHouse: CardHandler = {
   difficulty: {
-    score: 3,
+    score: 2,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: true, conditional: true, counts: false, interrupts: true },
+    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: true },
     notes:
-      "The barn-discard step, mandatory, one card; then THAT CROP'S BOARD POWER through " +
-      '`fireNoticeBoardPower` (workers.ts): Wheat harvest-then-hand-to-barn, Vegetable ' +
-      'Deliver with 2 any-crop cards or the fallback, Orchard Draw 4, Apiary the wild deck ' +
-      "Grow, Dairy Build at a discount of 2 with any crops. Any crop's power is available " +
-      'even if that board is not on the table. NOT A VISIT (handoff §3): no card is placed, ' +
-      'no `afterVisit` fires and no board is latched, so there is no fee and no W17, O16 or ' +
-      'A17. Vegetable\'s "if you cannot" is asked AFTER the discard, with the relaxation ' +
-      '(`vegetableBoardCanDeliver`), because the discard may have been the card that paid. ' +
-      '⚠️ BUILDER DEFAULT: THE DISCARD HAPPENS WHETHER OR NOT THE POWER CAN DO ANYTHING, and ' +
-      'the power then does as much as it can (its tasks drop when dead), because a GROW ' +
-      'activation cannot be refused per crop. Triggers V17. Replaces v31\'s "Put 1 card from ' +
-      'your hand into your barn for each DEPOT you have built".',
+      "⭐ RETEXTED ON SHEET v45 (Dean's ruling R4, `tasks/v45-rulings-v1.md`). THE POWER IS " +
+      'FREE: no card is discarded, spent or moved. The barn only NAMES which powers are on ' +
+      'offer, not a price - the threshold rise from 2 to 3 is what pays for it. `data.cards.' +
+      'suits` filtered to the crops present in the barn gives the choices; the player names ' +
+      'one and `fireNoticeBoardPower` (workers.ts) fires it, exactly as before: Wheat ' +
+      'harvest-then-hand-to-barn, Vegetable Deliver with 2 any-crop cards or the fallback, ' +
+      'Orchard Draw 4, Apiary the wild deck Grow, Dairy Build at a discount of 2 with any ' +
+      "crops. Any crop's power is available even if that board is not on the table. STILL NOT " +
+      'A VISIT (unchanged, reconfirmed by the audit): no card is placed, no `afterVisit` fires ' +
+      'and no board is latched, so there is no fee and no W17, O16 or A17. Vegetable\'s "if you ' +
+      'cannot" is asked when the power fires, with the relaxation (`vegetableBoardCanDeliver`), ' +
+      'reading the barn exactly as it stands because nothing has left it. ONE POWER, NOT ONE ' +
+      'PER SUIT (unchanged): the power fires and does as much as it can, the rest dropping ' +
+      'silently, because a GROW activation cannot be refused per crop - and with no discard to ' +
+      'pay there is not even a cost to waste. ' +
+      '⛔ THE OLD SHAPE IS GONE: no discard, no `barnDiscardTask`, no `afterBarnDiscard` fire ' +
+      'from this card. That is moot for V17 anyway, since it no longer listens to that hook ' +
+      '(see its own handler).',
   },
   activate(fx, self) {
-    pushBarnDiscard(fx, self, 1, false);
+    const suits = fx.data.cards.suits.filter((suit) =>
+      player(fx.state, self.seat).barn.some((id) => cardById(fx.data, id).suit === suit),
+    );
+    if (suits.length === 0) return;
+    fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'auctionSuit', riders: {} });
   },
   tasks: {
-    barnDiscard: barnDiscardTask((fx, task, crops) => {
-      const crop = crops[0];
-      if (crop === undefined) return;
-      fireNoticeBoardPower(fx, task.pid, crop, {
-        src: task.src,
-        deliverLegal: vegetableBoardCanDeliver(fx.data, fx.state, task.pid),
-      });
-    }),
+    auctionSuit: {
+      answers(data, state, task) {
+        const barn = player(state, task.pid).barn;
+        return data.cards.suits
+          .filter((suit) => barn.some((id) => cardById(data, id).suit === suit))
+          .map((suit) => ({ kind: 'card', payload: { suit } }) as TaskAnswer);
+      },
+      resolve(fx, task, answer) {
+        if (answer.kind !== 'card') throw new Error('auctionSuit expects a card answer');
+        const suit = answer.payload.suit as Suit;
+        fireNoticeBoardPower(fx, task.pid, suit, {
+          src: task.src,
+          deliverLegal: vegetableBoardCanDeliver(fx.data, fx.state, task.pid),
+        });
+        return true;
+      },
+    },
   },
 };
 
@@ -848,8 +879,9 @@ export const internationalPort: CardHandler = {
 };
 
 /**
- * V16 The Market Signal Tower - v42: "Whenever you Deliver, put the top card of
- * any deck into your Barn."
+ * V16 The Market Signal Tower - v45 (19/09/2026): "Whenever you Deliver, put
+ * any deck card into your Barn." (was "...put the top card of any deck..." on
+ * v42 - wording only, see below.)
  */
 export const marketSignalTower: CardHandler = {
   difficulty: {
@@ -857,6 +889,9 @@ export const marketSignalTower: CardHandler = {
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
+      "⭐ CONFIRMED A NO-OP BY THE v45 RETEXT (Dean's ruling R5, `tasks/v45-rulings-v1.md`): " +
+      '"any deck card" means the top card of a deck of your choice, which is exactly what this ' +
+      'card already did. Nothing below changed. ' +
       'Owner-only, on EVERY delivery: the main action, the Vegetable board (V3), V5, V7, V10, ' +
       'V12 and V14 (one delivery, so one card, even when it takes two receipts). One ' +
       '`deckToBarn` task, the player picking the deck. ' +
@@ -884,27 +919,46 @@ export const marketSignalTower: CardHandler = {
 };
 
 /**
- * V17 The Dockworker's Union - v42: "Whenever you discard a card from your Barn,
- * Draw 1."
+ * V17 The Dockworker's Union - v45 (19/09/2026): "If, at the end of your turn,
+ * your Barn is empty, place any deck card into your Barn." (was "Whenever you
+ * discard a card from your Barn, Draw 1." on v42 - a full retext, not a
+ * wording change.)
  */
 export const dockworkersUnion: CardHandler = {
   difficulty: {
     score: 2,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: true, conditional: false, counts: false, interrupts: false },
+    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: true },
     notes:
-      'The only listener on `afterBarnDiscard`, the hook added for it: `Fx.discardFromBarn` ' +
-      "fires it once per card a CARD EFFECT discards from its owner's barn (V8, V10, V12, " +
-      "V15). Owner-only, every time. ⛔ Never on a delivery payment (R6) and never on V14's " +
-      'demolition, neither of which comes through that primitive. The draw is the ordinary ' +
-      'Draw 1 task, the player choosing the deck. Replaces the v39 balloon text.',
+      "⭐ RETEXTED ON SHEET v45 (Dean's ruling R5, `tasks/v45-rulings-v1.md`), and the card " +
+      'moves to a completely different hook. It no longer listens on `afterBarnDiscard` at ' +
+      "all - V8 and V15 are that hook's only listeners now (buildings.ts still fires it for " +
+      "them; the hook itself is not deleted, only this card's wiring to it). " +
+      'THE NEW LISTENER IS `beforeTurnEnd` (fx.ts), the hook `finishTurn` (turnflow.ts) fires ' +
+      'once a turn, before the hand-limit discard - the same seam O18 A Helping Hand already ' +
+      'uses, so V17 joins an existing seam rather than needing a new one. Owner-scoped ' +
+      '("your turn"): the listener guards on `event.seat === self.seat`. MANDATORY (R5): the ' +
+      'only choice is which deck, through the shared `deckToBarn` task (buildings.ts), the ' +
+      "same one V4, A8/A13 and V16 use - the top card of a deck of the player's choosing, " +
+      'never a search. FIRES ON A TURN WHERE THE BARN WAS NEVER TOUCHED, including most early ' +
+      'turns, because the game starts with an empty barn and the condition is only "empty at ' +
+      'the end of your turn". Checked ONCE, after the main action and any meeple spend, before ' +
+      'the discard; a barn holding even one card at that moment does not fire it at all.',
   },
   on: {
-    afterBarnDiscard(fx, event, self) {
+    beforeTurnEnd(fx, event, self) {
       if (event.seat !== self.seat) return;
-      drawN(fx, self.seat, self.card, 1);
+      if (player(fx.state, self.seat).barn.length > 0) return;
+      fx.pushTask({
+        t: 'card',
+        pid: self.seat,
+        src: self.card,
+        kind: 'deckToBarn',
+        riders: { remaining: 1 },
+      });
     },
   },
+  tasks: { deckToBarn: deckToBarnTask() },
 };
 
 /**

@@ -1039,6 +1039,18 @@ describe('the archetypes', () => {
    * visit (0.147 against 0.140) and the meeple loop (0.118 against 0.086) take
    * its place, pooled over six seeds, because one seed passed or failed on
    * noise.
+   *
+   * ⚠️ WIDENED TO 20 SEEDS (19/09/2026, sheet v45 engine pass). The 13 card
+   * retexts (W5, W13, W16, A19, A20, V6, V10, V11, V12, V13, V15, V16, V17 -
+   * tasks/v45-rulings-v1.md) nudged the shipped table's move mix enough that
+   * six seeds crossed zero on this margin (socialite 0.14826 against balanced
+   * 0.14967, a diff of -0.0014 - well inside the noise this case has always
+   * carried). Widening the sample rather than the pass condition: at 20 seeds
+   * the shipped table reads 0.14984 against 0.14771 (+0.0021) and at 40 seeds
+   * 0.15087 against 0.14705 (+0.0038), so the taste is intact and six seeds
+   * was simply too thin a slice of it under the new card mix. The meeple-loop
+   * control was never close (six-seed diff +0.032) and stays comfortably
+   * clear at 20.
    */
   it('keeps the socialite taste on the visit', { timeout: 300_000 }, () => {
     const tables: [string, typeof data][] = [
@@ -1049,7 +1061,7 @@ describe('the archetypes', () => {
       const visits = (id: PolicyId) => {
         let visited = 0;
         let moves = 0;
-        for (let s = 0; s < 6; s++) {
+        for (let s = 0; s < 20; s++) {
           const result = runGame(rules, {
             seed: `taste-${s}`,
             seats: 3,

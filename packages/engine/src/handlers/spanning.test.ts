@@ -190,18 +190,22 @@ describe('2. The Bakery (W13) - a Tier 3 GROW whose ability is a whole-farm casc
     expect(standingMoves(data, s, WHEAT).some((m) => m.card === 'W13')).toBe(false);
   });
 
-  it('harvests every loaded building, however many cards are on it, and spends the action', () => {
+  it('harvests every OTHER loaded building, spends the action, and clogs on its own fee (R6, R10)', () => {
     const s = bakeryState(1); // W4 holding 1 of 2: nowhere near full
     const applied = apply(data, s, bakeryGrow());
     // The action is spent by the GROW now, not by the card. Same end state,
     // different payer: a card and the turn, where the ACTION cost only the turn.
     expect(applied.state.turn.actionSpent).toBe(true);
     expect(buildingOf(applied.state, WHEAT, 'W4').stack).toEqual([]);
-    // Its own stack is emptied too, and the fee is in the barn: the payment
-    // lands before the ability fires, so the Bakery harvests it straight back.
-    expect(buildingOf(applied.state, WHEAT, 'W13').stack).toEqual([]);
-    expect(player(applied.state, WHEAT).barn).toContain('W6');
-    expect(player(applied.state, WHEAT).barn).toHaveLength(2);
+    // ⭐ v45 RETEXT (19/09/2026, R6, R10): W13 is self-excluded now, not
+    // filtered out by stack size. `doGrow` still places the fee on the stack
+    // before the handler fires, but the handler never looks at its own card
+    // id any more, so the fee simply sits there: W13 clogs on its own fee at
+    // threshold 1, needing an ordinary Harvest before it can GROW again. The
+    // old face scooped this fee straight back into the barn; this one does not.
+    expect(buildingOf(applied.state, WHEAT, 'W13').stack).toEqual(['W6']);
+    expect(player(applied.state, WHEAT).barn).not.toContain('W6');
+    expect(player(applied.state, WHEAT).barn).toHaveLength(1);
     // ⛔ A SECOND `handToBarn` USED TO SIT IN FRONT OF THIS ONE, from W2 the
     // Farmstead, and it was what held the turn open - once per harvest ACTION
     // and not once per building, which was the guard the case existed to pin.
@@ -211,14 +215,14 @@ describe('2. The Bakery (W13) - a Tier 3 GROW whose ability is a whole-farm casc
     expect(applied.state.tasks).toMatchObject([{ t: 'handToBarn', src: 'W4', remaining: 1 }]);
   });
 
-  it('fires with nothing else loaded, and banks its own fee for it', () => {
-    // The old ACTION was WITHHELD with no loaded building, so it could never
-    // hold a turn open on an empty farm. A GROW is always on offer instead, and
-    // it is not a wasted action even here: the fee on the stack is a loaded
-    // building, so one card in, one card to the barn.
+  it('fires with nothing else loaded, and its own fee stays on it rather than banking (R6, R10)', () => {
+    // ⭐ v45 RETEXT: with W4 unloaded there is nothing else to harvest, and
+    // W13 no longer harvests itself, so the cascade is a true no-op. The GROW
+    // that paid for it still lands W6 on W13's own stack, and it stays there.
     const s = bakeryState(0);
     const applied = apply(data, s, bakeryGrow());
-    expect(player(applied.state, WHEAT).barn).toEqual(['W6']);
+    expect(buildingOf(applied.state, WHEAT, 'W13').stack).toEqual(['W6']);
+    expect(player(applied.state, WHEAT).barn).toEqual([]);
   });
 
   it('no longer suppresses `pass`, because it is no longer a main action', () => {
@@ -244,9 +248,17 @@ describe('2. The Bakery (W13) - a Tier 3 GROW whose ability is a whole-farm casc
    * The cross-handler case the rebuild's ruling used to turn on: The Granary
    * fired ONCE per harvest action. ⭐ REVERSED (Dean, 15/09/2026): card text
    * fires every time its trigger happens, and each building harvested is its
-   * own trigger, so a Bakery over three buildings draws three.
+   * own trigger.
+   *
+   * ⭐ v45 RETEXT (19/09/2026, R6): W13 is self-excluded now, so a Bakery
+   * cascade over W4 and W5 harvests exactly those two buildings, not three -
+   * W13's own fee stays on its own stack (R10) rather than counting as a
+   * harvest of itself. Two buildings, two granaryDraw tasks. Also, W16 no
+   * longer pushes a plain `draw` task (R7/R8): it pushes a custom
+   * `granaryDraw` (`t: 'card'`) so its hand-size condition reads fresh each
+   * time - see `drainCountingGranary` above.
    */
-  it('fires The Granary (W16) once for EVERY building the cascade harvests', () => {
+  it('fires The Granary (W16) once for EACH OTHER building the cascade harvests', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W13', 'W16', 'W4', 'W5');
     loadStack(data, s, WHEAT, 'W4', 2, 'apiary');
@@ -256,12 +268,14 @@ describe('2. The Bakery (W13) - a Tier 3 GROW whose ability is a whole-farm casc
 
     expect(buildingOf(applied.state, WHEAT, 'W4').stack).toEqual([]);
     expect(buildingOf(applied.state, WHEAT, 'W5').stack).toEqual([]);
-    // Three buildings harvested - W13's own fee is the third - so the Granary
-    // queues three Draw 1s beside W4's and W5's own harvest lines.
+    // W13 itself is excluded, so its fee (W6) stays on its own stack.
+    expect(buildingOf(applied.state, WHEAT, 'W13').stack).toEqual(['W6']);
+    // Two buildings harvested (W4, W5) - so the Granary queues two
+    // granaryDraw tasks beside W4's and W5's own harvest lines.
     const granaryDraws = applied.state.tasks.filter(
-      (t) => t.t === 'draw' && t.src === 'W16' && t.see === 1,
+      (t) => t.t === 'card' && t.kind === 'granaryDraw' && t.src === 'W16',
     );
-    expect(granaryDraws).toHaveLength(3);
+    expect(granaryDraws).toHaveLength(2);
   });
 });
 
@@ -1199,8 +1213,12 @@ describe('the Wheat rebalance: rulings that live between two cards', () => {
     pick?: (answers: TaskAnswer[]) => TaskAnswer,
     on: GameData = data,
   ): { state: GameState; draws: number } {
+    // ⭐ v45 (19/09/2026, R7/R8): W16 no longer pushes a plain `draw` task -
+    // it pushes a custom `granaryDraw` (`t: 'card'`) so the hand-size
+    // condition can be read fresh each time the task is drained rather than
+    // snapshotted at push time. Count that shape instead.
     const pending = (s: GameState) =>
-      s.tasks.filter((t) => t.t === 'draw' && t.src === 'W16').length;
+      s.tasks.filter((t) => t.t === 'card' && t.kind === 'granaryDraw' && t.src === 'W16').length;
     let s = state;
     let draws = pending(s);
     for (let guard = 0; guard < 40 && s.tasks.length > 0; guard++) {
@@ -1300,8 +1318,12 @@ describe('the Wheat rebalance: rulings that live between two cards', () => {
     // ⭐ v42: W12 is a Wheat building, so it harvests itself too (its loaded
     // card and the payment): 2 + 2 + 2, plus the card W4 banks = 7, and three
     // Granary draws.
+    // ⭐ v45 RETEXT (19/09/2026): W5's HARVEST line is now "Draw 3" only -
+    // the Sow-1-deck-card line, and the file-local `reseed()` helper it was
+    // the last caller of, are both gone. So W5's stack empties and STAYS
+    // empty; it no longer refills itself with a sown card.
     expect(buildingOf(grown.state, WHEAT, 'W4').stack).toEqual([]);
-    expect(buildingOf(grown.state, WHEAT, 'W5').stack).toHaveLength(1);
+    expect(buildingOf(grown.state, WHEAT, 'W5').stack).toEqual([]);
     expect(buildingOf(grown.state, WHEAT, 'W12').stack).toEqual([]);
     expect(grown.state.turn.firedThisTurn).not.toContain('W2');
     expect(player(grown.state, WHEAT).barn).toHaveLength(7);
@@ -1309,16 +1331,18 @@ describe('the Wheat rebalance: rulings that live between two cards', () => {
 
     // W13 The Bakery. Its own spanning case is §2 above; what is added here is
     // that the number survived the guard swap - and, since 19/08/2026, that it
-    // survived the ACTION card being deleted underneath it too. The card is
-    // fired by a GROW now, so the fee on its own stack is a THIRD building in
-    // the cascade and the answer is still 1.
+    // survived the ACTION card being deleted underneath it too.
+    // ⭐ v45 RETEXT (19/09/2026, R6, R10): W13 is self-excluded now, so its
+    // own fee is NOT a third building in the cascade - it stays on W13's own
+    // stack (self-clog) - and the cascade is W4 plus W5 only. Two harvests,
+    // two Granary draws.
     const bakery = wheatState();
     buildFor(data, bakery, WHEAT, 'W16', 'W13', 'W4', 'W5');
     loadStack(data, bakery, WHEAT, 'W4', 2, 'apiary');
     loadStack(data, bakery, WHEAT, 'W5', 2, 'apiary');
     dealTo(data, bakery, WHEAT, 'W6');
     const baked = drainCountingGranary(growBuilding(data, bakery, WHEAT, 'W13', 'W6').state);
-    expect(baked.draws).toBe(3);
+    expect(baked.draws).toBe(2);
   });
 
   /**

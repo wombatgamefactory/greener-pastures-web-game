@@ -862,6 +862,26 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'control.',
   },
   {
+    template: 'rules.economy.honeyHallCap',
+    type: 'intOrNull',
+    description:
+      "A cap on A19 The Honey Hall's end-game VP. SHIPPED 5 (19/09/2026, v45): the sheet " +
+      'prints "(Max 5)" on the card face itself, "Game end: 1 VP for each non-Apiary ' +
+      'building you have built. (Max 5)". Added on the grandGranaryCap pattern (R9, ' +
+      'tasks/v45-rulings-v1.md) as its own knob, not shared with apiaristsGuildCap, ' +
+      'because the two cards count different things. null is the pre-v45 card with no cap.',
+  },
+  {
+    template: 'rules.economy.apiaristsGuildCap',
+    type: 'intOrNull',
+    description:
+      "A cap on A20 The Apiarist's Guild's end-game VP. SHIPPED 5 (19/09/2026, v45): the " +
+      'sheet prints "(Max 5)" on the card face itself, "Game end: 1 VP for each 1VP ' +
+      'building you have built. (Max 5)". Added on the grandGranaryCap pattern (R9, ' +
+      'tasks/v45-rulings-v1.md) as its own knob, not shared with honeyHallCap, because ' +
+      'the two cards count different things. null is the pre-v45 card with no cap.',
+  },
+  {
     template: 'rules.economy.cropScorerOnBarn',
     type: 'boolean',
     description:
@@ -990,32 +1010,55 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     template: 'rules.economy.noticeBoardPower.wheatHarvestGate',
     type: 'wheatHarvestGate',
     description:
-      '⭐ WHICH BUILDINGS THE WHEAT NOTICE BOARD MAY HARVEST (Dean, 19/09/2026). ' +
-      "'loaded' SHIPS and is the engine reading ledger C97 flagged as never ruled: any " +
-      'building of yours holding one or more cards, which reaches your own `3+` Notice Board ' +
-      "at a single card. 'nearFull' is Dean's retext, \"Harvest a building that is full, or 1 " +
-      'card from full\" - a stack at or above threshold minus one, which still reaches your own ' +
-      "board but at 2 cards rather than 1. 'full' is the ordinary Harvest gate and excludes a " +
-      '`3+` board entirely, because such a board is never full. ⛔ PAIR IT WITH wheatBarn: ' +
-      "Dean's retext prints no hand-to-barn rider, so the proposal is this knob at 'nearFull' " +
-      'AND wheatBarn 0, and the two are separate arms until they are measured apart.',
+      '⭐⭐ WHICH BUILDINGS THE WHEAT NOTICE BOARD MAY HARVEST. RULED BY DEAN, 19/09/2026, ' +
+      'SHEET v44: *"Harvest one of your buildings, even if it is 1 card short of full."* ' +
+      "SHIPS AT 'nearFull' - a stack at or above threshold minus one. 'loaded' is the value " +
+      'this knob carried for its first few hours on the same day (any building of yours ' +
+      'holding one or more cards, the engine reading ledger C97 flagged as never ruled, which ' +
+      'reaches your own `3+` Notice Board at a single card) and is now the PRE-RETEXT control - ' +
+      "every overlay and testkit helper pinning the pre-19/09 game pins it here by name. 'full' " +
+      'is the ordinary Harvest gate and excludes a `3+` board entirely, because such a board is ' +
+      'never full. ' +
+      '⭐⭐⭐ THE NOTICE-BOARD-AT-2 REVERSAL: Dean read "1 card short of full" against a `3+` ' +
+      'board by treating its 3 as the fill level, so `wheatHarvestable` resolves it at 2 cards ' +
+      '(`threshold - 1`), needing no special case. **THIS REVERSES THE STANDING RULE OF ' +
+      '15/09/2026** ("the Wheat board harvests only a full building or a 3+ Notice Board"; "a ' +
+      'Notice Board is never harvested below 3 by any card") FOR THIS POWER SPECIFICALLY - that ' +
+      'sentence stays true everywhere else (the plain Harvest action, every other card). ⛔ ' +
+      "'nearFull' is also NARROWER than 'loaded' for an ordinary building (threshold minus one " +
+      "or more, not one or more), so it closes C97's reading there while narrowing rather than " +
+      'closing it for the board itself - C97 stays open. ⛔ PAIRED WITH wheatBarn: the retext ' +
+      'prints no hand-to-barn rider, so it ships at 0 beside this at "nearFull", and an overlay ' +
+      'that wants only one half of the retext (`wheat-gate-nearfull-v1`, `wheat-no-barn-rider-v1`) ' +
+      'is a DECOMPOSITION ARM, not the shipped game.',
   },
   {
     template: 'rules.economy.noticeBoardPower.wheatBarn',
     type: 'int',
     description:
-      '⭐ CARDS THE WHEAT NOTICE BOARD PUTS INTO YOUR BARN AFTER ITS HARVEST (Dean, 10/09/2026, ' +
-      'RULING C88: "Harvest one of your buildings, then put 1 card from your hand into your ' +
-      "barn.\"). NEW, and read under visitCurrency 'noticeBoardPower'. ⛔ THE RULING IS WHY THE " +
-      'KEY EXISTS AT ALL: S12\'s Wheat power was "Harvest any one of your buildings, however ' +
-      'many cards are on it", which is W11 The Bakehouse WORD FOR WORD, and Dean ruled that the ' +
-      "POWER moves and the CARD keeps its identity - S13's own precedent, the one that killed " +
-      "the morning's Dairy and Vegetable powers for duplicating D4 and V15, applied a third " +
-      'time. So the board harvests plainly and pays a card into the barn on top. ⭐ THE BARN ' +
-      'CARD IS ALSO THE AVAILABILITY FIX: a seat with nothing full to harvest still gets ' +
-      'something for its card, which is the same job D6 did for the commons wheat board and the ' +
-      'reason no power in this set can be dead. ⚠️ It is a barn faucet that needs no building, ' +
-      'so read it beside the barn glut and the farm-bypass share.',
+      '⛔⛔ RETIRED 19/09/2026, SHEET v44, AND SHIPS AT 0: Dean retexted the Wheat Notice Board ' +
+      'to *"Harvest one of your buildings, even if it is 1 card short of full"*, which prints ' +
+      'no hand-to-barn clause, so this key now describes nothing on the printed card and only ' +
+      'exists for the overlays and testkit helpers that pin 1 to keep replaying the pre-19/09 ' +
+      'game (see `wheatHarvestGate` beside it for the paired pin). The engine guards the push ' +
+      'on `> 0` rather than deleting it (`packages/engine/src/workers.ts`, the `wheat` case of ' +
+      '`fireNoticeBoardPower`) precisely so that pin still works: `handToBarn` does not consult ' +
+      '`remaining` before offering every hand card, so an unconditional push at 0 would hand a ' +
+      'seat a live, pointless prompt instead of being auto-skipped.' +
+      '\n\n' +
+      'CARDS THE WHEAT NOTICE BOARD PUT INTO YOUR BARN AFTER ITS HARVEST, UNTIL TODAY (Dean, ' +
+      '10/09/2026, RULING C88: "Harvest one of your buildings, then put 1 card from your hand ' +
+      'into your barn."). ⛔ THE RULING IS WHY THE KEY EXISTED AT ALL: S12\'s Wheat power was ' +
+      '"Harvest any one of your buildings, however many cards are on it", which is W11 The ' +
+      'Bakehouse WORD FOR WORD, and Dean ruled that the POWER moves and the CARD keeps its ' +
+      "identity - S13's own precedent, the one that killed the morning's Dairy and Vegetable " +
+      'powers for duplicating D4 and V15, applied a third time. So the board harvested plainly ' +
+      'and paid a card into the barn on top. ⭐ THE BARN CARD WAS ALSO THE AVAILABILITY FIX: a ' +
+      'seat with nothing full to harvest still got something for its card, which was the same ' +
+      "job D6 did for the commons wheat board. The retext's own availability answer is the " +
+      "relaxed gate itself (a board is offered whenever SOME building reaches 'nearFull', which " +
+      'is a lower bar than full), so the second leg stopped being load-bearing rather than being ' +
+      'deleted out from under a dead power.',
   },
   {
     template: 'rules.endGame.furtherTurnsEach',

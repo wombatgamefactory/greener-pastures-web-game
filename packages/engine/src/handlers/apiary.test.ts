@@ -33,7 +33,7 @@
  * anybody re-points a card back across the table without meaning to.
  */
 
-import { BASE_GAME_DATA as data } from '@gp/data';
+import { BASE_GAME_DATA as data, loadGameData } from '@gp/data';
 import type { GameData, Suit } from '@gp/data';
 import { describe, expect, it } from 'vitest';
 
@@ -478,6 +478,8 @@ describe('A8 The Wild Hive - two deck sows onto a neighbour, two deck cards to t
     // The Wheat seat's Notice Board W3 is never a target.
     expect(sow.targets).toEqual([{ seat: WHEAT, card: 'W4' }]);
     expect(sow.remaining).toBe(2);
+    // ⭐ 19/09/2026: MANDATORY - the printed text is "Sow 2", not "you may".
+    expect(sow.optional).toBe(false);
 
     const dairyTops = s.decks.dairy.slice(0, 2);
     const pick = (list: TaskAnswer[]) =>
@@ -492,14 +494,34 @@ describe('A8 The Wild Hive - two deck sows onto a neighbour, two deck cards to t
     expect(player(done, WHEAT).barn).toEqual([]);
   });
 
-  it('with no neighbour building to sow onto, it still banks two deck cards', () => {
+  /**
+   * ⭐ RULED 19/09/2026 (Dean, his words): "the sow is mandatory. IF you
+   * cannot sow, you cannot place cards in your barn." With no neighbour
+   * building to receive a card, the whole card is a no-op: no sow task, no
+   * deckToBarn task, no cards in the barn. This reverses the previous
+   * behaviour (banking two cards regardless), which matched the sow being
+   * declinable everywhere - now that the sow is mandatory again, its
+   * failure must gate the barn payoff too.
+   */
+  it('with no neighbour building to sow onto, the whole card does nothing', () => {
     const s = base();
     buildFor(data, s, APIARY, 'A8');
     dealTo(data, s, APIARY, 'A4');
     const grown = growBuilding(data, s, APIARY, 'A8', 'A4');
-    expect(grown.state.tasks.map((t) => (t.t === 'card' ? t.kind : t.t))).toEqual(['deckToBarn']);
-    const done = answerAll(grown.state);
-    expect(player(done, APIARY).barn).toHaveLength(2);
+    expect(grown.state.tasks).toHaveLength(0);
+    expect(player(grown.state, APIARY).barn).toEqual([]);
+  });
+
+  it('with a neighbour building that exists but is already full, the whole card does nothing', () => {
+    const s = base();
+    buildFor(data, s, APIARY, 'A8');
+    buildFor(data, s, WHEAT, 'W4'); // threshold 2
+    loadStack(data, s, WHEAT, 'W4', 2); // fills it: no room left
+    dealTo(data, s, APIARY, 'A4');
+    const grown = growBuilding(data, s, APIARY, 'A8', 'A4');
+    expect(grown.state.tasks).toHaveLength(0);
+    expect(player(grown.state, APIARY).barn).toEqual([]);
+    expect(buildingOf(grown.state, WHEAT, 'W4').stack).toHaveLength(2);
   });
 
   it('does nothing when every deck is dry', () => {
@@ -970,8 +992,12 @@ describe("A16 The Beekeeper's Veil - stack position 2, unchanged by the rebuild"
  * modifier now and has no repeat). A THIRD test, "is optional - a skip is
  * offered and takes no coin", came back on 18/09/2026 for an unrelated
  * reason: every `sowFromDeck` push shipped declinable that day to fix a UI
- * dead end, so A17 offers a skip again, this time for free rather than as a
- * coin refusal.
+ * dead end, so A17 offered a skip again, this time for free rather than as a
+ * coin refusal. ⭐ RE-CONFIRMED CORRECT ON 19/09/2026, for its OWN reason
+ * this time: THE PRINTED TEXT GOVERNS (Dean), and the v44 sheet retexted
+ * this card to "you may SOW", so A17 stays declinable on its own merits
+ * rather than as a side effect of the 18/09/2026 blanket fix, which is
+ * reversed everywhere else (A8, W5, the generic Apiary door).
  */
 describe('A17 The Smoke Pot - a deck sow onto your own building for visiting a neighbour', () => {
   /**
@@ -1009,12 +1035,12 @@ describe('A17 The Smoke Pot - a deck sow onto your own building for visiting a n
   });
 
   /**
-   * ⚠️ DECLINABLE SINCE 18/09/2026 (to-do 2.2's "stuck" fix): every
-   * `sowFromDeck` push shipped `optional: true` that day, against the printed
-   * "SOW", not "you may" - a human had no way to answer this task at all (the
-   * UI cannot fabricate a skip the engine never enumerates), on the
-   * `handToBarn` precedent that a placement task can always be declined. A
-   * ruling on whether A17 in particular should stay mandatory is still owed.
+   * ⭐ OPTIONAL, RE-CONFIRMED 19/09/2026: THE PRINTED TEXT GOVERNS (Dean) - a
+   * sow is declinable if and only if the card says "may", and the v44 sheet
+   * retexted A17 to "you may SOW the top card of any deck...". This test
+   * predates that retext (it was written for the 18/09/2026 blanket fix that
+   * made every `sowFromDeck` push skippable, A8 and W5 included), but it
+   * still asserts the right thing for A17 specifically, so it stays.
    */
   it('offers a skip alongside the real answers, and declining changes nothing but clearing the task', () => {
     const s = armBase();
@@ -1102,12 +1128,57 @@ describe('the endgame cards - A19, A20, A21', () => {
     expect(gameEndScores(data, s)[APIARY]?.endgame).toBe(4);
   });
 
+  /**
+   * `rules.economy.honeyHallCap` (v45, 19/09/2026, R9): the printed "(Max 5)"
+   * is a tunable number on the `grandGranaryCap` pattern (W20, wheat.test.ts
+   * "W20 respects grandGranaryCap"). Six foreign buildings against a cap of 5.
+   */
+  it('A19 respects honeyHallCap, shipped at 5', () => {
+    const uncapped = loadGameData({
+      name: 'a19-cap-none',
+      schemaVersion: 1,
+      set: { 'rules.economy.honeyHallCap': null },
+    });
+    const foreign = ['W4', 'W5', 'W6', 'W7', 'W8', 'W9'] as const;
+    const open = base();
+    buildFor(uncapped, open, APIARY, 'A19', ...foreign);
+    const shut = base();
+    buildFor(data, shut, APIARY, 'A19', ...foreign);
+    // A2 the Farmstead's 1 for A19 itself, plus A19's own count: 6 foreign
+    // buildings uncapped, against 5 capped (shipped).
+    expect(gameEndScores(uncapped, open)[APIARY]?.endgame).toBe(7);
+    expect(gameEndScores(data, shut)[APIARY]?.endgame).toBe(6);
+  });
+
   it('A20 scores 1 for each 1VP building built, of any suit (v42)', () => {
     const s = base();
     buildFor(data, s, APIARY, 'A20', 'A4', 'A8', 'A13', 'A9', 'W4');
     // A20's 3 for A4, A8 and W4 (printed 1 VP); A13 prints 3 and A9 prints 2.
     // Plus A2's 5 for the five Apiary cards built.
     expect(gameEndScores(data, s)[APIARY]?.endgame).toBe(8);
+  });
+
+  /**
+   * `rules.economy.apiaristsGuildCap` (v45, 19/09/2026, R9): the printed
+   * "(Max 5)" is a tunable number on the `grandGranaryCap` pattern. Six 1VP
+   * buildings against a cap of 5.
+   */
+  it('A20 respects apiaristsGuildCap, shipped at 5', () => {
+    const uncapped = loadGameData({
+      name: 'a20-cap-none',
+      schemaVersion: 1,
+      set: { 'rules.economy.apiaristsGuildCap': null },
+    });
+    // All six print exactly 1 VP.
+    const oneVp = ['W4', 'W5', 'W6', 'W7', 'W8', 'D4'] as const;
+    const open = base();
+    buildFor(uncapped, open, APIARY, 'A20', ...oneVp);
+    const shut = base();
+    buildFor(data, shut, APIARY, 'A20', ...oneVp);
+    // A2's 1 for A20 itself, plus A20's own count: 6 uncapped, against 5
+    // capped (shipped).
+    expect(gameEndScores(uncapped, open)[APIARY]?.endgame).toBe(7);
+    expect(gameEndScores(data, shut)[APIARY]?.endgame).toBe(6);
   });
 
   /** ⚠️ STARTERS COUNT if they hold a card - a clogged Notice Board or Service included. */

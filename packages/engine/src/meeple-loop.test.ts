@@ -67,6 +67,19 @@ const arm: GameData = loadGameData({
     // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
     'rules.economy.noticeBoardPower.vegetableWildCards': 0,
     'rules.economy.noticeBoardPower.dairyDiscount': 0,
+    // ⛔ WHEAT BOARD RETEXT PINNED 19/09/2026: this game predates it too, and
+    // needs the pin for a reason the other two don't - V12 The Auction House
+    // ("Discard a card from your Barn. Perform the Notice Board action of that
+    // crop") reaches `fireNoticeBoardPower` as a CARD EFFECT, independent of
+    // `visitCurrency`, so it reads these two leaves under EVERY currency, this
+    // meeple arm included. Left unpinned, a wheat-crop discard into V12 would
+    // have silently started paying today's relaxed harvest (and dropping the
+    // hand-to-barn leg) inside a game meant to stay the 04/09/2026 loop -
+    // exactly the kind of leak `overlays/notice-board-visit-v1` already
+    // catalogues for the OTHER four powers, and the reason this particular
+    // seed (`arm-3p`) started ending with zero meeples held before the pin.
+    'rules.economy.noticeBoardPower.wheatBarn': 1,
+    'rules.economy.noticeBoardPower.wheatHarvestGate': 'loaded',
   },
 });
 
@@ -103,6 +116,11 @@ const control: GameData = loadGameData({
     // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
     'rules.economy.noticeBoardPower.vegetableWildCards': 0,
     'rules.economy.noticeBoardPower.dairyDiscount': 0,
+    // ⛔ WHEAT BOARD RETEXT PINNED 19/09/2026, SAME REASON AS `arm` ABOVE: V12
+    // The Auction House reaches `fireNoticeBoardPower` as a card effect under
+    // ANY currency, this v31 control included.
+    'rules.economy.noticeBoardPower.wheatBarn': 1,
+    'rules.economy.noticeBoardPower.wheatHarvestGate': 'loaded',
   },
 });
 

@@ -124,8 +124,17 @@ function noticeBoardIsBuilding(data: GameData): boolean {
  * mismatch, and M7 hit the same shape again on 12/09/2026 - which is why
  * `meepleActionOf` is shared rather than copied.
  *
- *   'loaded'    any stack of 1+ (SHIPPED; the reading ledger C97 flagged)
- *   'nearFull'  at or above threshold - 1  ("full, or 1 card from full")
+ *   'nearFull'  at or above threshold - 1  ("even if it is 1 card short of
+ *               full") - SHIPPED (Dean, 19/09/2026, sheet v44). Reaches a
+ *               `3+` Notice Board at 2 cards (`threshold - 1`), which is the
+ *               NOTICE-BOARD-AT-2 REVERSAL of the 15/09/2026 rule "a Notice
+ *               Board is never harvested below 3 by any card" - true
+ *               everywhere else, false for THIS power.
+ *   'loaded'    any stack of 1+ - the PRE-RETEXT value (the reading ledger
+ *               C97 flagged as never ruled), narrower than 'nearFull' for an
+ *               ordinary building but reaching the same `3+` board at a
+ *               single card rather than 2. Pinned by every overlay and
+ *               testkit helper that replays the pre-19/09 game.
  *   'full'      the ordinary Harvest gate
  */
 export function wheatHarvestable(

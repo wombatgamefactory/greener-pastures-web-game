@@ -188,6 +188,13 @@ export function cardVisitGame(): GameData {
       // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
       'rules.economy.noticeBoardPower.vegetableWildCards': 0,
       'rules.economy.noticeBoardPower.dairyDiscount': 0,
+      // ⛔ WHEAT BOARD RETEXT PINNED 19/09/2026, SAME REASON: V12 The
+      // Auction House ("Discard a card from your Barn. Perform the Notice
+      // Board action of that crop") reaches `fireNoticeBoardPower` as a card
+      // effect under EVERY currency, so a game frozen before today's retext
+      // needs these two leaves pinned by name exactly like the pair above.
+      'rules.economy.noticeBoardPower.wheatBarn': 1,
+      'rules.economy.noticeBoardPower.wheatHarvestGate': 'loaded',
     },
   });
   return cardVisitCache;
@@ -244,6 +251,13 @@ export function noticeBoardVisitGame(): GameData {
       // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
       'rules.economy.noticeBoardPower.vegetableWildCards': 0,
       'rules.economy.noticeBoardPower.dairyDiscount': 0,
+      // ⛔ WHEAT BOARD RETEXT PINNED 19/09/2026, SAME REASON: V12 The
+      // Auction House ("Discard a card from your Barn. Perform the Notice
+      // Board action of that crop") reaches `fireNoticeBoardPower` as a card
+      // effect under EVERY currency, so a game frozen before today's retext
+      // needs these two leaves pinned by name exactly like the pair above.
+      'rules.economy.noticeBoardPower.wheatBarn': 1,
+      'rules.economy.noticeBoardPower.wheatHarvestGate': 'loaded',
     },
   });
   return noticeBoardVisitCache;
@@ -303,6 +317,13 @@ export function noticeBoardTwoBoardsGame(): GameData {
       // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
       'rules.economy.noticeBoardPower.vegetableWildCards': 0,
       'rules.economy.noticeBoardPower.dairyDiscount': 0,
+      // ⛔ WHEAT BOARD RETEXT PINNED 19/09/2026, SAME REASON: V12 The
+      // Auction House ("Discard a card from your Barn. Perform the Notice
+      // Board action of that crop") reaches `fireNoticeBoardPower` as a card
+      // effect under EVERY currency, so a game frozen before today's retext
+      // needs these two leaves pinned by name exactly like the pair above.
+      'rules.economy.noticeBoardPower.wheatBarn': 1,
+      'rules.economy.noticeBoardPower.wheatHarvestGate': 'loaded',
     },
   });
   return noticeBoardTwoBoardsCache;
@@ -368,6 +389,13 @@ export function noticeBoardHostDrawGame(n = 1): GameData {
       // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
       'rules.economy.noticeBoardPower.vegetableWildCards': 0,
       'rules.economy.noticeBoardPower.dairyDiscount': 0,
+      // ⛔ WHEAT BOARD RETEXT PINNED 19/09/2026, SAME REASON: V12 The
+      // Auction House ("Discard a card from your Barn. Perform the Notice
+      // Board action of that crop") reaches `fireNoticeBoardPower` as a card
+      // effect under EVERY currency, so a game frozen before today's retext
+      // needs these two leaves pinned by name exactly like the pair above.
+      'rules.economy.noticeBoardPower.wheatBarn': 1,
+      'rules.economy.noticeBoardPower.wheatHarvestGate': 'loaded',
     },
   });
 }
@@ -432,6 +460,13 @@ export function noticeBoardHostDrawCappedGame(capped = true, n = 1): GameData {
       // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
       'rules.economy.noticeBoardPower.vegetableWildCards': 0,
       'rules.economy.noticeBoardPower.dairyDiscount': 0,
+      // ⛔ WHEAT BOARD RETEXT PINNED 19/09/2026, SAME REASON: V12 The
+      // Auction House ("Discard a card from your Barn. Perform the Notice
+      // Board action of that crop") reaches `fireNoticeBoardPower` as a card
+      // effect under EVERY currency, so a game frozen before today's retext
+      // needs these two leaves pinned by name exactly like the pair above.
+      'rules.economy.noticeBoardPower.wheatBarn': 1,
+      'rules.economy.noticeBoardPower.wheatHarvestGate': 'loaded',
     },
   });
 }
@@ -493,6 +528,13 @@ export function noticeBoardHostDrawBySeatsGame(): GameData {
       // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
       'rules.economy.noticeBoardPower.vegetableWildCards': 0,
       'rules.economy.noticeBoardPower.dairyDiscount': 0,
+      // ⛔ WHEAT BOARD RETEXT PINNED 19/09/2026, SAME REASON: V12 The
+      // Auction House ("Discard a card from your Barn. Perform the Notice
+      // Board action of that crop") reaches `fireNoticeBoardPower` as a card
+      // effect under EVERY currency, so a game frozen before today's retext
+      // needs these two leaves pinned by name exactly like the pair above.
+      'rules.economy.noticeBoardPower.wheatBarn': 1,
+      'rules.economy.noticeBoardPower.wheatHarvestGate': 'loaded',
     },
   });
 }
@@ -553,6 +595,13 @@ export function deliveryMeepleGame(): GameData {
       // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
       'rules.economy.noticeBoardPower.vegetableWildCards': 0,
       'rules.economy.noticeBoardPower.dairyDiscount': 0,
+      // ⛔ WHEAT BOARD RETEXT PINNED 19/09/2026, SAME REASON: V12 The
+      // Auction House ("Discard a card from your Barn. Perform the Notice
+      // Board action of that crop") reaches `fireNoticeBoardPower` as a card
+      // effect under EVERY currency, so a game frozen before today's retext
+      // needs these two leaves pinned by name exactly like the pair above.
+      'rules.economy.noticeBoardPower.wheatBarn': 1,
+      'rules.economy.noticeBoardPower.wheatHarvestGate': 'loaded',
     },
   });
 }
@@ -605,6 +654,13 @@ export function deliveryMeepleDistinctGame(): GameData {
       // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
       'rules.economy.noticeBoardPower.vegetableWildCards': 0,
       'rules.economy.noticeBoardPower.dairyDiscount': 0,
+      // ⛔ WHEAT BOARD RETEXT PINNED 19/09/2026, SAME REASON: V12 The
+      // Auction House ("Discard a card from your Barn. Perform the Notice
+      // Board action of that crop") reaches `fireNoticeBoardPower` as a card
+      // effect under EVERY currency, so a game frozen before today's retext
+      // needs these two leaves pinned by name exactly like the pair above.
+      'rules.economy.noticeBoardPower.wheatBarn': 1,
+      'rules.economy.noticeBoardPower.wheatHarvestGate': 'loaded',
     },
   });
 }
@@ -658,6 +714,13 @@ export function noticeBoardHostDrawSelfGame(): GameData {
       // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
       'rules.economy.noticeBoardPower.vegetableWildCards': 0,
       'rules.economy.noticeBoardPower.dairyDiscount': 0,
+      // ⛔ WHEAT BOARD RETEXT PINNED 19/09/2026, SAME REASON: V12 The
+      // Auction House ("Discard a card from your Barn. Perform the Notice
+      // Board action of that crop") reaches `fireNoticeBoardPower` as a card
+      // effect under EVERY currency, so a game frozen before today's retext
+      // needs these two leaves pinned by name exactly like the pair above.
+      'rules.economy.noticeBoardPower.wheatBarn': 1,
+      'rules.economy.noticeBoardPower.wheatHarvestGate': 'loaded',
     },
   });
 }
@@ -712,6 +775,13 @@ export function noticeBoardNoSelfGame(): GameData {
       // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
       'rules.economy.noticeBoardPower.vegetableWildCards': 0,
       'rules.economy.noticeBoardPower.dairyDiscount': 0,
+      // ⛔ WHEAT BOARD RETEXT PINNED 19/09/2026, SAME REASON: V12 The
+      // Auction House ("Discard a card from your Barn. Perform the Notice
+      // Board action of that crop") reaches `fireNoticeBoardPower` as a card
+      // effect under EVERY currency, so a game frozen before today's retext
+      // needs these two leaves pinned by name exactly like the pair above.
+      'rules.economy.noticeBoardPower.wheatBarn': 1,
+      'rules.economy.noticeBoardPower.wheatHarvestGate': 'loaded',
     },
   });
   return noticeBoardNoSelfCache;
@@ -766,6 +836,13 @@ export function meepleEconomyGame(): GameData {
       // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
       'rules.economy.noticeBoardPower.vegetableWildCards': 0,
       'rules.economy.noticeBoardPower.dairyDiscount': 0,
+      // ⛔ WHEAT BOARD RETEXT PINNED 19/09/2026, SAME REASON: V12 The
+      // Auction House ("Discard a card from your Barn. Perform the Notice
+      // Board action of that crop") reaches `fireNoticeBoardPower` as a card
+      // effect under EVERY currency, so a game frozen before today's retext
+      // needs these two leaves pinned by name exactly like the pair above.
+      'rules.economy.noticeBoardPower.wheatBarn': 1,
+      'rules.economy.noticeBoardPower.wheatHarvestGate': 'loaded',
     },
   });
   return meepleEconomyCache;
@@ -911,6 +988,13 @@ export function meepleLoopGame(): GameData {
       // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
       'rules.economy.noticeBoardPower.vegetableWildCards': 0,
       'rules.economy.noticeBoardPower.dairyDiscount': 0,
+      // ⛔ WHEAT BOARD RETEXT PINNED 19/09/2026, SAME REASON: V12 The
+      // Auction House ("Discard a card from your Barn. Perform the Notice
+      // Board action of that crop") reaches `fireNoticeBoardPower` as a card
+      // effect under EVERY currency, so a game frozen before today's retext
+      // needs these two leaves pinned by name exactly like the pair above.
+      'rules.economy.noticeBoardPower.wheatBarn': 1,
+      'rules.economy.noticeBoardPower.wheatHarvestGate': 'loaded',
     },
   });
   return meepleLoopCache;
