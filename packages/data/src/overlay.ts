@@ -66,6 +66,17 @@ const MEEPLE_SPEND_TIMING_VALUES: ReadonlySet<string> = new Set<string>([
  * retext, ruled 14/09/2026). 'deckGrowWild' is the shipped value; 'sow' is the
  * pre-ruling power every older overlay pins.
  */
+/**
+ * The closed value set behind `noticeBoardPower.wheatHarvestGate` (Dean,
+ * 19/09/2026). `'loaded'` is the shipped value and the gate C97 flagged;
+ * `'nearFull'` is Dean's retext; `'full'` is the ordinary Harvest gate.
+ */
+const WHEAT_HARVEST_GATE_VALUES: ReadonlySet<string> = new Set<string>([
+  'loaded',
+  'nearFull',
+  'full',
+]);
+
 const APIARY_POWER_VALUES: ReadonlySet<string> = new Set<string>([
   'sow',
   'deckGrow',
@@ -174,6 +185,8 @@ function typeMatches(type: KnobType, value: Leaf): boolean {
       return typeof value === 'string' && MEEPLE_SPEND_TIMING_VALUES.has(value);
     case 'apiaryPower':
       return typeof value === 'string' && APIARY_POWER_VALUES.has(value);
+    case 'wheatHarvestGate':
+      return typeof value === 'string' && WHEAT_HARVEST_GATE_VALUES.has(value);
     case 'paymentHostChoice':
       return typeof value === 'string' && PAYMENT_HOST_VALUES.has(value);
     case 'firstPlayer':

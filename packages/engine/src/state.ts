@@ -464,7 +464,19 @@ export type Task =
        * in `harvestable` - but the printed exception W11 and W13 spell out in
        * words ("however many cards are on it").
        */
-      filter: 'full' | 'notFull' | 'harvestable' | 'loaded';
+      /**
+       * ⭐ 'nearFull' IS DEAN'S WHEAT BOARD RETEXT (19/09/2026): *"Harvest a
+       * building that is full, or 1 card from full"* - a stack at or above
+       * `threshold - 1`. It sits between 'loaded' (any stack of 1+, the gate
+       * C97 flagged as an engine reading nobody ruled) and 'full'.
+       *
+       * ⚠️ IT STILL REACHES YOUR OWN NOTICE BOARD, at 2 cards rather than 1.
+       * A `3+` board is never `isFull`, so 'full' would exclude it entirely
+       * while 'nearFull' reads `stack >= 2`. That narrows C97 without closing
+       * it, and whether the Wheat power should reach a board at all is still
+       * the open ruling.
+       */
+      filter: 'full' | 'notFull' | 'harvestable' | 'loaded' | 'nearFull';
       /**
        * `harvestable` only: buildings holding at least this many cards count
        * even when not full. The Wheat SERVICE passes 2 and nothing else passes
@@ -583,6 +595,19 @@ export type Task =
        * neighbour's farm is not a VISIT: no bonus slot, no wage, no afterVisit.
        */
       targets?: BuildingRef[];
+      /**
+       * ⚠️ SHIPPED AS DECLINABLE (18/09/2026, to-do 2.2's "stuck" fix): every
+       * push site sets this true, even the several card texts printed as a
+       * plain "SOW", not "you may sow" - `wildHive` (A8), `smokePot` (A17) and
+       * `helpingHandApiary` (A18) all say so in their own notes, on the
+       * `handToBarn` precedent ("always optional in practice, so it can never
+       * be a downside"). A human was stranded with no way to answer at all
+       * (the UI cannot fabricate a skip the engine never enumerates); the fix
+       * chosen is to make the whole family skippable rather than plumb a
+       * click path for every targets/deck combination. If a future card wants
+       * a genuinely mandatory deck-sow, this defaults to undefined = required.
+       */
+      optional?: boolean;
       /**
        * Fix the deck (A13's "the top card of EACH deck": one task per deck, in
        * a fixed order). Absent = the answer names any drawable deck, which is

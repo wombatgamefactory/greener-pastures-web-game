@@ -55,15 +55,16 @@ export function Inspector({
             <img src={frame('vp')} alt="" />
             {receiptTotal(farm.receipts)} VP
           </span>
-          {/* ⭐ Against the limit, since it came back on 02/09/2026 - and here
-              it is worth showing for a RIVAL as well as for you: the limit is
-              one global rule, so a neighbour's hand count reads as a fraction of
-              the same ceiling and you can see who is about to have to throw
-              cards away. */}
-          <span>
-            hand {farm.handCount}
-            {data.rules.turn.handLimit === null ? '' : ` / ${data.rules.turn.handLimit}`}
-          </span>
+          {/* ⭐ Dean's ruling, 18/09/2026: there is no hand limit at the table
+              (`session/table.ts` loads `rules.turn.handLimit: null`), so this
+              is a plain count, for a rival exactly as it is for you. It used to
+              print "hand n / 7" against `rules.turn.handLimit`, but that 7 was
+              never a table rule - it is the engine's own simulator bound, kept
+              so the bot's move enumeration stays inside a runtime budget (see
+              the comment on the override in `session/table.ts`). If a bound
+              like that is ever shown here again, it must say so and not read
+              as a rule everyone at the table is playing to. */}
+          <span>hand {farm.handCount}</span>
           <span>barn {farm.barnCount}</span>
           <button className="inspector-close" onClick={onClose} autoFocus>
             close
@@ -74,10 +75,17 @@ export function Inspector({
           {board ? (
             <>
               <FillBar filled={board.filled} threshold={board.threshold} />
+              {/* ⚠️ FIXED 18/09/2026: this used to say "Their board is full:
+                  nobody can visit until they harvest it" once `filled` reached
+                  `threshold` - false under S8 (13/09/2026), a Notice Board's
+                  threshold is a minimum that never blocks. A visit is always
+                  legal here; `harvestable` only says whether the OWNER could
+                  harvest it right now, which never changes that. */}
               <span>
-                {board.full
-                  ? 'Their board is full: nobody can visit until they harvest it.'
-                  : `One card on their Notice Board, and you take their door: ${board.actionText}`}
+                One card on their Notice Board, and you take their door: {board.actionText}
+                {board.harvestable
+                  ? ' They could harvest it now, but that never stops a visit.'
+                  : ''}
               </span>
             </>
           ) : (
@@ -85,13 +93,13 @@ export function Inspector({
           )}
         </div>
 
-        {/* Their meeples, at full size: what free actions they are holding, and
-            of which colours. On a rival's panel this is read-only - a meeple is
-            spent by its owner, at the start of their own turn. */}
-        <MeepleSupply data={data} meeples={farm.meeples} label="Their meeples" />
+        {/* Their Workers, at full size: what free actions they are holding, and
+            of which colours. On a rival's panel this is read-only - a Worker is
+            spent by its owner, after their own main action. */}
+        <MeepleSupply data={data} meeples={farm.meeples} label="Their Workers" />
 
         <div className="inspector-workers">
-          <DoorChip door={door} owner="theirs" showMeeple />
+          <DoorChip data={data} door={door} owner="theirs" showMeeple />
         </div>
 
         <Tableau data={data} buildings={farm.tableau} cardWidth={cardWidth} zoom={zoom} />

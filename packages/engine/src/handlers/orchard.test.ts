@@ -323,13 +323,13 @@ describe('O1 Barn - the ORCHARD build refund, deleted', () => {
 });
 
 describe('the Tier 1 ORCHARDs - one conversion each', () => {
-  it('O4 The Apple Orchard is the naked Draw 2', () => {
+  it('O4 The Apple Orchard is the naked Draw 3 (v44, 18/09/2026; was Draw 2)', () => {
     const s = base();
     buildFor(data, s, ORCHARD, 'O4');
     dealTo(data, s, ORCHARD, 'O6');
     expect(headDraw(growBuilding(data, s, ORCHARD, 'O4', 'O6').state)).toMatchObject({
-      see: 2,
-      keep: 2,
+      see: 3,
+      keep: 3,
     });
   });
 

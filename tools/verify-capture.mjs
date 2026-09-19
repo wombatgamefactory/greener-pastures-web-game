@@ -30,8 +30,29 @@ import process from 'node:process';
 
 import { chromium } from 'playwright-core';
 
-import { BASE_GAME_DATA } from '@gp/data';
+import { loadGameData } from '@gp/data';
 import { parseCapture, replayCapture } from '@gp/engine';
+
+/**
+ * ⭐ THE UI'S OWN DATA, NOT `BASE_GAME_DATA` (19/09/2026). The browser plays
+ * `packages/ui/src/session/table.ts`'s `data` - the shipped rules with one
+ * override, `rules.turn.handLimit: null` (Dean, 18/09/2026: THE BROWSER HAS NO
+ * HAND LIMIT) - and `dataFingerprint` is a hash of the CARD SHEET only
+ * (`packages/engine/src/setup.ts`), not of the rules, so replaying a captured
+ * log against `BASE_GAME_DATA` instead silently "passes" the fingerprint check
+ * and then throws deep into the replay: a hand that legitimately grew past 7
+ * cards under no limit hits `BASE_GAME_DATA`'s hand-limit-7 discard task, which
+ * the real log never answers because the real game never queued one. Caught
+ * 19/09/2026 by this very script - "threw at 24: A pending task must be
+ * answered first" - so the fix is duplicated here rather than imported from
+ * `packages/ui/src`, which this tool has never reached into and which pulls in
+ * more than a rules override needs.
+ */
+const DATA = loadGameData({
+  name: 'greener-pastures-web-game',
+  schemaVersion: 1,
+  set: { 'rules.turn.handLimit': null },
+});
 
 const ROOT = resolve(import.meta.dirname, '..');
 const DIST = join(ROOT, 'packages', 'ui', 'dist');
@@ -173,7 +194,7 @@ try {
     capture.policies.join(', '),
   );
 
-  const result = replayCapture(BASE_GAME_DATA, capture);
+  const result = replayCapture(DATA, capture);
   check('the data matches this build', result.fingerprintMatches);
   check(
     'and the whole log replays without throwing',

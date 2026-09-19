@@ -1150,9 +1150,10 @@ export interface RulesFile {
      */
     readonly cropScorerOnBarn: boolean;
     /**
-     * A cap on W20 The Grand Granary's end-game VP ("1 VP for each building
-     * you have built"). null is the card as printed on v42, with no cap. Added
-     * 16/09/2026 to test "Max 5VP" as an arm before any sheet change.
+     * A cap on W20 The Grand Granary's end-game VP. SHIPPED 5 (18/09/2026):
+     * the v44 sheet prints the cap on the card face, "1 VP for each building
+     * you have built (Max 5VP)". null is the v42 card with no cap, added
+     * 16/09/2026 as an arm before the sheet caught up; kept as the control.
      */
     readonly grandGranaryCap: number | null;
     /**
@@ -1259,13 +1260,14 @@ export interface RulesFile {
        */
       readonly dairyWild: boolean;
       /**
-       * ⭐ THE DAIRY BOARD'S DISCOUNT (Dean, ruling R10, v41, 16/09/2026):
-       * *"Build, spending cards of any crops, with a discount of 2."* The build
-       * costs this many cards fewer, and a discount above 0 already waives the
-       * n-of-suit requirement in the engine's pricer (`dairyWild` waives it at 0
-       * too). 0 is the full-price waiver-only board of 10-15/09/2026.
+       * ⭐ THE DAIRY BOARD'S DISCOUNT (Dean, ruling R10, v41, 16/09/2026; CUT
+       * v44, 18/09/2026): *"Build, spending cards of any crops, with a
+       * discount of 1."* The build costs this many cards fewer, and a
+       * discount above 0 already waives the n-of-suit requirement in the
+       * engine's pricer (`dairyWild` waives it at 0 too). 0 is the full-price
+       * waiver-only board of 10-15/09/2026; 2 was the v41 opening value.
        *
-       * ⛔ IT REPLACES `dairyGrowsBuilt`, DELETED THE SAME DAY: the board no
+       * ⛔ IT REPLACES `dairyGrowsBuilt`, DELETED 16/09/2026: the board no
        * longer Grows the building it builds, and the build task's `thenGrow`
        * rider went with it.
        */
@@ -1282,6 +1284,19 @@ export interface RulesFile {
        * live for a seat with nothing full to harvest.
        */
       readonly wheatBarn: number;
+      /**
+       * ⭐ WHICH BUILDINGS THE WHEAT BOARD'S HARVEST MAY CHOOSE (Dean,
+       * 19/09/2026). `'loaded'` is the shipped value and the engine reading
+       * C97 flagged: ANY building of yours with one or more cards, which
+       * reaches your own `3+` Notice Board at a single card. `'nearFull'` is
+       * Dean's retext, *"Harvest a building that is full, or 1 card from
+       * full"*. `'full'` is the ordinary Harvest gate.
+       *
+       * ⛔ C97 IS THE REASON THIS IS A KNOB RATHER THAN AN EDIT: nobody has
+       * ruled the loaded gate as a Wheat privilege, so the arm has to be
+       * runnable against it rather than replacing it.
+       */
+      readonly wheatHarvestGate: 'loaded' | 'nearFull' | 'full';
     };
   };
   readonly endGame: {

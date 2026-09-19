@@ -134,7 +134,27 @@ export interface BoardState {
   readonly building: BuildingView;
   readonly filled: number;
   readonly threshold: number;
+  /**
+   * ⚠️ MISLEADING NAME, KEPT FOR EXISTING CALLERS (`RivalRail.tsx`,
+   * `Inspector.tsx`). It reads `threshold > 0 && filled >= threshold`, which
+   * for an ORDINARY building would mean clogged-and-refusing-cards. **A Notice
+   * Board is never that** (S8, 13/09/2026): `3+` is a harvest MINIMUM, never a
+   * maximum, nothing ever blocks a visit, and a card is always welcome. Read
+   * `harvestable` below instead of this field for anything about the board
+   * itself; this field survives only because two files outside this package's
+   * ownership at the time of writing (18/09/2026) still branch their COPY on
+   * it ("full - no visits" / "nobody can visit until they harvest it"), and
+   * changing its formula out from under them would silently make their prose
+   * wrong in a new way rather than the old one. Fixing those two strings to
+   * read `harvestable` instead is owed and tracked in the to-do list.
+   */
   readonly full: boolean;
+  /**
+   * Whether the board is AT OR ABOVE its threshold, i.e. the owner could
+   * harvest it right now. Never a reason a visit is refused - see `full`
+   * above for why that field still exists alongside this one.
+   */
+  readonly harvestable: boolean;
   /**
    * WHAT A CARD PLACED HERE BUYS: this farm's suit door, in one word. Since v31
    * that is the whole payoff - no coins are minted, no wage is paid, and the
@@ -148,13 +168,14 @@ export interface BoardState {
 }
 
 /**
- * A seat's FARMSTEAD: the card its end-game scorer is printed on.
+ * A seat's FARMSTEAD: the six-slot card that holds island receipt tokens.
  *
- * It is the only building in the game that has no stack and is never a target of
- * anything - so nothing in the interface had ever had to find it before. What
- * wants it is the reading region's idle state: since v31 the Farmstead prints
- * *"Game end: 1 VP for each `<CROP>` card you have built"*, which is the standing
- * reason to build your own colour and the rule a table forgets first.
+ * ⭐ 10/09/2026: the own-crop end-game scorer MOVED OFF this card and onto the
+ * Barn (ledger A105; see `barnOf` below), so the Farmstead now prints no rules
+ * text at all - "Store Receipts here. Collect 6 to trigger end of the game" is
+ * flavour, not a power. What it still uniquely is: the only building in the
+ * game that has no stack and is never a target of anything, and the card whose
+ * six printed slots are the end trigger every seat can read off a rival's farm.
  *
  * Null is a reachable answer, not padding - D14 can demolish a building - and
  * the caller falls back to the old hint rather than assuming.
@@ -167,8 +188,35 @@ export function farmsteadOf(data: GameData, tableau: readonly BuildingView[]): B
 }
 
 /**
+ * A seat's BARN: the card that prints the own-crop end-game scorer since
+ * 10/09/2026 (*"Game end: 1 VP for each `<CROP>` card you have built"*, ledger
+ * A105) - moved here off the Farmstead, which now prints nothing. This is the
+ * card the reading region's idle default should show (`Zoom.tsx`) and the one
+ * the Result screen's "end-game cards" section traces back to (`Result.tsx`),
+ * because it is live from turn one and the rule a table forgets first.
+ *
+ * Same null-safety story as `farmsteadOf`: a starter can be demolished, so a
+ * seat with no Barn on its tableau is a reachable position and the caller
+ * falls back rather than assuming.
+ */
+export function barnOf(data: GameData, tableau: readonly BuildingView[]): BuildingView | null {
+  return (
+    tableau.find((b) => data.cards.catalogue.find((c) => c.id === b.card)?.slot === 'barn') ?? null
+  );
+}
+
+/**
  * A seat's Notice Board - the only visit target in the game, and since v31 that
  * includes visits from its OWN owner.
+ *
+ * ⚠️ SINGULAR, AND ONLY EVER THE FARM'S OWN SUIT. `tableau.find` returns the
+ * FIRST notice-board building, and setup always lays a seat's own starters
+ * (Notice Board included) down before its S8 spare, so this is reliably "your
+ * own door" - but at two players it is exactly HALF of what a visitor can
+ * target. **Read `noticeBoardsOf` below for every board a farm has.** This
+ * function stays only because it is the seam three files outside this
+ * package's ownership at the time of writing (18/09/2026) already call for
+ * "the" board; giving them the second one is `to-do/to-do-list.md` §2.2.1.
  *
  * Returns null rather than throwing when the seat has none. That is not
  * defensive padding: D14 can demolish a building, so a seat with no Notice
@@ -179,21 +227,44 @@ export function noticeBoardOf(data: GameData, farm: Farm): BoardState | null {
   const building = farm.tableau.find(
     (b) => data.cards.catalogue.find((c) => c.id === b.card)?.slot === 'noticeboard',
   );
-  if (!building) return null;
+  return building ? boardStateOf(data, building) : null;
+}
+
+/** Shared by `noticeBoardOf` and `noticeBoardsOf`, so the two shapes cannot drift. */
+function boardStateOf(data: GameData, building: BuildingView): BoardState {
   const face = printedFace(data, building.card);
   // Through the seam, not off the face: this bar is what tells a player whether
   // a visit will be accepted, so it has to agree with the engine.
   const threshold = liveThreshold(data, building.card, face.threshold) ?? 0;
-  const door = doorOf(data, farm.suit);
+  // The DOOR IS THIS BOARD'S OWN SUIT, not necessarily the farm's: at two
+  // players the S8 spare board is a different suit from the one its owner
+  // farms, and it still grants ITS suit's action to a visitor.
+  const door = doorOf(data, face.suit);
+  const filled = building.stack.length;
   return {
     building,
-    filled: building.stack.length,
+    filled,
     threshold,
-    full: threshold > 0 && building.stack.length >= threshold,
+    full: threshold > 0 && filled >= threshold,
+    harvestable: threshold > 0 && filled >= threshold,
     action: door.action,
     actionLabel: door.actionLabel,
     actionText: door.actionText,
   };
+}
+
+/**
+ * EVERY Notice Board a farm has, in tableau order (so a seat's own suit comes
+ * first, matching `noticeBoardOf`). At most one for three and four players; at
+ * two, S8's two-board fix (11/09/2026, shipped 13/09/2026) means this can be
+ * two, and both are real visit targets, real harvest targets and real fee
+ * collectors for their owner - the owner just never gets to press the second
+ * one's own power (§2.2 of the project CLAUDE.md).
+ */
+export function noticeBoardsOf(data: GameData, farm: Farm): BoardState[] {
+  return farm.tableau
+    .filter((b) => data.cards.catalogue.find((c) => c.id === b.card)?.slot === 'noticeboard')
+    .map((building) => boardStateOf(data, building));
 }
 
 /**

@@ -10,7 +10,7 @@
  */
 
 import type { BuildCost, GameData, Suit } from '@gp/data';
-import { isMeepleCurrency } from '@gp/data';
+import { isMeepleCurrency, isNoticeBoardPower } from '@gp/data';
 import { revealedIn } from '@gp/engine';
 import type { CardId, Move, MoveType, PlayerView, Seat, Task, TaskAnswer } from '@gp/engine';
 
@@ -20,7 +20,7 @@ type CardTask = Extract<Task, { t: 'card' }>;
 import { buildOffers, pendingTask } from './intent';
 import type { PrintedFace } from './printed';
 import { SUIT_META, maskedCardPhrase, seatName, suitArticle } from './suits';
-import { doorOf, liveThreshold, seatSuits } from './table';
+import { doorOf, farmOf, liveThreshold, noticeBoardsOf, seatSuits } from './table';
 
 export function cardName(data: GameData, id: string): string {
   if (id.endsWith('?')) {
@@ -119,15 +119,26 @@ export function describeAnswer(data: GameData, answer: TaskAnswer, task?: CardTa
       return 'decline';
     case 'card':
       return describeCardPayload(data, answer.payload, task);
-    // ⛔ A BOUGHT GROW, unreachable in the v31 game this package plays and on
+    // ⛔ A BOUGHT GROW, still unrouted in the click surface and on
     // `UNROUTED_TASK_ANSWERS` (ledger C59, the UI debt). Spelled as its own
     // case rather than folded into a `default`, so the next answer kind the
     // engine adds is a compile error here and not a silent sentence.
     case 'grow':
-      // ⚠️ `payment` IS NULLABLE SINCE 12/09/2026 (V8, A150): a bought Grow
-      // may be paid with one Village Store coin, in which case nothing is
-      // placed.
-      return `${cardName(data, answer.building)}, paying ${answer.deckSuit !== undefined ? `the top ${answer.deckSuit} card` : answer.payment === null ? 'one coin' : cardName(data, answer.payment)} (a bought Grow: unsupported in this interface, C59)`;
+      /*
+       * ⚠️ `payment` is nullable for exactly one live reason: the Apiary
+       * retext's deck Grow (`deckSuit` set, 14/09/2026). The Village Store
+       * coin's nullable-payment Grow (V8) was deleted with the coin on
+       * 16/09/2026, and the engine no longer constructs this answer with
+       * `payment: null` and no `deckSuit` - so that branch is unreachable and
+       * says so rather than naming a component that no longer exists.
+       */
+      return `${cardName(data, answer.building)}, paying ${
+        answer.deckSuit !== undefined
+          ? `the top ${SUIT_META[answer.deckSuit].label} card`
+          : answer.payment !== null
+            ? cardName(data, answer.payment)
+            : 'nothing (unreachable under the shipped rules)'
+      } (a bought Grow: unsupported in this interface, C59)`;
     default:
       return answer satisfies never;
   }
@@ -264,27 +275,37 @@ function meepleTally(counts: Partial<Record<Suit, number>>): string {
 }
 
 /**
- * ⭐ A SELF-VISIT AND A NEIGHBOUR VISIT NEVER SHARE A SENTENCE.
+ * ⭐ REWRITTEN 18/09/2026 for the shipped rule: self-visiting is BANNED
+ * ("Never your own board, either of them", ruled 11/09/2026), so a visit only
+ * ever reads one way - one card from your hand onto a named RIVAL's Notice
+ * Board, taking that board's printed power at once. The card stays there
+ * until its owner harvests it.
  *
- * They are the same move with a flag and they are opposite acts: one is the
- * game's whole social hook, the other is solitaire bought with the same
- * currency. `move.host === move.seat` is the only difference in the data, so
- * this is the one place the interface can guarantee they never read alike - and
- * the wording is deliberately blunt about which is which, because the v31 plan's
- * risk 2 is precisely that the solitaire door quietly wins.
+ * At two players a host farms TWO boards (their own suit's, plus one drawn at
+ * random from an unfarmed suit) and they print different powers, so `move`
+ * carries an optional `board` naming which one the fee lands on - resolved
+ * through `noticeBoardsOf` rather than through the host's own suit, because
+ * the second board's power is never the host's own.
  */
 export function visitText(
   data: GameData,
   view: PlayerView,
   move: Extract<Move, { type: 'visit' }>,
 ): string {
-  const colour = seatSuits(view)[move.host];
-  const door = colour ? doorLabel(data, colour) : 'their';
-  // TODO(meeple-loop): owned by the ui pass. A meeple visit names no card.
+  const boards = noticeBoardsOf(data, farmOf(view, move.host));
+  const board =
+    (move.board ? boards.find((b) => b.building.card === move.board) : boards[0]) ?? boards[0];
+  /*
+   * `fee` is null only under the retired meeple-currency visit arm
+   * (`overlays/meeple-loop-v1.overlay.json` and its siblings, project
+   * CLAUDE.md §5) - a different component from the delivery Worker, and
+   * never reachable under the shipped rival-board-power visit, which is
+   * always paid with one card.
+   */
   const fee = move.fee === null ? 'a meeple' : cardName(data, move.fee);
-  return move.host === move.seat
-    ? `Your own door: ${fee} onto your own Notice Board, then ${door}. No neighbour involved, and it fills your own board.`
-    : `Visit ${who(view, move.host)}: ${fee} onto their Notice Board, then ${door}.`;
+  return board
+    ? `Visit ${who(view, move.host)}: ${fee} onto their Notice Board, for ${board.actionLabel}. It stays there until they harvest it.`
+    : `Visit ${who(view, move.host)}: ${fee} onto their Notice Board.`;
 }
 
 export function describeMove(data: GameData, view: PlayerView, move: Move): string {
@@ -308,7 +329,7 @@ export function describeMove(data: GameData, view: PlayerView, move: Move): stri
     case 'bonusDraw':
       return `Bonus: draw ${data.rules.turn.bonusDraw} off the top of any deck`;
     case 'spendMeeple':
-      return `Spend ${suitArticle(SUIT_META[move.colour].label)} ${SUIT_META[move.colour].label} meeple: ${doorLabel(data, move.colour)}. It leaves the game.`;
+      return `Spend ${suitArticle(SUIT_META[move.colour].label)} ${SUIT_META[move.colour].label} Worker: ${doorLabel(data, move.colour)}. It leaves the game.`;
     case 'build':
       return move.meeples === undefined
         ? `Build ${cardName(data, move.card)}, paying ${cardList(data, move.payment)}`
@@ -325,11 +346,29 @@ export function describeMove(data: GameData, view: PlayerView, move: Move): stri
         : `Grow ${cardName(data, move.building)}, paying ${cardName(data, move.payment)}`;
     case 'harvest':
       return `Harvest ${cardName(data, move.building)}`;
-    case 'deliver':
-      return `Deliver to island ${move.tile}: ${spendText(move.spend)}`;
+    case 'deliver': {
+      // ⭐ NAME THE TOKEN TAKEN (18/09/2026): its crop demand, its VP and
+      // whether it carried a Worker, resolved off the tile's own state rather
+      // than guessed, because a first delivery chooses between two tokens and
+      // `move.spend` alone says nothing about which.
+      const tile = view.island.tiles.find((t) => t.tile === move.tile);
+      const token = move.token !== undefined ? tile?.tokens[move.token] : undefined;
+      const tokenWords = token
+        ? `the ${token.demand === 'wild' ? 'wild' : SUIT_META[token.demand].label} token, ${token.vp} VP${
+            token.worker ? `, with a ${SUIT_META[token.worker].label} Worker` : ''
+          }`
+        : 'a token';
+      return `Deliver to island ${move.tile}: ${spendText(move.spend)}, for ${tokenWords}`;
+    }
     case 'visit':
       return visitText(data, view, move);
-    // TODO(meeple-loop): owned by the ui pass.
+    /*
+     * `collect` and its meeples are the retired meeple-currency visit arm
+     * (`overlays/meeple-loop-v1.overlay.json` and its siblings, project
+     * CLAUDE.md §5) - a different component from the delivery Worker, and
+     * never offered under the shipped rival-board-power visit. Kept, and
+     * spelled out, only because the engine still defines the move type.
+     */
     case 'collect':
       return 'Collect: take the meeples off your own Notice Board, then Draw 1.';
     case 'pass':
@@ -376,10 +415,9 @@ export function describeTask(data: GameData, task: Task): string {
         : `${task.cards.length} card${task.cards.length === 1 ? '' : 's'} heading for the discard: put one in your barn, or let them go.`;
     case 'card':
       return `${cardName(data, task.src)}: choose.`;
-    // ⛔ A bought Grow, unreachable in the v31 game this package plays and
-    // unresolvable in its prompt - see `UNROUTED_TASK_ANSWERS` in `intent.ts`
-    // and ledger C59. An explicit case, so a genuinely new task kind still
-    // fails the build here.
+    // ⛔ A bought Grow, still unresolvable in this prompt - see
+    // `UNROUTED_TASK_ANSWERS` in `intent.ts` and ledger C59. An explicit
+    // case, so a genuinely new task kind still fails the build here.
     case 'grow':
       return 'GROW one of your buildings, paying a matching card (a bought Grow: unsupported in this interface, C59).';
     default:
@@ -479,8 +517,8 @@ const FAMILIES: readonly {
   {
     key: 'spendMeeple',
     type: 'spendMeeple',
-    label: 'Meeples',
-    hint: 'Start of turn: spend any number, one at a time. Each leaves the game.',
+    label: 'Workers',
+    hint: 'After your action: spend one Worker for the plain action of its colour.',
     needsTarget: true,
     zone: 'meeple',
     onBoard: true,
@@ -493,7 +531,14 @@ const FAMILIES: readonly {
     hint: 'Bonus: the top card of any one deck. Free, and never dead.',
     needsTarget: false,
     zone: 'bonus',
-    inPlay: (data) => !isMeepleCurrency(data),
+    // ⚠️ FIXED 18/09/2026: this used to read `!isMeepleCurrency(data)` alone,
+    // which is true under the shipped rival-board-power visit and drew a
+    // permanently-greyed "Draw 1" button with a false "never dead" hint on
+    // every game. The engine's own `bonusDrawOpen` (`actions/bonus.ts`)
+    // closes the free Draw under BOTH arms - S5, 10/09/2026: the bonus slot
+    // holds one option, the visit, and a free solitaire Draw is exactly what
+    // killed v31 at 67.6%. This now agrees with the engine.
+    inPlay: (data) => !isMeepleCurrency(data) && !isNoticeBoardPower(data),
   },
   /*
    * ⭐ COLLECT IS WHAT REPLACED THE FREE DRAW 1 (04/09/2026, R7), and the two
@@ -515,12 +560,13 @@ const FAMILIES: readonly {
   },
   /*
    * ⭐ THE TWO HALVES OF THE VISIT, DRAWN AS TWO BUTTONS. One move type, one
-   * flag, and opposite acts: a card on a NEIGHBOUR's board is the hook, a card
-   * on your OWN is solitaire that also clogs your own door. Every previous
-   * version of this game has had the solitaire option quietly crowd the visit
-   * out when the two competed for one slot, so the interface's job is to make
-   * sure nobody takes one thinking it is the other. One button, however
-   * carefully worded, could not do that.
+   * flag. `visit` is the hook, and it is the only one of the two that is ever
+   * `inPlay` under the shipped rules: self-visiting is BANNED ("Never your
+   * own board, either of them", ruled 11/09/2026), so `visit-self` below only
+   * ever activates under the pre-ban `'card'` control (`selfVisitAllowed:
+   * true`), kept so that control still replays. The split survives from when
+   * both were live, so that neither button can be mistaken for the other on
+   * an arm where they both still are.
    */
   {
     key: 'visit',
@@ -535,13 +581,13 @@ const FAMILIES: readonly {
     key: 'visit-self',
     type: 'visit',
     label: 'Your own door',
-    hint: 'Bonus: 1 card onto your OWN Notice Board for your own action - and it clogs your board',
+    hint: 'Bonus: 1 card onto your OWN Notice Board for your own action. It still counts toward the 3+, but a board never blocks - there is always room for the next card.',
     needsTarget: true,
     zone: 'bonus',
     match: (move, view) => move.type === 'visit' && move.host === view.seat,
-    // ⛔ AND THERE IS NO SELF-VISIT UNDER THE SHIPPED RULES (X5), at any setting
+    // ⛔ THERE IS NO SELF-VISIT UNDER THE SHIPPED RULES (X5), at any setting
     // of `selfVisitAllowed` - the meeple loop deletes it at the enumerator, so
-    // the flag is read only under the v31 card-visit control.
+    // the flag is read only under the pre-ban `'card'` control.
     inPlay: (data) => !isMeepleCurrency(data) && data.rules.turn.selfVisitAllowed,
   },
   {
@@ -681,14 +727,26 @@ export interface GlossTerm {
  * Detection is a word-boundary match on the PRINTED text, case-insensitive,
  * because the sheet is not consistent about capitals: A1 prints "sow the top
  * card", A7 prints "Sow 1 card" and O5 prints "SOW 1 card", and all three are
- * the same keyword to a player who has never met it. The boundaries matter as
- * much as the words - VISIT must not fire on VISITOR, which is the same rule
- * seen from the other side of the table and gets its own line.
+ * the same keyword to a player who has never met it.
  *
  * ⛔ HIRE and WORK ARE GONE (v31). They were kept through change 6 on the
  * argument that a re-text could bring the Hiring Fair's vocabulary back; there
  * is no Fair, no Working Week, no wage and no Service left for either word to
  * describe, so a gloss for them would now be teaching a game nobody is playing.
+ *
+ * ⛔ VISITOR IS GONE TOO (18/09/2026, 2.6.2). It used to get its own line so
+ * that VISIT would not fire on VISITOR at the same word boundary - but no v42
+ * or v44 card text prints "visitor" at all (checked against `cards.json`),
+ * only "visit"/"visits"/"visited" on W17, A17 and O16, so the VISITOR term
+ * never once matched a real card and existed only to explain the Notice
+ * Board's OWN printed threshold - which this glossary cannot reach anyway,
+ * since `glossAbility` is only ever called with a card's own `abilityText`
+ * and a Notice Board's text never mentions itself. Its explanation (what a
+ * card placed here buys, and that the board is never full - S8) now lives in
+ * `glossCost`, which already renders on every Notice Board face. Folded into
+ * VISIT's own sentence instead, since a keyword set of GROW/VISIT/SOW is the
+ * whole vocabulary this game has (project CLAUDE.md, "Keywords: Visit vs
+ * Gift").
  *
  * `means` takes the data so a number that is a knob stays a knob.
  */
@@ -713,13 +771,7 @@ const KEYWORDS: readonly {
     term: 'VISIT',
     pattern: /\bvisit(s|ed|ing)?\b/i,
     means: () =>
-      "Your bonus slot: 1 card onto a Notice Board, then take that farm's suit action. Your own board counts, and fills up just the same.",
-  },
-  {
-    term: 'VISITOR',
-    pattern: /\bvisitors?\b/i,
-    means: (data) =>
-      `What anybody gets for placing a card here: your suit's action, and the card stays on the board until you harvest it. Full at ${data.rules.economy.noticeBoardThreshold ?? 2}.`,
+      "Play 1 card from your hand onto a RIVAL's Notice Board and take that board's printed power at once. Never your own board. The card stays there until they harvest it.",
   },
 ];
 
@@ -781,7 +833,7 @@ export function glossCost(data: GameData, face: PrintedFace): string[] {
   }
 
   const noticeBoard = card?.slot === 'noticeboard';
-  // A Notice Board is filled by VISITORS and is never a GROW target (the engine
+  // A Notice Board is filled by VISITS and is never a GROW target (the engine
   // excludes it by slot in `growOptions`), so printing its activation cost here
   // would be offering a move that does not exist.
   if (face.activation !== null && !noticeBoard) {
@@ -795,8 +847,12 @@ export function glossCost(data: GameData, face: PrintedFace): string[] {
   const threshold = liveThreshold(data, face.id, face.threshold);
   if (threshold !== null) {
     out.push(
+      // ⚠️ A Notice Board's threshold is a MINIMUM, never a maximum (S8,
+      // 13/09/2026): it never clogs and always accepts another card. An
+      // ordinary building genuinely clogs at its threshold, so only this
+      // branch changed.
       noticeBoard
-        ? `Visitors fill it: ${threshold}, then it clogs until you harvest.`
+        ? `A visit fills it: ${threshold}+ before you may harvest. Never blocks - another card is always welcome.`
         : `Holds ${threshold}; full, it clogs until you harvest.`,
     );
   }
@@ -875,11 +931,19 @@ export function glossNow(
   if (mine) {
     const threshold = liveThreshold(data, face.id, face.threshold);
     if (threshold === null) return [];
+    const noticeBoard = slotOf(data, face.id) === 'noticeboard';
     if (mine.stack.length >= threshold) {
-      // No GROW clause on a full building. `growOptions` requires `canTakeCard`,
-      // so full and unGROWable are the same fact, and "harvest it" is already
+      // ⚠️ A NOTICE BOARD NEVER CLOGS (S8): `threshold` is a minimum a visitor
+      // has already cleared, not a maximum, so it stays open to the next
+      // visit rather than reading as "full". Every OTHER building genuinely
+      // clogs here - `growOptions` requires `canTakeCard`, so full and
+      // unGROWable are the same fact for those, and "harvest it" is already
       // the answer to both.
-      return [`Full at ${mine.stack.length} of ${threshold}. Harvest to take the stack.`];
+      return noticeBoard
+        ? [
+            `${mine.stack.length} of ${threshold}+, ready to harvest. Still open to visits - another card is always welcome.`,
+          ]
+        : [`Full at ${mine.stack.length} of ${threshold}. Harvest to take the stack.`];
     }
     /*
      * A VERDICT ONLY WHERE THERE IS A QUESTION. The Barn and the Farmstead have
@@ -888,7 +952,7 @@ export function glossNow(
      * than saying nothing: it is true, and it teaches a player to keep coming
      * back to check a door that does not exist.
      */
-    const growable = face.activation !== null && slotOf(data, face.id) !== 'noticeboard';
+    const growable = face.activation !== null && !noticeBoard;
     const verdict =
       !active || !growable
         ? ''

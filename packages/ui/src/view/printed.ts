@@ -86,6 +86,13 @@ export function printedFace(data: GameData, id: string): PrintedFace {
   const cost = costIcons(card);
   const isNoticeBoard = card.slot === 'noticeboard';
 
+  // ⭐ CHECKED AGAINST v44 (18/09/2026): a Notice Board's `abilityText` already
+  // IS its printed power (e.g. W3 "Harvest one of your buildings, then put 1
+  // card from your hand into your barn."), and `threshold` already carries the
+  // sheet's `3` - both flow straight through with no derivation needed here.
+  // `Card.tsx` is the layer that turns that `3` into "3+" for display (S8: a
+  // board's threshold is a harvest minimum, never a maximum), using `convert`
+  // below to tell a board apart from an ordinary clogging building.
   return {
     id: card.id,
     suit: card.suit,

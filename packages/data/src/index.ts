@@ -432,6 +432,10 @@ export function vegetableWildCards(data: GameData): number {
  * ⭐ Which power the Apiary Notice Board prints (Dean's retext, ruled 14/09/2026).
  * Shipped 'deckGrowWild'. Read only under visitCurrency 'noticeBoardPower'.
  */
+export function wheatHarvestGate(data: GameData): 'loaded' | 'nearFull' | 'full' {
+  return data.rules.economy.noticeBoardPower.wheatHarvestGate;
+}
+
 export function apiaryPower(data: GameData): 'sow' | 'deckGrow' | 'deckGrowWild' {
   return data.rules.economy.noticeBoardPower.apiaryPower;
 }

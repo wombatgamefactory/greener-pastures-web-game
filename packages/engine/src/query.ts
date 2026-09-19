@@ -112,6 +112,34 @@ function noticeBoardIsBuilding(data: GameData): boolean {
   return !isMeepleCurrency(data);
 }
 
+/**
+ * ⭐ DOES THE WHEAT NOTICE BOARD'S HARVEST ACCEPT THIS BUILDING (Dean,
+ * 19/09/2026)? ONE function, called by BOTH the legality gate in
+ * `noticeBoardPowerLegal` and the `chooseBuilding` enumerator in `tasks.ts`.
+ *
+ * ⛔ IT IS ONE FUNCTION ON PURPOSE AND MUST STAY THAT WAY. The gate decides
+ * whether the board is offered at all (S10) and the enumerator decides what the
+ * harvest may pick; if they answer differently a seat pays its fee for a task
+ * that drains away with nothing legal in it. That is the 19/08/2026 harvest
+ * mismatch, and M7 hit the same shape again on 12/09/2026 - which is why
+ * `meepleActionOf` is shared rather than copied.
+ *
+ *   'loaded'    any stack of 1+ (SHIPPED; the reading ledger C97 flagged)
+ *   'nearFull'  at or above threshold - 1  ("full, or 1 card from full")
+ *   'full'      the ordinary Harvest gate
+ */
+export function wheatHarvestable(
+  data: GameData,
+  building: BuildingState,
+  gate: 'loaded' | 'nearFull' | 'full',
+): boolean {
+  if (building.stack.length < 1) return false;
+  if (gate === 'loaded') return true;
+  const threshold = thresholdOf(data, building);
+  if (threshold === null) return false;
+  return building.stack.length >= (gate === 'full' ? threshold : threshold - 1);
+}
+
 export function thresholdOf(data: GameData, building: BuildingState): number | null {
   const printed = faceOf(data, building).threshold;
   if (!noticeBoardIsBuilding(data) && cardById(data, building.card).slot === 'noticeboard') {

@@ -54,23 +54,40 @@ export function StackGauge({
 /**
  * The Notice Board's fill, as a bar rather than pips. It reads at rail size
  * where five pips do not, and it is the one gauge a visitor scans across three
- * neighbours at once: a full board is a closed farm.
+ * neighbours at once.
+ *
+ * ⭐ 13/09/2026 (S8): a Notice Board's threshold is a MINIMUM, never a maximum.
+ * Nothing ever blocks - a card is always welcome, and the owner simply CAN
+ * harvest once the bar reads `3+`. This bar used to read as a closed farm at
+ * full width, the same "full" language a clogging building earns; that was
+ * true of the v31 threshold-2 board and it has not been true since the `3+`
+ * ruling. It now never says "full" and never claims a visit would be
+ * refused - it says how many cards are on the board and what the harvest
+ * minimum is, full stop. `ready` still marks the at-or-above-threshold state
+ * visually (the bar's own colour cue), because "the owner could harvest this
+ * right now" is worth a glance - it just no longer means "shut".
  */
 export function FillBar({ filled, threshold }: { filled: number; threshold: number }) {
   const pct = threshold === 0 ? 0 : Math.min(100, (filled / threshold) * 100);
-  const full = threshold > 0 && filled >= threshold;
+  const ready = threshold > 0 && filled >= threshold;
+  const label =
+    threshold === 0
+      ? `Notice Board, ${filled} card${filled === 1 ? '' : 's'}`
+      : `Notice Board, ${filled} card${filled === 1 ? '' : 's'}, ${threshold}+ to harvest${ready ? ' (ready to harvest)' : ''}`;
   return (
     <span
-      className={`fillbar${full ? ' fillbar-full' : ''}`}
+      // The CSS hook keeps its v31 name (`fillbar-full`) so the existing rust
+      // colour cue survives without a stylesheet edit; what changed is only
+      // what it is claiming - "ready to harvest", never "closed".
+      className={`fillbar${ready ? ' fillbar-full' : ''}`}
       role="img"
-      aria-label={`Notice Board ${filled} of ${threshold}${full ? ', full - no visits' : ''}`}
+      aria-label={label}
     >
       <span className="fillbar-track">
         <span className="fillbar-fill" style={{ width: `${pct}%` }} />
       </span>
       <span className="fillbar-text">
-        {filled}/{threshold}
-        {full ? ' full' : ''}
+        {filled} ({threshold === 0 ? '-' : `${threshold}+`})
       </span>
     </span>
   );

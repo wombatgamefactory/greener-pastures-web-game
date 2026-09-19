@@ -127,6 +127,12 @@ function drawN(fx: Fx, pid: Seat, src: CardId, n: number): void {
  * skips itself silently if the target somehow has no room, which is normal
  * rather than an error - the drain loop drops a task with no legal answer.
  *
+ * ⚠️ DECLINABLE SINCE 18/09/2026 (`optional: true`), against the printed "Sow
+ * 1", not "you may sow": every `sowFromDeck` push shipped skippable that day
+ * to fix a UI dead end (a human had no answer to give at all), on the
+ * `handToBarn` precedent. A ruling on whether THIS card in particular should
+ * stay mandatory is still owed.
+ *
  * Two things fall out of the narrowing, both good. The old caveat about a FIELD
  * BUILT after the push (W7's "Build ... Sow 1 FIELD") is moot, because the
  * target is fixed at push time and is never a new building - and moot twice
@@ -140,6 +146,7 @@ function reseed(fx: Fx, seat: Seat, src: CardId): void {
     src,
     remaining: 1,
     targets: [{ seat, card: src }],
+    optional: true,
   });
 }
 
@@ -902,7 +909,11 @@ export const wheatExchange: CardHandler = {
   },
 };
 
-/** W20 The Grand Granary - "Game end: 1 VP for each building you have built." */
+/**
+ * W20 The Grand Granary - "Game end: 1 VP for each building you have built
+ * (Max 5VP)." (the cap moved onto the printed card at v44, 18/09/2026; see
+ * `rules.economy.grandGranaryCap`, shipped 5.)
+ */
 export const grandGranary: CardHandler = {
   difficulty: {
     score: 1,

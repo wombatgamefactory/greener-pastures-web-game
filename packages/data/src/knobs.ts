@@ -145,6 +145,7 @@ export type KnobType =
   | 'meepleDestination'
   | 'meepleSpendTiming'
   | 'apiaryPower'
+  | 'wheatHarvestGate'
   | 'paymentHostChoice'
   | 'firstPlayer'
   | 'endOfGame';
@@ -853,10 +854,12 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     template: 'rules.economy.grandGranaryCap',
     type: 'intOrNull',
     description:
-      "A cap on W20 The Grand Granary's end-game VP." +
-      ' null (shipped) is the v42 card with no ' +
-      'cap; 5 is the "Max 5VP" arm of 16/09/2026, tested because W20 averaged 8-15 VP and ' +
-      'switching it off cost Wheat 12.6 points of win rate on reference-v20.',
+      "A cap on W20 The Grand Granary's end-game VP. SHIPPED 5 (18/09/2026): the v44 sheet " +
+      'prints the cap on the card face itself, "Game end: 1 VP for each building you have ' +
+      'built (Max 5VP)", so the arm of 16/09/2026 (tested because W20 averaged 8-15 VP and ' +
+      'switching it off cost Wheat 12.6 points of win rate on reference-v20) is now the ' +
+      'default rather than an experiment. null is the v42 card with no cap, kept as the ' +
+      'control.',
   },
   {
     template: 'rules.economy.cropScorerOnBarn',
@@ -973,14 +976,29 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     template: 'rules.economy.noticeBoardPower.dairyDiscount',
     type: 'int',
     description:
-      '⭐ THE DAIRY NOTICE BOARD’S DISCOUNT (Dean, ruling R10, v41, 16/09/2026): "Build, ' +
-      'spending cards of any crops, with a discount of 2." SHIPPED 2. The build costs this many ' +
-      'cards fewer, and any discount above 0 also waives the n-of-suit requirement in the ' +
-      'engine’s pricer. 0 is the full-price, waiver-only board of 10-15/09/2026. It REPLACES ' +
-      "dairyGrowsBuilt ('paidWild' and its siblings), deleted the same day: the board no longer " +
-      'Grows the building it builds. ⚠️ A discount of 2 is D10 The Scout’s Post’s and W7 ' +
-      'Golden Field’s price on a free action: read the Dairy win rate and the build count ' +
-      'per seat before quoting anything about the board.',
+      '⭐ THE DAIRY NOTICE BOARD’S DISCOUNT (Dean, ruling R10, v41, 16/09/2026; CUT v44, ' +
+      '18/09/2026): "Build, spending cards of any crops, with a discount of 1." SHIPPED 1. ' +
+      'The build costs this many cards fewer, and any discount above 0 also waives the ' +
+      'n-of-suit requirement in the engine’s pricer. 0 is the full-price, waiver-only board of ' +
+      '10-15/09/2026; 2 is the v41 opening value, cut on the v44 sheet because a discount of 2 ' +
+      'was D10 The Scout’s Post’s and W7 Golden Field’s price on a free action. It REPLACES ' +
+      "dairyGrowsBuilt ('paidWild' and its siblings), deleted 16/09/2026: the board no longer " +
+      'Grows the building it builds. Read the Dairy win rate and the build count per seat ' +
+      'before quoting anything about the board.',
+  },
+  {
+    template: 'rules.economy.noticeBoardPower.wheatHarvestGate',
+    type: 'wheatHarvestGate',
+    description:
+      '⭐ WHICH BUILDINGS THE WHEAT NOTICE BOARD MAY HARVEST (Dean, 19/09/2026). ' +
+      "'loaded' SHIPS and is the engine reading ledger C97 flagged as never ruled: any " +
+      'building of yours holding one or more cards, which reaches your own `3+` Notice Board ' +
+      "at a single card. 'nearFull' is Dean's retext, \"Harvest a building that is full, or 1 " +
+      'card from full\" - a stack at or above threshold minus one, which still reaches your own ' +
+      "board but at 2 cards rather than 1. 'full' is the ordinary Harvest gate and excludes a " +
+      '`3+` board entirely, because such a board is never full. ⛔ PAIR IT WITH wheatBarn: ' +
+      "Dean's retext prints no hand-to-barn rider, so the proposal is this knob at 'nearFull' " +
+      'AND wheatBarn 0, and the two are separate arms until they are measured apart.',
   },
   {
     template: 'rules.economy.noticeBoardPower.wheatBarn',

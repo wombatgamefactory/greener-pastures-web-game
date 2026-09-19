@@ -1,41 +1,55 @@
 /**
- * Placing a card on a Notice Board: the hook, and the most important gesture in
- * the game.
+ * Placing a card on a RIVAL's Notice Board: the hook, and the most important
+ * gesture in the game.
  *
- * ⭐ SINCE v31 IT IS TWO GESTURES WEARING ONE MOVE, and this panel is where the
- * difference has to be unmistakable. `visit` carries a `host`, and the host may
- * be a neighbour or it may be you:
+ * ⭐ REWRITTEN 18/09/2026 for the shipped rule (`selfVisitAllowed: false`,
+ * ruled 11/09/2026): a visit is one card, onto a NEIGHBOUR's board, for that
+ * board's printed power. There is no self-visit branch here any more - the
+ * old "your own door" title, its clog warning and its `assembly-self` class
+ * are gone, along with the language that called a `3+` board "clogged": S8
+ * makes the threshold a minimum that never blocks, so a board is never full
+ * and this panel never says it is.
  *
- *   a NEIGHBOUR's board   the hook. Your card rides into their barn as exactly
- *                         the mixed colour the island will demand of them, and
- *                         you take their suit's action. Two farms are involved.
- *   your OWN board        solitaire, bought with the same currency. You take
- *                         your own action, and the card counts toward your own
- *                         threshold of two - so doing it twice clogs your board
- *                         and shuts every neighbour out of your suit's action
- *                         until you spend a Harvest clearing it.
+ * ⭐ 2.2.1, THE SAME EVENING: a two-player host farms TWO Notice Boards - their
+ * own suit's, plus one drawn at random from an unfarmed suit - and the two
+ * print different powers. `RivalRail.tsx` (owned by this pass too) is what
+ * lets a player click or drag onto a SPECIFIC board, so by the time this panel
+ * is open `play.intent.board` already names one for a two-board host. The one
+ * case this panel still has to handle itself is the ambiguous middle: a drop
+ * on the whole rail card, or any other route that opens the assembly before a
+ * board is chosen, names a host with two boards on offer and no board yet - so
+ * the panel asks, using each board's own printed text (`printedFace`, straight
+ * off `cards.json`), before it ever shows a fee chip.
  *
- * The v31 plan's risk 2 is that the second quietly crowds out the first, exactly
- * as every coin-bought solitaire option has in every previous version. The
- * interface cannot fix that and must not hide it: what it can do is make sure
- * nobody takes one thinking it was the other. So the panel changes its title,
- * its colour, its hint and its footer on the flag, and the self version states
- * the cost - the clog - as prominently as the payoff.
- *
- * The assembly itself got much smaller. A visit costs exactly one card, so there
- * is one choice left (which card) and the panel plays the move the moment it is
- * made rather than asking for a confirmation nobody would read.
+ * The fee assembly itself stays small: a visit costs exactly one card, so
+ * there is one choice left once the board is settled, and the panel plays the
+ * move the moment a chip is clicked rather than asking for a confirmation
+ * nobody would read.
  */
 
 import type { GameData } from '@gp/data';
-import type { Seat } from '@gp/engine';
+import type { CardId, Seat } from '@gp/engine';
 
 import type { Play } from '../session/play';
-import { visitFeeOptions } from '../view/intent';
+import { visitBoards, visitFeeOptions } from '../view/intent';
 import { cardName } from '../view/moveText';
+import { printedFace } from '../view/printed';
 import { SUIT_META, seatName } from '../view/suits';
-import { farmOf, noticeBoardOf, seatSuits } from '../view/table';
+import { farmOf, liveThreshold, noticeBoardOf, seatSuits } from '../view/table';
+import type { Farm } from '../view/table';
 import { FillBar } from './StackGauge';
+
+/** Filled/threshold/power for one specific board on this farm, by its own card id. */
+function boardInfo(data: GameData, farm: Farm, boardId: CardId) {
+  const building = farm.tableau.find((b) => b.card === boardId);
+  const face = printedFace(data, boardId);
+  return {
+    filled: building?.stack.length ?? 0,
+    threshold: liveThreshold(data, boardId, face.threshold) ?? 0,
+    suit: face.suit,
+    actionText: face.abilityText,
+  };
+}
 
 export function VisitPanel({
   data,
@@ -49,70 +63,91 @@ export function VisitPanel({
   fee: string | null;
 }) {
   const view = play.view;
-  const self = host === view.seat;
   const farm = farmOf(view, host);
-  const board = noticeBoardOf(data, farm);
   const name = seatName(seatSuits(view)[host], host, view.seat);
-  const options = visitFeeOptions(play.moves, host);
+
+  // `visitBoards` is empty for every host but a two-board farm still offering
+  // more than one - see the file banner. `play.intent.board` is the one this
+  // panel (or the rail, or a drop) has already narrowed to, if any.
+  const boardIds = visitBoards(play.moves, host);
+  const board = play.intent.k === 'visit' ? play.intent.board : undefined;
+  const needsBoardChoice = boardIds.length > 1 && board === undefined;
+
+  // A single-board host never puts `board` on the move at all (2.2.1), so the
+  // id still has to come from the farm's one Notice Board when nothing has
+  // been chosen - `noticeBoardOf` finds the first (and only) one correctly in
+  // that case.
+  const boardId =
+    board ?? (boardIds.length === 0 ? noticeBoardOf(data, farm)?.building.card : undefined);
+  const info = boardId ? boardInfo(data, farm, boardId) : null;
+
+  const options = visitFeeOptions(play.moves, host, undefined, undefined, board);
   const chosen = fee !== null && options.has(fee) ? fee : null;
 
   return (
-    <section
-      className={`assembly assembly-visit ${self ? 'assembly-self' : 'assembly-hook'}`}
-      aria-label={self ? 'use your own door' : `visit ${name}`}
-    >
+    <section className="assembly assembly-visit assembly-hook" aria-label={`visit ${name}`}>
       <div className="assembly-body">
         <h3>
-          {self ? 'Your own door' : `Visit ${name}`}
-          {board && (
+          Visit {name}
+          {info && (
             <span className="assembly-board">
-              <FillBar filled={board.filled} threshold={board.threshold} />
+              <FillBar filled={info.filled} threshold={info.threshold} />
             </span>
           )}
         </h3>
 
-        {/*
-         * THE ONE LINE THAT MUST DIFFER. Same length, same place, opposite
-         * content: one names the neighbour and what the card does for them, the
-         * other names the clog. A player skimming will read exactly this.
-         */}
-        <p className={`assembly-hint ${self ? 'assembly-warn' : ''}`}>
-          {self ? (
-            <>
-              <strong>No neighbour involved.</strong> The card lands on your own board and counts
-              toward your own {board?.threshold ?? 2}, so filling it shuts your own door: nobody can
-              take {board ? board.actionLabel : 'your action'} here, you included, until you spend a
-              Harvest clearing it.
-            </>
-          ) : (
-            <>
-              <strong>{board ? board.actionLabel : 'Their action'}, for one card.</strong> Pick the
-              card you are willing to lose: it rides into their barn as exactly the mixed colour the
-              island will ask of them. Your junk, their treasure.
-            </>
-          )}
-        </p>
-
-        {options.size === 0 ? (
-          <p className="assembly-hint">Nothing in your hand buys this door right now.</p>
+        {needsBoardChoice ? (
+          <>
+            <p className="assembly-hint">
+              <strong>{name} farms two Notice Boards.</strong> Pick which one your card buys - the
+              card still only pays one of them.
+            </p>
+            <div className="chips">
+              {boardIds.map((id) => {
+                const face = printedFace(data, id);
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    className="chip"
+                    onClick={() => play.setVisitFee(host, fee, id)}
+                    title={face.abilityText}
+                  >
+                    {SUIT_META[face.suit].label}: {face.abilityText}
+                  </button>
+                );
+              })}
+            </div>
+          </>
         ) : (
-          <div className="chips">
-            {[...options].map((card) => (
-              <button
-                key={card}
-                type="button"
-                className={`chip${chosen === card ? ' chip-paid' : ''}`}
-                onClick={() => play.hold(card)}
-                title={
-                  self
-                    ? `Put ${cardName(data, card)} on your own Notice Board`
-                    : `Put ${cardName(data, card)} on ${name}'s Notice Board`
-                }
-              >
-                {cardName(data, card)}
-              </button>
-            ))}
-          </div>
+          <>
+            {/* THE BOARD'S OWN PRINTED POWER, read off `cards.json` - what a card
+                spent here buys, in the host's own words rather than a generic
+                one-word gloss. */}
+            <p className="assembly-hint">
+              <strong>{info ? info.actionText : "Their board's power"}, for one card.</strong> Pick
+              the card you are willing to lose: it rides into their barn as exactly the mixed colour
+              the island will ask of them. Your junk, their treasure.
+            </p>
+
+            {options.size === 0 ? (
+              <p className="assembly-hint">Nothing in your hand buys this board right now.</p>
+            ) : (
+              <div className="chips">
+                {[...options].map((card) => (
+                  <button
+                    key={card}
+                    type="button"
+                    className={`chip${chosen === card ? ' chip-paid' : ''}`}
+                    onClick={() => play.hold(card)}
+                    title={`Put ${cardName(data, card)} on ${name}'s Notice Board`}
+                  >
+                    {cardName(data, card)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
         )}
 
         <div className="assembly-actions">
@@ -120,9 +155,8 @@ export function VisitPanel({
             cancel
           </button>
           <span className="assembly-note">
-            {self
-              ? `Your own ${SUIT_META[farm.suit].label} farm. This spends your bonus slot exactly as a visit would.`
-              : `Their farm is ${SUIT_META[farm.suit].label}. They pay nothing and gain a card on their board; the bank pays nobody.`}
+            Their farm is {SUIT_META[farm.suit].label}. They pay nothing and gain a card on their
+            board; the bank pays nobody.
           </span>
         </div>
       </div>

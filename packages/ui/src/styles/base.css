@@ -29,7 +29,7 @@
    *
    * `--paper-panel` was the fill EVERY box wore, which is exactly why the screen
    * read as one flat mass - nine panels of identical weight and no entry point.
-   * Phase 2 takes that fill off the commons and off the rail, so the token that
+   * Phase 2 takes that fill off the shared table and off the rail, so the token that
    * remains has to do a job the shared one never could: say "this is yours" at a
    * glance, from across the room, before a single word is read.
    *
@@ -49,7 +49,7 @@
    * and reports the WCAG ratio. What follows are its readings, so the next
    * person changing a colour knows the numbers rather than re-deriving them.
    *
-   * ⚠️ THE GROUND IS NOT `--paper-panel`. Phase 2 took the fill off the commons
+   * ⚠️ THE GROUND IS NOT `--paper-panel`. Phase 2 took the fill off the shared table
    * and off the rail, so most quiet text now sits on the BODY GRADIENT, whose
    * darkest stop is #efe6d1 - about half a point of contrast worse than the
    * panel tone every one of these colours used to be measured against. A colour
@@ -243,7 +243,7 @@
    * farm cannot take it back - buildings big enough to fill it drop the tableau
    * to four cards a row and put capacity under a dozen, which is the trade
    * Phase 1 already refused - so the height goes UP the column instead, to the
-   * commons, and the commons spends it on the island.
+   * shared table, and the shared table spends it on the island.
    *
    * The island earns it on two counts. It is the game's clock (delivering to
    * the top level is the end trigger) and it is the largest single VP source,
@@ -252,7 +252,7 @@
    * left in the game and the whole race. A clock nobody can read is not a clock.
    *
    * ⚠️ THE FLOOR IS WIDTH-BOUND, NOT HEIGHT-BOUND, which is why its step barely
-   * moves. At 1024 the commons' three columns leave the island about 223px and
+   * moves. At 1024 the shared table's three columns leave the island about 223px and
    * the widest row is five tiles, so the tile size there is set by the column
    * and not by the slack - measured, after the chromeless panels handed back
    * their padding. Growing it further would squeeze the decks, and five decks
@@ -347,7 +347,7 @@
 
 /* The 1024x700 floor. Verified with a real browser by
    `npm run verify:layout`, not assumed: the check fails if any rival, the
-   commons, the farm or the hand falls below the fold. */
+   shared table, the farm or the hand falls below the fold. */
 @media (max-width: 1320px) {
   :root {
     --rail-w: 214px;

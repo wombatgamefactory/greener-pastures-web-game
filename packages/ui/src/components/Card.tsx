@@ -156,15 +156,30 @@ export function Card({ face, width, zoomTier = false, children, className = '' }
         {face.id}
       </span>
 
-      {face.threshold !== null && (
-        <span
-          className="card-threshold"
-          title={`Full at ${face.threshold} cards`}
-          data-text={String(face.threshold)}
-        >
-          {face.threshold}
-        </span>
-      )}
+      {face.threshold !== null &&
+        (face.convert === 'convert' ? (
+          // ⭐ THE NOTICE BOARD, S8 (13/09/2026): `3+` IS THE RULE, NOT A COUNT.
+          // It is a harvest MINIMUM and never a maximum - nothing ever blocks a
+          // visit, and a fifth or sixth card is still welcome. Printing a bare
+          // "3" with a "full at" title (the ordinary-building phrasing below)
+          // says the opposite of what the card means, so a board's chip prints
+          // the plus sign and a title that says so out loud.
+          <span
+            className="card-threshold card-threshold-board"
+            title={`${face.threshold}+ before the owner may Harvest. Never a maximum - a card is always welcome here.`}
+            data-text={`${face.threshold}+`}
+          >
+            {face.threshold}+
+          </span>
+        ) : (
+          <span
+            className="card-threshold"
+            title={`Full at ${face.threshold} cards`}
+            data-text={String(face.threshold)}
+          >
+            {face.threshold}
+          </span>
+        ))}
 
       <CostBar face={face} />
 

@@ -38,7 +38,9 @@ const VIEWPORTS = [
 
 /** Every landmark that must be fully on screen, and where to find it. */
 const TABLE_LANDMARKS = [
-  { name: 'commons', selector: '.commons' },
+  // ⭐ RENAMED 19/09/2026: the commons was deleted 13/09/2026 and the panel
+  // this used to find is `SharedTable` now (`Commons.tsx`), `.shared-table`.
+  { name: 'shared table', selector: '.shared-table' },
   { name: 'island', selector: '.island' },
   { name: 'the doors legend', selector: '.panel-doors' },
   { name: 'your farm', selector: '.farm' },

@@ -12,9 +12,9 @@ import {
   cardArtZoom,
   cropIcon,
   deckBack,
-  demandTokenLayers,
   frame,
   islandTileArt,
+  islandTokenArt,
   doorArt,
   starterIcon,
   token,
@@ -30,7 +30,7 @@ describe('art paths', () => {
       deckBack('wheat'),
       doorArt('draw'),
       islandTileArt('A1'),
-      token('coin'),
+      token('receipt'),
       frame('vp'),
     ]) {
       expect(url.startsWith(`${BASE}art/`)).toBe(true);
@@ -51,9 +51,15 @@ describe('art paths', () => {
     expect(cardArtZoom('V4')).toContain('/cards/zoom/v4.webp');
   });
 
-  it('draws every demand, wild included, as one painted token (ticket 33)', () => {
-    expect(demandTokenLayers('wheat')).toEqual([`${BASE}art/tokens/demand-wheat.webp`]);
-    expect(demandTokenLayers('wild')).toEqual([`${BASE}art/tokens/demand-wild.webp`]);
+  /**
+   * ⭐ REPLACES the old `demandTokenLayers` pin (retired 19/09/2026, 2.4.1/2.4):
+   * `Island.tsx` has drawn the printed token island face - the crop pair, the
+   * VP wreath and, on the 4/3 VP faces, the Worker silhouette, all one sliced
+   * piece - since 18/09/2026, and `islandTokenArt` is what it calls now.
+   */
+  it('draws every token, wild cornucopia included, as one painted face', () => {
+    expect(islandTokenArt('wheat', 6)).toBe(`${BASE}art/tokens/island/wheat-6.webp`);
+    expect(islandTokenArt('wild', 4)).toBe(`${BASE}art/tokens/island/wild-4.webp`);
   });
 
   it('has a distinct icon for the generic starting building and for a crop', () => {

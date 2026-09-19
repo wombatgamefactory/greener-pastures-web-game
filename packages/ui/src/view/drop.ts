@@ -14,6 +14,16 @@
  * a superset. The families that take a drop are the ones where the physical
  * gesture is "put this card there"; the rest stay click-only, which is a
  * decision recorded in `DROP_FAMILIES` rather than an omission.
+ *
+ * ⭐ 18/09/2026 (2.2.1): A `host` ZONE MAY NAME WHICH BOARD. A two-player host
+ * farms two Notice Boards with two different powers, so "drop it on this
+ * neighbour" stopped being a complete gesture the moment the second board
+ * existed - the rail now stamps one zone per board when a host has more than
+ * one (`RivalRail.tsx`), each carrying its own `board` id, and a single-board
+ * host keeps stamping the whole card with none, exactly as before. The id is
+ * packed onto the same attribute (`host:<seat>` or `host:<seat>:<board>`)
+ * rather than a second attribute, so a single `closest([data-drop])` lookup in
+ * `drag.ts` still finds the whole answer in one hit-test.
  */
 
 import type { CardId, Seat } from '@gp/engine';
@@ -34,6 +44,8 @@ export interface DropTarget {
   readonly kind: DropKind;
   /** The building's card id, the host seat, or '' for the assembly panel. */
   readonly id: string;
+  /** WHICH of the host's Notice Boards (2.2.1). Only ever set on a `host` zone, and only when the host farms more than one. */
+  readonly board?: CardId;
 }
 
 /** The attribute a component stamps on a zone. Read back by hit-testing. */
@@ -62,17 +74,29 @@ export const DROP_FAMILIES = {
   hand: null,
 } satisfies Record<keyof Live, DropKind | null>;
 
-/** The props that make an element a drop zone. Spread into the element. */
-export function dropZone(kind: DropKind, id: string | number = ''): Record<string, string> {
-  return { [DROP_ATTR]: id === '' ? kind : `${kind}:${id}` };
+/**
+ * The props that make an element a drop zone. Spread into the element.
+ *
+ * `board` (2.2.1) packs a second id onto the same attribute, `host:<id>:<board>`
+ * - only ever passed by a `host` zone, and only when the host farms more than
+ * one Notice Board. Every other call is unaffected: `id === ''` still collapses
+ * to the bare kind, and a `board`-less call still reads back with `board`
+ * `undefined`.
+ */
+export function dropZone(
+  kind: DropKind,
+  id: string | number = '',
+  board?: CardId,
+): Record<string, string> {
+  const base = id === '' ? kind : `${kind}:${id}`;
+  return { [DROP_ATTR]: board === undefined ? base : `${base}:${board}` };
 }
 
 export function parseDrop(value: string | null | undefined): DropTarget | null {
   if (!value) return null;
-  const at = value.indexOf(':');
-  const kind = at === -1 ? value : value.slice(0, at);
+  const [kind, id, board] = value.split(':');
   if (kind !== 'building' && kind !== 'host' && kind !== 'assembly') return null;
-  return { kind, id: at === -1 ? '' : value.slice(at + 1) };
+  return { kind, id: id ?? '', ...(board !== undefined ? { board: board as CardId } : {}) };
 }
 
 /**
@@ -83,6 +107,15 @@ export function parseDrop(value: string | null | undefined): DropTarget | null {
  * The assembly is the one zone whose test is about the hand rather than the
  * target: mid-build and mid-visit `live.hand` is "what could still join this
  * payment", which is exactly the set of cards the panel will accept.
+ *
+ * ⚠️ `host` IS CHECKED AT SEAT GRAIN, NOT BOARD GRAIN, even when `target.board`
+ * is set: `Live.hosts` (`view/intent.ts`) only ever answers "is this seat
+ * visitable at all", because deciding "is THIS board" needs the move list and a
+ * draft, which this function does not carry. That is a deliberately coarse
+ * glow, not a legality gap - `dispatchDrop` still hands the exact `board` on to
+ * `Play.host`, which re-derives the real answer through `clickHost` the same way
+ * a click does, so a drop that glowed on the wrong sub-board simply does nothing
+ * rather than sending an illegal move.
  */
 export function dropAllowed(live: Live, intent: Intent, target: DropTarget, card: CardId): boolean {
   switch (target.kind) {
@@ -102,7 +135,8 @@ export function dropAllowed(live: Live, intent: Intent, target: DropTarget, card
  */
 export interface DropSink {
   building(card: CardId): void;
-  host(seat: Seat): void;
+  /** `board` (2.2.1) is whatever `DropTarget.board` carried - present only for a two-board host. */
+  host(seat: Seat, board?: CardId): void;
   hold(card: CardId): void;
 }
 
@@ -118,7 +152,7 @@ export function dispatchDrop(sink: DropSink, target: DropTarget, card: CardId): 
       sink.building(target.id);
       return;
     case 'host':
-      sink.host(Number(target.id) as Seat);
+      sink.host(Number(target.id) as Seat, target.board);
       return;
     case 'assembly':
       // Mid-assembly `hold` means "add this to the price", which is what the

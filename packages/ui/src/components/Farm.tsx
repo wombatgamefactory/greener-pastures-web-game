@@ -16,7 +16,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { GameData, Suit } from '@gp/data';
-import type { BuildingView, Move, PlayerView } from '@gp/engine';
+import type { BuildingView, Move, PlayerView, Receipt } from '@gp/engine';
 
 import { useHandDock } from '../session/dock';
 import type { Drag } from '../session/drag';
@@ -30,7 +30,7 @@ import { printedFace } from '../view/printed';
 import { SUIT_META } from '../view/suits';
 import { displayOrder, liveThreshold, meepleCount, receiptTotal } from '../view/table';
 import { Card, CardBack } from './Card';
-import { StackGauge } from './StackGauge';
+import { FillBar, StackGauge } from './StackGauge';
 import { MeepleSupply } from './Supply';
 import type { Zoomer } from './Zoom';
 
@@ -51,7 +51,7 @@ export function Tableau({
   cardWidth,
   zoom,
   play,
-  ownSeat,
+  ownSuit,
 }: {
   data: GameData;
   buildings: readonly BuildingView[];
@@ -59,18 +59,11 @@ export function Tableau({
   zoom: Zoomer;
   play?: Play | undefined;
   /**
-   * ⭐ THE SELF-VISIT DOOR (v31). Present only on YOUR OWN tableau: passing the
-   * seat is what turns this row's Notice Board into a visit target, and the
-   * rival inspector passes nothing, so a neighbour's board can never grow the
-   * affordance by accident.
-   *
-   * It is a badge on the card rather than a bar button for the same reason a
-   * card power is: the board is the component the move is made on. What it must
-   * NOT do is read like the rail's neighbour panels, because those two acts are
-   * opposites - so it is labelled "your own door" and says out loud that it
-   * fills your own board.
+   * ⭐ THE SPARE-BOARD LABEL (S8, 13/09/2026). Only needs to know whose FARM
+   * this is, to compare a board's printed suit against it, so `Inspector.tsx`
+   * can pass this too and label a RIVAL's spare board the same way.
    */
-  ownSeat?: number | undefined;
+  ownSuit?: Suit | undefined;
 }) {
   return (
     <div className="tableau" onMouseLeave={() => zoom.clear()}>
@@ -80,15 +73,26 @@ export function Tableau({
         // flag say when this building has clogged, and the engine is the
         // authority on that. See `liveThreshold` in view/table.ts.
         const threshold = liveThreshold(data, b.card, face.threshold);
-        const full = threshold !== null && b.stack.length >= threshold;
+        const isBoard = data.cards.catalogue.find((c) => c.id === b.card)?.slot === 'noticeboard';
+        // ⭐ A NOTICE BOARD NEVER CLOGS (S8, 13/09/2026): `3+` is a harvest
+        // minimum, never a maximum, so it never earns the "full"/clog styling
+        // an ordinary building does at its threshold. It gets its own fill
+        // reading below instead (`FillBar`, the same one the rail and the
+        // inspector use), which says "3+" and never "full".
+        const full = !isBoard && threshold !== null && b.stack.length >= threshold;
         const live = play?.live.buildings.has(b.card) ?? false;
         // Read off the engine's own list, like every other affordance here. A
         // card with nothing standing draws no badge, so the badge appearing IS
         // the news, and there is never a dead one to learn to ignore.
         const powers = play?.active ? clickCardPower(play.moves, b.card) : [];
-        const isBoard = data.cards.catalogue.find((c) => c.id === b.card)?.slot === 'noticeboard';
-        const selfDoor =
-          isBoard && ownSeat !== undefined && (play?.live.hosts.has(ownSeat) ?? false);
+        // ⭐ THE SPARE BOARD (S8, 13/09/2026): at two players a farm lays out a
+        // second Notice Board, drawn at random from an unfarmed suit. Its owner
+        // harvests it and banks every fee paid onto it, but can never press its
+        // power - that is a rival's to take. A card of a different suit sitting
+        // on a Notice Board is not a mistake to flag; here it is the printed
+        // rule, so the badge says so rather than leaving a player to wonder
+        // why their own suit's board is the other one along the row.
+        const isSpareBoard = isBoard && ownSuit !== undefined && face.suit !== ownSuit;
         const powerTitle =
           play && powers.length === 1
             ? describeMove(data, play.view, powers[0] as Move)
@@ -112,25 +116,24 @@ export function Tableau({
           >
             <Card face={face} width={cardWidth} />
             <div className="building-gauge">
-              <StackGauge stack={b.stack} threshold={threshold} />
+              {isBoard && threshold !== null ? (
+                // The board reads through the same bar the rail and the
+                // inspector use for a rival's board (`view/table.ts`
+                // `noticeBoardOf`/`noticeBoardsOf`), so your own farm and a
+                // neighbour's never disagree about what "3+" looks like.
+                <FillBar filled={b.stack.length} threshold={threshold} />
+              ) : (
+                <StackGauge stack={b.stack} threshold={threshold} />
+              )}
             </div>
             {full && <span className="building-clog">full</span>}
-            {selfDoor && (
-              /* Same `stopPropagation` argument as the power badge below: the
-                 card under it is very often a sow or a harvest target at the
-                 same moment, and a badge that also fired the card's own click
-                 would be the one control on this screen that does two things. */
-              <button
-                type="button"
-                className="building-selfdoor"
-                title="Your own door: put a card here for your own suit's action. It counts toward your own threshold, so it clogs your board and shuts your neighbours out."
-                onClick={(e) => {
-                  e.stopPropagation();
-                  play?.host(ownSeat as number);
-                }}
+            {isSpareBoard && (
+              <span
+                className="building-spareboard"
+                title="Drawn at random for a two-player game (S8): every fee paid here is yours to harvest, but you can never use its printed power yourself - that belongs to whoever visits it."
               >
-                your own door
-              </button>
+                spare board
+              </span>
             )}
             {powers.length > 0 && (
               /* `stopPropagation` because the card underneath is very often a
@@ -161,9 +164,13 @@ function Barn({ barn, cardWidth }: { barn: Partial<Record<Suit, number>>; cardWi
   const total = entries.reduce((a, [, n]) => a + n, 0);
   return (
     <div className="barn">
-      {/* The Barn prints nothing at all since v31 - it is simply where cards
-          ready for delivery are stored - so the caption is the only place that
-          fact is said, and it says it. */}
+      {/* ⭐ 10/09/2026: THE BARN PRINTS SOMETHING AGAIN - the own-crop end-game
+          scorer moved here off the Farmstead (ledger A105; see `Farmstead`
+          below and `Zoom.tsx`'s idle default, which now reads THIS card). This
+          strip still shows the held pile, not the printed rule - a player
+          reads the rule off the card itself in the tableau row above, the same
+          way they read any other building's text - so the caption's job stays
+          what it always was: naming what the pile is FOR. */}
       <h3 className="strip-title">
         Barn <em>{total} cards, for the island</em>
       </h3>
@@ -173,6 +180,53 @@ function Barn({ barn, cardWidth }: { barn: Partial<Record<Suit, number>>; cardWi
           <div key={suit} className="barn-pile" title={`${n} ${SUIT_META[suit].label} in the barn`}>
             <CardBack suit={suit} width={cardWidth} count={n} />
           </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Your Farmstead: SIX PRINTED SLOTS holding your island receipt tokens.
+ *
+ * It prints no rules text of its own since the own-crop scorer moved to the
+ * Barn on 10/09/2026 (see `Barn` above and `Zoom.tsx`) - "Store Receipts here.
+ * Collect 6 to trigger end of the game" is what is left, and this strip is
+ * that sentence made concrete: six slots, filled left to right in arrival
+ * order, because a full Farmstead is the end trigger every seat's own count
+ * has to make legible at a glance.
+ *
+ * Reuses the `.chip`/`.chip-muted` styling `Result.tsx` already established
+ * for a filled-vs-empty slot, rather than inventing a third look for the same
+ * idea.
+ */
+function Farmstead({ receipts, cardWidth }: { receipts: readonly Receipt[]; cardWidth: number }) {
+  const slots = Array.from({ length: 6 }, (_, i) => receipts[i] ?? null);
+  return (
+    <div className="farmstead">
+      <h3 className="strip-title">
+        Farmstead <em>{receipts.length} / 6 receipts</em>
+      </h3>
+      <div className="farmstead-slots">
+        {slots.map((r, i) => (
+          <span
+            key={i}
+            className={`chip${r ? '' : ' chip-muted'}`}
+            title={
+              r
+                ? `${r.vp} VP, ${r.crop === 'wild' ? 'a wild token' : `a ${SUIT_META[r.crop].label} token`}`
+                : 'Empty slot'
+            }
+          >
+            {r ? (
+              <>
+                <img src={cropIcon(r.crop)} alt="" width={Math.round(cardWidth * 0.18)} />
+                <b>{r.vp}</b>
+              </>
+            ) : (
+              <span aria-hidden="true">-</span>
+            )}
+          </span>
         ))}
       </div>
     </div>
@@ -376,14 +430,14 @@ export function Farm({
         <h2>Your {meta.label} farm</h2>
         <span
           className={`farm-meeples${meeplesMoved ? ' count-moved' : ''}`}
-          title="meeples held: each is one free action, spent at the start of a turn, and it leaves the game"
+          title="Workers held: each is one free action, spent after your main action and at most one a turn, and it then leaves the game"
           onAnimationEnd={meeplesDone}
         >
           {/* No pawn here, deliberately: the count is a TOTAL across colours
               and a single coloured pawn beside it would name a colour the number
               is not about. The colours are drawn immediately below, in the
               supply, where each one has its own count. */}
-          {meeples} meeple{meeples === 1 ? '' : 's'}
+          {meeples} Worker{meeples === 1 ? '' : 's'}
         </span>
         <span
           className={`farm-vp${vpMoved ? ' count-moved' : ''}`}
@@ -412,8 +466,15 @@ export function Farm({
         cardWidth={buildingWidth}
         zoom={zoom}
         play={play}
-        ownSeat={view.seat}
+        ownSuit={view.you.suit}
       />
+
+      {/* The Farmstead's six slots, between the tableau and the hand/barn row:
+          it holds nothing you can act on this turn (it is never a target of
+          anything), so it does not compete with the strips below for the
+          "what can I do right now" reading - it is the one strip that answers
+          "how close am I to ending the game" instead. */}
+      <Farmstead receipts={view.you.receipts} cardWidth={handWidth} />
 
       <div className="farm-strips">
         <Hand

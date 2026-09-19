@@ -120,7 +120,7 @@ export function narrate(
     /*
      * ⚠️ DELIBERATELY SILENT. A door action is always announced by the thing that
      * bought it - `visited` for a card on a Notice Board, `meepleSpent` for a
-     * meeple - and both of those already name the action. Narrating this as well
+     * Worker - and both of those already name the action. Narrating this as well
      * would print every door use twice, which on a four-seat table is half the
      * feed saying the same thing.
      */
@@ -129,16 +129,19 @@ export function narrate(
     case 'meepleGained':
       // The event's tile is nullable (it was, for the deleted bag-draw balloon),
       // so the sentence has to work without one rather than printing "off
-      // island null".
+      // island null". Under the shipped island Workers this is always a
+      // delivery (`tile` set); a null tile is only reachable through the
+      // retired meeple-currency visit arm's own Collect (§5 of the project
+      // CLAUDE.md), which is a different component from the delivery Worker.
       return line(
         event.tile === null
-          ? `${who(event.seat)} draws the ${SUIT_META[event.colour].label} meeple out of the bag`
-          : `${who(event.seat)} takes the ${SUIT_META[event.colour].label} meeple off island ${event.tile}`,
+          ? `${who(event.seat)} takes back a ${SUIT_META[event.colour].label} meeple`
+          : `${who(event.seat)} takes the ${SUIT_META[event.colour].label} Worker off island ${event.tile}`,
         event.seat,
       );
     case 'meepleSpent':
       return line(
-        `${who(event.seat)} spends ${suitArticle(SUIT_META[event.colour].label)} ${SUIT_META[event.colour].label} meeple: ${ACTION_WORD[event.action] ?? event.action}. It leaves the game.`,
+        `${who(event.seat)} spends ${suitArticle(SUIT_META[event.colour].label)} ${SUIT_META[event.colour].label} Worker: ${ACTION_WORD[event.action] ?? event.action}. It leaves the game.`,
         event.seat,
       );
     case 'reshuffled':
@@ -149,11 +152,17 @@ export function narrate(
       return line(`${who(event.seat)} builds ${cardWord(data, event.card)}`, event.seat);
     case 'demolished':
       return line(`${who(event.seat)} demolishes ${cardWord(data, event.card)}`, event.seat);
-    case 'delivered':
+    case 'delivered': {
+      // ⭐ NAME THE TOKEN TAKEN (18/09/2026): its crop demand, its VP and
+      // whether it carried a Worker - all three already sit on the event, so
+      // there is nothing to look up.
+      const crop = event.crop === 'wild' ? 'wild' : SUIT_META[event.crop].label;
+      const worker = event.worker ? `, with a ${SUIT_META[event.worker].label} Worker` : '';
       return line(
-        `${who(event.seat)} delivers to island ${event.tile} for ${event.vp} VP`,
+        `${who(event.seat)} delivers to island ${event.tile}: the ${crop} token, ${event.vp} VP${worker}`,
         event.seat,
       );
+    }
     case 'discardToBarn':
       return line(
         `${who(event.seat)} reclaims ${cardWord(data, event.card)} from the discard`,
@@ -185,24 +194,22 @@ export function narrate(
         event.seat,
       );
     /*
-     * ⭐ THE ONE LINE THE WHOLE v31 PASS TURNS ON.
-     *
-     * A visit and a self-visit are one event with a flag, and they are opposite
-     * acts: a card on a neighbour's board is the game's social hook, a card on
-     * your own is solitaire that also clogs your own door. `a08-the-hook` counts
-     * them separately in the simulator for exactly that reason, and the feed is
-     * where a player at the table does the same counting by eye - so the two
-     * lines share no phrasing at all, and the self one names the cost.
+     * ⭐ REWRITTEN 18/09/2026 for the shipped rule: self-visiting is BANNED
+     * ("Never your own board, either of them", ruled 11/09/2026), so `self`
+     * is never true under `visitCurrency: 'noticeBoardPower'` - it stays on
+     * the event only because the pre-ban `'card'` control still replays. The
+     * hook branch says what a visit actually does now: the card stays on the
+     * host's board until they harvest it, never a "clog".
      */
     case 'visited': {
       const action = ACTION_WORD[event.action] ?? event.action;
       return event.self
         ? line(
-            `${who(event.seat)} uses their OWN door for ${action} - a card onto their own Notice Board`,
+            `${who(event.seat)} plays a card onto their own Notice Board for ${action} (not the shipped rule: self-visiting is banned)`,
             event.seat,
           )
         : line(
-            `${who(event.seat)} visits ${who(event.host)} and takes ${action}`,
+            `${who(event.seat)} visits ${who(event.host)}: a card onto their Notice Board, and takes ${action}. It stays there until they harvest it.`,
             event.seat,
             'alarm',
           );
@@ -235,7 +242,7 @@ export function narrateAll(
 }
 
 /**
- * The five door actions by colour, for a tooltip on a meeple. Exported here
+ * The five door actions by colour, for a tooltip on a Worker. Exported here
  * rather than re-derived at the call site so the feed and the supply agree about
  * what a colour means.
  */

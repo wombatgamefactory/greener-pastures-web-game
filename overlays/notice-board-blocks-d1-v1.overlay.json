@@ -1,0 +1,9 @@
+{
+ "name": "notice-board-blocks-d1-v1",
+ "description": "18/09/2026. The blocking Notice Board (threshold exactly 3, see notice-board-blocks-v1) ON TOP OF the Dairy board's discount of 1, which is what sheets v43 and v44 print and the engine does not yet read. Paired with dairy-discount-1-v1 as its control, this is the blocking board measured against the board powers Dean has actually ruled. Run both: the pair against the shipped base answers the knob, and this pair answers the game.",
+ "schemaVersion": 1,
+ "set": {
+  "rules.economy.noticeBoardBlocks": true,
+  "rules.economy.noticeBoardPower.dairyDiscount": 1
+ }
+}

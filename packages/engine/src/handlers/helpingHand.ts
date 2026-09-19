@@ -1,7 +1,7 @@
 /**
- * THE FIVE v42 HELPING HANDS (W18, A18, D18, O18, V18), one Power card per
- * suit, sharing a name and nothing else (sheet v42, ledger A163). Built
- * 16/09/2026.
+ * THE FIVE HELPING HANDS (W18, A18, D18, O18, V18), one Power card per suit,
+ * sharing a name and nothing else (ledger A163). Built 16/09/2026 off the v42
+ * sheet; D18 RETEXTED on v44 (18/09/2026).
  *
  * Dean's rule for the set: *"the task you are asked to perform to qualify for
  * the reward must be special and intentional, rather than just ordinary"*.
@@ -9,15 +9,19 @@
  *   W18  If, on your turn, you Harvest two or more of your buildings, Draw 3.
  *   A18  If, on your turn, you fill one of your buildings, sow the top card of
  *        any deck onto another of your buildings.
- *   D18  If, on your turn, you Build two buildings, put the top 2 cards of any
- *        one deck into your Barn.
+ *   D18  Whenever you build a card that costs 3 or more resources, add 1 of
+ *        those cards to your Barn. (v44; was "If, on your turn, you Build two
+ *        buildings, put the top 2 cards of any one deck into your Barn.")
  *   O18  At the end of your turn, Draw until you have at least 3 cards in hand.
  *   V18  After you Deliver, if your Barn has 1 or fewer cards, Draw 3.
  *
  * Every one is owner-only and passive. Each fires every time its condition is
- * NEWLY met (Dean, 15/09/2026: the fire-once rule is deleted), which for W18,
- * D18 and O18 is at most once a turn by construction: a count passes 2 once,
- * and the end of a turn happens once.
+ * NEWLY met (Dean, 15/09/2026: the fire-once rule is deleted), which for W18
+ * and O18 is at most once a turn by construction: a count passes 2 once, and
+ * the end of a turn happens once. ⚠️ D18 IS THE EXCEPTION SINCE v44: its
+ * condition is per-build, not a running count, so a turn that builds two
+ * cards each costing 3 or more resources fires it TWICE - the deleted
+ * fire-once rule working as intended, not a bug.
  *
  * ⛔ THE OLD CARD IS RETIRED. From v31 to 16/09/2026 all five copies printed
  * *"Each turn, you may take both bonus options"*, which under the notice-board
@@ -34,13 +38,24 @@
  * came before it. O18 listens on `beforeTurnEnd`, a hook added for it.
  */
 
-import type { Suit } from '@gp/data';
+import type { GameData } from '@gp/data';
 
 import type { Fx } from '../fx.js';
-import { canSowOnto, drawableSuits, player, thresholdOf } from '../query.js';
-import type { CardId, Seat, TaskAnswer } from '../state.js';
+import { canSowOnto, cardById, drawableSuits, player, thresholdOf } from '../query.js';
+import type { CardId, GameState, Seat, TaskAnswer } from '../state.js';
 import { isNoticeBoardCard, ownBuildings } from './buildings.js';
 import type { CardHandler } from './types.js';
+
+/**
+ * Cards of `spent` still face up in their suits' discards - the same guard
+ * D5 The Churning Shed, D6 The Trading Shed and O17 The Fruit Basket use to
+ * keep from racing each other for the same just-discarded card. Each of those
+ * files keeps its own private copy rather than sharing one across suits; this
+ * is D18's.
+ */
+function stillDiscarded(data: GameData, state: GameState, spent: readonly CardId[]): CardId[] {
+  return spent.filter((id) => state.discards[cardById(data, id).suit]?.includes(id));
+}
 
 /** A card-ability "Draw N": see N, keep N, each card from a deck of the player's choice. */
 function drawN(fx: Fx, pid: Seat, src: CardId, n: number): void {
@@ -94,7 +109,11 @@ export const helpingHandApiary: CardHandler = {
       'fill another building and fire it again. That chain is bounded: each fill needs a ' +
       'non-full building and every link fills one. The sow is one `sowFromDeck` task, the ' +
       'player choosing deck and building, onto any of your buildings bar the one just filled ' +
-      'and bar Notice Boards; it is mandatory as printed and skipped when nothing has room.',
+      'and bar Notice Boards; skipped when nothing has room. ' +
+      '⚠️ DECLINABLE SINCE 18/09/2026 (`optional: true`), against the printed "sow", not ' +
+      '"you may": every `sowFromDeck` push shipped skippable that day to fix a UI dead end ' +
+      '(a human had no answer to give at all), on the `handToBarn` precedent. A ruling on ' +
+      'whether THIS card in particular should stay mandatory is still owed.',
   },
   on: {
     afterPlacement(fx, event, self) {
@@ -109,49 +128,80 @@ export const helpingHandApiary: CardHandler = {
         .filter((b) => canSowOnto(fx.data, b))
         .map((b) => ({ seat: self.seat, card: b.card }));
       if (targets.length === 0 || drawableSuits(fx.data, fx.state).length === 0) return;
-      fx.pushTask({ t: 'sowFromDeck', pid: self.seat, src: self.card, remaining: 1, targets });
+      fx.pushTask({
+        t: 'sowFromDeck',
+        pid: self.seat,
+        src: self.card,
+        remaining: 1,
+        targets,
+        optional: true,
+      });
     },
   },
 };
 
 /**
- * D18 A Helping Hand - "If, on your turn, you Build two buildings, put the top 2
- * cards of any one deck into your Barn."
+ * D18 A Helping Hand - "Whenever you build a card that costs 3 or more
+ * resources, add 1 of those cards to your Barn." RETEXTED ON v44
+ * (18/09/2026, sheet diff off v42): the old "Build two buildings, count to 2"
+ * card is gone, and so is its once-a-turn shape.
  */
 export const helpingHandDairy: CardHandler = {
   difficulty: {
     score: 2,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: true, conditional: true, counts: true, interrupts: false },
+    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
     notes:
-      'Fires on the build that brings the count to exactly 2, so once a turn. ⭐ BUILDER ' +
-      'DEFAULT (16/09/2026, not ruled): "buildings" is read as ANY card built, Power and ' +
-      'Endgame cards included, because the card says Build and a Build is how they arrive; ' +
-      'D18 itself counts if it is the second build. Every route counts - the Build action, ' +
-      'the Dairy Notice Board, W7, D10, D13. The count is `turn.buildsThisTurn`, written by ' +
-      '`placeBuilt` before the hook. ONE choice, the deck, then its top two cards straight ' +
-      'to the barn (the W15 Patisserie shape); a deck that runs out mid-way reshuffles its ' +
-      'own discard as everywhere.',
+      '⭐ FIRES ON EVERY QUALIFYING BUILD, NOT ONCE A TURN: a turn that builds two cards each ' +
+      'costing 3 or more resources fires this twice, which is the deleted fire-once rule ' +
+      '(15/09/2026) working as intended. "Resources" is read as the PRINTED build cost - ' +
+      '`cardById(...).buildCost.suit + .wild`, the @cost icon total the sheet itself calls ' +
+      '"resources" - not what was actually paid: a Dairy Notice Board visit or the Milking ' +
+      'Shed can shave the price down, but the card built still costs what it says on its own ' +
+      'face, and that is the reading this follows. Every route that builds a card counts - the ' +
+      'Build action, the Dairy Notice Board, W7, D10, D13. ⚠️ NO "ON YOUR TURN" GATE, UNLIKE ' +
+      'THE OLD CARD: the printed text drops the phrase, so this reads `event.seat === self.seat` ' +
+      'only, the same owner-scoped shape as D16 The Ledger and D17 The Strongbox - nothing in ' +
+      "the game currently builds a card into a seat's tableau on anybody else's turn, so this " +
+      'is unreachable today rather than untested. ' +
+      '"Those cards" are the cards THIS build spent - `event.payment`, which by the time ' +
+      "`afterBuild` fires is already face up in its suits' discards (`divertOrDiscard` moves a " +
+      'build payment there before `placeBuilt` fires the hook, and stack-sourced cards off D7 ' +
+      'join it too). That is the same route D5 The Churning Shed, D6 The Trading Shed and O17 ' +
+      "The Fruit Basket already take to reach a build's spent cards, and `stillDiscarded` is " +
+      'the shared guard that keeps this from racing them for the same card. ONE card, the ' +
+      "player's choice, straight into the barn via the existing `fx.reclaimDiscard` primitive " +
+      '(no new one needed; O17 already uses it the same way). Not a new primitive, so ' +
+      '`newPrimitive` is false. Nothing to add when the build spent no cards (D7 can pay a ' +
+      'build entirely off a stack with a wild-pair meeple leaving nothing behind) or when ' +
+      'another effect has already claimed every spent card - both read as an empty answer ' +
+      'list, which the drain loop drops silently, the same no-op a skip would have produced.',
   },
   on: {
     afterBuild(fx, event, self) {
-      if (event.seat !== self.seat || !onOwnTurn(fx, self.seat)) return;
-      if (fx.state.turn.buildsThisTurn !== 2) return;
-      if (drawableSuits(fx.data, fx.state).length === 0) return;
-      fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'd18Deck', riders: {} });
+      if (event.seat !== self.seat) return;
+      if (event.payment.length === 0) return;
+      const cost = cardById(fx.data, event.card).buildCost;
+      const resources = cost ? cost.suit + cost.wild : 0;
+      if (resources < 3) return;
+      fx.pushTask({
+        t: 'card',
+        pid: self.seat,
+        src: self.card,
+        kind: 'd18Barn',
+        riders: { spent: [...event.payment] },
+      });
     },
   },
   tasks: {
-    d18Deck: {
-      answers(data, state) {
-        return drawableSuits(data, state).map(
-          (suit) => ({ kind: 'card', payload: { suit } }) as TaskAnswer,
-        );
+    d18Barn: {
+      answers(data, state, task) {
+        const spent = stillDiscarded(data, state, task.riders.spent as CardId[]);
+        return spent.map((card) => ({ kind: 'card', payload: { card } }) as TaskAnswer);
       },
       resolve(fx, task, answer) {
-        if (answer.kind !== 'card') throw new Error('d18Deck expects a card answer');
-        const suit = answer.payload.suit as Suit;
-        for (let i = 0; i < 2; i++) fx.deckTopToBarn(task.pid, suit);
+        if (answer.kind !== 'card') throw new Error('d18Barn expects a card answer');
+        fx.reclaimDiscard(task.pid, answer.payload.card as CardId);
         return true;
       },
     },

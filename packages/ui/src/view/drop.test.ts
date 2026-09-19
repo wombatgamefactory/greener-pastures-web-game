@@ -19,11 +19,12 @@
  */
 
 import { describe, expect, it } from 'vitest';
-// ⛔ THE UI'S OWN DATA, NOT `BASE_GAME_DATA`, since 04/09/2026. The shipped
-// rules are the meeple loop and this package still draws the v31 card-fee game,
-// so `session/table.ts` pins itself to `overlays/v31-card-visit.overlay.json` -
-// see the docblock there for why, and for what the UI pass owes. A test that
-// reached past that pin would be measuring rules the interface does not draw.
+// ⛔ THE UI'S OWN DATA, NOT `BASE_GAME_DATA`, since 04/09/2026. `session/table.ts`
+// used to pin itself to the pre-notice-board v31 arm; the pin came down
+// 18/09/2026 and this now loads the same shipped `loadGameData()` defaults the
+// engine, the bots and the simulator play, with one override (no hand limit -
+// see the docblock on `session/table.ts`). A test importing `data` from here is
+// exercising the shipped game, not an arm.
 import { data } from '../session/table';
 import type { GameData, Suit } from '@gp/data';
 import { apply, isOver, legalMoves, makeProber, newGame, viewFor } from '@gp/engine';
@@ -152,50 +153,57 @@ describe('the drop vocabulary', () => {
 
 describe('a drag reaches what a click reaches', () => {
   /**
-   * ⭐ THE TWO HALVES OF THE VISIT ARE COUNTED SEPARATELY, for the same reason
-   * `a08-the-hook` counts them separately in the simulator: an assertion that
-   * pooled them could pass on neighbour visits alone while the self one was
-   * dead, and the self one is half the bonus slot.
+   * ⭐ ONE VISIT, REACHED BY DRAGGING (19/09/2026). Self-visiting is banned
+   * under the shipped rules (Dean, 11/09/2026), so `move.host` is never
+   * `move.seat` in this corpus and there is no second gesture to check - a
+   * neighbour's rail card is a whole drop zone, so every visit is a drag onto
+   * it. (The badge-only self-visit this test used to count separately went
+   * with the affordance itself: `ActionBar.tsx`, `Farm.tsx`.)
    *
-   * ⚠️ THEY ARE REACHED BY DIFFERENT GESTURES, AND THAT IS A DECISION RATHER
-   * THAN A GAP IN THE SWEEP. A neighbour's rail card is a whole drop zone, so a
-   * visit is a drag. Your OWN Notice Board is a building in your own tableau and
-   * its drop zone already means SOW - an element carries one `data-drop`, and
-   * silently changing what a drop on your own board meant would be the worst
-   * kind of overloading. So the self-visit is reached by a badge on that card,
-   * click-only, and this checks the path each one actually has.
+   * `board` is threaded through the same way `reachable()` in `intent.test.ts`
+   * has to (2.2.1): a two-player host may hold two Notice Boards, and leaving
+   * it off would let the wrong board's move survive the narrowing by chance.
    */
   it(
-    'every visit: a neighbour by dragging, your own board by its badge',
+    'every visit reaches its host by dragging',
     () => {
-      let checkedOut = 0;
-      let checkedSelf = 0;
+      let checked = 0;
       for (const p of positions) {
         for (const move of p.moves) {
           if (move.type !== 'visit') continue;
-          // TODO(meeple-loop): owned by the ui pass. This whole drag test is
-          // about the CARD fee; a meeple visit places no card, so it has no
-          // drag source and is skipped rather than modelled here.
+          expect(move.host, JSON.stringify(move)).not.toBe(move.seat);
+          // This whole drag test is about the CARD fee; a visit under the
+          // retired meeple-currency arm (`overlays/meeple-loop-v1.overlay.json`
+          // and its siblings) places no card, so it has no drag source and is
+          // skipped rather than modelled here. Never reached under the shipped
+          // rules, which always pay a visit with one card.
           const card = move.fee;
           if (card === null) continue;
           const intent = held(card);
           const live = liveTargets(p.view, p.moves, intent);
-          if (move.host !== move.seat) {
-            const target: DropTarget = { kind: 'host', id: String(move.host) };
-            expect(dropAllowed(live, intent, target, card)).toBe(true);
-          }
-          // Both land on the same panel, with the fee already paid.
-          const opened = clickHost(p.view, p.moves, intent, move.host);
-          expect(opened).toEqual({ k: 'visit', host: move.host, fee: card });
-          expect(visitComplete(p.moves, { host: move.host, fee: card })).toBe(move);
-          if (move.host === move.seat) checkedSelf++;
-          else checkedOut++;
+          const target: DropTarget = { kind: 'host', id: String(move.host) };
+          expect(dropAllowed(live, intent, target, card)).toBe(true);
+          const opened = clickHost(p.view, p.moves, intent, move.host, move.board);
+          expect(opened).toEqual({
+            k: 'visit',
+            host: move.host,
+            fee: card,
+            ...(move.board !== undefined ? { board: move.board } : {}),
+          });
+          expect(
+            visitComplete(p.moves, {
+              host: move.host,
+              fee: card,
+              ...(move.board !== undefined ? { board: move.board } : {}),
+            }),
+          ).toBe(move);
+          checked++;
         }
       }
-      // Floors are collapse detectors, not targets. Both must be non-trivial, or
-      // one half of the bonus slot could be unreachable and this would be green.
-      expect(checkedOut).toBeGreaterThan(200);
-      expect(checkedSelf).toBeGreaterThan(50);
+      // A floor is a collapse detector, not a target: it must be non-trivial,
+      // or the hook - half the game's whole design - could be unreachable and
+      // this would still be green.
+      expect(checked).toBeGreaterThan(200);
     },
     SWEEP,
   );

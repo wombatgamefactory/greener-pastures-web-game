@@ -29,7 +29,7 @@ import {
 import type { BuildMods } from './actions.js';
 import type { Fx } from './fx.js';
 import { fireHook } from './fx.js';
-import { canSowOnto, drawableSuits, fullBuildings, player } from './query.js';
+import { canSowOnto, drawableSuits, fullBuildings, player, wheatHarvestable } from './query.js';
 import { activateOnly, doGrow } from './runtime.js';
 import type { BuildingRef, CardId, GameState, Seat, Task, TaskAnswer } from './state.js';
 import { handlerFor } from './handlers/registry.js';
@@ -210,9 +210,15 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
             ? fullBuildings(data, state, task.pid).map((b) => b.card)
             : task.filter === 'loaded'
               ? p.tableau.filter((b) => b.stack.length >= 1).map((b) => b.card)
-              : // 'notFull' is a PLACEMENT filter, so S11's exclusion applies to it
-                // exactly as it does to a sow (10/09/2026).
-                p.tableau.filter((b) => canSowOnto(data, b)).map((b) => b.card);
+              : task.filter === 'nearFull'
+                ? // Dean's Wheat board retext (19/09/2026): full, or one card
+                  // from full. ⛔ THROUGH `wheatHarvestable`, THE SAME FUNCTION
+                  // `noticeBoardPowerLegal` GATES ON - see its comment. A `3+`
+                  // Notice Board is never full, so it resolves here at 2 cards.
+                  p.tableau.filter((b) => wheatHarvestable(data, b, 'nearFull')).map((b) => b.card)
+                : // 'notFull' is a PLACEMENT filter, so S11's exclusion applies to it
+                  // exactly as it does to a sow (10/09/2026).
+                  p.tableau.filter((b) => canSowOnto(data, b)).map((b) => b.card);
       if (task.exclude !== undefined) ids = ids.filter((card) => card !== task.exclude);
       if (task.targets) ids = ids.filter((card) => task.targets?.includes(card));
       // A harvest used to also drop targets whose printed GBP 1 surcharge (W8)
@@ -293,9 +299,11 @@ export function taskAnswers(data: GameData, state: GameState, task: Task): TaskA
         (s) => task.suit === undefined || s === task.suit,
       );
       const targets = sowTargets(data, state, task);
-      return suits.flatMap((suit) =>
+      const out = suits.flatMap((suit) =>
         targets.map((ref) => sowAnswer(task.pid, ref, { kind: 'deckSow', suit })),
       );
+      if (task.optional === true && out.length > 0) out.push({ kind: 'skip' });
+      return out;
     }
 
     case 'activate':
@@ -445,6 +453,7 @@ export function resolveTask(fx: Fx, task: Task, answer: TaskAnswer): boolean {
     }
 
     case 'sowFromDeck': {
+      if (answer.kind === 'skip' && task.optional === true) return true;
       if (answer.kind !== 'deckSow') throw new Error('sowFromDeck expects a deckSow answer');
       fx.deckTopToBuilding(task.pid, answer.suit, ontoRef(task.pid, answer));
       task.remaining -= 1;

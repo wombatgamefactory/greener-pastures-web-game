@@ -12,12 +12,16 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { BASE_GAME_DATA as data } from '@gp/data';
 import { parseCapture, replayCapture } from '@gp/engine';
 import type { Move } from '@gp/engine';
 
 import { takeCapture, uiStateOf } from './capture';
-import { Session, YOU } from './table';
+// ⛔ THE UI'S OWN DATA, NOT `BASE_GAME_DATA` (19/09/2026, 2.8.2): every
+// `Session` below is dealt with this `data`, so `replayCapture` must be given
+// the same object rather than a separately-imported one that could drift from
+// it (`session/table.ts`'s only override is no hand limit, but the discipline
+// is the point, not the current size of the diff).
+import { Session, YOU, data } from './table';
 import type { SessionOptions } from './table';
 
 const THREE: SessionOptions = {

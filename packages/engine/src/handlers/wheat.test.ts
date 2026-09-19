@@ -251,23 +251,26 @@ describe('the Wheat Farmstead (W2) - the own-crop end-game scorer', () => {
   });
 
   /**
-   * `rules.economy.grandGranaryCap` (an arm of 16/09/2026, "Max 5VP"): W20 stops
-   * at the cap while the Barn scorer beside it keeps counting.
+   * `rules.economy.grandGranaryCap` is SHIPPED 5 as of the v44 sheet
+   * (18/09/2026: the cap is now printed on the card face, "Max 5VP"), so
+   * `data` (BASE_GAME_DATA) already caps W20. `uncapped` is the v42 control,
+   * the card as printed before the cap. W20 stops at the cap while the Barn
+   * scorer beside it keeps counting.
    */
-  it('W20 respects grandGranaryCap', () => {
-    const capped = loadGameData({
-      name: 'w20-cap-5',
+  it('W20 respects grandGranaryCap, shipped at 5', () => {
+    const uncapped = loadGameData({
+      name: 'w20-cap-none',
       schemaVersion: 1,
-      set: { 'rules.economy.grandGranaryCap': 5 },
+      set: { 'rules.economy.grandGranaryCap': null },
     });
     const cards = ['W4', 'W5', 'W6', 'W7', 'W8', 'W16', 'W20'] as const;
     const open = base();
-    buildFor(data, open, WHEAT, ...cards);
+    buildFor(uncapped, open, WHEAT, ...cards);
     const shut = base();
-    buildFor(capped, shut, WHEAT, ...cards);
-    // Barn 7 plus W20 7, against Barn 7 plus W20 capped at 5.
-    expect(gameEndScores(data, open)[WHEAT]?.endgame).toBe(14);
-    expect(gameEndScores(capped, shut)[WHEAT]?.endgame).toBe(12);
+    buildFor(data, shut, WHEAT, ...cards);
+    // Barn 7 plus W20 7 uncapped, against Barn 7 plus W20 capped at 5 (shipped).
+    expect(gameEndScores(uncapped, open)[WHEAT]?.endgame).toBe(14);
+    expect(gameEndScores(data, shut)[WHEAT]?.endgame).toBe(12);
   });
 
   /** An empty farm scores nothing, and the starters are what makes that a real assertion. */
@@ -320,6 +323,47 @@ describe('the shared FIELD line - "Sow 1 FIELD from the deck"', () => {
   });
 
   /**
+   * ⚠️ DECLINABLE SINCE 18/09/2026 (to-do 2.2's "stuck" fix): every
+   * `sowFromDeck` task now enumerates a `{ kind: 'skip' }` answer alongside
+   * its real ones, and applying it clears the task and changes nothing else.
+   * W5's reseed is the simplest live push site (one target, `remaining` 1),
+   * so it carries both halves of the coverage: decline leaves the FIELD
+   * empty, accept seeds it, and nothing else about the position moves either
+   * way.
+   */
+  it('offers a skip on the reseed, and declining changes nothing but clearing the task', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W5'); // threshold 2
+    fill(s, 'W5');
+
+    const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W5' });
+    // Walk past W5's own Draw 2 (pushed ahead of the reseed) to reach it.
+    let queued = applied.state;
+    for (let guard = 0; guard < 8 && queued.tasks[0]?.t !== 'sowFromDeck'; guard++) {
+      queued = answerTask(data, queued, pendingAnswers(data, queued)[0] as TaskAnswer).state;
+    }
+    expect(queued.tasks[0]?.t).toBe('sowFromDeck');
+    const answers = pendingAnswers(data, queued);
+    const skip = answers.find((a) => a.kind === 'skip');
+    expect(skip).toBeDefined();
+    // At least one real deck-sow answer sits alongside the skip.
+    expect(answers.some((a) => a.kind === 'deckSow')).toBe(true);
+
+    const declined = answerTask(data, queued, skip as TaskAnswer).state;
+    expect(declined.tasks.some((t) => t.t === 'sowFromDeck')).toBe(false);
+    // Declining is a pure clear: the FIELD stays empty and the barn/hand are
+    // untouched by the skip itself.
+    expect(buildingOf(declined, WHEAT, 'W5').stack).toEqual([]);
+    expect(player(declined, WHEAT).barn).toEqual(player(queued, WHEAT).barn);
+    expect(player(declined, WHEAT).hand).toEqual(player(queued, WHEAT).hand);
+
+    // Accepting instead, from the same position, still seeds the FIELD.
+    const deckSow = answers.find((a) => a.kind === 'deckSow') as TaskAnswer;
+    const accepted = answerTask(data, queued, deckSow).state;
+    expect(buildingOf(accepted, WHEAT, 'W5').stack).toHaveLength(1);
+  });
+
+  /**
    * ⛔ NARROWED BY THE REBALANCE (2026-08-12), and this is the shape that can
    * see it: a second FIELD, owned, empty and with room to spare. The seed used
    * to be aimable at ANY FIELD the seat owned, which let a wide farm point every
@@ -348,7 +392,11 @@ describe('the shared FIELD line - "Sow 1 FIELD from the deck"', () => {
     }
     const seeds = pendingAnswers(data, queued);
     expect(seeds.length).toBeGreaterThan(0);
-    expect(seeds.every((a) => a.kind === 'deckSow' && a.onto === 'W5')).toBe(true);
+    // The task is declinable since 18/09/2026, so a `skip` rides alongside
+    // the real answers; every non-skip one is still only ever "which deck".
+    const deckSeeds = seeds.filter((a) => a.kind === 'deckSow');
+    expect(deckSeeds.length).toBeGreaterThan(0);
+    expect(deckSeeds.every((a) => a.kind === 'deckSow' && a.onto === 'W5')).toBe(true);
 
     // Where the card actually went, not just where it was aimed.
     const done = answerAll(applied.state, (a) => a[0] as TaskAnswer);

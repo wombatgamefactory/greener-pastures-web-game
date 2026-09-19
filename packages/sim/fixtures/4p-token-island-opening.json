@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "why": "A whole 4-seat game under the SHIPPED rules of 16/09/2026 (sheet v42): the token island, no balloons, no Village Store, no closing draw, no wild substitution, the v42 card handlers and Helping Hands, the Notice Board visit (rival boards only, one board a seat at three and four seats), a random first player and finish-the-round. The hand limit of 7 is the simulator's bound and not a rule of the game (C7).",
+  "why": "Re-captured 19/09/2026 alongside the 2p fixture: same stale v44 data fingerprint (W20 Max 5VP cap, D3 discount 2->1, D18 retext, O4 Draw 2->3, sowFromDeck skip answer, Apiary actionText fix); this 4-seat log still replayed clean but carried the pre-v44 fingerprint.",
   "setup": {
     "seed": "token-island-opening",
     "seats": 4,
@@ -2162,5 +2162,5 @@
     }
   ],
   "expect": "plays",
-  "dataFingerprint": "067f7e376a0064cbcb088189f51967dfe8756be63e15ca7a580dd14c9bfabf93+base"
+  "dataFingerprint": "5b0ac30afd64de01cd9566da7050e047eb56e791150d23aa3208b3d70c784134+base"
 }

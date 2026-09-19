@@ -1,0 +1,9 @@
+{
+ "name": "wheat-board-retext-v1",
+ "description": "19/09/2026, DEAN'S PROPOSAL IN FULL. The Wheat Notice Board becomes \"Harvest a building that is full, or 1 card from full\" - the harvest gate tightens from 'loaded' (any stack of 1+) to 'nearFull' (at or above threshold minus one) AND the hand-to-barn rider is deleted (wheatBarn 0), because the retext prints no second clause. TWO CHANGES IN ONE ARM, so it is run beside its two halves (wheat-gate-nearfull-v1, wheat-no-barn-rider-v1) rather than ruled off this number alone. WHY: Wheat wins 55.5% against a fair share of 36.2% on the v44 base and is the only crop the v44 changes did not move; Harvest is the tax every other crop pays and this board is where Wheat collects it. WATCH: the door mix (the Wheat board may simply stop being offered - S10 means a board whose power you cannot perform is not offered, so a tighter gate can make it DEAD rather than weaker), turns with a visit (a17, already failing high), and the hook. ALSO NOTE C97: 'nearFull' still reaches your own 3+ Notice Board, at 2 cards instead of 1, so the retext narrows that unruled privilege without closing it.",
+ "schemaVersion": 1,
+ "set": {
+  "rules.economy.noticeBoardPower.wheatHarvestGate": "nearFull",
+  "rules.economy.noticeBoardPower.wheatBarn": 0
+ }
+}

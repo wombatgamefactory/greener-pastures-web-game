@@ -15,12 +15,15 @@ import type { Move } from '@gp/engine';
 
 // ⛔ THE UI'S OWN DATA, NOT `BASE_GAME_DATA`, since 09/09/2026 - the same rule
 // `view/intent.test.ts` has followed since 04/09/2026, arriving here late.
-// `table.ts` pins the browser build to `overlays/v31-card-visit.overlay.json`
-// (see its docblock and ledger C59), and a session test reaching past that pin
-// is not testing the session the interface runs. It bit: Dean ruled the COMMONS
-// in as the engine default on 09/09/2026, which deletes the Notice Board from
-// every tableau, and the warm-up walk below - which asserts a DENSE tableau -
-// started failing on a game this package cannot draw.
+// `table.ts` pinned the browser build to the pre-notice-board v31 arm until
+// 18/09/2026; a session test reaching past that pin was not testing the session
+// the interface runs, and it bit once already (Dean ruled the COMMONS in as the
+// engine default on 09/09/2026, which deletes the Notice Board from every
+// tableau, and the warm-up walk below - which asserts a DENSE tableau - started
+// failing on a game this package could not draw). The pin is gone now, so
+// `data` here is the shipped rules with one override (no hand limit); the same
+// discipline - test the game the interface actually plays - is why this still
+// imports it rather than `BASE_GAME_DATA`.
 import { Session, YOU, data } from './table';
 import type { SessionOptions } from './table';
 

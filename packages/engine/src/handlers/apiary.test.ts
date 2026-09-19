@@ -964,11 +964,14 @@ describe("A16 The Beekeeper's Veil - stack position 2, unchanged by the rebuild"
  * all. `afterVisit` carries a `self` boolean for exactly this, and A17 is its
  * first reader.
  *
- * Three tests are deleted with the price: "is optional - a skip is offered and
- * takes no coin" (there is no cost left to decline, and the text prints "add",
- * not "you may"), "is never asked when the visitor cannot afford £1" (there is
- * no wallet to be empty), and "does not fire a second time on a Helping Hand
- * repeat" (A Helping Hand is a bonus-slot modifier now and has no repeat).
+ * Two tests are deleted with the price: "is never asked when the visitor
+ * cannot afford £1" (there is no wallet to be empty), and "does not fire a
+ * second time on a Helping Hand repeat" (A Helping Hand is a bonus-slot
+ * modifier now and has no repeat). A THIRD test, "is optional - a skip is
+ * offered and takes no coin", came back on 18/09/2026 for an unrelated
+ * reason: every `sowFromDeck` push shipped declinable that day to fix a UI
+ * dead end, so A17 offers a skip again, this time for free rather than as a
+ * coin refusal.
  */
 describe('A17 The Smoke Pot - a deck sow onto your own building for visiting a neighbour', () => {
   /**
@@ -995,7 +998,8 @@ describe('A17 The Smoke Pot - a deck sow onto your own building for visiting a n
 
     // The full A5 drops out; A7 is the one building with room.
     const answers = pendingAnswers(visitArm, applied.state);
-    expect(new Set(answers.map((a) => (a.kind === 'deckSow' ? a.onto : null)))).toEqual(
+    const deckSows = answers.filter((a) => a.kind === 'deckSow');
+    expect(new Set(deckSows.map((a) => (a.kind === 'deckSow' ? a.onto : null)))).toEqual(
       new Set(['A7']),
     );
     const sow = answers.find((a) => a.kind === 'deckSow' && a.suit === 'wheat') as TaskAnswer;
@@ -1004,14 +1008,27 @@ describe('A17 The Smoke Pot - a deck sow onto your own building for visiting a n
     expect(player(state, APIARY).barn).not.toContain(wheatTop);
   });
 
-  /** Mandatory: the printed text says "SOW", not "you may". */
-  it('offers no skip: the text says "SOW", not "you may"', () => {
+  /**
+   * ⚠️ DECLINABLE SINCE 18/09/2026 (to-do 2.2's "stuck" fix): every
+   * `sowFromDeck` push shipped `optional: true` that day, against the printed
+   * "SOW", not "you may" - a human had no way to answer this task at all (the
+   * UI cannot fabricate a skip the engine never enumerates), on the
+   * `handToBarn` precedent that a placement task can always be declined. A
+   * ruling on whether A17 in particular should stay mandatory is still owed.
+   */
+  it('offers a skip alongside the real answers, and declining changes nothing but clearing the task', () => {
     const s = armBase();
     buildFor(visitArm, s, APIARY, 'A17', 'A7');
     const applied = visitTheWheatSeat(s);
     const answers = pendingAnswers(visitArm, applied.state);
-    expect(answers.length).toBeGreaterThan(0);
-    expect(answers).not.toContainEqual({ kind: 'skip' });
+    expect(answers.some((a) => a.kind === 'deckSow')).toBe(true);
+    const skip = answers.find((a) => a.kind === 'skip');
+    expect(skip).toBeDefined();
+
+    const declined = answerTask(visitArm, applied.state, skip as TaskAnswer).state;
+    expect(declined.tasks.some((t) => t.t === 'sowFromDeck')).toBe(false);
+    expect(buildingOf(declined, APIARY, 'A7').stack).toEqual([]);
+    expect(player(declined, APIARY).barn).toEqual(player(applied.state, APIARY).barn);
   });
 
   /**

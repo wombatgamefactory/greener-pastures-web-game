@@ -20,6 +20,38 @@
  * of `clickBuilding` went with the second printed faces. What arrived is smaller
  * still - a visit now costs exactly ONE card, so the fee is a card or nothing
  * and the progressive filter it used to need is gone.
+ *
+ * --- THE DRAFT TYPES, FOR THE THREE OTHER PASSES READING THIS FILE (18/09/2026) --------
+ *
+ * Three multi-click decisions each get a part-assembled draft type, a set of
+ * pure functions over it, and an `Intent` variant that carries it. All three
+ * follow the same shape: `emptyXDraft`, `xCandidates` (offers still reachable),
+ * `xComplete` (the one move a full draft names), and `withX...` toggles that
+ * return a new draft. Nothing here ever builds a `Move` - `xComplete` only ever
+ * returns an object that came out of the engine's own list.
+ *
+ *   `BuildDraft`    a card plus the hand/stack cards paying for it. Rendered by
+ *                   `BuildPanel.tsx`.
+ *   `VisitDraft`    a host seat, WHICH of their Notice Boards (`board`, absent
+ *                   for every seat but a two-player host holding two - see
+ *                   `visitBoards`), and the fee card. Rendered by
+ *                   `VisitPanel.tsx` (owned by another pass).
+ *   `DeliverDraft`  a tile, which TOKEN it takes when the tile still offers a
+ *                   choice, and how many cards of each crop are committed so
+ *                   far - a count, never a card id, because a barn's identity
+ *                   is inert (`deliver.ts`, the engine). Rendered by
+ *                   `DeliverPanel` in `BuildPanel.tsx`; `Island.tsx` (owned by
+ *                   another pass) may also drive it directly through
+ *                   `play.setDeliverDraft`.
+ *
+ * A fourth kind of multi-click answer has no draft at all: `grow` (the Apiary
+ * board's deck-paid Grow, and the Apiary Worker's card-paid one) and `deckSow`
+ * both resolve through `clickBuilding`/`clickDeck` the same way `sow` already
+ * did - a building click and a deck click (or a held hand card and a building
+ * click) each narrow the move list, and the caller sends the one survivor or
+ * opens the generic menu. `handToBarn` narrows even further: naming a hand card
+ * IS the whole answer, so picking the card up (`clickHandCard`, wired into
+ * `Play.hold`) resolves it directly with no assembly at all.
  */
 
 import type { Suit } from '@gp/data';
@@ -48,7 +80,8 @@ export type Intent =
   | { k: 'arm'; type: MoveType; self?: boolean }
   | { k: 'hold'; card: CardId }
   | { k: 'build'; draft: BuildDraft }
-  | { k: 'visit'; host: Seat; fee: CardId | null }
+  | { k: 'visit'; host: Seat; board?: CardId; fee: CardId | null }
+  | { k: 'deliver'; draft: DeliverDraft }
   | { k: 'choose'; title: string; moves: readonly Move[] };
 
 export const IDLE: Intent = { k: 'idle' };
@@ -101,7 +134,7 @@ export function pendingTask(view: PlayerView): PlayerView['tasks'][number] | nul
  */
 function armed(intent: Intent, type: MoveType): boolean {
   if (intent.k === 'arm') return intent.type === type;
-  return intent.k !== 'build' && intent.k !== 'visit';
+  return intent.k !== 'build' && intent.k !== 'visit' && intent.k !== 'deliver';
 }
 
 /** Does an armed visit family cover this host? `self` undefined means either. */
@@ -132,11 +165,12 @@ function armedHost(intent: Intent, host: Seat, you: Seat): boolean {
 export function clickBuilding(moves: readonly Move[], intent: Intent, building: CardId): Move[] {
   const held = intent.k === 'hold' ? intent.card : null;
   // Kept in the original order - building answers, then activates, then sows,
-  // then the two main actions - because `resolve` sends a single candidate and
-  // a menu lists them in the order they arrive.
+  // then grow-task answers, then the two main actions - because `resolve`
+  // sends a single candidate and a menu lists them in the order they arrive.
   const answers: Move[] = [];
   const activates: Move[] = [];
   const sows: Move[] = [];
+  const growAnswers: Move[] = [];
   const actions: Move[] = [];
   const canHarvest = armed(intent, 'harvest');
   const canGrow = armed(intent, 'grow');
@@ -153,6 +187,26 @@ export function clickBuilding(moves: readonly Move[], intent: Intent, building: 
         if (answer.card === building) activates.push(move);
       } else if (answer.kind === 'sow') {
         if (answer.onto === building && (held === null || answer.card === held)) sows.push(move);
+      } else if (answer.kind === 'deckSow') {
+        // ⭐ ROUTED 18/09/2026 (2.2.3): off a deck top rather than the hand
+        // (A4, A13, A18 and the Apiary Service), so there is no card to hold
+        // first - the building click alone narrows to it, exactly like `sow`
+        // with `held === null`. `clickDeck` finishes it from the other end.
+        if (answer.onto === building) sows.push(move);
+      } else if (answer.kind === 'grow' && answer.building === building) {
+        // ⭐ ROUTED 18/09/2026 (2.2.5), TAKING `grow` OFF
+        // `UNROUTED_TASK_ANSWERS`. Two shapes share the kind:
+        if (answer.deckSuit !== undefined) {
+          // The Apiary retext's deck-paid Grow: no hand card either, so a
+          // building click alone narrows to it (a deck click, `clickDeck`,
+          // finishes it) and resolves alone when only one deck is live.
+          growAnswers.push(move);
+        } else if (held === null || answer.payment === held) {
+          // A card-paid Grow task (the Apiary Worker's plain action, M7):
+          // names a building AND the hand card that pays for it, so it takes
+          // the same hold-a-card-then-click-the-building gesture as `sow`.
+          growAnswers.push(move);
+        }
       }
       continue;
     }
@@ -174,7 +228,7 @@ export function clickBuilding(moves: readonly Move[], intent: Intent, building: 
       }
     }
   }
-  return [...answers, ...activates, ...sows, ...actions];
+  return [...answers, ...activates, ...sows, ...growAnswers, ...actions];
 }
 
 /**
@@ -205,19 +259,29 @@ export function clickCardPower(moves: readonly Move[], card: CardId): Move[] {
  * a second code path here would be the first place the two could drift. What
  * makes them read differently is everything downstream - two turn-bar buttons,
  * a differently-titled panel and a differently-worded feed line.
+ *
+ * ⭐ `board` NAMES WHICH OF THE HOST'S NOTICE BOARDS (18/09/2026, 2.2.1):
+ * absent for every seat but a two-player host holding two (`visitBoards` lists
+ * the ids on offer). Passing none is still a legal call - it is how the rail's
+ * per-seat glow probes "is this host visitable at all" before a board is
+ * chosen - but `visitOffers` narrows by it exactly like the fee, so a draft
+ * that never names one on a two-board host can still find more than one
+ * surviving move; the caller (`Play.host`) is what must eventually supply it.
  */
 export function clickHost(
   view: PlayerView,
   moves: readonly Move[],
   intent: Intent,
   host: Seat,
+  board?: CardId,
 ): Intent | null {
   if (intent.k === 'arm' && intent.type !== 'visit') return null;
-  if (intent.k === 'build' || intent.k === 'choose') return null;
+  if (intent.k === 'build' || intent.k === 'choose' || intent.k === 'deliver') return null;
   if (!armedHost(intent, host, view.seat)) return null;
   const held = intent.k === 'hold' ? intent.card : null;
-  if (visitOffers(moves, { host, fee: held }).length === 0) return null;
-  return { k: 'visit', host, fee: held };
+  const draft: VisitDraft = { host, fee: held, ...(board !== undefined ? { board } : {}) };
+  if (visitOffers(moves, draft).length === 0) return null;
+  return { k: 'visit', ...draft };
 }
 
 /**
@@ -242,14 +306,17 @@ export function clickTile(moves: readonly Move[], intent: Intent, tile: string):
 }
 
 /**
- * ONE MEEPLE OF THIS COLOUR, spent (v31). Made on the meeple in your own supply,
- * for the same reason a card power is made on the card: it is a component in
- * front of you and the gesture is picking it up.
+ * ONE WORKER OF THIS COLOUR, spent. Made on the Worker in your own supply, for
+ * the same reason a card power is made on the card: it is a component in front
+ * of you and the gesture is picking it up.
  *
- * It carries no intent filter and needs none. `spendMeeple` is legal only in the
- * start-of-turn window, so the engine's list is already the whole gate, and
- * arming a family to reach a piece you are looking straight at would be a click
- * spent on nothing.
+ * It carries no intent filter and needs none. ⭐ `spendMeeple` IS LEGAL ONLY
+ * AFTER THE MAIN ACTION, AT MOST ONE PER TURN (`rules.turn.meepleSpendTiming` /
+ * `meepleSpendPerTurn`, shipped 14/09/2026 evening) - a change from the v31
+ * start-of-turn window this comment used to describe. Both the timing and the
+ * per-turn cap are read straight off the engine's own move list, which is
+ * already the whole gate, so arming a family to reach a piece you are looking
+ * straight at would be a click spent on nothing.
  */
 export function clickMeeple(moves: readonly Move[], colour: Suit): Move[] {
   return moves.filter((m) => m.type === 'spendMeeple' && m.colour === colour);
@@ -259,13 +326,37 @@ export function clickMeeple(moves: readonly Move[], colour: Suit): Move[] {
  * A deck spine. Since v31 a deck is a draw target and nothing else: the £1 buy
  * and the £3 market both went with the currency, so a click here can only ever
  * be a revealing draw task's answer.
+ *
+ * ⭐ ROUTED 18/09/2026 (2.2.3, 2.2.5): a deck is also where a `deckSow` answer
+ * or the Apiary retext's deck-paid `grow` answer names its deck. Neither
+ * carries a hand card, so - unlike `sow`/`grow` from a building - a deck click
+ * needs no held-card filter; when more than one of the seat's buildings could
+ * take the sow or Grow, the caller opens the generic menu the same way
+ * `clickBuilding` does starting from the other end.
  */
 export function clickDeck(moves: readonly Move[], _intent: Intent, suit: Suit): Move[] {
   const out: Move[] = [];
   for (const move of moves) {
-    if (move.type === 'task' && move.answer.kind === 'deck' && move.answer.suit === suit) {
-      out.push(move);
-    }
+    if (move.type !== 'task') continue;
+    const answer = move.answer;
+    if (answer.kind === 'deck' && answer.suit === suit) out.push(move);
+    else if (answer.kind === 'deckSow' && answer.suit === suit) out.push(move);
+    else if (answer.kind === 'grow' && answer.deckSuit === suit) out.push(move);
+  }
+  return out;
+}
+
+/**
+ * A HAND CARD AS A `handToBarn` ANSWER (2.2.2, the Wheat and Vegetable boards'
+ * follow-up): the task names the card by id and nothing else, so picking it up
+ * IS the whole answer - there is no destination to choose afterwards, unlike a
+ * build or a sow. `Play.hold` checks this before falling back to "pick the card
+ * up", the same way `armBuildTask` pre-empts a build task's hold.
+ */
+export function clickHandCard(moves: readonly Move[], card: CardId): Move[] {
+  const out: Move[] = [];
+  for (const { move, answer } of answersOfKind(moves, 'handToBarn')) {
+    if (answer.card === card) out.push(move);
   }
   return out;
 }
@@ -331,9 +422,17 @@ export function liveTargets(view: PlayerView, moves: readonly Move[], intent: In
     }
   }
 
+  // Mid-delivery the only tile that matters is the one being assembled, for
+  // the same reason as the visit's `hosts` above: the panel owns the rest of
+  // the decision, and lighting the others invites a click that would abandon
+  // the draft rather than add to it.
   const tiles = new Set<string>();
-  for (const tile of view.island.tiles) {
-    if (clickTile(moves, intent, tile.tile).length > 0) tiles.add(tile.tile);
+  if (intent.k === 'deliver') {
+    tiles.add(intent.draft.tile);
+  } else {
+    for (const tile of view.island.tiles) {
+      if (clickTile(moves, intent, tile.tile).length > 0) tiles.add(tile.tile);
+    }
   }
 
   const meeples = new Set<Suit>();
@@ -364,7 +463,12 @@ export function liveTargets(view: PlayerView, moves: readonly Move[], intent: In
  */
 function liveHand(view: PlayerView, moves: readonly Move[], intent: Intent): Set<CardId> {
   if (intent.k === 'build') return new Set(buildAdditions(moves, intent.draft).hand);
-  if (intent.k === 'visit') return visitFeeOptions(moves, intent.host);
+  if (intent.k === 'visit')
+    return visitFeeOptions(moves, intent.host, undefined, undefined, intent.board);
+  // A delivery is paid from the barn, never the hand (2.5.1) - the same reason
+  // `DROP_FAMILIES` marks tiles `null` - so the hand has nothing to say while
+  // one is being assembled.
+  if (intent.k === 'deliver') return new Set();
   // A card is already out of the hand: the question is where it goes, so the
   // rest of the hand goes quiet. Lighting it would be lighting sources, which
   // is the exact thing ticket 09 ruled out.
@@ -392,53 +496,74 @@ export function holdLeadsSomewhere(
   for (let seat = 0; seat < view.seats; seat++) {
     if (clickHost(view, moves, held, seat) !== null) return true;
   }
+  // handToBarn (2.2.2): naming the card is the whole answer, with no building
+  // or host to carry it to, so it has to be checked here directly rather than
+  // falling out of one of the two loops above.
+  if (clickHandCard(moves, card).length > 0) return true;
   return buildOffers(moves, card).length > 0;
 }
 
 // --- the visit --------------------------------------------------------------
 
 /**
- * A part-made visit: whose board, and which card is going on it.
+ * A part-made visit: whose board, WHICH of their boards, and which card is
+ * going on it.
  *
  * ⭐ `fee` IS ONE CARD OR NONE (v31), where it used to be a list. The upgraded
  * Notice Board's "2 cards, take GBP 3" was the only route that ever placed two,
  * and it went with the second printed faces - so `legalMoves` now offers exactly
  * one visit per (host, hand card) pair and the progressive subset filter this
  * used to need has nothing left to narrow.
+ *
+ * ⭐ `board` NAMES ONE OF THE HOST'S NOTICE BOARDS (18/09/2026, 2.2.1), the
+ * two-board fix's own optionality: absent for every seat but a two-player host
+ * holding two (`visitBoards` lists the ids a host actually offers). A draft
+ * left without one on a two-board host can still narrow the fee, but
+ * `visitComplete` will not resolve past it - two boards means two different
+ * powers, so the panel has to ask.
  */
 export interface VisitDraft {
   readonly host: Seat;
+  readonly board?: CardId;
   readonly fee: CardId | null;
 }
 
-/** Visits to this host, narrowed to the fee if one has been chosen. */
+/** Visits to this host (and board, once chosen), narrowed to the fee if one has been chosen. */
 export function visitOffers(moves: readonly Move[], draft: VisitDraft): VisitMove[] {
   return moves.filter(
     (m): m is VisitMove =>
-      m.type === 'visit' && m.host === draft.host && (draft.fee === null || m.fee === draft.fee),
+      m.type === 'visit' &&
+      m.host === draft.host &&
+      (draft.board === undefined || m.board === draft.board) &&
+      (draft.fee === null || m.fee === draft.fee),
   );
 }
 
 /**
  * Cards that could pay for a visit. With a host, the fees that host will accept;
  * without one, every fee that buys SOME door - filtered to neighbours or to your
- * own board when the turn bar armed one of the two.
+ * own board when the turn bar armed one of the two, and further to one board
+ * when the host has more than one and it has been chosen.
  */
 export function visitFeeOptions(
   moves: readonly Move[],
   host: Seat | null,
   you?: Seat,
   self?: boolean,
+  board?: CardId,
 ): Set<CardId> {
   const out = new Set<CardId>();
   for (const move of moves) {
     if (move.type !== 'visit') continue;
     if (host !== null && move.host !== host) continue;
+    if (board !== undefined && move.board !== board) continue;
     if (host === null && self !== undefined && you !== undefined) {
       if (self !== (move.host === you)) continue;
     }
-    // TODO(meeple-loop): owned by the ui pass. Null under the meeple arm: a
-    // visit spends meeples, so no hand card is ever a live drag source for one.
+    // `fee` is null under the retired meeple-currency visit arm: a visit
+    // spends meeples there, not a card, so no hand card is ever a live drag
+    // source for one. Never null under the shipped rival-board-power visit,
+    // which is always paid with one card.
     if (move.fee !== null) out.add(move.fee);
   }
   return out;
@@ -457,6 +582,25 @@ export function visitHosts(moves: readonly Move[]): Seat[] {
     if (move.type === 'visit') out.add(move.host);
   }
   return [...out].sort((a, b) => a - b);
+}
+
+/**
+ * The distinct Notice Boards this host offers, by card id (18/09/2026, 2.2.1).
+ * Empty for every seat but a two-player host holding two: the move's `board`
+ * field is absent whenever a host has only one, which is what keeps every
+ * other seat count byte-identical to a game that has never heard of the fix.
+ * An empty result therefore means "this host's one board is unambiguous", not
+ * "this host cannot be visited" - `visitOffers`/`clickHost` need no board at
+ * all in that case.
+ */
+export function visitBoards(moves: readonly Move[], host: Seat): CardId[] {
+  const out = new Set<CardId>();
+  for (const move of moves) {
+    if (move.type === 'visit' && move.host === host && move.board !== undefined) {
+      out.add(move.board);
+    }
+  }
+  return [...out].sort();
 }
 
 // --- the build assembly -----------------------------------------------------
@@ -591,6 +735,167 @@ export function withStackPayment(draft: BuildDraft, card: CardId): BuildDraft {
   };
 }
 
+// --- the deliver assembly ----------------------------------------------------
+//
+// ⭐ ADDED 18/09/2026 (2.5.1, 2.5.2). Before this, a tile click resolved
+// through the generic `resolve()` menu, which meant listing every enumerated
+// crop-multiset the barn could pay in English - workable at the crate island's
+// fixed cost, but the token island lets a first delivery choose a TOKEN too
+// (`token`, an index into the tile's own array - see `state.ts`), and the
+// Vegetable board's and a second delivery's wild allowance can each let up to
+// two cards be ANY crop, which multiplies the enumeration the same way a wide
+// build payment does. So it gets the same treatment build already has: a
+// narrowing draft instead of a flat menu.
+//
+// ⭐ THE ANY-CROP RELAXATION NEEDS NO SPECIAL CASE (2.5.2). `spend` is a count
+// per suit, never a card id (barn identity is inert - `deliver.ts`, the
+// engine), and `deliverCandidates` only ever asks "which suits could still
+// take one more card, given what is already committed" - an answer the
+// engine's own enumeration already bakes the wildcard allowance into. A picker
+// that offers exactly `deliverAdditions(...).suits` is therefore already
+// letting a loose card be any crop the barn holds; nothing here has to know
+// which cards are the "named" ones and which are the "any" ones.
+
+/**
+ * A part-assembled delivery: which tile, which TOKEN (when the tile still
+ * offers a choice - absent until chosen, and irrelevant once only one
+ * survives), and how many cards of each crop are committed so far.
+ */
+export interface DeliverDraft {
+  readonly tile: string;
+  readonly token: number | null;
+  readonly spend: Partial<Record<Suit, number>>;
+}
+
+export function emptyDeliverDraft(tile: string): DeliverDraft {
+  return { tile, token: null, spend: {} };
+}
+
+/** A delivery, from either side of the fence, normalised the way `BuildOffer` normalises a build. */
+export interface DeliverOffer {
+  readonly move: Move;
+  readonly tile: string;
+  readonly token: number | undefined;
+  readonly spend: Partial<Record<Suit, number>>;
+}
+
+export function deliverOffers(moves: readonly Move[], tile?: string): DeliverOffer[] {
+  const out: DeliverOffer[] = [];
+  for (const move of moves) {
+    if (move.type === 'deliver') {
+      if (tile !== undefined && move.tile !== tile) continue;
+      out.push({ move, tile: move.tile, token: move.token, spend: move.spend });
+    } else if (move.type === 'task' && move.answer.kind === 'deliver') {
+      const a = move.answer;
+      if (tile !== undefined && a.tile !== tile) continue;
+      out.push({ move, tile: a.tile, token: a.token, spend: a.spend });
+    }
+  }
+  return out;
+}
+
+/** Is every suit `draft.spend` names covered by at least that many in `spend`? */
+function spendWithin(
+  spend: Partial<Record<Suit, number>>,
+  draft: Partial<Record<Suit, number>>,
+): boolean {
+  for (const [suit, n] of Object.entries(draft) as [Suit, number][]) {
+    if ((spend[suit] ?? 0) < n) return false;
+  }
+  return true;
+}
+
+function spendEqual(a: Partial<Record<Suit, number>>, b: Partial<Record<Suit, number>>): boolean {
+  const suits = new Set([...Object.keys(a), ...Object.keys(b)] as Suit[]);
+  for (const suit of suits) if ((a[suit] ?? 0) !== (b[suit] ?? 0)) return false;
+  return true;
+}
+
+function spendTotal(spend: Partial<Record<Suit, number>>): number {
+  let total = 0;
+  for (const n of Object.values(spend)) total += n ?? 0;
+  return total;
+}
+
+/** Offers still reachable from a partly-assembled draft. */
+export function deliverCandidates(moves: readonly Move[], draft: DeliverDraft): DeliverOffer[] {
+  return deliverOffers(moves, draft.tile).filter(
+    (o) => (draft.token === null || o.token === draft.token) && spendWithin(o.spend, draft.spend),
+  );
+}
+
+/** The one offer the draft has fully specified, if it has. */
+export function deliverComplete(moves: readonly Move[], draft: DeliverDraft): DeliverOffer | null {
+  const exact = deliverCandidates(moves, draft).filter((o) => spendEqual(o.spend, draft.spend));
+  return exact[0] ?? null;
+}
+
+/** What may still be added to a delivery: which tokens, which suits, and how many more cards. */
+export interface DeliverAdditions {
+  /** Token indices still open. Empty once the tile offers no choice at all. */
+  readonly tokens: readonly number[];
+  /** Suits that could still take another card - the any-crop relaxation lives entirely in this set (2.5.2). */
+  readonly suits: ReadonlySet<Suit>;
+  readonly remaining: { readonly min: number; readonly max: number };
+}
+
+export function deliverAdditions(moves: readonly Move[], draft: DeliverDraft): DeliverAdditions {
+  const tokens = new Set<number>();
+  const suits = new Set<Suit>();
+  const committed = spendTotal(draft.spend);
+  let min = Infinity;
+  let max = 0;
+
+  for (const offer of deliverCandidates(moves, draft)) {
+    if (offer.token !== undefined) tokens.add(offer.token);
+    const short = spendTotal(offer.spend) - committed;
+    min = Math.min(min, short);
+    max = Math.max(max, short);
+    for (const [suit, n] of Object.entries(offer.spend) as [Suit, number][]) {
+      if (n > (draft.spend[suit] ?? 0)) suits.add(suit);
+    }
+  }
+
+  return {
+    tokens: [...tokens].sort((a, b) => a - b),
+    suits,
+    remaining: { min: min === Infinity ? 0 : min, max },
+  };
+}
+
+export function withDeliverToken(draft: DeliverDraft, token: number): DeliverDraft {
+  return { ...draft, token: draft.token === token ? null : token };
+}
+
+/** Add one card of this crop to the payment. */
+export function withDeliverCard(draft: DeliverDraft, suit: Suit): DeliverDraft {
+  return { ...draft, spend: { ...draft.spend, [suit]: (draft.spend[suit] ?? 0) + 1 } };
+}
+
+/** Take one card of this crop back off the payment. */
+export function withoutDeliverCard(draft: DeliverDraft, suit: Suit): DeliverDraft {
+  const n = (draft.spend[suit] ?? 0) - 1;
+  const spend = { ...draft.spend };
+  if (n <= 0) delete spend[suit];
+  else spend[suit] = n;
+  return { ...draft, spend };
+}
+
+/**
+ * Start (or restart) a delivery: sends immediately when the tile names only
+ * one legal delivery, opens the assembly otherwise. Null when the tile is not
+ * a target at all right now. Mirrors `startBuild` in `session/play.ts`.
+ */
+export function deliverStart(
+  moves: readonly Move[],
+  tile: string,
+): { move: Move } | { draft: DeliverDraft } | null {
+  const draft = emptyDeliverDraft(tile);
+  const complete = deliverComplete(moves, draft);
+  if (complete) return { move: complete.move };
+  return deliverCandidates(moves, draft).length > 0 ? { draft } : null;
+}
+
 // --- subset answers ---------------------------------------------------------
 
 /**
@@ -638,16 +943,20 @@ export function subsetAdditions(
 /**
  * ⛔ TASK ANSWER KINDS THIS INTERFACE KNOWINGLY CANNOT RESOLVE (ledger C59).
  *
- * `grow` is a full Grow action taken mid-effect (a bought Grow). It is
- * unreachable in the v31 game this package plays, and there is no prompt for
- * it: a Grow answer names a building AND the card out of hand that pays for
- * it, which is two clicks the prompt has no shape for.
+ * ⭐ EMPTY SINCE 18/09/2026 (2.2.5). `grow` used to sit here: a Grow task
+ * answer names a building AND either a hand card or a deck, which used to be
+ * two clicks the prompt had no shape for. `clickBuilding` and `clickDeck` now
+ * resolve both (a building-then-deck path for the Apiary retext's deck-paid
+ * Grow, the existing hold-a-card-then-click-the-building gesture `sow` already
+ * used for the card-paid one), so nothing is left admitted here. The list
+ * stays rather than being deleted outright - the anti-rot policing below is
+ * worth keeping wired for whatever the next rules change turns up unclickable.
  *
  * ⚠️ POLICED THE SAME WAY. `intent.test.ts` asserts that no position in the
- * UI's own corpus offers one, so the day this package's data can produce a Grow
- * task the list fails rather than silently hiding an unclickable rule.
+ * UI's own corpus offers a kind named here, so the day this package's data can
+ * produce one the list fails rather than silently hiding an unclickable rule.
  */
-export const UNROUTED_TASK_ANSWERS = ['grow'] as const satisfies readonly TaskAnswer['kind'][];
+export const UNROUTED_TASK_ANSWERS = [] as const satisfies readonly TaskAnswer['kind'][];
 
 /** A task answer kind this interface admits it cannot resolve. */
 export type UnroutedTaskAnswer = (typeof UNROUTED_TASK_ANSWERS)[number];
@@ -662,16 +971,26 @@ export const MOVE_ROUTES = {
   task: 'prompt',
   cardMove: 'building-badge',
   draw: 'action-bar',
+  // ⚠️ `bonusDrawOpen` (engine `actions/bonus.ts`) already returns false under
+  // `isNoticeBoardPower(data)` - the shipped default (2.2.7, ledger C59) - so
+  // no `bonusDraw` move reaches this package's `moves` list once the game data
+  // is actually pinned to it. The route entry stays for exhaustiveness
+  // (`intent.test.ts` checks this object against the engine's own
+  // `MOVE_TYPES`) and for the v31/meeple arms this package's own tests may
+  // still exercise, not because the shipped bonus slot offers a button here.
   bonusDraw: 'action-bar',
   spendMeeple: 'meeple-supply',
   build: 'build-panel',
   grow: 'building',
   harvest: 'building',
+  // ⭐ ALSO `deliver-panel` SINCE 18/09/2026 (2.5.1): a tile click starts the
+  // assembly (`deliverStart`), and its token/spend buttons live in
+  // `DeliverPanel` (`components/BuildPanel.tsx`) via `Play.setDeliverDraft`.
   deliver: 'island-tile',
   visit: 'visit-panel',
-  // TODO(meeple-loop): owned by the ui pass. Collect is a bonus-slot button
-  // beside Draw 1, so it routes where bonusDraw routes until that pass gives
-  // the Notice Board slots a surface of their own.
+  // `collect` is a bonus-slot button beside Draw 1 under the retired
+  // meeple-currency visit, so it routes where `bonusDraw` routes. Neither is a
+  // button the shipped bonus slot draws (S5: it holds one option, the visit).
   collect: 'action-bar',
   pass: 'action-bar',
   endTurn: 'action-bar',

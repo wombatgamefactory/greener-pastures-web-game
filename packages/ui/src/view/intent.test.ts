@@ -18,11 +18,12 @@
  */
 
 import { describe, expect, it } from 'vitest';
-// ⛔ THE UI'S OWN DATA, NOT `BASE_GAME_DATA`, since 04/09/2026. The shipped
-// rules are the meeple loop and this package still draws the v31 card-fee game,
-// so `session/table.ts` pins itself to `overlays/v31-card-visit.overlay.json` -
-// see the docblock there for why, and for what the UI pass owes. A test that
-// reached past that pin would be measuring rules the interface does not draw.
+// ⛔ THE UI'S OWN DATA, NOT `BASE_GAME_DATA`, since 04/09/2026. `session/table.ts`
+// used to pin itself to the pre-notice-board v31 arm; the pin came down
+// 18/09/2026 and this now loads the same shipped `loadGameData()` defaults the
+// engine, the bots and the simulator play, with one override (no hand limit -
+// see the docblock on `session/table.ts`). A test importing `data` from here is
+// exercising the shipped game, not an arm.
 import { data } from '../session/table';
 import type { Suit } from '@gp/data';
 import { MOVE_TYPES, apply, isOver, legalMoves, makeProber, newGame, viewFor } from '@gp/engine';
@@ -37,18 +38,20 @@ import {
   clickBuilding,
   clickCardPower,
   clickDeck,
+  clickHandCard,
   clickHost,
   clickMeeple,
   clickTile,
   emptyBuildDraft,
   liveTargets,
   subsetAnswer,
+  visitBoards,
   visitComplete,
   visitOffers,
   withStackPayment,
   withPayment,
 } from './intent';
-import type { BuildDraft, Intent } from './intent';
+import type { BuildDraft, Intent, VisitDraft } from './intent';
 import { actionGroups } from './moveText';
 
 const IDLE: Intent = { k: 'idle' };
@@ -142,15 +145,24 @@ function reachable(position: Position, move: Move): boolean {
     }
 
     /*
-     * ⭐ BOTH VISITS THROUGH THE SAME PATH, AND THAT IS THE POINT. A self-visit
-     * is the same move with `host === seat`, so it must be reachable by the same
-     * two clicks - open the panel on the host, then name the fee - or one of the
-     * two halves of the bonus slot would be quietly unplayable. `clickHost` is
-     * handed the view precisely so it can answer for your own seat.
+     * ⭐ THE HOST AND ITS BOARD, BOTH CLICKED (18/09/2026, 2.2.1). At two
+     * players a rival may hold TWO Notice Boards, and two boards mean two
+     * different powers - so a draft that never named one could still narrow to
+     * more than one surviving move, and the wrong one could win by chance.
+     * `move.board` is what `visitBoards` lists as the choice on offer; passing
+     * it through here (both to `clickHost`, which the panel calls first to open
+     * on this host, and into the draft `visitOffers`/`visitComplete` narrow) is
+     * what makes a two-board host's move provably reachable rather than merely
+     * plausible. Self-visiting is banned under the shipped rules (11/09/2026),
+     * so `move.host` is never `move.seat` in any corpus this file builds.
      */
     case 'visit': {
-      if (clickHost(position.view, moves, IDLE, move.host) === null) return false;
-      const draft = { host: move.host, fee: move.fee };
+      if (clickHost(position.view, moves, IDLE, move.host, move.board) === null) return false;
+      const draft: VisitDraft = {
+        host: move.host,
+        fee: move.fee,
+        ...(move.board !== undefined ? { board: move.board } : {}),
+      };
       if (visitOffers(moves, draft).length === 0) return false;
       return visitComplete(moves, draft) === move;
     }
@@ -158,11 +170,13 @@ function reachable(position: Position, move: Move): boolean {
     case 'task':
       return taskReachable(position, move);
 
-    // TODO(meeple-loop): owned by the ui pass. Collect has no surface yet, so
-    // there is nothing for the reachability proof to click; it is claimed here
-    // so the exhaustive check still covers every move type, and it is only ever
-    // reached under `rules.turn.visitCurrency: 'meeple'`, which no UI position
-    // in this suite is built with.
+    // `collect` has no surface: it is a bonus-slot button beside Draw 1 under
+    // the retired meeple-currency visit (`rules.turn.visitCurrency: 'meeple'`),
+    // routed to `action-bar` the same as `bonusDraw` (`MOVE_ROUTES`) but never
+    // offered under the shipped `data` this corpus is built with. Claimed here,
+    // rather than left to fall through to `default`, so the exhaustive switch
+    // still covers every move type - if this suite ever grows an arm position
+    // under that currency, this case is where its click route belongs.
     case 'collect':
       return false;
 
@@ -331,20 +345,48 @@ function taskReachable(position: Position, move: Move): boolean {
       return subsetIndex(moves, 'keep').get(subsetKey(answer.cards)) === move;
     case 'discard':
       return subsetIndex(moves, 'discard').get(subsetKey(answer.cards)) === move;
+    /*
+     * ⭐ ROUTED 18/09/2026 (2.2.3), PROVEN HERE FOR GOOD. Off a deck top rather
+     * than the hand, so there is no card to hold first: the building click
+     * alone narrows to it (`clickBuilding` folds a `deckSow` answer into the
+     * same `sows` bucket a held-card `sow` uses), and `clickDeck` finishes it
+     * from the other end. Both halves have to agree, or the building could glow
+     * for a move the deck click can never complete, or vice versa.
+     */
     case 'deckSow':
+      return (
+        clickBuilding(moves, IDLE, answer.onto).includes(move) &&
+        clickDeck(moves, IDLE, answer.suit).includes(move)
+      );
+    /*
+     * ⭐ ROUTED 18/09/2026 (2.2.2), PROVEN HERE FOR GOOD. Naming the hand card
+     * IS the whole answer - no destination to choose afterwards, unlike a build
+     * or a sow - so picking the card up has to resolve it alone.
+     */
     case 'handToBarn':
+      return clickHandCard(moves, answer.card).includes(move);
     case 'skip':
     case 'card':
       // The prompt lists these explicitly; nothing to resolve.
       return moves.includes(move);
     /*
-     * ⛔ A BOUGHT GROW, ON `UNROUTED_TASK_ANSWERS` (ledger C59). Two things at
-     * once - a building and the card that pays for it - and the prompt has no
-     * shape for that pair, so there is nothing to click. Self-policing: a Grow
-     * answer in this corpus fails the sweep rather than passing quietly.
+     * ⭐ ROUTED 18/09/2026 (2.2.5), PROVEN HERE FOR GOOD. Two shapes share the
+     * kind (`UNROUTED_TASK_ANSWERS` is empty again as of the same date): the
+     * Apiary retext's deck-paid Grow names a building and a DECK, no hand card,
+     * so a building click alone narrows to it and a deck click finishes it -
+     * exactly like `deckSow` above. A card-paid Grow (the Apiary Worker's plain
+     * action, M7) names a building and the hand card that pays for it, so it
+     * takes the same hold-then-click gesture `sow` does.
      */
     case 'grow':
-      return false;
+      return answer.deckSuit !== undefined
+        ? clickBuilding(moves, IDLE, answer.building).includes(move) &&
+            clickDeck(moves, IDLE, answer.deckSuit).includes(move)
+        : clickBuilding(
+            moves,
+            answer.payment !== null ? { k: 'hold', card: answer.payment } : IDLE,
+            answer.building,
+          ).includes(move);
     default:
       return answer satisfies never;
   }
@@ -371,9 +413,21 @@ const SEEDS = ['click-a', 'click-b'];
  */
 const SWEEP = 900_000;
 
+/**
+ * ⭐ THE TWO-PLAYER SHIPPED CORPUS (19/09/2026, 2.8.3). Built off `data` from
+ * `session/table.ts` - the shipped rules, since the pin came down 18/09/2026 -
+ * so every position in it is the two-board Notice Board visit, the token
+ * island, Workers spent after the main action, and no balloons, Aerodrome or
+ * Store coin: exactly what CLAUDE.md §0 calls the shipped default. It is the
+ * one seat count where the two-board fix (S8, 11/09/2026) actually bites - at
+ * 3p and 4p every farm has one board - so it is the corpus both the general
+ * reachability sweep below AND the board-choosing test use.
+ */
+const TWO_PLAYER_SHIPPED = corpus(SEEDS, 2, ['wheat', 'orchard']);
+
 describe('every legal move is reachable through the interface', () => {
   const tables: { name: string; positions: Position[] }[] = [
-    { name: '2 seats', positions: corpus(SEEDS, 2, ['wheat', 'orchard']) },
+    { name: '2 seats', positions: TWO_PLAYER_SHIPPED },
     { name: '3 seats', positions: corpus(SEEDS, 3, ['wheat', 'vegetable', 'orchard']) },
     {
       name: '4 seats',
@@ -451,37 +505,42 @@ describe('every legal move is reachable through the interface', () => {
      * v31 deleted the currency, so both are gone from `MOVE_TYPES` entirely and
      * there is nothing left to exempt.
      *
-     * ⚠️ THREE TYPES ARE EXEMPT, AND EACH ONE IS A STATEMENT ABOUT THE GAME
-     * RATHER THAN ABOUT THE INTERFACE. All three are routed (`MOVE_ROUTES`) and
-     * all three are drawn; what the corpus cannot do is produce one to sweep.
+     * ⚠️ FIVE TYPES ARE EXEMPT, AND EACH ONE IS A STATEMENT ABOUT THE GAME
+     * RATHER THAN ABOUT THE INTERFACE. All five are routed (`MOVE_ROUTES`) and
+     * all five are drawn wherever they are legal; what the corpus cannot do is
+     * produce a position where one of them actually is.
      *
-     *   pass      exists only for a turn with no legal main action at all, which
-     *             a healthy game never reaches.
-     *   endTurn   the engine SETTLES a turn the moment nothing is left to do
-     *             (`settleTurn`), so a bot that always has something to do never
-     *             declines anything. It went from rare to absent in v31, because
-     *             a turn now carries a meeple phase and a bonus slot on top of
-     *             the action and there is nearly always one of them live. The
-     *             button is still drawn every turn, greyed when illegal, because
-     *             it is the control a stuck HUMAN looks for - and a human can be
-     *             stuck in ways a bot never is.
-     *   cardMove  the only standing card move in the sheet is A Helping Hand's,
-     *             and a corpus that never happens to build one of the five
-     *             copies never offers it. `play.test.tsx` asserts the other half
-     *             - wherever the move exists, the badge is on the card.
+     *   pass       exists only for a turn with no legal main action at all,
+     *              which a healthy game never reaches.
+     *   endTurn    the engine SETTLES a turn the moment nothing is left to do
+     *              (`settleTurn`), so a bot that always has something to do
+     *              never declines anything. It went from rare to absent in v31,
+     *              because a turn now carries a meeple phase and a bonus slot
+     *              on top of the action and there is nearly always one of them
+     *              live. The button is still drawn every turn, greyed when
+     *              illegal, because it is the control a stuck HUMAN looks for -
+     *              and a human can be stuck in ways a bot never is.
+     *   cardMove   the only standing card move in the sheet is A Helping Hand's,
+     *              and a corpus that never happens to build one of the five
+     *              copies never offers it. `play.test.tsx` asserts the other
+     *              half - wherever the move exists, the badge is on the card.
+     *   bonusDraw  the free Draw 1 closed under `noticeBoardPower` on
+     *              18/09/2026 (S5: the bonus slot holds one option, the visit,
+     *              and a free solitaire Draw is what killed v31 at 67.6%). It
+     *              is routed for the retired `'card'`/meeple currency arms
+     *              this package's own tests still replay by name, but this
+     *              corpus is built on `session/table.ts`'s shipped `data`,
+     *              which never offers one.
+     *   collect    exists only under `rules.turn.visitCurrency: 'meeple'`
+     *              (the retired meeple loop), which no position in this
+     *              corpus is built with.
      *
-     * ⚠️ IF A BOT EVER STARTS DECLINING, OR A SECOND STANDING MOVE IS PRINTED,
-     * DELETE THAT EXEMPTION. An exemption is what would otherwise hide a
-     * genuinely unreachable rule, which is the exact failure this file exists to
-     * catch.
+     * ⚠️ IF A BOT EVER STARTS DECLINING, A SECOND STANDING MOVE IS PRINTED, OR
+     * THE SHIPPED DEFAULT EVER REOPENS THE FREE DRAW, DELETE THAT EXEMPTION. An
+     * exemption is what would otherwise hide a genuinely unreachable rule,
+     * which is the exact failure this file exists to catch.
      */
-    // TODO(meeple-loop): owned by the ui pass. `collect` exists only under
-    // `rules.turn.visitCurrency: 'meeple'` and this corpus is built on the
-    // shipped 'card' game, so no position in it can offer one. When the UI grows
-    // the Notice Board's five slots, the corpus should grow an arm position and
-    // this exemption should go with it - an exemption is what hides a genuinely
-    // unreachable rule.
-    const UNREACHED: readonly MoveType[] = ['pass', 'endTurn', 'cardMove', 'collect'];
+    const UNREACHED: readonly MoveType[] = ['pass', 'endTurn', 'cardMove', 'bonusDraw', 'collect'];
     const missing = MOVE_TYPES.filter((t) => !seen.has(t) && !UNREACHED.includes(t));
     expect(missing).toEqual([]);
   });
@@ -541,33 +600,28 @@ describe('what glows', () => {
   });
 
   /**
-   * ⭐ THE SELF-VISIT HAS TO BE REACHABLE AND HAS TO BE SEPARABLE.
-   *
-   * Reachable, because it is half the bonus slot and a rule nobody can click is
-   * a rule nobody plays. Separable, because it is the v31 plan's risk 2: the
-   * turn bar draws it as its own button, so `liveTargets` has to be able to
-   * light your own board WITHOUT lighting the neighbours, and the neighbours
-   * without lighting your own. The `self` flag on an armed intent is what does
-   * that, and this is the only place it is checked.
+   * ⭐ A VISIT NEVER LIGHTS YOUR OWN BOARD (19/09/2026, was the opposite claim
+   * under v31). Self-visiting is banned under the shipped rules (Dean,
+   * 11/09/2026: it measured 44.4% of visits and the neighbour hook had no
+   * subject), so an armed `visit` family must light every rival's door and
+   * never your own - the `self` flag `Intent.arm` still carries exists only
+   * for the retired pre-ban `'card'` control (`FAMILIES`'s `visit-self` entry
+   * in `moveText.ts`), and passing it `true` here must light nothing at all
+   * under the shipped `data` this corpus is built with.
    */
-  it('separates your own door from the neighbours, both ways round', () => {
-    let checkedSelf = 0;
+  it('never lights your own board as a visit target, under the shipped rules', () => {
     let checkedOther = 0;
     for (const { view, moves } of positions) {
+      const armed = liveTargets(view, moves, { k: 'arm', type: 'visit' });
       const selfArmed = liveTargets(view, moves, { k: 'arm', type: 'visit', self: true });
-      const outArmed = liveTargets(view, moves, { k: 'arm', type: 'visit', self: false });
-      for (const seat of selfArmed.hosts) {
-        expect(seat).toBe(view.seat);
-        checkedSelf += 1;
-      }
-      for (const seat of outArmed.hosts) {
+      expect(selfArmed.hosts.size).toBe(0);
+      for (const seat of armed.hosts) {
         expect(seat).not.toBe(view.seat);
         checkedOther += 1;
       }
     }
-    // Both halves must really occur in the corpus, or the assertion is vacuous:
-    // a self-visit that never appears would pass this test and be unplayable.
-    expect(checkedSelf).toBeGreaterThan(0);
+    // Must really occur in the corpus, or the assertion is vacuous: a visit
+    // that never appears would pass this test and be unplayable.
     expect(checkedOther).toBeGreaterThan(0);
   });
 
@@ -600,5 +654,65 @@ describe('what glows', () => {
       fee: null,
     });
     expect([...live.hosts]).toEqual([visit.host]);
+  });
+});
+
+/**
+ * ⭐ THE VISIT CHOOSES A BOARD (18/09/2026, 2.2.1 / 2.8.3). At two players a
+ * host lays out two Notice Boards (the two-board fix, S8) with two different
+ * printed powers, so a draft that never named one could still narrow to more
+ * than one surviving move - the exact bug `reachable()`'s `case 'visit'` had
+ * before it threaded `move.board` through `clickHost` and the draft: it built
+ * `{ host, fee }` only, so a two-board host's SECOND board could survive the
+ * narrowing purely by which move happened to sort first, and this file would
+ * still have gone green.
+ */
+describe('the visit chooses a board, on the two-player shipped corpus', () => {
+  it('found a host offering more than one Notice Board', () => {
+    const twoBoardHost = TWO_PLAYER_SHIPPED.some(({ moves }) =>
+      [...new Set(moves.filter((m) => m.type === 'visit').map((m) => m.host))].some(
+        (host) => visitBoards(moves, host).length > 1,
+      ),
+    );
+    expect(twoBoardHost).toBe(true);
+  });
+
+  it('every board a two-board host offers narrows to its own move, not the other one', () => {
+    let checked = 0;
+    for (const { view, moves } of TWO_PLAYER_SHIPPED) {
+      const hosts = new Set(moves.filter((m) => m.type === 'visit').map((m) => m.host));
+      for (const host of hosts) {
+        const boards = visitBoards(moves, host);
+        if (boards.length < 2) continue;
+        for (const board of boards) {
+          const opened = clickHost(view, moves, IDLE, host, board);
+          expect(opened).not.toBeNull();
+          const draft: VisitDraft = { host, board, fee: null };
+          for (const offer of visitOffers(moves, draft)) {
+            // Every surviving offer really is on THIS board, never the host's
+            // other one - the property `move.board` being threaded through is
+            // what guarantees.
+            expect(offer.board).toBe(board);
+          }
+          checked += 1;
+        }
+      }
+    }
+    // Must really occur, or the assertion is vacuous.
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('the fully-specified draft (host, board, fee) resolves to one move, never the other board', () => {
+    let checked = 0;
+    for (const position of TWO_PLAYER_SHIPPED) {
+      for (const move of position.moves) {
+        if (move.type !== 'visit' || move.board === undefined) continue;
+        const boards = visitBoards(position.moves, move.host);
+        if (boards.length < 2) continue;
+        expect(reachable(position, move)).toBe(true);
+        checked += 1;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 });

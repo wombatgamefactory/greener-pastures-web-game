@@ -1,10 +1,13 @@
 /**
- * The five v42 Helping Hands (W18, A18, D18, O18, V18), built 16/09/2026.
+ * The five Helping Hands (W18, A18, D18, O18, V18), built 16/09/2026 off the
+ * v42 sheet; D18 RETEXTED on v44 (18/09/2026).
  *
- * Each card is tested on the route its trigger actually arrives by: W18 and
- * D18 through the engine's own per-turn counts (`Fx.harvest`, `placeBuilt`),
- * A18 through a real placement, O18 through the turn boundary, and V18 through
- * a real delivery, so the barn it reads is the barn AFTER the crate was paid.
+ * Each card is tested on the route its trigger actually arrives by: W18
+ * through the engine's own per-turn count (`Fx.harvest`), D18 through
+ * `placeBuilt` directly with the spent cards staged in their suits' discards
+ * first (`fx.discard`) exactly as `divertOrDiscard` would leave them, A18
+ * through a real placement, O18 through the turn boundary, and V18 through a
+ * real delivery, so the barn it reads is the barn AFTER the crate was paid.
  */
 
 import { BASE_GAME_DATA as data } from '@gp/data';
@@ -150,37 +153,62 @@ describe('A18 - fill one of your buildings, sow a deck top onto another', () => 
   });
 });
 
-describe('D18 - Build two buildings, the top 2 of any one deck into your Barn', () => {
-  it('fires on the second build of the turn, once, and pays two cards off one deck', () => {
+describe('D18 - whenever you build a card that costs 3+ resources, add 1 spent card to your Barn (RETEXTED v44, 18/09/2026)', () => {
+  it('fires on a 3-resource build, offers every spent card, and moves the chosen one to the barn', () => {
     const s = makeState(data, ['dairy', 'wheat']);
     buildFor(data, s, 0, 'D18');
     const fx = new Fx(data, s, 0);
-    placeBuilt(fx, 0, 'D4', []);
-    expect(tasksFrom(s, 'D18')).toEqual([]);
-    placeBuilt(fx, 0, 'D5', []);
-    expect(s.turn.buildsThisTurn).toBe(2);
-    expect(tasksFrom(s, 'D18')).toHaveLength(1);
-    placeBuilt(fx, 0, 'D7', []);
+    // D9 The Prosperity Wagon costs 3 (2 dairy + 1 any) - qualifies at "3 or more".
+    const spent: CardId[] = ['D5', 'D6', 'W4'];
+    fx.discard(spent);
+    placeBuilt(fx, 0, 'D9', spent);
     expect(tasksFrom(s, 'D18')).toHaveLength(1);
 
-    s.tasks = tasksFrom(s, 'D18');
     const answers = pendingAnswers(data, s);
-    expect(answers.every((a) => a.kind === 'card')).toBe(true);
-    const topTwo = s.decks.orchard.slice(0, 2);
-    const orchardAnswer = answers.find((a) => a.kind === 'card' && a.payload.suit === 'orchard');
-    const out = answerTask(data, s, orchardAnswer as TaskAnswer).state;
-    expect(player(out, 0).barn).toEqual(topTwo);
+    expect(answers).toEqual(spent.map((card) => ({ kind: 'card', payload: { card } })));
+    const pick = answers.find((a) => a.kind === 'card' && a.payload.card === 'W4') as TaskAnswer;
+    const out = answerTask(data, s, pick).state;
+    expect(player(out, 0).barn).toEqual(['W4']);
+    expect(out.discards.wheat).toEqual([]);
+    expect(out.discards.dairy.sort()).toEqual(['D5', 'D6']);
     expect(out.tasks).toEqual([]);
   });
 
-  it('counts only the turn player builds', () => {
+  it('does not fire on a build costing fewer than 3 resources', () => {
     const s = makeState(data, ['dairy', 'wheat']);
     buildFor(data, s, 0, 'D18');
-    s.turnPlayer = 1;
+    const fx = new Fx(data, s, 0);
+    // D4 The Milking Shed costs 1.
+    fx.discard(['D7']);
+    placeBuilt(fx, 0, 'D4', ['D7']);
+    expect(tasksFrom(s, 'D18')).toEqual([]);
+  });
+
+  it('fires TWICE in one turn on two qualifying builds - the fire-once rule is deleted', () => {
+    const s = makeState(data, ['dairy', 'wheat']);
+    buildFor(data, s, 0, 'D18');
+    const fx = new Fx(data, s, 0);
+    fx.discard(['D5', 'D6', 'W4']);
+    placeBuilt(fx, 0, 'D9', ['D5', 'D6', 'W4']); // D9: 2 dairy + 1 any, cost 3
+    fx.discard(['D7', 'D8', 'W5']);
+    placeBuilt(fx, 0, 'D11', ['D7', 'D8', 'W5']); // D11 The Heritage House: also cost 3
+    expect(tasksFrom(s, 'D18')).toHaveLength(2);
+  });
+
+  it('is owner-scoped, never a rival\'s build: unlike the old card this has no "on your turn" gate (matches D16 The Ledger)', () => {
+    const s = makeState(data, ['dairy', 'wheat']);
+    buildFor(data, s, 0, 'D18');
     const fx = new Fx(data, s, 1);
-    placeBuilt(fx, 0, 'D4', []);
-    placeBuilt(fx, 0, 'D5', []);
-    expect(s.turn.buildsThisTurn).toBeUndefined();
+    fx.discard(['D5', 'D6', 'W4']);
+    placeBuilt(fx, 1, 'D9', ['D5', 'D6', 'W4']);
+    expect(tasksFrom(s, 'D18')).toEqual([]);
+  });
+
+  it('has nothing to add when the build spent no cards', () => {
+    const s = makeState(data, ['dairy', 'wheat']);
+    buildFor(data, s, 0, 'D18');
+    const fx = new Fx(data, s, 0);
+    placeBuilt(fx, 0, 'D9', []);
     expect(tasksFrom(s, 'D18')).toEqual([]);
   });
 });

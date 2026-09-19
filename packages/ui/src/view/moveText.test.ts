@@ -22,19 +22,22 @@
  */
 
 import { describe, expect, it } from 'vitest';
-// ⛔ THE UI'S OWN DATA, NOT `BASE_GAME_DATA`, since 04/09/2026. The shipped
-// rules are the meeple loop and this package still draws the v31 card-fee game,
-// so `session/table.ts` pins itself to `overlays/v31-card-visit.overlay.json` -
-// see the docblock there for why, and for what the UI pass owes. A test that
-// reached past that pin would be measuring rules the interface does not draw.
+// ⛔ THE UI'S OWN DATA, NOT `BASE_GAME_DATA`, since 04/09/2026. `session/table.ts`
+// used to pin itself to the pre-notice-board v31 arm; the pin came down
+// 18/09/2026 and this now loads the same shipped `loadGameData()` defaults the
+// engine, the bots and the simulator play, with one override (no hand limit -
+// see the docblock on `session/table.ts`). A test importing `data` from here is
+// exercising the shipped game, not an arm.
 import { data } from '../session/table';
 import { answerTask, growBuilding, handlerFor, pendingAnswers, testkit, viewFor } from '@gp/engine';
-import type { Move, TaskAnswer } from '@gp/engine';
+import type { TaskAnswer } from '@gp/engine';
 
 import { Session } from '../session/table';
 import { buildOffers } from './intent';
 import { describeMove, glossAbility, glossCost, glossNow, visitText } from './moveText';
 import { printedFace } from './printed';
+import { seatSuits } from './table';
+import { seatName } from './suits';
 
 const terms = (text: string): string[] => glossAbility(data, text).map((t) => t.term);
 
@@ -56,31 +59,32 @@ describe('glossAbility, against the sheet', () => {
     expect(terms('sow the top card of any deck onto it')).toEqual(['SOW']);
   });
 
+  /**
+   * ⛔ VISITOR IS GONE (18/09/2026, 2.6.2): no v42 or v44 card prints the word,
+   * and the board threshold it used to explain now lives in `glossCost` (which
+   * renders on every Notice Board face already). What still has to hold is the
+   * reason VISITOR existed in the first place - VISIT must not fire on a word
+   * that merely contains it - so this keeps that half as a plain word-boundary
+   * check rather than a keyword-table entry.
+   */
   it('does not fire VISIT on VISITOR, which is the other side of the table', () => {
-    // The v31 Wheat Notice Board text, as a literal: sheet v42 prints the
-    // board's power with no VISITOR line, so no card on the sheet carries it.
     const visitor = 'VISITOR: place 1 card here, then Harvest one of your full buildings.';
-    expect(terms(visitor)).toEqual(['VISITOR']);
-    expect(glossAbility(data, visitor)[0]?.means).toContain('your suit');
+    expect(terms(visitor)).toEqual([]);
   });
 
   /**
-   * ⭐ THE VISIT GLOSS HAS TO NAME THE SELF-VISIT. It is the one rule in v31 that
-   * a player meeting the word "VISIT" on a card would otherwise get wrong, and
-   * getting it wrong in the generous direction (thinking your own board is off
-   * limits, as it was in every version up to v30) means never noticing that the
-   * solitaire door exists at all.
+   * ⭐ THE VISIT GLOSS NAMES WHAT A VISIT IS, INCLUDING THAT YOUR OWN BOARD IS
+   * OFF LIMITS. Self-visiting was legal for one day (10/09/2026) and was banned
+   * again 11/09/2026 after it measured 44.4% of visits - the neighbour hook had
+   * no subject - so the gloss says the opposite of what it said under v31: not
+   * "your own board counts" but "never your own board".
    */
-  it('says that your own board counts, which is the rule that changed', () => {
+  it('says the visit is a rival-only act, never your own board', () => {
     const means = glossAbility(data, 'When you VISIT, Draw 1.')[0]?.means ?? '';
-    expect(means).toContain('own board');
+    expect(means).toContain('RIVAL');
+    expect(means).toContain('Never your own board');
     // And it no longer promises money, because there is none.
     expect(means).not.toContain('£');
-  });
-
-  it('reads the Notice Board threshold off the rules rather than printing a number', () => {
-    const means = glossAbility(data, 'VISITOR: place 1 card here.')[0]?.means ?? '';
-    expect(means).toContain(String(data.rules.economy.noticeBoardThreshold));
   });
 
   it('says nothing about a card with no ability text', () => {
@@ -108,7 +112,7 @@ describe('glossAbility, against the sheet', () => {
   });
 
   it('never invents a keyword: every term it returns is one it was asked about', () => {
-    const known = new Set(['GROW', 'SOW', 'VISIT', 'VISITOR']);
+    const known = new Set(['GROW', 'SOW', 'VISIT']);
     for (const card of data.cards.catalogue) {
       for (const t of terms(ability(card.id))) expect(known, `${card.id}: ${t}`).toContain(t);
     }
@@ -141,11 +145,14 @@ describe('glossCost', () => {
     expect(lines.some((l) => l.startsWith('To GROW:'))).toBe(true);
   });
 
-  it('states the threshold the ENGINE enforces on a Notice Board', () => {
+  it('states the threshold the ENGINE enforces on a Notice Board, as a minimum that never clogs', () => {
     const face = printedFace(data, 'W3');
     const enforced = data.rules.economy.noticeBoardThreshold ?? face.threshold;
+    // S8, 13/09/2026: `3+` is a harvest MINIMUM and a Notice Board never clogs,
+    // unlike an ordinary building's threshold - so the sentence says so rather
+    // than reusing the "clogs until you harvest" wording below.
     expect(glossCost(data, face)).toContain(
-      `Visitors fill it: ${enforced}, then it clogs until you harvest.`,
+      `A visit fills it: ${enforced}+ before you may harvest. Never blocks - another card is always welcome.`,
     );
   });
 
@@ -181,62 +188,30 @@ function position(seed: string, depth = 220) {
 }
 
 /**
- * ⭐ THE ASSERTION THE v31 PASS EXISTS FOR, at the text layer.
- *
- * A visit and a self-visit are one move with a flag. Everything else about them
- * is identical - same type, same cost, same slot - so the ONLY thing keeping a
- * player from taking one thinking it was the other is that every surface says
- * which is which. This is the surface three of them read from.
+ * ⭐ THE v31 SELF-VISIT WORDING IS GONE (19/09/2026), AND THIS IS WHERE IT USED
+ * TO BE PINNED. Self-visiting is banned under the shipped rules (Dean,
+ * 11/09/2026: it measured 44.4% of visits and the neighbour hook had no
+ * subject), so `visitText` no longer branches on `move.host === move.seat` at
+ * all - every visit crosses the table to a named rival, and one sentence
+ * covers the one thing a visit can now be. What is worth pinning instead is
+ * that the sentence always NAMES the host, which is what would go wrong first
+ * if a two-board host's `board` field were ever dropped on the floor.
  */
-describe('a self-visit never reads like a neighbour visit', () => {
+describe('visit text always names the host being visited', () => {
   const snap = position('visit-text');
-
-  const visit = (host: number): Move => ({
-    type: 'visit',
-    seat: snap.view.seat,
-    host,
-    fee: snap.view.you.hand[0] ?? 'W4',
-  });
 
   it('found a position with a hand to pay a fee from', () => {
     expect(snap.view.you.hand.length).toBeGreaterThan(0);
   });
 
-  it('names the neighbour on one and your own board on the other', () => {
-    const mine = visitText(data, snap.view, visit(snap.view.seat) as never);
-    const theirs = visitText(data, snap.view, visit(snap.view.rivals[0]!.seat) as never);
-    expect(mine).toContain('own');
-    expect(mine).toContain('No neighbour');
-    expect(theirs).toContain('Visit');
-    expect(theirs).not.toContain('own Notice Board');
-  });
-
-  it('shares no sentence between the two, on any host at the table', () => {
-    const mine = visitText(data, snap.view, visit(snap.view.seat) as never);
-    for (const rival of snap.view.rivals) {
-      expect(visitText(data, snap.view, visit(rival.seat) as never)).not.toBe(mine);
-    }
-  });
-
-  it('says the same thing through describeMove, which is what the menu prints', () => {
-    const mine = describeMove(data, snap.view, visit(snap.view.seat));
-    const theirs = describeMove(data, snap.view, visit(snap.view.rivals[0]!.seat));
-    expect(mine).not.toBe(theirs);
-    expect(mine).toContain('own');
-  });
-
-  /**
-   * Every visit the engine really offers, checked in one sweep: a self one must
-   * name your own board, a neighbour one must not. This is the version that
-   * survives a re-wording, because it asserts the DISTINCTION rather than the
-   * words.
-   */
-  it('splits every visit the engine offers, by its host and not by chance', () => {
+  it('names a rival, never your own seat, on every visit the engine actually offers', () => {
     let checked = 0;
     for (const move of snap.moves) {
       if (move.type !== 'visit') continue;
+      expect(move.host, JSON.stringify(move)).not.toBe(move.seat);
       const text = visitText(data, snap.view, move);
-      expect(/\bown\b/.test(text), JSON.stringify(move)).toBe(move.host === move.seat);
+      const hostName = seatName(seatSuits(snap.view)[move.host], move.host, snap.view.seat);
+      expect(text, JSON.stringify(move)).toContain(hostName);
       checked += 1;
     }
     // Not `toBeGreaterThan(0)`: whether a given warmed position offers a visit

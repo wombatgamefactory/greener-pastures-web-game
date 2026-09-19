@@ -1,20 +1,34 @@
 /**
- * The commons band: everything on the table that belongs to nobody.
+ * The shared table: everything laid out where nobody's farm reaches, but every
+ * card here still has an owner or is about to get one.
  *
- * Five decks with their face-up discards, the doors legend and the island. (The
- * Aerodrome panel went with the balloons on 16/09/2026.) The decks are never merged and
- * never cross-shuffled, so they are shown as five separate spines with five
- * separate discards - the Draw action is "top of any two decks, keep both", and
- * that only reads if the five stay visibly apart.
+ * Five decks with their face-up discards, the Notice Board powers key and the
+ * island. (The Aerodrome panel went with the balloons on 16/09/2026.) The decks
+ * are never merged and never cross-shuffled, so they are shown as five separate
+ * spines with five separate discards - the Draw action is "top of any two
+ * decks, keep both", and that only reads if the five stay visibly apart.
  *
- * ⭐ THE HIRING FAIR PANEL BECAME THE DOORS LEGEND (v31). It used to print "Your
- * Service, GBP 2" over the one Service you owned, which is three deleted rules
- * in one caption. What sits there now is the five COLOURS and what each one
- * does, which is the single most-consulted fact in the v31 game and is consulted
- * for two different reasons at once: it is what a card on a farm's Notice Board
- * buys, and it is the key to every meeple on the island and in every supply.
- * All five are listed even at 2 seats, because a meeple of a colour nobody farms
- * still works.
+ * ⭐ RENAMED FROM `Commons` 18/09/2026 (2.7.4). THE COMMONS - five Notice Boards
+ * standing ownerless in the centre, each with a public face-up pile anyone
+ * could play onto - was ruled DEAD on 13/09/2026 and its code deleted
+ * (CLAUDE.md §5). This component never implemented that system; it always
+ * drew the decks, the island and the legend. But it carried the system's NAME
+ * regardless (`Commons`, `aria-label="the commons"`, `.commons`), which reads
+ * as a leftover of the thing that died rather than what this band has always
+ * actually been, so the name is retired along with the system it borrowed it
+ * from. Nothing about what this component draws changes with the rename.
+ *
+ * ⭐ THE DOORS LEGEND BECAME THE NOTICE BOARD POWERS KEY (18/09/2026, 2.7.3). It
+ * used to print `allDoors`/`doorOf`'s text, which is the WORKER's plain action
+ * ("Deliver.") - correct for what a spent meeple does, wrong for what a visit
+ * buys since the five boards print their own, longer, amplified powers (S12).
+ * `boardPowers` below reads `abilityText` straight off each `noticeboard`-slot
+ * card in `cards.json` instead, so this legend is now specifically what a card
+ * on that colour's Notice Board is worth - the single most-consulted fact in
+ * the shipped game. All five are listed even at 2 seats, where only two or
+ * three are farmed - the unfarmed ones read "nobody farms this crop" rather
+ * than being dropped, because a two-player table can still draw either of them
+ * as its second board (the two-board fix).
  */
 
 import type { GameData, Suit } from '@gp/data';
@@ -23,12 +37,55 @@ import type { PlayerView } from '@gp/engine';
 import { mark } from '../session/play';
 import type { Play } from '../session/play';
 import { SUIT_META, seatName } from '../view/suits';
-import { allDoors, doorOwner, seatSuits } from '../view/table';
+import { doorOf, doorOwner, seatSuits } from '../view/table';
+import type { Door } from '../view/table';
 import { printedFace } from '../view/printed';
 import { Card, CardBack } from './Card';
 import { DoorChip } from './Door';
 import { IslandPanel } from './Island';
 import type { Zoomer } from './Zoom';
+
+/**
+ * The five Notice Board powers, as `Door` objects so the legend can still be
+ * drawn by `DoorChip` - but with `actionText` overridden to the BOARD's own
+ * printed sentence (`abilityText`, off the `noticeboard`-slot card) rather
+ * than `doorOf`'s worker-action text.
+ *
+ * ⚠️ THE VERB IS OVERRIDDEN TOO, and that is not cosmetic. `doorOf` names the
+ * PLAIN action a Worker of that colour buys, which is not always the verb the
+ * BOARD's power performs. Apiary is the case in point: Dean retexted the
+ * Apiary board on 14/09/2026 from "Sow 2 cards from your hand onto your
+ * buildings" to "Grow a building using the top card of any deck", so the board
+ * Grows while `doorOf`'s roster entry still says `sow`. Reading the verb off
+ * `doorOf` printed "Sow" on the most-consulted legend in the game, naming a
+ * keyword this board no longer uses. SOW and GROW are different keywords here:
+ * a sow places a card of any suit without activating, a Grow activates and
+ * fires the ability. `BOARD_VERB` is keyed to what each board's printed power
+ * actually does, so the legend cannot drift from the card faces again.
+ */
+const BOARD_VERB: Readonly<Record<Suit, string>> = {
+  wheat: 'Harvest',
+  vegetable: 'Deliver',
+  orchard: 'Draw',
+  apiary: 'Grow',
+  dairy: 'Build',
+};
+
+function boardPowers(data: GameData): Door[] {
+  return data.workers.roster
+    .map((spec) => {
+      const board = data.cards.catalogue.find(
+        (c) => c.slot === 'noticeboard' && c.suit === spec.linkedSuit,
+      );
+      if (!board) return null;
+      return {
+        ...doorOf(data, spec.linkedSuit),
+        actionText: board.abilityText,
+        actionLabel: BOARD_VERB[spec.linkedSuit],
+      };
+    })
+    .filter((door): door is Door => door !== null);
+}
 
 function DeckSpine({
   data,
@@ -81,7 +138,7 @@ function DeckSpine({
   );
 }
 
-export function Commons({
+export function SharedTable({
   data,
   view,
   cardWidth,
@@ -102,7 +159,7 @@ export function Commons({
   const suits = seatSuits(view);
 
   return (
-    <section className="commons" aria-label="the commons">
+    <section className="shared-table" aria-label="the shared table">
       <div className="panel panel-decks">
         <h2 className="panel-title">Decks</h2>
         <div className="decks">
@@ -150,21 +207,20 @@ export function Commons({
         />
       </div>
 
-      <div className="commons-right">
+      <div className="shared-table-right">
         <div className="panel panel-doors">
-          <h2 className="panel-title">
-            The five doors <em>and what a meeple of that colour does</em>
-          </h2>
+          <h2 className="panel-title">The five Notice Board powers</h2>
           <div className="doors">
-            {allDoors(data).map((door) => {
+            {boardPowers(data).map((door) => {
               const seat = doorOwner(view, door.colour);
               return (
                 <DoorChip
+                  data={data}
                   key={door.colour}
                   door={door}
                   owner={seat === null ? null : seatName(suits[seat], seat, view.seat)}
                   size="rail"
-                  showMeeple
+                  showMeeple={false}
                 />
               );
             })}

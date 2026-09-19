@@ -11,6 +11,13 @@
  * Every applied move resets the interaction. That is not tidiness - a task can
  * appear mid-effect and change what a click means, so carrying an intent across
  * a move would let a stale selection point at a target that no longer exists.
+ *
+ * ⭐ THREE ASSEMBLIES SHARE ONE SHAPE (18/09/2026): build, visit and, since
+ * 2.5.1, deliver. Each has a draft type in `view/intent.ts`, a `setXDraft`/
+ * `setXFee` setter here that opens or re-points it, and a panel that reads the
+ * draft back and narrows it one click at a time. `hold` is where a HAND card's
+ * click is routed to whichever of these (if any) is open; `tile`/`host` are
+ * where a BOARD component's click is.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -23,9 +30,10 @@ import {
   clickBuilding,
   clickCardPower,
   clickDeck,
+  clickHandCard,
   clickHost,
   clickMeeple,
-  clickTile,
+  deliverStart,
   emptyBuildDraft,
   focused,
   liveTargets,
@@ -35,7 +43,7 @@ import {
   visitComplete,
   withPayment,
 } from '../view/intent';
-import type { BuildDraft, Intent, Live } from '../view/intent';
+import type { BuildDraft, DeliverDraft, Intent, Live } from '../view/intent';
 
 export interface Play {
   /** True when the decision is yours. Every click handler is inert otherwise. */
@@ -66,16 +74,34 @@ export interface Play {
   hold(card: CardId): void;
   startBuild(card: CardId): void;
   setDraft(draft: BuildDraft): void;
-  /** Open or re-point the visit assembly. `fee` null clears the card chosen. */
-  setVisitFee(host: Seat, fee: CardId | null): void;
+  /**
+   * Open or re-point the visit assembly. `fee` null clears the card chosen.
+   * `board` names one of the host's Notice Boards (2.2.1) - only ever present
+   * for a two-player host holding two; every other seat needs none.
+   */
+  setVisitFee(host: Seat, fee: CardId | null, board?: CardId): void;
+  /**
+   * Open, re-point or narrow the deliver assembly (2.5.1, 2.5.2).
+   *
+   * ⚠️ OPTIONAL ONLY SO AN OLDER HAND-WRITTEN `Play` FIXTURE STILL TYPECHECKS
+   * (`components/play.test.tsx`'s `staticPlay`, owned by the test-rewrite
+   * pass). `usePlay` below always provides it; `DeliverPanel` is the one
+   * caller and is written as if it always exists.
+   */
+  setDeliverDraft?(draft: DeliverDraft): void;
 
   building(card: CardId): void;
   /** The badge on a built card: the standing move that card is offering. */
   cardPower(card: CardId): void;
-  /** A farm's Notice Board as a visit target. ⚠️ `seat` may be your own. */
-  host(seat: Seat): void;
+  /**
+   * A farm's Notice Board as a visit target. ⚠️ `seat` may be your own.
+   * `board` names WHICH board (2.2.1); pass it when the rail is offering one
+   * of a two-player host's two, and leave it out for every other seat.
+   */
+  host(seat: Seat, board?: CardId): void;
+  /** An island tile: starts (or continues) a delivery. */
   tile(id: string): void;
-  /** Spend one meeple of this colour from your own supply. */
+  /** Spend one Worker of this colour from your own supply. */
   meeple(colour: Suit): void;
   deck(suit: Suit): void;
 }
@@ -214,7 +240,11 @@ export function usePlay(host: PlayHost): Play {
          * Backing out is `cancel`, which is on the panel and on Escape. That is
          * the same exit every other assembly has.
          */
-        const done = visitComplete(moves, { host: effective.host, fee: card });
+        const done = visitComplete(moves, {
+          host: effective.host,
+          fee: card,
+          ...(effective.board !== undefined ? { board: effective.board } : {}),
+        });
         if (done) send(done);
         else setIntent({ ...effective, fee: card });
         return;
@@ -228,6 +258,19 @@ export function usePlay(host: PlayHost): Play {
         const answer = subsetAnswer(moves, subsetKind, next);
         if (answer && subsetAdditions(moves, subsetKind, next).size === 0) send(answer);
         else setPicked(next);
+        return;
+      }
+      /*
+       * ⭐ `handToBarn` (2.2.2, the Wheat and Vegetable boards' follow-up):
+       * the task names a hand card and nothing else, so picking it up IS the
+       * whole answer - unlike a build task, which `armBuildTask` pre-arms
+       * onto the same surface, this one never opens a panel at all. Checked
+       * before the generic "pick it up" fallback below, which would otherwise
+       * just leave the card floating with nowhere the prompt lets it go.
+       */
+      const barnAnswer = clickHandCard(moves, card);
+      if (barnAnswer.length > 0) {
+        resolve(barnAnswer, 'Into your barn');
         return;
       }
       setIntent(effective.k === 'hold' && effective.card === card ? IDLE : { k: 'hold', card });
@@ -246,7 +289,9 @@ export function usePlay(host: PlayHost): Play {
             ? effective.fee === null
               ? []
               : [effective.fee]
-            : picked,
+            : effective.k === 'deliver'
+              ? [] // barn cards, never hand cards - see `DeliverDraft.spend` (2.5.1)
+              : picked,
       subsetKind,
       live: liveTargets(view, moves, effective),
 
@@ -267,7 +312,9 @@ export function usePlay(host: PlayHost): Play {
         startBuild(card);
       },
       setDraft: (draft) => setIntent({ k: 'build', draft }),
-      setVisitFee: (host, fee) => setIntent({ k: 'visit', host, fee }),
+      setVisitFee: (host, fee, board) =>
+        setIntent({ k: 'visit', host, fee, ...(board !== undefined ? { board } : {}) }),
+      setDeliverDraft: (draft) => setIntent({ k: 'deliver', draft }),
 
       building: (card) => {
         if (inert) return;
@@ -281,14 +328,25 @@ export function usePlay(host: PlayHost): Play {
         // card you are willing to spend.
         resolve(clickCardPower(moves, card), 'Which card do you spend?');
       },
-      host: (seat) => {
+      host: (seat, board) => {
         if (inert) return;
-        const next = clickHost(view, moves, effective, seat);
+        const next = clickHost(view, moves, effective, seat, board);
         if (next) setIntent(next);
       },
       tile: (id) => {
         if (inert) return;
-        resolve(clickTile(moves, effective, id), 'Which crops?');
+        // ⭐ 2.5.1: a tile no longer resolves through the generic menu.
+        // `deliverStart` sends the one legal delivery straight away, or opens
+        // the assembly - `DeliverPanel` (`components/BuildPanel.tsx`) and
+        // `setDeliverDraft` take it from there. Mid-assembly, further tile
+        // clicks are no-ops: the token/spend buttons and cancel own the rest
+        // of the decision, exactly as a second click on an armed visit host
+        // does nothing once the panel is open.
+        if (effective.k === 'deliver') return;
+        const started = deliverStart(moves, id);
+        if (started === null) return;
+        if ('move' in started) send(started.move);
+        else setIntent({ k: 'deliver', draft: started.draft });
       },
       meeple: (colour) => {
         if (inert) return;

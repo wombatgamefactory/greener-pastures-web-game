@@ -188,6 +188,13 @@ export function App() {
     snapshot.over || snapshot.yours || snapshot.actor === null
       ? null
       : `${seatName(suits[snapshot.actor], snapshot.actor, YOU)} is thinking.`;
+  // ⭐ Dean's ruling, 15/09/2026: the first player is now random, keeping the
+  // Setup aid (`rules.setup.firstPlayer: 'random'`), so a seat can no longer
+  // assume seat 0 opened. `PlayerView.firstPlayer` is absent only when it
+  // genuinely is seat 0 (`packages/engine/src/view.ts`), so the fallback below
+  // is a real reading of the state, not a guess.
+  const firstPlayerSeat = snapshot.view.firstPlayer ?? 0;
+  const firstPlayerName = seatName(suits[firstPlayerSeat], firstPlayerSeat, YOU);
 
   return (
     <>
@@ -227,6 +234,12 @@ export function App() {
            clicking the button on a finished game. */
         corner={
           <>
+            {/* ⭐ Dean's ruling, 15/09/2026: the first player is random, so it
+                is worth saying who it was rather than leaving it to be read off
+                the seating order. Plain text in the rail's foot, alongside the
+                other small controls - no styling of its own, so it reads as an
+                ordinary line rather than a badge that needs `table.css` work. */}
+            <span>First to play: {firstPlayerName}</span>
             <CapturePanel
               take={(request) => takeCapture(session, play, request, new Date().toISOString())}
             />

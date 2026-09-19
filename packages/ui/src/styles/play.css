@@ -280,33 +280,17 @@ body.is-dragging .zoom {
 }
 
 /*
- * ⭐ THE TWO VISITS, TOLD APART BY THE PANEL ITSELF.
- *
- * `visit` and `visit-self` are one engine move with a different host, and they
- * are opposite acts - a card on a neighbour's board is the game's hook, a card
- * on your own is solitaire that clogs your own door. The v31 plan's risk 2 is
- * that the second quietly wins, so the interface's job is to make certain nobody
- * takes one thinking it is the other. Four things differ, and this is one of
- * them: a green left edge on the hook, the amber warning edge on the solo
- * version, matching the badge on the Notice Board itself.
+ * ⭐ THE VISIT ASSEMBLY'S EDGE. Self-visiting is banned under the shipped
+ * rules (`selfVisitAllowed: false`, ruled 11/09/2026) - every visit is the
+ * hook, onto a named rival's board, so there is only one edge treatment left
+ * to draw. `.assembly-self` and `.assembly-warn` (the old "your own door"
+ * warning colour) are DELETED, 18/09/2026 (2.7.2/7): `VisitPanel.tsx` was
+ * rewritten the same day with no self-visit branch, so nothing sets those
+ * classes any more.
  */
 .assembly-hook {
   border-left: 4px solid #3f7a3a;
   padding-left: 8px;
-}
-
-.assembly-self {
-  border-left: 4px solid #b07a1c;
-  padding-left: 8px;
-}
-
-.assembly-warn {
-  color: #6b4a0c;
-}
-
-.assembly-self .chip:hover {
-  background: #f6e6b4;
-  border-color: #b07a1c;
 }
 
 .assembly-hook .chip:hover {
@@ -383,21 +367,12 @@ body.is-dragging .zoom {
    part-assembled state to caption once the fee is a single card. */
 
 /*
- * THE BONUS SLOT'S TWO VISIT BUTTONS, second of the four differences.
- *
- * The hook keeps the aid's `visit` painting and the seat's green; the solo one
- * has no painting at all (there is no player-aid vignette for feeding your own
- * board, and inventing one would put a drawing on the table that is not in the
- * box) and wears the amber. Neither is disabled, neither is hidden: the point is
- * that both are offered and only one of them is the game's hook.
+ * THE BONUS SLOT'S ONE VISIT BUTTON. Self-visiting is banned (19/09/2026) - see
+ * `ActionBar.tsx` - so there is only ever the hook, and it keeps the aid's
+ * `visit` painting and the seat's green.
  */
 .action-hook:not(:disabled) {
   border-color: #3f7a3a;
-}
-
-.action-solo:not(:disabled) {
-  border-color: #b07a1c;
-  background: color-mix(in srgb, #f6e6b4 40%, var(--paper));
 }
 
 /* ---- the turn bar -------------------------------------------------------- */
@@ -408,7 +383,7 @@ body.is-dragging .zoom {
  *
  * The bar used to be a filled, ruled, rounded, shadowed panel holding fourteen
  * identical buttons in one flat row. Both halves of that are fixed here. The
- * costume goes, for the same reason the commons and the rail lost theirs in
+ * costume goes, for the same reason the shared table and the rail lost theirs in
  * phase 2 - it was a box of equal weight to the hero, at the bottom of a screen
  * that is meant to have one entry point - and the row becomes three labelled
  * zones, because the turn is one action plus one bonus slot plus the door out,
@@ -448,7 +423,7 @@ body.is-dragging .zoom {
  *
  * The plan's sketch drew the label over its buttons and that is the nicer shape,
  * but the bar has no height to spend on a second line. `.main-column` gives the
- * farm whatever the commons and the bar do not want, `.farm` is capped at it,
+ * farm whatever the shared table and the bar do not want, `.farm` is capped at it,
  * and at 1366 the tableau holds exactly two rows of buildings with about six
  * pixels to spare - so a 13px caption row is three quarters of the entire
  * budget, and adding one to BOTH shapes of the bar took the laptop step from

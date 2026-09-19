@@ -366,7 +366,7 @@
 /* ---- the main column ---------------------------------------------------- */
 
 /*
- * Commons, the turn zone, then the farm. The farm is the only row that flexes,
+ * The shared table, the turn zone, then the farm. The farm is the only row that flexes,
  * so the prompt and the action bar can never push the hand below the fold -
  * they take their own height and the tableau gives it up (it scrolls).
  *
@@ -376,7 +376,7 @@
  * capacity constraint (14 buildings, 0 sliced, at every viewport), and a new
  * row inside it is exactly the change that took capacity from 14 to 7 when
  * phase 3 tried putting zone captions on their own line. Re-ordering this
- * column costs the farm nothing: it still gets whatever the commons and the
+ * column costs the farm nothing: it still gets whatever the shared table and the
  * turn zone do not want, which is the same arithmetic in a different order.
  *
  * `.farm` PINS ITSELF TO THE LAST TRACK rather than trusting auto-flow, because
@@ -387,18 +387,18 @@
  * slices a row of buildings in half.
  *
  * PHASE 2 DID NOT CHANGE THESE TRACKS, and that is worth saying because it is
- * the obvious way to have done it and it is wrong. The commons is the `auto`
+ * the obvious way to have done it and it is wrong. The shared table is the `auto`
  * row; the farm is `minmax(0, 1fr)` but hugs its content, so the slack Phase 1
- * freed sits in the farm's row as bare table. Making the commons the flexing
+ * freed sits in the farm's row as bare table. Making the shared table the flexing
  * row instead would hand it that height - and would also let it take height the
  * farm still needed, because an `auto` farm row in a fixed-height column can
  * overflow rather than squeeze, and the way this layout fails when the farm is
  * squeezed is the tableau slicing a row of buildings in half.
  *
- * So the commons takes the slack by GROWING ITS CONTENT - a bigger island, sized
+ * So the shared table takes the slack by GROWING ITS CONTENT - a bigger island, sized
  * in `base.css` - and the 1fr farm row absorbs the difference. The safety
  * property is unchanged and it is the browser's rather than ours: whatever the
- * commons asks for, the farm's row is what is left, `.farm` is capped at it, and
+ * shared table asks for, the farm's row is what is left, `.farm` is capped at it, and
  * the tableau scrolls. The tuning limit is therefore measured, not asserted -
  * `tableauCapacity` must stay at 14 and `slicedBuildings` at 0 in
  * `tools/measure-ui.mjs`, which is what decided how far the island could go.
@@ -454,7 +454,7 @@
 }
 
 /*
- * TIER 2, THE COMMONS. Chromeless (phase 2).
+ * TIER 2, THE SHARED TABLE. Chromeless (phase 2).
  *
  * `.panel` used to be the whole costume - fill, rule, radius, shadow - and four
  * regions wore it: the decks, the island, your Service and the Aerodrome. None
@@ -513,16 +513,16 @@
   letter-spacing: 0;
 }
 
-/* ---- commons ------------------------------------------------------------ */
+/* ---- the shared table ---------------------------------------------------- */
 
-.commons {
+.shared-table {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) minmax(160px, auto);
   gap: var(--gap);
   min-width: 0;
 }
 
-.commons-right {
+.shared-table-right {
   display: grid;
   grid-template-rows: auto auto;
   gap: var(--gap);
@@ -575,11 +575,11 @@
    * ⚠️ THE COLUMN HAS TO BE NAMED, or the rows are free to overflow the panel.
    *
    * With no `grid-template-columns` the implicit column is `auto`, which sizes
-   * to MAX-CONTENT - so at any size where the pyramid is wider than the commons
+   * to MAX-CONTENT - so at any size where the pyramid is wider than the shared table
    * column allows, the grid area is wider than `.island` itself and a row's
    * `max-width: 100%` resolves against the area rather than against the box a
-   * reader can see. The rows then paint straight over the Hiring Fair and the
-   * Aerodrome in the column to their right. `minmax(0, 1fr)` pins the area to
+   * reader can see. The rows then paint straight over the Notice Board powers legend
+   * in the column to their right. `minmax(0, 1fr)` pins the area to
    * the container, which is what makes the cap on `.island-row` bind.
    *
    * No effect at any shipped step: `justify-items: center` centres each row in
@@ -594,11 +594,11 @@
 
 /*
  * `max-width` is the one line that stops a too-wide island painting over the
- * Hiring Fair, and it was put here by the UI scale slider (phase 5).
+ * Notice Board powers legend, and it was put here by the UI scale slider (phase 5).
  *
  * `.island` is `justify-items: center`, so a row is sized to its CONTENT and is
- * free to overflow the grid column it sits in - and the commons' third column
- * (your Service, the Aerodrome) is what it overflows onto. Capping the row at
+ * free to overflow the grid column it sits in - and the shared table's third column
+ * (the Notice Board powers legend) is what it overflows onto. Capping the row at
  * its container's width hands the shortfall to the flex items, which are tiles
  * with an `aspect-ratio` and therefore shrink cleanly in both directions.
  *
@@ -643,7 +643,7 @@
 }
 
 /* The panel caption, doubling as the enlarge control. Plain by design - it has
-   to read as the caption it replaced, not as a button parked in the commons. */
+   to read as the caption it replaced, not as a button parked in the shared table. */
 .island-expand {
   background: none;
   border: 0;
@@ -671,9 +671,9 @@
  * panel and straight across the AERODROME caption, which is exactly the failure
  * the row's cap was written to prevent.
  *
- * It bites now because the commons' third column got taller and busier: it used
+ * It bites now because the shared table's third column got taller and busier: it used
  * to hold one Service chip and now holds the five-door legend that is also the
- * meeple key, so what the island was painting over is a panel a player has to
+ * Worker key, so what the island was painting over is a panel a player has to
  * read. Same fix as the row's, one level down, plus the `min-width: 0` that
  * makes a flex item actually honour it.
  */
@@ -710,91 +710,21 @@
   filter: saturate(0.45) brightness(0.94);
 }
 
-.island-demands {
-  position: absolute;
-  inset: 4% 0 auto;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 2px;
-}
-
-.island-crate {
-  position: relative;
-  display: grid;
-  place-items: center;
-}
-
-/* Carries `data-text` in Island.tsx - the outline needs both halves, see the
-   `[data-text]::after` block in base.css. */
 /*
- * The crate quantity, and the two numerals below it, now SCALE WITH THE TILE.
- *
- * Phase 2 gives the island Phase 1's leftover height, and a bigger map with the
- * same 9px and 10px numerals stamped on it would have been a worse picture, not
- * a better one - more paint, the same unreadable text, and the text is the part
- * that carries the rule. The `max()` is the floor's protection: at 1024 the
- * island is width-bound and its tile barely moves, so the fraction would have
- * made these smaller than they already are. They may grow; they may not shrink.
+ * ⭐ THE TOKEN ISLAND (16/09/2026): one row of up to two tokens, centred over
+ * the tile art. Moved here from the inline style `Island.tsx` used to carry
+ * (2.4.1/10, 18/09/2026 - `Island.tsx` now just sets the class) - replaces the
+ * three v31-era absolutely-positioned rows this class list used to hold
+ * (`.island-demands`, `.island-crate`, `.demand`, `.island-receipts`,
+ * `.island-meeples`, all DELETED: nothing in `packages/ui/src` still
+ * references any of them).
  */
-.island-crate b {
+.island-tokens {
   position: absolute;
-  bottom: -3px;
-  right: -2px;
-  font-family: var(--font-display);
-  font-size: max(10px, calc(var(--island-tile) * 0.145));
-  color: #fff;
-  -webkit-text-stroke: 2px #2f2318;
-  paint-order: stroke fill;
-}
-
-.demand {
-  position: relative;
-  display: block;
-}
-
-.demand img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-.island-receipts {
-  position: absolute;
-  inset: auto 0 4%;
+  inset: 8% 4% auto;
   display: flex;
   justify-content: center;
-  gap: 3px;
-}
-
-/*
- * ⭐ THE MEEPLES ON THE DELIVERY SPACES (v31), one per space, face up from
- * setup.
- *
- * They sit ABOVE the receipt discs rather than beside them, and the pairing is
- * positional: meeple i is on delivery space i, and the disc under it says what
- * that space pays and who has taken it. Two rows of the same count, aligned by
- * the same gap, so the reading is "this space: 6 VP and an orange meeple".
- *
- * A CLAIMED SPACE LEAVES A GAP of exactly the pawn's footprint - not a faded
- * pawn - because on the real board the meeple has physically gone into
- * somebody's supply. `.island-meeple-gone` is that reserved space, so the
- * surviving pawns stay lined up with their own discs instead of sliding along.
- */
-.island-meeples {
-  position: absolute;
-  inset: auto 0 calc(4% + max(16px, var(--island-tile) * 0.23));
-  display: flex;
-  justify-content: center;
-  align-items: flex-end;
-  gap: 3px;
-  pointer-events: none;
-}
-
-.island-meeples .meeple {
-  filter: drop-shadow(0 1px 1px rgb(47 35 24 / 45%));
+  gap: 4px;
 }
 
 .island-meeple-gone {
@@ -855,7 +785,7 @@
  *
  * Phase 2's whole bet is that a screen needs ONE place the eye lands first, and
  * that the cheapest way to build one is not to enlarge the winner but to demote
- * everybody else. The commons and the rail are chromeless now, so the four
+ * everybody else. The shared table and the rail are chromeless now, so the four
  * things below are no longer "the same treatment as everything, slightly more":
  * they are the only fill, the only shadow, the only radius and the only heavy
  * edge on the screen.
@@ -905,7 +835,7 @@
   /*
    * THE PANEL HUGS ITS CONTENT, AND IS CAPPED AT THE ROW IT IS GIVEN.
    *
-   * `.main-column` hands the farm every pixel the commons and the turn bar do
+   * `.main-column` hands the farm every pixel the shared table and the turn bar do
    * not want, and until 26/08 the farm spent all of it: the tableau was the
    * flexing row, so whatever the buildings did not fill became a void across
    * the full width of the panel, between the bottom row of cards and the hand.
@@ -1218,7 +1148,7 @@
 }
 
 /* The top of the type hierarchy, and the only heading on the table set in the
-   display face at size. Everything it used to share 15px with - the commons
+   display face at size. Everything it used to share 15px with - the shared table
    captions - has gone down to 10px in the UI face, so this is doing the work of
    the gap rather than shouting into a crowd. See `--farm-title` in base.css. */
 .farm-head h2 {
@@ -1470,36 +1400,6 @@
  * Helping Hand still offers its repeat. So the badge steps down below it rather
  * than landing on top of it, which is one line here and no branch in the tree.
  */
-/*
- * ⭐ THE SELF-VISIT BADGE (v31), on your own Notice Board and nowhere else.
- *
- * It is deliberately NOT the green of a live target or of the power badge. A
- * card on your OWN board is solitaire that also clogs your own door, and the
- * green in this interface has meant "a move you want" since phase 3 - so this
- * one wears the amber the over-full and coin-taxed things wear, and reads as an
- * option with a price rather than as an opportunity. The rail's neighbour
- * panels, which are the other half of the same move, keep the green.
- */
-.building-selfdoor {
-  position: absolute;
-  left: 4px;
-  bottom: 4px;
-  z-index: 3;
-  font-family: var(--font-display);
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 1px 6px;
-  border-radius: 999px;
-  border: 1px solid #b07a1c;
-  background: #f6e6b4;
-  color: #6b4a0c;
-}
-
-.building-selfdoor:hover {
-  background: #f0d78a;
-}
-
 .building-power {
   position: absolute;
   top: 3px;
@@ -1518,37 +1418,30 @@
   box-shadow: 0 1px 3px rgb(58 42 24 / 34%);
 }
 
-.building-full /*
- * ⭐ THE SELF-VISIT BADGE (v31), on your own Notice Board and nowhere else.
- *
- * It is deliberately NOT the green of a live target or of the power badge. A
- * card on your OWN board is solitaire that also clogs your own door, and the
- * green in this interface has meant "a move you want" since phase 3 - so this
- * one wears the amber the over-full and coin-taxed things wear, and reads as an
- * option with a price rather than as an opportunity. The rail's neighbour
- * panels, which are the other half of the same move, keep the green.
+/*
+ * ⭐ THE SPARE-BOARD BADGE (S8, 13/09/2026, added 18/09/2026 for 2.4.1/10).
+ * Top-left, clear of the power badge (top-right), on the second Notice Board a
+ * two-player farm lays out - the one drawn at random from an unfarmed suit,
+ * whose fees are the owner's to harvest but whose printed power never is.
  */
-.building-selfdoor {
+.building-spareboard {
   position: absolute;
-  left: 4px;
-  bottom: 4px;
-  z-index: 3;
-  font-family: var(--font-display);
+  top: 3px;
+  left: 3px;
+  z-index: 2;
   font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  padding: 1px 6px;
-  border-radius: 999px;
-  border: 1px solid #b07a1c;
-  background: #f6e6b4;
-  color: #6b4a0c;
+  background: var(--seat-ink, #3f7a3a);
+  color: #fff;
+  padding: 2px 5px;
+  border-radius: 3px;
 }
 
-.building-selfdoor:hover {
-  background: #f0d78a;
-}
-
-.building-power {
+/* ⚠️ THE CLOG FLAG IS IN THE SAME CORNER as the power badge, and both can be
+   true at once - a full Helping Hand still offers its repeat. So the badge
+   steps down below it rather than landing on top of it. */
+.building-full .building-power {
   top: 19px;
 }
 
@@ -1942,7 +1835,7 @@
   gap: 4px;
   justify-content: space-between;
   /* Without this the chip cannot be narrower than its longest word, and the
-     legend is a fixed grid column in the commons - a long farm name there does
+     legend is a fixed grid column in the shared table - a long farm name there does
      not wrap, it shoulders the panel out over the island beside it. */
   min-width: 0;
 }
@@ -2267,7 +2160,7 @@
  * TABLE-WIDE NOTICES: the end trigger, and the supply lock.
  *
  * ⚠️ THEY USED TO BE `position: fixed` AT THE TOP CENTRE, which is precisely
- * where the commons draws its DECKS and THE ISLAND captions - so the end-game
+ * where the shared table draws its DECKS and THE ISLAND captions - so the end-game
  * banner printed straight across them, in every screenshot this project has
  * ever taken. Phase 2 made it worse rather than better: those captions lost the
  * panels behind them, so what had been a banner over a box became text on text.
@@ -2325,7 +2218,7 @@
  *
  * These two keyframed animations are declared further up (`overlay-in` on
  * `.overlay` in the zoom-and-inspector block, `count-moved` on the farm head's
- * coin and VP chips). A media query carries no extra specificity, so a guard
+ * Worker and VP chips). A media query carries no extra specificity, so a guard
  * written ABOVE the rule it is guarding simply loses the cascade to it - which
  * is exactly what the first cut of this did, and what a browser check caught.
  * At the bottom of the file it cannot lose.

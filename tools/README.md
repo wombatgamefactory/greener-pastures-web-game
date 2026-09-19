@@ -101,6 +101,14 @@ It parses report TEXT, so a reworded line can drop a reading: anything it could 
 printed as a parse warning, both on the console and in the page footer. Output is never
 overwritten; a rebuild of the same run gets `-v2`, `-v3`.
 
+To send one as a PDF (A4 landscape, light theme, page numbers), print the built page:
+
+```
+node tools/sim-dashboard-pdf.mjs reports/<dashboard>.html reports/<name>.pdf
+```
+
+It refuses to overwrite an existing PDF, so pass a new versioned name.
+
 ## Tuning overlays
 
 Not a tool, but this is where the extract's numbers get varied.

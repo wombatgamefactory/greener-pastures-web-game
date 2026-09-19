@@ -208,7 +208,7 @@ export function fireNoticeBoardPower(
         t: 'chooseBuilding',
         pid: actor,
         src,
-        filter: 'loaded',
+        filter: numbers.wheatHarvestGate,
         then: 'harvest',
       });
       fx.pushTask({ t: 'handToBarn', pid: actor, src, remaining: numbers.wheatBarn });
@@ -372,7 +372,13 @@ export function performDoorAction(fx: Fx, actor: Seat, colour: Suit, via: DoorVi
       // The fix, if the Apiary board takes no traffic, is `from: 'deck'` in the
       // data - not a cheaper door - and this branch already handles it.
       if (door.sow?.from === 'deck') {
-        fx.pushTask({ t: 'sowFromDeck', pid: actor, src: null, remaining: door.sow.amount });
+        fx.pushTask({
+          t: 'sowFromDeck',
+          pid: actor,
+          src: null,
+          remaining: door.sow.amount,
+          optional: true,
+        });
       } else {
         fx.pushTask({ t: 'sow', pid: actor, src: null, remaining: door.sow?.amount ?? 1 });
       }

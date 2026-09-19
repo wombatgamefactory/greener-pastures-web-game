@@ -355,6 +355,17 @@ describe('the shipped game', () => {
     expect(doorActionForSuit(BASE_GAME_DATA, 'apiary')).toBe('sow');
   });
 
+  // ⭐ 19/09/2026: the roster's PRINTED SENTENCE must describe what an Apiary
+  // Worker actually buys (a GROW, since M7/M8, computed by
+  // `meepleActionOf` in packages/engine/src/workers.ts), even though `action`
+  // stays `sow` for the reasons workers.json's dated note gives - the two are
+  // allowed to differ, but the text a player reads must not lie.
+  it("prints the Apiary door's actionText as a Grow, not a Sow", () => {
+    const apiary = doorForSuit(BASE_GAME_DATA, 'apiary');
+    expect(apiary?.actionText.toLowerCase()).toContain('grow');
+    expect(apiary?.actionText.toLowerCase()).not.toContain('sow');
+  });
+
   // ⛔ AND THE OLD NAMES MUST FAIL LOUDLY. A rename is the one registry edit
   // that can break a saved overlay, which is the point of preferring it to a
   // copy: an overlay still naming `farmsteadPower` would otherwise set a number
@@ -439,7 +450,12 @@ describe('the notice board visit', () => {
   // ⭐ 16/09/2026 (R9, R10): `vegetableWildCards` is new and `dairyDiscount`
   // replaces `dairyGrowsBuilt`, so the count moved from seven to eight
   // DELIBERATELY, and the test failing first is the mechanism working.
-  it('carries the eight Notice Board power leaves, and offers all eight as knobs', () => {
+  //
+  // ⭐ 19/09/2026: `wheatHarvestGate` is new, for Dean's Wheat board retext
+  // ("Harvest a building that is full, or 1 card from full"). It SHIPS AT
+  // 'loaded', the pre-existing behaviour ledger C97 flagged, so adding it
+  // moves no measured number - eight to nine, deliberately.
+  it('carries the nine Notice Board power leaves, and offers all nine as knobs', () => {
     expect(BASE_GAME_DATA.rules.economy.noticeBoardPower).toEqual({
       orchardDraw: 4,
       apiarySows: 2,
@@ -447,10 +463,11 @@ describe('the notice board visit', () => {
       vegetableFallback: 2,
       vegetableWildCards: 2,
       dairyWild: true,
-      dairyDiscount: 2,
+      dairyDiscount: 1,
       wheatBarn: 1,
+      wheatHarvestGate: 'loaded',
     });
-    expect(dairyDiscount(BASE_GAME_DATA)).toBe(2);
+    expect(dairyDiscount(BASE_GAME_DATA)).toBe(1);
     expect(vegetableWildCards(BASE_GAME_DATA)).toBe(2);
 
     const knobs = listKnobs(BASE_GAME_DATA).map((k) => k.path);
@@ -463,6 +480,7 @@ describe('the notice board visit', () => {
       'dairyWild',
       'dairyDiscount',
       'wheatBarn',
+      'wheatHarvestGate',
     ]) {
       expect(knobs, key).toContain(`rules.economy.noticeBoardPower.${key}`);
     }

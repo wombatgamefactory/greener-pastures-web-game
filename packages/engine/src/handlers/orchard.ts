@@ -253,18 +253,24 @@ export const orchardNoticeBoard: CardHandler = {
   },
 };
 
-/** O4 The Apple Grove - "Draw 2." (Named The Apple Orchard until v36.) */
+/**
+ * O4 The Apple Grove - "Draw 3." (RETEXTED v44, 18/09/2026, from "Draw 2.";
+ * named The Apple Orchard until v36.)
+ */
 export const appleOrchard: CardHandler = {
   difficulty: {
     score: 1,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'The naked skeleton at half price: every other Tier 1 GROVE is this plus one conversion. ' +
-      'At cost 1 with the Barn refunding 2 it is the only card-POSITIVE build in the suit.',
+      'The naked skeleton, and no longer priced as half of O5-O8 (each Draw 2 plus a further ' +
+      'conversion, at cost 2): O4 stays at cost 1 but now draws 3, one more than the four it ' +
+      "used to undercut. At cost 1 with the Barn refunding 2 it stays the suit's only " +
+      'card-positive build, more so than before; unpriced against the other four, which this ' +
+      'v44 change leaves untouched.',
   },
   activate(fx, self) {
-    drawN(fx, self.seat, self.card, 2);
+    drawN(fx, self.seat, self.card, 3);
   },
 };
 

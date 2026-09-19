@@ -14,10 +14,11 @@
  *
  * ⛔ THE COIN COLUMN IS GONE (v31), and with it the "leftover coins score
  * nothing" note that replaced it on 2026-08-03. There is no currency, so there
- * is nothing to reassure anybody about. What took its place is the FARMSTEAD:
- * its "1 VP for each CROP card you have built" is an ordinary `gameEnd`
- * handler, so it arrives in the end-game section like any other card and every
- * seat now has at least one line there.
+ * is nothing to reassure anybody about. What took its place is the own-crop
+ * scorer - printed on the Barn since 10/09/2026 (it was the Farmstead before
+ * that; ledger A105): "1 VP for each CROP card you have built" is an ordinary
+ * `gameEnd` handler, so it arrives in the end-game section like any other
+ * card and every seat now has at least one line there.
  *
  * Nothing here knows a rule constant. The island's VP by arrival order, the
  * delivery count that ends the game and the number of further turns are all read
@@ -64,8 +65,13 @@ export function Result({
             {verdictLine(verdict)}
           </h2>
           <p className="result-trigger">
+            {/* ⭐ 15/09/2026: DEAN RULED THE ROUND IS FINISHED, not "everyone else
+                gets N more turns" as a fact about their own clock - the engine
+                still grants exactly that (`furtherTurnsEach`), so the number is
+                unchanged, but the sentence now says what the table rule IS
+                rather than reporting it as bookkeeping. */}
             {verdict.trigger
-              ? `${verdict.trigger.name} completed a ${trigger.deliveriesToTrigger}th island delivery, which ended the game. Everyone else took ${verdict.furtherTurns === 1 ? 'one more turn' : `${verdict.furtherTurns} more turns`}.`
+              ? `${verdict.trigger.name} completed a ${trigger.deliveriesToTrigger}th island delivery, which ends the game. The round finishes: every other player gets ${verdict.furtherTurns === 1 ? 'one more turn' : `${verdict.furtherTurns} more turns`} to close it out.`
               : 'The game ended before anyone completed their run of deliveries.'}
           </p>
         </header>
@@ -210,12 +216,18 @@ function Detail({ seat, zoom }: { seat: SeatScore; zoom: Zoomer }) {
       </Source>
 
       {/*
-       * ⭐ THE FARMSTEAD LANDS HERE, and that is why this section changed shape
-       * rather than the screen gaining a fourth. All five Farmsteads print
+       * ⭐ THE BARN LANDS HERE, and that is why this section changed shape
+       * rather than the screen gaining a fourth. All five Barns print
        * "Game end: 1 VP for each CROP card you have built", which is five
        * ordinary `gameEnd` handlers - so the loyalty payoff shows its formula
        * and its number on the same list as a bought Endgame card, and the empty
        * state below is now unreachable in a normal game.
+       *
+       * ⭐ 10/09/2026: this used to say "Farmstead" - the scorer moved off it
+       * and onto the Barn (ledger A105). Nothing in this component's own logic
+       * changed: `view/scoring.ts` reads the `gameEnd` handler off whichever
+       * card carries it, so the fix was the data (`cards.json` v44) and this
+       * comment catching up to it, not the code.
        */}
       <Source
         label="End-game cards"

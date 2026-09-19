@@ -1,41 +1,54 @@
 /**
- * A PLAYER'S MEEPLE SUPPLY, and the start-of-turn window it is spent in.
+ * A PLAYER'S WORKER SUPPLY, and the after-action window it is spent in.
+ *
+ * ⛔ THE V31 MEEPLE SUPPLY IS GONE (18/09/2026, 2.7.1): there never was a
+ * shared starting bank in THIS file - that system (a starting supply of
+ * meeples, killed at a table on 09/09/2026, §5 of CLAUDE.md) lived elsewhere
+ * and is not this component's concern. What WAS wrong here, and is fixed by
+ * this pass, is the WINDOW below: it was computed for the meeple loop's
+ * start-of-turn spend, a rule this game no longer has. `meeples` is, and has
+ * always been in this file, the held Worker counts a seat has taken off the
+ * island with its deliveries (16/09/2026's token island, §2.8 of CLAUDE.md) -
+ * exactly what 2.7.1 says to keep.
  *
  * Two shapes of the same object, because two surfaces need it at two sizes:
  *
  *   full   your own, in the farm's header: every colour you hold, clickable,
  *          with the action each one buys written beside it while the window is
- *          open. This is where the meeple phase actually happens.
+ *          open. This is where the Worker spend actually happens.
  *   rail   a neighbour's, compressed to coloured pawns and counts. It answers
  *          the one cross-table question a supply raises - what free actions is
  *          that farm sitting on - which is the same job the coin count used to
  *          do on that panel and does it with more information, because a
- *          meeple's colour says what it buys.
+ *          Worker's colour says what it buys.
  *
- * ⭐ THE WINDOW IS DRAWN, NOT INFERRED. A meeple may only be spent at the very
- * start of your turn - before the bonus option and before the action - and it is
- * removed from the game when spent, so a player who does not notice the window
- * has silently lost a stored action for the rest of the game. The strip
- * therefore says which of FOUR states it is in, in words:
+ * ⭐ THE WINDOW IS DRAWN, NOT INFERRED, AND IT SITS AFTER YOUR MAIN ACTION, ONCE
+ * A TURN (`rules.turn.meepleSpendTiming` 'afterAction', `meepleSpendPerTurn` 1 -
+ * the 14/09/2026 evening ruling, §2.8 of CLAUDE.md; this file previously read
+ * the window as the OLD start-of-turn shape and that was the bug 2.5.3 names).
+ * A Worker is removed from the game when spent, so a player who does not
+ * notice the window has silently lost a stored action for the rest of the
+ * turn. The strip therefore says which of FOUR states it is in, in words:
  *
- *   open    "spend them now" - there is at least one legal `spendMeeple`
- *   shut    you hold meeples and the window has PASSED this turn
- *   stuck   you hold meeples, the window is OPEN, and not one of them has a
- *           legal action right now
+ *   open    "spend one now" - there is at least one legal `spendMeeple`
+ *   shut    you hold Workers and the point has not arrived yet THIS turn (you
+ *           have not taken your main action)
+ *   stuck   you hold Workers, your main action is DONE, and not one of them has
+ *           a legal action right now (which also covers "you already spent
+ *           your one this turn" - both read as "nothing to do now")
  *   empty   you hold none, and the strip says where they come from
  *
  * ⚠️ `stuck` IS SPLIT OUT FROM `shut` BECAUSE THE TWO HAVE DIFFERENT ANSWERS AND
  * THE WRONG ONE IS CHECKABLE. Both look identical from the move list - no
- * `spendMeeple` on offer - and the first draft collapsed them, which put "the
- * window has passed" on screen at a moment when the window was demonstrably
- * still open (the bonus slot beside it was still live). It happens because the
- * engine refuses a meeple whose colour's action could do nothing: no full
- * building to Harvest, no legal Deliver, no room to Sow. A player told the wrong
- * reason will go looking for a rule that does not exist.
+ * `spendMeeple` on offer - and the first draft collapsed them, which put "wait
+ * for your action" on screen at a moment when nothing was left to wait for. It
+ * happens because the engine refuses a Worker whose colour's action could do
+ * nothing: no full building to Harvest, no legal Deliver, no room to Grow. A
+ * player told the wrong reason will go looking for a rule that does not exist.
  *
  * The window itself is read off the TURN rather than off the move list, which is
- * the only place the two facts separate: `meepleOpen` in the engine is
- * `!actionSpent && bonusUsed.length === 0`, and both halves are on the view.
+ * the only place the two facts separate: the point a Worker may be spent is
+ * `actionSpent === true`, and that flag is on the view.
  */
 
 import type { GameData, Suit } from '@gp/data';
@@ -45,19 +58,32 @@ import { mark } from '../session/play';
 import type { Play } from '../session/play';
 import { SUIT_META } from '../view/suits';
 import { doorOf, meepleTally } from '../view/table';
-import { Meeple } from './Meeple';
+import { Meeple, workerActionLabel } from './Meeple';
 
-/** Which of the four states the meeple phase is in, for this seat, right now. */
+/**
+ * The Worker's own plain action, one word plus one printed sentence.
+ *
+ * ⭐ 19/09/2026: NO MORE APIARY SPECIAL CASE. `workers.json`'s Apiary entry is
+ * corrected (its `actionText` now describes a Grow), and the label comes from
+ * `workerActionLabel` (`Meeple.tsx`), which is computed off `meepleActionOf`
+ * rather than the roster's raw `action` - so all five colours now read off data
+ * uniformly, including Apiary, whose door still prints `sow` for reasons
+ * `workers.json`'s dated note explains but whose Worker buys `grow`.
+ */
+function workerAction(data: GameData, colour: Suit): { label: string; text: string } {
+  return { label: workerActionLabel(data)[colour], text: doorOf(data, colour).actionText };
+}
+
+/** Which of the four states the Worker spend is in, for this seat, right now. */
 export type MeeplePhase = 'open' | 'shut' | 'stuck' | 'empty';
 
 /**
- * The engine's `meepleOpen`, read off the view: the very start of your turn,
- * before the bonus option and before the action. Both clauses are the rule and
- * neither is redundant - the second is what stops a meeple being held back and
- * spent after the bonus.
+ * Has the point in the turn where a Worker may be spent arrived? Since
+ * 14/09/2026 (evening) that point is AFTER the main action, not before it - the
+ * opposite of what this returned when the window sat at the start of the turn.
  */
 export function meepleWindowOpen(turn: PlayerView['turn']): boolean {
-  return !turn.actionSpent && turn.bonusUsed.length === 0;
+  return turn.actionSpent;
 }
 
 export function meeplePhaseOf(
@@ -88,8 +114,8 @@ export function MeepleSupply({
   /**
    * This seat's turn state, so a supply with nothing spendable can say WHICH
    * reason it is. Absent on a neighbour's panel and on the read-only path, where
-   * there is no window to be in: it falls back to "the window has passed", which
-   * is the true reading of somebody else's turn.
+   * there is no window to be in: it falls back to "do your action first", which
+   * is a harmless default for a farm that is not mid-turn at all.
    */
   turn?: PlayerView['turn'] | undefined;
 }) {
@@ -99,16 +125,17 @@ export function MeepleSupply({
 
   if (size === 'rail') {
     return (
-      <p className="supply supply-rail" aria-label="meeples held">
+      <p className="supply supply-rail" aria-label="Workers held">
         {held.length === 0 ? (
-          <span className="supply-none">no meeples</span>
+          <span className="supply-none">no Workers</span>
         ) : (
           held.map(([colour, n]) => (
             <span key={colour} className="supply-pawn">
               <Meeple
+                data={data}
                 colour={colour}
                 size={14}
-                title={`${n} ${SUIT_META[colour].label} meeple${n === 1 ? '' : 's'}: ${doorOf(data, colour).actionLabel}`}
+                title={`${n} ${SUIT_META[colour].label} Worker${n === 1 ? '' : 's'}: ${workerAction(data, colour).label}`}
               />
               {n > 1 && <b>{n}</b>}
             </span>
@@ -119,27 +146,27 @@ export function MeepleSupply({
   }
 
   return (
-    <section className={`supply supply-full supply-${phase}`} aria-label="your meeples">
+    <section className={`supply supply-full supply-${phase}`} aria-label="your Workers">
       <h4 className="supply-head">
-        {label ?? 'Meeples'}{' '}
+        {label ?? 'Workers'}{' '}
         <em>
           {phase === 'open'
-            ? 'spend them now, before anything else'
+            ? 'spend one now, before you end your turn'
             : phase === 'stuck'
               ? 'none of them has anything to do right now'
               : phase === 'shut'
-                ? 'your turn has moved on - they keep'
+                ? 'do your action first - you may spend one afterwards'
                 : 'one comes with every island delivery'}
         </em>
       </h4>
       <div className="supply-row">
         {held.length === 0 && (
-          <p className="empty-note">None yet. Deliver to the island and take the meeple with it.</p>
+          <p className="empty-note">None yet. Deliver to the island and take the Worker with it.</p>
         )}
         {held.map(([colour, n]) => {
-          const door = doorOf(data, colour);
+          const action = workerAction(data, colour);
           const live = spendable.has(colour);
-          const title = `${SUIT_META[colour].label} meeple: ${door.actionText} Spending it removes it from the game.`;
+          const title = `${SUIT_META[colour].label} Worker: ${action.text} Spending it removes it from the game.`;
           return (
             <button
               key={colour}
@@ -149,9 +176,9 @@ export function MeepleSupply({
               title={title}
               onClick={live ? () => play?.meeple(colour) : undefined}
             >
-              <Meeple colour={colour} size={26} title="" />
+              <Meeple data={data} colour={colour} size={26} title="" />
               <span className="supply-meeple-body">
-                <span className="supply-verb">{door.actionLabel}</span>
+                <span className="supply-verb">{action.label}</span>
                 <em>
                   {n} held{n > 1 ? ', one at a time' : ''}
                 </em>

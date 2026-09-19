@@ -13,10 +13,12 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { BASE_GAME_DATA as data } from '@gp/data';
 import type { GameEvent } from '@gp/engine';
 
-import { dealTable } from './table';
+// ⛔ THE UI'S OWN DATA, NOT `BASE_GAME_DATA` (19/09/2026, 2.8.2): `dealTable`
+// below deals off this `data`, so narrating the result with a separately
+// imported `BASE_GAME_DATA` could silently disagree with what was dealt.
+import { data, dealTable } from './table';
 import { narrate, narrateAll } from './narrate';
 import { seatSuits } from '../view/table';
 
@@ -62,9 +64,13 @@ describe('narrate', () => {
   });
 
   /**
-   * ⭐ THE LINE THE WHOLE v31 PASS TURNS ON. Same event, one flag, opposite acts.
-   * They must not share a phrase, because the feed is how a player sees whether
-   * the table is playing the hook or playing solitaire.
+   * ⭐ THE LINE THE WHOLE v31 PASS TURNED ON, KEPT AS A REGRESSION CHECK ON A
+   * DEAD BRANCH. Self-visiting is BANNED under the shipped rules (11/09/2026),
+   * so `event.self` is never true under `visitCurrency: 'noticeBoardPower'` -
+   * the branch survives only because the pre-ban `'card'` control still
+   * replays it (`narrate.ts`, 18/09/2026 rewrite). It still must not share a
+   * phrase with the neighbour visit, and only the neighbour one is the alarm:
+   * the hook is the thing worth looking up from your own farm for.
    */
   it('never narrates a self-visit the way it narrates a neighbour visit', () => {
     const self = line({
@@ -83,10 +89,11 @@ describe('narrate', () => {
       colour: 'orchard',
       action: 'draw',
     });
-    expect(self?.text).toContain('OWN door');
+    expect(self?.text).toContain('own Notice Board');
+    expect(self?.text).toContain('self-visiting is banned');
     expect(self?.text).not.toContain('visits');
     expect(other?.text).toContain('visits');
-    expect(other?.text).not.toContain('OWN');
+    expect(other?.text).not.toContain('own Notice Board');
     // And only the cross-table one is set apart: the hook is the thing worth
     // looking up from your own farm for.
     expect(other?.kind).toBe('alarm');

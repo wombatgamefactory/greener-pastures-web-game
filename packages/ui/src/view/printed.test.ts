@@ -18,7 +18,6 @@
 import { describe, expect, it } from 'vitest';
 import { BASE_GAME_DATA as data } from '@gp/data';
 
-import { data as control } from '../session/table';
 import { printedFace } from './printed';
 
 describe('printedFace, against the sheet', () => {
@@ -68,25 +67,16 @@ describe('printedFace, against the sheet', () => {
     const face = printedFace(data, 'W3');
     expect(face.activation).toBe('wild');
     expect(face.convert).toBe('convert');
-    // The v31 sheet prints 2, and the second assertion is that the game this
-    // package actually RENDERS agrees with the print.
-    //
-    // ⚠️ IT READS THE PIN AND NOT THE BASE VALUE SINCE 10/09/2026, which is
-    // a real change of claim. The base `rules.economy.noticeBoardThreshold`
-    // moved from 2 to 3 with the notice-board visit (S8's `3+`), so the two
-    // stopped agreeing; the UI is pinned to the v31 control and pins that leaf
-    // back to 2 by name, which is the number on screen and therefore the
-    // number this print-versus-render file is about. Comparing against
-    // BASE_GAME_DATA would now assert that the shipped ARM matches a v31 card
-    // face, which is a claim nobody wants to be true.
-    //
-    // ⚠️ SHEET v42 (16/09/2026) PRINTS `3+`, extracted as 3, so the printed
-    // face now matches the base rule and NOT the v31 control the UI is pinned
-    // to (2). That divergence is the UI hybrid (C129), stated here so it
-    // cannot be discovered by accident.
+    // Sheet v44 prints `3+` (S8: a harvest minimum, never a maximum - a Notice
+    // Board never clogs), extracted as 3, and the base rule agrees:
+    // `rules.economy.noticeBoardThreshold` moved from the v31-era 2 to 3 with
+    // the notice-board visit. The UI's own pin came down 18/09/2026 (2.1.1),
+    // so there is no longer a separate "what the browser renders" leaf to
+    // check this against - `session/table.ts`'s `data` IS `BASE_GAME_DATA`
+    // plus the hand-limit override, and this asserts the print and the base
+    // rule agree, full stop.
     expect(face.threshold).toBe(3);
     expect(face.threshold).toBe(data.rules.economy.noticeBoardThreshold);
-    expect(control.rules.economy.noticeBoardThreshold).toBe(2);
   });
 
   it('W10 The Furrow: two wheat and a cornucopia, in that order', () => {

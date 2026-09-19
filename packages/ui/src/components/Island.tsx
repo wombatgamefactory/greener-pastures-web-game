@@ -9,22 +9,37 @@
  *
  * THE ROWS ARE DECORATION. Every tile is deliverable at any time, so there is no
  * level label and no lock. ⭐ Since the token island (16/09/2026) a tile shows
- * the TOKENS still on it: each token's demand, its VP and its Worker. A taken
- * token has left the tile. ⚠️ The UI is pinned to v31 and this is the minimum
- * to stay truthful; it has no token picker yet (the engine takes the
- * highest-VP token when a move names none).
+ * the TOKENS still on it: each token's demand, its VP and its Worker, drawn
+ * from the printed token art sliced 18/09/2026 (`islandTokenArt`, one piece per
+ * crop/VP pair carrying all three facts at once - see `view/art.ts`). A taken
+ * token has left the tile.
+ *
+ * ⭐ THE TOKEN PICKER (18/09/2026, 2.5.1, 2.5.2). A first delivery pays both of
+ * a tile's tokens and CHOOSES which one it takes; `deliverStart` (`Play.tile`)
+ * opens the deliver draft the moment a tile with a real choice is clicked, and
+ * this file drives that draft's token straight off the tokens as drawn here
+ * rather than making a player find the equivalent text chips in `DeliverPanel`
+ * (`components/BuildPanel.tsx`, owned by another pass) below the map. Both
+ * read and write the SAME `DeliverDraft` through `play.setDeliverDraft`, so
+ * either surface finishes what the other started; `DeliverPanel` still owns the
+ * barn-card payment step, which needs no tile-side equivalent. Dean's own
+ * words are why this exists at all (`packages/data/data/island.json`
+ * `meta.unresolved`): "the token set narrows the gap to 1 VP... so the token
+ * choice is the reading to watch" - a choice worth measuring has to be a choice
+ * a human can actually see, which a pair of unlabelled VP numbers was not.
  */
 
 import { useEffect, useState } from 'react';
-import type { GameData, Suit } from '@gp/data';
+import type { GameData } from '@gp/data';
 import { tokensPerTile } from '@gp/data';
 import type { PlayerView } from '@gp/engine';
 
 import { mark } from '../session/play';
 import type { Play } from '../session/play';
-import { demandTokenLayers, islandTileArt } from '../view/art';
+import { deliverAdditions, withDeliverToken } from '../view/intent';
+import { islandTileArt, islandTokenArt, islandTokenArtZoom } from '../view/art';
 import { SUIT_META } from '../view/suits';
-import { Meeple } from './Meeple';
+import { Meeple, workerActionLabel } from './Meeple';
 
 export type Level = 1 | 2 | 3;
 
@@ -33,34 +48,6 @@ export function levelOf(data: GameData, tile: string): Level {
   const spec = data.island.tiles.find((t) => t.id === tile);
   if (!spec) throw new Error(`Unknown island tile ${tile}`);
   return spec.level;
-}
-
-function DemandToken({
-  demand,
-  size,
-  faceDown = false,
-}: {
-  demand: Suit | 'wild';
-  size: number;
-  faceDown?: boolean;
-}) {
-  // A face-down token pays like a cornucopia but is not one, and the label says
-  // so: what a player needs to know is that this crate WAS a named crop and has
-  // been opened - which is a different fact about the board from a crate the bag
-  // dealt wild.
-  const label = faceDown
-    ? 'turned face down: any crop'
-    : demand === 'wild'
-      ? 'any crop (cornucopia)'
-      : SUIT_META[demand].label;
-  return (
-    <span className="demand" style={{ width: `${size}px`, height: `${size}px` }} title={label}>
-      {demandTokenLayers(demand, faceDown).map((src) => (
-        <img key={src} src={src} alt="" />
-      ))}
-      <span className="visually-hidden">{label}</span>
-    </span>
-  );
 }
 
 /**
@@ -101,7 +88,11 @@ export function IslandPanel({
 }) {
   const rows: Level[] = [3, 2, 1];
   const capacity = tokensPerTile(data);
-  const { cardsPerCrate } = data.island.tileRule;
+  // The play tier (238x256) is already sharper than an inline tile ever draws
+  // it; the zoom tier only earns its weight once a token is drawn bigger than
+  // that, which is exactly the enlarged overlay (`IslandOverlay` below, up to
+  // 200px of tile width) and nowhere the inline map goes.
+  const tokenArt = tileWidth >= 140 ? islandTokenArtZoom : islandTokenArt;
 
   /*
    * ⚠️ A LIVE TILE'S CLICK MUST NOT ALSO EXPAND THE MAP, and `stopPropagation`
@@ -139,6 +130,20 @@ export function IslandPanel({
               {tiles.map((tile) => {
                 const spent = tile.deliveredBy.length;
                 const live = play?.live.tiles.has(tile.tile) ?? false;
+                // ⭐ THE TOKEN PICKER'S STATE (2.5.1). `intent.k === 'deliver'`
+                // is the SAME draft `DeliverPanel` reads - `deliverAdditions`
+                // tells us which token indices are still choosable, which is
+                // more than one exactly when this tile's first delivery has not
+                // yet named a token. Any other tile (or no draft at all) gets
+                // an empty set here, so its tokens render as information only.
+                const draft =
+                  play?.intent.k === 'deliver' && play.intent.draft.tile === tile.tile
+                    ? play.intent.draft
+                    : null;
+                const additions = draft && play ? deliverAdditions(play.moves, draft) : null;
+                const tokenChoiceOpen = (additions?.tokens.length ?? 0) > 1;
+                const tokenSize = Math.round(tileWidth * 0.42);
+                const workerSize = Math.max(12, Math.round(tileWidth * 0.22));
                 return (
                   <div
                     key={tile.tile}
@@ -167,42 +172,112 @@ export function IslandPanel({
                     }
                   >
                     <img className="island-art" src={islandTileArt(tile.tile)} alt="" />
-                    <div className="island-demands">
-                      {tile.tokens.map((token, i) => (
-                        <span key={i} className="island-crate">
-                          <DemandToken demand={token.demand} size={Math.round(tileWidth * 0.34)} />
-                          <b data-text={String(cardsPerCrate)}>{cardsPerCrate}</b>
-                        </span>
-                      ))}
-                    </div>
-                    {/* The tokens still on the tile, each with the VP it pays. */}
-                    <div className="island-receipts">
-                      {tile.tokens.map((token, i) => (
-                        <span
-                          key={i}
-                          className="receipt receipt-empty"
-                          title={`Open: ${token.vp} VP${
-                            token.worker ? `, and the ${SUIT_META[token.worker].label} Worker` : ''
-                          }`}
-                        >
-                          <i>{token.vp}</i>
-                        </span>
-                      ))}
-                    </div>
-                    {/* The Workers, face up on their tokens (16/09/2026). */}
-                    <div className="island-meeples" aria-hidden="true">
-                      {tile.tokens.map((token, i) =>
-                        token.worker !== null ? (
-                          <Meeple
+                    {/*
+                     * THE TOKENS STILL ON THE TILE (2.5.1). One printed face per
+                     * token - crop pair (or the cornucopia pair for a wild
+                     * token), its VP and, on the 4 and 3 VP tokens, the printed
+                     * Worker silhouette are all one image now (`view/art.ts`).
+                     * A live coloured Worker pawn sits over that silhouette so
+                     * its actual colour (randomised at setup) is legible, which
+                     * the generic printed silhouette cannot carry on its own.
+                     *
+                     * When a FIRST delivery on THIS tile is being assembled and
+                     * both tokens are still open, each token becomes its own
+                     * clickable target - `play.setDeliverDraft` writes straight
+                     * into the same draft `DeliverPanel` finishes, so either
+                     * surface can complete the choice. This is deliberately the
+                     * loudest thing on the tile: Dean's own reading question is
+                     * whether a human ever gives up VP for a Worker, and a
+                     * choice nobody can see is a choice nobody can measure.
+                     */}
+                    {/*
+                     * ⚠️ POSITIONED INLINE, NOT IN `styles/table.css` (owned by
+                     * another pass): this replaces the three absolutely-
+                     * positioned rows (`.island-demands`/`.island-receipts`/
+                     * `.island-meeples`) that used to overlay `.island-art`
+                     * (itself `position: absolute; inset: 0` inside a
+                     * `position: relative` tile). `.island-tokens`
+                     * (`styles/table.css`) carries the layout now.
+                     */}
+                    <div className="island-tokens">
+                      {tile.tokens.map((token, i) => {
+                        const selectable =
+                          tokenChoiceOpen && (additions?.tokens.includes(i) ?? false);
+                        const selected = draft !== null && draft.token === i;
+                        const cropLabel =
+                          token.demand === 'wild'
+                            ? 'Any crop (cornucopia)'
+                            : SUIT_META[token.demand].label;
+                        const workerLabel =
+                          token.worker !== null
+                            ? `, with a ${SUIT_META[token.worker].label} Worker (${workerActionLabel(data)[token.worker]})`
+                            : '';
+                        const label = `${cropLabel} pair, ${token.vp} VP${workerLabel}${
+                          selectable
+                            ? selected
+                              ? ' - chosen'
+                              : ' - click to take this one instead'
+                            : ''
+                        }`;
+                        const select = (e: { stopPropagation(): void }) => {
+                          if (!selectable || !draft || !play || !play.setDeliverDraft) return;
+                          e.stopPropagation();
+                          play.setDeliverDraft(withDeliverToken(draft, i));
+                        };
+                        return (
+                          <span
                             key={i}
-                            colour={token.worker}
-                            size={Math.max(11, Math.round(tileWidth * 0.2))}
-                            title=""
-                          />
-                        ) : (
-                          <span key={i} className="island-meeple-gone" />
-                        ),
-                      )}
+                            className={`island-token${selectable ? ' island-token-choice' : ''}${
+                              selected ? ' island-token-selected' : ''
+                            }`}
+                            style={{
+                              position: 'relative',
+                              display: 'inline-block',
+                              ...(selectable || selected
+                                ? {
+                                    outline: `3px ${selected ? 'solid #2f7d3a' : 'dashed #b98a2f'}`,
+                                    outlineOffset: 2,
+                                    borderRadius: 8,
+                                    cursor: selectable ? 'pointer' : undefined,
+                                  }
+                                : {}),
+                            }}
+                            role={selectable ? 'button' : undefined}
+                            tabIndex={selectable ? 0 : undefined}
+                            title={label}
+                            onClick={selectable ? select : undefined}
+                            onKeyDown={
+                              selectable
+                                ? (e) => {
+                                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                                    select(e);
+                                  }
+                                : undefined
+                            }
+                          >
+                            <img
+                              className="island-token-art"
+                              src={tokenArt(token.demand, token.vp)}
+                              alt=""
+                              style={{ width: `${tokenSize}px`, height: 'auto', display: 'block' }}
+                            />
+                            {token.worker !== null && (
+                              <span
+                                className="island-token-worker"
+                                style={{ position: 'absolute', right: 2, bottom: 2 }}
+                              >
+                                <Meeple
+                                  data={data}
+                                  colour={token.worker}
+                                  size={workerSize}
+                                  title={`${SUIT_META[token.worker].label} Worker (${workerActionLabel(data)[token.worker]})`}
+                                />
+                              </span>
+                            )}
+                            <span className="visually-hidden">{label}</span>
+                          </span>
+                        );
+                      })}
                     </div>
                   </div>
                 );

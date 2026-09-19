@@ -13,7 +13,7 @@
  *   - R9: the Vegetable board's delivery, "2 of the cards may be any crop", and
  *     its fallback;
  *   - R10: the Dairy board's build, "spending cards of any crops, with a
- *     discount of 2".
+ *     discount of 1" (cut from 2 to 1 on the v44 sheet, 18/09/2026).
  *
  * It replaces `delivery-space-choice.test.ts`, whose subject (the delivery
  * spaces and the 14/09/2026 space choice) was deleted with the crate island.
@@ -231,26 +231,26 @@ describe('R9: the Vegetable board, "2 of the cards may be any crop"', () => {
   });
 });
 
-describe('R10: the Dairy board, "any crops, with a discount of 2"', () => {
+describe('R10: the Dairy board, "any crops, with a discount of 1" (CUT from 2 to 1 on v44, 18/09/2026)', () => {
   // Orchard visits Dairy.
   const seats: Suit[] = ['orchard', 'dairy'];
 
-  it('builds a 3-cost card for 1 card of any crop, and grows nothing after', () => {
+  it('builds a 3-cost card for 2 cards of any crop, and grows nothing after', () => {
     const s = makeState(data, seats);
     s.turnPlayer = VISITOR;
-    // A9 costs 3 (2 apiary + 1 any). The hand holds one wheat card to pay with.
-    dealTo(data, s, VISITOR, 'O4', 'A9', 'W4');
+    // A9 costs 3 (2 apiary + 1 any). The hand holds two non-apiary cards to pay with.
+    dealTo(data, s, VISITOR, 'O4', 'A9', 'W4', 'W5');
     const after = apply(data, s, visit('D3', 'O4')).state;
     expect(after.tasks[0]).toMatchObject({
       t: 'build',
       pid: VISITOR,
-      mods: { discount: 2, substitute: true },
+      mods: { discount: 1, substitute: true },
     });
     expect(after.tasks[0]).not.toHaveProperty('thenGrow');
     const build = pendingAnswers(data, after).find(
       (a) => a.kind === 'build' && a.card === 'A9',
     ) as TaskAnswer;
-    expect(build).toEqual({ kind: 'build', card: 'A9', payment: ['W4'] });
+    expect(build).toEqual({ kind: 'build', card: 'A9', payment: ['W4', 'W5'] });
     const done = answer(data, after, build);
     expect(done.players[VISITOR]!.tableau.some((b) => b.card === 'A9')).toBe(true);
     expect(done.players[VISITOR]!.hand).toEqual([]);
@@ -260,7 +260,7 @@ describe('R10: the Dairy board, "any crops, with a discount of 2"', () => {
   it('is not offered when no build is payable even at the discount', () => {
     const s = makeState(data, seats);
     s.turnPlayer = VISITOR;
-    // A9 still costs 1 after the discount, and the fee leaves no card to pay it.
+    // A9 still costs 2 after the discount, and the fee leaves no card to pay it.
     dealTo(data, s, VISITOR, 'O4', 'A9');
     const moves = legalMoves(data, s).filter(
       (m) => m.type === 'visit' && m.host === HOST && m.board === 'D3' && m.fee === 'O4',

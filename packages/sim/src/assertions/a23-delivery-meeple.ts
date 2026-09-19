@@ -1,4 +1,6 @@
 import { meepleSpendDistinctColours, meepleSpendPerTurn, meepleSpendTiming } from '@gp/data';
+import type { GameData, Suit } from '@gp/data';
+import { meepleActionOf } from '@gp/engine';
 
 import type { GameMetrics } from '../observe.js';
 import type { Assertion, Measurement, MeasureContext } from './types.js';
@@ -282,6 +284,51 @@ function mix(counts: ReadonlyMap<string, number>, order: readonly string[]): str
   return [...known, ...rest].map((k) => `${k} ${pct((counts.get(k) ?? 0) / all)}`).join('  ');
 }
 
+/**
+ * ⭐ WHICH WORKER COLOUR ACTUALLY GETS USED, most-used first (Dean, 18/09/2026).
+ *
+ * The three colour mixes beside this one each divide by a different whole -
+ * spends, strandings, mints - so none of them is a RATE for a colour, and
+ * "orchard is 30.2% of spends but 3.6% of strandings" needs the raw counts
+ * recovered before it means anything. This divides each colour by ITS OWN mint,
+ * which is the one denominator that answers the question Dean asked: when a
+ * player earned this Worker, did it ever do anything?
+ *
+ * ⛔ THE ACTION LABEL COMES FROM `meepleActionOf` AND NEVER FROM THE ROSTER.
+ * Under M4's `'afterAction'` an apiary Worker buys GROW where `workers.json`
+ * prints SOW (M7, 12/09/2026), so a label read off `linkedSuit` would print a
+ * Sow that never happened - the same trap the spends-by-action line below
+ * carries a warning about. One source, and it is the engine's.
+ */
+function workerUse(
+  minted: ReadonlyMap<string, number>,
+  spent: ReadonlyMap<string, number>,
+  suits: readonly Suit[],
+  data: GameData,
+): string {
+  const rows = suits
+    .map((suit) => {
+      const m = minted.get(suit) ?? 0;
+      return {
+        suit,
+        action: meepleActionOf(data, suit),
+        minted: m,
+        spent: spent.get(suit) ?? 0,
+        used: m === 0 ? NaN : (spent.get(suit) ?? 0) / m,
+      };
+    })
+    .filter((r) => r.minted > 0)
+    .sort((a, b) => b.used - a.used);
+  if (rows.length === 0) return 'none minted';
+  return rows
+    .map(
+      (r) =>
+        `${r.suit} (${r.action}) ${pct(r.used)} of ${r.minted} minted` +
+        ` [${r.spent} used, ${r.minted - r.spent} wasted]`,
+    )
+    .join('  ·  ');
+}
+
 function tally(
   games: readonly GameMetrics[],
   of: (g: GameMetrics) => Record<string, number>,
@@ -392,6 +439,22 @@ function deliveryMeepleMode(ctx: MeasureContext): Measurement {
         : `⛔ THEY DISAGREE BY ${Math.abs(t.stranded - derived)}, WHICH IS AN ENGINE BUG OR A ` +
           'DRAIN NOBODY NAMED (a boxed meeple, a cap refusing a gain). Do not read any other ' +
           'line on this page until it is explained.'),
+    // ⭐ WHICH WORKER IS POPULAR, asked for by Dean on 18/09/2026, and the
+    // reason it is its own line rather than arithmetic the reader does. The
+    // three mixes below each divide by a DIFFERENT total - spends, strandings,
+    // mints - so "orchard 30.2% of spends against 3.6% of strandings" cannot be
+    // read as a rate without first recovering the counts. This line divides
+    // each colour by ITS OWN mint, which is the only denominator that answers
+    // "when a player got this Worker, did it ever do anything".
+    //
+    // ⚠️ IT IS A READING ABOUT D8 AND NOT ABOUT TASTE. An action you cannot
+    // legally perform is never offered, so a low share here is a colour a seat
+    // could not spend as often as one it did not want to, and the two are not
+    // separated by anything on this page. Read it beside the stranded mix.
+    `⭐ WHICH WORKER GETS USED, each colour against ITS OWN mint (the one denominator the ` +
+      `three mixes below do not give you): ${workerUse(mintedByColour, spentByColour, suits, data)}.` +
+      ' ⚠️ A LOW SHARE IS D8 AS MUCH AS TASTE: a Worker whose action is illegal right now is ' +
+      'never offered, so this cannot separate "could not spend it" from "did not want it".',
     `THE COLOUR MIX OF WHAT WAS SPENT (${t.spent} spends): ${mix(spentByColour, suits)}.`,
     `THE COLOUR MIX OF WHAT WAS STRANDED (${t.stranded} left dead): ` +
       `${mix(strandedByColour, suits)}. ⭐ READ THE TWO MIXES AGAINST EACH OTHER AND AGAINST ` +

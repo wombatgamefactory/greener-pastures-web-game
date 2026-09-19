@@ -75,27 +75,26 @@ export function frame(layer: string): string {
 }
 
 /**
- * A demand token's layers, bottom first.
+ * ONE TOKEN ISLAND TOKEN'S PRINTED FACE (16/09/2026 rulings R3/R7; sliced from
+ * the printed sheet 18/09/2026): the crop pair (or the cornucopia pair for
+ * `'wild'`), the VP wreath and, on the 4 and 3 VP faces only, the Worker
+ * silhouette - all one piece, 238x256. This is what `Island.tsx` draws for a
+ * tile's tokens.
  *
- * The five crop tokens are single printed pieces. The **cornucopia (wild) token
- * has no art** - ticket 33 - so it is composed here from the empty crate slot
- * plus the cornucopia icon the cost bars already use. That is a real component
- * standing in for itself, not a placeholder rectangle, and it needs no code
- * change when the painted token lands: only this function.
+ * ⛔ `demandTokenLayers` IS GONE (19/09/2026, 2.4.1/2.4): it composed a demand
+ * icon over a bare VP circle, which this single painted face superseded on
+ * 18/09/2026, and by then nothing called it any more - `view/art.test.ts` was
+ * the function's only remaining reader. The six `demand-<crop>.webp` /
+ * `demand-wild.webp` files it drew from had no other reader either and went
+ * with it (`public/art/tokens/`).
  */
-export function demandTokenLayers(demand: Suit | 'wild', faceDown = false): string[] {
-  // A token turned FACE DOWN by V6 The Trade Depot (the Vegetable rebuild,
-  // 2026-08-09) shows its BACK. Deliberately the generic token back rather than
-  // the cornucopia, even though the two pay the same: a blank is not a horn of
-  // plenty, V6 may never target a cornucopia, and a player has to be able to see
-  // from across the table which crates the bag dealt and which somebody opened.
-  // The design's component note asks for exactly this - a uniform blank back -
-  // so this is a real component standing in for itself.
-  if (faceDown) return [token('token-back')];
-  // The wild demand used to be composed from the cost bar's cornucopia over an
-  // empty crate slot, because no cornucopia token art existed. Ticket 33 built
-  // the real one, so all six demands are now one painted token.
-  return [token(`demand-${demand}`)];
+export function islandTokenArt(demand: Suit | 'wild', vp: number): string {
+  return art(`tokens/island/${demand}-${vp}.webp`);
+}
+
+/** Zoom tier, 476x512. Used for a token read at the island's enlarged size. */
+export function islandTokenArtZoom(demand: Suit | 'wild', vp: number): string {
+  return art(`tokens/island/zoom/${demand}-${vp}.webp`);
 }
 
 /** The crop icon a card prints: its suit's sheaf/apple/etc, or the wild cornucopia. */

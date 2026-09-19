@@ -21,6 +21,7 @@ import {
   noticeBoardsOf,
   player,
   visitTargetOf,
+  wheatHarvestable,
   workerData,
 } from '../query.js';
 import type { BonusOption, CardId, GameState, Move, Seat } from '../state.js';
@@ -513,11 +514,21 @@ export function noticeBoardPowerLegal(
       return anyBuildOption(data, state, seat, hand, dairyBoardMods(data));
     case 'wheat':
       // "Harvest one of your buildings, then put 1 card from your hand into
-      // your barn." EITHER leg makes it live: a building with a card on it
-      // (`filter: 'loaded'`, any stack size), or a card left in hand for the
-      // barn. That second leg is ruling C88's whole purpose.
+      // your barn." EITHER leg makes it live: a building the harvest gate
+      // accepts, or a card left in hand for the barn. That second leg is
+      // ruling C88's whole purpose.
+      //
+      // ⛔ THE GATE AND THE TASK MUST ASK THE SAME QUESTION. The task pushes
+      // `filter: numbers.wheatHarvestGate`, so this must read the same leaf and
+      // not a hardcoded `stack >= 1`: under Dean's 'nearFull' retext
+      // (19/09/2026) a seat whose only loaded building holds ONE card would
+      // otherwise be offered the board, pay its fee, and find the harvest task
+      // has no legal answer and drains away. That is the 19/08/2026 harvest
+      // mismatch exactly, and it is why M7 made `meepleActionOf` a shared
+      // function rather than two copies of one rule.
       return (
-        p.tableau.some((b) => b.stack.length >= 1) || (numbers.wheatBarn > 0 && hand.length > 0)
+        p.tableau.some((b) => wheatHarvestable(data, b, numbers.wheatHarvestGate)) ||
+        (numbers.wheatBarn > 0 && hand.length > 0)
       );
     case 'apiary':
       // "Sow 2 cards from your hand onto your buildings." A card to sow and

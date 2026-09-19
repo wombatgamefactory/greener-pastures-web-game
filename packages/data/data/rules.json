@@ -5,6 +5,7 @@
     "generatedBy": null,
     "sourceSheet": null,
     "notes": [
+      "⭐⭐⭐⭐ 18/09/2026: THE v44 SHEET LANDS FOUR TEXT CHANGES (Dean; cards.json re-extracted off Isle-of-Farms-v44.xlsm). (1) W20 The Grand Granary now prints its cap on its own face, \"Game end: 1 VP for each building you have built (Max 5VP)\": economy.grandGranaryCap moves from null (the arm added 16/09/2026 to test the cap before any sheet change) to the SHIPPED value 5. (2) The Dairy Notice Board's discount is cut from 2 to 1: economy.noticeBoardPower.dairyDiscount moves from 2 to 1, read the same way (a build at this board costs this many cards fewer, and any discount above 0 still waives the n-of-suit requirement). D4 The Milking Shed's \"Build at a discount of 1\" is unchanged from v42 and needed no code change. (3) O4 The Apple Grove moves from \"Draw 2\" to \"Draw 3\" - a plain text/number change on the existing Draw task, no new knob. (4) D18 A Helping Hand is RETEXTED from the count-to-2 \"If, on your turn, you Build two buildings, put the top 2 cards of any one deck into your Barn\" to \"Whenever you build a card that costs 3 or more resources, add 1 of those cards to your Barn\" - a new handler shape (packages/engine/src/handlers/helpingHand.ts): it fires on EVERY qualifying build in a turn rather than once, reads the PRINTED (undiscounted) cost off the built card, and lets its owner choose which spent card goes to the barn via the same discard-reclaim route as D5/D6/O17.",
       "⭐⭐⭐ 16/09/2026: TWO TABLE RULINGS OF 15/09/2026 REACH THE ENGINE (Dean, Rule book v3). (1) setup.firstPlayer 'random': the first player is drawn from the game's seeded RNG after every setup shuffle and recorded as GameState.firstPlayer; 'seat0' is the old rule and makes no RNG call. (2) endGame.endOfGame 'finishRound': once the end is triggered, play continues until the round is complete, so the game ends when the seat about to play would be the first player; 'oneMoreTurnEach' is the old rule (every other player takes furtherTurnsEach = 1 more turn), and furtherTurnsEach is read only under it. Every overlay describing an older game must pin firstPlayer 'seat0' and endOfGame 'oneMoreTurnEach' by name. The same pass retires the old A Helping Hand (the second bonus play) and builds the five v42 per-suit Helping Hands W18, A18, D18, O18 and V18.",
       "⭐⭐⭐ 16/09/2026: THE BALLOONS, THE AERODROME, THE VILLAGE STORE COIN, THE CLOSING DRAW AND THE ISLAND WILD SUBSTITUTION ARE DELETED FROM THE ENGINE (Dean, rulings R1, R2, R4 and R5 of docs/vegetable-token-island-handoff-2026-09-16-v1.md). The code is gone, not parked behind a knob: aerodrome.json, rules.turn.closingDrawPerCrate, island.cardsPerSubstitution and the economy leaves storeCoinsPerCard, coinSupplyPerPlayer, coinPaysBuild, coinPaysSuitCost, coinPaysGrow and coinGrowOnFullBuilding went with it, and so did the two dead coin knobs endgameCoinCost and farmsteadCoinPower, which only ever sat at their off values. Notes below that describe any of those systems describe the previous game.",
       "⭐⭐⭐ 16/09/2026: THE TOKEN ISLAND AND TWO BOARD RETEXTS (Dean, rulings R3, R7, R9, R10; docs/vegetable-token-island-handoff-2026-09-16-v1.md). (1) THE ISLAND: every tile holds two tokens (a crop or wild demand, a VP value of 3 to 6, and a Worker on the 3 and 4 VP tokens); a delivery is always 4 barn cards; the first delivery on a tile pays both tokens' demands and CHOOSES which token to take, the second pays the last token's demand plus 2 cards of any crops. See island.json. rules.turn.deliverySpaceChoice and rules.turn.deliveryMeepleSpace are DELETED with the delivery spaces; the Worker (the delivery meeple) now sits on the tokens and its spend leaves (meepleSpendTiming 'afterAction', meepleSpendPerTurn 1, meepleSpendDistinctColours false) are unchanged. Overlays that pinned deliveryMeepleSpace null to replay a game without the island meeple pin island.tokens.workerOnVp [] instead. (2) THE VEGETABLE BOARD (R9): *Deliver - 2 of the cards may be any crop. If you cannot, put 2 cards from your hand into your Barn.* economy.noticeBoardPower.vegetableWildCards 2 is the relaxation: in that one delivery up to 2 of the 4 cards may be of any crop. ⚠️ BUILDER DEFAULT, NOT RULED: on a second delivery the 2 any-crop cards may also cover the token's pair, so all 4 cards may be any crop. The fallback (vegetableFallback 2) applies only when no delivery can be paid even with the relaxation. (3) THE DAIRY BOARD (R10, v41): *Build, spending cards of any crops, with a discount of 2.* economy.noticeBoardPower.dairyDiscount 2 replaces dairyGrowsBuilt ('paidWild' and its siblings are DELETED, with the Build-then-Grow task rider): the board no longer Grows what it builds. A discount already waives the n-of-suit requirement in the engine's pricer, and dairyWild true waives it at a discount of 0 too. (4) PAYING FOR A DELIVERY IS NOT A DISCARD (R6), and a receipt keeps its crop (R7).",
@@ -93,7 +94,7 @@
       "4": 1
     },
     "cropScorerOnBarn": true,
-    "grandGranaryCap": null,
+    "grandGranaryCap": 5,
     "noticeBoardPower": {
       "orchardDraw": 4,
       "apiarySows": 2,
@@ -101,8 +102,9 @@
       "vegetableFallback": 2,
       "vegetableWildCards": 2,
       "dairyWild": true,
-      "dairyDiscount": 2,
-      "wheatBarn": 1
+      "dairyDiscount": 1,
+      "wheatBarn": 1,
+      "wheatHarvestGate": "loaded"
     }
   },
   "endGame": {

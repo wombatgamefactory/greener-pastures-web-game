@@ -18,11 +18,12 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-// ⛔ THE UI'S OWN DATA, NOT `BASE_GAME_DATA`, since 04/09/2026. The shipped
-// rules are the meeple loop and this package still draws the v31 card-fee game,
-// so `session/table.ts` pins itself to `overlays/v31-card-visit.overlay.json` -
-// see the docblock there for why, and for what the UI pass owes. A test that
-// reached past that pin would be measuring rules the interface does not draw.
+// ⛔ THE UI'S OWN DATA, NOT `BASE_GAME_DATA`, since 04/09/2026. `session/table.ts`
+// used to pin itself to the pre-notice-board v31 arm; the pin came down
+// 18/09/2026 and this now loads the same shipped `loadGameData()` defaults the
+// engine, the bots and the simulator play, with one override (no hand limit -
+// see the docblock on `session/table.ts`). A test importing `data` from here is
+// exercising the shipped game, not an arm.
 import { data } from '../session/table';
 import type { Move, PlayerView } from '@gp/engine';
 
@@ -263,16 +264,19 @@ describe('the playable table renders', () => {
    * expires the moment somebody clicks Build, and a forfeited visit is the hook
    * not happening.
    *
-   * ⭐ v31 CUT THE BONUS FAMILIES FROM FOUR TO THREE and made two of them the
-   * same move type: `bonusDraw`, `visit` and `visit-self`. The market, the card
-   * buy and the GBP 2 upgrade went with the currency.
+   * ⭐ THE SHIPPED BONUS SLOT HOLDS ONE FAMILY: `visit`. v31's free `bonusDraw`
+   * closed under `noticeBoardPower` on 18/09/2026 (S5), and the self-visit
+   * button that used to share `visit`'s move type with a different host is
+   * gone with the rule that made it legal (11/09/2026, self-visiting banned).
+   * The market, the card buy and the GBP 2 upgrade went earlier, with the coin
+   * currency.
    */
   it('shows the bonus phase when a bonus is live, and the main actions when it is not', () => {
     const html = render(snap, { k: 'idle' });
     // Which shape this position gets is a property of the position, not of the
     // bar, so the test reads it off the legal moves rather than assuming one.
-    const BONUS = ['visit', 'bonusDraw'];
-    const live = snap.moves.some((m) => BONUS.includes(m.type));
+    // `visit` is the only move type that can ever open the shipped bonus slot.
+    const live = snap.moves.some((m) => m.type === 'visit');
     if (live) {
       expect(html).toContain('Your bonus, first.');
       expect(html).toContain('>skip bonus action</button>');
@@ -300,14 +304,14 @@ describe('the playable table renders', () => {
     const held = Object.values(snap.view.you.meeples).reduce((a, b) => a + b, 0);
     const spendable = snap.moves.some((m) => m.type === 'spendMeeple');
     if (spendable) {
-      expect(html).toContain('meeples first');
-      expect(html).toContain('before your bonus');
+      expect(html).toContain('spend a Worker');
     } else if (held > 0) {
-      expect(html).toContain('meeples: not now');
+      // ⭐ Reworded 18/09/2026 with the Worker spend's move to AFTER the main
+      // action (2.5.3): the two "nothing to spend" cases read differently
+      // depending on whether the window has opened yet this turn.
+      expect(html).toMatch(/Workers: (nothing to do|after your action)/);
     } else {
-      expect(html).toContain('no meeples');
-      // Where they come from, said in the one place an empty supply is looked at.
-      expect(html).toContain('Every island delivery brings one.');
+      expect(html).toContain('no Workers');
     }
   });
 
@@ -318,20 +322,19 @@ describe('the playable table renders', () => {
    * visit is the hook not happening.
    */
   it(
-    'offers every bonus option and a skip when the slot is open',
+    'offers the bonus option and a skip when the slot is open',
     () => {
-      const withBonus = positionWith('a bonus-slot move', (m) =>
-        ['visit', 'bonusDraw'].includes(m.type),
-      );
+      // ⭐ Under the shipped `noticeBoardPower` visit, `visit` is the ONLY move
+      // type that can ever open the bonus slot: `bonusDraw`'s free Draw 1 was
+      // closed under this rule on 18/09/2026 (S5 - the slot holds one option),
+      // so a corpus search for either never finds a `bonusDraw`.
+      const withBonus = positionWith('a bonus-slot move', (m) => m.type === 'visit');
       const html = render(withBonus, { k: 'idle' });
       expect(html).toContain('Your bonus, first.');
       expect(html).toContain('>skip bonus action</button>');
-      for (const label of ['Draw 1', 'Visit a neighbour', 'Your own door']) {
-        expect(html).toContain(barButton(label));
-      }
+      expect(html).toContain(barButton('Visit a neighbour'));
       // Shape (c), not (b): the main families are held back until the slot is
-      // resolved, so nobody forfeits it by reaching past it. `Draw 1` is the bonus
-      // option, so the main Draw is the one that must be absent.
+      // resolved, so nobody forfeits it by reaching past it.
       expect(html).not.toContain(barButton('Draw'));
       expect(missingImages(html)).toEqual([]);
     },
@@ -339,31 +342,21 @@ describe('the playable table renders', () => {
   );
 
   /**
-   * ⭐ THE ASSERTION THE WHOLE v31 PASS TURNS ON, at the DOM.
-   *
-   * `visit` and `visit-self` are one move type with a different host and they
-   * are opposite acts - a card on a neighbour's board is the game's social hook,
-   * a card on your own is solitaire that also clogs your own door. The plan's
-   * risk 2 is that the second quietly wins, and the interface's job is to make
-   * certain nobody takes one thinking it was the other.
-   *
-   * Four things differ and three of them are checkable here: two labels, two
-   * classes, and only the hook carrying the player aid's `visit` vignette. The
-   * fourth is the panel, checked further down.
+   * ⭐ ONE VISIT BUTTON, NOT TWO (19/09/2026). Self-visiting is banned under the
+   * shipped rules (Dean, 11/09/2026: it measured 44.4% of visits and the
+   * neighbour hook had no subject), so there is exactly one door in the bonus
+   * slot and it always carries the player aid's `visit` vignette - the picture
+   * of the hook, because there is nothing else left for it to be.
    */
   it(
-    'draws the two visits as two labelled buttons, and only one of them as the hook',
+    'draws the one visit as a single labelled button, always the hook',
     () => {
-      const withBonus = positionWith('a bonus-slot move', (m) =>
-        ['visit', 'bonusDraw'].includes(m.type),
-      );
+      const withBonus = positionWith('a bonus-slot move', (m) => m.type === 'visit');
       const html = render(withBonus, { k: 'idle' });
       expect(html).toContain(barButton('Visit a neighbour'));
-      expect(html).toContain(barButton('Your own door'));
       expect(html).toContain('action-hook');
-      expect(html).toContain('action-solo');
-      // The two never collapse into one generic button.
-      expect(html).not.toContain(barButton('Visit'));
+      expect(html).not.toContain('action-solo');
+      expect(html).not.toContain(barButton('Your own door'));
     },
     SEARCH,
   );
@@ -560,11 +553,19 @@ describe('the turn bar is small enough, and still reaches everything', () => {
        * The cuts, pinned so that a well-meaning tidy cannot put them back. Buy,
        * Market and Upgrade were coin sinks in or beside the bonus slot and their
        * move types no longer exist; "Work yours" was activating your own Service
-       * for a coin and is REPLACED by "Your own door", which is a visit. Card
-       * power named no card and is a badge on the card. Pass is only ever legal
-       * when it is the only legal move.
+       * for a coin, replaced first by a self-visit button ("Your own door") and
+       * then, 19/09/2026, by nothing at all - self-visiting is banned, so there
+       * is no second door to draw. Card power named no card and is a badge on
+       * the card. Pass is only ever legal when it is the only legal move.
        */
-      for (const gone of ['Buy', 'Market', 'Upgrade', 'Work yours', 'Card power']) {
+      for (const gone of [
+        'Buy',
+        'Market',
+        'Upgrade',
+        'Work yours',
+        'Card power',
+        'Your own door',
+      ]) {
         expect(html).not.toContain(barButton(gone));
       }
       if (snap.moves.some((m) => m.type !== 'pass')) {
@@ -701,14 +702,22 @@ describe('the meeple supply says which window it is in', () => {
     apiary: 0,
     dairy: 0,
   };
-  /** A turn at its very top, and one that has moved on. */
-  const atTop = { actionSpent: false, bonusUsed: [] } as unknown as PlayerView['turn'];
-  const movedOn = { actionSpent: true, bonusUsed: [] } as unknown as PlayerView['turn'];
+  /**
+   * A turn before its main action, and one where the action is already spent.
+   *
+   * ⭐ NAMED FOR WHAT THEY MEAN NOW (19/09/2026): the Worker spend moved to
+   * AFTER the main action on 14/09/2026 (evening), so the window is CLOSED at
+   * the top of a turn and OPENS once the action is spent - the reverse of what
+   * `meepleWindowOpen` returned under the old start-of-turn rule these
+   * variables used to be named for.
+   */
+  const beforeAction = { actionSpent: false, bonusUsed: [] } as unknown as PlayerView['turn'];
+  const afterAction = { actionSpent: true, bonusUsed: [] } as unknown as PlayerView['turn'];
 
   const supply = (
     meeples: Record<Suit, number>,
     spendable: Suit[],
-    turn: PlayerView['turn'] = atTop,
+    turn: PlayerView['turn'] = afterAction,
   ) => {
     const snap = position('play-a');
     const play = staticPlay(snap.view, snap.moves, { k: 'idle' });
@@ -734,15 +743,17 @@ describe('the meeple supply says which window it is in', () => {
     expect(meeplePhaseOf(held, new Set<Suit>(), false)).toBe('shut');
     expect(meeplePhaseOf(held, new Set<Suit>(), true)).toBe('stuck');
     expect(meeplePhaseOf(none, new Set<Suit>(), true)).toBe('empty');
-    expect(meepleWindowOpen(atTop)).toBe(true);
-    expect(meepleWindowOpen(movedOn)).toBe(false);
+    // The window opens once the main action is spent (14/09/2026 evening), not
+    // at the top of the turn.
+    expect(meepleWindowOpen(beforeAction)).toBe(false);
+    expect(meepleWindowOpen(afterAction)).toBe(true);
   });
 
-  it('OPEN: says spend them now, and lights only the colours that can', () => {
+  it('OPEN: says spend one now, and lights only the colours that can', () => {
     const html = supply(held, ['wheat']);
     expect(html).toContain('supply-open');
-    expect(html).toContain('spend them now, before anything else');
-    // The action each colour buys, not its name: a meeple IS its door.
+    expect(html).toContain('spend one now, before you end your turn');
+    // The action each colour buys, not its name: a Worker IS its door.
     expect(html).toContain('Harvest');
     expect(html).toContain('Draw');
     // Lit for the one that is legal, and disabled for the one that is not -
@@ -751,26 +762,27 @@ describe('the meeple supply says which window it is in', () => {
     expect(html).toContain('disabled');
   });
 
-  it('SHUT: says the window has passed and nothing is clickable', () => {
-    const html = supply(held, [], movedOn);
+  it('SHUT: says the window has not arrived yet and nothing is clickable', () => {
+    const html = supply(held, [], beforeAction);
     expect(html).toContain('supply-shut');
-    expect(html).toContain('your turn has moved on - they keep');
+    expect(html).toContain('do your action first - you may spend one afterwards');
     expect(html).not.toContain('is-live');
   });
 
-  it('STUCK: says the actions are illegal, NOT that the window has passed', () => {
-    const html = supply(held, [], atTop);
+  it('STUCK: says the actions are illegal, NOT that the window has not arrived', () => {
+    const html = supply(held, [], afterAction);
     expect(html).toContain('supply-stuck');
     expect(html).toContain('none of them has anything to do right now');
     // The lie this state exists to prevent.
-    expect(html).not.toContain('your turn has moved on');
+    expect(html).not.toContain('do your action first');
     expect(html).not.toContain('is-live');
   });
 
-  it('EMPTY: says where meeples come from, which is the only source', () => {
+  it('EMPTY: says where Workers come from, which is the only source', () => {
     const html = supply(none, []);
     expect(html).toContain('supply-empty');
-    expect(html).toContain('Deliver to the island and take the meeple with it.');
+    expect(html).toContain('one comes with every island delivery');
+    expect(html).toContain('None yet. Deliver to the island and take the Worker with it.');
     expect(html).not.toContain('supply-meeple');
   });
 
@@ -781,7 +793,7 @@ describe('the meeple supply says which window it is in', () => {
     // Two wheat and one orchard: the count only prints where it is not 1.
     expect(html).toContain('>2</b>');
     const empty = renderToStaticMarkup(<MeepleSupply data={data} meeples={none} size="rail" />);
-    expect(empty).toContain('no meeples');
+    expect(empty).toContain('no Workers');
   });
 });
 

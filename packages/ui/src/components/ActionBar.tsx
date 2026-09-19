@@ -15,30 +15,43 @@
  * ---------------------------------------------------------------------------
  * PHASE 3 (26/08/2026): THREE ZONES, NOT ONE ROW. v31: FOUR.
  *
- * The zones ARE the turn, in order, so the shape of a turn is legible off the
- * interface without being taught:
+ * ⭐ THE ZONES' ORDER WAS FIXED 18/09/2026 (2.5.3). It used to put the meeple
+ * zone first because the v31 meeple loop spent them at the very start of a
+ * turn; the 14/09/2026 evening ruling moved the Worker spend to AFTER the main
+ * action, and the zone order below - and the JSX further down - now follows
+ * it. The zones ARE the turn, in order, so the shape of a turn is legible off
+ * the interface without being taught:
  *
- *   meeples  spend any number, one at a time, at the very START of your turn.
- *            Each performs its colour's action free and then leaves the game.
  *   bonus    one option: Draw 1, or a card on a Notice Board.
  *   action   one of Draw / Build / Grow / Harvest / Deliver.
+ *   workers  after your action, discard AT MOST ONE Worker for the plain
+ *            action of its colour, then it leaves the game for good
+ *            (`rules.turn.meepleSpendTiming` 'afterAction', `meepleSpendPerTurn`
+ *            1 - CLAUDE.md §2.8). Called "meeples" only in identifiers this
+ *            file inherited and could not rename without breaking files this
+ *            pass does not own (`Supply.tsx`'s exports); every string a player
+ *            reads says "Worker".
  *   then     the exits, which spend none of the three.
  *
- * ⚠️ THE MEEPLE ZONE DRAWS NO BUTTONS AND IS NOT DECORATION. Spending a meeple
- * is done on the meeple, in your own supply, because it is a wooden piece
- * sitting in front of you - the same rule that put the card power on the card. What the zone contributes is the WINDOW: a meeple
- * may only be spent before the bonus and before the action, and once that window
- * shuts the pawns stop being clickable with nothing on screen to say why. The
- * zone head is that "why", struck through the moment the window closes, in
- * exactly the way the action and bonus heads already were.
+ * ⚠️ THE WORKER ZONE DRAWS NO BUTTONS AND IS NOT DECORATION. Spending a Worker
+ * is done on the Worker, in your own supply, because it is a wooden piece
+ * sitting in front of you - the same rule that put the card power on the card.
+ * What the zone contributes is the WINDOW: a Worker may only be spent AFTER
+ * your action, at most one a turn, and once that window shuts (or has not
+ * opened yet) the pawns stop being clickable with nothing on screen to say why.
+ * The zone head is that "why".
  *
- * ⭐ THE BONUS ZONE HAS TWO VISIT BUTTONS AND THAT IS THE POINT OF THE PASS.
- * `visit` and `visit-self` are one move type with a different host, and they are
- * opposite acts - a card on a neighbour's board is the hook, a card on your own
- * is solitaire that also clogs your own door. The v31 plan's risk 2 is precisely
- * that the second quietly wins, and a single "Visit" button, however carefully
- * worded, would let a player take one thinking it was the other. Two buttons,
- * two labels, two glows, two panels, two feed lines.
+ * ⭐ THE BONUS ZONE HAS ONE VISIT BUTTON (19/09/2026). Self-visiting is BANNED
+ * under the shipped rules (Dean, 11/09/2026, after measuring 44.4% of visits
+ * going to a player's own board - the neighbour hook had no subject): every
+ * visit crosses the table to a named rival, so there is exactly one door to
+ * offer and one thing it can mean. The v31-era second button, "Your own door",
+ * and its `action-solo` styling are gone with it - `moveText.ts`'s `FAMILIES`
+ * still carries the pre-ban `visit-self` entry for the retired `'card'`
+ * currency control (`selfVisitAllowed: true`), but nothing in this file
+ * special-cases it any more: it is just another `zone: 'bonus'` family that
+ * happens to stay `inPlay: false` and moveless under every game this
+ * interface actually plays.
  */
 
 import type { GameData } from '@gp/data';
@@ -196,19 +209,20 @@ export function ActionBar({
   const bonus = zoned('bonus');
 
   /**
-   * THE MEEPLE WINDOW, read the same way the bonus window is: off the move list
+   * THE WORKER WINDOW, read the same way the bonus window is: off the move list
    * rather than off a rule this file re-implements. A `spendMeeple` in the list
    * IS the window being open for this seat - the engine gates it on
-   * `!actionSpent && bonusUsed.length === 0` and additionally refuses a meeple
-   * whose action could do nothing, and neither of those is a thing the interface
-   * should be re-deriving.
+   * `actionSpent && meeplesSpent.length < meepleSpendPerTurn` (AFTER the main
+   * action, at most one a turn, since 14/09/2026 evening) and additionally
+   * refuses a Worker whose action could do nothing, and neither of those is a
+   * thing the interface should be re-deriving.
    */
   const meepleGroup = groups.find((g) => g.zone === 'meeple');
   const meepleLive = play.active && (meepleGroup?.moves.length ?? 0) > 0;
   const meeplesHeld = Object.values(play.view.you.meeples).reduce((a, b) => a + b, 0);
 
   const onGroup = (group: ActionGroup) => {
-    const { moves, needsTarget, type, key } = group;
+    const { moves, needsTarget, type } = group;
     if (moves.length === 0) return;
     if (!needsTarget) {
       play.choose(moves, 'Which one?');
@@ -218,8 +232,7 @@ export function ActionBar({
      * A VISIT NARROWS ON ITS HOST, NOT ON ITS MOVE COUNT. There is one move per
      * (host, hand card) pair, so a family with five moves may still have exactly
      * one place to go - and making somebody arm a family and then click the only
-     * neighbour in it is a click spent on nothing. The self-visit always takes
-     * this branch, which is what makes "your own door" a single click.
+     * neighbour in it is a click spent on nothing.
      */
     if (type === 'visit') {
       const hosts = visitHosts(moves);
@@ -227,7 +240,7 @@ export function ActionBar({
         play.setVisitFee(hosts[0] as number, null);
         return;
       }
-      play.arm('visit', key === 'visit-self');
+      play.arm('visit');
       return;
     }
     // One legal target: skip the arming step rather than making someone click a
@@ -257,12 +270,8 @@ export function ActionBar({
      * `actionIcon` returns null for a family with no painting. The six
      * paintings are cut out of the printed player aid, so a family gets one
      * exactly when the aid has a vignette for it - inventing a seventh would put
-     * a drawing on the table that is not in the box. That leaves the exits, the
-     * bonus Draw 1 and, usefully, THE SELF-VISIT without one: the aid's `visit`
-     * vignette is a farmer walking to a neighbour's farm, which is a picture of
-     * the hook and not a picture of feeding your own board. So the two visit
-     * buttons differ in weight as well as in words, and the illustrated one is
-     * the one that puts you on somebody else's farm.
+     * a drawing on the table that is not in the box. That leaves the exits and
+     * the bonus Draw 1 without one.
      *
      * ⚠️ `alt=""` PLUS `aria-hidden` IS DELIBERATE AND IS NOT BELT-AND-BRACES.
      * The picture is decorative here: the action's NAME is right beside it in
@@ -270,17 +279,14 @@ export function ActionBar({
      * Build".
      */
     const icon = actionIcon(group.key);
-    const isArmed =
-      armed !== null &&
-      armed.type === group.type &&
-      (group.type !== 'visit' || armed.self === (group.key === 'visit-self'));
+    const isArmed = armed !== null && armed.type === group.type;
     return (
       <button
         key={group.key}
         type="button"
         className={`${kind}${isArmed ? ' action-armed' : ''}${
           group.key === 'visit' ? ' action-hook' : ''
-        }${group.key === 'visit-self' ? ' action-solo' : ''}`}
+        }`}
         disabled={!enabled}
         title={title}
         onClick={() => onGroup(group)}
@@ -336,55 +342,39 @@ export function ActionBar({
       : 'bonus slot';
 
   /*
-   * THE MEEPLE HEAD says one of FOUR things and each is a different fact.
+   * THE WORKER HEAD says one of FOUR things and each is a different fact.
    *
    * ⚠️ THE TWO "nothing to spend" CASES ARE NOT THE SAME, and the wrong one is
-   * checkable from the screen. The window can be SHUT (you have taken your bonus
-   * or your action) or it can be open with nothing legal to spend into - the
-   * engine refuses a meeple whose colour's action could do nothing, so a seat
-   * holding one Harvest meeple and no full building has an open window and no
-   * options. Saying "not now" in the second case contradicts the bonus slot
-   * sitting live beside it. `meepleWindowOpen` is what separates them, read off
-   * the turn rather than off the move list because that is the only place the
-   * two facts differ.
+   * checkable from the screen. The point can be BEFORE your action (the window
+   * has not arrived yet this turn) or AFTER it with nothing legal to spend into
+   * - the engine refuses a Worker whose colour's action could do nothing, so a
+   * seat holding one Harvest Worker and no full building has an open window and
+   * no options. Saying "not yet" in the second case contradicts the action zone
+   * sitting spent right beside it. `meepleWindowOpen` is what separates them,
+   * read off the turn rather than off the move list because that is the only
+   * place the two facts differ.
    *
-   * The fourth is not padding - "no meeples" is where a player learns that they
+   * The fourth is not padding - "no Workers" is where a player learns that they
    * come off the island, which is the only source there is.
    */
   const meepleWindow = meepleWindowOpen(turn);
-  const meepleState = meepleLive ? 'go' : meeplesHeld > 0 && !meepleWindow ? 'spent' : 'idle';
+  // 'spent' only once a Worker has actually gone THIS turn (`turn.meeplesSpent`,
+  // present whenever `meepleSpendPerTurn` is rationed - which the shipped game
+  // is). Before your action, or after it with nothing legal, is 'idle' rather
+  // than 'spent': nothing has been given up yet in either of those, so the
+  // struck-through look the bonus/action zones use for "done" would lie.
+  const meepleState = meepleLive ? 'go' : (turn.meeplesSpent?.length ?? 0) > 0 ? 'spent' : 'idle';
   const meepleLabel = meepleLive
-    ? 'meeples first'
+    ? 'spend a Worker'
     : meeplesHeld === 0
-      ? 'no meeples'
+      ? 'no Workers'
       : meepleWindow
-        ? 'meeples: nothing to do'
-        : 'meeples: not now';
+        ? 'Workers: nothing to do'
+        : 'Workers: after your action';
 
   return (
     <div className="actionbar" aria-label="your turn">
       <div className="action-buttons">
-        {/*
-         * ⭐ A ZONE WITH NO BUTTONS, AND IT IS STILL A ZONE. The move is made on
-         * the pawn in your supply; what the bar owes the player is the WINDOW -
-         * that meeples come first, and that it has shut. Without this the pawns
-         * simply stop responding and nothing anywhere says why.
-         */}
-        <section className="zone zone-meeple" aria-label="your meeples">
-          <ZoneHead label={meepleLabel} state={meepleState} />
-          <div className="zone-row">
-            <p className="zone-note">
-              {meepleLive
-                ? 'Spend them in your supply, below - any number, before your bonus.'
-                : meeplesHeld === 0
-                  ? 'Every island delivery brings one.'
-                  : meepleWindow
-                    ? 'You hold some, but none of their actions is legal right now.'
-                    : 'The window has passed. They keep for the start of your next turn.'}
-            </p>
-          </div>
-        </section>
-
         {action.length > 0 && (
           <section className="zone zone-action" aria-label="your action">
             <ZoneHead label={turn.actionSpent ? 'action spent' : 'action'} state={actionState} />
@@ -427,6 +417,30 @@ export function ActionBar({
               that puts you on somebody else&rsquo;s farm.
             </p>
           )}
+        </section>
+
+        {/*
+         * ⭐ A ZONE WITH NO BUTTONS, AND IT IS STILL A ZONE. The move is made on
+         * the pawn in your supply; what the bar owes the player is the WINDOW -
+         * that a Worker comes AFTER the action, at most one, and when it has
+         * shut (or has not opened yet). Without this the pawns simply stop
+         * responding and nothing anywhere says why. Rendered LAST of the three
+         * decision zones (18/09/2026, 2.5.3) because it is now the last thing
+         * that happens in a turn, not the first.
+         */}
+        <section className="zone zone-meeple" aria-label="your Workers">
+          <ZoneHead label={meepleLabel} state={meepleState} />
+          <div className="zone-row">
+            <p className="zone-note">
+              {meepleLive
+                ? 'Spend one in your supply, below - after your action, before you end your turn.'
+                : meeplesHeld === 0
+                  ? 'Every island delivery brings one.'
+                  : meepleWindow
+                    ? 'You hold some, but none of their actions is legal right now.'
+                    : 'Take your action first - you may spend one afterwards.'}
+            </p>
+          </div>
         </section>
       </div>
 

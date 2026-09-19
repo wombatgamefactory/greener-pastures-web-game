@@ -50,89 +50,37 @@ import type {
 } from '@gp/engine';
 
 /**
- * ⛔⛔ THE BROWSER BUILD IS PINNED TO THE v31 CONTROL, AND IT IS THE ONE THING
- * THE 04/09/2026 FLIP DID NOT CARRY (see `overlays/v31-card-visit.overlay.json`).
+ * The shipped rules, with one deliberate override.
  *
- * Dean ruled the meeple loop in on 04/09/2026 and `rules.turn.visitCurrency` is
- * `'meeple'` in the shipped data, so the engine, the bots and the simulator all
- * play it. THE INTERFACE DOES NOT. It has no surface for any of it: the Notice
- * Board is drawn as a building with a fill bar and a threshold, a visit is
- * assembled by dragging a CARD onto a host, there is no way to pick a colour
- * slot, no way to spend a wild pair, and Collect has a button but no board to
- * sweep. `view/intent.ts` and `view/moveText.ts` both carry a
- * `TODO(meeple-loop): owned by the ui pass` from the session that built the arm.
- *
- * ⭐ SO IT LOADS THE CONTROL DELIBERATELY, RATHER THAN LOADING THE SHIPPED RULES
- * AND MISDRAWING THEM. The two failure modes are not equal. A UI one version
- * behind, that says so in one place, is a known gap; a UI that renders a
- * threshold on a card that can never take a card, offers a visit it cannot
- * complete and hides half the bonus slot is a UI that LIES ABOUT THE RULES, and
- * the whole point of `liveThreshold`'s seam (26/08/2026) is that the interface
- * may lag the sheet but may never contradict the engine about what is legal.
- *
- * ⚠️ 13/09/2026: the shipped game is now the Notice Board visit
- * (`visitCurrency: 'noticeBoardPower'`), and this interface still draws v31.
- * The pin stays until the UI pass lands (ledger C59).
- *
- * ⚠️ DELETE THIS OVERLAY WHEN THE UI PASS LANDS, AND NOT BEFORE. What it owes:
- * five colour slots on the Notice Board with the meeples that sit in them, a
- * visit assembled as (host, colour) with the wild pair as its second shape, a
- * Collect that shows what is coming home, the supply drawn as one of each colour
- * rather than as a pile, and the turn-start meeple phase deleted from the bar.
- * Every UI test in this package is measuring the control until then.
+ * The v31 pin that used to sit here is gone (18/09/2026): the interface now
+ * loads the same `loadGameData()` defaults the engine, the bots and the
+ * simulator play, rather than a frozen copy of the pre-notice-board game. See
+ * `to-do/to-do-list.md` and the isle-of-farms CLAUDE.md §0 for what shipped
+ * between the pin going up (04/09/2026) and coming down.
  */
 export const data: GameData = loadGameData({
-  name: 'v31-card-visit',
+  name: 'greener-pastures-web-game',
   schemaVersion: 1,
-  // ⚠️ FOUR KNOBS, NOT ONE, SINCE 05/09/2026. Dean ruled the meeple ECONOMY in
-  // that day, so the shipped defaults are `meepleAsCard` true, a slot that is
-  // PRICED rather than blocked and a cap of two. `visitCurrency` alone would
-  // leave this pin holding the v31 visit on top of R15's payments - meeples
-  // paying for builds, Grows and crates in an interface with no surface for any
-  // of it - which is precisely the "UI that lies about the rules" this overlay
-  // exists to prevent. Pinning the whole set is what keeps the pin honest.
-  //
-  // ⚠️ SIX SINCE 09/09/2026: `bonusTiming` and `startingMeeplesPerColour` are
-  // passengers of an earlier default flip, pinned so the bonus stays at the
-  // end of the turn and the supply does not start empty.
-  //
-  // ⛔ ONE LEAF THE OVERLAY PINS AND THIS DOES NOT: the Orchard door's printed
-  // draw, which v31 ran at 3 and the shipped data now prints as "Draw 2." An
-  // overlay may never override card TEXT, so pinning 3 here would put a door
-  // that draws three cards under a card face that says two - and this package
-  // RENDERS that face. A rule and its own printed text disagreeing on screen is
-  // the failure mode this whole pin exists to avoid, so the door is left at the
-  // shipped 2 and the divergence is recorded here instead of drawn.
   set: {
-    'rules.turn.visitCurrency': 'card',
-    'rules.turn.meepleAsCard': false,
-    'rules.turn.slotToll': null,
-    'rules.turn.meepleCapPerColour': 1,
-    'rules.turn.bonusTiming': 'end',
-    'rules.turn.startingMeeplesPerColour': 1,
-    // ⛔ SEVEN SINCE 10/09/2026, AND THE SEVENTH IS THE BOARD'S OWN
-    // THRESHOLD. The notice-board visit (S8) moved the BASE value of
-    // `rules.economy.noticeBoardThreshold` from 2 to 3, so this pin - which is
-    // this package's own inline copy of `overlays/v31-card-visit.overlay.json`
-    // - silently began reading 3 where the control it names is 2. Under
-    // `'card'` the Notice Board is a BLOCKING building and 2 is not a detail
-    // of that game: it is the brake on the self-visit and what shuts a farm to
-    // the table in two placements. The overlay file pins the same leaf; an
-    // inline copy that does not is exactly the drift this pin exists to stop.
-    'rules.economy.noticeBoardThreshold': 2,
-    // ⚠️ 13/09/2026: deleting the commons flipped both shipped defaults below
-    // (self-visits banned, two boards at 2 seats). v31 had self-visits and one
-    // board per farm, so both are pinned at their old values.
-    'rules.turn.selfVisitAllowed': true,
-    'rules.economy.noticeBoardsBySeats.2': 1,
-    // ⛔ DELIVERY MEEPLE PINNED 14/09/2026: the spend window, at its old inert
-    // values ('start' and null). The space choice was deleted on 16/09/2026.
-    'rules.turn.meepleSpendTiming': 'start',
-    'rules.turn.meepleSpendPerTurn': null,
-    'rules.turn.meepleSpendDistinctColours': false,
-    // ⛔ BOARD RETEXTS PINNED 16/09/2026 (R9, R10): this game predates them.
-    'rules.economy.noticeBoardPower.vegetableWildCards': 0,
-    'rules.economy.noticeBoardPower.dairyDiscount': 0,
+    // ⭐ Dean's ruling, 18/09/2026: THE BROWSER HAS NO HAND LIMIT.
+    //
+    // There is no hand limit at the table - it was removed with v31 on
+    // 02/09/2026 and the removal tested well on 09/09/2026 (CLAUDE.md §2.3).
+    // `rules.turn.handLimit` (default 7) is not a table rule at all: it is
+    // purely a simulator bound, kept so the bot's `legalMoves` enumeration
+    // stays inside a runtime budget. `null` is the tested control arm that
+    // turns it off entirely (`packages/engine/src/game.test.ts`, "queues
+    // nothing at all when the limit knob is null").
+    //
+    // Leaving the limit ON here would also be the browser's one freeze risk:
+    // the end-of-turn overflow discard enumerates every subset of the excess,
+    // C(hand, excess) (`packages/engine/src/turnflow.ts` `finishTurn`, and the
+    // 'discard' case in `taskAnswers`, `packages/engine/src/tasks.ts`), and
+    // the browser calls `legalMoves` for the human on every position - the
+    // same enumeration CLAUDE.md §0 already flags as the project's largest
+    // (657,800 moves on one `reference-v19` seed at 4p). With the limit off,
+    // that task is never queued, at any hand size.
+    'rules.turn.handLimit': null,
   },
 });
 
@@ -158,60 +106,73 @@ const APP_VERSION: string | null = typeof __APP_VERSION__ === 'string' ? __APP_V
  */
 const PRIORITY: Move['type'][] = [
   'task',
-  'spendMeeple',
+  'visit',
   'deliver',
   'harvest',
   'build',
   'grow',
   'draw',
-  'visit',
-  'bonusDraw',
+  'spendMeeple',
   'cardMove',
   'pass',
   'endTurn',
 ];
 
 /**
- * The same list with Draw pulled to the front. Used for the human's own seat
- * while it is short of cards: the greedy order above spends a hand to zero every
- * turn, which would hand the interface a permanently empty hand and hide half
- * the thing being built. Preferring Draw is a different LINE of play, not a
- * different rule set, so the position is still one the engine produced - unlike
- * the ticket 09 prototype, which reached into the state and dealt itself cards.
+ * The same list with Draw pulled ahead of the builders. Used for the human's
+ * own seat while it is short of cards: the greedy order above spends a hand to
+ * zero every turn, which would hand the interface a permanently empty hand and
+ * hide half the thing being built. Preferring Draw is a different LINE of play,
+ * not a different rule set, so the position is still one the engine produced -
+ * unlike the ticket 09 prototype, which reached into the state and dealt
+ * itself cards.
+ *
+ * `visit` still leads (18/09/2026, matching the shipped turn's bonus-first
+ * slot), which costs the seat a card before it draws when a visit is legal.
+ * The loop below only asks for a hand at or above `minHand`, bounded at 240
+ * steps with a best-effort fallback, so a thin hand here degrades the warm-up
+ * rather than breaking it - see the same caveat on `WARM_KEEPING` below.
  */
 const HAND_KEEPING: Move['type'][] = [
   'task',
-  'spendMeeple',
+  'visit',
   'draw',
-  'bonusDraw',
   'deliver',
   'harvest',
-  'visit',
   'grow',
   'build',
+  'spendMeeple',
   'cardMove',
   'pass',
   'endTurn',
 ];
 
 /**
- * The warm-up's hand-keeping line. Draw first, VISIT LAST - and that ordering is
- * the whole point. With visit above the builders (as in HAND_KEEPING) the seat
- * draws one card and spends it on a visit every single turn, so the hand sits at
- * zero forever and the interface is handed a turn with almost nothing legal.
- * Measured at four seats, where your turn comes round rarely enough that the
- * pattern never breaks on its own.
+ * The warm-up's hand-keeping line. `visit` sits BELOW the builders here,
+ * unlike `PRIORITY` and `HAND_KEEPING` above.
+ *
+ * ⚠️ THIS WAS TRIED THE OTHER WAY ROUND ON 18/09/2026 (visit leading, matching
+ * the shipped turn's bonus-first slot) and reverted the next day: reproduced
+ * with `?autostart=1&seats=4&depth=320&minHand=4&seed=verify-capture`
+ * (`npm run verify:capture`'s own query), it drew one card and spent it on a
+ * visit every single turn, leaving the hand at ZERO throughout the warm-up -
+ * at four seats a seat's turn comes round rarely enough that the pattern never
+ * broke on its own, and `walk`'s 240-step loop guard only degrades that
+ * gracefully (falling back to the thin hand it saw) rather than fixing it. Not
+ * a different rule set - a real turn still opens with the bonus slot - just a
+ * different LINE of play chosen so the interface is handed a hand worth
+ * looking at. If this is ever tried leading again, verify:capture is exactly
+ * what will catch the regression.
  */
 const WARM_KEEPING: Move['type'][] = [
   'task',
-  'spendMeeple',
   'draw',
-  'bonusDraw',
   'harvest',
   'grow',
   'build',
   'deliver',
   'visit',
+  'spendMeeple',
   'cardMove',
   'pass',
   'endTurn',

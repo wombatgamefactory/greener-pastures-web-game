@@ -14,17 +14,21 @@
  * the inspector.
  */
 
+import type { GameData } from '@gp/data';
+
 import { doorArt } from '../view/art';
 import { SUIT_META } from '../view/suits';
 import type { Door } from '../view/table';
 import { Meeple } from './Meeple';
 
 export function DoorChip({
+  data,
   door,
   owner,
   size = 'full',
   showMeeple = false,
 }: {
+  data: GameData;
   door: Door;
   /**
    * How this door is owned, in the words the surface wants: 'yours', 'theirs',
@@ -46,7 +50,9 @@ export function DoorChip({
       title={`${meta.label}: ${door.actionText}`}
     >
       {size === 'full' && <img className="door-art" src={doorArt(door.action)} alt="" />}
-      {showMeeple && <Meeple colour={door.colour} size={size === 'rail' ? 15 : 22} title="" />}
+      {showMeeple && (
+        <Meeple data={data} colour={door.colour} size={size === 'rail' ? 15 : 22} title="" />
+      )}
       <div className="door-body">
         <span className="door-name">
           <span className="door-verb">{door.actionLabel}</span>

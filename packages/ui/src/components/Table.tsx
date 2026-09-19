@@ -28,7 +28,7 @@ import type { Play } from '../session/play';
 import { SUIT_META } from '../view/suits';
 import { seatSuits } from '../view/table';
 import { ActionBar } from './ActionBar';
-import { Commons } from './Commons';
+import { SharedTable } from './Commons';
 import { DragGhost } from './DragGhost';
 import { EventFeed } from './EventFeed';
 import { Farm } from './Farm';
@@ -117,7 +117,7 @@ export function Table({
   const seatMeta = SUIT_META[view.you.suit];
   /*
    * IN THE FLOW, NOT OVER IT. Both notices used to be `position: fixed` at the
-   * top centre of the viewport, which is where the commons draws its DECKS and
+   * top centre of the viewport, which is where the shared table draws its DECKS and
    * THE ISLAND captions - so the end-game banner printed across them in every
    * screenshot, and phase 2 made it worse by taking the panels out from behind
    * them. A row at the top of the column cannot overlap anything by
@@ -238,7 +238,7 @@ export function Table({
             ))}
           </div>
         )}
-        <Commons
+        <SharedTable
           data={data}
           view={view}
           cardWidth={deck}
@@ -255,7 +255,7 @@ export function Table({
          * act on your cards ended up the better part of a screen height away
          * from the cards, so every decision was a round trip - read the hand at
          * the bottom, travel to the bar below it, come back to click a target
-         * in the tableau above. Between the commons and the farm, the bar sits
+         * in the tableau above. Between the shared table and the farm, the bar sits
          * against the top edge of the thing it acts on at every step of the
          * ladder, and the eye's longest journey shrinks with the screen rather
          * than growing with it.

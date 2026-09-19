@@ -134,7 +134,20 @@ try {
 
   const context = await browser.newContext({ viewport: VIEWPORT, hasTouch: true });
   const page = await context.newPage();
-  page.on('pageerror', (e) => fail('page error', e.message));
+  /*
+   * The consent banner is injected on PRODUCTION builds only (`gp-analytics`,
+   * `vite.config.ts`), and it throws when the page is served from anywhere but
+   * its registered domain - which is exactly what this harness does, from
+   * 127.0.0.1 on an ephemeral port. An artefact of the test setup, not a fault
+   * in the page - `verify-layout.mjs` and `verify-capture.mjs` already filter
+   * the same message; this script did not, and a clean run always reported one
+   * failure that had nothing to do with a drag.
+   */
+  const CONSENT_BANNER_NOISE = /website URL has changed/i;
+  page.on('pageerror', (e) => {
+    if (CONSENT_BANNER_NOISE.test(e.message)) return;
+    fail('page error', e.message);
+  });
   const url = `http://127.0.0.1:${server.address().port}${BASE}${QUERY}`;
 
   const reload = async () => {
@@ -190,20 +203,19 @@ try {
       .innerText()
       .catch(() => '');
     /*
-     * ⭐ REWRITTEN FOR v31. This used to look for "from the bank, to you" and
-     * then click a `.payoff` - the panel offered up to three of them (take the
-     * money, the Special Orders prize, work one of the host's Hired Workers) and
-     * the fee could be two cards. A v31 visit has ONE payoff, the host farm's
-     * suit action, and costs exactly one card, so the panel is a title, a hint
-     * and a row of fee chips: there is nothing left for a payoff button to be.
-     *
-     * What is checked instead is the property that matters and survived the
-     * rewrite: a card dropped on a neighbour lands on the panel FOR THAT
-     * NEIGHBOUR, and it is the hook's panel rather than the self-visit's.
+     * ⭐ REWRITTEN FOR THE SHIPPED RULES (19/09/2026, was "REWRITTEN FOR v31").
+     * The v31 payoff-button panel this comment used to describe is long gone -
+     * one payoff, one fee card, a title and a row of chips - and now self-
+     * visiting itself is banned (11/09/2026), so there is only ever ONE shape
+     * this panel can take: "Visit <name>" for a named rival. What is checked is
+     * that the drop really opened that panel, on that host, and never the old
+     * self-visit wording ("own board" / "own Notice Board"), which would mean
+     * the badge the shipped rules deleted (`ActionBar.tsx`, `Farm.tsx`) had
+     * somehow come back.
      */
     check(
       'the drop lands on a neighbour visit panel',
-      /visit /i.test(panel) && !/no neighbour involved/i.test(panel),
+      /visit /i.test(panel) && !/own (board|notice board)/i.test(panel),
       `the prompt read: ${panel.slice(0, 120).replace(/\s+/g, ' ')}`,
     );
     check(

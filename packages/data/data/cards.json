@@ -4,7 +4,7 @@
     "kind": "generated",
     "generatedBy": "tools/extract_cards.py",
     "sourceSheet": "worksheet 'cards' of the designer spreadsheet (kept outside this repo)",
-    "sourceSha256": "067f7e376a0064cbcb088189f51967dfe8756be63e15ca7a580dd14c9bfabf93",
+    "sourceSha256": "5b0ac30afd64de01cd9566da7050e047eb56e791150d23aa3208b3d70c784134",
     "notes": [
       "buildCost is derived from the @cost1..@cost6 icon columns, which are authoritative; the sheet's 'Build Cost' text column is lossy (it prints a total and does not say which crops satisfy it).",
       "A suit has THREE starters - Barn (ref 1), Farmstead (ref 2), Notice Board (ref 3) - plus the 18-card deck (refs 4..21). 105 cards total (15 starters + 90 deck).",
@@ -480,7 +480,7 @@
       "activationType": "wild",
       "threshold": 3,
       "printedVp": 0,
-      "abilityText": "Build, spending cards of any crops with a discount of 2.",
+      "abilityText": "Build, spending cards of any crops with a discount of 1.",
       "abilityTrigger": [],
       "needsDesignReview": false
     },
@@ -778,7 +778,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "If, on your turn, you Build two buildings, put the top 2 cards of any one deck into your Barn.",
+      "abilityText": "Whenever you build a card that costs 3 or more resources, add 1 of those cards to your Barn.",
       "abilityTrigger": [
         "passive"
       ],
@@ -906,7 +906,7 @@
       "activationType": "orchard",
       "threshold": 3,
       "printedVp": 1,
-      "abilityText": "Draw 2.",
+      "abilityText": "Draw 3.",
       "abilityTrigger": [
         "onActivate"
       ],
@@ -2042,7 +2042,7 @@
       "activationType": null,
       "threshold": null,
       "printedVp": 0,
-      "abilityText": "Game end: 1 VP for each building you have built.",
+      "abilityText": "Game end: 1 VP for each building you have built (Max 5VP)",
       "abilityTrigger": [
         "gameEnd"
       ],

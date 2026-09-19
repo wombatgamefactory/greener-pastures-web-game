@@ -1,0 +1,8 @@
+{
+ "name": "wheat-gate-nearfull-v1",
+ "description": "19/09/2026, HALF ONE of Dean's Wheat board retext: the harvest gate alone moves from 'loaded' to 'nearFull' (full, or one card from full) and the hand-to-barn rider is LEFT ON. Paired with wheat-no-barn-rider-v1 it says which half of the retext carries the effect.",
+ "schemaVersion": 1,
+ "set": {
+  "rules.economy.noticeBoardPower.wheatHarvestGate": "nearFull"
+ }
+}

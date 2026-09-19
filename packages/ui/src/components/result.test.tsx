@@ -28,11 +28,14 @@
 
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { BASE_GAME_DATA as data } from '@gp/data';
 import type { Suit } from '@gp/data';
 import type { GameScore, PlayerView } from '@gp/engine';
 
-import { Session } from '../session/table';
+// ⛔ THE UI'S OWN DATA, NOT `BASE_GAME_DATA` (19/09/2026, 2.8.2): `Session`
+// below plays off `session/table.ts`'s own `data` (the shipped rules with no
+// hand limit), so rendering against a separately-imported `BASE_GAME_DATA`
+// would let the two silently disagree.
+import { Session, data } from '../session/table';
 import { scoreReport, separatorOf, verdictLine } from '../view/scoring';
 import type { Verdict } from '../view/scoring';
 import { Result } from './Result';
@@ -214,7 +217,10 @@ describe('the result screen renders', () => {
     expect(html).toContain('Island receipts');
     expect(html).toContain('VP printed on cards you built');
     expect(html).toContain('End-game cards');
-    expect(html).toContain('island delivery, which ended the game');
+    // ⭐ 15/09/2026: the round finishes at game end (the table rule), though
+    // the engine still grants one further turn each - `Result.tsx` says both.
+    expect(html).toContain('island delivery, which ends the game');
+    expect(html).toContain('The round finishes');
     expect(html).toContain('Another game');
     // The design instrument: the island's share of the winning score, printed.
     expect(html).toContain('of the winning score');

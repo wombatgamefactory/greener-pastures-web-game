@@ -29,7 +29,7 @@ import type { GameData } from '@gp/data';
 
 import type { Play } from '../session/play';
 import { printedFace } from '../view/printed';
-import { farmsteadOf } from '../view/table';
+import { barnOf } from '../view/table';
 import { Card } from './Card';
 import { Reading } from './Reading';
 
@@ -88,15 +88,23 @@ export function ZoomPanel({
    *
    * So the region always renders, and holds a card-shaped placeholder when
    * nothing is being read. Step B filled the space UNDER the card rather than
-   * this one: what the idle region should show instead of a hint is still open
-   * (the plan's §11 asks whether it is your Farmstead's live suit power), and
-   * guessing at it here would be the kind of default nobody asked for. The
-   * placeholder stays until that is decided.
+   * this one: what the idle region should show instead of a hint was open when
+   * this paragraph was written (the plan's §11 asked whether it was your
+   * standing scorer's live text) and is answered below - it is your Barn,
+   * since 10/09/2026 (ledger A105; it was the Farmstead before that ruling).
    */
   if (!zoom.current) {
     if (!region) return null;
     /*
-     * THE IDLE DEFAULT: YOUR OWN FARMSTEAD (phase 3, closing the plan's §11.1).
+     * THE IDLE DEFAULT: YOUR OWN BARN (phase 3, closing the plan's §11.1).
+     *
+     * ⭐ 10/09/2026: THIS USED TO BE THE FARMSTEAD, AND IT MOVED WHEN THE RULE
+     * DID. The own-crop end-game scorer ("Game end: 1 VP for each `<CROP>`
+     * card you have built") left the Farmstead and landed on the Barn (ledger
+     * A105) - the Farmstead now prints no rules text at all (see `Farm.tsx`'s
+     * new six-slot strip for what it shows instead), so an idle region that
+     * still defaulted to it would be teaching a rule off a card that no longer
+     * carries it.
      *
      * Phase 2 turned this from a nicety into the top item. With the commons and
      * the rail stripped of their chrome the farm became the loudest region on
@@ -104,10 +112,10 @@ export function ZoomPanel({
      * as a hole - its contrast had not changed, its conspicuousness had.
      *
      * A hint was never going to fill it, because a hint is not worth reading
-     * twice. The Farmstead is: it is the suit power, it is live from turn one,
-     * it is the rule players forget most often at the table, and it is the only
-     * card in the game whose text applies at every single moment. So the region
-     * spends its idle time teaching the one thing an idle player most needs.
+     * twice. The Barn is: its scorer is live from turn one, it is the rule
+     * players forget most often at the table, and it is the only card in the
+     * game whose text applies at every single moment. So the region spends its
+     * idle time teaching the one thing an idle player most needs.
      *
      * IT IS A FALLBACK AND NOT A MODE. Anything hovered or held wins, because
      * `zoom.current` is checked first and this branch is only reached when there
@@ -117,9 +125,9 @@ export function ZoomPanel({
      * pointing at" without reading either.
      *
      * The read-only render path passes no `play` and gets the old hint, which is
-     * correct rather than a gap: with no seat there is no "your" Farmstead.
+     * correct rather than a gap: with no seat there is no "your" Barn.
      */
-    const standing = play ? farmsteadOf(data, play.view.you.tableau) : null;
+    const standing = play ? barnOf(data, play.view.you.tableau) : null;
     if (standing) {
       return (
         <aside className="reading reading-standing" aria-live="polite">
@@ -131,10 +139,9 @@ export function ZoomPanel({
                 furniture rather than as something that appears - and a caption
                 above would have pushed the card down by its own height every
                 time the pointer left the farm. */}
-            {/* "Power" was the suit power the Farmstead used to print. Its
-                v31 text is an end-game scorer - 1 VP for each card of your own
-                crop you have built - so the caption names what it now is: the
-                standing reason to build your own colour. */}
+            {/* The Barn's printed text is the own-crop end-game scorer - 1 VP
+                for each card of your own crop you have built - so the caption
+                names what it is: the standing reason to build your own colour. */}
             <p className="reading-caption">Your farm&rsquo;s end-game bonus</p>
             <Reading data={data} id={standing.card} play={play} />
           </div>

@@ -1,14 +1,16 @@
 /**
  * The prompt surface: the one strip that says what the game is waiting for.
  *
- * Four things share it, because at any moment at most one of them is live: a
- * pending task, the build assembly, the visit assembly, and the disambiguation
- * menu a click opens when it matched more than one move. Giving them one place
- * on screen is what stops the interface sprouting modals - and it means the
- * answer to "why can I not click anything" is always in the same spot.
+ * ⭐ FIVE THINGS SHARE IT (18/09/2026, was four), because at any moment at most
+ * one of them is live: a pending task, the build assembly, the visit assembly,
+ * the deliver assembly (2.5.1), and the disambiguation menu a click opens when
+ * it matched more than one move. Giving them one place on screen is what stops
+ * the interface sprouting modals - and it means the answer to "why can I not
+ * click anything" is always in the same spot.
  *
  * The fallback list at the bottom is load-bearing rather than lazy. Most tasks
- * are answered in place (a building, a deck, a tile), but the engine's task
+ * are answered in place (a building, a deck, a tile, or - since 18/09/2026,
+ * 2.2.2 - a hand card picked up for `handToBarn`), but the engine's task
  * vocabulary has an escape hatch for card-specific choices, and the discard has
  * subsets no in-place gesture covers. Listing the legal answers in English
  * guarantees ticket 25's "every task answerable" without a bespoke surface per
@@ -24,7 +26,7 @@ import { dropZone } from '../view/drop';
 import { answersOfKind, pendingTask, subsetAnswer } from '../view/intent';
 import { describeMove, describeTask } from '../view/moveText';
 import { printedFace } from '../view/printed';
-import { BuildPanel } from './BuildPanel';
+import { BuildPanel, DeliverPanel } from './BuildPanel';
 import { Card } from './Card';
 import { VisitPanel } from './VisitPanel';
 import type { Zoomer } from './Zoom';
@@ -109,6 +111,16 @@ export function Prompt({ data, play, zoom }: { data: GameData; play: Play; zoom:
     return (
       <section className="prompt" aria-live="polite" {...dropZone('assembly')}>
         <VisitPanel data={data} play={play} host={intent.host} fee={intent.fee} />
+      </section>
+    );
+  }
+  // A delivery is paid from the barn, never carried by drag from the hand
+  // (2.5.1) - no `dropZone`, unlike build and visit, for the same reason
+  // `DROP_FAMILIES` marks tiles `null` in `view/drop.ts`.
+  if (intent.k === 'deliver') {
+    return (
+      <section className="prompt" aria-live="polite">
+        <DeliverPanel play={play} draft={intent.draft} />
       </section>
     );
   }

@@ -19,10 +19,16 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { BASE_GAME_DATA as data } from '@gp/data';
 import type { PlayerView } from '@gp/engine';
 
-import { dealTable } from '../session/table';
+// ⛔ THE UI'S OWN DATA, NOT `BASE_GAME_DATA` (19/09/2026, 2.8.2): `dealTable`
+// below deals off `session/table.ts`'s own `data`, which carries one override
+// (no hand limit) that `BASE_GAME_DATA` does not. Rendering against the two
+// separately used to mean the hand shown could disagree with the hand the
+// position was actually dealt under - printing "n / 7" off a game that has no
+// 7. One `data`, used for both the deal and the render, is what keeps them
+// from being able to drift apart.
+import { data, dealTable } from '../session/table';
 import type { TableOptions } from '../session/table';
 import { Card } from './Card';
 import { Inspector } from './Inspector';
@@ -96,8 +102,16 @@ describe('the table renders', () => {
    * the rule is that holding more than the limit is LEGAL until your turn ends,
    * so the surface has to warn without blocking.
    */
-  it('prints the hand against the limit, and warns without blocking when over it', () => {
-    const limit = data.rules.turn.handLimit as number;
+  /**
+   * ⭐ REWRITTEN 19/09/2026. Dean ruled 18/09/2026 that THE BROWSER HAS NO HAND
+   * LIMIT (`session/table.ts` loads `rules.turn.handLimit: null`, matching the
+   * table): the "over-limit" warning below is Inspector/Farm's engine-bound
+   * reading of a NON-null `rules.turn.handLimit`, which the shipped browser
+   * data never carries. So the property worth pinning inverted - a swollen
+   * hand must NEVER warn, at any size, because there is no number to be over.
+   */
+  it('never warns about a hand size, because the browser has no hand limit', () => {
+    expect(data.rules.turn.handLimit).toBeNull();
     const table = dealTable({
       seats: 2,
       suits: ['wheat', 'orchard'],
@@ -106,7 +120,7 @@ describe('the table renders', () => {
       minHand: 0,
     });
     const under = renderToStaticMarkup(<Table data={data} view={table.view} events={[]} />);
-    expect(under).toContain(`/ ${limit}`);
+    expect(under).toContain(' cards');
     expect(under).not.toContain('over-limit');
 
     const deck = table.view.you.hand;
@@ -115,13 +129,13 @@ describe('the table renders', () => {
       you: {
         ...table.view.you,
         // Repeat the seat's own cards: the strip counts and never dedupes, and
-        // the assertion is about the count against the limit.
-        hand: Array.from({ length: limit + 2 }, (_, i) => deck[i % deck.length] as string),
+        // the assertion is that a large hand still never triggers a warning.
+        hand: Array.from({ length: 20 }, (_, i) => deck[i % deck.length] as string),
       },
     };
     const over = renderToStaticMarkup(<Table data={data} view={swollen} events={[]} />);
-    expect(over).toContain('over-limit');
-    expect(over).toContain('discard at end of turn');
+    expect(over).not.toContain('over-limit');
+    expect(over).not.toContain('discard at end of turn');
   });
 
   it('renders a seat whose Notice Board no longer exists (ticket 30)', () => {

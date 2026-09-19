@@ -383,7 +383,11 @@ export const wildHive: CardHandler = {
       'building" is TWO SEPARATE deck-sow choices, each naming a deck and any rival ' +
       'building that can take a card (never a Notice Board, S11), so both may land on the ' +
       'same building or on two different neighbours. One `sowFromDeck` task with ' +
-      '`remaining` 2, mandatory; it is skipped when no neighbour has a building with room. ' +
+      '`remaining` 2; the task auto-drops when no neighbour has a building with room. ' +
+      '⚠️ DECLINABLE SINCE 18/09/2026 (`optional: true`), against the printed "Sow 2", not ' +
+      '"you may": every `sowFromDeck` push shipped skippable that day to fix a UI dead end ' +
+      '(a human had no answer to give at all), on the `handToBarn` precedent. A ruling on ' +
+      'whether THIS card in particular should stay mandatory is still owed. ' +
       'Then two deck-to-barn picks (`deckToBarn`, buildings.ts), each from a deck of the ' +
       "owner's choosing, which run whether or not the sow found a target. A sow onto a " +
       "neighbour's farm is not a visit and fires no visit reactor. The older note, about " +
@@ -405,7 +409,14 @@ export const wildHive: CardHandler = {
   activate(fx, self) {
     const targets = neighbourSowTargets(fx.data, fx.state, self.seat);
     if (targets.length > 0) {
-      fx.pushTask({ t: 'sowFromDeck', pid: self.seat, src: self.card, remaining: 2, targets });
+      fx.pushTask({
+        t: 'sowFromDeck',
+        pid: self.seat,
+        src: self.card,
+        remaining: 2,
+        targets,
+        optional: true,
+      });
     }
     fx.pushTask({
       t: 'card',
@@ -784,8 +795,10 @@ export const smokePot: CardHandler = {
     notes:
       '⭐ v42: the deck top is SOWN onto one of your own buildings (any building that can ' +
       'take a card, never a Notice Board, S11), where it used to go to the barn. One ' +
-      '`sowFromDeck` task, `remaining` 1, mandatory ("SOW", not "you may"), skipped when ' +
-      'nothing has room. VISITOR-side and neighbour-only, as before. ⭐ THE ONCE-A-TURN ' +
+      '`sowFromDeck` task, `remaining` 1, skipped when nothing has room. ' +
+      '⚠️ DECLINABLE SINCE 18/09/2026 (`optional: true`), against the printed "SOW", not ' +
+      '"you may": see the Wild Hive note above, same fix, same open ruling. ' +
+      'VISITOR-side and neighbour-only, as before. ⭐ THE ONCE-A-TURN ' +
       'GUARD IS GONE (Dean, 15/09/2026): card text fires every time its trigger happens, so ' +
       'a second visit in a turn sows a second card. The paragraphs below that argue the ' +
       'guard, and the barn destination, are history. ' +
@@ -831,7 +844,14 @@ export const smokePot: CardHandler = {
       if (targets.length === 0) return;
       // Targets snapshot now and are re-checked for room when the task is
       // answered, so a building that fills in between simply drops out.
-      fx.pushTask({ t: 'sowFromDeck', pid: self.seat, src: self.card, remaining: 1, targets });
+      fx.pushTask({
+        t: 'sowFromDeck',
+        pid: self.seat,
+        src: self.card,
+        remaining: 1,
+        targets,
+        optional: true,
+      });
     },
   },
 };
