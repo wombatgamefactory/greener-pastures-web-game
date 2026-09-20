@@ -949,6 +949,14 @@ export const dockworkersUnion: CardHandler = {
     beforeTurnEnd(fx, event, self) {
       if (event.seat !== self.seat) return;
       if (player(fx.state, self.seat).barn.length > 0) return;
+      // A table with every deck AND discard dry offers nothing (the same guard
+      // as V4 and V16, the other two `deckToBarn` call sites). Missing this
+      // guard let the task push unconditionally, and `deckToBarnTask.answers()`
+      // returns `[]` when nothing is drawable - a mandatory task with no
+      // answer, which is a dead end the sim's driver reports as "no legal
+      // moves and the game is not over" (found 19/09/2026 off
+      // reference-v21:3:VOD+W:17, turn 70).
+      if (drawableSuits(fx.data, fx.state).length === 0) return;
       fx.pushTask({
         t: 'card',
         pid: self.seat,

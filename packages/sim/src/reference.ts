@@ -1170,8 +1170,100 @@ export const REFERENCE_V20: ReferenceConfig = {
   seed: 'reference-v20',
 };
 
+/**
+ * ⭐ reference-v21, cut 19/09/2026 when sheet `Isle-of-Farms-v45.xlsm` retexted
+ * 13 card faces (Dean's rulings R1-R10, `tasks/v45-rulings-v1.md`). Everything
+ * else is reference-v20: the token island, no balloons, no Aerodrome, no
+ * Village Store coin, no closing draw, no island wild substitution, the
+ * Vegetable barn suit, the five per-suit Helping Hands, a random first player,
+ * the round finished at game end.
+ *
+ * The 13 faces, by suit:
+ *
+ *   - **W5 Rye Field**: Harvest reward becomes Draw 3; the sow-back line is
+ *     deleted.
+ *   - **W13 The Bakery**: retexted to "Harvest each of your OTHER buildings
+ *     (not this one) with at least 1 card on it" (R6, R10). It no longer
+ *     harvests itself, so it now clogs on its own activation fee every use -
+ *     an intended brake, not a bug.
+ *   - **W16 The Granary**: gains "Whenever you harvest, if you have 5 or fewer
+ *     cards, Draw 1" (R7, R8). The count is the owner's HAND ONLY, taken
+ *     FRESH at the moment each draw would fire, so a W13-plus-W16 cascade can
+ *     stop paying part way through as the hand fills.
+ *   - **A19 The Honey Hall** and **A20 The Apiarist's Guild**: each gains a
+ *     "(Max 5)" cap, on the `grandGranaryCap` pattern (R9) as two SEPARATE new
+ *     knobs, `rules.economy.honeyHallCap` and `rules.economy.apiaristsGuildCap`,
+ *     both shipped at 5, because the three capped cards count different
+ *     things.
+ *   - **V6 The Trade Depot**: the trailing draw becomes Draw 2.
+ *   - **V10 The Supply House**: completely retexted to "For each card in your
+ *     Barn, draw 1 of that suit" (R1-R3) - the barn is only COUNTED, nothing
+ *     is discarded or moved, the draw is MANDATORY and UNCAPPED.
+ *   - **V11**: threshold 2 to 3, no change to its printed effect.
+ *   - **V12 The Auction House**: completely retexted to "Perform the Notice
+ *     Board action of any suit you have in your Barn" (R4) - FREE, no
+ *     discard, the barn only names which powers are on offer; threshold 2 to
+ *     3 alongside the retext.
+ *   - **V13**: threshold 1 to 2, no change to its printed effect.
+ *   - **V15**: threshold 1 to 2, no change to its printed effect.
+ *   - **V16 The Market Signal Tower**: text tidied to "any deck card" (R5);
+ *     behaviour unchanged, since it already meant the top card of a deck of
+ *     your choice.
+ *   - **V17 The Dockworker's Union**: completely retexted to "If, at the end
+ *     of your turn, your Barn is empty, place any deck card into your Barn"
+ *     (R5) - a new end-of-turn trigger (`beforeTurnEnd`), moved off the old
+ *     "draw 1 whenever you discard a barn card" and off `afterBarnDiscard`,
+ *     which V8 and V15 still fire.
+ *
+ * ⚠️ **A BOT GAP, PRE-EXISTING AND NOT A v45 REGRESSION: V12's new
+ * `auctionSuit` choice is answerable but not differentiated.** The choice of
+ * which suit's Notice Board power to take is a `card` task, priced only
+ * through the flat `cardTask` term (`packages/bots/src/terms.ts`, feature
+ * `act.a === 'cardTask' ? 1 : 0`), which is not on `isProbed` and so never
+ * looks ahead to what the power itself is worth. Every legal suit therefore
+ * scores identically and ties break at random, so a bot fires a weak Notice
+ * Board power (say, a suit with an unusable Grow) as often as the strongest
+ * one on offer. `isProbed` never covering `cardTask` is the same gap V8's and
+ * V15's barn-discard crop choice already sit in. **`reference-v21` will
+ * therefore UNDERSTATE V12**: any reading of its win rate, its buildings
+ * count or its share of the bonus economy is a floor, not the card's true
+ * value at a table where a human always names the best suit. Do not "fix" the
+ * bot for this cut; the gap is recorded here so a future reader does not
+ * mistake a flat V12 number for the card being weak.
+ *
+ * ⛔ A level from `reference-v20` is not comparable: the seed moved with the
+ * sheet. NO NUMBER IN ANY `reference-v20` OR EARLIER REPORT IS COMPARABLE AS A
+ * LEVEL.
+ */
+export const REFERENCE_V21: ReferenceConfig = {
+  ...REFERENCE_V20,
+  id: 'reference-v21',
+  description:
+    'SHEET v45: 13 CARD FACES RETEXTED (Dean, 19/09/2026; tasks/v45-rulings-v1.md, R1-R10; ' +
+    'cards.json re-extracted off Isle-of-Farms-v45.xlsm). reference-v20 stands - the token ' +
+    'island, no balloons, no Aerodrome, no Village Store coin, no closing draw, no island wild ' +
+    'substitution, the Vegetable barn suit, the five per-suit Helping Hands, a random first ' +
+    'player, the round finished at game end - and THIRTEEN FACES MOVE. W5 Rye Field: Harvest is ' +
+    'Draw 3, the sow-back line is gone. W13 The Bakery: Harvests every OTHER building of yours ' +
+    'with at least 1 card, so it no longer scoops its own fee and now clogs on its own ' +
+    'activation every use. W16 The Granary: Whenever you harvest, if your HAND is 5 or fewer, ' +
+    'Draw 1, checked fresh each time, so a harvest cascade can stop paying part way through. A19 ' +
+    'The Honey Hall and A20 The Apiarist’s Guild: each capped at 5 (honeyHallCap, ' +
+    'apiaristsGuildCap, both shipped at 5). V6 The Trade Depot: the trailing draw is Draw 2. V10 ' +
+    'The Supply House: For each card in your Barn, draw 1 of that suit - mandatory, uncapped, ' +
+    'nothing leaves the barn. V11, V13, V15: threshold only, 2 to 3 / 1 to 2 / 1 to 2. V12 The ' +
+    'Auction House: Perform the Notice Board action of any suit you have in your Barn, FREE, no ' +
+    'discard, threshold 2 to 3. V16: text tidied to "any deck card", behaviour unchanged. V17 ' +
+    'The Dockworker’s Union: If, at the end of your turn, your Barn is empty, place any deck ' +
+    'card into your Barn - a new end-of-turn trigger. ⚠️ V12’S AUCTIONSUIT CHOICE IS PRICED FLAT ' +
+    '(cardTask, not on isProbed) SO THIS INSTRUMENT UNDERSTATES V12: see the block comment above ' +
+    'this config. ⚠️ THE HAND LIMIT OF 7 IS THE SIMULATOR’S BOUND AND NOT A RULE OF THE GAME. ' +
+    '⛔ NO NUMBER IN ANY reference-v20 OR EARLIER REPORT IS COMPARABLE AS A LEVEL.',
+  seed: 'reference-v21',
+};
+
 /** The instrument every current number is defined against. */
-export const REFERENCE = REFERENCE_V20;
+export const REFERENCE = REFERENCE_V21;
 
 /**
  * The noise floor, measured once and quoted constantly.
@@ -1358,29 +1450,50 @@ export interface NoiseFloor {
  * v19: the first player is now drawn at random, so a seat index no longer
  * means an opening position, and the +/-3 seat band sits inside the noise
  * until the seat reading is re-keyed to turn order.
+ *
+ * The v20 values, for the record and NOT for use: meeples held at game end 0,
+ * barn at game end 0, game length 0, visits per turn 0.005, actions per turn
+ * 0.004, meeple spend rate 0.01, self-visit share of visits 0, bonus slot used
+ * 0.005, door mix (busiest board share) 0.004, farm bypass share 0.005,
+ * unfinished games 0.001, winning score 0, last as % of winner 0.021, tied top
+ * score 0.001, deck reshuffles per game 0, reshuffles per played crop 0, seat
+ * deviation 3.647.
+ */
+/**
+ * ⭐ reference-v21's FLOOR, measured 19/09/2026 at n=1580 per seat count, two
+ * seeds, from `reports/noise-2026-09-19T22-52-24-reference-v21.txt`.
+ *
+ * The v21 values: meeples held at game end 0, barn at game end 0, game
+ * length 0, visits per turn 0.004, actions per turn 0.004, meeple spend rate
+ * 0.004, self-visit share of visits 0, bonus slot used 0.004, door mix
+ * (busiest board share) 0.001, farm bypass share 0.004, unfinished games
+ * 0.001, winning score 0, last as % of winner 0.004, tied top score 0.006,
+ * deck reshuffles per game 0, reshuffles per played crop 0, seat deviation
+ * 5.407. ⚠️ SEAT DEVIATION MOVED 5.407 POINTS, against 3.647 on v20: the
+ * +/-3 seat band sits inside the noise until the seat reading is re-keyed.
  */
 export const NOISE_FLOOR: NoiseFloor | null = {
-  reference: 'reference-v20',
+  reference: 'reference-v21',
   games: 1580,
-  measured: '2026-09-16',
+  measured: '2026-09-19',
   movement: {
     'meeples held at game end': 0,
     'barn at game end': 0,
     'game length, rounds': 0,
-    'visits per turn': 0.005,
+    'visits per turn': 0.004,
     'actions per turn': 0.004,
-    'meeple spend rate': 0.01,
+    'meeple spend rate': 0.004,
     'self-visit share of visits': 0,
-    'bonus slot used, share of turns': 0.005,
-    'door mix, busiest board share': 0.004,
-    'farm bypass share': 0.005,
+    'bonus slot used, share of turns': 0.004,
+    'door mix, busiest board share': 0.001,
+    'farm bypass share': 0.004,
     'unfinished games': 0.001,
     'winning score': 0,
-    'last as % of winner': 0.021,
-    'tied top score': 0.001,
+    'last as % of winner': 0.004,
+    'tied top score': 0.006,
     'deck reshuffles per game': 0,
     'reshuffles, played crop': 0,
-    'seat deviation': 3.647,
+    'seat deviation': 5.407,
   },
 };
 /**

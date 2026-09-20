@@ -867,6 +867,29 @@ describe("V17 The Dockworker's Union - empty Barn at end of turn (v45, R5)", () 
     expect(out.tasks.some((t) => srcOf(t) === 'V17')).toBe(false);
     expect(out.turnPlayer).toBe(WHEAT);
   });
+
+  it('drops silently, like V4 and V16, when every deck and discard is dry', () => {
+    // Regression for the 2026-09-19 crash on reference-v21:3:VOD+W:17, turn
+    // 70: V17 pushed a mandatory deckToBarn task with nothing left to draw
+    // anywhere, and deckToBarnTask.answers() returned [], leaving a task with
+    // no legal answer - the sim driver's "no legal moves and the game is not
+    // over". V4 (marketStallDepot) and V16 (marketSignalTower) already guard
+    // the same shared task with drawableSuits(...).length === 0; V17 lacked
+    // the guard. This does not touch R5 (the draw is still the top card of a
+    // deck of choice when one exists): it only stops an unanswerable task
+    // from reaching the stack.
+    const s = base();
+    buildFor(data, s, VEG, 'V17');
+    for (const suit of Object.keys(s.decks) as (keyof typeof s.decks)[]) {
+      s.decks[suit] = [];
+      s.discards[suit] = [];
+    }
+    s.turn.actionSpent = true;
+    const out = apply(data, s, { type: 'endTurn', seat: VEG }).state;
+    expect(out.tasks.some((t) => srcOf(t) === 'V17')).toBe(false);
+    // And the game is not left holding an unanswerable task of any kind.
+    expect(legalMoves(data, out).length).toBeGreaterThan(0);
+  });
 });
 
 // --- The Powers and the Endgame cards ---------------------------------------
