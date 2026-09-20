@@ -74,8 +74,19 @@
  * deck top card into it" (also R5), so it moves off `afterBarnDiscard` onto
  * `beforeTurnEnd`. V11, V13 and V15 gain a threshold only - 2 to 3, 1 to 2
  * and 1 to 2 respectively - with no change to any printed effect; V12's
- * threshold also rises, 2 to 3, alongside its retext. `pushPlainAction` is
- * deleted with V10's old text, its only caller.
+ * threshold also rises, 2 to 3, alongside its retext.
+ *
+ * ⭐ 20/09/2026: TWO KNOBS PUT THE OLD V10 AND V17 BACK, to measure how much
+ * of the reference-v21 barn glut (+1.3, against about +0.5 on every earlier
+ * version) is these two cards' v45 retexts rather than the rest of the pass.
+ * `rules.economy.supplyHouseBarnDrain` (default false) restores V10's old
+ * "discard up to 2 from your Barn, then the base action of each crop
+ * discarded" - `pushPlainAction` is BACK, no longer deleted, called only
+ * when the knob is true. `rules.economy.dockworkersUnionDrawOnDiscard`
+ * (default false) restores V17's old `afterBarnDiscard` listener alongside
+ * its new `beforeTurnEnd` one, the two mutually exclusive on the knob. Both
+ * default to the shipped v45 behaviour, so the default game does not move;
+ * both true together is the paired arm, overlays/pre-v45-barn-drains-v1.overlay.json.
  */
 
 import type { GameData, Suit } from '@gp/data';
@@ -144,16 +155,54 @@ function pushBarnDiscard(
  * business. Deliberately not `performDoorAction`, which emits `doorUsed` and
  * fires `afterWork` as a door or Worker use.
  *
- * ⚠️ UNCALLED SINCE SHEET v45 (19/09/2026): this was V10 The Supply House's
- * "base action" mapping (`pushPlainAction`, deleted the same day with its only
- * caller when V10 was retexted to a plain per-crop draw, R1-R3). Left in place
- * because it is a small, already-proven utility and no card currently needs
- * it removed, but nothing in the engine calls it right now - flag this for a
- * future pass if it stays dead.
+ * ⚠️ WAS UNCALLED SINCE SHEET v45 (19/09/2026): this was V10 The Supply
+ * House's "base action" mapping, and its only caller (`pushPlainAction`) was
+ * deleted the same day when V10 was retexted to a plain per-crop draw
+ * (R1-R3). ⭐ 20/09/2026: `pushPlainAction` is BACK, restored below behind
+ * `rules.economy.supplyHouseBarnDrain`, to measure how much of the
+ * reference-v21 barn glut V10's drain removal is responsible for
+ * (overlays/pre-v45-barn-drains-v1.overlay.json). `plainActionOf` therefore
+ * has a live caller again, conditionally.
  */
 export function plainActionOf(data: GameData, crop: Suit): DoorAction {
   const action = doorActionOf(data, crop);
   return action === 'sow' ? 'grow' : action;
+}
+
+/**
+ * Queue the plain action of a crop for `seat`, as granted by the card `src`.
+ * ⭐ RESTORED 20/09/2026 behind `rules.economy.supplyHouseBarnDrain` (the arm
+ * in overlays/pre-v45-barn-drains-v1.overlay.json): this is V10 The Supply
+ * House's pre-v45 tail, quoted verbatim from `git show e6b459c` rather than
+ * rewritten from the card text, so the old-value arm really is the old game.
+ */
+function pushPlainAction(fx: Fx, seat: Seat, src: CardId, crop: Suit): void {
+  const action = plainActionOf(fx.data, crop);
+  switch (action) {
+    case 'draw': {
+      const { see, keep } = fx.data.rules.turn.baseDraw;
+      fx.pushTask({ t: 'draw', pid: seat, src, see, keep, revealed: [] });
+      return;
+    }
+    case 'harvest':
+      fx.pushTask({ t: 'chooseBuilding', pid: seat, src, filter: 'harvestable', then: 'harvest' });
+      return;
+    case 'grow':
+      fx.pushTask({ t: 'grow', pid: seat, src });
+      return;
+    case 'build':
+      fx.pushTask({ t: 'build', pid: seat, src });
+      return;
+    case 'deliver':
+      fx.pushTask({ t: 'deliver', pid: seat, src });
+      return;
+    case 'sow':
+      // Unreachable: `plainActionOf` maps it away. Kept so the switch stays total.
+      fx.pushTask({ t: 'grow', pid: seat, src });
+      return;
+    default:
+      return action satisfies never;
+  }
 }
 
 /** A seat's receipts (the token island, R7). */
@@ -524,16 +573,33 @@ export const supplyHouse: CardHandler = {
       "end-of-turn overflow discard is already the simulator's single largest cost; a forced " +
       'multi-card draw off a full barn pushes on that directly, and that cost is reported ' +
       'rather than capped away. ' +
-      '⛔ THE OLD SHAPE IS GONE: no discard, no "up to", no per-crop plain action. ' +
-      '`pushPlainAction` loses its only caller here and is deleted with it; `plainActionOf` is ' +
-      'left in place but is presently uncalled anywhere in the engine.',
+      '⛔ THE SHIPPED SHAPE HAS NO DISCARD: no "up to", no per-crop plain action. ' +
+      '⭐ 20/09/2026, `rules.economy.supplyHouseBarnDrain` (default false): true switches ' +
+      'this card back to the pre-v45 shape - "Discard up to 2 cards from your Barn. For each ' +
+      'card discarded, perform the base action of that crop" - via the restored ' +
+      '`pushPlainAction` and the `barnDiscard` task below, added to measure how much of the ' +
+      "reference-v21 barn glut is this one card's drain going away " +
+      '(overlays/pre-v45-barn-drains-v1.overlay.json). Under the knob the OLD notes apply: ' +
+      'every discard first, then the actions in discard order (discarding first means a card ' +
+      'harvested into the barn by the first action can never be discarded by this card), each ' +
+      'discard triggers V17 when `dockworkersUnionDrawOnDiscard` is also true, and a Grow ' +
+      "cannot pick V10 itself since it has already activated this turn.",
   },
   activate(fx, self) {
+    if (fx.data.rules.economy.supplyHouseBarnDrain) {
+      pushBarnDiscard(fx, self, 2, true);
+      return;
+    }
     const tally = barnTally(fx.data, fx.state, self.seat);
     for (const suit of fx.data.cards.suits) {
       const n = tally[suit] ?? 0;
       if (n > 0) drawFromCropDeck(fx, self.seat, self.card, suit, n);
     }
+  },
+  tasks: {
+    barnDiscard: barnDiscardTask((fx, task, crops) => {
+      for (const crop of crops) pushPlainAction(fx, task.pid, task.src, crop);
+    }),
   },
 };
 
@@ -931,9 +997,10 @@ export const dockworkersUnion: CardHandler = {
     asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: true },
     notes:
       "⭐ RETEXTED ON SHEET v45 (Dean's ruling R5, `tasks/v45-rulings-v1.md`), and the card " +
-      'moves to a completely different hook. It no longer listens on `afterBarnDiscard` at ' +
-      "all - V8 and V15 are that hook's only listeners now (buildings.ts still fires it for " +
-      "them; the hook itself is not deleted, only this card's wiring to it). " +
+      'moves to a completely different hook BY DEFAULT. It no longer listens on ' +
+      "`afterBarnDiscard` at all under the shipped knob value - V8 and V15 are that hook's " +
+      "only listeners now (buildings.ts still fires it for them; the hook itself is not " +
+      "deleted, only this card's wiring to it). " +
       'THE NEW LISTENER IS `beforeTurnEnd` (fx.ts), the hook `finishTurn` (turnflow.ts) fires ' +
       'once a turn, before the hand-limit discard - the same seam O18 A Helping Hand already ' +
       'uses, so V17 joins an existing seam rather than needing a new one. Owner-scoped ' +
@@ -943,10 +1010,19 @@ export const dockworkersUnion: CardHandler = {
       'never a search. FIRES ON A TURN WHERE THE BARN WAS NEVER TOUCHED, including most early ' +
       'turns, because the game starts with an empty barn and the condition is only "empty at ' +
       'the end of your turn". Checked ONCE, after the main action and any meeple spend, before ' +
-      'the discard; a barn holding even one card at that moment does not fire it at all.',
+      'the discard; a barn holding even one card at that moment does not fire it at all. ' +
+      "⭐ 20/09/2026, `rules.economy.dockworkersUnionDrawOnDiscard` (default false): true " +
+      'switches this card back to the pre-v45 shape, "Whenever you discard a card from your ' +
+      'Barn, Draw 1", back on the `afterBarnDiscard` hook - added alongside ' +
+      '`supplyHouseBarnDrain` to measure how much of the reference-v21 barn glut these two ' +
+      "cards' v45 retexts are responsible for " +
+      '(overlays/pre-v45-barn-drains-v1.overlay.json). The two listeners below are mutually ' +
+      'exclusive on the knob: exactly one is live at a time, never both, so a discard cannot ' +
+      'be double-counted and an empty-barn turn cannot fire twice.',
   },
   on: {
     beforeTurnEnd(fx, event, self) {
+      if (fx.data.rules.economy.dockworkersUnionDrawOnDiscard) return;
       if (event.seat !== self.seat) return;
       if (player(fx.state, self.seat).barn.length > 0) return;
       // A table with every deck AND discard dry offers nothing (the same guard
@@ -964,6 +1040,17 @@ export const dockworkersUnion: CardHandler = {
         kind: 'deckToBarn',
         riders: { remaining: 1 },
       });
+    },
+    // ⭐ RESTORED 20/09/2026 behind `rules.economy.dockworkersUnionDrawOnDiscard`
+    // (the arm in overlays/pre-v45-barn-drains-v1.overlay.json): the pre-v45
+    // card, "Whenever you discard a card from your Barn, Draw 1", quoted
+    // verbatim from `git show e6b459c` so the old-value arm really is the old
+    // game. Live only when the knob is true; `beforeTurnEnd` above is live
+    // only when it is false, so exactly one of the two ever fires.
+    afterBarnDiscard(fx, event, self) {
+      if (!fx.data.rules.economy.dockworkersUnionDrawOnDiscard) return;
+      if (event.seat !== self.seat) return;
+      drawN(fx, self.seat, self.card, 1);
     },
   },
   tasks: { deckToBarn: deckToBarnTask() },

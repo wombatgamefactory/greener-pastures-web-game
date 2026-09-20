@@ -1175,6 +1175,30 @@ export interface RulesFile {
      */
     readonly apiaristsGuildCap: number | null;
     /**
+     * V10 The Supply House's activation shape. false (SHIPPED, v45, R1-R3):
+     * "For each card in your Barn, draw 1 of that suit" - nothing is
+     * discarded, spent or moved, the draw is mandatory and uncapped, and the
+     * barn can pay for V10 again next turn. true restores the pre-v45 card,
+     * "Discard up to 2 cards from your Barn. For each card discarded, perform
+     * the base action of that crop" - a barn DRAIN. Added 20/09/2026 to
+     * measure how much of reference-v21's barn-glut move (+0.5 on every
+     * earlier version, +1.3 here) is this one card losing its drain, on the
+     * `grandGranaryCap` pattern. See also `dockworkersUnionDrawOnDiscard`,
+     * the other half of the same question.
+     */
+    readonly supplyHouseBarnDrain: boolean;
+    /**
+     * V17 The Dockworker's Union's trigger. false (SHIPPED, v45, R5): "If, at
+     * the end of your turn, your Barn is empty, place any deck card into your
+     * Barn" - an end-of-turn TAP on `beforeTurnEnd`. true restores the
+     * pre-v45 card, "Whenever you discard a card from your Barn, Draw 1" - a
+     * DRAIN reward on the `afterBarnDiscard` hook (still fired by V8 and
+     * V15). Added 20/09/2026 alongside `supplyHouseBarnDrain` to measure how
+     * much of reference-v21's barn-glut move is these two cards turning from
+     * drains into (at best) a no-op and (at worst) a tap.
+     */
+    readonly dockworkersUnionDrawOnDiscard: boolean;
+    /**
      * ⭐ THE NUMBERS BEHIND THE FIVE NOTICE BOARD POWERS (Dean, 10/09/2026,
      * S12 as amended by rulings C88 and C89 the same evening). Read under
      * `visitCurrency: 'noticeBoardPower'`, and flat rather than per-suit-keyed

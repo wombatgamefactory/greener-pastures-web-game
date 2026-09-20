@@ -22,7 +22,7 @@ import {
   noticeBoardBlocks,
   noticeBoardsPerSeat,
 } from '@gp/data';
-import { ENGINE_VERSION, RULES_EDITION } from '@gp/engine';
+import { ENGINE_VERSION, RULES_EDITION, meepleActionOf } from '@gp/engine';
 import { LADDER, POLICY_IDS } from '@gp/bots';
 
 import { deckSizes } from './assertions/a24-deck-circulation.js';
@@ -57,6 +57,7 @@ export function renderReport(input: ReportInput): string {
   out.push(...seriesSection(input));
   out.push(...giveawaySection(input));
   out.push(...freightSection(input));
+  out.push(...workersSection(input));
   out.push(...dairySection(input));
   out.push(...apiarySection(input));
   out.push(...actionMix(input));
@@ -1175,6 +1176,142 @@ function freightSection({ data, pooled }: ReportInput): string[] {
       games.map((g) => sum(g.vegetableWildDeliveriesBySeat)),
     )} deliveries, ${sum(games.map((g) => sum(g.vegetableWildCardsBySeat)))} cards of any crop`,
   );
+  out.push('');
+  return out;
+}
+
+/**
+ * ⭐ THE WORKERS: WHICH COLOUR ACTUALLY GETS USED, most popular first (asked
+ * for by Dean, 18/09/2026). A presentation section, not a new measurement -
+ * every count here already lives in `meeplesGainedByColour`,
+ * `meeplesSpentByColour` and `meeplesUnspentByColour` (`game-metrics.ts`), and
+ * a23-delivery-meeple.ts already computes this same ranking in its own
+ * `workerUse` line (its `detail` array, "WHICH WORKER GETS USED"). It was one
+ * line buried inside a longer assertion; this gives it a place a reader will
+ * actually land on, and does not touch or replace a23's own line.
+ *
+ * Dean renamed the delivery meeples to Workers at the table on 15/09/2026, so
+ * this section says Worker throughout. The engine's own symbol names keep
+ * saying `meeple` and that is left alone.
+ *
+ * RANKED BY SHARE SPENT, most-used first, because that ordering is the whole
+ * point of the section: "popular" and "unpopular" should read straight off
+ * the row order without the reader doing arithmetic.
+ *
+ * ⛔ THE D8 CAVEAT HAS TO TRAVEL WITH THIS SECTION OR IT WILL BE MISREAD. A
+ * Worker's action is never offered to its owner when that action is not legal
+ * right now (the standing rule D8), so a colour at the bottom of this table
+ * may be one nobody wanted, or one nobody could ever legally spend, and
+ * nothing counted here tells those two apart. Printed in full below the
+ * table rather than as a footnote, because a reader who takes the bottom row
+ * as "the unpopular one" without it has read the wrong finding.
+ *
+ * ⚠️ NO BACKGROUND-CHANCE FLOOR FOR ANY LINE HERE (the same position a23
+ * itself is in). A point or two of movement between two runs is not a
+ * finding.
+ */
+function workersSection({ data, pooled }: ReportInput): string[] {
+  const games = pooled.ended;
+  const out = [
+    THIN,
+    'THE WORKERS  (ended games; ranked by share spent, most popular first)',
+    THIN,
+    '',
+  ];
+  if (games.length === 0) {
+    out.push('  no ended games', '');
+    return out;
+  }
+  const suits = data.cards.suits;
+  const tallyByColour = (of: (g: GameMetrics) => Record<string, number>): Map<string, number> => {
+    const m = new Map<string, number>();
+    for (const g of games) {
+      for (const [k, n] of Object.entries(of(g))) if (n > 0) m.set(k, (m.get(k) ?? 0) + n);
+    }
+    return m;
+  };
+  const earned = tallyByColour((g) => g.meeplesGainedByColour);
+  const spent = tallyByColour((g) => g.meeplesSpentByColour);
+  const neverUsed = tallyByColour((g) => g.meeplesUnspentByColour);
+
+  if (sum([...earned.values()]) === 0) {
+    out.push(
+      '  no Workers were earned on this run (island.tokens.workerOnVp is empty under this',
+      '  configuration), so there is nothing to rank below.',
+      '',
+    );
+    return out;
+  }
+
+  const rows = suits
+    .map((suit) => {
+      const e = earned.get(suit) ?? 0;
+      const s = spent.get(suit) ?? 0;
+      const u = neverUsed.get(suit) ?? 0;
+      const buys = meepleActionOf(data, suit);
+      return {
+        suit,
+        buys: buys.charAt(0).toUpperCase() + buys.slice(1),
+        earned: e,
+        spent: s,
+        neverUsed: u,
+        share: e === 0 ? NaN : s / e,
+      };
+    })
+    .filter((r) => r.earned > 0)
+    .sort((a, b) => b.share - a.share);
+
+  out.push(
+    pad('colour', 12) +
+      pad('buys', 10) +
+      pad('earned', 9) +
+      pad('spent', 9) +
+      pad('never used', 12) +
+      'share spent',
+  );
+  for (const r of rows) {
+    out.push(
+      pad(r.suit, 12) +
+        pad(r.buys, 10) +
+        pad(String(r.earned), 9) +
+        pad(String(r.spent), 9) +
+        pad(String(r.neverUsed), 12) +
+        pct(r.share),
+    );
+  }
+  out.push('');
+
+  const slices = [...pooled.bySeats].sort((a, b) => a.seats - b.seats);
+  out.push('  share spent, by seat count (a colour can be fine at one seat count and unusable at');
+  out.push('  another, so the pooled row above can hide that):');
+  for (const r of rows) {
+    const bySeat = slices
+      .map((slice) => {
+        const e = sum(slice.ended.map((g) => g.meeplesGainedByColour[r.suit] ?? 0));
+        const s = sum(slice.ended.map((g) => g.meeplesSpentByColour[r.suit] ?? 0));
+        return `${slice.seats}p ${pct(e === 0 ? NaN : s / e)}`;
+      })
+      .join('   ');
+    out.push(`    ${pad(r.suit, 10)}${bySeat}`);
+  }
+  out.push('');
+  out.push(
+    'A Worker whose action is not legal for its owner right now is never offered to spend (the',
+  );
+  out.push(
+    'standing rule D8), so a low share here mixes two different things together: a colour nobody',
+  );
+  out.push(
+    'wanted to spend, and a colour nobody was ever ABLE to spend. This table cannot tell those',
+  );
+  out.push(
+    "apart on its own - read the delivery-Worker page (assertion 23) for that colour's detail.",
+  );
+  out.push('');
+  out.push(
+    'There is no background-chance floor measured for these numbers, so a difference of a point',
+  );
+  out.push('or two between two runs on their own is not a finding.');
   out.push('');
   return out;
 }

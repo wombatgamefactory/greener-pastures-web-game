@@ -98,6 +98,8 @@
     "grandGranaryCap": 5,
     "honeyHallCap": 5,
     "apiaristsGuildCap": 5,
+    "supplyHouseBarnDrain": false,
+    "dockworkersUnionDrawOnDiscard": false,
     "noticeBoardPower": {
       "orchardDraw": 4,
       "apiarySows": 2,

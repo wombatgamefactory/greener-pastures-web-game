@@ -209,6 +209,40 @@ class Report:
         m = re.search(r"by route.*?\n\s+(.*)", sec)
         return {k: f(v) for k, v in re.findall(rf"(\w+) ({NUM})", m.group(1))} if m else None
 
+    def worker_use(self):
+        """THE WORKERS (added 2026-09-20): each colour's share spent against its own mint,
+        ranked most popular first, plus the same share broken out by seat count.
+
+        Older reports have no such section - `self.section` already warns once and hands
+        back "" in that case, so this parses to empty and does not warn a second time."""
+        sec = self.section("THE WORKERS")
+        rows = []
+        started = False
+        for line in sec.splitlines():
+            if line.startswith("colour"):
+                started = True
+                continue
+            if not started:
+                continue
+            if not line.strip():
+                break
+            parts = re.split(r"\s{2,}", line.strip())
+            if len(parts) >= 6:
+                rows.append({
+                    "colour": parts[0], "buys": parts[1], "earned": f(parts[2]),
+                    "spent": f(parts[3]), "never_used": f(parts[4]), "share": f(parts[5].rstrip("%")),
+                })
+        by_seat = {}
+        for suit in SUITS:
+            m = re.search(rf"^\s+{suit}\s+2p\s+({NUM})%\s+3p\s+({NUM})%\s+4p\s+({NUM})%", sec, re.M)
+            if m:
+                by_seat[suit] = {s: f(m.group(i + 1)) for i, s in enumerate(SEATS)}
+        if sec and not rows:
+            self.warnings.append("THE WORKERS table rows")
+        elif rows and len(by_seat) < len(rows):
+            self.warnings.append("THE WORKERS by-seat breakdown")
+        return {"rows": rows, "by_seat": by_seat}
+
     def table(self, title, header_word, cols):
         """A whitespace table under a section heading, first column a label."""
         rows = []
@@ -419,6 +453,7 @@ class Report:
             "sky": self.sky(),
             "yard": self.kv_section("THE YARD"),
             "swarm": self.kv_section("THE SWARM"),
+            "worker_use": self.worker_use(),
             "action_mix": self.table("THE ACTION MIX", "move", ["move", "taken", "offered", "rate", "per_game"]),
             "seats": self.table("SEATS", "seats", ["seats", "seat", "games", "win", "dev", "ci", "score", "receipts", "turns"]),
             "suits": self.table("SUITS", "suit", ["suit", "seat_games", "win", "ci"]),

@@ -439,6 +439,7 @@ describe('the report', () => {
     expect(text).toContain('smoke');
     expect(text).toContain('THE WATCH LIST');
     expect(text).toContain('THE CUT LIST');
+    expect(text).toContain('THE WORKERS');
     expect(text).toContain('VERDICT:');
     for (const assertion of WATCHLIST) expect(text).toContain(assertion.title);
   });

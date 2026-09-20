@@ -882,6 +882,33 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'the two cards count different things. null is the pre-v45 card with no cap.',
   },
   {
+    template: 'rules.economy.supplyHouseBarnDrain',
+    type: 'boolean',
+    description:
+      "⭐ V10 THE SUPPLY HOUSE'S ACTIVATION SHAPE, added 20/09/2026 to measure the " +
+      "reference-v21 barn glut (+1.3 against every earlier version's +0.5). SHIPPED false " +
+      '(v45, R1-R3): "For each card in your Barn, draw 1 of that suit" - the barn is only ' +
+      'counted, nothing leaves it, and V10 can fire again next turn off the same cards. true ' +
+      'restores the pre-v45 card, "Discard up to 2 cards from your Barn. For each card ' +
+      'discarded, perform the base action of that crop" (`pushBarnDiscard` plus ' +
+      "`pushPlainAction`, both kept in vegetable.ts for this) - a genuine barn DRAIN. Paired " +
+      'with `dockworkersUnionDrawOnDiscard` in overlays/pre-v45-barn-drains-v1.overlay.json, ' +
+      "which sets both true and nothing else, to isolate what these two cards' v45 retexts " +
+      'moved from the rest of the v45 pass and the structural squeeze.',
+  },
+  {
+    template: 'rules.economy.dockworkersUnionDrawOnDiscard',
+    type: 'boolean',
+    description:
+      "⭐ V17 THE DOCKWORKER'S UNION'S TRIGGER, added 20/09/2026 alongside " +
+      '`supplyHouseBarnDrain` for the same reference-v21 barn-glut question. SHIPPED false ' +
+      '(v45, R5): "If, at the end of your turn, your Barn is empty, place any deck card into ' +
+      "your Barn\" - a `beforeTurnEnd` listener, a TAP. true restores the pre-v45 card, " +
+      '"Whenever you discard a card from your Barn, Draw 1" - the `afterBarnDiscard` listener ' +
+      '(the hook itself is never deleted; V8 and V15 still fire it), a DRAIN reward. Paired ' +
+      'with `supplyHouseBarnDrain` in overlays/pre-v45-barn-drains-v1.overlay.json.',
+  },
+  {
     template: 'rules.economy.cropScorerOnBarn',
     type: 'boolean',
     description:

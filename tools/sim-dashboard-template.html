@@ -666,6 +666,20 @@ function islandAndBarns(d) {
       isNum(r.space_choice_3vp) ? h("div", { class: "tile" }, h("b", {}, fmt(r.space_choice_3vp, 1, "%")), h("span", {}, "first deliveries that took the 3 VP space and its Worker")) : null,
       r.closing ? h("div", { class: "tile" }, h("b", {}, fmt(r.closing.cards, 2)), h("span", {}, "cards drawn for finishing an island tile, per player per game")) : null,
       h("div", { class: "tile" }, h("b", {}, fmt(r.meeple_spend_rate, 1, "%")), h("span", {}, "of Workers earned were used"))));
+  const wu = d.worker_use || { rows: [], by_seat: {} };
+  const workerColours = !wu.rows.length ? null : panel("Which Worker colour gets used", "Each colour's share spent, against the Workers of that colour earned. Ranked most popular first.",
+    h("div", { class: "rows" }, wu.rows.map((x) => barRow({
+      label: h("span", { class: "l" }, h("span", { class: "chip", style: `background:${SUIT_HEX[x.colour]}` }), `${cap(x.colour)} (${x.buys})`),
+      value: x.share, max: 100, unit: "%", color: SUIT_HEX[x.colour],
+      tip: `${cap(x.colour)}: ${fmt(x.earned, 0)} earned, ${fmt(x.spent, 0)} used, ${fmt(x.never_used, 0)} never used`,
+    }))),
+    axis([0, 20, 40, 60, 80, 100], 0, 100, "%", true),
+    Object.keys(wu.by_seat).length ? h("div", { class: "tw", style: "margin-top:10px" }, h("table", { class: "t" },
+      h("thead", {}, h("tr", {}, h("th", {}, "Colour"), SEATS.map((s) => h("th", {}, PLAYERS[s])))),
+      h("tbody", {}, wu.rows.map((x) => h("tr", {}, h("td", {}, cap(x.colour)),
+        SEATS.map((s) => h("td", {}, fmt(wu.by_seat[x.colour]?.[s], 1, "%")))))))) : null,
+    h("p", { class: "note", style: "margin:10px 0 0" },
+      "A Worker whose action is not legal right now is never offered to spend, so a low share here can mean nobody wanted it or nobody was ever able to spend it - the two are not told apart on this page. There is no background-chance floor measured for these numbers, so a difference of a point or two between two runs on its own is not a finding."));
   const tv = sky.token_values;
   const tvTotal = tv ? Object.values(tv).reduce((a, b) => a + b, 0) : 0;
   const island = !tvTotal ? null : panel("Island tokens taken", `Share of the ${fmt(tvTotal, 0)} island tokens taken, by value. The first delivery to a tile took ${fmt(sky.first_share)}% of them.`,
@@ -719,7 +733,7 @@ function islandAndBarns(d) {
     h("div", { class: "rows" }, Object.entries(routes).map(([k, v]) => barRow({ label: ROUTE[k] || k, value: v, max: maxR * 1.1, dp: 0 }))),
     h("div", { class: "tw", style: "margin-top:10px" }, h("table", { class: "t" }, h("tbody", {}, d.giveaway.map((x) => h("tr", {}, h("td", { class: "wrap" }, kvLabel(x.label)), h("td", {}, x.value)))))));
   return section("economy", "Island, Workers and barns", null,
-    h("div", { class: "grid" }, island, workers, store, glut, harvest, doors, balloons, barn));
+    h("div", { class: "grid" }, island, workers, workerColours, store, glut, harvest, doors, balloons, barn));
 }
 
 function seatsAndStyles(d) {

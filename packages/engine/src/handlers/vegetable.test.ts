@@ -27,7 +27,8 @@
  * the wheat tokens follow on A5. A delivery is always 4 cards.
  */
 
-import { BASE_GAME_DATA as data } from '@gp/data';
+import { BASE_GAME_DATA as data, loadGameData } from '@gp/data';
+import type { GameData } from '@gp/data';
 import { describe, expect, it } from 'vitest';
 
 import { apply, legalMoves } from '../game.js';
@@ -204,6 +205,20 @@ function barnCrops(state: GameState, seat: Seat): string[] {
   return player(state, seat)
     .barn.map((id) => cardById(data, id).suit)
     .sort();
+}
+
+/**
+ * Answer the head task with the first answer matching a payload, against a
+ * NAMED game data - for the `supplyHouseBarnDrain` and
+ * `dockworkersUnionDrawOnDiscard` knob tests below, where the state was built
+ * off a `loadGameData` variant rather than the module-level `data`.
+ */
+function pickWith(gd: GameData, state: GameState, match: Record<string, unknown>): GameState {
+  const found = pendingAnswers(gd, state).find(
+    (a) => a.kind === 'card' && Object.entries(match).every(([k, v]) => a.payload[k] === v),
+  );
+  if (found === undefined) throw new Error(`No answer matching ${JSON.stringify(match)}`);
+  return answerTask(gd, state, found).state;
 }
 
 describe('V4 The Market Stall Depot - a deck card into a small barn', () => {
@@ -484,6 +499,77 @@ describe('V10 The Supply House - draw 1 per barn card, mandatory and uncapped (v
     const s = base();
     buildFor(data, s, VEG, 'V10');
     const out = grow(s, VEG, 'V10', 'V11').state;
+    expect(out.tasks).toHaveLength(0);
+  });
+});
+
+/**
+ * ⭐ `rules.economy.supplyHouseBarnDrain`, added 20/09/2026 to measure how much
+ * of the reference-v21 barn glut is V10 losing its drain (the arm in
+ * overlays/pre-v45-barn-drains-v1.overlay.json). false is the shipped v45
+ * shape proved by the describe block above; these tests prove true restores
+ * the pre-v45 "discard up to 2, a plain action per crop" shape exactly, off
+ * `git show e6b459c`.
+ */
+describe('rules.economy.supplyHouseBarnDrain (20/09/2026): the V10 knob', () => {
+  it('defaults to false, the shipped v45 no-drain shape (R1-R3)', () => {
+    expect(data.rules.economy.supplyHouseBarnDrain).toBe(false);
+  });
+
+  it('true discards up to 2 barn cards and queues each one\'s base action, in discard order', () => {
+    const old = loadGameData({
+      name: 'supply-house-old-drain',
+      schemaVersion: 1,
+      set: { 'rules.economy.supplyHouseBarnDrain': true },
+    });
+    const s = base();
+    buildFor(old, s, VEG, 'V10');
+    barnTo(s, VEG, 'O4', 'D4', 'W4');
+    dealTo(old, s, VEG, 'V11');
+    let out = growBuilding(old, s, VEG, 'V10', 'V11').state;
+    // "Up to": a skip is offered from the first answer, unlike the mandatory v45 draw.
+    expect(pendingAnswers(old, out)).toContainEqual({ kind: 'skip' });
+    out = pickWith(old, out, { suit: 'orchard' });
+    expect(out.tasks[0]).toMatchObject({ t: 'card', kind: 'barnDiscard' });
+    dealTo(old, out, VEG, 'D5', 'D6'); // something to build with
+    out = pickWith(old, out, { suit: 'dairy' });
+    // Orchard's base action is Draw 2, Dairy's is Build - the restored plain-action mapping.
+    expect(out.tasks.map((t) => [t.t, srcOf(t)])).toEqual([
+      ['draw', 'V10'],
+      ['build', 'V10'],
+    ]);
+    // The two discarded crops left the barn; wheat (never offered) stays - a
+    // real drain, unlike the false shape where nothing ever leaves (R1).
+    expect(barnCrops(out, VEG)).toEqual(['wheat']);
+  });
+
+  it('true: a skip after one discard performs exactly one action ("up to")', () => {
+    const old = loadGameData({
+      name: 'supply-house-old-drain-skip',
+      schemaVersion: 1,
+      set: { 'rules.economy.supplyHouseBarnDrain': true },
+    });
+    const s = base();
+    buildFor(old, s, VEG, 'V10');
+    barnTo(s, VEG, 'O4', 'D4');
+    dealTo(old, s, VEG, 'V11');
+    let out = growBuilding(old, s, VEG, 'V10', 'V11').state;
+    out = pickWith(old, out, { suit: 'orchard' });
+    out = answerTask(old, out, { kind: 'skip' }).state;
+    expect(out.tasks.map((t) => [t.t, srcOf(t)])).toEqual([['draw', 'V10']]);
+    expect(barnCrops(out, VEG)).toEqual(['dairy']);
+  });
+
+  it('true: an empty barn discards nothing, exactly like the false shape', () => {
+    const old = loadGameData({
+      name: 'supply-house-old-drain-empty',
+      schemaVersion: 1,
+      set: { 'rules.economy.supplyHouseBarnDrain': true },
+    });
+    const s = base();
+    buildFor(old, s, VEG, 'V10');
+    dealTo(old, s, VEG, 'V11');
+    const out = growBuilding(old, s, VEG, 'V10', 'V11').state;
     expect(out.tasks).toHaveLength(0);
   });
 });
@@ -889,6 +975,65 @@ describe("V17 The Dockworker's Union - empty Barn at end of turn (v45, R5)", () 
     expect(out.tasks.some((t) => srcOf(t) === 'V17')).toBe(false);
     // And the game is not left holding an unanswerable task of any kind.
     expect(legalMoves(data, out).length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * ⭐ `rules.economy.dockworkersUnionDrawOnDiscard`, added 20/09/2026 alongside
+ * `supplyHouseBarnDrain` for the same reference-v21 barn-glut question. false
+ * is the shipped v45 `beforeTurnEnd` shape proved by the describe block
+ * above; these tests prove true restores the pre-v45 `afterBarnDiscard`
+ * listener exactly, off `git show e6b459c`, and that the two shapes are
+ * mutually exclusive rather than both live at once. V8 The Regional Depot
+ * (`regionalDepot`) is the trigger: a mandatory, non-optional one-card barn
+ * discard untouched by either knob, so it fires `afterBarnDiscard` under both
+ * values.
+ */
+describe('rules.economy.dockworkersUnionDrawOnDiscard (20/09/2026): the V17 knob', () => {
+  it('defaults to false, the shipped v45 end-of-turn-refill shape (R5)', () => {
+    expect(data.rules.economy.dockworkersUnionDrawOnDiscard).toBe(false);
+  });
+
+  it('false: a barn discard from V8 does not draw for V17 (no listener on afterBarnDiscard)', () => {
+    const s = base();
+    buildFor(data, s, VEG, 'V17', 'V8');
+    barnTo(s, VEG, 'O4');
+    let out = grow(s, VEG, 'V8', 'V11').state;
+    out = answerWith(out, { suit: 'orchard' }).state;
+    // V8's own draw fires; V17 does not.
+    expect(out.tasks.map((t) => srcOf(t))).toEqual(['V8']);
+  });
+
+  it('true restores "whenever you discard a card from your Barn, Draw 1", firing off V8\'s discard', () => {
+    const old = loadGameData({
+      name: 'dockworkers-union-old-drain',
+      schemaVersion: 1,
+      set: { 'rules.economy.dockworkersUnionDrawOnDiscard': true },
+    });
+    const s = base();
+    buildFor(old, s, VEG, 'V17', 'V8');
+    barnTo(s, VEG, 'O4');
+    dealTo(old, s, VEG, 'V11');
+    let out = growBuilding(old, s, VEG, 'V8', 'V11').state;
+    out = pickWith(old, out, { suit: 'orchard' });
+    // V8's Draw 4 (of the discarded crop) and V17's restored Draw 1, both live.
+    const tasks = out.tasks.map((t) => [t.t, srcOf(t)]);
+    expect(tasks).toContainEqual(['draw', 'V8']);
+    expect(tasks).toContainEqual(['draw', 'V17']);
+    expect(tasks).toHaveLength(2);
+  });
+
+  it('true: the end-of-turn empty-Barn refill goes silent (the two shapes never both fire)', () => {
+    const old = loadGameData({
+      name: 'dockworkers-union-old-drain-turn-end',
+      schemaVersion: 1,
+      set: { 'rules.economy.dockworkersUnionDrawOnDiscard': true },
+    });
+    const s = base();
+    buildFor(old, s, VEG, 'V17');
+    s.turn.actionSpent = true;
+    const out = apply(old, s, { type: 'endTurn', seat: VEG }).state;
+    expect(out.tasks.some((t) => srcOf(t) === 'V17')).toBe(false);
   });
 });
 
