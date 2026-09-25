@@ -865,11 +865,15 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
     template: 'rules.economy.honeyHallCap',
     type: 'intOrNull',
     description:
-      "A cap on A19 The Honey Hall's end-game VP. SHIPPED 5 (19/09/2026, v45): the sheet " +
-      'prints "(Max 5)" on the card face itself, "Game end: 1 VP for each non-Apiary ' +
-      'building you have built. (Max 5)". Added on the grandGranaryCap pattern (R9, ' +
-      'tasks/v45-rulings-v1.md) as its own knob, not shared with apiaristsGuildCap, ' +
-      'because the two cards count different things. null is the pre-v45 card with no cap.',
+      "A cap on A19 The Honey Hall's end-game VP. SHIPPED 6 (24/09/2026, v48, R5, " +
+      'tasks/v48-rulings-v2.md): the sheet now prints "Game end: 2 VP for each tractor ' +
+      'building you have built. (Max 6VP)" - a tractor building is a Power card, of any ' +
+      'suit. The knob caps the VP directly, not the card count: at 2 VP per card the two ' +
+      'stopped being numerically the same value the day the rate left 1-per-count (they ' +
+      'read identically under the pre-v48 card, which is why nothing had to distinguish ' +
+      'them before). Added 5 on the grandGranaryCap pattern (R9, tasks/v45-rulings-v1.md) ' +
+      'as its own knob, not shared with apiaristsGuildCap, because the two cards count ' +
+      'different things, then re-pointed to 6 for the v48 rate. null is uncapped.',
   },
   {
     template: 'rules.economy.apiaristsGuildCap',
@@ -891,7 +895,7 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       'counted, nothing leaves it, and V10 can fire again next turn off the same cards. true ' +
       'restores the pre-v45 card, "Discard up to 2 cards from your Barn. For each card ' +
       'discarded, perform the base action of that crop" (`pushBarnDiscard` plus ' +
-      "`pushPlainAction`, both kept in vegetable.ts for this) - a genuine barn DRAIN. Paired " +
+      '`pushPlainAction`, both kept in vegetable.ts for this) - a genuine barn DRAIN. Paired ' +
       'with `dockworkersUnionDrawOnDiscard` in overlays/pre-v45-barn-drains-v1.overlay.json, ' +
       "which sets both true and nothing else, to isolate what these two cards' v45 retexts " +
       'moved from the rest of the v45 pass and the structural squeeze.',
@@ -903,7 +907,7 @@ export const KNOB_TEMPLATES: readonly KnobTemplate[] = [
       "⭐ V17 THE DOCKWORKER'S UNION'S TRIGGER, added 20/09/2026 alongside " +
       '`supplyHouseBarnDrain` for the same reference-v21 barn-glut question. SHIPPED false ' +
       '(v45, R5): "If, at the end of your turn, your Barn is empty, place any deck card into ' +
-      "your Barn\" - a `beforeTurnEnd` listener, a TAP. true restores the pre-v45 card, " +
+      'your Barn" - a `beforeTurnEnd` listener, a TAP. true restores the pre-v45 card, ' +
       '"Whenever you discard a card from your Barn, Draw 1" - the `afterBarnDiscard` listener ' +
       '(the hook itself is never deleted; V8 and V15 still fire it), a DRAIN reward. Paired ' +
       'with `supplyHouseBarnDrain` in overlays/pre-v45-barn-drains-v1.overlay.json.',

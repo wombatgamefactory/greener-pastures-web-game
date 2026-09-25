@@ -1182,6 +1182,23 @@ function doNoticeBoardVisit(fx: Fx, visitor: Seat, host: Seat, spend: VisitSpend
   fx.placeOnBuilding(visitor, { seat: host, card: target.card }, fee);
   state.turn.bonusUsed.push('visit');
   markFiredOnTurn(state.turn, target.card);
+  // v48 (A10 The Cross-Pollinator, R2/R9): everything from here on is shared
+  // with the card-granted visit, `doCardVisit` below, so it lives in
+  // `noticeBoardVisitTail`. Moved verbatim; the order is unchanged.
+  noticeBoardVisitTail(fx, visitor, host, colour);
+}
+
+/**
+ * THE SHARED TAIL OF A NOTICE-BOARD VISIT, once the fee has LANDED on the host's
+ * board: `afterVisit` host-side, the `visited` and `doorUsed` events, the power
+ * for the visitor, `afterWork`, then S17's host draw last. Split out of
+ * `doNoticeBoardVisit` on 24/09/2026, VERBATIM and in the same order, so that
+ * A10 The Cross-Pollinator's card-granted visit (`doCardVisit`, v48 R2 and R9)
+ * runs exactly the same visit after a different payment. Every comment below
+ * is the one that stood in `doNoticeBoardVisit` and still describes both.
+ */
+function noticeBoardVisitTail(fx: Fx, visitor: Seat, host: Seat, colour: Suit): void {
+  const state = fx.state;
   fireHook(fx, 'afterVisit', { visitor, host, self: visitor === host });
   // ⚠️ THE ROSTER'S PRINTED ACTION AND NOT `doorActionOf`: `visited.action`
   // is typed `WorkerAction`, the five-door set, and `doorActionOf` returns the
@@ -1252,6 +1269,111 @@ function doNoticeBoardVisit(fx: Fx, visitor: Seat, host: Seat, spend: VisitSpend
   // where it is called from. It emits no events at any value either, so the
   // EVENT stream of a visit is unchanged and only the task order moves.
   payHostDrawOnVisit(fx, visitor, host);
+}
+
+// --- A10 The Cross-Pollinator: the card-granted visit (v48) ------------------
+
+/** One rival Notice Board a card-granted visit may land on. */
+export interface CardVisitTarget {
+  host: Seat;
+  board: CardId;
+}
+
+/**
+ * ⭐ WHERE A10 THE CROSS-POLLINATOR MAY VISIT (sheet v48, 24/09/2026): *"Visit
+ * another player's Notice Board, using a deck card."* Ruled by Dean in
+ * `tasks/v48-rulings-v2.md`: **R2**, it is a VISIT, so W17, O16 and A17 fire
+ * for it; **R9** (Q4 of `tasks/v48-ambiguity-audit-v1.md`, AGAINST the
+ * audit's recommendation), it is an EXTRA visit with NO per-board latch.
+ *
+ * Every rival Notice Board (never your own, whatever `selfVisitAllowed` says:
+ * the face prints "another player's") whose printed power this seat could carry
+ * out RIGHT NOW (S10, Dean's standing door ruling, the same
+ * `noticeBoardPowerLegal` the bonus slot asks). Three things the bonus-slot
+ * enumerator checks and this one deliberately does NOT:
+ *
+ *  - **`bonusOpen`.** R9: this is not the one bonus visit. It neither needs the
+ *    slot open nor uses it up.
+ *  - **S9's latch (`turn.firedThisTurn`).** R9: "it may visit the same Notice
+ *    Board you visited in the bonus slot this turn". A board the bonus slot just
+ *    used is a legal target here.
+ *  - **`excludingHandCard`.** The fee is a deck card, so the hand the power
+ *    reads is the whole hand.
+ *
+ * `isFull` IS still asked, and bites only under the `noticeBoardBlocks: true`
+ * control, where a clogged board refuses every card (S8). Empty outside the
+ * notice-board visit currency: under the meeple arms a Notice Board is not a
+ * card-fee target, and no arm that pins an older game prints this face.
+ *
+ * ⚠️ The power is judged BEFORE the deck card leaves its deck. On a table so dry
+ * that the fee is the last drawable card, the Orchard board's Draw 4 (or the
+ * Apiary board's deck Grow) then finds nothing and does as much as it can,
+ * which is nothing. Recorded rather than guarded: it needs every deck and
+ * discard down to one card.
+ */
+export function cardVisitTargets(data: GameData, state: GameState, seat: Seat): CardVisitTarget[] {
+  if (!isNoticeBoardPower(data)) return [];
+  const out: CardVisitTarget[] = [];
+  for (let host = 0; host < state.players.length; host++) {
+    if (host === seat) continue;
+    for (const board of noticeBoardsOf(data, state, host)) {
+      if (isFull(data, board)) continue;
+      const colour = cardById(data, board.card).suit;
+      if (!noticeBoardPowerLegal(data, state, seat, colour)) continue;
+      out.push({ host, board: board.card });
+    }
+  }
+  return out;
+}
+
+/**
+ * ⭐ A10's VISIT (v48 R2, R9): the top card of a deck of the visitor's choice
+ * (v45 R5, "a deck card") lands on a rival's Notice Board, then the SAME visit
+ * tail the bonus slot runs (`noticeBoardVisitTail`): `afterVisit` (W17 for the
+ * host, O16 and A17 for the visitor), the `visited` and `doorUsed` events, the
+ * board's printed power for the VISITOR, `afterWork`, and S17's host draw last.
+ *
+ * ⛔ WHAT IT MUST NOT TOUCH, and each is R9:
+ *
+ *  - `turn.bonusUsed`. Nothing is pushed, so the observer's bonus-slot counter
+ *    (a17, read off `bonusUsed`) never counts an A10 visit as the bonus, and a
+ *    bonus-slot visit taken earlier in the turn does not stop this one. The
+ *    bonus comes FIRST in the shipped turn (`bonusTiming: 'start'`), so A10
+ *    always fires after the slot's window: it can never pre-empt the bonus.
+ *  - `turn.firedThisTurn` for the board. No latch is read and none is written:
+ *    it may land on a board the bonus slot just used, and it leaves nothing
+ *    behind that could shut that board to a later visit (under an arm whose
+ *    bonus comes after the action, the slot's own visit is still open to it).
+ *
+ * The placement goes through `deckTopToBuilding` with the VISITOR as `from`,
+ * so A16 The Beekeeper's Veil reads it as the visitor's placement, exactly as
+ * a hand fee is (S16). It is a placement onto a building, not a sow (a Notice
+ * Board is never a sow target, S11): only a visit may put a card on one.
+ */
+export function doCardVisit(
+  fx: Fx,
+  visitor: Seat,
+  host: Seat,
+  board: CardId,
+  deckSuit: Suit,
+): void {
+  const state = fx.state;
+  if (!isNoticeBoardPower(fx.data)) {
+    throw new Error('A card-granted visit exists only under the notice-board visit');
+  }
+  if (visitor === host) throw new Error('A10 visits another player, never yourself');
+  const target = visitTargetOf(fx.data, state, host, board);
+  if (isFull(fx.data, target)) throw new Error(`${target.card} is full`);
+  const colour = cardById(fx.data, target.card).suit;
+  if (!noticeBoardPowerLegal(fx.data, state, visitor, colour)) {
+    throw new Error(`The ${colour} Notice Board has nothing legal to do for seat ${visitor}`);
+  }
+  if (!drawableSuits(fx.data, state).includes(deckSuit)) {
+    throw new Error(`The ${deckSuit} deck and its discard are both empty`);
+  }
+  // THE DECK CARD LANDS ON THE HOST'S BOARD, placed by the visitor.
+  fx.deckTopToBuilding(visitor, deckSuit, { seat: host, card: target.card });
+  noticeBoardVisitTail(fx, visitor, host, colour);
 }
 
 /**

@@ -1,8 +1,8 @@
 {
- "name": "wheat-no-barn-rider-v1",
- "description": "19/09/2026, HALF TWO of Dean's Wheat board retext: the hand-to-barn rider alone is deleted (wheatBarn 0) and the 'loaded' harvest gate is LEFT AS SHIPPED. This is the 16/09 wheat-board-harvest-only arm re-cut on the v44 base, where it was worth -1.7 points to Wheat.",
- "schemaVersion": 1,
- "set": {
-  "rules.economy.noticeBoardPower.wheatBarn": 0
- }
+  "name": "wheat-no-barn-rider-v1",
+  "description": "19/09/2026, HALF TWO of Dean's Wheat board retext: the hand-to-barn rider alone is deleted (wheatBarn 0) and the 'loaded' harvest gate is LEFT AS SHIPPED. This is the 16/09 wheat-board-harvest-only arm re-cut on the v44 base, where it was worth -1.7 points to Wheat.",
+  "schemaVersion": 1,
+  "set": {
+    "rules.economy.noticeBoardPower.wheatBarn": 0
+  }
 }

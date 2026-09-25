@@ -30,6 +30,19 @@
  * CARD built, Power and Endgame included ("card you have built"), and does not
  * read anything in this file.
  *
+ * ⭐ R13 (tasks/v48-rulings-v2.md, 24/09/2026): FOR A COUNT ONLY, "a building
+ * you have built" now ALSO includes your built Power cards - against the
+ * v48 ambiguity audit's own recommendation, which would have kept Power cards
+ * out of every count and confined the ruling to A19's "tractor building".
+ * `builtBuildingsAndPower`, below, is the one place that exception lives: it
+ * is a COUNTING helper and nothing else may use it. A Power card returned by
+ * it must never be offered as a sow, Grow, Harvest, activation or stack
+ * target, and must never appear in a list of buildings some effect places a
+ * card on or moves a card off - `isBuilding`, `ownBuildings` and every TARGET
+ * list in this file keep the old threshold-only reading, untouched, on
+ * purpose. Endgame cards are not part of R13's exception and stay excluded
+ * from every count, same as always.
+ *
  * ⛔ Every multi-card choice below is a SEQUENCE OF SINGLE CHOICES with a stop
  * answer where the text says "up to", never a subset enumeration. Branching
  * blow-up is this engine's main performance risk.
@@ -97,6 +110,33 @@ export function builtBuildingsWorth(
     const card = cardById(data, b.card);
     return card.type !== 'starter' && card.printedVp === vp;
   }).length;
+}
+
+/**
+ * ⭐ "A BUILDING YOU HAVE BUILT", FOR A COUNT ONLY (R13, tasks/v48-rulings-v2.md,
+ * 24/09/2026): every Tier 1-3 card in the seat's tableau PLUS every built
+ * Power card. Never a starter (the Notice Board included - nobody builds a
+ * starter) and never an Endgame card: R13 names Power cards only, and the
+ * rule book's base definition ("never a Power or Endgame card") still holds
+ * Endgame cards out. D6, D9, D13, D19, D20 (dairy.ts) and W19, W20 (wheat.ts)
+ * all read this noun since v48.
+ *
+ * ⛔ COUNTS ONLY - see the module note above. A DELIBERATELY SEPARATE helper
+ * from `ownBuildings`, never widened into it, because `ownBuildings` also
+ * backs every TARGET list in this file (sow, grow, harvest): a Power card
+ * must never become one of those. `foreignBuildingsOf` and
+ * `neighbourSowTargets` are both target lists and are UNCHANGED by R13 for
+ * the same reason.
+ */
+export function builtBuildingsAndPower(
+  data: GameData,
+  state: GameState,
+  seat: Seat,
+): BuildingState[] {
+  return player(state, seat).tableau.filter((b) => {
+    const type = cardById(data, b.card).type;
+    return type === 'tier1' || type === 'tier2' || type === 'tier3' || type === 'power';
+  });
 }
 
 /**

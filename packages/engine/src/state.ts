@@ -366,6 +366,21 @@ export interface TurnState {
    * reached; reset with the turn. O18 A Helping Hand is its only listener.
    */
   endHooksDone?: boolean;
+  /**
+   * ⭐ V18 A HELPING HAND'S OWN NO-CHAIN MARKER (R11, `tasks/v48-rulings-v2.md`,
+   * `helpingHand.ts`). V18 grants a plain action off a delivery's receipt, and
+   * a Vegetable receipt grants another Deliver - which would otherwise fire
+   * V18's own `afterDeliver` listener again, chaining for as long as the barn
+   * can pay off one Power card. Set true only when the granted action is
+   * itself a Vegetable Deliver, immediately before that Deliver's task is
+   * pushed; V18's listener checks it first on every `afterDeliver` for its
+   * owner, clears it and stops without firing again the moment it sees it set.
+   * Absent until V18 first grants a Vegetable Deliver, in the same register as
+   * `meeplesSpent` and the other optional fields above; reset by `freshTurn()`
+   * replacing the whole object. Was an ad hoc cast straight onto `GameState.turn`
+   * until this declaration (24/09/2026); behaviour is unchanged.
+   */
+  v18Chain?: boolean;
 }
 
 /**

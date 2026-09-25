@@ -25,14 +25,14 @@
  */
 
 import { BASE_GAME_DATA as data } from '@gp/data';
-import type { GameData } from '@gp/data';
+import type { GameData, Suit } from '@gp/data';
 import { describe, expect, it } from 'vitest';
 
 import { Fx, fireHook } from '../fx.js';
 import { apply, legalMoves } from '../game.js';
 import { answerTask, gameEndScores, growBuilding, pendingAnswers } from '../runtime.js';
-import { buildingOf, noticeBoardSlots, player } from '../query.js';
-import type { GameState, Move, Task, TaskAnswer } from '../state.js';
+import { buildingOf, cardById, noticeBoardSlots, player } from '../query.js';
+import type { CardId, GameState, Move, Seat, Task, TaskAnswer } from '../state.js';
 import {
   buildFor,
   cardVisitGame,
@@ -51,6 +51,37 @@ const WHEAT = 1;
 
 function base(): GameState {
   return makeState(data, ['orchard', 'wheat']);
+}
+
+/**
+ * Move specific ids from their decks into a seat's barn - the same helper
+ * vegetable.test.ts writes for its own island tests, duplicated rather than
+ * shared for the same reason `stillDiscarded` once was: it is a few lines and
+ * a cross-suit-test import buys nothing.
+ */
+function barnTo(state: GameState, seat: Seat, ...cards: CardId[]): void {
+  for (const card of cards) {
+    const suit = cardById(data, card).suit;
+    const deck = state.decks[suit];
+    const i = deck.indexOf(card);
+    if (i < 0) throw new Error(`${card} is not in the ${suit} deck`);
+    deck.splice(i, 1);
+    player(state, seat).barn.push(card);
+  }
+}
+
+/**
+ * The open tile whose tokens ALL demand exactly this crop (never wild) - the
+ * testkit deals tokens crop by crop, so `orchard` always finds one of the
+ * first two tiles in a game with an Orchard seat, without hard-coding a tile
+ * id or a VP value.
+ */
+function pureDemandTile(state: GameState, suit: Suit) {
+  const t = state.island.tiles.find(
+    (x) => x.tokens.length > 0 && x.tokens.every((tok) => tok.demand === suit),
+  );
+  if (!t) throw new Error(`No open tile demands only ${suit}`);
+  return t;
 }
 
 /**
@@ -348,45 +379,47 @@ describe('the Tier 1 ORCHARDs - one conversion each', () => {
   });
 
   /**
-   * ⛔ The £1 is a Draw 1 (v31, plan section 3.3). The shape is unchanged - the
-   * refund fires only when a card actually crosses - but the arithmetic is: the
-   * give is now card-neutral rather than a real trade, so the cross-table half
-   * costs its owner nothing at all.
+   * ⭐ v48 RETEXT (`tasks/v48-rulings-v2.md`, the builder-default paragraph):
+   * "Draw 2, then Deliver." No more give and no more refund: the Draw 2
+   * resolves first, then a plain, mandatory island Deliver rides on it (the
+   * V7 shape), taking a real receipt off the barn it just topped up.
    */
-  it('O6 The Cherry Orchard gives a card across and draws 1 back for it', () => {
+  it('O6 The Cherry Grove draws 2, then must Deliver from the barn', () => {
     const s = base();
     buildFor(data, s, ORCHARD, 'O6');
     dealTo(data, s, ORCHARD, 'O7');
+    // A pure-Orchard-demand tile asks 4 Orchard cards for its first delivery
+    // (2 tokens x 2 cards); this barn pays it exactly, with nothing left over.
+    barnTo(s, ORCHARD, 'O4', 'O5', 'O8', 'O9');
     const grown = growBuilding(data, s, ORCHARD, 'O6', 'O7');
     expect(headDraw(grown.state)).toMatchObject({ see: 2, keep: 2 });
-    const given = answerAll(grown.state);
-    expect(player(given, WHEAT).hand).toHaveLength(1);
-    // Draw 2, give 1, draw 1 back: two in hand, not one.
-    expect(player(given, ORCHARD).hand).toHaveLength(2);
+    const drawn = resolveDraw(grown.state);
+    expect(drawn.tasks[0]).toMatchObject({ t: 'deliver' });
+    const tile = pureDemandTile(drawn, 'orchard');
+    const state = answerAll(
+      drawn,
+      (a) => a.find((x) => x.kind === 'deliver' && x.tile === tile.tile) ?? (a[0] as TaskAnswer),
+    );
+    expect(player(state, ORCHARD).hand).toHaveLength(2);
+    expect(player(state, ORCHARD).receipts).toHaveLength(1);
+    // Exactly the tile's demand, no wild relaxation on this Deliver: nothing
+    // is left in the barn.
+    expect(player(state, ORCHARD).barn).toHaveLength(0);
   });
 
   /**
-   * ⚠️ THIS TEST'S SUBJECT MOVED and then half of it moved back. It was
-   * "auto-skips when every neighbour is FULL" - DL-63, a gift never forces an
-   * out-of-turn discard - which went moot when v31 deleted the hand limit. The
-   * limit is back (02/09/2026) and so is DL-63, but this test keeps the case it
-   * was rewritten to cover: an empty HAND, which is the other way the target
-   * list empties and the one that does not depend on a rule that has now been
-   * deleted and restored once. The full-rivals case is tested under O9.
+   * Mandatory as printed, but "as much as it can" reads as nothing at all
+   * when the barn cannot pay any open tile: the `deliver` task enumerates no
+   * answers and `drainTasks` drops it silently, same as V7's own empty case.
    */
-  it('O6 auto-skips (and draws nothing back) with no card left to give', () => {
+  it('O6 draws 2 and delivers nothing when the barn cannot pay any open tile', () => {
     const s = base();
     buildFor(data, s, ORCHARD, 'O6');
     dealTo(data, s, ORCHARD, 'O7');
-    // Empty every deck AFTER the payment is in hand: the Draw 2 finds nothing,
-    // so the hand is empty when the give enumerates and the task drops itself.
-    for (const suit of data.cards.suits) {
-      s.decks[suit] = [];
-      s.discards[suit] = [];
-    }
     const state = answerAll(growBuilding(data, s, ORCHARD, 'O6', 'O7').state);
-    expect(player(state, WHEAT).hand).toHaveLength(0);
-    expect(player(state, ORCHARD).hand).toHaveLength(0);
+    expect(player(state, ORCHARD).hand).toHaveLength(2);
+    expect(player(state, ORCHARD).barn).toHaveLength(0);
+    expect(player(state, ORCHARD).receipts).toHaveLength(0);
   });
 
   /**
@@ -451,60 +484,61 @@ describe('the Tier 1 ORCHARDs - one conversion each', () => {
 });
 
 describe('the Tier 2 cards - one noun each', () => {
-  it('O9 The Fruit Stand gives ONE EACH, drawing 2 per card given', () => {
+  /**
+   * ⭐ v47 RETEXT (T4c; `tasks/v47-rulings-v1.md` R1). "Give another player 1
+   * card from your hand, then Draw 4." ONE give, to ONE player of the owner's
+   * choice, then a flat Draw 4 - not the old re-entrant one-each loop with
+   * Draw 2 per card.
+   */
+  it('O9 The Fruit Stand gives one card to a chosen player, then Draws 4', () => {
     const s = makeState(data, ['orchard', 'wheat', 'vegetable']);
     buildFor(data, s, ORCHARD, 'O9');
     dealTo(data, s, ORCHARD, 'O4', 'O5', 'O6');
     const grown = growBuilding(data, s, ORCHARD, 'O9', 'O4');
-    // v30: MANDATORY, so a live give offers gives and nothing else.
-    expect(pendingAnswers(data, grown.state).every((a) => a.kind === 'card')).toBe(true);
-    let gifts = 0;
-    const state = answerAll(grown.state, (a) => {
-      const gift = a.find((x) => x.kind === 'card');
-      if (gift) {
-        gifts += 1;
-        return gift;
-      }
-      return a[0] as TaskAnswer;
-    });
-    // Two rivals, one each, and no more however many cards are in hand.
-    expect(gifts).toBe(2);
-    expect(player(state, WHEAT).hand).toHaveLength(1);
-    expect(player(state, 2).hand).toHaveLength(1);
-    // Gave 2, drew 2 for each: started with 2 after the grow payment, ends at 4.
-    expect(player(state, ORCHARD).hand).toHaveLength(4);
+    // Mandatory, so a live give offers gives and nothing else - but only ONE
+    // player's worth of answers, not a loop across every rival.
+    const first = pendingAnswers(data, grown.state);
+    expect(first.every((a) => a.kind === 'card')).toBe(true);
+    const toWheat = first.find((a) => a.kind === 'card' && a.payload.to === WHEAT) as TaskAnswer;
+    expect(toWheat).toBeDefined();
+    const state = answerTask(data, grown.state, toWheat).state;
+    // The give is a single shot: no re-entrant loop, so the task queue is
+    // done in one answer (the Draw 4 is a plain drawN, not a fresh task the
+    // player has to resolve here since `revealed` is empty and the decks are
+    // live).
+    expect(state.tasks.every((t) => t.t === 'draw')).toBe(true);
+    const drawn = answerAll(state);
+    // The gift went to WHEAT only; the other rival got nothing.
+    expect(player(drawn, WHEAT).hand).toHaveLength(1);
+    expect(player(drawn, 2).hand).toHaveLength(0);
+    // Started with 3, paid 1 as the GROW payment (2 left), gave 1 away (1
+    // left), then Draw 4: 1 + 4 = 5.
+    expect(player(drawn, ORCHARD).hand).toHaveLength(5);
   });
 
   /**
-   * The v30 §8.3 no-op, applied here: a mandatory effect with no legal target
-   * SKIPS SILENTLY. It never refuses the activation and it never asks. Note
-   * that "fewer cards than neighbours" heals itself - the Draw 2 arrives before
-   * the next give is chosen - so the only real no-op is an empty hand or a
-   * table of rivals at their hand limits. Both are tested: this one is the empty
-   * hand, and the one below it is DL-63.
+   * ⭐ v47 RULING R1: "the Draw 4 is gated on the give actually happening."
+   * With an empty hand there is nothing to give, so `answers` enumerates
+   * nothing, the task is dropped silently by `drainTasks`, and the Draw 4
+   * that lives inside the give's own `resolve` never runs at all.
    */
-  it('O9 never refuses: with nothing left to give it asks nothing at all', () => {
+  it('O9 draws nothing with an empty hand: no give means no Draw 4', () => {
     const s = makeState(data, ['orchard', 'wheat', 'vegetable']);
     buildFor(data, s, ORCHARD, 'O9');
     dealTo(data, s, ORCHARD, 'O4'); // the GROW payment and nothing else
     const grown = growBuilding(data, s, ORCHARD, 'O9', 'O4');
     expect(grown.state.tasks).toHaveLength(0);
+    expect(player(grown.state, ORCHARD).hand).toHaveLength(0);
     expect(player(grown.state, WHEAT).hand).toHaveLength(0);
     expect(player(grown.state, 2).hand).toHaveLength(0);
   });
 
   /**
-   * ⭐ DL-63, LIVE AGAIN (02/09/2026): a gift never forces an out-of-turn
-   * discard, so a rival already at `rules.turn.handLimit` is not a legal
-   * recipient. With every rival full, O9 has nowhere to give and skips silently
-   * by the same v30 §8.3 rule as the empty hand above.
-   *
-   * The rule is not politeness. Without it O6 and O9 stop being gifts and become
-   * a way to make a neighbour discard at their own turn boundary, which is a
-   * different card - and a much nastier one - than "your junk is their
-   * treasure".
+   * ⭐ DL-63, and R1's same gate from the other side: with every rival at
+   * `rules.turn.handLimit` there is nobody the card can legally reach, so the
+   * give (and therefore the Draw 4 R1 hangs off it) never happens.
    */
-  it('O9 gives nothing to a rival already at the hand limit (DL-63)', () => {
+  it('O9 draws nothing with every rival at the hand limit (DL-63): no give means no Draw 4', () => {
     const limit = data.rules.turn.handLimit as number;
     const s = makeState(data, ['orchard', 'wheat', 'vegetable']);
     buildFor(data, s, ORCHARD, 'O9');
@@ -513,6 +547,9 @@ describe('the Tier 2 cards - one noun each', () => {
     dealTo(data, s, 2, ...s.decks.vegetable.slice(0, limit));
     const grown = growBuilding(data, s, ORCHARD, 'O9', 'O4');
     expect(grown.state.tasks).toHaveLength(0);
+    // Nothing given, and per R1 nothing drawn either: still the 2 cards left
+    // after the GROW payment.
+    expect(player(grown.state, ORCHARD).hand).toHaveLength(2);
     expect(player(grown.state, WHEAT).hand).toHaveLength(limit);
     expect(player(grown.state, 2).hand).toHaveLength(limit);
   });
@@ -539,11 +576,13 @@ describe('the Tier 2 cards - one noun each', () => {
   });
 
   /**
-   * ⭐ v42: "Harvest one of your buildings, then Draw 1 for each card
-   * harvested." One harvestable building of any suit (full, or a Notice Board
-   * at 3+), chosen; the draw counts that building's cards.
+   * ⭐ v48 RETEXT (`tasks/v48-rulings-v2.md`, the builder-default paragraph):
+   * "Harvest one of your buildings, then Draw 2." The harvest is the shared
+   * `chooseBuilding`/`filter: 'full'` shape (V7's own precedent, "Harvest ...
+   * then Deliver"); the Draw 2 is a flat, unconditional push - not a count of
+   * what the harvest moved, unlike the old per-card version.
    */
-  it('O11 The Harvest Market harvests ONE harvestable building and draws per card', () => {
+  it('O11 The Harvest Market harvests one full building, chosen, then Draws 2', () => {
     const s = base();
     buildFor(data, s, ORCHARD, 'O11', 'O4', 'O9', 'W4');
     dealTo(data, s, ORCHARD, 'O6'); // deal before loading: loadStack eats deck tops
@@ -552,9 +591,7 @@ describe('the Tier 2 cards - one noun each', () => {
     loadStack(data, s, ORCHARD, 'W4', 2, 'wheat'); // full, any suit counts
     loadStack(data, s, ORCHARD, 'O3', 3, 'wheat'); // the Notice Board at its 3+ minimum
     const grown = growBuilding(data, s, ORCHARD, 'O11', 'O6');
-    expect(grown.state.tasks.map((t) => (t.t === 'card' ? t.kind : t.t))).toEqual([
-      'marketHarvest',
-    ]);
+    expect(grown.state.tasks[0]).toMatchObject({ t: 'chooseBuilding', filter: 'full' });
     const offered = pendingAnswers(data, grown.state).flatMap((a) =>
       a.kind === 'building' ? [a.card] : [],
     );
@@ -564,52 +601,107 @@ describe('the Tier 2 cards - one noun each', () => {
     const done = answerTask(data, grown.state, { kind: 'building', card: 'O4' }).state;
     expect(buildingOf(done, ORCHARD, 'O4').stack).toHaveLength(0);
     expect(player(done, ORCHARD).barn).toHaveLength(3);
-    expect(headDraw(done)).toMatchObject({ see: 3, keep: 3, src: 'O11' });
+    // A FLAT Draw 2 now, whatever the harvest moved (it moved 3 cards here).
+    expect(headDraw(done)).toMatchObject({ see: 2, keep: 2, src: 'O11' });
     // Nothing else was touched.
     expect(buildingOf(done, ORCHARD, 'W4').stack).toHaveLength(2);
     expect(buildingOf(done, ORCHARD, 'O11').stack).toHaveLength(1);
   });
 
-  it('O11 draws nothing, and harvests nothing, with nothing harvestable', () => {
+  /**
+   * ⭐ v47 R1, reused for O11 by the v48 builder default: the Draw 2 is an
+   * unconditional push alongside the harvest, not inside its resolve, so it
+   * fires even when nothing at all is harvestable (an own act, never gated
+   * the way a cross-table payment is).
+   */
+  it('O11 harvests nothing but still Draws 2 when nothing is harvestable', () => {
     const s = base();
     buildFor(data, s, ORCHARD, 'O11', 'O4');
     dealTo(data, s, ORCHARD, 'O6');
     loadStack(data, s, ORCHARD, 'O3', 2, 'wheat'); // a Notice Board below 3
     const grown = growBuilding(data, s, ORCHARD, 'O11', 'O6');
-    expect(player(grown.state, ORCHARD).barn).toHaveLength(0);
-    expect(grown.state.tasks).toHaveLength(0);
+    // No full building anywhere: the harvest task enumerates nothing and
+    // never appears at all, but the draw was pushed independently.
+    expect(grown.state.tasks.some((t) => t.t === 'chooseBuilding')).toBe(false);
+    const state = answerAll(grown.state);
+    expect(player(state, ORCHARD).barn).toHaveLength(0);
+    expect(player(state, ORCHARD).hand).toHaveLength(2);
   });
 
-  it('O12 The Fruit Press is capped at 4 (Dean, v37)', () => {
+  /**
+   * ⭐ v48 RETEXT (`tasks/v48-rulings-v2.md`, the builder-default paragraph):
+   * "Deliver. You may spend 1 card from your hand in the Delivery." At most
+   * ONE hand card, paying as its own crop, bridges a shortfall of exactly 1
+   * card - never 2 - because `deliverOptions` bumps the pool by one card at
+   * most (T4b).
+   */
+  it('O12 The Fruit Press bridges a 1-card barn shortfall with a hand card', () => {
     const s = base();
     buildFor(data, s, ORCHARD, 'O12');
-    dealTo(data, s, ORCHARD, 'O4', 'O5', 'O6', 'O7', 'O8', 'O9');
+    dealTo(data, s, ORCHARD, 'O4', 'O5', 'O9'); // O4 pays the GROW; O5, O9 stay in hand
+    barnTo(s, ORCHARD, 'O6', 'O7', 'O8'); // 3 of the 4 cards a pure tile wants: 1 short
     const grown = growBuilding(data, s, ORCHARD, 'O12', 'O4');
-    expect(grown.state.tasks.find((t) => t.t === 'handToBarn')).toMatchObject({
-      remaining: 4,
-      optional: true,
-    });
-    const state = answerAll(
-      grown.state,
-      (a) => a.find((x) => x.kind === 'handToBarn') ?? (a[0] as TaskAnswer),
-    );
-    expect(player(state, ORCHARD).barn).toHaveLength(4);
+    expect(
+      grown.state.tasks.find((t) => t.t === 'card' && t.kind === 'fruitPressDeliver'),
+    ).toBeDefined();
+    const tile = pureDemandTile(grown.state, 'orchard');
+    const answers = pendingAnswers(data, grown.state);
+    const bridged = answers.find(
+      (a) =>
+        a.kind === 'card' &&
+        (a.payload as { tile: string }).tile === tile.tile &&
+        (a.payload as { handCrop?: string }).handCrop === 'orchard',
+    ) as TaskAnswer;
+    expect(bridged).toBeDefined();
+    const state = answerTask(data, grown.state, bridged).state;
+    expect(player(state, ORCHARD).receipts).toHaveLength(1);
+    expect(player(state, ORCHARD).barn).toHaveLength(0);
+    // Started at 2 (O5, O9) after the GROW payment; exactly ONE of them
+    // bridged the gap, never both.
+    expect(player(state, ORCHARD).hand).toHaveLength(1);
+    expect(state.tasks).toHaveLength(0);
+  });
+
+  it('O12 offers a plain Deliver, no hand card touched, when the barn already pays in full', () => {
+    const s = base();
+    buildFor(data, s, ORCHARD, 'O12');
+    dealTo(data, s, ORCHARD, 'O4', 'O5');
+    barnTo(s, ORCHARD, 'O6', 'O7', 'O8', 'O9'); // the full 4-card demand, no bridge needed
+    const grown = growBuilding(data, s, ORCHARD, 'O12', 'O4');
+    const tile = pureDemandTile(grown.state, 'orchard');
+    const answers = pendingAnswers(data, grown.state);
+    const plain = answers.find(
+      (a) =>
+        a.kind === 'card' &&
+        (a.payload as { tile: string }).tile === tile.tile &&
+        (a.payload as { handCrop?: string }).handCrop === undefined,
+    ) as TaskAnswer;
+    expect(plain).toBeDefined();
+    const state = answerTask(data, grown.state, plain).state;
+    expect(player(state, ORCHARD).receipts).toHaveLength(1);
     expect(player(state, ORCHARD).hand).toHaveLength(1);
   });
 
-  it('O12 The Fruit Press puts up to 4 hand cards into the barn, a smaller hand in full', () => {
+  it('O12 cannot bridge a 2-card barn shortfall with only 1 hand card', () => {
     const s = base();
     buildFor(data, s, ORCHARD, 'O12');
-    dealTo(data, s, ORCHARD, 'O4', 'O5', 'O6');
+    dealTo(data, s, ORCHARD, 'O4', 'O5', 'O9');
+    barnTo(s, ORCHARD, 'O6', 'O7'); // 2 of the 4 cards: short by 2, not 1
     const grown = growBuilding(data, s, ORCHARD, 'O12', 'O4');
-    const task = grown.state.tasks.find((t) => t.t === 'handToBarn');
-    expect(task).toMatchObject({ remaining: 2, optional: true });
-    const state = answerAll(
-      grown.state,
-      (a) => a.find((x) => x.kind === 'handToBarn') ?? (a[0] as TaskAnswer),
-    );
-    expect(player(state, ORCHARD).barn).toHaveLength(2);
-    expect(player(state, ORCHARD).hand).toHaveLength(0);
+    const tile = pureDemandTile(grown.state, 'orchard');
+    const answers = pendingAnswers(data, grown.state);
+    expect(
+      answers.some((a) => a.kind === 'card' && (a.payload as { tile: string }).tile === tile.tile),
+    ).toBe(false);
+  });
+
+  it('O12 delivers nothing when nothing is payable even with the hand bridge', () => {
+    const s = base();
+    buildFor(data, s, ORCHARD, 'O12');
+    dealTo(data, s, ORCHARD, 'O4', 'O5');
+    const state = answerAll(growBuilding(data, s, ORCHARD, 'O12', 'O4').state);
+    expect(player(state, ORCHARD).receipts).toHaveLength(0);
+    expect(player(state, ORCHARD).hand).toHaveLength(1);
   });
 });
 
@@ -654,71 +746,100 @@ describe('the Tier 3 GROW buildings - O13, O14, O15', () => {
   });
 
   /**
-   * ⭐ v41/v42: "GROW up to 2 of your other buildings, using any suit." Any
-   * tier and any suit, paid with a hand card of any crop, two at most, never
-   * O13 itself, never the same building twice.
+   * ⭐ v48 RETEXT (`tasks/v48-rulings-v2.md`, the builder-default paragraph):
+   * "GROW 2 of your other buildings." No deck-paid wild Grow any more - each
+   * of the two Grows is an ordinary HAND-paid Grow (a matching card, placed,
+   * the ability fires), and O13 needs no explicit self-exclusion: by the
+   * time `activate` runs, O13 is already in `turn.firedThisTurn` (every
+   * activation path marks fired before calling the handler), which
+   * `growOptions` already excludes.
    */
-  it('O13 The Seed Bank grows up to TWO other buildings, paid with any crop', () => {
+  it('O13 The Seed Bank grows two different buildings with hand-paid cards, firing their abilities', () => {
     const s = base();
     noMeeples(s);
-    buildFor(data, s, ORCHARD, 'O13', 'O4', 'O7', 'W4');
-    dealTo(data, s, ORCHARD, 'O5', 'D4', 'D5', 'D6');
-    const grown = growBuilding(data, s, ORCHARD, 'O13', 'O5');
+    buildFor(data, s, ORCHARD, 'O13', 'O4', 'O7');
+    // 'D4' (wild crop) pays O13's OWN GROW; 'O6' and 'O8' (Orchard crop) are
+    // left to pay the two Grows the activation itself pushes.
+    dealTo(data, s, ORCHARD, 'D4', 'O6', 'O8');
+    const grown = growBuilding(data, s, ORCHARD, 'O13', 'D4');
     const first = pendingAnswers(data, grown.state);
-    const targets = new Set(
-      first.flatMap((a) => (a.kind === 'card' ? [a.payload.building as string] : [])),
-    );
-    // Dairy cards pay an Orchard and a Wheat activation alike; O13 is never offered.
-    expect(targets).toEqual(new Set(['O4', 'O7', 'W4']));
-    expect(first).toContainEqual({ kind: 'skip' });
+    // Every answer is a hand-paid grow (`kind: 'grow'`, a real `payment`
+    // card), and it is mandatory - no skip.
+    expect(first.every((a) => a.kind === 'grow' && a.payment !== null)).toBe(true);
+    expect(first.some((a) => a.kind === 'skip')).toBe(false);
+    const targets = new Set(first.flatMap((a) => (a.kind === 'grow' ? [a.building] : [])));
+    expect(targets).toEqual(new Set(['O4', 'O7']));
 
     const grownIds: string[] = [];
     const state = answerAll(grown.state, (a) => {
-      const grow = a.find((x) => x.kind === 'card' && x.payload.building !== undefined);
-      if (grow && grow.kind === 'card') {
-        grownIds.push(grow.payload.building as string);
+      const grow = a.find((x) => x.kind === 'grow');
+      if (grow && grow.kind === 'grow') {
+        grownIds.push(grow.building);
         return grow;
       }
-      return (
-        a.find((x) => x.kind === 'keep') ?? a.find((x) => x.kind === 'skip') ?? (a[0] as TaskAnswer)
-      );
+      return a.find((x) => x.kind === 'skip') ?? (a[0] as TaskAnswer);
     });
+    // Two distinct buildings, both grown, neither repeated.
     expect(grownIds).toHaveLength(2);
-    expect(new Set(grownIds).size).toBe(2);
-    for (const id of grownIds) expect(buildingOf(state, ORCHARD, id).stack).toHaveLength(1);
-    // The card that fired it is on O13, which is full at its threshold of 1.
+    expect(new Set(grownIds)).toEqual(new Set(['O4', 'O7']));
+    // Each took exactly one card - a hand card, placed on its stack.
+    expect(buildingOf(state, ORCHARD, 'O4').stack).toHaveLength(1);
+    expect(buildingOf(state, ORCHARD, 'O7').stack).toHaveLength(1);
+    // O13 itself holds only its own wild payment.
     expect(buildingOf(state, ORCHARD, 'O13').stack).toHaveLength(1);
+    // O6 and O8 both left the hand as GROW payments; O4 draws 3 and O7 draws
+    // 2 on activation, so their abilities really fired: 3 + 2 = 5.
+    expect(player(state, ORCHARD).hand).toHaveLength(5);
   });
 
-  it('O13 may stop after one grow', () => {
+  it('O13 grows one building when only one legal target exists', () => {
     const s = base();
     noMeeples(s);
-    buildFor(data, s, ORCHARD, 'O13', 'O9', 'O10');
-    dealTo(data, s, ORCHARD, 'O5', 'D4', 'D5');
-    const grown = growBuilding(data, s, ORCHARD, 'O13', 'O5');
-    const grow = pendingAnswers(data, grown.state).find((a) => a.kind === 'card') as TaskAnswer;
-    let state = answerTask(data, grown.state, grow).state;
-    state = answerAll(
-      state,
-      (a) =>
-        a.find((x) => x.kind === 'skip') ??
-        a.find((x) => x.kind === 'keep') ??
-        (a[0] as TaskAnswer),
-    );
-    const loaded =
-      buildingOf(state, ORCHARD, 'O9').stack.length +
-      buildingOf(state, ORCHARD, 'O10').stack.length;
-    expect(loaded).toBe(1);
+    buildFor(data, s, ORCHARD, 'O13', 'O4'); // the only other building on the farm
+    dealTo(data, s, ORCHARD, 'D4', 'O6');
+    const grown = growBuilding(data, s, ORCHARD, 'O13', 'D4');
+    const first = pendingAnswers(data, grown.state);
+    const targets = new Set(first.flatMap((a) => (a.kind === 'grow' ? [a.building] : [])));
+    expect(targets).toEqual(new Set(['O4']));
+    const state = answerAll(grown.state);
+    expect(buildingOf(state, ORCHARD, 'O4').stack).toHaveLength(1);
+    // With nothing left to grow, the second seedBankGrow step enumerates
+    // nothing and the queue drains silently - "do as much as you can".
+    expect(state.tasks).toHaveLength(0);
   });
 
-  it('O13 grows nothing, and asks nothing, with an empty hand', () => {
+  /**
+   * A full building is refused (a card is placed, so `canTakeCard` gates it,
+   * same as any hand-paid Grow), and the building that WAS grown can never
+   * be offered a second time - both read off `state.turn.firedThisTurn`,
+   * which `growOptions` excludes on every call (the same guard that keeps
+   * O13 out of its own target list).
+   */
+  it('O13 never offers a full building, and never grows the same building twice', () => {
     const s = base();
     noMeeples(s);
-    buildFor(data, s, ORCHARD, 'O13', 'O4');
-    dealTo(data, s, ORCHARD, 'W4'); // the payment and nothing else
-    const grown = growBuilding(data, s, ORCHARD, 'O13', 'W4');
-    expect(grown.state.tasks).toHaveLength(0);
-    expect(buildingOf(grown.state, ORCHARD, 'O4').stack).toHaveLength(0);
+    buildFor(data, s, ORCHARD, 'O13', 'O4', 'O7');
+    dealTo(data, s, ORCHARD, 'D4', 'O6', 'O8');
+    loadStack(data, s, ORCHARD, 'O4', 3, 'wheat'); // O4's threshold is 3: full already
+    const grown = growBuilding(data, s, ORCHARD, 'O13', 'D4');
+    const first = pendingAnswers(data, grown.state);
+    const targets = new Set(first.flatMap((a) => (a.kind === 'grow' ? [a.building] : [])));
+    // O4 is full and never offered; O7 is the only legal target.
+    expect(targets).toEqual(new Set(['O7']));
+
+    const grownIds: string[] = [];
+    const state = answerAll(grown.state, (a) => {
+      const grow = a.find((x) => x.kind === 'grow');
+      if (grow && grow.kind === 'grow') {
+        grownIds.push(grow.building);
+        return grow;
+      }
+      return a.find((x) => x.kind === 'skip') ?? (a[0] as TaskAnswer);
+    });
+    // O7 grown exactly once; O4 never touched, still full at 3.
+    expect(grownIds).toEqual(['O7']);
+    expect(buildingOf(state, ORCHARD, 'O4').stack).toHaveLength(3);
+    expect(buildingOf(state, ORCHARD, 'O7').stack).toHaveLength(1);
   });
 
   /**
@@ -801,93 +922,38 @@ describe('the Tier 3 GROW buildings - O13, O14, O15', () => {
     expect(player(state, ORCHARD).hand).toHaveLength(9);
   });
 
-  it('O15 The Garden Library takes a deck top each, gives one per rival, draws 1 back each', () => {
-    const s = makeState(data, ['orchard', 'wheat', 'vegetable']);
-    buildFor(data, s, ORCHARD, 'O15');
-    dealTo(data, s, ORCHARD, 'O4');
-    const grown = growBuilding(data, s, ORCHARD, 'O15', 'O4');
-    const state = answerAll(
-      grown.state,
-      (a) => a.find((x) => x.kind === 'card') ?? (a[0] as TaskAnswer),
-    );
-    // Five decks are on the table in the testkit: 5 taken, 2 given, 3 kept - and
-    // 2 drawn back, one per gift, so the hand is 5 again.
-    // ⚠️ THE CARD'S SELF-BALANCING PROPERTY WENT WITH THE COIN. At £1 a gift it
-    // was worth about the same at every seat count (2 seats keep 4 and take £1,
-    // 4 seats keep 2 and take £3); paying a CARD per gift makes it exactly
-    // neutral instead, so the give is now free flavour on "keep the top of
-    // every deck".
-    expect(player(state, WHEAT).hand).toHaveLength(1);
-    expect(player(state, 2).hand).toHaveLength(1);
-    expect(player(state, ORCHARD).hand).toHaveLength(5);
-  });
-
   /**
-   * v30 made the give OPTIONAL ("You may give a card to every other player"),
-   * so the skip is offered at every step and not only once the rivals have run
-   * out. Declining keeps the lot and mints nothing - which is a real choice for
-   * a suit whose whole thesis is cards through your hands.
+   * ⭐ v48 RETEXT (`tasks/v48-rulings-v2.md`, the builder-default paragraph):
+   * "Draw until you have 6 cards in hand." Counted once, after the GROW
+   * payment has left the hand: a flat see-N/keep-N Draw for exactly the
+   * shortfall, the owner choosing a deck for each card as it is revealed
+   * (`drawN`, the same helper O4's naked Draw 3 uses), landing the hand at
+   * exactly 6.
    */
-  it('O15 may decline the give entirely: keep every card, draw nothing back', () => {
-    const s = makeState(data, ['orchard', 'wheat', 'vegetable']);
-    buildFor(data, s, ORCHARD, 'O15');
-    dealTo(data, s, ORCHARD, 'O4');
-    const grown = growBuilding(data, s, ORCHARD, 'O15', 'O4');
-    // ⚠️ THE DRAW RESOLVES FIRST since 19/08/2026 - the head task is the Draw,
-    // with exactly one legal answer (keep everything) - and only then does the
-    // give offer its skip. The old shape had the give as the head task, so the
-    // skip was on offer immediately.
-    const drawn = answerTask(
-      data,
-      grown.state,
-      pendingAnswers(data, grown.state)[0] as TaskAnswer,
-    ).state;
-    expect(pendingAnswers(data, drawn).some((a) => a.kind === 'skip')).toBe(true);
-    const state = answerAll(drawn, (a) => a.find((x) => x.kind === 'skip') ?? (a[0] as TaskAnswer));
-    expect(player(state, WHEAT).hand).toHaveLength(0);
-    expect(player(state, 2).hand).toHaveLength(0);
-    // All five kept and nothing drawn back - the same 5 as the give-everything
-    // line above, which is exactly the point: the two branches are now equal in
-    // cards and differ only in who holds them.
-    expect(player(state, ORCHARD).hand).toHaveLength(5);
-  });
-
-  /**
-   * ⚠️ INVERTED 19/08/2026. THE RULING LANDED THE OTHER WAY: Dean, on the v30
-   * wording, *"it is a standard draw - so normal rules apply"*. The sheet reads
-   * "Draw the top card of each deck" where it used to read "Take", and the verb
-   * is literal.
-   *
-   * So the cards arrive through the DRAW TASK. `revealed` is pre-filled because
-   * the card names the decks rather than the player, and see === keep because
-   * the card keeps everything it draws, so the task has exactly one legal answer
-   * and falls straight through to the funnel.
-   *
-   * ⚠️ WHAT THAT DOES AND DOES NOT BUY, because the distinction is the whole
-   * reason the old ruling looked safe. It buys the SEAM: `afterDrawKeep` fires
-   * and the unkept remainder goes through `discardOrDivert`. It buys no
-   * BEHAVIOUR today - nothing in the catalogue listens to `afterDrawKeep` yet,
-   * and O17 The Fruit Basket still cannot fire here, now for two independent
-   * reasons: a draw that keeps everything discards nothing, and since v31 O17 is
-   * not on the discard seam at all. The fear
-   * the old comment recorded (a Farmstead gifting away the cards this card just
-   * took) could not have happened for the same reason.
-   */
-  it('O15 IS a Draw: it goes through the draw task, and still discards nothing', () => {
+  it('O15 The Garden Library draws exactly up to 6 cards, no more', () => {
     const s = base();
     buildFor(data, s, ORCHARD, 'O15');
-    dealTo(data, s, ORCHARD, 'O4');
+    dealTo(data, s, ORCHARD, 'O4', 'O5', 'O6'); // O4 pays the GROW; 2 left in hand
     const grown = growBuilding(data, s, ORCHARD, 'O15', 'O4');
+    expect(player(grown.state, ORCHARD).hand).toHaveLength(2);
     const draw = grown.state.tasks.find((t) => t.t === 'draw');
-    expect(draw).toBeDefined();
-    // Pre-revealed, and keeping everything: the card chose the decks, so there
-    // is no deck pick to make and no card to throw away.
-    if (draw?.t === 'draw') {
-      expect(draw.revealed.length).toBe(draw.see);
-      expect(draw.keep).toBe(draw.see);
-    }
-    // No divert, and it is the empty discard that guarantees it, not a carve-out.
-    expect(grown.state.tasks.some((t) => t.t === 'divert')).toBe(false);
+    expect(draw).toMatchObject({ see: 4, keep: 4, src: 'O15' });
+    const state = resolveDraw(grown.state);
+    expect(state.tasks).toHaveLength(0);
+    expect(player(state, ORCHARD).hand).toHaveLength(6);
+  });
+
+  /**
+   * A hand already at 6 or more after the GROW payment draws nothing at all:
+   * `drawN`'s own `n <= 0` guard drops the push before any task exists.
+   */
+  it('O15 draws nothing when the hand already holds 6 or more', () => {
+    const s = base();
+    buildFor(data, s, ORCHARD, 'O15');
+    dealTo(data, s, ORCHARD, 'O4', 'O5', 'O6', 'O7', 'O8', 'O9', 'O10'); // 6 left after paying
+    const grown = growBuilding(data, s, ORCHARD, 'O15', 'O4');
+    expect(player(grown.state, ORCHARD).hand).toHaveLength(6);
+    expect(grown.state.tasks).toHaveLength(0);
   });
 });
 
@@ -977,140 +1043,70 @@ describe('O16 The Fruit Store - turned around to pay for GOING OUT', () => {
  * can hold more than one: D12 builds two, D10 and D15 grant builds, and the
  * Dairy door is a Build alongside your own main action.
  */
-describe('O17 The Fruit Basket - one spent card into the barn, once a turn', () => {
-  it('offers each card a build spent, and puts the chosen one in the barn', () => {
+describe('O17 The Fruit Basket - a big hand feeds the barn at end of turn', () => {
+  /**
+   * ⭐ v48 RETEXT (`tasks/v48-rulings-v2.md`, R12): "Once per turn, if you
+   * have 6 or more cards in hand, put 1 card of your choice from your hand
+   * into your Barn." No more build-payment divert: the new hook is
+   * `beforeTurnEnd`, the same seam O18 A Helping Hand and V17 The
+   * Dockworker's Union already use, which fires exactly once a turn, before
+   * the hand-limit discard.
+   */
+  function endOfTurn(hand: CardId[]): GameState {
     const s = base();
     buildFor(data, s, ORCHARD, 'O17');
-    dealTo(data, s, ORCHARD, 'O9', 'O4', 'O5', 'O6'); // O9 costs 2 orchard + 1 any
-    const built = apply(data, s, {
-      type: 'build',
-      seat: ORCHARD,
-      card: 'O9',
-      payment: ['O4', 'O5', 'O6'],
-    });
-    const answers = pendingAnswers(data, built.state);
-    const offered = answers.flatMap((a) => (a.kind === 'card' ? [a.payload.card] : []));
-    expect(offered.sort()).toEqual(['O4', 'O5', 'O6']);
-
-    const taken = answerTask(data, built.state, {
-      kind: 'card',
-      payload: { card: 'O5' },
-    } as TaskAnswer).state;
-    expect(player(taken, ORCHARD).barn).toEqual(['O5']);
-    expect(taken.discards.orchard).not.toContain('O5');
-    // ONE card, and the task is done: the other two stay in the discard where
-    // D5 could sow them or D6 give them away. It was re-entrant until v32.
-    expect(taken.tasks).toEqual([]);
-    expect(taken.discards.orchard.sort()).toEqual(['O4', 'O6']);
-  });
+    dealTo(data, s, ORCHARD, ...hand);
+    s.turn.actionSpent = true;
+    return apply(data, s, { type: 'endTurn', seat: ORCHARD }).state;
+  }
 
   /**
-   * ⛔ MANDATORY: "put", not "you may" (v32). Asserting the skip is ABSENT is
-   * what stops it drifting back in as a courtesy, and the wording was changed
-   * deliberately - with a cap there is no reason to decline, so a prompt that
-   * offered one would be a prompt with one sensible answer all over again.
+   * Answer head tasks through `apply`'s `'task'` move, not `answerTask`
+   * directly - `apply` is what resumes the suspended turn boundary once the
+   * queue drains (the same route the O18 test in helpingHand.test.ts uses).
    */
-  it('offers no skip: the decision is which card, not whether', () => {
-    const s = base();
-    buildFor(data, s, ORCHARD, 'O17');
-    dealTo(data, s, ORCHARD, 'O4', 'O5');
-    const built = apply(data, s, {
-      type: 'build',
-      seat: ORCHARD,
-      card: 'O4',
-      payment: ['O5'],
-    });
-    expect(pendingAnswers(data, built.state)).not.toContainEqual({ kind: 'skip' });
-    expect(pendingAnswers(data, built.state)).toEqual([{ kind: 'card', payload: { card: 'O5' } }]);
-  });
+  function drainViaApply(state: GameState): GameState {
+    let s = state;
+    for (let guard = 0; guard < 20 && s.tasks.length > 0; guard++) {
+      const head = s.tasks[0] as Task;
+      const answer = pendingAnswers(data, s).find((x) => x.kind === 'handToBarn') as TaskAnswer;
+      s = apply(data, s, { type: 'task', seat: head.pid, answer }).state;
+    }
+    return s;
+  }
 
-  /**
-   * ⭐ THE CAP, AND IT DOES REAL WORK. D12 The Butter Factory builds TWO
-   * buildings off one activation, so without the guard an Orchard seat holding a
-   * Dairy Tier 2 would bank a card from each payment. The cap goes to the FIRST
-   * build of the turn; the way to spend it on a later one is to take that build
-   * first, so the choice is expressed in build ORDER rather than in a decline.
-   */
-  it('fires once a turn, however many builds the turn contains', () => {
-    const s = base();
-    buildFor(data, s, ORCHARD, 'O17', 'D12');
-    // D12 prints activationType 'dairy', so the fee is a Dairy card; the rest
-    // is Orchard stock for the two builds it grants.
-    dealTo(data, s, ORCHARD, 'D4', 'O4', 'O5', 'O6', 'O7', 'O8');
-    const grown = growBuilding(data, s, ORCHARD, 'D12', 'D4');
-    const state = answerAll(
-      grown.state,
-      (a) => a.find((x) => x.kind === 'build') ?? (a[0] as TaskAnswer),
-    );
-    // Two buildings landed off one activation, and exactly ONE card reached the
-    // barn between them. Without the cap it would have been one per payment.
-    const landed = player(state, ORCHARD).tableau.filter((b) =>
-      ['O4', 'O5', 'O6', 'O7', 'O8'].includes(b.card),
-    );
-    expect(landed.length).toBeGreaterThanOrEqual(2);
+  it("fires at 6 cards: a mandatory handToBarn for the owner's choice of card", () => {
+    const held = endOfTurn(['O4', 'O5', 'O6', 'O7', 'O8', 'O9']);
+    expect(held.turnPlayer).toBe(ORCHARD);
+    expect(held.resume).toBe('turnflow');
+    expect(held.tasks).toEqual([{ t: 'handToBarn', pid: ORCHARD, src: 'O17', remaining: 1 }]);
+    const answers = pendingAnswers(data, held);
+    // Mandatory: which card, never whether.
+    expect(answers).not.toContainEqual({ kind: 'skip' });
+    const state = drainViaApply(held);
     expect(player(state, ORCHARD).barn).toHaveLength(1);
-    expect(state.turn.firedThisTurn).toContain('O17');
+    expect(player(state, ORCHARD).hand).toHaveLength(5);
+    expect(state.turnPlayer).toBe(WHEAT);
   });
 
-  it('a second Build in the same turn opens no prompt at all', () => {
-    const s = base();
-    buildFor(data, s, ORCHARD, 'O17');
-    dealTo(data, s, ORCHARD, 'O4', 'O5');
-    const first = apply(data, s, {
-      type: 'build',
-      seat: ORCHARD,
-      card: 'O4',
-      payment: ['O5'],
-    });
-    const banked = answerTask(data, first.state, {
-      kind: 'card',
-      payload: { card: 'O5' },
-    } as TaskAnswer).state;
-    expect(player(banked, ORCHARD).barn).toEqual(['O5']);
-
-    // The guard is turn-scoped, so a hand-built second build inside the same
-    // turn queues nothing. (The Build ACTION is spent by now, so this drives the
-    // handler through the same hook a granted build would.)
-    dealTo(data, banked, ORCHARD, 'O6', 'O7');
-    const again = growBuilding(data, banked, ORCHARD, 'O4', 'O6');
-    expect(again.state.tasks.filter((t) => t.t === 'card' && t.kind === 'basket')).toEqual([]);
+  it('does not fire at 5 cards or fewer', () => {
+    const held = endOfTurn(['O4', 'O5', 'O6', 'O7', 'O8']);
+    expect(held.tasks).toEqual([]);
+    expect(held.turnPlayer).toBe(WHEAT);
+    expect(player(held, ORCHARD).barn).toHaveLength(0);
+    expect(player(held, ORCHARD).hand).toHaveLength(5);
   });
 
-  /**
-   * ⛔ THE DRAW'S DISCARD IS NO LONGER ITS BUSINESS, which is the half of the
-   * v31 retext a "same seam, new wording" reading would have missed. A
-   * see-3-keep-2 card ability throws one card away; under the old text O17 would
-   * have bought it, and it must not now.
-   */
-  it('never reaches a draw discard: only a card you SPEND', () => {
-    const s = base();
-    buildFor(data, s, ORCHARD, 'O17');
-    const drawn = apply(data, s, { type: 'draw', seat: ORCHARD });
-    const state = answerAll(drawn.state);
-    // Draw 2 keep 2 discards nothing at all, and no divert task was ever
-    // offered - the flag that would have produced one is off the card.
-    expect(state.tasks).toHaveLength(0);
-    expect(player(state, ORCHARD).barn).toEqual([]);
-    expect(handlerFor('O17')?.divertsDiscard).toBeUndefined();
-  });
-
-  /**
-   * ⚠️ A build that spends NOTHING queues nothing, which is the guard on the
-   * free-build family (D10, D15, W10) and also what stops the cap being burned
-   * by a build that had no payment to divert. There is no free build in the
-   * Orchard suit to drive it from here; dairy.test.ts owns that case.
-   */
-  it('a build with a payment queues exactly one basket task', () => {
-    const s = base();
-    buildFor(data, s, ORCHARD, 'O17');
-    dealTo(data, s, ORCHARD, 'O9', 'O4', 'O5', 'O6');
-    const built = apply(data, s, {
-      type: 'build',
-      seat: ORCHARD,
-      card: 'O9',
-      payment: ['O4', 'O5', 'O6'],
-    });
-    expect(built.state.tasks.filter((t) => t.t === 'card' && t.kind === 'basket')).toHaveLength(1);
+  it('never fires on a rival turn end', () => {
+    // Seats flipped from `base()`: seat 0 is Wheat, seat 1 is Orchard (O17's
+    // owner), so ending seat 0's turn must never touch it.
+    const s = makeState(data, ['wheat', 'orchard']);
+    buildFor(data, s, 1, 'O17');
+    dealTo(data, s, 1, 'O4', 'O5', 'O6', 'O7', 'O8', 'O9');
+    s.turn.actionSpent = true;
+    const out = apply(data, s, { type: 'endTurn', seat: 0 }).state;
+    expect(out.tasks).toEqual([]);
+    expect(player(out, 1).barn).toHaveLength(0);
   });
 });
 

@@ -17,3 +17,11 @@ packages/data/data/cards.json
 # survived (fixtures.test.ts parses rather than byte-compares, so nothing broke)
 # but a regenerate would have fought the reformat every time.
 packages/sim/fixtures/
+
+# The dashboard template (2026-09-20). Its payload injection marker is an EXACT
+# string, `/*__DATA__*/null`, which tools/sim-dashboard.py finds with a literal
+# str.replace. Prettier rewrites it to `/*__DATA__*/ null`, the replace then
+# never matches, and the tool writes a byte-copy of the template while still
+# printing "warnings 0" and "wrote ...". A dashboard that silently contains no
+# data is worse than one that fails, so this file is never auto-formatted.
+tools/sim-dashboard-template.html

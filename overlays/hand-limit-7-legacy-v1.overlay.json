@@ -1,0 +1,8 @@
+{
+  "name": "hand-limit-7-legacy-v1",
+  "description": "⛔ NOT A DESIGN ARM – A FIXTURE PIN, ADDED 24/09/2026. Dean raised the simulator's hand bound `rules.turn.handLimit` from 7 to 10 (rules.json meta.notes; reference-v25). The shipped default now reads 10, so every OLDER regression fixture recorded while the bound was still 7 needs the old value pinned by name, exactly the way `overlays/notice-board-apiary-sow-v1.overlay.json` pins a single retired leaf for its own fixtures - see `packages/sim/src/fixtures.test.ts`'s `ARMS` table and its long comment on why a fixture carries no field of its own to name the rules it replays against. This overlay sets the ONE leaf that matters for that purpose and nothing else: it is not a game arm to be measured, it exists only so `2p-token-island-hand-limit-7-opening.json`, `3p-token-island-hand-limit-7-opening.json` and `4p-token-island-hand-limit-7-opening.json` keep replaying the exact game their move logs were recorded against. A captured log can depend on the bound in a way ordinary rules do not: a wider hand changes which end-of-turn discards are legal (or whether one is queued at all), so a log recorded at 7 can go illegal at 10 with no card or rule having changed. If a future pass raises the bound again, these three fixtures stay pinned at 7 unless they are deliberately re-captured, at which point this overlay's job for them is done (delete the ARMS rows, not the fixtures).",
+  "schemaVersion": 1,
+  "set": {
+    "rules.turn.handLimit": 7
+  }
+}

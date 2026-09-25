@@ -62,21 +62,66 @@
  *
  * ## ⚠️ THE EXCEPTION, and it is the one that would mis-price Dairy in silence
  *
- * "Spend your junk" is only right when a spent card is LOST. Three cards in the
+ * "Spend your junk" is only right when a spent card is LOST. Cards in the
  * catalogue make a spent card something you keep:
  *
- *   - **O17 The Fruit Basket** - one card you spend goes into your barn.
- *   - **D5 The Churning Shed** - the cards this build spent are sown onto the
+ *   - **D5 The Churning Shed** - one card this build spent is sown onto the
  *     building it just built.
- *   - **D11 The Heritage House** - Build, then sow all the cards spent.
+ *   - **D7 The Versatile Shed** (since v48) - one card this build spent is
+ *     placed into your barn. Same shape as D5, same reason.
  *
- * With any of those in your tableau the junkiest payment is no longer obviously
- * the best one, so the class keeps TWO representatives, its junkiest and its
- * best, and a term that learns to price the diversion has both to choose from.
+ * With one of those in your tableau the junkiest payment is no longer
+ * obviously the best one, so the class keeps TWO representatives, its junkiest
+ * and its best, and a term that learns to price the diversion has both to
+ * choose from.
  *
- * ⚠️ **D6 The Trading Shed is deliberately NOT in that set.** It gives a spent
- * card to a rival, which is a reason to spend your junk, not your treasure - the
- * ordinary representative is already the right one.
+ * ⚠️ **D11 The Heritage House left this set on v47's retext.** It used to sow
+ * every spent card back onto its own building (identity mattered: a card
+ * headed back onto the board is a card you would rather it were your best,
+ * not your junkiest). The v47 face is "Draw 1 for each card you spent" - a
+ * plain refund by COUNT, not by identity, straight off `event.payment.length`.
+ * The count is already invariant across an equivalence class (every payment in
+ * one class spends the same number of cards), so the junkiest representative
+ * scores exactly as well as any other member and there is nothing left for a
+ * second representative to buy. D11 stays in `READS_BUILD_PAYMENT` (its
+ * `afterBuild` still reads `event.payment`, for its length) but is gone from
+ * `KEEPS_SPENT_CARDS`.
+ *
+ * ⚠️ **D6 The Trading Shed was already deliberately NOT in that set, and on
+ * v47 it stopped reading the payment at all.** The v46 face gave away one of
+ * the spent cards, which was a reason to spend your junk, not your treasure -
+ * the ordinary representative was already the right one. The v47 face, "Build.
+ * You and one neighbour each Draw 1", no longer touches what was spent (R1,
+ * `tasks/v47-rulings-v1.md`: the draws are the owner's own residue for naming
+ * a neighbour, ungated and unrelated to the payment), so its `afterBuild`
+ * listener is deleted along with it. D6 has left `READS_BUILD_PAYMENT`
+ * entirely, not moved to `IGNORES_BUILD_PAYMENT`: it is no longer a build
+ * payment reader of any kind, because it no longer listens to `afterBuild`.
+ *
+ * ⚠️ **O17 The Fruit Basket left `READS_BUILD_PAYMENT` on v48's retext**, and
+ * did not move to `IGNORES_BUILD_PAYMENT` either: it no longer listens to
+ * `afterBuild` at all. The v48 face ("Once per turn, if you have 6 or more
+ * cards in hand, add 1 to your Barn") reads the END-OF-TURN HAND, not a build
+ * payment, and fires off `beforeTurnEnd` (`tasks/v48-rulings-v2.md` R12). It is
+ * gone from `afterBuildCards()` and gone from every list here.
+ *
+ * ⭐ **A15 The Royal Apiary joins both sets on v48, and it is not a build
+ * payment reader in its own right - it is a FORWARDER.** A15 discards a Tier
+ * card from hand and runs that card's activated line directly
+ * (`tasks/v48-rulings-v2.md` R1/R6); when the discarded card is D5 or D7, whose
+ * activated line finishes in their own `on.afterBuild` listener, A15 carries a
+ * listener of its own that relays the event so the forwarded listener sees it
+ * (`apiary.ts`, "THE LISTENER TRAP"). So a build in reach of a Royal Apiary can
+ * pay the SAME class of card in two different ways worth pricing - discard a
+ * D5 or D7 into A15's forward, or leave the payment alone - and `keepsSpent`
+ * reads the whole tableau for `KEEPS_SPENT_CARDS`, so a seat that has BUILT A15
+ * keeps two payment representatives on every build it makes this turn, not
+ * only on builds through D5 or D7 itself. **That is the branching cost**: one
+ * seat holding A15 doubles the priced payments for every build it takes, for
+ * as long as A15 sits on its farm, whether or not this build ever touches A15.
+ * D11's shape (reads a payment, never keeps it) does not fit A15, because
+ * which card A15 discards is a choice the forwarded D5/D7 listener prices by
+ * identity, exactly as if D5 or D7 sat on the farm itself.
  *
  * ⚠️ A card that declares `divertsDiscard` would put the end-of-turn overflow in
  * the same position, so `discard` answers ask the same question. Nothing
@@ -104,9 +149,11 @@ import { cardById } from './scratch.js';
  * "reaches into a build payment and hands it back", inventing one would be a
  * rules-package change made for the simulator's convenience, and the guard test
  * (`narrow.test.ts`) makes an omission loud rather than silent. See the file
- * header for what each of them does and why D6 is not here.
+ * header for what each of them does and why D6, (since v47) D11 and (since
+ * v48) O17 are not here, and why A15 is here despite reading no payment of its
+ * own.
  */
-export const KEEPS_SPENT_CARDS: readonly CardId[] = ['O17', 'D5', 'D11'];
+export const KEEPS_SPENT_CARDS: readonly CardId[] = ['D5', 'D7', 'A15'];
 
 /**
  * Every card with an `afterBuild` listener, split by whether it makes a spent
@@ -114,11 +161,12 @@ export const KEEPS_SPENT_CARDS: readonly CardId[] = ['O17', 'D5', 'D11'];
  * registry exactly, so a new listener fails the build rather than quietly
  * inheriting "spend your junk".
  */
-export const READS_BUILD_PAYMENT: readonly CardId[] = ['O17', 'D5', 'D6', 'D11'];
+export const READS_BUILD_PAYMENT: readonly CardId[] = ['D5', 'D7', 'D11', 'A15'];
 // D18 A Helping Hand (v42) counts builds and never reads what paid for them.
-// ⚠️ V17 The Dockworker's Union (v42) listens to `afterBarnDiscard`, a BARN
-// discard by card text, and never to the hand discards this file collapses, so
-// it needs no list of its own here.
+// V17 The Dockworker's Union moved off `afterBarnDiscard` on sheet v45 (it now
+// listens on `beforeTurnEnd`, gated on the Barn's size, not on any discard) and
+// never read a build payment even under the old wiring, so it needs no list of
+// its own here either way.
 export const IGNORES_BUILD_PAYMENT: readonly CardId[] = ['D16', 'D17', 'D18'];
 
 /**
@@ -257,9 +305,11 @@ export function narrowMoves(
   for (let i = 0; i < moves.length; i++) {
     const move = moves[i] as Move;
     if (move.type === 'build') {
-      // ⭐ R15: THE MEEPLE VECTOR JOINS THE KEY, VERBATIM, exactly as D7's stack
-      // selection does on the task branch below - and for the same reason. Two
-      // builds that spend the same cards but different MEEPLES are not
+      // ⭐ R15: THE MEEPLE VECTOR JOINS THE KEY, VERBATIM, exactly as the stack
+      // selection does on the task branch below (⚠️ v48: no card in the game
+      // still populates `stacks` - see that branch's own note) - and for the
+      // same reason. Two builds that spend the same cards but different
+      // MEEPLES are not
       // rules-equivalent: they spend the same number of resources but give up
       // different DOORS, which is the one decision R15 exists to create. Collapse
       // them by crop alone and the arm would enumerate the colour choice and
@@ -283,10 +333,16 @@ export function narrowMoves(
     if (move.type !== 'task') continue;
     const answer: TaskAnswer = move.answer;
     if (answer.kind === 'build') {
-      // The stack half is NOT collapsed by crop: which building loses cards is
-      // D7 The Versatile Shed's whole printed fork, and `stackFills` has already
-      // made the choice within one building canonical. So the stack selection
-      // joins the key verbatim and only the hand payment collapses.
+      // ⚠️ v48: D7 The Versatile Shed, the whole printed fork this branch was
+      // built for, lost its stack payment on retext (`tasks/v48-rulings-v2.md`)
+      // and `BuildMods.fromStacks` lost its only caller - no card in the game
+      // still asks `stackFills` for a stack-paid answer, so `answer.stacks` is
+      // never populated by a real legal move any more. The branch is kept: the
+      // schema still carries `stacks` (`actions/build.ts`, orphaned code kept
+      // per the v46/v47 housekeeping decision), and if it is ever populated
+      // again which building loses cards must join the key verbatim rather
+      // than collapse by crop, for the same reason a future D7-shaped card
+      // would want.
       const stacks = [...(answer.stacks ?? [])].sort().join(',');
       const key = `t|${answer.card}|${cropKey(data, answer.payment)}|${stacks}`;
       consider(key, i, totalOf(data, answer.payment), both);

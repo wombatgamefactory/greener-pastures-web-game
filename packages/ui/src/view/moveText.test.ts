@@ -341,28 +341,37 @@ describe('a revealed deck top is named for its owner and masked for everyone els
   const RIVAL = 1;
 
   /**
-   * The Grand Creamery, mid-choice: two deck tops in limbo and the pick task at
-   * the head of the queue. Driven through the real engine rather than hand-built
-   * - a fabricated task could carry a rider key or a `kind` the handlers stopped
-   * using, and the whole point of the rendering is that it matches them.
+   * ⛔ THE GRAND CREAMERY NO LONGER LIVES HERE. v47 retexted D15 to "Build a
+   * card from your hand for free" (tasks/v47-rulings-v1.md), an ordinary
+   * `build` task with nothing in limbo at all - `creameryFlip` and
+   * `creameryPick` are both gone (see the `keys off task kinds` test below).
+   * The deck-choice-then-reveal SHAPE it used to open with moved to D10 The
+   * Scout's Post instead (the housekeeping note in tasks/v47-rulings-v1.md),
+   * so this whole describe block, and every helper in it, now exercises D10.
+   *
+   * D10, mid-choice: one deck top in limbo (`scoutDeck` answered, choosing
+   * wheat) and the `scout` pick task at the head of the queue. Driven through
+   * the real engine rather than hand-built - a fabricated task could carry a
+   * rider key or a `kind` the handlers stopped using, and the whole point of
+   * the rendering is that it matches them.
    */
-  function creamery() {
+  function scout() {
     const s = testkit.makeState(data, ['dairy', 'wheat']);
-    testkit.buildFor(data, s, DAIRY, 'D15');
-    testkit.dealTo(data, s, DAIRY, 'W4');
+    testkit.buildFor(data, s, DAIRY, 'D10');
+    // D5 grows it; the rest is a hand deep enough to afford a build at -2.
+    testkit.dealTo(data, s, DAIRY, 'D5', 'W4', 'W5', 'W6');
     const first = s.decks.wheat[0] as string;
-    const second = s.decks.wheat[1] as string;
 
-    const grown = growBuilding(data, s, DAIRY, 'D15', 'W4');
-    // Two decks to turn over. Both wheat, so the two reveals are known.
-    const deck = (state: Parameters<typeof pendingAnswers>[1]) =>
-      pendingAnswers(data, state).find(
-        (a) => a.kind === 'card' && a.payload.suit === 'wheat',
-      ) as TaskAnswer;
-    let state = answerTask(data, grown.state, deck(grown.state)).state;
-    const flipped = state;
-    state = answerTask(data, state, deck(state)).state;
-    return { state, flipped, first, second };
+    const grown = growBuilding(data, s, DAIRY, 'D10', 'D5');
+    // `flipped`: the 'scoutDeck' task pending, which deck to reveal.
+    const flipped = grown.state;
+    const deckChoice = pendingAnswers(data, flipped).find(
+      (a) => a.kind === 'card' && a.payload.suit === 'wheat',
+    ) as TaskAnswer;
+    // `state`: past the deck choice, at the 'scout' pick task, one card
+    // revealed (v47: "any deck", not "each deck", so there is only ever one).
+    const state = answerTask(data, flipped, deckChoice).state;
+    return { state, flipped, first };
   }
 
   /**
@@ -372,44 +381,47 @@ describe('a revealed deck top is named for its owner and masked for everyone els
    * would catch - so the names are checked against the registry directly.
    */
   it('keys off task kinds the handlers really register', () => {
-    expect(Object.keys(handlerFor('D15')?.tasks ?? {})).toEqual(
-      expect.arrayContaining(['creameryFlip', 'creameryPick']),
+    expect(Object.keys(handlerFor('D10')?.tasks ?? {})).toEqual(
+      expect.arrayContaining(['scoutDeck', 'scout']),
     );
-    expect(Object.keys(handlerFor('D10')?.tasks ?? {})).toEqual(expect.arrayContaining(['scout']));
+    // v47: D15 registers no card task at all any more - it is a plain, free
+    // `build` task (see the `case 'build'` branch in describeAnswer).
+    expect(Object.keys(handlerFor('D15')?.tasks ?? {})).toEqual([]);
   });
 
-  it('found a real position with two cards in limbo', () => {
-    const { state, first, second } = creamery();
+  it('found a real position with one card in limbo', () => {
+    const { state, first } = scout();
     const picks = pendingAnswers(data, state).filter((a) => a.kind === 'card');
-    expect(picks.length).toBe(2);
+    expect(picks.length).toBeGreaterThan(0);
     // Answered by SLOT: no answer names a card, which is the engine's half.
     for (const answer of picks) {
       expect(answer.kind === 'card' && typeof answer.payload.pick).toBe('number');
       expect(JSON.stringify(answer)).not.toContain(first);
-      expect(JSON.stringify(answer)).not.toContain(second);
     }
   });
 
   it('THE OWNER sees the card it named, by name', () => {
-    const { state, first, second } = creamery();
+    const { state, first } = scout();
     const you = viewFor(data, state, DAIRY);
     const said = pendingAnswers(data, state)
       .filter((a) => a.kind === 'card')
       .map((answer) => describeMove(data, you, { type: 'task', seat: DAIRY, answer }));
-    const names = [first, second].map((id) => printedFace(data, id).name);
-    expect(said.join(' | ')).toContain(names[0] as string);
-    expect(said.join(' | ')).toContain(names[1] as string);
-    // And it reads as what the card actually does with it.
-    for (const line of said) expect(line).toMatch(/^build .* for free$/);
+    const name = printedFace(data, first).name;
+    expect(said.join(' | ')).toContain(name);
+    // And it reads as what the card actually does with it: build it, paying
+    // the discount-2 price - D10 is never free, unlike the old D15.
+    for (const line of said) expect(line).toMatch(/^build .*, paying /);
   });
 
   /**
    * The half that matters. A rival's view carries the reveal masked to `W?`, so
-   * the same answer must render as the crop and nothing more - no card name, and
-   * no raw id anywhere in the string.
+   * the same answer must render as the crop and nothing more for the PICK half
+   * - no card name for the revealed card, and no raw id of it anywhere in the
+   * string. (The payment half names real hand cards even here; that is a
+   * separate, already-covered concern - see "D10's build-from-limbo" below.)
    */
   it('A RIVAL sees only the crop, and never the id', () => {
-    const { state, first, second } = creamery();
+    const { state, first } = scout();
     const them = viewFor(data, state, RIVAL);
     const said = pendingAnswers(data, state)
       .filter((a) => a.kind === 'card')
@@ -418,9 +430,7 @@ describe('a revealed deck top is named for its owner and masked for everyone els
     for (const line of said) {
       expect(line).toContain('a Wheat card');
       expect(line).not.toContain(first);
-      expect(line).not.toContain(second);
       expect(line).not.toContain(printedFace(data, first).name);
-      expect(line).not.toContain(printedFace(data, second).name);
       // The mask itself is never printed raw either.
       expect(line).not.toMatch(/\b[WVOAD]\?/);
     }
@@ -432,7 +442,7 @@ describe('a revealed deck top is named for its owner and masked for everyone els
    * they saw before the engine's fix, which was the leak in miniature.
    */
   it('renders neither the raw slot nor the raw id', () => {
-    const { state } = creamery();
+    const { state } = scout();
     for (const seat of [DAIRY, RIVAL]) {
       const view = viewFor(data, state, seat);
       for (const answer of pendingAnswers(data, state).filter((a) => a.kind === 'card')) {
@@ -448,19 +458,15 @@ describe('a revealed deck top is named for its owner and masked for everyone els
    * where the pick is a limbo card and the payment is hand cards. The two halves
    * are entitled differently and both have to come out right in one sentence -
    * the payment names cards the view already carries, so it stays named for its
-   * owner, while the pick is masked for a rival exactly as the Creamery's is.
+   * owner, while the pick is masked for a rival exactly as above.
    */
   it("D10's build-from-limbo names the payment and masks the pick the same way", () => {
-    const s = testkit.makeState(data, ['dairy', 'wheat']);
-    testkit.buildFor(data, s, DAIRY, 'D10');
-    // D5 grows it; the rest is a hand deep enough to afford a build at -2.
-    testkit.dealTo(data, s, DAIRY, 'D5', 'W4', 'W5', 'W6');
-    const grown = growBuilding(data, s, DAIRY, 'D10', 'D5');
-    const picks = pendingAnswers(data, grown.state).filter((a) => a.kind === 'card');
+    const { state } = scout();
+    const picks = pendingAnswers(data, state).filter((a) => a.kind === 'card');
     expect(picks.length).toBeGreaterThan(0);
 
-    const you = viewFor(data, grown.state, DAIRY);
-    const them = viewFor(data, grown.state, RIVAL);
+    const you = viewFor(data, state, DAIRY);
+    const them = viewFor(data, state, RIVAL);
     for (const answer of picks) {
       const mine = describeMove(data, you, { type: 'task', seat: DAIRY, answer });
       const theirs = describeMove(data, them, { type: 'task', seat: DAIRY, answer });
@@ -476,11 +482,12 @@ describe('a revealed deck top is named for its owner and masked for everyone els
   /**
    * The second half of the same fix. `{ suit }` is produced by four different
    * cards meaning four different things, and every one of them used to render as
-   * V13's long-retexted "discard a Vegetable card from your barn". The Creamery's
-   * first stage is the one this position reaches.
+   * V13's long-retexted "discard a Vegetable card from your barn". D10's
+   * `scoutDeck` stage is the one this position reaches (v47: it moved here from
+   * D15's old `creameryFlip`, per the moveText.ts housekeeping note above).
    */
   it('says what a {suit} answer means on the task that offered it', () => {
-    const { flipped } = creamery();
+    const { flipped } = scout();
     const you = viewFor(data, flipped, DAIRY);
     const line = describeMove(data, you, {
       type: 'task',

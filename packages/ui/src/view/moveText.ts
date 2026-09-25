@@ -85,7 +85,7 @@ function seatSuffix(ontoSeat: Seat | undefined): string {
  *
  * ⚠️ IT MUST BE THE TASK AS **THIS VIEW** CARRIES IT, never one fetched from
  * anywhere else. `redactTask` masks a card task's riders for every seat but its
- * owner, so a revealed deck top reads `D15` in the owner's copy and `D?` in a
+ * owner, so a revealed deck top reads `W5` in the owner's copy and `W?` in a
  * rival's - and that is the whole of the entitlement check. Nothing below
  * compares seats or decides who may see what; it renders what the view already
  * holds, which is precisely why it cannot be the place the boundary is got
@@ -119,10 +119,12 @@ export function describeAnswer(data: GameData, answer: TaskAnswer, task?: CardTa
       return 'decline';
     case 'card':
       return describeCardPayload(data, answer.payload, task);
-    // ⛔ A BOUGHT GROW, still unrouted in the click surface and on
-    // `UNROUTED_TASK_ANSWERS` (ledger C59, the UI debt). Spelled as its own
-    // case rather than folded into a `default`, so the next answer kind the
-    // engine adds is a compile error here and not a silent sentence.
+    // A door-bought Grow (a standalone `t: 'grow'` task, e.g. a Notice Board
+    // power) OR, since v48, O13 The Seed Bank's hand-paid Grow, offered
+    // through the `t: 'card'` escape hatch but sharing this answer shape.
+    // Spelled as its own case rather than folded into a `default`, so the
+    // next answer kind the engine adds is a compile error here and not a
+    // silent sentence.
     case 'grow':
       /*
        * ⚠️ `payment` is nullable for exactly one live reason: the Apiary
@@ -131,6 +133,11 @@ export function describeAnswer(data: GameData, answer: TaskAnswer, task?: CardTa
        * 16/09/2026, and the engine no longer constructs this answer with
        * `payment: null` and no `deckSuit` - so that branch is unreachable and
        * says so rather than naming a component that no longer exists.
+       * ⭐ "UNSUPPORTED IN THIS INTERFACE, C59" IS GONE (24/09/2026): a bought
+       * Grow left `UNROUTED_TASK_ANSWERS` on 18/09/2026 (`intent.ts`, 2.2.5) -
+       * `clickBuilding` and `clickDeck` resolve it same as any other Grow -
+       * and O13 The Seed Bank's v48 retext now reaches this same case for an
+       * ordinary hand-paid Grow, for which the old suffix was never even true.
        */
       return `${cardName(data, answer.building)}, paying ${
         answer.deckSuit !== undefined
@@ -138,7 +145,7 @@ export function describeAnswer(data: GameData, answer: TaskAnswer, task?: CardTa
           : answer.payment !== null
             ? cardName(data, answer.payment)
             : 'nothing (unreachable under the shipped rules)'
-      } (a bought Grow: unsupported in this interface, C59)`;
+      }`;
     default:
       return answer satisfies never;
   }
@@ -161,8 +168,15 @@ const SUIT_ANSWER: Readonly<Record<string, (crop: string) => string>> = {
   // A17 The Smoke Pot, and the Dairy deck-to-barn: the top card of that deck.
   smokeBuy: (crop) => `the top ${crop} card, into your barn`,
   deckToBarn: (crop) => `the top ${crop} card, into your barn`,
-  // D15 The Grand Creamery, first stage: which deck to turn over.
-  creameryFlip: (crop) => `reveal the top card of the ${crop} deck`,
+  // D10 The Scout's Post, first stage since v47: which deck to turn over.
+  // `creameryFlip` (D15 The Grand Creamery's old first stage) is retired with
+  // the card's whole reveal-and-pick shape; the deck-choice SENTENCE moves
+  // here unchanged, onto D10's `scoutDeck` task (tasks/v47-rulings-v1.md
+  // housekeeping note).
+  scoutDeck: (crop) => `reveal the top card of the ${crop} deck`,
+  // V18 A Helping Hand (v48): the receipt names more than one crop still
+  // actionable right now, and the owner picks which plain action it grants.
+  v18Crop: (crop) => `take your ${crop} action`,
 };
 
 /**
@@ -172,10 +186,15 @@ const SUIT_ANSWER: Readonly<Record<string, (crop: string) => string>> = {
  * of the task - so neither of these decides anything about entitlement either.
  */
 const PICK_ANSWER: Readonly<Record<string, (name: string, paying: string) => string>> = {
-  // D10 The Scout's Post: build the revealed card, at a discount of 2.
+  // D10 The Scout's Post: build the revealed card, at a discount of 2. v47
+  // reveals exactly one card (chosen deck first, via `scoutDeck` above), so
+  // the slot is always 0, but the shape - and this rendering - is unchanged.
   scout: (name, paying) => `build ${name}, paying ${paying}`,
-  // D15 The Grand Creamery: build one of the two revealed cards for nothing.
-  creameryPick: (name) => `build ${name} for free`,
+  // ⛔ `creameryPick` (D15 The Grand Creamery's old "build one of the two
+  // revealed cards for nothing") is retired with the card's whole reveal
+  // shape: v47's D15 is "Build a card from your hand for free", an ordinary
+  // `build` task (see the `case 'build'` branch above), never a `card`/pick
+  // task. There is nothing left in this table for D15 to key off.
 };
 
 /**
@@ -205,11 +224,76 @@ function describeCardPayload(
   if (payload.tile !== undefined && payload.crate !== undefined) {
     return `turn the demand on ${crate(payload)} face down`;
   }
+  /*
+   * ⚠️ THREE CARDS NOW SHARE `{ tile, spend }` (v48 added the second and
+   * third), AND THEY DO NOT MEAN THE SAME THING - the same trap SUIT_ANSWER
+   * and PICK_ANSWER already guard against, so the task's `kind` disambiguates
+   * here too rather than reading the bag alone.
+   */
   // V14: one payment, both receipts.
-  if (payload.tile !== undefined && payload.spend !== undefined) {
+  if (task?.kind === 'sweepDeliver' && payload.tile !== undefined && payload.spend !== undefined) {
     return `island ${String(payload.tile)}, spending ${spendText(
       payload.spend as Partial<Record<Suit, number>>,
     )} for BOTH receipts`;
+  }
+  // O12 The Fruit Press: a plain delivery, with at most one hand card of a
+  // named crop bridging a barn that is exactly one short (v48).
+  if (
+    task?.kind === 'fruitPressDeliver' &&
+    payload.tile !== undefined &&
+    payload.spend !== undefined
+  ) {
+    const bridge =
+      payload.handCrop === undefined
+        ? ''
+        : ` (plus a ${SUIT_META[payload.handCrop as Suit].label} card from your hand)`;
+    return `island ${String(payload.tile)}, spending ${spendText(
+      payload.spend as Partial<Record<Suit, number>>,
+    )}${bridge}`;
+  }
+  // A8 The Wild Hive, step 1: which delivery, over the pooled barn-plus-
+  // full-buildings tally (v48). Step 2 (below) then sources any contested card.
+  if (task?.kind === 'wildDeliver' && payload.tile !== undefined && payload.spend !== undefined) {
+    return `island ${String(payload.tile)}, spending ${spendText(
+      payload.spend as Partial<Record<Suit, number>>,
+    )}`;
+  }
+  // A8, step 2: one contested card, sourced from the barn or a named building.
+  if (task?.kind === 'wildDeliver' && payload.from !== undefined) {
+    return payload.from === 'barn'
+      ? 'take the next card from your barn'
+      : `take the next card off ${cardName(data, String(payload.from))}`;
+  }
+  // A10 The Cross-Pollinator (v48): the extra visit R9 grants, paid off a
+  // deck top rather than a hand card. No seat name here, in the same register
+  // `seatSuffix` uses above - describeCardPayload has no view to name one.
+  if (task?.kind === 'crossVisit' && payload.board !== undefined) {
+    const crop = SUIT_META[payload.suit as Suit].label;
+    return `visit a rival's ${cardName(data, String(payload.board))}, paying with the top ${crop} card`;
+  }
+  // A15 The Royal Apiary (v48): discard a Tier card from hand and carry out
+  // its activated line directly (R1/R6).
+  if (task?.kind === 'royalDiscard' && payload.card !== undefined) {
+    return `discard ${cardName(data, String(payload.card))} and activate it`;
+  }
+  // D7 The Versatile Shed (v48): place one of this Build's spent cards into
+  // your barn - the D5 shape, same sentence D5's own `sowSpent` would want.
+  if (task?.kind === 'reclaimSpent' && payload.card !== undefined) {
+    return `put ${cardName(data, String(payload.card))} into your barn`;
+  }
+  // A17 The Smoke Pot (v49): at the end of your turn, move a card off one of
+  // your full buildings into your barn. Named BY CROP, never by id - a stack
+  // is shown to its own owner as suit letters only (`buildingView`, view.ts),
+  // so any card of that crop is the same move.
+  if (
+    task?.kind === 'smokePotMove' &&
+    payload.building !== undefined &&
+    payload.crop !== undefined
+  ) {
+    return `move a ${SUIT_META[payload.crop as Suit].label} card off ${cardName(
+      data,
+      String(payload.building),
+    )} into your barn`;
   }
   // The divert seam: a card on its way to a discard, put in the barn instead.
   if (payload.card !== undefined && payload.barn === true) {
@@ -219,17 +303,21 @@ function describeCardPayload(
    * ⭐ A CHOICE OUT OF LIMBO, ANSWERED BY SLOT (the engine's leak fix,
    * 03/09/2026).
    *
-   * D10 The Scout's Post and D15 The Grand Creamery turn deck tops face up into
-   * a zone no `PlayerView` models, and their answers used to name the revealed
-   * card BY ID - which put a deck top into the unredacted move list every policy
-   * reads, and into the replayable move log. They answer `{ pick: 1 }` now, and
-   * the id lives only on the task.
+   * D10 The Scout's Post turns a deck top face up into a zone no `PlayerView`
+   * models, and its answer used to name the revealed card BY ID - which put a
+   * deck top into the unredacted move list every policy reads, and into the
+   * replayable move log. It answers `{ pick: 0 }` now (v47: one deck, chosen
+   * first, so there is only ever one slot), and the id lives only on the task.
+   * ⛔ D15 The Grand Creamery used to share this exact shape (two deck tops,
+   * `{ pick: 0 | 1 }`); v47 retexted it to an ordinary free Build straight off
+   * the hand, so it left this branch entirely and is handled by the plain
+   * `case 'build'` above instead.
    *
    * So the slot is resolved back THROUGH THE TASK, and the entitlement comes
    * free with it: `redactTask` has already masked the riders for every seat but
-   * the owner, so the owner's view yields `The Cider House` and a rival's yields
-   * `D?`, which `cardName` renders as "a Dairy card". Rendering the raw
-   * `{"pick":0}` was meaningless to a player; rendering the old `{"card":"D15"}`
+   * the owner, so the owner's view yields `Rye Field` and a rival's yields
+   * `W?`, which `cardName` renders as "a Wheat card". Rendering the raw
+   * `{"pick":0}` was meaningless to a player; rendering the old `{"card":"W5"}`
    * WAS the leak. This is the same fix said in the interface.
    *
    * ⚠️ WITH NO TASK IT NAMES NO CARD AT ALL. A caller that cannot supply one has
@@ -415,11 +503,13 @@ export function describeTask(data: GameData, task: Task): string {
         : `${task.cards.length} card${task.cards.length === 1 ? '' : 's'} heading for the discard: put one in your barn, or let them go.`;
     case 'card':
       return `${cardName(data, task.src)}: choose.`;
-    // ⛔ A bought Grow, still unresolvable in this prompt - see
-    // `UNROUTED_TASK_ANSWERS` in `intent.ts` and ledger C59. An explicit
-    // case, so a genuinely new task kind still fails the build here.
+    // A door-bought Grow (e.g. a Notice Board power). ⭐ Resolvable in this
+    // prompt since 18/09/2026 (`clickBuilding` / `clickDeck`, `intent.ts`
+    // 2.2.5, `UNROUTED_TASK_ANSWERS` emptied) - the old "unsupported, C59"
+    // wording is gone. Kept as an explicit case, so a genuinely new task kind
+    // still fails the build here.
     case 'grow':
-      return 'GROW one of your buildings, paying a matching card (a bought Grow: unsupported in this interface, C59).';
+      return 'GROW one of your buildings, paying a matching card.';
     default:
       return task satisfies never;
   }

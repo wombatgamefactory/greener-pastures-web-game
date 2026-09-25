@@ -660,10 +660,23 @@ export const BALANCED: WeightTable = {
   hostGift: 2.7,
 
   /**
-   * A tile that flips from unpayable to payable, converted into score - V5's
-   * and V6's whole worth. It was `marketPayability` until v31 deleted the market
-   * that shared it. Set between `sowCompletes` (2) and a delivery, with the
-   * delete test run in ticket 56's report rather than argued here.
+   * A tile that flips from unpayable to payable, converted into score - it
+   * priced V5's demand-token swap. It was `marketPayability` until v31 deleted
+   * the market that shared it. Set between `sowCompletes` (2) and a delivery,
+   * with the delete test run in ticket 56's report rather than argued here.
+   *
+   * ⛔ INERT SINCE v47 (tasks/v47-rulings-v1.md housekeeping note): V5 The
+   * Coastal Trading Depot retexted from a token swap to "Deliver. 1 of the
+   * cards may be any crop.", the only card that ever moved an island token,
+   * so `demandSwapped` never fires any more. `Probe.deliverable` and
+   * `deliverableBefore` (packages/engine/src/probe.ts) are gated on exactly
+   * that event and both now always read 0 - see `deliverabilityValue` in
+   * outcome.ts. Kept as an orphan by decision, not deleted (the v47 rulings'
+   * housekeeping list), because `fx.swapIslandTokens`, the `demandSwapped`
+   * event and the `swapDemand` task kind are all kept the same way; this
+   * weight moving no bot number is exactly why removing it was not owed this
+   * pass. If a future card ever moves an island token again, this weight and
+   * its gate come back to life unchanged.
    */
   deliverability: 4,
 

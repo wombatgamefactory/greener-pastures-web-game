@@ -66,7 +66,7 @@ export const data: GameData = loadGameData({
     //
     // There is no hand limit at the table - it was removed with v31 on
     // 02/09/2026 and the removal tested well on 09/09/2026 (CLAUDE.md §2.3).
-    // `rules.turn.handLimit` (default 7) is not a table rule at all: it is
+    // `rules.turn.handLimit` (default 10 since 24/09/2026, was 7) is not a table rule at all: it is
     // purely a simulator bound, kept so the bot's `legalMoves` enumeration
     // stays inside a runtime budget. `null` is the tested control arm that
     // turns it off entirely (`packages/engine/src/game.test.ts`, "queues

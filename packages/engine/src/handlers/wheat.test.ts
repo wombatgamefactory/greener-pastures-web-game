@@ -246,8 +246,12 @@ describe('the Wheat Farmstead (W2) - the own-crop end-game scorer', () => {
   it('W2 counts Power and Endgame cards of the crop, not just buildings', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W16', 'W20'); // a Power card and an Endgame card
-    // W2's 2, plus W20 The Grand Granary's own count of the 2 deck-built cards.
-    expect(gameEndScores(data, s)[WHEAT]?.endgame).toBe(4);
+    // W2's 2 (unaffected by R13 - the Barn's own-crop scorer always counted
+    // every deck card, Power and Endgame included), plus W20 The Grand
+    // Granary's own count. ⭐ v48 R13 (tasks/v48-rulings-v2.md): W20 no longer
+    // counts ITSELF (an Endgame card) toward its own total, so its half is
+    // now 1 (W16 only), not 2.
+    expect(gameEndScores(data, s)[WHEAT]?.endgame).toBe(2 + 1);
   });
 
   /**
@@ -256,6 +260,12 @@ describe('the Wheat Farmstead (W2) - the own-crop end-game scorer', () => {
    * `data` (BASE_GAME_DATA) already caps W20. `uncapped` is the v42 control,
    * the card as printed before the cap. W20 stops at the cap while the Barn
    * scorer beside it keeps counting.
+   *
+   * ⭐ v48 R13 (tasks/v48-rulings-v2.md, 24/09/2026): W20's own noun is now
+   * `builtBuildingsAndPower` (buildings.ts), which excludes Endgame cards -
+   * including W20 ITSELF. The five FIELDs (5) plus W16 the Power card (1) is
+   * 6, one fewer than before this ruling (W20 used to count its own card too,
+   * via `inDeck`). The cap does not move: 6 still clears 5.
    */
   it('W20 respects grandGranaryCap, shipped at 5', () => {
     const uncapped = loadGameData({
@@ -268,8 +278,10 @@ describe('the Wheat Farmstead (W2) - the own-crop end-game scorer', () => {
     buildFor(uncapped, open, WHEAT, ...cards);
     const shut = base();
     buildFor(data, shut, WHEAT, ...cards);
-    // Barn 7 plus W20 7 uncapped, against Barn 7 plus W20 capped at 5 (shipped).
-    expect(gameEndScores(uncapped, open)[WHEAT]?.endgame).toBe(14);
+    // Barn 7 (every wheat deck card, W20 itself included) plus W20's own 6
+    // uncapped (5 FIELDs + W16, never itself - an Endgame card), against Barn 7
+    // plus W20 capped at 5 (shipped).
+    expect(gameEndScores(uncapped, open)[WHEAT]?.endgame).toBe(13);
     expect(gameEndScores(data, shut)[WHEAT]?.endgame).toBe(12);
   });
 
@@ -435,7 +447,7 @@ describe('Tier 1 - the five FIELDs, both printed lines each', () => {
     ).toBe(true);
   });
 
-  it('W8 Heritage Field: GROW just draws; HARVEST harvests another building', () => {
+  it('W8 Heritage Field (v47): GROW just draws; HARVEST harvests only a FULL other building', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W8', 'W5');
     dealTo(data, s, WHEAT, 'W6', 'W7');
@@ -453,7 +465,7 @@ describe('Tier 1 - the five FIELDs, both printed lines each', () => {
     // The chooser and nothing after it: the seed line is gone here too.
     expect(applied.state.tasks.map((x) => x.t)).toEqual(['chooseBuilding']);
     expect(applied.state.tasks[0]).toMatchObject({
-      filter: 'loaded',
+      filter: 'full',
       exclude: 'W8',
       then: 'harvest',
     });
@@ -463,71 +475,126 @@ describe('Tier 1 - the five FIELDs, both printed lines each', () => {
   });
 
   /**
-   * ⛔ THE READING INVERTED (v30, 19/08/2026). "Another of your buildings" used
-   * to be the STRICT full gate, on the reasoning that W11/W12/W13 spelled their
-   * exception out in words and this card did not. It now prints "even if not
-   * full", so a half-loaded building is a legal target - which is the whole of
-   * the change and cannot be seen from the `filter` field alone, since the
-   * strict gate would offer W5 too once W5 were full.
+   * ⭐ RETEXTED ON SHEET v47: "even if not full" IS GONE, so the reading
+   * inverts back to the strict full gate it held before v42's "even if not
+   * full" text. A loaded-but-not-full building is no longer a legal target -
+   * only `filter: 'full'` reads that off the state, so the test drives it
+   * end to end rather than trusting the field alone.
    */
-  it('W8 Heritage Field: the chained harvest now reaches a building that is NOT full', () => {
+  it('W8 Heritage Field (v47): a loaded-but-not-full building is ignored, only a full one harvests', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W8', 'W7'); // W7 threshold 3
-    fill(s, 'W8');
-    loadStack(data, s, WHEAT, 'W7', 1, 'apiary'); // 1 of 3: nowhere near full
+    fill(s, 'W8'); // W8 threshold 2: full
+    loadStack(data, s, WHEAT, 'W7', 1, 'apiary'); // loaded, 1 of 3: NOT full
     const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W8' });
-    expect(pendingAnswers(data, applied.state)).toContainEqual({ kind: 'building', card: 'W7' });
-    const done = answerAll(applied.state);
-    expect(buildingOf(done, WHEAT, 'W7').stack).toEqual([]);
-    // W8's own 2 cards plus W7's 1: everything harvested lands in the barn.
-    expect(player(done, WHEAT).barn).toHaveLength(3);
+    // No full building besides W8 itself: the chained harvest is mandatory but
+    // does as much as it can, which here is nothing, and drops with no legal
+    // choice to offer rather than reaching for the loaded W7.
+    expect(applied.state.tasks).toEqual([]);
+    expect(buildingOf(applied.state, WHEAT, 'W7').stack).toHaveLength(1);
+    // Only W8's own 2 cards land in the barn.
+    expect(player(applied.state, WHEAT).barn).toHaveLength(2);
+  });
+
+  /**
+   * v45 R6 / v46 R2, still standing: a Notice Board is never harvested below
+   * its printed 3+ minimum, and IS a legal target at 3 - the `'full'` filter
+   * reads that through `isHarvestable`, with no bespoke exclusion needed.
+   */
+  it('W8 Heritage Field (v47): takes a Notice Board at 3 cards but not at 2', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W8');
+    fill(s, 'W8');
+    loadStack(data, s, WHEAT, 'W3', 2, 'apiary'); // the Notice Board, below 3
+    const applied = apply(data, s, { type: 'harvest', seat: WHEAT, building: 'W8' });
+    expect(applied.state.tasks).toEqual([]);
+    expect(buildingOf(applied.state, WHEAT, 'W3').stack).toHaveLength(2);
+
+    const t = base();
+    buildFor(data, t, WHEAT, 'W8');
+    fill(t, 'W8');
+    loadStack(data, t, WHEAT, 'W3', 3, 'apiary'); // at 3: a legal target
+    const full = apply(data, t, { type: 'harvest', seat: WHEAT, building: 'W8' });
+    expect(full.state.tasks.map((x) => x.t)).toEqual(['chooseBuilding']);
+    expect(pendingAnswers(data, full.state)).toEqual([{ kind: 'building', card: 'W3' }]);
+    const done = answerAll(full.state);
+    expect(buildingOf(done, WHEAT, 'W3').stack).toEqual([]);
+    // W8's own 2 cards plus W3's 3.
+    expect(player(done, WHEAT).barn).toHaveLength(5);
   });
 });
 
 describe('Tier 2', () => {
   /**
-   * ⭐ v42: "Sow a deck card on up to 3 of your buildings that are empty." One
-   * deck and one building per answer, a stop answer, each building at most once,
-   * and only a stack that is empty when the card lands. Never the Notice Board.
+   * ⭐ RETEXTED ON SHEET v47: "up to 3" is gone; the card now prints "onto
+   * each of your empty buildings (max 3)" with no "may". A deck and a
+   * building per answer, and NO stop answer any more (`optional: false`):
+   * every empty building takes a card, up to the printed cap. With exactly
+   * 4 empty targets available it still sows only 3, and the owner picks
+   * which 3 rather than declining any of them.
    */
-  it('W9 Mill House (v42): up to three EMPTY buildings of any suit, one deck card each', () => {
+  it('W9 Mill House (v47): 4 empty buildings, sows exactly 3, mandatory - no skip offered', () => {
     const s = base();
-    buildFor(data, s, WHEAT, 'W9', 'W4', 'W5', 'A9');
-    dealTo(data, s, WHEAT, 'W6');
-    loadStack(data, s, WHEAT, 'W5', 1, 'apiary'); // not empty: never a target
-    const grown = growBuilding(data, s, WHEAT, 'W9', 'W6');
+    buildFor(data, s, WHEAT, 'W9', 'W4', 'W5', 'W6', 'A9');
+    dealTo(data, s, WHEAT, 'W7');
+    const grown = growBuilding(data, s, WHEAT, 'W9', 'W7');
     expect(grown.state.tasks.map((t) => (t.t === 'card' ? t.kind : t.t))).toEqual(['deckSow']);
 
     const answers = pendingAnswers(data, grown.state);
+    // No skip anywhere in the answer list: the sow cannot be declined.
+    expect(answers.some((a) => a.kind === 'skip')).toBe(false);
     const onto = new Set(
       answers.flatMap((a) => (a.kind === 'card' ? [a.payload.card as string] : [])),
     );
-    // W9 holds its own payment and W5 a card; W3 is a Notice Board (S11).
-    expect([...onto].sort()).toEqual(['A9', 'W4']);
-    expect(answers).toContainEqual({ kind: 'skip' });
+    // All four empty buildings are offered; W9 holds its own payment and W3
+    // is a Notice Board (S11), so neither is ever a target.
+    expect([...onto].sort()).toEqual(['A9', 'W4', 'W5', 'W6']);
 
     const pick = (list: TaskAnswer[]) =>
       list.find((a) => a.kind === 'card') ?? (list[0] as TaskAnswer);
     const done = answerAll(grown.state, pick);
-    expect(buildingOf(done, WHEAT, 'W4').stack).toHaveLength(1);
-    expect(buildingOf(done, WHEAT, 'A9').stack).toHaveLength(1);
-    expect(buildingOf(done, WHEAT, 'W5').stack).toHaveLength(1);
+    const filledCount = ['A9', 'W4', 'W5', 'W6'].filter(
+      (c) => buildingOf(done, WHEAT, c).stack.length > 0,
+    ).length;
+    // Exactly 3 of the 4 empty buildings took a card - the printed cap, even
+    // though the task never offered a way to stop early or decline.
+    expect(filledCount).toBe(3);
     expect(buildingOf(done, WHEAT, 'W3').stack).toHaveLength(0);
   });
 
-  it('W9 Mill House (v42): the stop answer ends it after one card', () => {
+  it('W9 Mill House (v47): with only 2 empty buildings, both take a card and the task ends itself', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W9', 'W4', 'W5');
     dealTo(data, s, WHEAT, 'W6');
     const grown = growBuilding(data, s, WHEAT, 'W9', 'W6');
-    const first = pendingAnswers(data, grown.state).find((a) => a.kind === 'card') as TaskAnswer;
-    const one = answerTask(data, grown.state, first).state;
-    expect(one.tasks).toHaveLength(1);
-    const stopped = answerTask(data, one, { kind: 'skip' }).state;
-    expect(stopped.tasks).toHaveLength(0);
-    const loaded =
-      buildingOf(stopped, WHEAT, 'W4').stack.length + buildingOf(stopped, WHEAT, 'W5').stack.length;
-    expect(loaded).toBe(1);
+    const done = answerAll(
+      grown.state,
+      (list) => list.find((a) => a.kind === 'card') as TaskAnswer,
+    );
+    expect(buildingOf(done, WHEAT, 'W4').stack).toHaveLength(1);
+    expect(buildingOf(done, WHEAT, 'W5').stack).toHaveLength(1);
+  });
+
+  /**
+   * ⭐ R13 (tasks/v48-rulings-v2.md, 24/09/2026) makes a built Power card count
+   * for D6/D9/D13/D19/D20/W19/W20 - COUNTS ONLY. `ownBuildings` (buildings.ts),
+   * which W9's target list is built from, is the THRESHOLD-based reading and is
+   * deliberately untouched by R13: a Power card has no stack (`thresholdOf`
+   * returns null), so it was never a sow target before R13 and must not become
+   * one now that it counts for something else.
+   */
+  it('R13: a built Power card is never offered as a W9 sow target, even though it now counts elsewhere', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W9', 'W4', 'W16'); // W16 The Granary, a Power card
+    dealTo(data, s, WHEAT, 'W5');
+    const grown = growBuilding(data, s, WHEAT, 'W9', 'W5');
+    const onto = new Set(
+      pendingAnswers(data, grown.state).flatMap((a) =>
+        a.kind === 'card' ? [a.payload.card as string] : [],
+      ),
+    );
+    expect(onto.has('W16')).toBe(false);
+    expect(onto.has('W4')).toBe(true);
   });
 
   it('W10 The Furrow (v42): exactly three hand cards of your choosing, no stop answer', () => {
@@ -667,82 +734,59 @@ describe('Tier 3 - three ordinary GROW buildings', () => {
   });
 
   /**
-   * ⛔ THE PAYOUT IS A DRAW AND IT NO LONGER PAYS THE OWNER FOR THEIR OWN CARD
-   * (v31, plan section 3.3). The sheet reads "Every player, including you, may
-   * Draw 1. Then Draw 1 for each card ANOTHER player drew", so the OFFER is
-   * unchanged - the owner is still offered a draw of their own, which is what
-   * stops the card being dead in a position where every rival declines - but the
-   * owner's own acceptance pays nothing. Under the old £1-per-card text it paid,
-   * and the difference is the whole conversion: a card that paid itself would be
-   * a naked Draw 2 for its owner with the rivals as decoration.
+   * ⭐ RETEXTED ON SHEET v47 (Dean's ruling R5): "Every other player Draws 1.
+   * Draw 4." No offer, no consent, no coin - two plain mandatory draws. R5
+   * queues the owner's Draw 4 FIRST (off the printed reading order, chosen so
+   * the bots' look-ahead probe, which stops at a rival's task, can see and
+   * price the owner's card).
    */
-  it('W14 The Pizzeria: everyone including the owner is OFFERED a draw, and each may decline', () => {
+  it('W14 The Pizzeria (v47): owner draws 4 before the rival draws 1, both mandatory', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W14'); // threshold 2, so the fee does not fill it
     const grown = growTier3(s, 'W14');
-    const offers = grown.state.tasks.filter((t) => t.t === 'card' && t.kind === 'offerDraw');
-    expect(offers.map((t) => t.pid)).toEqual([WHEAT, APIARY]);
-    expect(offers.every((t) => t.t === 'card' && t.riders.owner === WHEAT)).toBe(true);
-    // A real decision, for the rival and for the owner alike.
-    expect(pendingAnswers(data, grown.state)).toEqual([
-      { kind: 'card', payload: { take: true } },
-      { kind: 'skip' },
+    // Two plain draw tasks, the owner's queued first per R5.
+    expect(grown.state.tasks.map((t) => ({ t: t.t, pid: t.pid }))).toEqual([
+      { t: 'draw', pid: WHEAT },
+      { t: 'draw', pid: APIARY },
     ]);
+    expect(grown.state.tasks[0]).toMatchObject({ see: 4, keep: 4 });
+    expect(grown.state.tasks[1]).toMatchObject({ see: 1, keep: 1 });
+    // No skip on the owner's draw: it is not an offer, it is "Draw 4".
+    expect(pendingAnswers(data, grown.state).some((a) => a.kind === 'skip')).toBe(false);
 
-    // Everybody declines: the card does nothing at all, which is what makes
-    // consent the binding constraint rather than the price.
-    const declined = answerAll(grown.state, () => ({ kind: 'skip' }) as TaskAnswer);
-    expect(player(declined, WHEAT).hand).toEqual([]);
-    expect(player(declined, APIARY).hand).toEqual([]);
-
-    // Everybody accepts: the owner takes their own offered card AND one for the
-    // rival's acceptance, so 2 in hand against the rival's 1.
-    const accepted = answerAll(grown.state, (answers) => answers[0] as TaskAnswer);
-    expect(player(accepted, WHEAT).hand).toHaveLength(2);
-    expect(player(accepted, APIARY).hand).toHaveLength(1);
+    const done = answerAll(grown.state);
+    expect(player(done, WHEAT).hand).toHaveLength(4);
+    expect(player(done, APIARY).hand).toHaveLength(1);
   });
 
-  /**
-   * THE OWNER'S OWN ACCEPTANCE PAYS NOTHING - the half of the conversion a
-   * one-sided fixture would miss. With the rival declining, the owner's yes buys
-   * exactly the one card the offer itself hands over.
-   */
-  it('W14 The Pizzeria: the owner is paid for a RIVAL card drawn, never their own', () => {
+  /** R5: the rival's draw is a plain mandatory "Draws 1" and cannot be declined. */
+  it('W14 The Pizzeria (v47): the rival draw offers no skip and cannot be declined', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W14');
     const grown = growTier3(s, 'W14');
 
-    // The owner accepts and the rival declines. The acceptance pushes the
-    // owner's own Draw 1 and nothing else - a rival acceptance would push a
-    // SECOND draw task behind it, and that is the whole of the difference.
-    const accepted = answerTask(data, grown.state, {
-      kind: 'card',
-      payload: { take: true },
-    } as TaskAnswer).state;
-    const declined = answerTask(data, accepted, { kind: 'skip' } as TaskAnswer).state;
-    expect(declined.tasks.filter((t) => t.t === 'draw')).toHaveLength(1);
-    const done = answerAll(declined, (answers) => answers[0] as TaskAnswer);
-    expect(player(done, WHEAT).hand).toHaveLength(1);
+    // Drain the owner's Draw 4 (queued first) to reach the rival's task.
+    let state = grown.state;
+    while (state.tasks[0]?.pid === WHEAT) {
+      const answers = pendingAnswers(data, state);
+      state = answerTask(data, state, answers[0] as TaskAnswer).state;
+    }
+    expect(state.tasks[0]).toMatchObject({ t: 'draw', pid: APIARY, see: 1, keep: 1 });
+    const rivalAnswers = pendingAnswers(data, state);
+    expect(rivalAnswers.some((a) => a.kind === 'skip')).toBe(false);
+    expect(() => answerTask(data, state, { kind: 'skip' } as TaskAnswer)).toThrow();
   });
 
-  it('W14 The Pizzeria: an acceptance banks nothing out of the OWNER’s hand', () => {
+  it('W14 The Pizzeria (v47): the rival draws too, banked out of a live deck, no coin anywhere', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W14');
     dealTo(data, s, WHEAT, 'W5', 'W6');
     const grown = growTier3(s, 'W14');
 
-    const accepted = answerTask(data, grown.state, {
-      kind: 'card',
-      payload: { take: true },
-    } as TaskAnswer);
-    expect(accepted.state.tasks.some((t) => t.t === 'handToBarn')).toBe(false);
-    const done = answerAll(accepted.state, (answers) => answers[0] as TaskAnswer);
-    expect(player(done, WHEAT).barn).toEqual([]);
-    // W5 and W6 still in hand, plus the owner's own card and the one the
-    // rival's acceptance paid for.
-    expect(player(done, WHEAT).hand).toContain('W5');
-    expect(player(done, WHEAT).hand).toContain('W6');
-    expect(player(done, WHEAT).hand).toHaveLength(4);
+    const done = answerAll(grown.state);
+    // W5 and W6 already in hand, plus the owner's own Draw 4.
+    expect(player(done, WHEAT).hand).toHaveLength(6);
+    expect(player(done, APIARY).hand).toHaveLength(1);
   });
 
   it('W15 The Patisserie (v42): one deck chosen, its top three cards to the barn', () => {
@@ -993,17 +1037,54 @@ describe('the Endgame cards - three shapes of tableau', () => {
     buildFor(data, s, WHEAT, 'W19', 'W4', 'W5', 'A9'); // wheat + apiary = 2 crops
     // W19's 4, plus W2's 3 for the three Wheat cards built (W19, W4, W5). The
     // Apiary card counts for W19's variety and never for W2's loyalty, which is
-    // the one place in the suit where the two endgame axes disagree.
+    // the one place in the suit where the two endgame axes disagree. R13
+    // (tasks/v48-rulings-v2.md) excludes W19 ITSELF from its own crop count
+    // (it is an Endgame card), but that changes nothing here: wheat is already
+    // represented by W4 and W5, so the crop set stays {wheat, apiary}.
     expect(gameEndScores(data, s)[WHEAT]?.endgame).toBe(7);
   });
 
-  it('W20 The Grand Granary: 1 VP per DECK-built building, never a starter', () => {
+  /**
+   * ⭐ R13's real effect on W19 is a NARROWING, not a widening: `cropOf` (the
+   * old noun) already read every deck card's crop bar starters, Power included,
+   * so a foreign Power card always counted here. What changes is an ENDGAME
+   * card of a foreign suit, with no other building of that suit on the farm -
+   * it used to add a crop and no longer does.
+   */
+  it('R13: a foreign Endgame card no longer adds a crop to W19, unlike before this ruling', () => {
+    const s = base();
+    // O19 The Fruit Hall (Orchard, Endgame) scores off the owner's OWN hand
+    // size and nothing built, so it is a clean way to add a foreign-suit
+    // Endgame card to the tableau without also moving the total through a
+    // second, unrelated scorer.
+    buildFor(data, s, WHEAT, 'W19', 'W4', 'O19');
+    // Only wheat is a REAL crop here (W19 is itself Endgame and excluded; so
+    // is O19) - one crop, 2 VP - plus W2's 2 for the two Wheat cards built.
+    expect(gameEndScores(data, s)[WHEAT]?.endgame).toBe(2 + 2);
+  });
+
+  /**
+   * ⭐ v48 R13 (tasks/v48-rulings-v2.md, 24/09/2026): W20's noun is now
+   * `builtBuildingsAndPower`, which excludes Endgame cards - INCLUDING W20
+   * ITSELF. Before this ruling W20 counted its own card (`inDeck` only
+   * excluded starters); now it counts only W4 and W5.
+   */
+  it('W20 The Grand Granary: 1 VP per DECK-built TIER 1-3 building or Power card - never itself, an Endgame card', () => {
     const s = base();
     buildFor(data, s, WHEAT, 'W20', 'W4', 'W5');
-    // W20, W4, W5 = 3, and W2 scores the same three for being Wheat. The
-    // starters arrive pre-built and nobody built them, so neither card counts
-    // them - which is the shared reading both formulas turn on.
-    expect(gameEndScores(data, s)[WHEAT]?.endgame).toBe(6);
+    // W20 scores 2 (W4, W5 only - never itself), and W2 scores 3 for all three
+    // Wheat deck cards built (W20, W4, W5) - the Barn's own-crop scorer is
+    // unaffected by R13 and still counts every deck card, Power and Endgame
+    // included.
+    expect(gameEndScores(data, s)[WHEAT]?.endgame).toBe(5);
+  });
+
+  /** R13: a built Power card counts toward W20's total, on top of Tier 1-3 buildings. */
+  it('R13: W20 also counts a built Power card', () => {
+    const s = base();
+    buildFor(data, s, WHEAT, 'W20', 'W4', 'W16'); // W16 The Granary, a Power card
+    // W20 scores 2 (W4 and W16), plus W2's 3 for all three Wheat deck cards.
+    expect(gameEndScores(data, s)[WHEAT]?.endgame).toBe(5);
   });
 
   /**

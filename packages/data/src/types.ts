@@ -1157,12 +1157,16 @@ export interface RulesFile {
      */
     readonly grandGranaryCap: number | null;
     /**
-     * A cap on A19 The Honey Hall's end-game VP ("1 VP for each non-Apiary
-     * building you have built"). SHIPPED 5 (19/09/2026, v45): the sheet
-     * prints "(Max 5)" on the card face. null would be uncapped, as the card
-     * read before this ruling. Added on the `grandGranaryCap` pattern
-     * (R9, tasks/v45-rulings-v1.md) - a separate knob from
-     * `apiaristsGuildCap` because the two cards count different things.
+     * A cap on A19 The Honey Hall's end-game VP. SHIPPED 6 (24/09/2026, v48,
+     * R5): the sheet now prints "2 VP for each tractor building you have
+     * built. (Max 6VP)" - a tractor building is a Power card, of any suit
+     * (tasks/v48-rulings-v2.md). This caps the VP DIRECTLY, not the count of
+     * cards: at 2 VP per card the two are no longer numerically the same
+     * (they were under the pre-v48 1-VP-per-count rate, which is why nobody
+     * had to distinguish them before). null would be uncapped. Added 5
+     * (19/09/2026, v45, R9) on the `grandGranaryCap` pattern - a separate
+     * knob from `apiaristsGuildCap` because the two cards count different
+     * things - and re-pointed to 6 for the v48 rate.
      */
     readonly honeyHallCap: number | null;
     /**

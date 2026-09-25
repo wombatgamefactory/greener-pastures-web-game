@@ -8,8 +8,11 @@
  * the reward must be special and intentional, rather than just ordinary"*.
  *
  *   W18  If, on your turn, you Harvest two or more of your buildings, Draw 3.
- *   A18  If, on your turn, you fill one of your buildings, sow the top card of
- *        any deck onto another of your buildings.
+ *   A18  If, on your turn, you fill a building, you may sow a deck card into
+ *        your Barn. (v46, 20/09/2026: RETEXTED off "...sow the top card of any
+ *        deck onto another of your buildings" - see the handler's own note,
+ *        R8/R9 in tasks/v46-rulings-v1.md. Despite the word "sow" the act is a
+ *        plain barn placement, not the SOW keyword.)
  *   D18  Whenever you build a card with a cost of 3 or more, add 1 of those
  *        cards to your Barn. (19/09/2026 wording; was "...a card that costs 3
  *        or more resources..." on the 18/09/2026 save, and before that "If,
@@ -18,7 +21,11 @@
  *        printed @cost icon total then and `cost` means the same total now -
  *        see the handler's own note for why that reading was already right.
  *   O18  At the end of your turn, Draw until you have at least 3 cards in hand.
- *   V18  After you Deliver, if your Barn has 1 or fewer cards, Draw 3.
+ *   V18  After you Deliver, activate the base power of the receipt's suit.
+ *        RETEXTED ON SHEET v48 (24/09/2026, `tasks/v48-rulings-v2.md` R10/R11;
+ *        audit `tasks/v48-ambiguity-audit-v1.md` Q5/Q6): the old barn-size
+ *        Draw 3 is gone. "Base power" is ruled the crop's PLAIN ACTION, taken
+ *        exactly as a delivery Worker pays it - see the handler's own note.
  *
  * Every one is owner-only and passive. Each fires every time its condition is
  * NEWLY met (Dean, 15/09/2026: the fire-once rule is deleted), which for W18
@@ -43,12 +50,14 @@
  * came before it. O18 listens on `beforeTurnEnd`, a hook added for it.
  */
 
-import type { GameData } from '@gp/data';
+import type { GameData, Suit } from '@gp/data';
 
+import { doorActionLegal } from '../actions/doors.js';
 import type { Fx } from '../fx.js';
-import { canSowOnto, cardById, drawableSuits, player, thresholdOf } from '../query.js';
+import { cardById, drawableSuits, player, thresholdOf } from '../query.js';
 import type { CardId, GameState, Seat, TaskAnswer } from '../state.js';
-import { isNoticeBoardCard, ownBuildings } from './buildings.js';
+import { meepleActionOf, performDoorAction } from '../workers.js';
+import { isNoticeBoardCard } from './buildings.js';
 import type { CardHandler } from './types.js';
 
 /**
@@ -98,28 +107,38 @@ export const helpingHandWheat: CardHandler = {
 
 /**
  * A18 A Helping Hand - "If, on your turn, you fill a building, you may sow a
- * deck card onto another of your buildings." (v44, 18/09/2026: gained "you
- * may"; was "you fill one of your buildings, sow the top card of any deck".)
+ * deck card into your Barn." (v46, 20/09/2026, RETEXTED off "...sow the top
+ * card of any deck onto another of your buildings" - R8/R9 in
+ * `tasks/v46-rulings-v1.md`.)
  */
 export const helpingHandApiary: CardHandler = {
   difficulty: {
-    score: 3,
+    score: 2,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
     notes:
       'READING: "fill" is a card landing on one of your buildings that brings its stack to ' +
       'EXACTLY its threshold on this placement; a stack already full (D5 sows past it) is not ' +
       'filled again, and a Notice Board, whose 3+ is a minimum that never fills, never ' +
-      'counts. ⭐ BUILDER DEFAULT (16/09/2026, not ruled): ANY placement you make counts - a ' +
-      "GROW payment, a sow, a deck sow from one of your own cards - and A18's own sow can " +
-      'fill another building and fire it again. That chain is bounded: each fill needs a ' +
-      'non-full building and every link fills one. The sow is one `sowFromDeck` task, the ' +
-      'player choosing deck and building, onto any of your buildings bar the one just filled ' +
-      'and bar Notice Boards; skipped when nothing has room. ' +
-      '⭐ OPTIONAL (`optional: true`), RE-CONFIRMED 19/09/2026: THE PRINTED TEXT GOVERNS ' +
-      '(Dean) - a sow is declinable if and only if the card says "may", and the v44 sheet ' +
-      'retexted this card to "you may sow", so the flag that the 18/09/2026 blanket fix set ' +
-      'is now correct for the right reason instead of by accident.',
+      'counts. BUILDER DEFAULT (16/09/2026, not ruled, and unaffected by the retext): ANY ' +
+      'placement you make counts - a GROW payment, a sow, a deck sow from one of your own ' +
+      'cards. ' +
+      '⭐ R8 (v46, 20/09/2026): DESPITE THE WORD "SOW" THIS IS NOT A SOW. The reward moved off ' +
+      "a rival building onto the OWNER'S OWN BARN, the same plain placement V16 The Market " +
+      "Signal Tower and A13 The Queen's Hive already make, through the shared `deckToBarn` " +
+      'primitive (`Fx.deckTopToBarn`). Nothing that watches a placement onto a building - not ' +
+      'this card, not any other - sees this reward: it emits no `cardPlaced`, fills nothing, ' +
+      'and so it CANNOT chain into itself or into anything else. The old "another of your ' +
+      'buildings with room" gate went with the destination: `ownBuildings` and `canSowOnto` ' +
+      "are gone from this file's imports because nothing here targets a building any more. " +
+      '⭐ R9 (v46): no second condition survives. A18 fires on a one-building farm and on a ' +
+      'farm whose buildings are all full - there is nothing left to gate on but the fill ' +
+      'itself. THE DRY-TABLE GUARD STAYS (`drawableSuits(...).length === 0`, the same shape ' +
+      'V17 needed after the v45 crash): it is the only thing left that can stop A18 firing. ' +
+      'Still `optional: true` in effect: the local `deckToBarn` task offers a `skip` answer ' +
+      'so "you may" is honoured without a second condition to hang it on. This handler\'s own ' +
+      'copy of the task exists because the shared `deckToBarnTask` (buildings.ts) is ' +
+      'deliberately mandatory (A13, V16); adding a skip there would change those cards too.',
   },
   on: {
     afterPlacement(fx, event, self) {
@@ -129,19 +148,39 @@ export const helpingHandApiary: CardHandler = {
       const filled = player(fx.state, self.seat).tableau.find((b) => b.card === event.onto.card);
       if (filled === undefined) return;
       if (event.stackSize !== thresholdOf(fx.data, filled)) return;
-      const targets = ownBuildings(fx.data, fx.state, self.seat)
-        .filter((b) => b.card !== filled.card && !isNoticeBoardCard(fx.data, b.card))
-        .filter((b) => canSowOnto(fx.data, b))
-        .map((b) => ({ seat: self.seat, card: b.card }));
-      if (targets.length === 0 || drawableSuits(fx.data, fx.state).length === 0) return;
+      if (drawableSuits(fx.data, fx.state).length === 0) return;
       fx.pushTask({
-        t: 'sowFromDeck',
+        t: 'card',
         pid: self.seat,
         src: self.card,
-        remaining: 1,
-        targets,
-        optional: true,
+        kind: 'deckToBarn',
+        riders: { remaining: 1 },
       });
+    },
+  },
+  tasks: {
+    /**
+     * A local "put a deck card into your Barn" task, not the shared
+     * `deckToBarnTask` (buildings.ts, mandatory, A13/V16 use it): this one
+     * adds a `skip` answer because A18 is the only deck-to-barn card that
+     * prints "you may" (R9).
+     */
+    deckToBarn: {
+      answers(gameData, state, task) {
+        if ((task.riders.remaining as number) <= 0) return [];
+        const out: TaskAnswer[] = drawableSuits(gameData, state).map(
+          (suit) => ({ kind: 'card', payload: { suit } }) as TaskAnswer,
+        );
+        if (out.length > 0) out.push({ kind: 'skip' });
+        return out;
+      },
+      resolve(fx, task, answer) {
+        if (answer.kind === 'skip') return true;
+        if (answer.kind !== 'card') throw new Error('deckToBarn expects a card answer');
+        fx.deckTopToBarn(task.pid, answer.payload.suit as Suit);
+        task.riders.remaining = (task.riders.remaining as number) - 1;
+        return (task.riders.remaining as number) <= 0;
+      },
     },
   },
 };
@@ -242,24 +281,164 @@ export const helpingHandOrchard: CardHandler = {
   },
 };
 
-/** V18 A Helping Hand - "After you Deliver, if your Barn has 1 or fewer cards, Draw 3." */
+/**
+ * V18 A Helping Hand - RETEXTED ON SHEET v48 (24/09/2026): "After you Deliver, activate the
+ * base power of the receipt's suit." (was "...if your Barn has 3 or fewer cards, Draw 3.")
+ *
+ * ⭐ R10 (`tasks/v48-rulings-v2.md`, against the audit's own recommendation): "base power" is
+ * the crop's PLAIN ACTION - Orchard Draw 2 (keep both), Dairy Build, Apiary Grow, Wheat Harvest
+ * (full buildings only), Vegetable Deliver - taken exactly as a delivery Worker pays it
+ * (`performDoorAction`, `workers.ts`, `via: 'meeple'`; that is also what turns the Apiary
+ * door's printed SOW into a GROW, M7, through `meepleActionOf`). NOT `fireNoticeBoardPower`
+ * (the V12 The Auction House path, reading (a) in the audit's Q5) - Dean ruled the smaller
+ * card. Mandatory ("activate", no "may"): a Wheat power will Harvest, a Dairy power will
+ * Build, if either legally can.
+ *
+ * A wild receipt has no suit of its own, so its owner names one (the audit's Q5, reading (i)).
+ * A delivery that takes more than one receipt (V14, "take every receipt a tile has left") still
+ * fires this listener once - `afterDeliver` fires once per delivery, whatever it collects - and
+ * if the receipts differ in crop the owner is offered the same choice a wild receipt gives.
+ * Only a plain action this seat can actually take right now is ever offered or fired
+ * (`doorActionLegal`); with none legal - nothing buildable, nothing to Harvest, an unpayable
+ * Deliver even under the Vegetable board's own relaxation - it does as much as it can, which
+ * here is nothing.
+ *
+ * ⭐ R11 (Q6, against the audit's own recommendation for the order question only - the CHAIN
+ * question is decided the audit's way, (b)): A VEGETABLE RECEIPT GRANTS ANOTHER DELIVER, WHICH
+ * IS ITSELF A DELIVERY, WHICH WOULD OTHERWISE FIRE THIS SAME LISTENER AGAIN - and a second
+ * Vegetable receipt from THAT delivery could keep the chain going for as long as the barn can
+ * pay, off one Power card that cost 2. R11 stops it at ONE LINK: a delivery made by V18's own
+ * granted action never triggers V18 again, though every other delivery this turn still does
+ * (the main action, a visit, O6, O12, A8, V5, V7, V14, a Worker - the fire-every-time rule,
+ * 15/09/2026, is otherwise untouched).
+ *
+ * ⭐ THE MARKER IS A ONE-SHOT TURN FLAG, `turn.v18Chain`, declared on `TurnState` (state.ts)
+ * alongside `firedThisTurn` and `harvestsThisTurn`, in the same optional-and-absent-until-set
+ * register those fields use. `clonePlain` (clone.ts) walks every OWN ENUMERABLE KEY of a plain
+ * object generically, so the field survives every clone and every probe exactly as those do, and
+ * `freshTurn()` replacing the whole `turn` object at every turn boundary clears it for free, the
+ * same as those fields. It is set true only when the granted action is itself a Vegetable
+ * Deliver, immediately before `performDoorAction` pushes that Deliver's task; the listener above
+ * checks it FIRST, on every `afterDeliver` for this owner, clears it and returns without firing
+ * again the moment it sees it set. One flag rather than `turn.firedThisTurn` (which would block
+ * V18 from ever firing again this turn, not just off its own chain) because R11 only retires the
+ * ONE delivery V18 itself granted - a genuine second Deliver later in the same turn, by any other
+ * route, still triggers V18 exactly as the fire-every-time rule says it should.
+ *
+ * ⭐ THE RESOLUTION ORDER AGAINST V16 The Market Signal Tower STAYS RULED (v46 R10, restated by
+ * the audit for this retext): V18 still resolves before V16 whenever both are built and a
+ * delivery fires both. Nothing here forces that order deliberately - V18 no longer reads the
+ * barn, so v46 R10's original reason (V18 must see the barn before V16's card lands in it) no
+ * longer applies to THIS card's own behaviour - but the engine hook order that produced it is
+ * unchanged (`fireHook` walks buildings in tableau order, unmoved by this retext), and Dean's
+ * ruling keeps it rather than reopening it (Q6, "(i)").
+ */
 export const helpingHandVegetable: CardHandler = {
   difficulty: {
-    score: 1,
+    score: 3,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
+    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: true },
     notes:
-      'Reads the barn when `afterDeliver` fires, which is after the delivery has been paid ' +
-      'out of it. Your own deliveries only. ⭐ BUILDER DEFAULT (16/09/2026, not ruled): if a ' +
-      'second "whenever you Deliver" card (V16, a later slice) also fires, the order is the ' +
-      "active player's choice; until that exists V18 simply reads the barn as its hook runs, " +
-      'which is hook (tableau) order.',
+      "Fires on the owner's own deliveries only. Reads `event.receipts` for their crops: a " +
+      'named crop is offered iff `doorActionLegal` (through `meepleActionOf`, so the Apiary ' +
+      "door's SOW is asked about as a GROW) says this seat can take that plain action right " +
+      'now; a wild receipt, or receipts of more than one crop, expands to every crop the seat ' +
+      'can currently act on and lets the owner choose among them (`v18Crop` card task) when ' +
+      'more than one qualifies; exactly one legal crop fires straight off `performDoorAction` ' +
+      'with no task at all; zero legal crops does nothing. `addsMoves` stays false: the choice ' +
+      'is a TASK (`v18Crop`), never a standing `moves`/`applyMove` pair - no Helping Hand ' +
+      "declares those (see this file's own header). `turn.v18Chain`, declared on `TurnState` " +
+      "(state.ts, alongside `firedThisTurn` and `harvestsThisTurn`), is V18's own no-chain " +
+      'marker (R11): set only when the ' +
+      'fired crop is Vegetable, read and cleared at the top of this same listener, so a ' +
+      'Vegetable receipt granted BY V18 cannot trigger V18 again while every other delivery ' +
+      'this turn still can. `interrupts: true` because a wild or mixed receipt can suspend the ' +
+      'turn on a real player choice, which the old barn-size Draw 3 never did, and because the ' +
+      'plain action it grants (a Build, a Harvest...) can itself suspend the turn.',
   },
   on: {
     afterDeliver(fx, event, self) {
       if (event.seat !== self.seat) return;
-      if (player(fx.state, self.seat).barn.length > 1) return;
-      drawN(fx, self.seat, self.card, 3);
+      if (fx.state.turn.v18Chain === true) {
+        // R11: this delivery is the one V18 itself granted (the marker was set
+        // just before `performDoorAction` pushed it, below). Consume the
+        // marker and stop here - one link, never a second.
+        fx.state.turn.v18Chain = false;
+        return;
+      }
+      const crops = v18Candidates(fx, self.seat, event.receipts);
+      if (crops.length === 0) return;
+      if (crops.length === 1) {
+        v18Fire(fx, self.seat, crops[0] as Suit);
+        return;
+      }
+      fx.pushTask({
+        t: 'card',
+        pid: self.seat,
+        src: self.card,
+        kind: 'v18Crop',
+        riders: { crops },
+      });
+    },
+  },
+  tasks: {
+    /**
+     * The owner's choice of crop, offered only for a wild receipt or a
+     * multi-receipt delivery whose receipts name more than one legal crop
+     * (the audit's Q5, reading (i) and its V14 extension). `crops` was
+     * already filtered to what is legally actionable right now when the
+     * listener above pushed this task; `answers` re-checks it against the
+     * live state rather than trusting the stale snapshot, the same
+     * defensive re-check `stillDiscarded` makes for D18 above.
+     */
+    v18Crop: {
+      answers(data, state, task) {
+        const crops = task.riders.crops as Suit[];
+        return crops
+          .filter((suit) => doorActionLegal(data, state, task.pid, meepleActionOf(data, suit)))
+          .map((suit) => ({ kind: 'card', payload: { suit } }) as TaskAnswer);
+      },
+      resolve(fx, task, answer) {
+        if (answer.kind !== 'card') throw new Error('v18Crop expects a card answer');
+        v18Fire(fx, task.pid, answer.payload.suit as Suit);
+        return true;
+      },
     },
   },
 };
+
+/**
+ * Every crop V18 could legally fire for this delivery's receipts: a wild
+ * receipt expands to every suit (the owner may name any of them, Q5 reading
+ * (i)); a named receipt contributes its own crop; duplicates collapse (two
+ * receipts of the same crop still offer one choice, matching "one action" for
+ * a delivery, however many receipts it took - the V14 extension of Q5). Every
+ * candidate is filtered to what `doorActionLegal` says this seat can actually
+ * do right now, through `meepleActionOf` so the Apiary door's SOW is read as
+ * the GROW a meeple buys - an illegal crop is never offered and never fires.
+ */
+function v18Candidates(fx: Fx, seat: Seat, receipts: readonly { crop: Suit | 'wild' }[]): Suit[] {
+  let wild = false;
+  const named = new Set<Suit>();
+  for (const receipt of receipts) {
+    if (receipt.crop === 'wild') wild = true;
+    else named.add(receipt.crop);
+  }
+  const pool = wild ? fx.data.cards.suits : [...named];
+  return pool.filter((suit) =>
+    doorActionLegal(fx.data, fx.state, seat, meepleActionOf(fx.data, suit)),
+  );
+}
+
+/**
+ * Fire V18's granted plain action for one crop (R10), through the same
+ * `performDoorAction` a delivery Worker uses. Arms the no-chain marker (R11)
+ * first, and only for Vegetable: every other crop's plain action cannot grant
+ * a further Deliver, so nothing else needs a marker to stop it chaining.
+ */
+function v18Fire(fx: Fx, seat: Seat, colour: Suit): void {
+  if (colour === 'vegetable') {
+    fx.state.turn.v18Chain = true;
+  }
+  performDoorAction(fx, seat, colour, 'meeple');
+}

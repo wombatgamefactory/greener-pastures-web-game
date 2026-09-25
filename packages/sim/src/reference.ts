@@ -1262,8 +1262,447 @@ export const REFERENCE_V21: ReferenceConfig = {
   seed: 'reference-v21',
 };
 
+/**
+ * ⭐ reference-v22, cut 20/09/2026 when sheet `Isle-of-Farms-v46.xlsm` retexted
+ * seven card faces (Dean's rulings R1-R11, `tasks/v46-rulings-v1.md`).
+ * Everything else is reference-v21: the token island, no balloons, no
+ * Aerodrome, no Village Store coin, no closing draw, no island wild
+ * substitution, the Vegetable barn suit, the five per-suit Helping Hands, a
+ * random first player, the round finished at game end, and the thirteen v45
+ * retexts (W5, W13, W16, A19, A20, V6's trailing draw, V10, V11's threshold,
+ * V12, V13's threshold, V15's threshold, V16, V17) all stand.
+ *
+ * The seven faces, by suit:
+ *
+ *   - **A13 The Queen's Hive**: wording only, "if you have BUILT 3 or more
+ *     Apiary buildings". A confirmed no-op (R11.1) - the engine already
+ *     counted built buildings only.
+ *   - **A18 Helping Hand**: retexted from "sow a deck card onto another of
+ *     your buildings" to "sow a deck card into your Barn" (R8, R9). Despite
+ *     the word "sow" on the face, it is NOT a sow: a plain placement of the
+ *     top card of a deck of your choice into your own barn, on the same
+ *     primitive as V16 and A13. It fills nothing, emits no `cardPlaced`, and
+ *     cannot re-trigger itself. The old "another building with room" gate is
+ *     gone, so the only remaining condition is the fill.
+ *   - **V6 The Trade Depot**: retexted from "Swap up to 2 cards between your
+ *     hand and your Barn, then Draw 2" to "Swap 2 cards between your Barn and
+ *     any Deck, then Draw 2" (R5-R7). The two outgoing barn cards go to their
+ *     own crops' discard piles; the two incoming cards are deck tops, chosen
+ *     freely per card with no pairing to what left. ALL OR NOTHING: fewer
+ *     than 2 barn cards, or a table that cannot supply 2, means nothing swaps
+ *     AND the trailing Draw 2 does not fire either.
+ *   - **V11 The Market Master**: THE BIGGEST CHANGE IN THE PASS. Retexted
+ *     from "For every card in your Barn, move a card of the same crop from
+ *     any of your buildings into your Barn" to "For each suit in your Barn,
+ *     Harvest a card of that crop" (R1-R4). This is a REAL Harvest of a whole
+ *     building, routed through the ordinary Harvest primitive: for each
+ *     DISTINCT suit in the barn (snapshotted ONCE at activation, so at most
+ *     five and never extended by cards the cascade itself deposits) it
+ *     harvests one full building of that printed crop, firing `afterHarvest`,
+ *     W16 The Granary and W18 A Helping Hand. Only FULL buildings are legal
+ *     targets; the owner's own Notice Boards are in scope at 3+ cards and
+ *     never taken below 3. It is MANDATORY - no "may" on the face - and can
+ *     dismantle its own owner's farm against their will. Dean was shown the
+ *     consequence and chose it deliberately; it is not softened here.
+ *   - **V15 The International Port**: build cost drops from 3 suit + 1 wild
+ *     to 2 suit + 1 wild. Data only (R11.2).
+ *   - **V17 The Dockworker's Union**: the end-of-turn condition loosens from
+ *     "your Barn is empty" (0 cards) to "your Barn has 3 or fewer cards"
+ *     (R11.3), so it fires on most turns rather than rarely. Its dry-table
+ *     guard is unchanged and still load-bearing (R11.4).
+ *   - **V18 Helping Hand**: the barn threshold for its Draw 3 rises from "1
+ *     or fewer cards" to "3 or fewer" (R10). Its fixed resolution order
+ *     ahead of V16 - it judges the barn you delivered FROM, before V16's own
+ *     card lands - is now a ruling on the record rather than an incidental
+ *     behaviour.
+ *
+ * ⚠️ **THE BOTS WILL UNDERSTATE V11.** Each of its up to five harvest
+ * sub-choices is priced correctly through the same `harvest` term every
+ * ordinary Harvest choice uses, so nothing crashes or scores zero, but each
+ * sub-choice is scored independently against the stack it moves RIGHT NOW,
+ * with no look-ahead within the cascade and no visibility of the downstream
+ * triggers it feeds - W16's fresh-hand gate, W18's harvest count. The bots do
+ * not reason about the compounding at all, so any reading of V11's value,
+ * its buildings count or its share of the bonus economy is a floor on what a
+ * human playing the cascade deliberately would get from it.
+ *
+ * ⚠️ **A18's CHOICE IS ANSWERABLE BUT NOT DIFFERENTIATED.** Its answers
+ * collapse into the catch-all `cardTask` act, which is not on `isProbed` in
+ * `packages/bots/src/terms.ts`, so any non-skip answer beats skip by a flat
+ * +2 with no read of the position and no way to prefer one drawable suit over
+ * another. This is pre-existing architecture, shared with V8, V12 and V15's
+ * crop choices, and is not introduced by this pass - recorded here so a flat
+ * A18 number is not mistaken for the card being weak.
+ *
+ * ⛔ A level from `reference-v21` is not comparable: the seed moves with the
+ * sheet. NO NUMBER IN ANY `reference-v21` OR EARLIER REPORT IS COMPARABLE AS A
+ * LEVEL.
+ */
+export const REFERENCE_V22: ReferenceConfig = {
+  ...REFERENCE_V21,
+  id: 'reference-v22',
+  description:
+    'SHEET v46: SEVEN CARD FACES RETEXTED (Dean, 20/09/2026; tasks/v46-rulings-v1.md, R1-R11; ' +
+    'cards.json re-extracted off Isle-of-Farms-v46.xlsm). reference-v21 stands - the token ' +
+    'island, no balloons, no Aerodrome, no Village Store coin, no closing draw, no island wild ' +
+    'substitution, the Vegetable barn suit, the five per-suit Helping Hands, a random first ' +
+    'player, the round finished at game end, and the thirteen v45 retexts - and SEVEN FACES ' +
+    'MOVE. A13 The Queen’s Hive: wording only, a confirmed no-op. A18 Helping Hand: sow a deck ' +
+    'card into your Barn, NOT a sow, a plain placement that fills nothing and cannot ' +
+    're-trigger itself; the old building-with-room gate is gone. V6 The Trade Depot: Swap 2 ' +
+    'cards between your Barn and any Deck, then Draw 2 - barn cards to their own discard piles, ' +
+    'deck tops in, freely chosen; ALL OR NOTHING, so under 2 barn cards or an empty table kills ' +
+    'the swap AND the trailing Draw 2. V11 The Market Master, THE BIGGEST CHANGE IN THE PASS: ' +
+    'For each suit in your Barn, Harvest a card of that crop - a REAL Harvest of a whole full ' +
+    'building per distinct suit, snapshotted once at activation (max five), firing ' +
+    'afterHarvest/W16/W18, MANDATORY, able to dismantle its own owner’s farm. V15 The ' +
+    'International Port: build cost 3 suit + 1 wild to 2 suit + 1 wild, data only. V17 The ' +
+    'Dockworker’s Union: end-of-turn trigger loosens from Barn empty to Barn 3 or fewer cards, ' +
+    'so it fires most turns; the dry-table guard stands. V18 Helping Hand: Draw 3 threshold ' +
+    'rises from Barn 1 or fewer to 3 or fewer, resolving before V16 by a fixed order. ⚠️ THE ' +
+    'BOTS UNDERSTATE V11: each harvest sub-choice is priced with no look-ahead within the ' +
+    'cascade and no visibility of W16/W18 downstream, so its reading is a floor. ⚠️ A18’S ' +
+    'CHOICE IS PRICED FLAT (cardTask, not on isProbed) SO ANY ANSWER BEATS SKIP BY A FLAT +2 ' +
+    'WITH NO READ OF THE POSITION - pre-existing, shared with V8/V12/V15, not new to this pass. ' +
+    '⚠️ THE HAND LIMIT OF 7 IS THE SIMULATOR’S BOUND AND NOT A RULE OF THE GAME. ⛔ NO NUMBER IN ' +
+    'ANY reference-v21 OR EARLIER REPORT IS COMPARABLE AS A LEVEL.',
+  seed: 'reference-v22',
+};
+
+/**
+ * ⭐ reference-v23, cut 22/09/2026 when sheet `Isle-of-Farms-v47.xlsm` retexted
+ * fifteen card faces, ability text only (no cost, threshold, VP, trigger or
+ * suit field moved), ruled R1-R5 in `tasks/v47-rulings-v1.md`. Everything else
+ * is reference-v22: the token island, no balloons, no Aerodrome, no Village
+ * Store coin, no closing draw, no island wild substitution, the Vegetable barn
+ * suit, the five per-suit Helping Hands, a random first player, the round
+ * finished at game end, the thirteen v45 retexts and the seven v46 retexts
+ * (A13, A18, V6's swap-with-any-deck, V11's real Harvest cascade, V15, V17,
+ * V18) all stand.
+ *
+ * The fifteen faces, by suit:
+ *
+ *   - **A8 The Wild Hive**: the sow onto a neighbour's building drops from 2
+ *     cards to 1 (`remaining: 1`); the trailing 2 cards into your Barn is
+ *     unchanged. R2: the 19/09/2026 gate survives the retext - if no
+ *     neighbour building can take the sow, no barn cards are placed either.
+ *   - **A9 The Pollinator Trail**: retexted from "Sow 1 deck card on up to 2
+ *     of your other buildings" to "Sow 1 deck card onto another of your
+ *     buildings, then Draw 1" - one mandatory sow (down from up-to-2), plus
+ *     an unconditional Draw 1 that fires whether or not the sow could happen
+ *     (R1).
+ *   - **D5 The Churning Shed**: retexted from sowing every spent card onto
+ *     the new building (even past threshold) to sowing exactly 1 of the
+ *     spent cards, an ordinary `placeFromDiscard` with no threshold
+ *     exception.
+ *   - **D6 The Trading Shed**: retexted from "give 1 spent card to a
+ *     neighbour, Draw 1" to "you and one neighbour each Draw 1" - the give
+ *     machinery is gone; both draws fire whether or not the Build could
+ *     happen (R1), each drawer choosing their own deck.
+ *   - **D10 The Scout's Post**: retexted from revealing the top card of EACH
+ *     deck to revealing the top card of ONE chosen deck, buildable at a
+ *     discount of 2. **R3, against the audit's recommendation: a declined or
+ *     unaffordable reveal is DISCARDED**, not returned to its deck - D10 now
+ *     burns a deck top on every scout that does not build.
+ *   - **D11 The Heritage House**: retexted from sowing every spent card to
+ *     "Draw 1 for each card you spent" - a straight `drawN(payment.length)`.
+ *   - **D15 The Grand Creamery**: retexted from reveal-2-build-1-discard-1 to
+ *     "Build a card from your hand for free" - a `buildWith` at the
+ *     `FREE_BUILD_DISCOUNT` (99), which zeroes the n-of-suit requirement as
+ *     well as the cost.
+ *   - **O9 The Fruit Stand**: retexted from "give 1 card to each neighbour,
+ *     Draw 2 for each" to "give another player 1 card, then Draw 4" - one
+ *     mandatory give whose resolve pushes the Draw 4, so **no give means no
+ *     draw** (R1). Engine-only caveat: the simulator's hand bound can refuse
+ *     a give a table would allow, so O9 is slightly understated here.
+ *   - **O13 The Seed Bank**: retexted from "GROW up to 2 of your other
+ *     buildings, using any suit" (hand-paid) to "GROW 2 of your other
+ *     buildings, each with the top card of any deck" - a mandatory,
+ *     deck-paid re-entrant Grow (`remaining: 2` over `deckGrowOptions`, the
+ *     Apiary board primitive), no skip.
+ *   - **O15 The Garden Library**: the draw-the-top-of-each-deck half is
+ *     unchanged; the old "give to every other player, Draw 1 per card given"
+ *     becomes a single mandatory give of any hand card to one neighbour, no
+ *     refund.
+ *   - **V5 The Coastal Trading Depot**: retexted from the demand-token swap
+ *     to "Deliver. 1 of the cards may be any crop" - a bare `deliver` call
+ *     with `wildCards: 1`; the token-swap path is orphaned, not deleted
+ *     (R1's housekeeping note).
+ *   - **V6 The Trade Depot**: retexted from "swap up to 2 cards between your
+ *     hand and your Barn, then Draw 2" to "swap 2 cards between your Barn and
+ *     any Deck, then Draw 2" - the v46 retext's wording tightened to the
+ *     sheet's own (typo'd) phrasing, no behaviour change. **R4: reference-v22's
+ *     R6 stands in full** - a Barn under 2 cards means nothing swaps and the
+ *     trailing Draw 2 does not fire either; order is barn discards first
+ *     (each to its own crop's pile), then 2 deck tops in (freely chosen per
+ *     card), then Draw 2.
+ *   - **W8 Heritage Field**: the When-Harvested trigger drops "even if not
+ *     full" - it now only harvests another FULL building of yours
+ *     (`filter: 'full'`).
+ *   - **W9 Mill House**: retexted from "up to 3 of your buildings that are
+ *     empty" to "each of your empty buildings (max 3)" - the sow is now
+ *     mandatory over every empty building up to 3, not optional.
+ *   - **W14 The Pizzeria**: retexted from an opt-in draw-matching round to
+ *     "every other player Draws 1, then Draw 4" (owner's draw). **R5: the
+ *     owner's Draw 4 is queued FIRST**, then each other player draws 1 in
+ *     seat order - off the printed order, chosen so the bots' look-ahead
+ *     (which stops at a rival's task) can see and price the Draw 4.
+ *
+ * ⚠️ **MEASUREMENT CAVEATS CARRIED FROM T5, for T7's report.** O9 is
+ * understated (the sim hand bound can refuse a give a table allows, R1's own
+ * caveat, same shape as `reference-v22`'s A17/O16 gifting gap). A9 and W9 are
+ * now mandatory deck-sows whose targets the bots pick blind (the standing
+ * `deckSow` gap this instrument has carried since the delivery-meeple era).
+ * D10's deck choice is effectively random (the same V8/V15 gap `reference-v21`
+ * already carried). O13 moved from hand-paid to deck-paid, so its cost
+ * structure changed and its `reference-v22`-era pricing does not carry over.
+ * W14 should be priced fairly for the first time thanks to R5's fixed order.
+ *
+ * ⛔ A level from `reference-v22` is not comparable: the seed moves with the
+ * sheet. NO NUMBER IN ANY `reference-v22` OR EARLIER REPORT IS COMPARABLE AS A
+ * LEVEL.
+ */
+export const REFERENCE_V23: ReferenceConfig = {
+  ...REFERENCE_V22,
+  id: 'reference-v23',
+  description:
+    'SHEET v47: FIFTEEN CARD FACES RETEXTED, ABILITY TEXT ONLY (Dean, 22/09/2026; ' +
+    'tasks/v47-rulings-v1.md, R1-R5; cards.json re-extracted off Isle-of-Farms-v47.xlsm). ' +
+    'reference-v22 stands - the token island, no balloons, no Aerodrome, no Village Store coin, ' +
+    'no closing draw, no island wild substitution, the Vegetable barn suit, the five per-suit ' +
+    'Helping Hands, a random first player, the round finished at game end, the thirteen v45 ' +
+    'retexts and the seven v46 retexts - and FIFTEEN FACES MOVE. A8 The Wild Hive: sow drops ' +
+    'from 2 cards to 1, the 19/09/2026 no-target gate survives. A9 The Pollinator Trail: 1 ' +
+    'mandatory sow onto another building, then an unconditional Draw 1. D5 The Churning Shed: ' +
+    'sows exactly 1 spent card, no threshold exception. D6 The Trading Shed: give machinery ' +
+    'gone, you and one neighbour each Draw 1 regardless of whether the Build happens. D10 The ' +
+    "Scout's Post: one chosen deck revealed, build at a discount of 2; A DECLINED OR " +
+    'UNAFFORDABLE REVEAL IS DISCARDED (R3, against the audit recommendation). D11 The Heritage ' +
+    'House: Draw 1 for each card spent, sow machinery gone. D15 The Grand Creamery: Build a ' +
+    'card from your hand for free, at a discount that also waives the n-of-suit requirement. O9 ' +
+    'The Fruit Stand: one mandatory give, then Draw 4 - no give means no draw. O13 The Seed ' +
+    'Bank: GROW 2 of your other buildings, each deck-paid and wild, mandatory, no skip. O15 The ' +
+    'Garden Library: draw-each-deck-top unchanged, the give-to-everyone half becomes one ' +
+    'mandatory give to a neighbour. V5 The Coastal Trading Depot: a bare Deliver with 1 wild ' +
+    'card, the token-swap path retired. V6 The Trade Depot: swap 2 cards between your Barn and ' +
+    'any Deck then Draw 2, all-or-nothing under a 2-card Barn stands unchanged from ' +
+    'reference-v22 (R4). W8 Heritage Field: When-Harvested now targets a FULL other building ' +
+    'only. W9 Mill House: sows every empty building up to 3, mandatory. W14 The Pizzeria: the ' +
+    "owner's Draw 4 resolves FIRST, then each other player Draws 1 (R5). ⚠️ O9, A9, W9 and D10 " +
+    'ARE BOT-BLIND CHOICES (understated); O13 changed cost structure so its reference-v22 ' +
+    'pricing does not carry over; W14 should price fairly for the first time. ⚠️ THE HAND LIMIT ' +
+    "OF 7 IS THE SIMULATOR'S BOUND AND NOT A RULE OF THE GAME. ⛔ NO NUMBER IN ANY reference-v22 " +
+    'OR EARLIER REPORT IS COMPARABLE AS A LEVEL.',
+  seed: 'reference-v23',
+};
+
+/**
+ * ⭐ reference-v24, cut 24/09/2026 when sheet `Isle-of-Farms-v48.xlsm` (SHA-256
+ * `53a973c7...`) retexted twenty card faces (22 fields), ruled in
+ * `tasks/v48-rulings-v1.md` R1-R4 and `tasks/v48-rulings-v2.md` R5-R15.
+ * Everything else is reference-v23 - the token island, no balloons, no
+ * Aerodrome, no Village Store coin, no closing draw, no island wild
+ * substitution, the Vegetable barn suit, the five per-suit Helping Hands, a
+ * random first player, the round finished at game end, and the thirteen v45,
+ * seven v46 and fifteen v47 retexts all stand - and TWENTY FACES MOVE, plus
+ * one cross-cutting ruling.
+ *
+ * The twenty faces, by suit:
+ *
+ *   - **A7 The Beekeeper's Hut**: gains a leading Draw 2 before its existing
+ *     mandatory sow onto another of your buildings.
+ *   - **A8 The Wild Hive**: retexted from a neighbour-sow-plus-Barn-fill to
+ *     "Deliver, using cards from your Barn and cards on full buildings" - a
+ *     new `wildDeliver` two-step task pooling the Barn with cards on full
+ *     buildings (a Notice Board included, at 3+), each card's source chosen
+ *     only where a real choice exists.
+ *   - **A9 The Pollinator Trail**: its trailing draw rises from Draw 1 to
+ *     Draw 2; the mandatory sow onto another building is unchanged.
+ *   - **A10 The Queen's Escort**: retexted from a neighbour-sow-plus-Draw-3 to
+ *     "Visit another player's Notice Board, using a deck card" - a new
+ *     deck-paid card visit (`doCardVisit`) that never touches `bonusUsed` or
+ *     the once-per-board latch (R9), so it stacks with the ordinary bonus
+ *     visit.
+ *   - **A11 The Bee Yard**: retexted from "put 1 card from each of your full
+ *     buildings into your Barn" (threshold 2) to "Harvest another of your
+ *     buildings with 2 or more cards on it, even if it is not full"
+ *     (threshold 3) - a real Harvest at a relaxed minimum of 2, never itself.
+ *   - **A13 The Queen's Hive**: the "3 or more Apiary buildings" gate is
+ *     dropped; it now places 3 deck cards into the Barn unconditionally.
+ *   - **A14 The Hive Mind**: retexted from "Draw 1 per Apiary building, max 5"
+ *     to "GROW up to 3 of your full buildings (not the Notice Board), without
+ *     placing a card" - a new re-entrant, live-rechecked Grow with no card
+ *     placed, skippable each round.
+ *   - **A15 The Swarm Call**: retexted from "Draw 1 per building with a card
+ *     on it" (threshold 1) to "Discard a crop card from your hand and
+ *     activate that card's ability" (threshold 3) - a new engine shape, Tier
+ *     cards only, that activates the discarded card AS ITSELF; the D5/D7/D11
+ *     listener trap (their second halves are `afterBuild` listeners) is
+ *     solved inside A15 by forwarding the trigger when the source card sits
+ *     on no farm.
+ *   - **A19 The Hive Council**: retexted from "1 VP per non-Apiary building
+ *     built (max 5)" to "2 VP per tractor building built (max 6 VP)". Ruled
+ *     24/09/2026: a tractor building is any POWER card, of any suit (the
+ *     printed tractor icon, e.g. A16-A18).
+ *   - **D6 The Trading Shed**: retexted from "Build, you and one neighbour
+ *     each Draw 1" to "If you have fewer than 5 cards in hand, Draw 1 for
+ *     each building you have built" - no Build, no crossing the table, a
+ *     hand-gated count draw.
+ *   - **D7 The Milking Parlour**: retexted from spending a building's cards
+ *     as 2 wild resources to "Build. Place 1 of the cards spent into your
+ *     Barn" - the D5 sowing pattern, as an `afterBuild` listener.
+ *   - **D8 The Creamery**: its trailing draw rises from Draw 1 to Draw 2,
+ *     queued after the Build.
+ *   - **O6 The Fruit Vendor**: retexted from "Draw 2, then give 1 card to a
+ *     neighbour and Draw 1" to "Draw 2, then Deliver" - the give-and-draw
+ *     machinery is gone, replaced by a generic Deliver call.
+ *   - **O11 The Orchard Keeper**: retexted from "Harvest one of your
+ *     buildings, then Draw 1 per card harvested" to "Harvest one of your
+ *     buildings, then Draw 2" - the harvest-size-scaled draw is gone.
+ *   - **O12 The Fruit Press**: retexted from "put up to 4 cards from your
+ *     hand into your Barn" to "Deliver, you may spend 1 card from your hand
+ *     in the delivery" - a new `handCard` Deliver option (T4b), at most 1
+ *     card, spent as its own crop.
+ *   - **O13 The Seed Bank**: the deck-paid wild Grow (v47) loses its "top
+ *     card of any deck" wording and reverts to a hand-paid `growOptions`
+ *     re-entrant Grow of 2 of your other buildings, self-excluded via
+ *     `markFired`.
+ *   - **O15 The Garden Library**: retexted from "draw the top card of each
+ *     deck, then give 1 card to a neighbour" to "Draw until you have 6 cards
+ *     in hand" - the deck-draw and give machinery are both gone.
+ *   - **O17 The Fruit Basket**: retexted from a once-per-turn discard
+ *     redirect to "Once per turn, if you have 6 or more cards in hand, add 1
+ *     to your Barn" - no longer tied to a discard event, a `beforeTurnEnd`
+ *     check.
+ *   - **V4 The Market Stall Depot**: its Barn-refill trigger (Barn 3 or
+ *     fewer) now places a card from your HAND into the Barn, not a deck
+ *     card.
+ *   - **V18 Helping Hand**: retexted from "if your Barn has 3 or fewer cards
+ *     after a Delivery, Draw 3" to "After you Deliver, activate the base
+ *     power of the receipt's suit" - the receipt's plain action (a wild
+ *     receipt expands to all five crops, filtering to legal actions now);
+ *     ruled 24/09/2026 the plain action, not the Notice Board power (R5),
+ *     and a one-shot `turn.v18Chain` flag stops it re-triggering itself
+ *     (R6), R10's fixed order against V16 carried forward unchanged.
+ *
+ * ⭐ **R13, ruled 24/09/2026, the widest cross-cutting change in the pass:
+ * Power cards now count as buildings in every "buildings you have built"
+ * count** (D6, D9, D13, D19, D20, W19, W20), through a new shared
+ * `builtBuildingsAndPower` helper - counts only, never offered as a sow,
+ * Grow or Harvest target. Riding along and checked against the printed
+ * words: W19, W20, D19 and D20 previously also counted End-game cards (so a
+ * card counted itself); **they no longer do**, a correctness fix rather than
+ * a design choice.
+ *
+ * ⚠️ **MEASUREMENT CAVEATS CARRIED FROM T5, for T7's report.** The bots are
+ * blind (priced through the flat, unprobed `cardTask` term) on A8's both
+ * steps, O12's whole delivery choice, A10's board-and-deck choice, A15's
+ * discard choice and V18's crop choice, so **A8, O12, A10, A15 and V18 are
+ * all likely UNDERSTATED on reference-v24**. O13's hand-paid re-entrant Grow
+ * and A14's building choice are properly rolled out and should price fairly.
+ *
+ * ⛔ A level from `reference-v23` is not comparable: the seed moves with the
+ * sheet. NO NUMBER IN ANY `reference-v23` OR EARLIER REPORT IS COMPARABLE AS A
+ * LEVEL.
+ */
+export const REFERENCE_V24: ReferenceConfig = {
+  ...REFERENCE_V23,
+  id: 'reference-v24',
+  description:
+    'SHEET v48: TWENTY CARD FACES RETEXTED (22 fields; Dean, 24/09/2026; ' +
+    'tasks/v48-rulings-v1.md R1-R4, tasks/v48-rulings-v2.md R5-R15; cards.json re-extracted off ' +
+    'Isle-of-Farms-v48.xlsm, sha 53a973c7). reference-v23 stands - the token island, no ' +
+    'balloons, no Aerodrome, no Village Store coin, no closing draw, no island wild ' +
+    'substitution, the Vegetable barn suit, the five per-suit Helping Hands, a random first ' +
+    'player, the round finished at game end, the thirteen v45, seven v46 and fifteen v47 ' +
+    'retexts - and TWENTY FACES MOVE plus R13. A7: leading Draw 2 before its sow. A8: now a ' +
+    'wild Deliver off the Barn plus cards on full buildings. A9: trailing draw rises to Draw 2. ' +
+    "A10: now a deck-paid VISIT of another player's Notice Board, stacking with the ordinary " +
+    'bonus visit (no board latch, R9). A11: now a relaxed-minimum-2 Harvest of another building ' +
+    '(threshold 3, was 2). A13: the 3-Apiary-buildings gate is gone. A14: now an unplaced ' +
+    "GROW of up to 3 full buildings. A15: now discard-and-activate-that-card's-ability " +
+    '(threshold 3, was 1), a new engine shape with the D5/D7/D11 listener trap solved inside ' +
+    'it. A19: now 2 VP per POWER card built (any suit), max 6 VP - ruled 24/09/2026 a tractor ' +
+    'building means a Power card. D6: no Build, a hand-gated (below 5) count draw over every ' +
+    'building built. D7: now places 1 spent card into the Barn on Build (the D5 pattern). D8: ' +
+    'trailing draw rises to Draw 2. O6: the give is gone, now Draw 2 then a generic Deliver. ' +
+    'O11: the harvest-size scaling is gone, now a flat Draw 2. O12: now a Deliver with up to 1 ' +
+    'hand card spendable in it. O13: reverts from deck-paid wild to hand-paid, 2 of your other ' +
+    'buildings. O15: the deck-draw and give are both gone, now Draw to 6 in hand. O17: no ' +
+    'longer discard-triggered, now a beforeTurnEnd check at hand 6+. V4: Barn-refill now takes ' +
+    "a HAND card, not a deck card. V18: now activates the DELIVERED RECEIPT crop's plain " +
+    'action (R5), not a draw, with a one-shot no-chain guard (R6). R13: Power cards count as ' +
+    'buildings in every "buildings you have built" count (D6, D9, D13, D19, D20, W19, W20), ' +
+    'counts only, never a sow/Grow/Harvest target; W19/W20/D19/D20 also stop counting End-game ' +
+    'cards (a correctness fix). ⚠️ A8, O12, A10, A15 AND V18 ARE BOT-BLIND (understated); O13 ' +
+    "and A14's building choice roll out properly. ⚠️ THE HAND LIMIT OF 7 IS THE SIMULATOR'S " +
+    'BOUND AND NOT A RULE OF THE GAME. ⛔ NO NUMBER IN ANY reference-v23 OR EARLIER REPORT IS ' +
+    'COMPARABLE AS A LEVEL.',
+  seed: 'reference-v24',
+};
+
+/**
+ * `reference-v25`: THE HAND BOUND RAISED FROM 7 TO 10, AND NOTHING ELSE
+ * (Dean, 24/09/2026).
+ *
+ * ⭐ The bound is an INSTRUMENT bound, never a table rule (CLAUDE.md 2.3): the
+ * simulator cannot enumerate an unbounded hand, so it clips one at a fixed
+ * size, and every reading that touches hand size is a reading about the
+ * instrument rather than the design. A paired arm at v48
+ * (`overlays/hand-limit-10-v48-v1.overlay.json`, report
+ * `reports/watchlist-2026-09-24T15-20-10-reference-v24-hand-limit-10-v48-v1.txt`)
+ * showed the bound of 7 read Orchard about 10 points low on identical games
+ * (26.1% at 7, 36.1% at 10), so Dean's aim of equal suit win rates was being
+ * measured through a ruler that itself leaned on one suit. `rules.json`'s
+ * `meta.notes` carries the full reasoning and the cost figures: a full
+ * watchlist rises from about 31s to about 50s, and the worst end-of-turn
+ * discard enumeration rises from 50,388 to 92,378 moves.
+ *
+ * This reference also carries the Apiary barn pass ruled the same day: A5,
+ * A6, A9 and A17 retexted (`tasks/v49-rulings-v1.md`), off sheet
+ * `Isle-of-Farms-v48.xlsm` re-saved in place, SHA-256 `f23474d4...`. On
+ * identical games those four cards moved Apiary from 20.2% to 19.9% (report
+ * `reports/watchlist-2026-09-24T16-26-46-reference-v24-hand-limit-10-v48-v1.txt`).
+ * ⚠️ A17's choice is priced blind, through the flat, unprobed `cardTask`
+ * term, the same bot-blind shape as A8, O12, A10, A15 and V18 on
+ * `reference-v24` above - so A17 is likely UNDERSTATED on `reference-v25`.
+ *
+ * `overlays/hand-limit-10-v48-v1.overlay.json` is now a no-op against this
+ * default (it sets the same value the base game already carries) and is
+ * kept for its measurement record rather than deleted.
+ *
+ * ⛔ A level from `reference-v24` is not comparable: the bound moves with
+ * the instrument, not just the cards. NO NUMBER IN ANY `reference-v24` OR
+ * EARLIER REPORT IS COMPARABLE AS A LEVEL.
+ */
+export const REFERENCE_V25: ReferenceConfig = {
+  ...REFERENCE_V24,
+  id: 'reference-v25',
+  description:
+    "THE SIMULATOR'S HAND BOUND RAISED FROM 7 TO 10 (Dean, 24/09/2026; " +
+    'rules.json meta.notes). reference-v24 stands - the token island, no balloons, no ' +
+    'Aerodrome, no Village Store coin, no closing draw, no island wild substitution, the ' +
+    'Vegetable barn suit, the five per-suit Helping Hands, a random first player, the ' +
+    'round finished at game end, and every v45/v46/v47/v48 card retext including R13 - and ' +
+    'ONE LEAF MOVES: rules.turn.handLimit 7 to 10. A paired arm ' +
+    '(overlays/hand-limit-10-v48-v1.overlay.json, now a no-op against this default) showed ' +
+    'the old bound of 7 read Orchard about 10 points low on identical games (26.1% at 7, ' +
+    '36.1% at 10), because the hand was being clipped before it could be spent; Dean raised ' +
+    'the shipped default itself rather than leave the ruler bent. This reference also ' +
+    'carries the same-day Apiary barn pass (A5, A6, A9, A17 retexted, tasks/v49-rulings-v1.md, ' +
+    'sheet Isle-of-Farms-v48.xlsm re-saved in place, SHA-256 f23474d4...), which on identical ' +
+    'games moved Apiary from 20.2% to 19.9%. ⚠️ A17 IS BOT-BLIND (priced through the flat, ' +
+    'unprobed cardTask term) and likely UNDERSTATED, the same shape as A8, O12, A10, A15 and ' +
+    'V18 carried from reference-v24. Cost: a full watchlist rises from about 31s to about ' +
+    '50s, and the worst end-of-turn discard enumeration rises from 50,388 to 92,378 moves. ' +
+    "⛔ THE HAND LIMIT IS THE SIMULATOR'S BOUND AND NOT A RULE OF THE GAME - the table plays " +
+    'with no hand limit (CLAUDE.md 2.3). ⛔ NO NUMBER IN ANY reference-v24 OR EARLIER REPORT ' +
+    'IS COMPARABLE AS A LEVEL.',
+  seed: 'reference-v25',
+};
+
 /** The instrument every current number is defined against. */
-export const REFERENCE = REFERENCE_V21;
+export const REFERENCE = REFERENCE_V25;
 
 /**
  * The noise floor, measured once and quoted constantly.
@@ -1472,28 +1911,103 @@ export interface NoiseFloor {
  * 5.407. ⚠️ SEAT DEVIATION MOVED 5.407 POINTS, against 3.647 on v20: the
  * +/-3 seat band sits inside the noise until the seat reading is re-keyed.
  */
+/**
+ * ⭐ reference-v22's FLOOR, measured 20/09/2026 at n=1580 per seat count, from
+ * `reports/noise-2026-09-20T13-16-11-reference-v22.txt`.
+ *
+ * The v22 values: meeples held at game end 0, barn at game end 0, game
+ * length 0, visits per turn 0.002, actions per turn 0.003, meeple spend rate
+ * 0.001, self-visit share of visits 0, bonus slot used 0.002, door mix
+ * (busiest board share) 0, farm bypass share 0.002, unfinished games 0.001,
+ * winning score 0, last as % of winner 0.012, tied top score 0.014, deck
+ * reshuffles per game 0, reshuffles per played crop 0, seat deviation 0.949.
+ */
+/**
+ * ⭐ reference-v23's FLOOR, measured 22/09/2026 at n=1580 per seat count, from
+ * `reports/noise-2026-09-22T17-26-23-reference-v23.txt`.
+ *
+ * ⚠️ SEAT DEVIATION MOVED 3.417 POINTS, against 0.949 on reference-v22, so the
+ * +/-3 seat band has little room left to fail on this instrument.
+ *
+ * The v22 values, for the record and NOT for use (measured 20/09/2026, from
+ * `reports/noise-2026-09-20T13-16-11-reference-v22.txt`): meeples held at
+ * game end 0, barn at game end 0, game length 0, visits per turn 0.002,
+ * actions per turn 0.003, meeple spend rate 0.001, self-visit share of visits
+ * 0, bonus slot used 0.002, door mix (busiest board share) 0, farm bypass
+ * share 0.002, unfinished games 0.001, winning score 0, last as % of winner
+ * 0.012, tied top score 0.014, deck reshuffles per game 0, reshuffles per
+ * played crop 0, seat deviation 0.949.
+ */
+/*
+ * The v23 values, for the record and NOT for use (measured 22/09/2026, from
+ * `reports/noise-2026-09-22T17-26-23-reference-v23.txt`): meeples held at
+ * game end 0, barn at game end 0.5, game length 0, visits per turn 0, actions
+ * per turn 0, meeple spend rate 0.003, self-visit share of visits 0, bonus
+ * slot used 0, door mix (busiest board share) 0.001, farm bypass share
+ * 0.001, unfinished games 0.002, winning score 0, last as % of winner 0.007,
+ * tied top score 0.003, deck reshuffles per game 0, reshuffles per played
+ * crop 1, seat deviation 3.417.
+ */
+/**
+ * ⭐ reference-v24's FLOOR, measured 24/09/2026 at n=1580 per seat count, from
+ * `reports/noise-2026-09-24T14-47-06-reference-v24.txt`.
+ *
+ * ⚠️ SEAT DEVIATION MOVED 3.277 POINTS, against 3.417 on reference-v23, so the
+ * +/-3 seat band still has little room to fail on this instrument.
+ *
+ * The v23 values, for the record and NOT for use (measured 22/09/2026, from
+ * `reports/noise-2026-09-22T17-26-23-reference-v23.txt`): meeples held at
+ * game end 0, barn at game end 0.5, game length 0, visits per turn 0, actions
+ * per turn 0, meeple spend rate 0.003, self-visit share of visits 0, bonus
+ * slot used 0, door mix (busiest board share) 0.001, farm bypass share
+ * 0.001, unfinished games 0.002, winning score 0, last as % of winner 0.007,
+ * tied top score 0.003, deck reshuffles per game 0, reshuffles per played
+ * crop 1, seat deviation 3.417.
+ */
+/**
+ * ⛔ NOT MEASURED FOR `reference-v25`, and deliberately left null rather than
+ * carried over. The floor is a function of the INSTRUMENT, and v25 changed
+ * the instrument itself - the hand bound the discard enumeration and the
+ * Apiary hand-holding metrics are read against moved from 7 to 10 - so a
+ * v24 floor quoted against a v25 run would be describing a different ruler.
+ *
+ * The v24 values, for the record and NOT for use (measured 24/09/2026, from
+ * `reports/noise-2026-09-24T14-47-06-reference-v24.txt`): meeples held at
+ * game end 0, barn at game end 0.5, game length 0, visits per turn 0.002,
+ * actions per turn 0.003, meeple spend rate 0.001, self-visit share of
+ * visits 0, bonus slot used 0.003, door mix (busiest board share) 0.001,
+ * farm bypass share 0, unfinished games 0.001, winning score 0, last as %
+ * of winner 0.008, tied top score 0.013, deck reshuffles per game 0,
+ * reshuffles per played crop 0, seat deviation 3.277.
+ *
+ * Re-measure with `npm run sim -- --noise --n=1580` and paste the literal it
+ * prints back in here.
+ *
+ * Pasted from reports/noise-2026-09-24T16-58-19-reference-v25.txt (24/09/2026):
+ * seat deviation fell from 3.277 to 0.412, so the seat-fairness check can fail again.
+ */
 export const NOISE_FLOOR: NoiseFloor | null = {
-  reference: 'reference-v21',
+  reference: 'reference-v25',
   games: 1580,
-  measured: '2026-09-19',
+  measured: '2026-09-24',
   movement: {
     'meeples held at game end': 0,
     'barn at game end': 0,
     'game length, rounds': 0,
-    'visits per turn': 0.004,
-    'actions per turn': 0.004,
+    'visits per turn': 0.003,
+    'actions per turn': 0.002,
     'meeple spend rate': 0.004,
     'self-visit share of visits': 0,
-    'bonus slot used, share of turns': 0.004,
-    'door mix, busiest board share': 0.001,
-    'farm bypass share': 0.004,
+    'bonus slot used, share of turns': 0.003,
+    'door mix, busiest board share': 0.003,
+    'farm bypass share': 0,
     'unfinished games': 0.001,
     'winning score': 0,
-    'last as % of winner': 0.004,
-    'tied top score': 0.006,
+    'last as % of winner': 0.005,
+    'tied top score': 0.002,
     'deck reshuffles per game': 0,
     'reshuffles, played crop': 0,
-    'seat deviation': 5.407,
+    'seat deviation': 0.412,
   },
 };
 /**

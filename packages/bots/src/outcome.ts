@@ -254,12 +254,20 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
       return event.seat === me ? weight(w, 'harvest') : 0;
 
     // Barn cards LEAVING a barn by discard. Charged at the same harvest rate a
-    // card arriving is paid, so a discard is never free; the card V6 hands
-    // over is also priced at the blind hand rate `cardsToHand` uses.
+    // card arriving is paid, so a discard is never free.
     // ⭐ v45 RETEXT (19/09/2026, tasks/v45-rulings-v1.md): V10 and V12 no
     // longer discard from the barn (R1, R4 - the barn is only counted, never
-    // spent). V8 and V15 are this event's only producers now; V6 still swaps
-    // one into the hand via `barnToHand` below.
+    // spent). V8 and V15 are this event's producers now; V6 no longer is
+    // (see `barnToHand` below).
+    // ⭐ v46 RETEXT (20/09/2026, tasks/v46-rulings-v1.md, R5-R7): V6 The Trade
+    // Depot was this event's only producer and now goes BARN -> its own crop's
+    // discard pile (`Fx.discardFromBarn`, priced by the `barnDiscarded` case
+    // above) and DECK TOP -> barn (`Fx.deckTopToBarn`, priced by `deckToBarn`
+    // above), never hand <-> barn any more. `barnToHand` therefore has NO
+    // producer left in the engine; the case below is kept only so a future
+    // card (or a restore-style knob, on the pattern of `supplyHouseBarnDrain`
+    // and `dockworkersUnionDrawOnDiscard`) that reaches for the primitive is
+    // priced rather than silently valued at 0.
     case 'barnDiscarded':
       return event.seat === me ? -weight(w, 'harvest') : 0;
     case 'barnToHand':
@@ -301,7 +309,14 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
 
     case 'cardGifted':
       if (event.to === me) return weight(w, 'keepValue') * meanCardValue(s.data);
-      // The giver is charged only when the card came OUT OF A HAND (O6, O9).
+      // The giver is charged only when the card came OUT OF A HAND. ⚠️ v48
+      // (`tasks/v48-rulings-v2.md`): O9 The Fruit Stand is the only card left
+      // that gives at all. O6 The Cherry Grove retexted to "Draw 2, then
+      // Deliver" and O15 The Garden Library to "Draw until you have 6 cards in
+      // hand" - neither touches a neighbour's hand any more, so neither
+      // reaches this case. D6 The Trading Shed stopped giving on v47 (its two
+      // draws are ungated on the neighbour choice, not a gift of a spent
+      // card), which still holds.
       // The divert seam's gift hands over a card that was already on its way to
       // a discard pile, so there is nothing to charge - and charging it made the
       // plain discard strictly better and the rebuilt Farmstead never fire.
@@ -423,6 +438,10 @@ function priceEvent(event: GameEvent, s: Scratch, w: WeightTable, me: Seat): num
     // the shared board, so there is no delta in the acting seat's own
     // resources for an event price to read and it would score exactly zero -
     // see `deliverabilityValue` below and the note on `Probe.deliverable`.
+    // ⛔ UNREACHABLE SINCE v47: V5 retexted off the token swap entirely
+    // (tasks/v47-rulings-v1.md), so `demandSwapped` never fires any more.
+    // Kept, not deleted - see the `deliverability` weight's note in
+    // weights.ts for the full orphan chain this case is one link of.
     case 'demandSwapped':
       return 0;
 
@@ -713,6 +732,13 @@ function pendingDrawValue(probe: ReturnType<Prober>, s: Scratch, w: WeightTable)
  * self-serving. Whether swapping a token out from under a rival's hoarded pair
  * lands as clever or as the predecessor's "reverse engine-building" resentment
  * is a table question and only a table question.
+ *
+ * ⛔ ALL OF THE ABOVE IS HISTORY SINCE v47. V5 The Coastal Trading Depot no
+ * longer swaps a token at all ("Deliver. 1 of the cards may be any crop.",
+ * tasks/v47-rulings-v1.md); `Probe.deliverable` and `deliverableBefore` are
+ * gated on the `demandSwapped` event this retext removes the only producer
+ * of, so this function now always returns 0. Kept as an orphan by decision -
+ * see the `deliverability` weight's note in weights.ts.
  */
 function deliverabilityValue(probe: ReturnType<Prober>, w: WeightTable): number {
   if (probe.truncated) return 0;

@@ -1,0 +1,9 @@
+{
+  "name": "apiary-board-sow-hand7-v1",
+  "schemaVersion": 1,
+  "description": "THE APIARY NOTICE BOARD BACK ON ITS PRE-14/09/2026 POWER, 'Sow 2 cards from your hand onto your buildings' (apiaryPower 'sow'), ON THE SHIPPED v49 GAME WITH THE SIMULATOR'S HAND BOUND AT 7 (24/09/2026). Asked by Dean after reference-v25 read Apiary at 20.4% with the other four suits within about 9 points of each other. The lead: on 14/09/2026 a paired run found the retext to 'Grow a building using the top card of any deck' (wild) on its own took Apiary from 40.2% to 25.9% and Dairy from 36.6% to 50.4%, because nobody may use their own board, so the power is a pure gift to rivals and a free wild Grow is worth most to the widest farm. That was measured on an older game, hence this re-test. CONTROL: overlays/hand-limit-7-legacy-v1.overlay.json on the same seeds (sets the hand bound only). Sets two leaves; nothing else moves.",
+  "set": {
+    "rules.turn.handLimit": 7,
+    "rules.economy.noticeBoardPower.apiaryPower": "sow"
+  }
+}

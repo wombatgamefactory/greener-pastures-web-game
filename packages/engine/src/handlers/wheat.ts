@@ -95,9 +95,10 @@ import type { GameData, Suit } from '@gp/data';
 
 import { fireHook } from '../fx.js';
 import type { Fx } from '../fx.js';
-import { cardById, cropOf, drawableSuits, isHarvestable, player } from '../query.js';
+import { cardById, drawableSuits, isHarvestable, player } from '../query.js';
 import type { CardId, GameState, Seat, TaskAnswer } from '../state.js';
 import {
+  builtBuildingsAndPower,
   cropBuildingsOf,
   deckSowRiders,
   deckSowTask,
@@ -424,8 +425,9 @@ export const goldenField: CardHandler = {
 };
 
 /**
- * W8 Heritage Field - "Draw 1 / HARVEST: Harvest another of your buildings, even
- * if not full."
+ * W8 Heritage Field - v47 (22/09/2026, audit `tasks/v47-ambiguity-audit-v1.md`, the W8 row,
+ * resolved from the printed words and v46's R2): "Draw 1 / When Harvested: Harvest another of
+ * your buildings." (was "... Harvest another of your buildings, even if not full." on v46.)
  */
 export const heritageField: CardHandler = {
   difficulty: {
@@ -437,12 +439,17 @@ export const heritageField: CardHandler = {
       'the design, so the `harvestSurcharge` trigger no longer appears on any Wheat card ' +
       'and this handler no longer owns a surcharge task. SIMPLIFIED 2026-08-19 (v30, group ' +
       'D): the GROW-time barn deposit and the harvest seed line are both deleted, so the ' +
-      'card is now one line on each face. ⛔ THE READING INVERTS WITH THEM. It used to say ' +
-      'plain "another of your buildings", which was the STRICT full gate precisely because ' +
-      'W11, W12 and W13 spelled their exception out in words and this card did not. It now ' +
-      'prints "even if not full", so it joins them: the gate is `chooseBuilding` filter ' +
-      "'loaded', 1 or more cards, which is the same filter W11 uses for \"however many " +
-      'cards are on it". ⚠️ It is NOT the Wheat Farmstead\'s relaxed gate, and since 19/08/2026 W2 has no such gate: ' +
+      'card is now one line on each face. ' +
+      '⭐ RETEXTED ON SHEET v47: "even if not full" IS GONE, so the card reverts to the ' +
+      "STRICT full gate. HARVEST moves a full building's stack (§2.7 of CLAUDE.md; v46 R2 " +
+      'read V11\'s bare "Harvest" the same way), and W11, W12 and W13 print their exceptions ' +
+      "in words - W8 no longer does. The gate is `chooseBuilding` filter 'full', the ordinary " +
+      'gate every other unmarked Harvest uses (`fullBuildings`, which reads `isHarvestable`). ' +
+      "A Notice Board of the owner's IS a legal target at 3 cards or more, and never below " +
+      "(v45 R6, v46 R2): the `'full'` filter already admits a `3+` board at 3 through " +
+      '`isHarvestable`, with no bespoke exclusion needed. Mandatory (no "may"), doing as ' +
+      'much as it can: with no other full building, nothing happens. ' +
+      "⚠️ It is NOT the Wheat Farmstead's relaxed gate, and since 19/08/2026 W2 has no such gate: " +
       'the 2+ relaxation moved to W3 the Notice Board, where it belongs to the visitor door ' +
       'rather than to the seat, so there is nothing left here to confuse it with. The decided ' +
       'suit-power ruling (2026-08-09) is that a suit power modifies the action and never ' +
@@ -459,7 +466,7 @@ export const heritageField: CardHandler = {
         t: 'chooseBuilding',
         pid: self.seat,
         src: self.card,
-        filter: 'loaded',
+        filter: 'full',
         exclude: self.card,
         then: 'harvest',
       });
@@ -468,8 +475,9 @@ export const heritageField: CardHandler = {
 };
 
 /**
- * W9 Mill House - "Sow a deck card on up to 3 of your buildings that are empty."
- * (v42; was "Sow the top card of any deck onto each of your FIELDs".)
+ * W9 Mill House - v47 (22/09/2026, audit `tasks/v47-ambiguity-audit-v1.md`, the W9 row): "Sow a
+ * deck card onto each of your empty buildings (max 3)." (was "Sow a deck card on up to 3 of your
+ * buildings that are empty." on v42; "up to" is gone.)
  */
 export const millHouse: CardHandler = {
   difficulty: {
@@ -477,14 +485,20 @@ export const millHouse: CardHandler = {
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: true, counts: true, interrupts: false },
     notes:
-      '⭐ v42: up to three of your buildings whose stack is EMPTY, any suit, one deck card ' +
-      'each. One `deckSow` task (buildings.ts) asks for one deck and one building at a ' +
-      'time, three times at most, with a stop answer ("up to"); a building that took a card ' +
-      'leaves the list, and "empty" is re-checked as each card lands. Never a Notice Board ' +
-      '(S11) and never a Power or Endgame card (no stack). W9 itself holds its own grow ' +
-      'payment when this fires, so it is never one of its own targets. The older reading, ' +
-      'one deck top per FIELD, was the supply card the scaling layer needed; the new text ' +
-      'trades the scale for a reach across every suit.',
+      '⭐ RETEXTED ON SHEET v47: "up to" IS GONE. By the standing "may" rule (19/09/2026, ' +
+      'printed text governs and an effect is declinable only where the face says "may"), the ' +
+      'sow is now MANDATORY: every empty building of the owner takes a deck card, up to the ' +
+      'printed cap of 3, with no skip offered. `optional` on the deckSow riders is `false`; ' +
+      'the buildings.ts `deckSowTask` (buildings.ts) already omits the skip answer whenever ' +
+      'a task is not optional, so no change was needed there. With more than 3 empty ' +
+      'buildings the owner still picks which 3 - nothing in the game makes a placement ' +
+      "choice for a player (the same reading v46 gave V11's source building). Consequence, " +
+      'printed: it CAN fill and clog an empty threshold-1 building the owner would rather ' +
+      'have left empty; that is the card, not a bug. One `deckSow` task (buildings.ts) asks ' +
+      'for one deck and one building at a time, three times at most; a building that took a ' +
+      'card leaves the list, and "empty" is re-checked as each card lands. Never a Notice ' +
+      'Board (S11) and never a Power or Endgame card (no stack). W9 itself holds its own ' +
+      'grow payment when this fires, so it is never one of its own targets.',
   },
   activate(fx, self) {
     const targets = ownBuildings(fx.data, fx.state, self.seat)
@@ -499,7 +513,7 @@ export const millHouse: CardHandler = {
         remaining: 3,
         targets,
         distinct: true,
-        optional: true,
+        optional: false,
         emptyOnly: true,
       }),
     });
@@ -655,81 +669,40 @@ export const bakery: CardHandler = {
 };
 
 /**
- * W14 The Pizzeria - "Every player, including you, may Draw 1. For each card
- * drawn, gain £1." Threshold 2, activation wild.
+ * W14 The Pizzeria - v47 (22/09/2026, Dean's ruling R5, `tasks/v47-rulings-v1.md`): "Every other
+ * player Draws 1. Draw 4." (was "Every player, including you, may Draw 1. Then Draw 1 for each
+ * card another player drew" on v46 - the offer-and-pay shape and the £ conversion are both gone.)
  */
 export const pizzeria: CardHandler = {
   difficulty: {
-    score: 4,
+    score: 2,
     verified: { prompts: true, crossPlayer: true, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: true, conditional: true, counts: true, interrupts: false },
+    asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
-      'The only card in the suit that PROMPTS A RIVAL, and one of two that print a £ - both ' +
-      "of them need somebody else at the table, which is the rebuild's coin rule in " +
-      'miniature. One offer task per seat, each theirs to answer, each with a real decline: ' +
-      'a free card against handing the baker £1. Priced at £1 rather than £2 because the ' +
-      "binding constraint is the RIVAL's willingness - a card that needs consent does " +
-      'nothing if consent is withheld. The £1 mints on acceptance rather than on the card ' +
-      "actually arriving (the W15/A5 'then' precedent); the gate needs a live deck, so the " +
-      'gap is a deck emptying mid-effect. Card-ability draws: no Orchard modifier (DL-47). ' +
-      '⚠️ THE BOTS ALWAYS ACCEPT, by construction and not by accident - the probe pricer ' +
-      "models what a seat GAINS and never rival harm (see outcome.ts's one rule), so a " +
-      "sim's acceptance rate is an upper bound and the decline is a table question. " +
-      '⛔ THE COIN IS A CARD (v31, plan section 3.3): "For each card drawn, gain £1" reads ' +
-      '"Then Draw 1 for each card ANOTHER player drew". The conversion is not a straight ' +
-      "swap and the sheet was careful about it. Under the old text the OWNER's own " +
-      'acceptance paid the owner £1, which was a floor of one card and one coin before ' +
-      'anybody else answered; under the new one it pays nothing, because a card that paid ' +
-      'itself would make the card a naked Draw 2 for its owner and the rivals decorative. ' +
-      'So the owner is still OFFERED the draw - that clause is untouched - but the payout ' +
-      'is strictly cross-table. ' +
-      '⚠️ THE RATE WENT UP IN REAL TERMS. A coin was never worth a card in this game (seats ' +
-      'ended on about £1), so paying a card per rival acceptance is a materially bigger ' +
-      'faucet than paying a coin was, on a suit whose rebalance thesis was that Wheat gets ' +
-      'too many free cards. If Wheat runs hot after v31, this is a first suspect and the ' +
-      'dial is the payout rate, never the offer - the offer is what the sheet prints. ' +
-      'Task order is the owner first, then the rivals in seat order, which matters only for ' +
-      'who sees a deck run dry.',
+      '⭐ RETEXTED ON SHEET v47. TWO PLAIN MANDATORY DRAWS, NO OFFER, NO COIN. "Draws 1" and ' +
+      '"Draw 4" both print no "may", so neither half is declinable (the standing "may" rule, ' +
+      '19/09/2026): every other player draws 1 card, and the owner draws 4, each choosing ' +
+      'their own deck as every Draw does. The `offerDraw` task, its skip answer and the whole ' +
+      'accept/decline choice are GONE, and so is the £1-per-acceptance payout - there is no ' +
+      'coin left anywhere in the design for this card to convert. ' +
+      "R5: THE OWNER'S DRAW 4 IS QUEUED FIRST, ahead of the rivals' single draws, reversing " +
+      'the printed reading order. This is off the printed order (which matters only when a ' +
+      'deck runs dry mid-effect) and is chosen so the bots, whose look-ahead probe stops at a ' +
+      "rival's task, can see and price the owner's Draw 4 rather than pricing the card near " +
+      'zero. Each rival then draws 1, in seat order starting after the owner, through the ' +
+      "same plain see-N/keep-N draw task every Draw uses - unconditional, nobody's consent " +
+      'needed. Card-ability draws: no Orchard modifier (DL-47). A table where a deck runs ' +
+      'dry mid-effect draws what is left; nothing else changes.',
   },
   activate(fx, self) {
-    // The owner's own offer is pushed FIRST and the rivals follow in seat order.
-    // The rotation is deliberate rather than decorative: the offers resolve in
-    // queue order, and the only thing order can decide is who gets the last card
-    // of a deck that runs dry mid-effect, which should be the card's owner.
-    for (let i = 0; i < fx.state.players.length; i++) {
-      fx.pushTask({
-        t: 'card',
-        pid: ((self.seat + i) % fx.state.players.length) as Seat,
-        src: self.card,
-        kind: 'offerDraw',
-        riders: { owner: self.seat },
-      });
+    // R5: the owner's Draw 4 is queued first so the bots' probe (which stops at
+    // a rival's task) can see and price it, then each other player draws 1 in
+    // seat order, mandatory, no offer and no decline.
+    drawN(fx, self.seat, self.card, 4);
+    for (let i = 1; i < fx.state.players.length; i++) {
+      const seat = ((self.seat + i) % fx.state.players.length) as Seat;
+      drawN(fx, seat, self.card, 1);
     }
-  },
-  tasks: {
-    offerDraw: {
-      answers(data, state) {
-        if (drawableSuits(data, state).length === 0) return [];
-        return [{ kind: 'card', payload: { take: true } }, { kind: 'skip' }];
-      },
-      resolve(fx, task, answer) {
-        if (answer.kind === 'skip') return true;
-        drawN(fx, task.pid, task.src, 1);
-        const owner = task.riders.owner as Seat;
-        // "Then Draw 1 for each card ANOTHER player drew" - so the owner's own
-        // acceptance pays nothing, and each rival's pays one card.
-        //
-        // Paid HERE, one at a time, rather than counted up and paid once at the
-        // end. The two are identical in effect - a see-N/keep-N draw picks a
-        // deck per card, so N draws of 1 offer exactly the choices one draw of N
-        // does - and doing it per acceptance needs no counter riding on a task
-        // and no final task to read it. The owner's cards therefore arrive
-        // interleaved with the rivals' offers, which is invisible: nothing
-        // between the two can reach a hand.
-        if (task.pid !== owner) drawN(fx, owner, task.src, 1);
-        return true;
-      },
-    },
   },
 };
 
@@ -949,15 +922,19 @@ export const wheatExchange: CardHandler = {
     notes:
       'Tableau VARIETY - the one endgame card in the suit that points away from ' +
       'monoculture, which is what the Innovation lens asks of a scaling layer whose ' +
-      'metric axis is otherwise the specialisation axis. Crop is the printed icon ' +
-      '(query.cropOf, ticket 07): a base starter prints the generic starting-building icon ' +
-      'and belongs to no crop, an upgraded one prints its crop and counts. Caps at 10.',
+      'metric axis is otherwise the specialisation axis. Crop is the printed suit. Caps at 10.\n' +
+      '⭐ v48 R13 (tasks/v48-rulings-v2.md, 24/09/2026): THE NOUN IS NOW `builtBuildingsAndPower` ' +
+      '(buildings.ts), IN PLACE OF THE WHOLE-TABLEAU `cropOf` READING. Before this ruling this ' +
+      'card counted crops off EVERY non-starter card, Power and Endgame both (`cropOf` excludes ' +
+      'only starters) - a DIFFERENT set from D9 The Prosperity Wagon, which printed the same ' +
+      'eleven words and read only Tier 1-3 buildings (ruling M, outstanding-rule-changes.md). ' +
+      'R13 closes that gap from both sides: this card now EXCLUDES Endgame cards it used to ' +
+      "count, and D9's noun grew to include Power cards, so the two read the exact same set for " +
+      'the first time. A base starter still prints no crop and never counts.',
   },
   gameEnd(data, state, seat) {
     const crops = new Set(
-      player(state, seat)
-        .tableau.map((b) => cropOf(data, b))
-        .filter((crop): crop is Suit => crop !== null),
+      builtBuildingsAndPower(data, state, seat).map((b) => cardById(data, b.card).suit),
     );
     return 2 * crops.size;
   },
@@ -978,10 +955,17 @@ export const grandGranary: CardHandler = {
       'reseed means a FIELD is never empty. READING: "you have built" is the deck-built ' +
       'set - the four starters arrive pre-built and nobody built them, so counting them ' +
       'would hand every holder a flat 4. Covered cards (D11) are not buildings and do not ' +
-      'count, which is the same rule every other formula in the game applies to them.',
+      'count, which is the same rule every other formula in the game applies to them.\n' +
+      '⭐ v48 R13 (tasks/v48-rulings-v2.md, 24/09/2026): THE NOUN IS NOW ' +
+      '`builtBuildingsAndPower` (buildings.ts), IN PLACE OF `inDeck`. `inDeck` (excludes only ' +
+      'starters, `packages/data/src/types.ts`) already counted Power AND Endgame cards, which ' +
+      "R13 never asked for on the Endgame half - only D20 The Counting House's OWN divisor made " +
+      "the two cards read as though they agreed (see D20's own notes, dairy.ts). Now they " +
+      'genuinely share one noun: a built Power card still counts, an Endgame card no longer ' +
+      'does.',
   },
   gameEnd(data, state, seat) {
-    const count = player(state, seat).tableau.filter((b) => cardById(data, b.card).inDeck).length;
+    const count = builtBuildingsAndPower(data, state, seat).length;
     const cap = data.rules.economy.grandGranaryCap;
     return cap === null ? count : Math.min(cap, count);
   },

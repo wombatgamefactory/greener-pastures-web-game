@@ -229,20 +229,32 @@ function cardMoveSpend(payload: Record<string, unknown>): CardId | null {
  * because the move type still exists and the next card to use it would
  * otherwise be priced at a flat weight in silence.
  *
- * The known understatements, unchanged:
+ * The known understatements, updated for v47:
  *
- * ⚠️ **W14 The Pizzeria**, whose payoff arrives only after rivals accept - and a
- * probe stops at a rival's task, by design.
+ * ⚠️ **W14 The Pizzeria is NO LONGER on this list, and the reason is worth
+ * keeping.** Its v46 face offered each rival a decline, so its payoff arrived
+ * only after a rival's task resolved, and a probe stops at a rival's task by
+ * design - the card was priced near zero. v47 deletes the offer (both halves
+ * are plain "Draws", no "may") and R5 (tasks/v47-rulings-v1.md) deliberately
+ * queues the OWNER's Draw 4 first, ahead of the rivals' single draws, for
+ * exactly this reason: the owner's own `t: 'draw'` task is the actor's own
+ * task, not a rival's, so the probe sees it in full before it ever reaches a
+ * rival's task and stops. The rivals' draws stay unprobed, but they cost the
+ * owner nothing and were never what this list was protecting against.
  *
- * ⚠️ **D15 The Grand Creamery is understated on purpose**. Its value is an
- * EXPECTATION OVER A RANDOM RUN - reveal a deck top, build it free, reveal again
- * while each card costs more than the last - and a greedy one-decision-at-a-time
- * rollout cannot hold that: it walks the flips it can see inside `DEPTH` and
- * prices each `built` flat and blind, so what comes out is roughly the first
- * flip or two rather than the run. An under-valued D15 is a readable result (the
- * arm reports a low play rate and the card is suspected), where an over-valued
- * one is not. If the arm shows D15 never taken at all, suspect this before
- * suspecting the card.
+ * ⚠️ **D15 The Grand Creamery is NO LONGER ON THIS LIST EITHER, for the plainer
+ * reason that it no longer has a run to understate.** v47 retexted it from
+ * "Reveal 2 deck cards. Build 1 for free. Discard the other" to "Build a card
+ * from your hand for free" (tasks/v47-rulings-v1.md) - an ordinary, single,
+ * certain Build with no reveal and no escalating cost, which a
+ * one-decision-at-a-time rollout prices exactly as well as any other free
+ * Build. The paragraph below is kept as history, because the shape of the old
+ * problem (an expectation over a random run a greedy probe cannot hold) is
+ * worth remembering for the next card built that way: reveal a deck top,
+ * build it free, reveal again while each card costs more than the last, and a
+ * greedy rollout walks only the flips it can see inside `DEPTH`, pricing each
+ * `built` flat and blind, so what comes out is roughly the first flip or two
+ * rather than the run.
  *
  * ⚠️ **A5 and A12**, grow-without-placing: A12's second pick is priced by the
  * same path one decision later, which is a beam of one over the two rather than
@@ -319,11 +331,18 @@ function tokenWorkerWorth(s: Scratch, token: IslandToken | null): number {
  * 391 real (decision, tile) pairs it never once varied within a tile. What it
  * prices is the resource leaving.
  *
- * The build leg is D7 The Versatile Shed's stack payment. A card on one of your
- * own stacks is not in the barn yet, but it is freight in waiting - it goes
- * there on the next harvest and nowhere else - so spending it on a build costs
- * the seat the same thing, and D7's whole printed fork is that a stack card is
- * either freight or building material and never both.
+ * ⚠️ v48: the build leg was D7 The Versatile Shed's stack payment - a card on
+ * one of your own stacks is not in the barn yet, but it is freight in waiting
+ * (it goes there on the next harvest and nowhere else), so spending it on a
+ * build cost the seat the same thing, and D7's whole printed fork was that a
+ * stack card is either freight or building material and never both. D7
+ * retexted to "Build. Place 1 of the cards spent into your Barn."
+ * (`tasks/v48-rulings-v2.md`) and lost the stack payment along with every
+ * other build in the game (`BuildMods.fromStacks` has no caller left - see
+ * `narrow.ts`), so `act.stacks` is never non-zero now. The leg below is kept
+ * rather than deleted, in the same spirit as the orphaned enumerator code it
+ * reads: if a future card reopens a stack payment this pricer already knows
+ * what it costs.
  */
 function barnCardsSpent(act: Act): number {
   switch (act.a) {
@@ -916,6 +935,16 @@ export const TERMS: readonly Term[] = [
      * it over `skip` at -1 and then picks its target by random tie-break. That
      * predates v31 and is left alone on purpose: fixing it in the same pass as
      * the rules change would make the delta unattributable.
+     *
+     * ⚠️ v47 ADDS TWO MORE CARDS TO THE BLIND SPOT, AND MAKES BOTH MANDATORY
+     * (tasks/v47-ambiguity-audit-v1.md, "the deckSow blind spot ... still
+     * applies to A9 and W9"): A9 The Pollinator Trail's single sow and W9 Mill
+     * House's sow onto each empty building both lost their "up to"/"may" on
+     * the retext, so where A13 and W7 could at least be skipped in favour of a
+     * cheaper move, A9 and W9 now always place - there is no skip to weigh
+     * against the flat -1, and the target is still chosen by random tie-break.
+     * Standing, not new; left alone for the same reason as the rest of this
+     * note.
      */
     name: 'sow',
     claims: ACTION_AND_TASK,
@@ -1742,10 +1771,17 @@ export const TERMS: readonly Term[] = [
   },
   {
     /**
-     * The card-task escape hatch, and since the Orchard rebuild it has a real
-     * producer: the DIVERT seam answers `card` to put a limbo card into your own
-     * barn instead of discarding it (O17 The Fruit Basket). Scored above `skip`
-     * so the bot takes the barn card rather than binning it.
+     * The card-task escape hatch: the flat catch-all for any task answered
+     * with kind `'card'`, priced no finer than "take it" against `skip`. ⚠️ v48
+     * (`tasks/v48-rulings-v2.md`): O17 The Fruit Basket left this term when its
+     * build-payment divert seam was deleted on retext - it now answers a plain
+     * `handToBarn` task instead (its own `cardTask` entry, above). The live
+     * producers are O12 The Fruit Press (`fruitPressDeliver`, which hand card
+     * pays the Delivery) and O13 The Seed Bank (which of two other buildings
+     * to GROW), plus V18's crop choice, A15's discard choice and A10's board
+     * and deck choice elsewhere in the catalogue - every one of them a real
+     * choice the flat weight here cannot tell apart from any other, which is
+     * the standing bot blind spot the V12 gap already named.
      */
     name: 'cardTask',
     claims: ACTION_AND_TASK,

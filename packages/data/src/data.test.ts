@@ -304,8 +304,8 @@ describe('the shipped game', () => {
     expect(BASE_GAME_DATA.rules.turn.meepleAsCard).toBe(false);
     expect(BASE_GAME_DATA.rules.turn.slotToll).toBeNull();
     expect(BASE_GAME_DATA.rules.turn.meepleCapPerColour).toBeNull();
-    // The limit stays 7, and it is the simulator's bound rather than a rule.
-    expect(BASE_GAME_DATA.rules.turn.handLimit).toBe(7);
+    // The limit is 10 since 24/09/2026 (was 7), and it is the simulator's bound rather than a rule.
+    expect(BASE_GAME_DATA.rules.turn.handLimit).toBe(10);
   });
 
   // ⛔ THE COMMONS IS DELETED, NOT MERELY OFF: its currency word and every one

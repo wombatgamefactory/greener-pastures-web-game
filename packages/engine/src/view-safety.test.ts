@@ -224,59 +224,30 @@ function base(): GameState {
 
 describe('a card task may not name its limbo cards', () => {
   /**
-   * D15 The Grand Creamery: "Reveal the top two deck cards. Build 1 for free."
-   * Two flips, then the pick - the moment the leak lived in.
+   * D10 The Scout's Post: "Reveal the top card of any deck. You may build it
+   * at a discount of 2." (v47 retext). The deck choice ('scoutDeck') is
+   * answered first, choosing wheat, which lands on the 'scout' task with its
+   * one-card reveal - the moment the leak lived in. D15 The Grand Creamery
+   * used to share this exact shape (two flips then a pick); v47 gave D10 the
+   * deck-choice step instead (the housekeeping note in tasks/v47-rulings-v1.md
+   * records the `creameryFlip` shape moving here) and gave D15 an ordinary,
+   * nothing-in-limbo Build straight off the hand - see the D15 test below.
    */
-  function creameryAtThePick(): { state: GameState; revealed: CardId[] } {
-    const s = base();
-    buildFor(data, s, DAIRY, 'D15');
-    dealTo(data, s, DAIRY, 'W4');
-    const first = s.decks.wheat[0] as CardId;
-    const second = s.decks.wheat[1] as CardId;
-    const flip = (state: GameState): GameState => {
-      const answer = pendingAnswers(data, state).find(
-        (a) => a.kind === 'card' && a.payload.suit === 'wheat',
-      );
-      if (!answer) throw new Error('no wheat flip on offer');
-      return answerTask(data, state, answer).state;
-    };
-    const grown = growBuilding(data, s, DAIRY, 'D15', 'W4');
-    return { state: flip(flip(grown.state)), revealed: [first, second] };
-  }
-
-  it('D15 offers a slot, not a deck top, and the slot still builds the right card', () => {
-    const { state, revealed } = creameryAtThePick();
-    const answers = pendingAnswers(data, state);
-    expect(answers).toHaveLength(2);
-    // The pick is an index into the reveal the task carries, and the move names
-    // nothing else - so the move list, and the move log with it, say only "the
-    // second one".
-    expect(answers.map((a) => (a.kind === 'card' ? a.payload : null))).toEqual([
-      { pick: 0 },
-      { pick: 1 },
-    ]);
-    const { bad, checked } = moveViolations(state, 'D15 pick');
-    expect(bad).toEqual([]);
-    // Nothing at all to check, which IS the property: the two moves on offer
-    // name no card id whatsoever.
-    expect(checked).toBe(0);
-    expect(revealedIn(state.tasks[0] as never)).toEqual(revealed);
-
-    // Slot 1 is the SECOND card revealed, not the first: the index is load
-    // bearing, not decorative.
-    const built = answerTask(data, state, answers[1] as TaskAnswer).state;
-    expect(built.players[DAIRY]?.tableau.some((b) => b.card === revealed[1])).toBe(true);
-    expect(built.discards.wheat).toContain(revealed[0]);
-  });
-
-  it("D10 offers a slot per revealed deck top, priced from the seat's own hand", () => {
+  function scoutAtThePick(): { state: GameState; revealed: CardId[] } {
     const s = base();
     buildFor(data, s, DAIRY, 'D10');
     dealTo(data, s, DAIRY, 'D5', 'W4', 'W5', 'W6');
     const wheatTop = s.decks.wheat[0] as CardId;
     const grown = growBuilding(data, s, DAIRY, 'D10', 'D5');
-    const state = grown.state;
+    const deckChoice = pendingAnswers(data, grown.state).find(
+      (a) => a.kind === 'card' && a.payload.suit === 'wheat',
+    );
+    if (!deckChoice) throw new Error('no wheat deck on offer');
+    return { state: answerTask(data, grown.state, deckChoice).state, revealed: [wheatTop] };
+  }
 
+  it("D10 offers a slot for the revealed deck top, priced from the seat's own hand", () => {
+    const { state, revealed } = scoutAtThePick();
     const answers = pendingAnswers(data, state).filter((a) => a.kind === 'card');
     expect(answers.length).toBeGreaterThan(0);
     // Every answer names a slot and a payment out of the hand. No deck top.
@@ -285,31 +256,62 @@ describe('a card task may not name its limbo cards', () => {
       expect(typeof a.payload.pick).toBe('number');
       expect(a.payload.card).toBeUndefined();
     }
-    expect(moveViolations(state, 'D10 scout').bad).toEqual([]);
+    const { bad } = moveViolations(state, 'D10 scout');
+    expect(bad).toEqual([]);
+    expect(revealedIn(state.tasks[0] as never)).toEqual(revealed);
 
-    const reveal = revealedIn(state.tasks[0] as never);
     // A payment, when the discount does not make the card free, names cards out
     // of the seat's own hand - which its view carries. What no answer may name
     // is a card still in limbo.
     const named = answers.flatMap((a) => (a.kind === 'card' ? idsInPayload(a.payload) : []));
-    expect(named.filter((id) => reveal.includes(id))).toEqual([]);
-    const wheatSlot = reveal.indexOf(wheatTop);
-    expect(wheatSlot).toBeGreaterThanOrEqual(0);
-    const take = answers.find((a) => a.kind === 'card' && a.payload.pick === wheatSlot);
+    expect(named.filter((id) => revealed.includes(id))).toEqual([]);
+    // v47 reveals exactly one card, so the only slot is 0.
+    const take = answers.find((a) => a.kind === 'card' && a.payload.pick === 0);
     expect(take).toBeDefined();
     const built = answerTask(data, state, take as TaskAnswer).state;
-    expect(built.players[DAIRY]?.tableau.some((b) => b.card === wheatTop)).toBe(true);
+    expect(built.players[DAIRY]?.tableau.some((b) => b.card === revealed[0])).toBe(true);
+  });
+
+  it('D15 offers an ordinary free Build from hand: v47 leaves nothing in limbo at all', () => {
+    // v47 retext: "Build a card from your hand for free" replaced the old
+    // two-deck-top reveal-and-pick (tasks/v47-ambiguity-audit-v1.md, D15 row:
+    // "creameryFlip, creameryPick and CREAMERY_REVEALS all go"). This file's
+    // property - no move may name a card still in limbo - has nothing left to
+    // exercise for D15 specifically, because D15 no longer puts anything in
+    // limbo. What is still worth pinning is that it offers a plain, free
+    // `build` task straight out of the seat's own already-visible hand, not a
+    // `card`/pick task wearing the old reveal shape.
+    const s = base();
+    buildFor(data, s, DAIRY, 'D15');
+    dealTo(data, s, DAIRY, 'W4', 'W5');
+    const grown = growBuilding(data, s, DAIRY, 'D15', 'W4');
+    const state = grown.state;
+
+    expect(state.tasks[0]?.t).toBe('build');
+    const answers = pendingAnswers(data, state);
+    expect(answers.length).toBeGreaterThan(0);
+    for (const a of answers) {
+      expect(a.kind).toBe('build');
+      if (a.kind === 'build') expect(a.payment).toEqual([]);
+    }
+    const { bad } = moveViolations(state, 'D15 build');
+    expect(bad).toEqual([]);
+
+    const pick = answers.find((a) => a.kind === 'build' && a.card === 'W5');
+    expect(pick).toBeDefined();
+    const built = answerTask(data, state, pick as TaskAnswer).state;
+    expect(built.players[DAIRY]?.tableau.some((b) => b.card === 'W5')).toBe(true);
   });
 
   it("hides a card task's riders from every seat but its owner", () => {
-    const { state, revealed } = creameryAtThePick();
-    expect(redactionViolations(state, 'D15 pick')).toEqual([]);
+    const { state, revealed } = scoutAtThePick();
+    expect(redactionViolations(state, 'D10 scout')).toEqual([]);
 
-    // Concretely: the owner reads its own reveal, the rival gets suit letters.
+    // Concretely: the owner reads its own reveal, the rival gets a suit letter.
     const owner = viewFor(data, state, DAIRY).tasks[0];
     expect(owner?.t === 'card' ? revealedIn(owner) : null).toEqual(revealed);
     const rival = viewFor(data, state, WHEAT).tasks[0];
-    expect(rival?.t === 'card' ? revealedIn(rival) : null).toEqual(['W?', 'W?']);
+    expect(rival?.t === 'card' ? revealedIn(rival) : null).toEqual(['W?']);
   });
 });
 

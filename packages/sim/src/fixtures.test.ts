@@ -108,6 +108,30 @@ const OVERLAY_DIR = fileURLToPath(new URL('../../../overlays', import.meta.url))
  * v42), captured with `.scratch/capture-v42-openings.mts` and written with
  * `npm run sim -- --replay=<capture> --fixture="<why>"`. The marker convention
  * stands for the next arm that needs one: add its overlay to `dataFor` then.
+ *
+ * ## ⭐ AND A FIFTH TIME ON 24/09/2026, AND IT IS NOT A RULES ARM
+ *
+ * Dean raised `rules.turn.handLimit` from 7 to 10 (reference-v25). Every
+ * previous marker on this list exists because a DESIGN ruling moved the
+ * default under an old game; this one is different in kind, because the hand
+ * bound is an INSTRUMENT setting (CLAUDE.md 2.3), not a rule anybody is
+ * playing to, and it changes something a fixture's move log can depend on in a
+ * way an ordinary knob does not: end-of-turn discard tasks are shaped by the
+ * bound, so a log recorded at 7 can name a discard that is illegal, or absent
+ * where one is now expected, once the bound is 10. Running the fixtures under
+ * the new default threw two of the three logs at their own recorded discard
+ * moves (`No pending task`), so `2p-token-island-opening.json` and
+ * `4p-token-island-opening.json` are renamed with the `-hand-limit-7-` marker
+ * and replay against `overlays/hand-limit-7-legacy-v1.overlay.json`, which
+ * pins that one leaf and nothing else. `3p-token-island-opening.json` still
+ * happened to replay clean under 10 - its particular move log never reaches a
+ * position the two bounds disagree on - but it was captured at the same bound
+ * as the other two, so it is renamed and pinned alongside them for the same
+ * reason the `-v31-` control's whole passenger list was pinned rather than
+ * left to luck: a fixture that replays clean today by chance is not a
+ * guarantee it still will once something else moves. None of the three is a
+ * design arm - `hand-limit-7-legacy-v1` says so on its own face - so they stay
+ * out of any report that reads ARMS as "the game's runnable configurations".
  */
 function overlayData(file: string) {
   const overlay = JSON.parse(readFileSync(join(OVERLAY_DIR, file), 'utf8')) as Overlay;
@@ -118,9 +142,14 @@ function overlayData(file: string) {
  * ⭐ AN ARM'S RULES ARE READ FROM ITS COMMITTED OVERLAY, NEVER RESTATED HERE.
  * See the note above: an inline copy of a pin stops being a pin the moment the
  * default moves under it, and on 09/09/2026 that cost all six fixtures at once.
- * No fixture carries a marker today (16/09/2026), so the table is empty.
+ *
+ * ⭐ 24/09/2026: three markers point at `hand-limit-7-legacy-v1`, the fixture
+ * pin for the three `-token-island-` logs recorded under the old bound of 7
+ * (see the note above `overlayData`). It is not a design arm.
  */
-const ARMS: readonly (readonly [marker: string, overlay: string])[] = [];
+const ARMS: readonly (readonly [marker: string, overlay: string])[] = [
+  ['-hand-limit-7-', 'hand-limit-7-legacy-v1.overlay.json'],
+];
 /**
  * ⚠️ A FILE WITH NO MARKER REPLAYS AGAINST THE SHIPPED DEFAULT, whatever the
  * shipped default currently is. That is the convention and it is deliberate: a

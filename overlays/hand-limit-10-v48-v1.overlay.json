@@ -1,0 +1,8 @@
+{
+  "name": "hand-limit-10-v48-v1",
+  "schemaVersion": 1,
+  "description": "THE SHIPPED v48 GAME WITH THE SIMULATOR'S HAND BOUND RAISED FROM 7 TO 10, AND NOTHING ELSE (24/09/2026). Asked by Dean after reference-v24 read Apiary at 20.6% against 27.6% on reference-v23: the v48 Apiary retext moved the suit's cards from the barn into the hand (A7 and A9 draw 2), and 16.7% of Apiary turns began at the engine's bound of 7 (v23 11.3%), so the question is how much of the fall is the INSTRUMENT clipping the hand, not the design. The table plays with no hand limit (CLAUDE.md 2.3); 7 is an instrument bound. Paired with reference-v24 on its own seeds. Unlike overlays/hand-limit-10.overlay.json, which pins the pre-12/09 game, this overlay sets one leaf only. Expect the end-of-turn discard enumeration to grow with the bound. ⛔ NO-OP SINCE 24/09/2026: Dean raised the shipped default itself from 7 to 10 on the strength of this arm's reading, so `rules.turn.handLimit` is now 10 on the base game and this overlay sets the same value the default already carries. Kept for its measurement record (the paired report above) rather than deleted.",
+  "set": {
+    "rules.turn.handLimit": 10
+  }
+}

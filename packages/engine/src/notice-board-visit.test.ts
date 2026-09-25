@@ -646,20 +646,16 @@ describe('no card s text fires twice in a turn, now that a turn holds two visits
   }
 
   // ⭐ INVERTED (Dean, 15/09/2026): the fire-once rule is deleted. Card text
-  // fires every time its trigger happens, so both visit reactors fire on BOTH
+  // fires every time its trigger happens, so a visit reactor fires on BOTH
   // visits; the only per-turn cap left is one activation per building.
-  it('A17 The Smoke Pot fires on both visits (v42: a deck sow onto your own building)', () => {
-    const s = twoVisits('A17', ['wheat', 'orchard', 'dairy']);
-    buildFor(wide, s, 0, 'W4'); // threshold 2: somewhere for both sows to land
-    const smoke = (tasks: GameState['tasks']) =>
-      tasks.some((t) => t.t === 'sowFromDeck' && t.src === 'A17');
-    const first = apply(wide, s, visit(0, 1, 'W7'));
-    expect(smoke(first.state.tasks)).toBe(true);
-    const drained = autoResolve(wide, first.state);
-    expect(drained.turn.firedThisTurn).not.toContain('A17');
-    const second = apply(wide, drained, visit(0, 2, 'W9'));
-    expect(smoke(second.state.tasks)).toBe(true);
-  });
+  //
+  // ⛔ A17 THE SMOKE POT LEFT THIS DESCRIBE BLOCK ON v49 (24/09/2026,
+  // `tasks/v49-rulings-v1.md` R4). It no longer reacts to a visit at all -
+  // "At the end of your turn, you may move 1 card from any 1 of your full
+  // buildings to your Barn" keys on `beforeTurnEnd`, the fixed once-a-turn
+  // seam O17/V17/O18 already use, so there is no second visit for it to fire
+  // on and this describe block's subject (two visits in one turn) no longer
+  // applies to it. Its own tests live in `apiary.test.ts`.
 
   it('O16 The Fruit Store draws on both visits', () => {
     const s = twoVisits('O16', ['wheat', 'orchard', 'dairy']);

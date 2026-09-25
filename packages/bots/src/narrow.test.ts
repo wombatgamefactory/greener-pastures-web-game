@@ -45,9 +45,22 @@ describe('the classification tripwire', () => {
     for (const id of KEEPS_SPENT_CARDS) expect(READS_BUILD_PAYMENT).toContain(id);
   });
 
-  it('D6 The Trading Shed reads a payment but does NOT keep it: it gives it away', () => {
-    expect(READS_BUILD_PAYMENT).toContain('D6');
+  // v47 retexted D6 and D11 (tasks/v47-rulings-v1.md R1; the old D6 test read
+  // "D6 reads a payment but does NOT keep it: it gives it away", which no
+  // longer holds now D6 does not read a payment at all).
+  it('D6 The Trading Shed no longer touches the build payment: its afterBuild listener is gone', () => {
+    expect(afterBuildCards()).not.toContain('D6');
+    expect(READS_BUILD_PAYMENT).not.toContain('D6');
     expect(KEEPS_SPENT_CARDS).not.toContain('D6');
+  });
+
+  it('D11 The Heritage House reads a payment (for its length) but does NOT keep it: v47 pays by count, not identity', () => {
+    expect(READS_BUILD_PAYMENT).toContain('D11');
+    expect(KEEPS_SPENT_CARDS).not.toContain('D11');
+  });
+
+  it('D5 The Churning Shed still keeps a spent card: v47 narrows it to one card, not the identity question', () => {
+    expect(KEEPS_SPENT_CARDS).toContain('D5');
   });
 });
 
@@ -119,7 +132,7 @@ describe('narrowMoves', () => {
     expect(kept).toHaveLength(2);
   });
 
-  it('keeps the D7 stack selection out of the collapse: which building loses cards is a real choice', () => {
+  it('keeps a stack selection out of the collapse: which building loses cards is a real choice (⚠️ v48: no card in the game still populates `stacks`; see narrow.ts)', () => {
     const moves: Move[] = [
       {
         type: 'task',
@@ -137,15 +150,18 @@ describe('narrowMoves', () => {
 
   it('offers the BEST payment as well as the junkiest when a divert power is live', () => {
     const view = emptyView();
-    // O17 The Fruit Basket puts a card you spend into your barn, so the junkiest
-    // is no longer obviously right and both ends of the class must survive.
+    // D7 The Versatile Shed (since v48) places one card this build spent into
+    // your barn, so the junkiest is no longer obviously right and both ends
+    // of the class must survive. O17 The Fruit Basket left KEEPS_SPENT_CARDS
+    // on the same retext (its own build-payment listener is gone - see
+    // narrow.ts), so D7 is the live example now.
     const withBasket: PlayerView = {
       ...view,
       you: {
         ...view.you,
         tableau: [
           ...view.you.tableau,
-          { card: 'O17' as CardId, stack: [], full: false, face: 'base' } as never,
+          { card: 'D7' as CardId, stack: [], full: false, face: 'base' } as never,
         ],
       },
     };

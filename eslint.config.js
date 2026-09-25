@@ -51,6 +51,7 @@ export default tseslint.config(
       'tools/render-sheets.mjs',
       'tools/measure-ui.mjs',
       'tools/probe-dock.mjs',
+      'tools/sim-dashboard-pdf.mjs',
     ],
     languageOptions: {
       globals: {

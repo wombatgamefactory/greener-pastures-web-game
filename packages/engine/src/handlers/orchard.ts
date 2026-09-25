@@ -76,27 +76,14 @@
 
 import type { GameData, Suit } from '@gp/data';
 
-import { freeHandSpace } from '../actions.js';
+import { deliverOptions, doDeliver, freeHandSpace, growOptions } from '../actions.js';
 import type { Fx } from '../fx.js';
-import {
-  buildingOf,
-  canSowOnto,
-  cardById,
-  drawableSuits,
-  isHarvestable,
-  player,
-} from '../query.js';
-import { markFired } from '../runtime.js';
+import { canSowOnto, cardById, player } from '../query.js';
+import { doGrow } from '../runtime.js';
 import type { CardId, GameState, Seat, TaskAnswer } from '../state.js';
-import {
-  builtBuildingsWorth,
-  cropBuildingsOf,
-  growAnyAnswers,
-  ownBuildings,
-  resolveGrowAny,
-} from './buildings.js';
+import { builtBuildingsWorth, cropBuildingsOf } from './buildings.js';
 import { barnCropScorer, farmsteadHandler } from './farmstead.js';
-import type { CardHandler, CustomTask } from './types.js';
+import type { CardHandler } from './types.js';
 
 /**
  * ORCHARD sub-type membership. See the closed D1 ruling in the file header: the
@@ -125,11 +112,6 @@ function drawN(fx: Fx, pid: Seat, src: CardId, n: number): void {
  * printed 4 now, so a change here is a card change and belongs on the sheet.
  */
 const CONSERVATORY_DRAW = 4;
-
-/** Decks on the table with cards left - O15's "each deck". */
-function liveDecks(data: GameData, state: GameState): Suit[] {
-  return drawableSuits(data, state).filter((s) => state.suitsInPlay.includes(s));
-}
 
 /**
  * Rivals who could physically accept a gift right now (DL-63).
@@ -300,47 +282,34 @@ export const pearOrchard: CardHandler = {
 };
 
 /**
- * O6 The Cherry Grove - "Draw 2, then give 1 card to a neighbour and Draw 1."
+ * O6 The Cherry Grove - v48 retext (`tasks/v48-rulings-v2.md`, the builder-
+ * default paragraph): "Draw 2, then Deliver." (was "Draw 2, then give 1 card
+ * to a neighbour and Draw 1.")
  *
- * ⛔ The £1 is a Draw 1 (v31, plan section 3.3). The shape is untouched: the
- * payout still fires only when a card actually crosses the table, which is the
- * suit's standing rule that a payoff needs somebody else at the table.
+ * ⛔ THE CROSS-TABLE HALF IS GONE. The card no longer touches another player
+ * at all: no give, no refund, no `giftableSeats` call. Draw 2 resolves first
+ * (so a card just drawn may pay the delivery), then a plain, mandatory
+ * Deliver off the shared `t: 'deliver'` task - the same shape V7 The Export
+ * Depot already uses for "Harvest, then Deliver" - taking an ordinary
+ * receipt, no relaxation and no extra source. With nothing payable the task
+ * enumerates no answers and drops itself: "as much as it can" reads as
+ * nothing at all on a dry barn.
  */
 export const cherryOrchard: CardHandler = {
   difficulty: {
-    score: 3,
-    verified: { prompts: true, crossPlayer: true, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
+    score: 2,
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      'Converts into A CARD BACK, and like every payout in the rebuilt suit it needs ' +
-      'somebody else at the table. The Draw 2 resolves first, so the card given may be one ' +
-      'just drawn. Mandatory as printed, auto-skipping on an empty hand or an empty table. ' +
-      'The refund fires only when a card actually crosses. ' +
-      '⚠️ THE CONVERSION MADE IT NEARLY FREE. Giving a card and taking £1 was a real ' +
-      'trade at a table where seats ended on about £1; giving a card and drawing one is ' +
-      'card-neutral, so the cross-table half now costs its owner nothing at all and the ' +
-      'card is a plain Draw 2 with a rider that only ever helps. That is the shape the ' +
-      'gift-aversion research says players like and the balance sheet should distrust.',
+      "Converts into a plain DELIVER: this Tier 1 is now one of the suit's ordinary " +
+      'routes onto the island rather than a card-back trade. The Draw 2 resolves first, ' +
+      'so the payment may include a card just drawn; the Deliver that follows is the full ' +
+      'action (a real receipt, the sixth-receipt trigger, V16 and V18 all fire) and is ' +
+      'mandatory as printed, auto-skipping when the barn cannot pay any open tile.',
   },
   activate(fx, self) {
     drawN(fx, self.seat, self.card, 2);
-    fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'give', riders: {} });
-  },
-  tasks: {
-    give: {
-      answers(data, state, task) {
-        const seats = giftableSeats(data, state, task.pid, []);
-        return player(state, task.pid).hand.flatMap((card) =>
-          seats.map((to) => ({ kind: 'card', payload: { card, to } }) as TaskAnswer),
-        );
-      },
-      resolve(fx, task, answer) {
-        if (answer.kind !== 'card') throw new Error('give expects a card answer');
-        fx.giveCard(task.pid, answer.payload.to as Seat, answer.payload.card as CardId);
-        drawN(fx, task.pid, task.src, 1);
-        return true;
-      },
-    },
+    fx.pushTask({ t: 'deliver', pid: self.seat, src: self.card });
   },
 };
 
@@ -401,76 +370,68 @@ export const heritageOrchard: CardHandler = {
   },
 };
 
-/** O9 The Fruit Stand - "Give 1 card to each neighbour. Draw 2 for each." */
+/**
+ * O9 The Fruit Stand - "Give another player 1 card from your hand, then Draw
+ * 4." (v47 retext of "Give 1 card to each neighbour. Draw 2 for each.")
+ *
+ * ⭐ v47 RETEXT (`tasks/v47-card-changes-engine-pass.md` T4c;
+ * `tasks/v47-rulings-v1.md` R1). One give to ONE other player, the owner's
+ * choice of both the card and the recipient (giftableSeats, DL-63), not a
+ * loop over every neighbour. **R1: the Draw 4 is gated on the give actually
+ * happening** - "a card that pays you for giving to a neighbour ... pays only
+ * if the card reaches them" (R1's rule-book sentence; the same shape as A8's
+ * gate and O6's refund). Because the give and the Draw 4 are one mandatory
+ * task and the Draw 4 is pushed from inside `resolve`, an empty hand or every
+ * rival at the hand bound (DL-63) leaves `answers` empty, `drainTasks` drops
+ * the task silently, and NOTHING is drawn - there is no path to Draw 4
+ * without a card crossing the table first. The re-entrant multi-neighbour
+ * loop (`standTask`) is gone: one give, one payoff.
+ * ⚠️ Engine-only wrinkle carried from the audit: the simulator's hand bound
+ * can refuse a give to a rival who is full that a table with no hand limit
+ * would still allow, so O9 is slightly understated in the simulator.
+ */
 export const fruitStand: CardHandler = {
   difficulty: {
-    score: 3,
+    score: 2,
     verified: { prompts: true, crossPlayer: true, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
+    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
     notes:
-      'The noun is CARDS YOU GIVE AWAY. Re-entrant: one card per answer, and "one each" is ' +
-      'the clause that kills "is he getting more than me" - a seat that has already ' +
-      'received drops out of the answer set for the rest of the activation. ⛔ DRAW 2 PER ' +
-      'CARD, NEVER 1: at 1-for-1 the card is exactly worthless, and this has been written ' +
-      'down three times and reverted twice. The task re-queues itself BEHIND its own Draw 2 ' +
-      'so the replacement cards arrive before the next give is chosen. ' +
-      'SIMPLIFIED 19/08/2026 (v30 group D): "any number ... one each" became "1 card to ' +
-      'each neighbour", so the HOW MANY choice is gone and only the WHICH CARD choice is ' +
-      'left. There is no skip answer any more - the give is mandatory, exactly one per ' +
-      'neighbour - which is why the difficulty drops a point and `conditional` goes false. ' +
-      'THE NO-OP IS SILENT SKIP (v30 §8.3, the one answer applied to every mandatory ' +
-      'effect in the pass): with an empty hand, or fewer cards than neighbours, or every ' +
-      'rival at their hand limit (DL-63), the task simply enumerates nothing and is ' +
-      'dropped. You give as many as you can, you draw 2 for each one that crossed, and the ' +
-      'activation is never refused.',
+      'The noun is now ONE CARD TO ONE PLAYER, not a loop over every neighbour: the owner ' +
+      'picks the card and the recipient (giftableSeats). Mandatory as printed - no skip ' +
+      'answer - but the give can still fail to happen (empty hand, or every rival at the ' +
+      'DL-63 hand bound), and per R1 that failure gates the WHOLE reward: the Draw 4 lives ' +
+      "inside the give task's `resolve`, so it fires only when a card actually reached " +
+      'another player. No give, no Draw 4. This is the same gate shape as A8 The Wild Hive ' +
+      "(R2) and O6 The Cherry Grove's refund, now named as a rule-book sentence (R1).",
   },
   activate(fx, self) {
     fx.pushTask({
       t: 'card',
       pid: self.seat,
       src: self.card,
-      kind: 'stand',
-      riders: { given: [] },
+      kind: 'give',
+      riders: {},
     });
   },
-  tasks: { stand: standTask() },
+  tasks: {
+    give: {
+      answers(data, state, task) {
+        const seats = giftableSeats(data, state, task.pid, []);
+        return player(state, task.pid).hand.flatMap((card) =>
+          seats.map((to) => ({ kind: 'card', payload: { card, to } }) as TaskAnswer),
+        );
+      },
+      resolve(fx, task, answer) {
+        if (answer.kind !== 'card') throw new Error('give expects a card answer');
+        fx.giveCard(task.pid, answer.payload.to as Seat, answer.payload.card as CardId);
+        // R1: the Draw 4 lives here, inside the give's own resolve, so it can
+        // only ever fire once a card has actually crossed the table.
+        drawN(fx, task.pid, task.src, 4);
+        return true;
+      },
+    },
+  },
 };
-
-/**
- * The re-entrant give-one-each loop (O9). Split out so the riders' shape is
- * written once.
- *
- * No `skip` answer since 19/08/2026: the printed text is "Give 1 card to each
- * neighbour", not "you may", so the only choice left is WHICH card goes to
- * whom. The loop stops the way every mandatory Orchard task stops - by
- * enumerating nothing, which `drainTasks` drops - and that is also the silent
- * no-op for a hand too small to serve everybody.
- */
-function standTask(): CustomTask {
-  return {
-    answers(data, state, task) {
-      const already = (task.riders.given as Seat[]) ?? [];
-      const seats = giftableSeats(data, state, task.pid, already);
-      return player(state, task.pid).hand.flatMap((card) =>
-        seats.map((to) => ({ kind: 'card', payload: { card, to } }) as TaskAnswer),
-      );
-    },
-    resolve(fx, task, answer) {
-      if (answer.kind !== 'card') throw new Error('stand expects a card answer');
-      const to = answer.payload.to as Seat;
-      fx.giveCard(task.pid, to, answer.payload.card as CardId);
-      drawN(fx, task.pid, task.src, 2);
-      fx.pushTask({
-        t: 'card',
-        pid: task.pid,
-        src: task.src,
-        kind: 'stand',
-        riders: { given: [...((task.riders.given as Seat[]) ?? []), to] },
-      });
-      return true;
-    },
-  };
-}
 
 /**
  * O10 The Cider House - "SOW 1 card from your hand onto each of your Orchard
@@ -507,135 +468,169 @@ export const ciderHouse: CardHandler = {
 };
 
 /**
- * O11 The Harvest Market - "Harvest one of your buildings, then Draw 1 for each
- * card harvested." (v42; was "Harvest every ORCHARD, however many cards are on
- * it".)
+ * O11 The Harvest Market - v48 retext (`tasks/v48-rulings-v2.md`, the
+ * builder-default paragraph): "Harvest one of your buildings, then Draw 2."
+ * (was "Harvest one of your buildings, then Draw 1 for each card harvested".)
+ *
+ * ⛔ THE PER-CARD DRAW IS GONE. The custom `marketHarvest` task is retired in
+ * favour of the shared `chooseBuilding`/`then: 'harvest'` shape V7 The Export
+ * Depot already uses ("Harvest ... then Deliver"): a plain Harvest of one
+ * FULL building of any suit, O11 itself included if its own GROW payment
+ * filled it (the face does not say "another"), a Notice Board counted full
+ * at 3 or more (`isHarvestable`, through `fullBuildings`). The Draw 2 is a
+ * flat, UNCONDITIONAL drawN, pushed alongside the harvest rather than out of
+ * its resolve, so it fires whether or not a building was harvestable at all
+ * (v47 R1: a reward after your own act, never gated the way a cross-table
+ * payment is). Mandatory as printed; with nothing full the harvest task
+ * enumerates no answers and is dropped silently.
  */
 export const harvestMarket: CardHandler = {
   difficulty: {
     score: 2,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
+    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
     notes:
-      '⭐ v42: ONE building, and the plain harvest gate. A custom `marketHarvest` task ' +
-      'offers every building of yours that is harvestable right now (`isHarvestable`: at ' +
-      'or over its threshold, which for a Notice Board means 3 or more cards), of any ' +
-      'suit, O11 itself included when its payment filled it. Mandatory as printed; with no ' +
-      'target the task has no answers and is dropped. The answer harvests that building ' +
-      'and then draws one card per card it held, counted before the harvest. The older ' +
-      'note, about the every-ORCHARD cascade this replaced, follows. ' +
-      'The noun is CARDS ON YOUR ORCHARDS. BUFFED 19/08/2026 (v30 group E): "this ORCHARD" ' +
-      'became "EVERY ORCHARD", which turns a self-emptying valve into the suit\'s payoff ' +
-      'card - one action clears the whole grove and pays a card for every card cleared. ' +
-      'W12 Crop Rotation is the exact precedent in Wheat, down to snapshotting the ' +
-      'qualifying set before harvesting any of it. ⛔ READING - IT NO LONGER HARVESTS ' +
-      'ITSELF, and this is a real behaviour change, not a tidy-up. Under D1 an ORCHARD is ' +
-      'O4-O8, and O11 is a Tier 2, so "every ORCHARD" does not reach it; W12 answers the ' +
-      'identical question the identical way (W12 is not a Field, so Crop Rotation never ' +
-      'harvests itself). The old text said "this ORCHARD" of a card that was never an ' +
-      'ORCHARD, so the new text is the more honest of the two - but the consequence is ' +
-      'that the GROW payment, which used to be harvested straight back off this card, now ' +
-      'STAYS on O11 and counts toward its threshold of 2. "However many cards are on it" ' +
-      'is still the printed exception to the full gate, so each harvest is fx.harvest ' +
-      'directly rather than the action. Empty ORCHARDs are skipped rather than harvested ' +
-      'for nothing, so no listener sees a harvest of zero cards. Against O7: Golden ' +
-      'harvests ONE ORCHARD and draws nothing; the Market harvests ALL of them and draws ' +
-      'per card. ⚠️ Watch-list: this is now plausibly above the Tier 2 budget beside O10 ' +
-      'The Cider House, which fills every ORCHARD for one action - fill the grove, then ' +
-      'empty it, is a two-card loop that pays cards both ways.',
+      'The noun is now a FLAT NUMBER, not a count of what was harvested: the harvest and ' +
+      'the draw are two independent pushes, in printed order, and the draw no longer reads ' +
+      'the harvested stack at all. A building the payment just filled counts (no "another"), ' +
+      'and the queue order (harvest resolves before the draw, since tasks answer in queue ' +
+      'order) is the only thing tying the two together.',
   },
   activate(fx, self) {
-    fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'marketHarvest', riders: {} });
+    fx.pushTask({
+      t: 'chooseBuilding',
+      pid: self.seat,
+      src: self.card,
+      filter: 'full',
+      then: 'harvest',
+    });
+    drawN(fx, self.seat, self.card, 2);
+  },
+};
+
+/**
+ * O12 The Fruit Press - v48 retext (`tasks/v48-rulings-v2.md`, the builder-
+ * default paragraph): "Deliver. You may spend 1 card from your hand in the
+ * Delivery." (was "Put up to 4 cards from your hand into your Barn.")
+ *
+ * ⛔ NO LONGER A HAND-TO-BARN CARD AT ALL. It is a plain, mandatory Deliver
+ * with one extra payment source T4b built for exactly this card: at most one
+ * hand card, paying as its OWN crop (never wild, unlike V3's and V5's "any
+ * crop" cards), still exactly `deliveryCost` cards in total. `deliverOptions`
+ * is called with `handCard: true`, which folds in one additive candidate pool
+ * per crop the hand holds - never multiplicative with the plain barn pool -
+ * and names the crop on the option as `handCrop`, never the literal card (a
+ * hand card carries identity a barn card does not, so naming the card would
+ * multiply the answer count by hand size; naming the crop keeps it linear).
+ * The literal card is chosen here, deterministically (the first hand card of
+ * that crop), when the answer is resolved, and handed to `doDeliver` as
+ * `choice.handCard`.
+ */
+export const fruitPress: CardHandler = {
+  difficulty: {
+    score: 2,
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: false, counts: false, interrupts: false },
+    notes:
+      'The noun moved from CARDS IN YOUR HAND to a plain ISLAND DELIVERY with one bridge ' +
+      'card allowed in from the hand: the one exception in the game to "delivery is ' +
+      'barn-only", printed on the card itself. Mandatory Deliver as printed, auto-skipping ' +
+      'when nothing is payable even with the hand bridge; the hand card is never required, ' +
+      'only ever a top-up when the barn is exactly one short.',
+  },
+  activate(fx, self) {
+    fx.pushTask({
+      t: 'card',
+      pid: self.seat,
+      src: self.card,
+      kind: 'fruitPressDeliver',
+      riders: {},
+    });
   },
   tasks: {
-    marketHarvest: {
+    fruitPressDeliver: {
       answers(data, state, task) {
-        return ownBuildings(data, state, task.pid)
-          .filter((b) => isHarvestable(data, b))
-          .map((b) => ({ kind: 'building', card: b.card }) as TaskAnswer);
+        return deliverOptions(data, state, task.pid, Infinity, 0, false, true).map(
+          (o) =>
+            ({
+              kind: 'card',
+              payload: { tile: o.tile, token: o.token, spend: o.spend, handCrop: o.handCrop },
+            }) as TaskAnswer,
+        );
       },
       resolve(fx, task, answer) {
-        if (answer.kind !== 'building') throw new Error('marketHarvest expects a building answer');
-        const harvested = buildingOf(fx.state, task.pid, answer.card).stack.length;
-        fx.harvest(task.pid, answer.card);
-        drawN(fx, task.pid, task.src, harvested);
+        if (answer.kind !== 'card') throw new Error('fruitPressDeliver expects a card answer');
+        const { tile, token, spend, handCrop } = answer.payload as {
+          tile: string;
+          token: number;
+          spend: Partial<Record<Suit, number>>;
+          handCrop?: Suit;
+        };
+        // The delivery answer names the CROP the hand card pays as; the
+        // literal card is picked here, deterministically, so the answer
+        // count stays additive (one per crop) rather than one per hand card.
+        let handCard: CardId | undefined;
+        if (handCrop !== undefined) {
+          handCard = player(fx.state, task.pid).hand.find(
+            (id) => cardById(fx.data, id).suit === handCrop,
+          );
+          if (handCard === undefined) {
+            throw new Error(`No ${handCrop} card left in hand to pay The Fruit Press`);
+          }
+        }
+        doDeliver(
+          fx,
+          task.pid,
+          tile,
+          spend,
+          handCard === undefined ? { token } : { token, handCard },
+        );
         return true;
       },
     },
   },
 };
 
-/** O12 The Fruit Press - "Put up to 4 cards from your hand into your Barn." (Dean, v37.) */
-export const fruitPress: CardHandler = {
-  difficulty: {
-    score: 1,
-    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
-    notes:
-      '⭐ CAPPED AT 4 (Dean, v37): one optional `handToBarn` task sized to min(4, hand), ' +
-      'so the stop answer is how "up to" is read. The older note says "any number" and is ' +
-      'history on that point. ' +
-      'The noun is CARDS IN YOUR HAND, and one of only three routes this suit has to the ' +
-      "barn (the others being O7's harvest and O17's build-payment divert, which since v31 " +
-      'reaches build payments alone rather than every discard) - Orchard is rich in cards ' +
-      'and deliberately poor in freight. Re-entrant handToBarn, optional so any number ' +
-      'means any number including none. ⚠️ Overlaps W10 The Furrow at the same tier and ' +
-      'price and is the BETTER card, being chosen and partial where the Furrow is total and ' +
-      "mandatory. One of the two should move; that is a Wheat edit and Dean's call, so " +
-      'both are in the arm as printed and they will compete in it.',
-  },
-  activate(fx, self) {
-    const n = Math.min(4, player(fx.state, self.seat).hand.length);
-    if (n === 0) return;
-    fx.pushTask({ t: 'handToBarn', pid: self.seat, src: self.card, remaining: n, optional: true });
-  },
-};
-
 /**
- * O13 The Seed Bank - "GROW up to 2 of your other buildings, using any suit."
- * (v41; was "GROW each of your ORCHARDs".)
+ * O13 The Seed Bank - v48 retext (`tasks/v48-rulings-v2.md`, the builder-
+ * default paragraph): "GROW 2 of your other buildings." (was "GROW 2 of your
+ * other buildings, each with the top card of any deck.")
  *
  * Renamed from The Grand Orchard on 19/08/2026 (v30 group C) - the rename that
  * closed the D1 ruling in the file header.
+ *
+ * ⛔ THE DECK-PAID WILD GROW IS GONE. "Each with the top card of any deck" is
+ * off the sheet, and the audit's resolved table reads the plain verb GROW
+ * back the way it always means when nothing else is printed: one card from
+ * hand, matching the target's activation cost (a wild activation takes any
+ * card), placed on the stack, the ability fires. So `deckGrowOptions` is
+ * swapped for `growOptions` and `doGrow`'s `fromDeck` mod is dropped for a
+ * plain `payment` card - the same primitive an ordinary Grow move uses.
+ * "Other buildings" needs no explicit exclusion of O13 itself: by the time
+ * `activate` runs, `markFired` has already put O13 in `turn.firedThisTurn`
+ * (every activation path marks fired before calling the handler), and
+ * `growOptions` already drops anything in that list - the same reason a
+ * Notice Board and an already-fired building never appear either. Because a
+ * hand-paid Grow can fill and clog its target, unlike the old deck source,
+ * the second Grow may find fewer legal targets than the first left behind.
  */
 export const seedBank: CardHandler = {
   difficulty: {
     score: 4,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: true, conditional: true, counts: true, interrupts: true },
+    asserted: { newPrimitive: false, conditional: true, counts: true, interrupts: true },
     notes:
-      '⭐ v41/v42: UP TO TWO of your OTHER buildings, any tier and any suit, each a real ' +
-      'GROW paid with a hand card of ANY crop - the shared `growAnyAnswers` / ' +
-      '`resolveGrowAny` pair in buildings.ts, the same any-crop Grow A6 The Garden Hive ' +
-      'uses. One task with `remaining` 2 and a stop answer; it re-queues itself behind ' +
-      "each activation's own tasks, and a building grown once is marked fired and drops " +
-      'out, so it never grows the same one twice. Never O13 itself, never a Notice Board ' +
-      '(growOptions excludes the board slot). The older note, about "each ORCHARD" paid ' +
-      'with matching cards, follows. ' +
-      'The hard one, and the card that attacks the measured problem in the whole game: GROW ' +
-      'happens about 3.6 times per player per game and fires the printed ability on 58 of ' +
-      '105 cards, so this buys the TRIGGER in bulk instead of inflating a payload. Each ' +
-      'step is a REAL grow through doGrow - a matching card paid onto the stack, the ' +
-      "surcharge, the ability, the Apiary Farmstead's rider - so nothing about a GROW is " +
-      "re-implemented here. The loop re-queues itself BEHIND each activation's own tasks, " +
-      'which is what makes the old printed "in turn" true: the order is the player\'s and ' +
-      "it matters (O7's harvest and O8's build both want to come after the draws that fund " +
-      'them). Full ORCHARDs, unaffordable ones and ones already grown this activation all ' +
-      'drop out of the answer set, so it can never grow one twice and never grows ITSELF ' +
-      '(a Tier 3 card is not an ORCHARD under D1, and doGrow marks it fired before activate ' +
-      'runs in any case). Capped by the hand, not the tableau: four ORCHARDs need four ' +
-      'orchard cards out of 4. ' +
-      '⛔ READING - "EACH" IS UNBOUNDED AND THE PAY-AS-YOU-GO SURVIVED THE SHORTENING. The ' +
-      'v30 text drops "in turn, paying each cost as you go. Skip any you cannot or do not ' +
-      'want to pay", which is a shortening of the printed line and NOT a removal of the ' +
-      'payment: Dean ruled "each" correct (unbounded, not the fix list\'s cap of 3), and ' +
-      'every step is still a real GROW that costs a real matching card, so the skip answer ' +
-      'stays as the way to decline one you can pay for but do not want. ' +
-      'RETIRED THE ACTION SEAM 19/08/2026: this was an ACTION card whose standing move was ' +
-      'the main action. It is now an ordinary GROW building (threshold 1, wild activation), ' +
-      'so the GROW that fires it is itself the action and the payment card lands on O13 ' +
-      'before the loop starts - one more card out of the hand that funds the loop, which ' +
-      'is the real cost of the conversion and the reason the difficulty drops from 5 to 4.',
+      'TWO of your OTHER buildings, any tier and any suit, each a real hand-paid GROW - ' +
+      'one matching card (or any card, for a wild activation) from hand, placed, the ' +
+      'ability fires. One re-entrant task with `remaining` 2 and NO skip answer: mandatory, ' +
+      'doing as much as it can (one legal target grows one; zero grows none; a hand with no ' +
+      'matching card for either remaining target also grows none). Each step delegates ' +
+      'straight to `growOptions(data, state, seat)` for its answer set (never O13 itself, ' +
+      'never a Notice Board, never a full building, never a building already fired this ' +
+      'turn, all read off `turn.firedThisTurn`) and `doGrow(..., building, payment)` to ' +
+      "resolve it. The task re-queues itself AFTER the activation's own tasks (`pushTask` " +
+      "appends), so the second building is chosen once the first one's ability (and any " +
+      'cards it draws or places) has fully resolved.',
   },
   activate(fx, self) {
     fx.pushTask({
@@ -650,18 +645,26 @@ export const seedBank: CardHandler = {
     seedBankGrow: {
       answers(data, state, task) {
         if ((task.riders.remaining as number) <= 0) return [];
-        const out = growAnyAnswers(data, state, task.pid, [task.src]);
-        if (out.length === 0) return [];
-        out.push({ kind: 'skip' });
-        return out;
+        return growOptions(data, state, task.pid)
+          .filter((o) => o.payment !== null)
+          .map(
+            (o) =>
+              ({
+                kind: 'grow',
+                building: o.building,
+                payment: o.payment,
+              }) as TaskAnswer,
+          );
       },
       resolve(fx, task, answer) {
-        if (answer.kind === 'skip') return true;
-        if (answer.kind !== 'card') throw new Error('seedBankGrow expects a card answer');
-        resolveGrowAny(fx, task.pid, answer.payload);
+        if (answer.kind !== 'grow') throw new Error('seedBankGrow expects a grow answer');
+        if (answer.payment === null) {
+          throw new Error('seedBankGrow is always paid from hand');
+        }
+        doGrow(fx, task.pid, answer.building, answer.payment);
         const remaining = (task.riders.remaining as number) - 1;
         // Re-queued AFTER the activation's own tasks (pushTask appends), so the
-        // cards a grow draws are in hand before the next one is chosen.
+        // second building is chosen once the first Grow's ability has resolved.
         if (remaining > 0) {
           fx.pushTask({
             t: 'card',
@@ -764,124 +767,37 @@ export const conservatory: CardHandler = {
 };
 
 /**
- * O15 The Garden Library - "Draw the top card of each deck. You may give a card
- * to every other player and Draw 1 per card given."
+ * O15 The Garden Library - v48 retext (`tasks/v48-rulings-v2.md`, the
+ * builder-default paragraph): "Draw until you have 6 cards in hand." (was
+ * "Draw the top card of each deck, then give 1 card to a neighbour.")
+ *
+ * ⛔ NEITHER OLD HALF SURVIVES. No more one-card-per-deck reveal, no more
+ * give: the hand is counted once, when `activate` runs (after the GROW
+ * payment has already left it, as it has for every Grow), and if it holds
+ * fewer than 6 the shortfall is a flat see-N/keep-N Draw - exactly `drawN`,
+ * the same helper O4's naked Draw 3 uses - the owner choosing a deck for
+ * each card as it is revealed. A hand already at 6 or more draws nothing
+ * (`drawN`'s own `n <= 0` guard), and a table that runs dry mid-draw simply
+ * keeps what it found (the `draw` task's own fallback), which is the
+ * mandatory "as much as it can" reading with no code of its own needed for
+ * it - never anybody else at the table.
  */
 export const gardenLibrary: CardHandler = {
   difficulty: {
-    score: 4,
-    verified: { prompts: true, crossPlayer: true, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: true, counts: true, interrupts: false },
+    score: 2,
+    verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
+    asserted: { newPrimitive: false, conditional: false, counts: true, interrupts: false },
     notes:
-      'The quantifier is THE TOP CARD OF EACH DECK, and its best property is that it ' +
-      'self-balances across seat counts, which nothing else in the game does: two seats ' +
-      'keep four and take £1, three keep three and take £2, four keep two and take £3. ' +
-      '⛔ THIS IS NOT A DRAW however it is printed, and that is deliberate. It must not ' +
-      'consult withDrawModifier, must not fire afterDrawKeep and must not reach the divert ' +
-      'seam - so it is takeDeckTop into limbo, then passCard / cardsToHand, none of which ' +
-      'touch the draw funnel. "Draw" in this game means cards into your hand from decks of ' +
-      'YOUR choosing; the top card of EACH deck is a fixed reveal and triggers nothing. ' +
-      '⚠️ THE v30 SHEET PRINTS "Draw the top card of each deck" WHERE IT USED TO PRINT ' +
-      '"Take". The implementation deliberately did not follow the verb - the v30 plan says ' +
-      'the rewrite "keeps its shape" and only makes the give optional - but a table will ' +
-      'read "Draw" and expect the Orchard Farmstead modifier and the divert seam to fire on ' +
-      'it, which would gift away the cards this card just took. A RULING IS OWED: either ' +
-      'the sheet goes back to "Take", or somebody accepts a genuinely different card. ' +
-      'The refund fires per card that actually crosses. ⚠️ ITS SELF-BALANCING PROPERTY IS ' +
-      'GONE WITH THE COIN, and that was its best one: two seats kept four cards and took ' +
-      '£1, four seats kept two and took £3, so the card was worth about the same at every ' +
-      'seat count. Paying a CARD per gift makes it exactly neutral instead - give one, draw ' +
-      'one - so the card is now "keep the top of every deck" at every seat count and the ' +
-      'give is free flavour. Re-read the give rate if the card runs hot. ⚠️ Deck-top ' +
-      'pressure: this is the first card to cut if reshuffles per played deck climb. ' +
-      'v30 (19/08/2026) made two changes here. The give became OPTIONAL ("you may"), so ' +
-      'the skip answer - keep everything, mint nothing - is offered at EVERY step and not ' +
-      'only once the rivals run out; a seat that wants the cards more than the coins may ' +
-      'now say so, and a seat may serve one rival and stop. And the ACTION seam is retired: ' +
-      'it is an ordinary GROW building (threshold 2, wild activation), so the GROW is the ' +
-      'action and the payment card lands on O15 before the decks are touched.',
+      'The quantifier is now a HAND FLOOR rather than a deck count, and it no longer ' +
+      'self-balances across seat counts the old "one per live deck" reading did: it draws ' +
+      'more from a small hand and nothing from a hand already at or above 6, whatever the ' +
+      'seat count. A real Draw, through the ordinary see-N/keep-N task like every other ' +
+      'card-ability Draw in the suit, so `afterDrawKeep` fires and a discard, if the funnel ' +
+      'ever produced one, would still reach O17 - though a keep-everything draw never does.',
   },
   activate(fx, self) {
-    const taken: CardId[] = [];
-    for (const suit of liveDecks(fx.data, fx.state)) {
-      const card = fx.takeDeckTop(suit);
-      if (card !== null) taken.push(card);
-    }
-    if (taken.length === 0) return;
-    // A STANDARD DRAW (Dean, 19/08/2026): the sheet says "Draw the top card of
-    // each deck", and Dean ruled the word literal - normal draw rules apply.
-    //
-    // So it goes through the DRAW TASK rather than arriving by `cardsToHand`.
-    // `revealed` is pre-filled because the CARD names the decks, not the
-    // player, and see === keep because the card keeps everything it draws; the
-    // task then has exactly one legal answer and resolves straight through to
-    // the funnel. What that buys is the seam, not a number: `afterDrawKeep`
-    // fires and the unkept remainder (here always empty) goes through
-    // `discardOrDivert`, exactly as a base Draw or a Draw Service does.
-    //
-    // ⚠️ It changes nothing observable TODAY, and that is worth writing down so
-    // nobody "simplifies" it back. Nothing in the catalogue listens to
-    // `afterDrawKeep` yet, and O17 The Fruit Basket cannot reach it for two
-    // independent reasons since v31 - a draw that keeps everything discards
-    // nothing, and O17 is not on the discard seam at all any more. The next card
-    // that keys off drawing will see this one; the old `takeDeckTop`-into-limbo
-    // shape would have been invisible to it.
-    fx.pushTask({
-      t: 'draw',
-      pid: self.seat,
-      src: self.card,
-      see: taken.length,
-      keep: taken.length,
-      revealed: taken,
-    });
-    fx.pushTask({
-      t: 'card',
-      pid: self.seat,
-      src: self.card,
-      kind: 'library',
-      riders: { cards: taken, given: [] },
-    });
-  },
-  tasks: {
-    library: {
-      answers(data, state, task) {
-        const cards = (task.riders.cards as CardId[]) ?? [];
-        if (cards.length === 0) return [];
-        const seats = giftableSeats(data, state, task.pid, (task.riders.given as Seat[]) ?? []);
-        const out = seats.flatMap((to) =>
-          cards.map((card) => ({ kind: 'card', payload: { card, to } }) as TaskAnswer),
-        );
-        // Skip = keep the rest and mint nothing. Offered at EVERY step since the
-        // v30 "you may", not only when the rivals have run out - it is the whole
-        // of what the optional wording buys.
-        out.push({ kind: 'skip' });
-        return out;
-      },
-      resolve(fx, task, answer) {
-        const cards = (task.riders.cards as CardId[]) ?? [];
-        if (answer.kind === 'skip') {
-          // Nothing to move: the draw above already put every card in hand.
-          task.riders.cards = [];
-          return true;
-        }
-        if (answer.kind !== 'card') throw new Error('library expects a card or skip answer');
-        const card = answer.payload.card as CardId;
-        const to = answer.payload.to as Seat;
-        // `giveCard` and not `passCard` since the draw landed them in hand:
-        // the card leaves a real hand, so `fromHand` tells a bot the giver is
-        // genuinely a card down. `passCard` is the divert seam's move, for a
-        // card that never reached a hand at all.
-        fx.giveCard(task.pid, to, card);
-        // "Draw 1 per card given", paid one at a time as each gift lands. The
-        // draw task is APPENDED, so it resolves after the whole library task has
-        // finished handing cards out - a replacement card can therefore never be
-        // given away by the same activation that drew it.
-        drawN(fx, task.pid, task.src, 1);
-        task.riders.cards = cards.filter((c) => c !== card);
-        task.riders.given = [...((task.riders.given as Seat[]) ?? []), to];
-        return (task.riders.cards as CardId[]).length === 0;
-      },
-    },
+    const short = 6 - player(fx.state, self.seat).hand.length;
+    drawN(fx, self.seat, self.card, short);
   },
 };
 
@@ -934,167 +850,50 @@ export const fruitStore: CardHandler = {
 };
 
 /**
- * O17 The Fruit Basket - "Once per turn, instead of discarding a card you spend
- * FROM YOUR HAND, put it into your barn."
+ * O17 The Fruit Basket - v48 retext (`tasks/v48-rulings-v2.md`, R12): "Once
+ * per turn, if you have 6 or more cards in hand, put 1 card of your choice
+ * from your hand into your Barn." (was "Once per turn, instead of discarding
+ * a card you spend from your hand, put it into your barn.")
  *
- * ⛔ "FROM YOUR HAND" IS NEW AND IT IS A BLOCKING FIX (A150, Dean
- * 12/09/2026), not a tidy-up. See the guard in `afterBuild` below for the
- * second-mint loop it closes and for the one arm whose behaviour it changes.
- * ⚠️ THE CARD SHEET STILL SAYS THE OLD THING: `Isle-of-Farms-v38.xlsm` still prints the
- * v32 text, so O17 needs a v39 patch and a Qty flag, and the ledger's Table B row for O17 is the
- * register. No other face moves for the Village Store.
+ * ⛔ THE BUILD-PAYMENT DIVERT SEAM IS GONE. The card no longer listens to
+ * `afterBuild` at all, so the whole `divertOrDiscard` / `stillDiscarded`
+ * machinery it shared with D5 and D6 leaves with it: nothing here reaches
+ * into a discard pile any more, and it no longer cares whether a spend came
+ * from the hand or the barn (the A150 restriction that mattered under the
+ * old wording has no subject either).
  *
- * ⭐ THE CAP IS THE v32 RULING, AND DEAN TOOK IT INSTEAD OF A PRICE. v31 moved
- * the card off the draw discard onto the build payment and deleted its £1, which
- * left it free, mandatory in effect and taken every single time: a card in your
- * barn is delivery fuel where a card in the discard is nothing, so "you may" was
- * a prompt with one sensible answer. The plan named the alternative price
- * ("discard a card from your hand", the only currency left); the ruling is a
- * ONCE-PER-TURN LIMIT instead.
- *
- * ⛔ AND "YOU MAY" IS GONE WITH IT, DELIBERATELY. The decision the card now asks
- * is WHICH spent card and ON WHICH BUILD, not whether - so the task offers no
- * skip. "Which build" is a real question because a turn can hold more than one:
- * D12 The Butter Factory builds two, D10 and D15 grant builds, and the Dairy
- * door is a Build alongside your own main action. The cap goes to the FIRST
- * build of the turn, so the way to spend it on a later one is to take that build
- * first - the choice is expressed in build ORDER rather than in a decline.
- *
- * ⚠️ THE ONE ARGUMENT AGAINST THE MANDATORY READING, recorded here so it is not
- * rediscovered: A CARD SENT TO THE BARN LEAVES THE SHARED DECK PERMANENTLY,
- * where a discarded card comes back on the natural reshuffle. So a mandatory
- * diversion is a small permanent drain on that suit's deck, every turn its owner
- * builds. Almost certainly a non-issue at this scale, and arguably a feature
- * given Orchard's identity is patient accumulation - but IF IT EVER BITES, THE
- * FIX IS TO RESTORE THE OPTION, NOT TO CHANGE THE CAP.
- *
- * ⛔ WHAT IT USED TO BE. Before v31 it read "Instead of discarding a card, you
- * may pay £1 to put it into your barn" and was one declaration and no code: the
- * `divertsDiscard` flag put it on the shared DISCARD funnel (`discardOrDivert`,
- * tasks.ts), where every discard reached it, the end-of-turn overflow included.
- * "A card you SPEND" is a strictly narrower moment and a different funnel - a
- * card thrown away by a see-N/keep-K draw is not spent, a card that pays for a
- * Build is - so the flag came off and the card listens to its own builds.
- *
- * ⚠️ WHERE IT HOOKS, AND WHY IT IS NOT `divertOrDiscard` ITSELF.
- * `divertOrDiscard` (actions.ts) is the build payment's one funnel and is
- * exported as the seam this card wants, but it runs INSIDE `doBuild` with no
- * wiring point a handler can reach, so this handler takes the next moment after
- * it: `afterBuild`, with the payment already face up in the discard, and
- * `fx.reclaimDiscard` to lift a card back out. That is the same route D5 The
- * Churning Shed and D6 The Trading Shed already take to reach the cards a build
- * spent, and `stillDiscarded` is the shared idea that keeps the three honest - a
- * card another effect has already claimed is no longer in the pile.
- *
- * ⭐ THE TASK IS PREPENDED, which is the ordering rule `divertOrDiscard`'s own
- * docblock states: a diversion is taken out FIRST, so the pile only ever holds
- * what nobody else claimed, and ONE DESTINATION PER SPENT CARD falls out of the
- * ordering instead of being asserted three times. Without the prepend a seat
- * holding both O17 and D6 would resolve them in tableau order, which is not a
- * rule anybody could read off the cards.
+ * ⭐ THE NEW HOOK IS `beforeTurnEnd` (fx.ts), the same seam O18 A Helping
+ * Hand and V17 The Dockworker's Union already listen on: `finishTurn`
+ * (turnflow.ts) fires it exactly once a turn, before the hand-limit discard,
+ * which is what makes "once per turn" automatic here - unlike the old
+ * build-payment card, there is no need for an explicit `markFired` guard,
+ * because the hook itself only ever fires once. Owner-scoped
+ * (`event.seat === self.seat`), and MANDATORY ("put", not "you may"): with a
+ * hand of 6 or more the owner must send one chosen card to the barn, through
+ * the ordinary `handToBarn` task (`remaining: 1`, no `optional` flag) W4,
+ * V9 and V4 already use for a plain hand-to-barn placement. With a hand
+ * under 6 the listener returns and nothing is offered at all.
  */
 export const fruitBasket: CardHandler = {
   difficulty: {
-    score: 3,
+    score: 1,
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
-    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
+    asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: true },
     notes:
-      'ONCE PER TURN, on the shared `turn.firedThisTurn` guard through `markFired` ' +
-      '(runtime.ts, THE ONE WRITER of that list) - the same seam W16 The Granary was moved ' +
-      'onto by the 2026-08-12 rebalance, and not a private counter. ✅ Safe for a Power ' +
-      'card, CHECKED not assumed: `growOptions` and `activateTargets` filter on that list ' +
-      'but also require `activationType !== null`, and O17 has none; both sow-target ' +
-      'filters read it too, and O17 prints no threshold, so it was never a legal target to ' +
-      'remove in the first place. ' +
-      'The guard is checked AND set in the HOOK rather than at resolution, which is the ' +
-      'pattern the retired W2 rider used: the payment is verified non-empty first, and ' +
-      '`divertOrDiscard` has already put those cards face up in the discard by the time ' +
-      '`afterBuild` fires, so a task that burns the cap and then finds nothing is not a ' +
-      'reachable state. ' +
-      '⚠️ ITS SCOPE SHRANK TWICE. It used to reach EVERY discard, which is why the ' +
-      'watch-list called it "a rich Orchard turns every discard into freight"; v31 narrowed ' +
-      'it to build payments, and v32 caps it at one card a turn. Its owner is an Orchard ' +
-      'seat, which is not the suit that builds most, so expect it to fire once a turn at ' +
-      'the very best. ' +
-      'Deliberately NOT reached, and unchanged: barn spends. Paying the island is a spend ' +
-      'in the plain-English sense, and buying a just-spent delivery card back would stop ' +
-      'the barn being a dead end - the one rule that keeps freight from accelerating an ' +
-      'engine. Cards D7 lifts off a stack are not reached either: they are spent, but they ' +
-      'never go through the payment funnel this listens to.',
+      'The condition and the effect now talk about the same resource - a big hand feeds ' +
+      'the barn - where the old card read the build payment instead. Checked once, at the ' +
+      'fixed end-of-turn moment, so a hand that crosses 6 and back down again mid-turn is ' +
+      'read only at the boundary; order against O18 and any other `beforeTurnEnd` listener ' +
+      'falls under the rule book\'s general "the player whose turn it is chooses".',
   },
   on: {
-    afterBuild(fx, event, self) {
+    beforeTurnEnd(fx, event, self) {
       if (event.seat !== self.seat) return;
-      if (event.payment.length === 0) return;
-      // ⛔ FROM YOUR HAND, AND ONLY FROM YOUR HAND (A150, Dean 12/09/2026).
-      // The card now reads "instead of discarding a card you spend FROM YOUR
-      // HAND", and the restriction is blocking rather than tidy: the Village
-      // Store's exchange (V1) spends cards OUT OF THE BARN for coins, and a
-      // card this could lift back out of an exchange would hand its owner the
-      // coin AND the card - a SECOND MINT, once per turn, free, on every turn
-      // it delivers. Every coin economy this project has had died of a second
-      // faucet or a pity rate, and Dean took the restriction rather than a
-      // general "the exchange is not a spend" exemption because a restriction
-      // closes the loop at source and needs no special case anywhere else.
-      //
-      // ⚠️ WHAT IT ACTUALLY CHANGES TODAY IS ONE ARM, not the exchange. The
-      // exchange never reaches this hook (it discards directly, and this
-      // listens to `afterBuild`), so the live case is Dean's 'spend' variant's
-      // Dairy leg, `doCommonsSpendBuild`, which pays a build off a CENTRAL PILE
-      // and whose own docblock used to promise this card fired there. It no
-      // longer does. Cost of getting it wrong: the loop above, silently, the
-      // first time anything pays a build out of a barn.
-      if (event.fromHand !== true) return;
-      // ONCE PER TURN (v32). Checked and marked here, before the task is queued,
-      // so a second build in the same turn never even opens a prompt.
-      if (fx.state.turn.firedThisTurn.includes(self.card)) return;
-      markFired(fx, self.card);
-      fx.prependTask({
-        t: 'card',
-        pid: self.seat,
-        src: self.card,
-        kind: 'basket',
-        riders: { spent: [...event.payment] },
-      });
-    },
-  },
-  tasks: {
-    basket: {
-      answers(data, state, task) {
-        const spent = stillDiscarded(data, state, (task.riders.spent as CardId[]) ?? []);
-        // NO SKIP: the card prints "put", not "you may" (v32). With nothing left
-        // in the pile the list is empty and the drain loop drops the task, which
-        // is the same silent no-op a skip would have produced.
-        return spent.map((card) => ({ kind: 'card', payload: { card } }) as TaskAnswer);
-      },
-      resolve(fx, task, answer) {
-        if (answer.kind !== 'card') throw new Error('basket expects a card answer');
-        // The card is already in its suit's discard: `divertOrDiscard` put it
-        // there when the build paid. Lifting it back out is one primitive, and
-        // it emits `discardToBarn`, so the freight metrics see it.
-        fx.reclaimDiscard(task.pid, answer.payload.card as CardId);
-        // ONE card, and done. It was re-entrant until v32, walking the whole
-        // payment; the cap is a card a TURN, not a card a build.
-        return true;
-      },
+      if (player(fx.state, self.seat).hand.length < 6) return;
+      fx.pushTask({ t: 'handToBarn', pid: self.seat, src: self.card, remaining: 1 });
     },
   },
 };
-
-/**
- * The payment cards still face up in their suits' discards - O17's live target
- * set.
- *
- * The same helper dairy.ts writes for D5 and D6, duplicated here rather than
- * shared across suit files on purpose: it is two lines, and a cross-suit import
- * between two card files is a coupling neither suit asked for. The RULE it
- * encodes is the shared thing, and it lives in `divertOrDiscard`'s docblock:
- * only the face-up cards this build discarded, no reaching into the pile's
- * history, and no reaching for one another effect has already claimed.
- */
-function stillDiscarded(data: GameData, state: GameState, spent: readonly CardId[]): CardId[] {
-  return spent.filter((id) => state.discards[cardById(data, id).suit]?.includes(id) === true);
-}
 
 /** O19 The Fruit Hall - "Game end: 1 VP for every 3 cards in your hand." */
 export const fruitHall: CardHandler = {
@@ -1109,8 +908,9 @@ export const fruitHall: CardHandler = {
       "ACCUMULATE, which states Orchard's identity - patient accumulation - directly. " +
       '⚠️ THE DIVISOR IS THE DIAL AND IT IS THE FIRST THING TO SWEEP (the plan says so). ' +
       '⭐ AT THE TABLE THERE IS NO HAND LIMIT, so the card is uncapped there. In the ENGINE ' +
-      'the hand is bounded by `rules.turn.handLimit` (7 today, an instrument bound and not ' +
-      'a rule), which caps this card at 2 VP in simulation; any reading of it off the ' +
+      'the hand is bounded by `rules.turn.handLimit` (10 since 24/09/2026, was 7, an ' +
+      'instrument bound and not a rule), which caps this card at 3 VP in simulation ' +
+      '(was 2 VP at the bound of 7); any reading of it off the ' +
       'simulator is a reading about the instrument. It still scores on the ONE zone ' +
       'nothing forces a player to empty. ' +
       'It is also the exact inverse of what every other suit is doing at game end - ' +

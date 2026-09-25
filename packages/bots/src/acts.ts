@@ -95,15 +95,21 @@ export type Act =
   | { a: 'spendMeeple'; colour: Suit }
   /**
    * `payment` is hand cards and `stacks` cards lifted off the seat's OWN
-   * buildings (D7 The Versatile Shed). The engine holds
-   * `payment.length + stacks.length === cardsNeeded`, so the two are ways of
-   * paying ONE price and a term reading only their sum can never tell them
-   * apart - which is what ticket 47 found `buildSpend` doing.
+   * buildings. The engine holds `payment.length + stacks.length ===
+   * cardsNeeded`, so the two are ways of paying ONE price and a term reading
+   * only their sum can never tell them apart - which is what ticket 47 found
+   * `buildSpend` doing.
    *
    * `stacks` is a COUNT. Unlike the old barn leg, which ticket 51 measured as
    * dead (0.2% of 896 build groups offered one and no chosen move ever spent
-   * one), a stack card is a REAL alternative to a hand card, so it is charged
-   * as one.
+   * one), a stack card was a REAL alternative to a hand card while D7 The
+   * Versatile Shed printed the stack payment, so it was charged as one.
+   * ⚠️ v48 (`tasks/v48-rulings-v2.md`): D7 retexted off the stack payment
+   * entirely ("Build. Place 1 of the cards spent into your Barn."), and
+   * `BuildMods.fromStacks` lost its only caller, so no card in the game can
+   * populate `stacks` any more (`narrow.ts` has the fuller note). The field is
+   * kept, not deleted, in the same spirit as the enumerator code that could
+   * still fill it.
    */
   | {
       a: 'build';

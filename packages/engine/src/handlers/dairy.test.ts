@@ -21,7 +21,6 @@
 import { BASE_GAME_DATA as data } from '@gp/data';
 import { describe, expect, it } from 'vitest';
 
-import { doBuild, freeHandSpace } from '../actions.js';
 import { Fx } from '../fx.js';
 import { apply, legalMoves } from '../game.js';
 import { answerTask, gameEndScores, growBuilding, pendingAnswers } from '../runtime.js';
@@ -231,8 +230,10 @@ describe('D2 The Farmstead - the own-crop end-game scorer', () => {
   it('D2 is the largest single scorer on a wide Dairy farm', () => {
     const s = base();
     buildFor(data, s, DAIRY, 'D4', 'D5', 'D6', 'D7', 'D8', 'D20');
-    // D20's divisor of 2 over 6 built buildings is 3; D2's flat rate is 6.
-    expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(3 + 6);
+    // ⭐ v48 R13 (tasks/v48-rulings-v2.md): D20 now excludes ITSELF from its own
+    // count (an Endgame card), so its divisor of 2 runs over the five Tier 1
+    // sheds only - 2, not 3. D2's flat rate is unaffected: 6.
+    expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(2 + 6);
   });
 });
 
@@ -275,10 +276,11 @@ describe('the build-modifier vocabulary', () => {
   });
 
   it('D9 counts crops on buildings BUILT, so a starter never adds one', () => {
-    // Ruling M: W19 The Wheat Exchange prints the same eleven words and reads a
-    // DIFFERENT set - the whole tableau through cropOf. The Wagon reads
-    // builtBuildings, the noun the rest of the suit shares, and a starter is
-    // outside it either way.
+    // Ruling M: W19 The Wheat Exchange prints the same eleven words. Before
+    // v48 R13 it read a DIFFERENT set - the whole tableau through cropOf -
+    // where the Wagon read builtBuildings; R13 makes the two agree (see the
+    // R13 test right below), but a starter is outside both readings either
+    // way.
     // ⛔ THE TEST USED TO FLIP ALL THREE STARTERS, because cropOf returned a
     // starter's suit once it was upgraded and this was the case where the two
     // readings could have disagreed. v31 deletes the flipped faces, so a starter
@@ -292,154 +294,110 @@ describe('the build-modifier vocabulary', () => {
     expect(headBuild(grown.state).mods).toEqual({ discount: 1 });
   });
 
-  it('D7 lets cards come off your own buildings, and they are SPENT not harvested', () => {
-    const s = base();
-    buildFor(data, s, DAIRY, 'D7', 'D4');
-    // W4 is the spare wheat card the hand has to keep now: at 2 per stack card
-    // an odd cost can never be paid off the stack alone, so a hand with nothing
-    // in it but the card being built has no legal build at all.
-    dealTo(data, s, DAIRY, 'D5', 'W9', 'W4');
-    loadStack(data, s, DAIRY, 'D4', 3, 'wheat');
-    const stacked = [...buildingOf(s, DAIRY, 'D4').stack];
-    const grown = growBuilding(data, s, DAIRY, 'D7', 'D5');
-    expect(headBuild(grown.state).mods).toEqual({ fromStacks: true });
-
-    // ⚠️ THE RATE CHANGED ON 19/08/2026: a stack card is worth TWO of the cost,
-    // not one. W9 costs 3, so ONE card off D4 pays two thirds of it and the hand
-    // pays the last card - and three cards off the stack is no longer offered at
-    // all, because six paid against a cost of three is an overpayment and the
-    // enumerator never invites one.
-    const offers = buildsOf(grown.state, 'W9').filter((a) => a.kind === 'build');
-    expect(offers.every((a) => (a.stacks?.length ?? 0) <= 1)).toBe(true);
-    // ⭐ RULED 19/08/2026 (Dean): "the card counts as ANY card - including
-    // wild", so a stack card is a TRUE wildcard - it fills W9's own-crop half
-    // whatever its own suit is. That is why this test now has to name the
-    // building it wants: D5 is sitting on D7's own stack (it was the GROW
-    // payment above), and spending that single DAIRY card off D7 is a legal way
-    // to pay a WHEAT card's wheat requirement. Both options are correct; this
-    // one pins the D4 route so the "spent, not harvested" assertions below have
-    // a known stack to check.
-    const offStacks = offers.find(
-      (a) =>
-        a.kind === 'build' &&
-        (a.stacks?.length ?? 0) === 1 &&
-        a.payment.length === 1 &&
-        stacked.includes(a.stacks?.[0] as string),
-    );
-    expect(offStacks).toBeDefined();
-    const used = (offStacks as { stacks?: string[] }).stacks?.[0] as string;
-    expect(stacked).toContain(used);
-
-    // ...and the wildcard route really is offered alongside it: a Dairy card off
-    // D7 paying for a Wheat build is the ruling in one assertion.
-    expect(
-      offers.some((a) => a.kind === 'build' && (a.stacks ?? []).some((id) => id === 'D5')),
-    ).toBe(true);
-
-    const done = answerTask(data, grown.state, offStacks as TaskAnswer).state;
-    // One card left the stack, and only one: the other two are still on D4.
-    expect(buildingOf(done, DAIRY, 'D4').stack).toHaveLength(2);
-    // Spent, not harvested: nothing reached the barn.
-    expect(player(done, DAIRY).barn).toEqual([]);
-    expect(done.discards.wheat).toContain(used);
-    expect(player(done, DAIRY).tableau.some((b) => b.card === 'W9')).toBe(true);
-  });
-
-  it('D7 pays off ONE building: no option mixes cards from two stacks', () => {
-    const s = base();
-    buildFor(data, s, DAIRY, 'D7', 'D4', 'D8');
-    dealTo(data, s, DAIRY, 'D5', 'W9', 'W4', 'W5', 'W6');
-    loadStack(data, s, DAIRY, 'D4', 2, 'wheat');
-    loadStack(data, s, DAIRY, 'D8', 2, 'wheat');
-    const onD4 = [...buildingOf(s, DAIRY, 'D4').stack];
-    const onD8 = [...buildingOf(s, DAIRY, 'D8').stack];
-    const grown = growBuilding(data, s, DAIRY, 'D7', 'D5');
-
-    // W9 costs 3, and every card in reach is wheat, so before the cap the
-    // enumerator would happily have taken two off D4 and one off D8.
-    const offers = buildOffersOf(grown.state, 'W9');
-    expect(offers.length).toBeGreaterThan(0);
-    for (const offer of offers) {
-      const stacks = offer.stacks ?? [];
-      const mixed = stacks.some((c) => onD4.includes(c)) && stacks.some((c) => onD8.includes(c));
-      expect(mixed, JSON.stringify(offer)).toBe(false);
-    }
-    // Both single-building payments survive, and so does the hand-only one: the
-    // empty leading source is why the option set is a union and not a partition.
-    expect(offers.some((o) => (o.stacks ?? []).some((c) => onD4.includes(c)))).toBe(true);
-    expect(offers.some((o) => (o.stacks ?? []).some((c) => onD8.includes(c)))).toBe(true);
-    expect(offers.some((o) => o.stacks === undefined && o.payment.length === 3)).toBe(true);
-  });
-
-  it('D7 re-validates the cap on the way in, not only in the enumerator', () => {
-    const s = base();
-    buildFor(data, s, DAIRY, 'D7', 'D4', 'D8');
-    dealTo(data, s, DAIRY, 'D5', 'W9');
-    loadStack(data, s, DAIRY, 'D4', 2, 'wheat');
-    loadStack(data, s, DAIRY, 'D8', 2, 'wheat');
-    const onD4 = buildingOf(s, DAIRY, 'D4').stack as CardId[];
-    const onD8 = buildingOf(s, DAIRY, 'D8').stack as CardId[];
-    const grown = growBuilding(data, s, DAIRY, 'D7', 'D5');
-
-    // buildOptions never offers this, so the second guard can only be reached by
-    // calling doBuild - which is exactly the case it is there for, since apply
-    // has to refuse a payment that was never on the menu. Nothing has moved when
-    // it throws: every check in doBuild runs before the first mutation.
-    const fx = new Fx(data, grown.state, DAIRY);
-    expect(() =>
-      doBuild(
-        fx,
-        DAIRY,
-        {
-          card: 'W9',
-          payment: [],
-          stacks: [onD4[0] as CardId, onD4[1] as CardId, onD8[0] as CardId],
-        },
-        { fromStacks: true },
-      ),
-    ).toThrow(/only one of your buildings/);
-  });
-
   /**
-   * ⛔ "D7 + D2: A STACK CARD IS NEVER DIVERTIBLE, SO THE PAIR IS NOT A FREE
-   * HARVEST" IS DELETED (v31): D2 diverts nothing any more, so there is no pair.
-   * The ruling it pinned is recorded in the Farmstead block above and is worth
-   * re-reading before anything else reaches into a build payment - stack cards
-   * are SPENT, not harvested, and letting one be diverted turns stack-to-cost-to-
-   * barn into a Harvest nobody spent an action on.
-   *
-   * What survives is the half that is still true and still load-bearing: a card
-   * off a stack goes to the DISCARD and never to the barn, by any route.
+   * ⭐ R13 (tasks/v48-rulings-v2.md, 24/09/2026): a built Power card now counts
+   * toward the crop-variety discount too, on top of Tier 1-3 buildings.
    */
-  it('a card spent off a stack goes to the discard, never to a barn', () => {
+  it('R13: a built Power card of a new crop widens the discount', () => {
     const s = base();
-    buildFor(data, s, DAIRY, 'D7', 'D4');
-    dealTo(data, s, DAIRY, 'D5', 'W9', 'W4');
-    loadStack(data, s, DAIRY, 'D4', 3, 'wheat');
-    const grown = growBuilding(data, s, DAIRY, 'D7', 'D5');
-    // W9 costs 3 and a stack card pays 2, so the cheapest stack-fed payment is
-    // one card off D4 plus one out of hand.
-    const offStacks = buildsOf(grown.state, 'W9').find(
-      (a) => a.kind === 'build' && a.payment.length === 1 && (a.stacks?.length ?? 0) === 1,
-    );
-    expect(offStacks).toBeDefined();
-    const stackCard = (offStacks as { stacks?: string[] }).stacks?.[0] as string;
-    const done = answerTask(data, grown.state, offStacks as TaskAnswer).state;
-    expect(player(done, DAIRY).barn).toEqual([]);
-    // Its own suit's pile, whichever that is: the enumerator is free to pick
-    // any one card off D4's stack, and D7's OWN stack is a legal source too.
-    const piles = Object.values(done.discards).flat();
-    expect(piles).toContain(stackCard);
+    // D9 alone: Dairy only, discount 1 (the Wagon itself).
+    buildFor(data, s, DAIRY, 'D9');
+    dealTo(data, s, DAIRY, 'D5', 'W9', 'W4', 'W5', 'W6');
+    const mono = growBuilding(data, s, DAIRY, 'D9', 'D5');
+    expect(headBuild(mono.state).mods).toEqual({ discount: 1 });
+
+    // Add W16 The Granary, a Power card: a second crop, never offered as a
+    // Build or Grow target, but it counts for this discount since v48.
+    const t = base();
+    buildFor(data, t, DAIRY, 'D9', 'W16');
+    dealTo(data, t, DAIRY, 'D5', 'W9', 'W4', 'W5', 'W6');
+    const mixed = growBuilding(data, t, DAIRY, 'D9', 'D5');
+    expect(headBuild(mixed.state).mods).toEqual({ discount: 2 });
   });
 });
 
-describe('D5 The Churning Shed - the spent cards go onto the new building', () => {
+/**
+ * ⭐ v48: D7 The Versatile Shed retexted from the stack-payment card ("Build.
+ * You may spend cards from one of your buildings as 2 wild resources.") to a
+ * plain placement, the D5 shape: "Build. Place 1 of the cards spent into your
+ * Barn." Every test below that exercised `fromStacks` is gone with the mod -
+ * see the handler's own notes in dairy.ts for the ruling and for the A15
+ * coupling this shape carries forward from D5, unresolved on purpose.
+ */
+describe('D7 The Versatile Shed - one spent card, into the barn (v48)', () => {
+  it('places exactly one spent card into the barn and leaves the rest discarded', () => {
+    const s = base();
+    noMeeples(s);
+    buildFor(data, s, DAIRY, 'D7');
+    dealTo(data, s, DAIRY, 'D6', 'W9', 'W4', 'W5', 'W6');
+    const grown = growBuilding(data, s, DAIRY, 'D7', 'D6');
+    const build = buildOffersOf(grown.state, 'W9').find((a) => a.payment.length === 3);
+    expect(build).toBeDefined();
+    const spent = (build as Extract<TaskAnswer, { kind: 'build' }>).payment;
+    const built = answerTask(data, grown.state, build as TaskAnswer).state;
+    expect(built.tasks.map((t) => (t.t === 'card' ? t.kind : t.t))).toEqual(['reclaimSpent']);
+
+    const place = pendingAnswers(data, built).find((a) => a.kind === 'card');
+    expect(place).toBeDefined();
+    const placedCard = (place as Extract<TaskAnswer, { kind: 'card' }>).payload.card as CardId;
+    const done = answerTask(data, built, place as TaskAnswer).state;
+
+    // Single-shot, exactly like D5: the task is fully resolved after this one answer.
+    expect(done.tasks).toHaveLength(0);
+    expect(player(done, DAIRY).barn).toEqual([placedCard]);
+    const stranded = spent.filter((c) => c !== placedCard);
+    expect(stranded).toHaveLength(2);
+    for (const card of stranded) expect(done.discards.wheat).toContain(card);
+  });
+
+  it('offers every spent card still face up in the discard, not only one', () => {
+    const s = base();
+    noMeeples(s);
+    buildFor(data, s, DAIRY, 'D7');
+    dealTo(data, s, DAIRY, 'D6', 'W9', 'W4', 'W5', 'W6');
+    const grown = growBuilding(data, s, DAIRY, 'D7', 'D6');
+    const build = buildOffersOf(grown.state, 'W9').find((a) => a.payment.length === 3);
+    const spent = (build as Extract<TaskAnswer, { kind: 'build' }>).payment;
+    const built = answerTask(data, grown.state, build as TaskAnswer).state;
+    const offered = pendingAnswers(data, built).flatMap((a) =>
+      a.kind === 'card' ? [a.payload.card as CardId] : [],
+    );
+    expect(offered.sort()).toEqual([...spent].sort());
+  });
+
+  it('is mandatory but auto-skips with no legal Build, so nothing is placed', () => {
+    const s = base();
+    buildFor(data, s, DAIRY, 'D7');
+    dealTo(data, s, DAIRY, 'D6');
+    const grown = growBuilding(data, s, DAIRY, 'D7', 'D6');
+    // The Build auto-skipped for lack of anything to pay with: no follow-up
+    // task, and no barn card either - "if the Build could not happen ...
+    // nothing is placed" (tasks/v48-ambiguity-audit-v1.md, resolved table).
+    expect(grown.state.tasks).toHaveLength(0);
+    expect(player(grown.state, DAIRY).barn).toEqual([]);
+  });
+
+  it('does not react to a build it did not grant (afterBuild guards on its own `src`)', () => {
+    const s = base();
+    buildFor(data, s, DAIRY, 'D7');
+    const fx = new Fx(data, s, DAIRY);
+    handlerFor('D7')?.on?.afterBuild?.(
+      fx,
+      { seat: DAIRY, card: 'W4', payment: ['W5', 'W6'], src: null, fromHand: true },
+      { seat: DAIRY, card: 'D7' },
+    );
+    expect(fx.state.tasks.some((t) => t.t === 'card' && t.kind === 'reclaimSpent')).toBe(false);
+    expect(player(fx.state, DAIRY).barn).toEqual([]);
+  });
+});
+
+describe('D5 The Churning Shed - one spent card, single-shot (v47)', () => {
   /**
-   * ⭐ v42: "even if the threshold is exceeded". W9 costs three cards and prints
-   * threshold 2, so all three spent cards land and the building arrives over-full:
-   * full, harvestable, and refusing any further card.
+   * ⭐ v47: exactly ONE of the spent cards is sown, not every one of them, and
+   * the task is done after that single answer - no more "stays for the next
+   * card" loop.
    */
-  it('sows every spent card onto the new building, past its threshold', () => {
+  it('sows exactly one spent card onto the new building and leaves the rest discarded', () => {
     const s = base();
     noMeeples(s);
     buildFor(data, s, DAIRY, 'D5');
@@ -447,16 +405,46 @@ describe('D5 The Churning Shed - the spent cards go onto the new building', () =
     const grown = growBuilding(data, s, DAIRY, 'D5', 'D6');
     const build = buildOffersOf(grown.state, 'W9').find((a) => a.payment.length === 3);
     expect(build).toBeDefined();
+    const spent = (build as Extract<TaskAnswer, { kind: 'build' }>).payment;
     const built = answerTask(data, grown.state, build as TaskAnswer).state;
     expect(built.tasks.map((t) => (t.t === 'card' ? t.kind : t.t))).toEqual(['sowSpent']);
 
-    const done = answerAll(built);
+    const sow = pendingAnswers(data, built).find((a) => a.kind === 'card');
+    expect(sow).toBeDefined();
+    const done = answerTask(data, built, sow as TaskAnswer).state;
+
+    // Single-shot: the task is fully resolved after this one answer.
+    expect(done.tasks).toHaveLength(0);
     const w9 = buildingOf(done, DAIRY, 'W9');
-    expect(w9.stack).toHaveLength(3);
-    expect(isHarvestable(data, w9)).toBe(true);
-    expect(isFull(data, w9)).toBe(true);
-    expect(canTakeCard(data, w9)).toBe(false);
-    expect(done.discards.wheat).toEqual([]);
+    expect(w9.stack).toHaveLength(1);
+    const stranded = spent.filter((c) => done.discards.wheat.includes(c));
+    expect(stranded).toHaveLength(2);
+  });
+
+  /**
+   * ⭐ v47: "even if the threshold is exceeded" is gone, and it does not need
+   * to be replaced by anything - a freshly built stack is empty and every
+   * threshold is at least 1, so one sown card can at most reach the
+   * threshold exactly. W13 costs 4 (3 wheat + 1 wild) and prints threshold 1.
+   */
+  it('can fill a threshold-1 building exactly, leaving it full and harvestable', () => {
+    const s = base();
+    noMeeples(s);
+    buildFor(data, s, DAIRY, 'D5');
+    dealTo(data, s, DAIRY, 'D6', 'W13', 'W4', 'W5', 'W6', 'W7');
+    const grown = growBuilding(data, s, DAIRY, 'D5', 'D6');
+    const build = buildsOf(grown.state, 'W13').find((a) => a.kind === 'build');
+    expect(build).toBeDefined();
+    let state = answerTask(data, grown.state, build as TaskAnswer).state;
+    const sow = pendingAnswers(data, state).find((a) => a.kind === 'card');
+    expect(sow).toBeDefined();
+    state = answerTask(data, state, sow as TaskAnswer).state;
+
+    const w13 = buildingOf(state, DAIRY, 'W13');
+    expect(w13.stack).toHaveLength(1);
+    expect(isFull(data, w13)).toBe(true);
+    expect(isHarvestable(data, w13)).toBe(true);
+    expect(canTakeCard(data, w13)).toBe(false);
   });
 
   it('a Power card has no stack, so nothing is sown and the spent cards stay discarded', () => {
@@ -472,216 +460,270 @@ describe('D5 The Churning Shed - the spent cards go onto the new building', () =
   });
 });
 
-describe('D6 The Trading Shed - the card across the table', () => {
-  /**
-   * ⛔ The £1 is a Draw 1 (v31, plan section 3.3). The shape is untouched - it
-   * pays for the GIFT and not for the build, so no eligible neighbour means no
-   * payout - but the arithmetic sharpens: giving away a card you had already
-   * spent and drawing a fresh one is card-POSITIVE, where the coin was worth
-   * about a fifth of a card in practice.
-   */
-  it('gives one spent card to a neighbour and draws 1 back', () => {
+describe('D6 The Trading Shed - hand-gated draw, no Build and no neighbour (v48)', () => {
+  it('draws 1 per built building when the hand is 4 or fewer after the Grow payment', () => {
     const s = base();
-    buildFor(data, s, DAIRY, 'D6');
-    dealTo(data, s, DAIRY, 'D5', 'W7', 'W4', 'W5');
+    buildFor(data, s, DAIRY, 'D6', 'D4');
+    // D5 pays the Grow that activates D6; W4, W5, W6 are what is left, a hand
+    // of 3 after payment - comfortably under the "less than 5" gate.
+    dealTo(data, s, DAIRY, 'D5', 'W4', 'W5', 'W6');
     const grown = growBuilding(data, s, DAIRY, 'D6', 'D5');
-    const build = buildsOf(grown.state, 'W7')[0];
-    let state = answerTask(data, grown.state, build as TaskAnswer).state;
+    const done = answerAll(grown.state);
+    // D6 and D4 - two built buildings - so two cards drawn on top of the 3 left.
+    expect(player(done, DAIRY).hand).toHaveLength(5);
+  });
 
-    const give = pendingAnswers(data, state).find((a) => a.kind === 'card');
-    expect(give).toBeDefined();
-    const card = (give as Extract<TaskAnswer, { kind: 'card' }>).payload.card as string;
-    state = answerTask(data, state, give as TaskAnswer).state;
-    expect(state.tasks.some((t) => t.t === 'draw' && t.src === 'D6')).toBe(true);
-    expect(player(state, WHEAT).hand).toContain(card);
-    expect(state.discards.wheat).not.toContain(card);
+  it('the gate: a hand of exactly 4 after payment passes; a hand of 5 does not', () => {
+    const under = base();
+    buildFor(data, under, DAIRY, 'D6');
+    dealTo(data, under, DAIRY, 'D5', 'W4', 'W5', 'W6', 'W7');
+    const grownUnder = growBuilding(data, under, DAIRY, 'D6', 'D5');
+    // Hand of 4 after payment: "less than 5" passes, and D6 alone draws 1.
+    const doneUnder = answerAll(grownUnder.state);
+    expect(player(doneUnder, DAIRY).hand).toHaveLength(5);
+
+    const at = base();
+    buildFor(data, at, DAIRY, 'D6');
+    dealTo(data, at, DAIRY, 'D5', 'W4', 'W5', 'W6', 'W7', 'W8');
+    const grownAt = growBuilding(data, at, DAIRY, 'D6', 'D5');
+    // Hand of 5 after payment: the gate fails outright, no draw task at all.
+    expect(grownAt.state.tasks.some((t) => t.t === 'draw' && t.src === 'D6')).toBe(false);
+    expect(player(grownAt.state, DAIRY).hand).toHaveLength(5);
   });
 
   /**
-   * ⭐ "NO ELIGIBLE NEIGHBOUR MEANS NO PAYOUT" IS REACHABLE AGAIN. The test was
-   * deleted by v31, on the reading that DL-63 - a gift never forces an
-   * out-of-turn discard, so a rival at their hand limit is not eligible - had no
-   * limit left to read and the case could not be built. The hand limit came back
-   * on 02/09/2026 as `rules.turn.handLimit`, so it can, and this is it: fill
-   * every rival to the limit and D13 has nobody to hand a card to.
+   * ⭐ v48: NO BUILD AND NO NEIGHBOUR ANY MORE. The old "Build. You and one
+   * neighbour each Draw 1." shape - and its `neighbourDraw` task - is gone
+   * outright; growing D6 never offers a Build and never touches another seat.
    */
-  it('D13 pays nothing when every rival is at the hand limit (DL-63)', () => {
-    const limit = data.rules.turn.handLimit as number;
+  it('never offers a Build and never touches another seat', () => {
     const s = base();
-    for (let seat = 0; seat < s.players.length; seat++) {
-      if (seat === DAIRY) continue;
-      const suit = s.players[seat]!.suit;
-      dealTo(data, s, seat, ...s.decks[suit].slice(0, limit));
-      expect(player(s, seat).hand).toHaveLength(limit);
-    }
-    expect(freeHandSpace(data, s, WHEAT)).toBe(0);
+    buildFor(data, s, DAIRY, 'D6');
+    dealTo(data, s, DAIRY, 'D5');
+    const wheatBefore = player(s, WHEAT).hand.length;
+    const grown = growBuilding(data, s, DAIRY, 'D6', 'D5');
+    expect(grown.state.tasks.some((t) => t.t === 'build')).toBe(false);
+    const done = answerAll(grown.state);
+    expect(player(done, WHEAT).hand.length).toBe(wheatBefore);
+  });
+
+  /**
+   * ⭐ R13 (tasks/v48-rulings-v2.md, 24/09/2026): a built Power card now counts
+   * as a building for D6's draw. `builtBuildingsAndPower` (buildings.ts) is a
+   * counting-only helper - D16 is never offered as a sow, Grow or Harvest
+   * target, it simply draws a card here.
+   */
+  it('R13: a built Power card counts toward the draw', () => {
+    const s = base();
+    buildFor(data, s, DAIRY, 'D6', 'D16'); // D16 The Ledger, a Power card
+    dealTo(data, s, DAIRY, 'D5');
+    const grown = growBuilding(data, s, DAIRY, 'D6', 'D5');
+    const done = answerAll(grown.state);
+    // D6 and D16 - two built "buildings" once a Power card counts - drawn on
+    // top of an empty hand (D5 paid the Grow).
+    expect(player(done, DAIRY).hand).toHaveLength(2);
+  });
+
+  /** R13 does not reach Endgame cards: they still never count. */
+  it('R13: a built Endgame card does NOT count toward the draw', () => {
+    const s = base();
+    buildFor(data, s, DAIRY, 'D6', 'D19'); // D19 The Cheese Hall, an Endgame card
+    dealTo(data, s, DAIRY, 'D5');
+    const grown = growBuilding(data, s, DAIRY, 'D6', 'D5');
+    const done = answerAll(grown.state);
+    // D6 only - D19 is Endgame and does not count - one card drawn.
+    expect(player(done, DAIRY).hand).toHaveLength(1);
   });
 });
 
-describe("D10 The Scout's Post - the free look", () => {
-  it('reveals every live deck and builds one at a discount of 2', () => {
+/**
+ * ⭐ v48 R14 (tasks/v48-rulings-v2.md): the sheet now prints Draw 2 (was Draw
+ * 1) and Dean settled the order question in favour of the printed face -
+ * Build, THEN Draw 2 - reversing the engine's old draw-first order, which
+ * existed only because Draw 1 in printed order was card-negative. The draw is
+ * UNCONDITIONAL (v47 R1): it fires whether or not the Build could happen.
+ */
+describe('D8 The Abundant Shed - Build then Draw 2, printed order (v48)', () => {
+  it('D8 offers the Build before the Draw 2 (printed order, R14)', () => {
+    const s = base();
+    buildFor(data, s, DAIRY, 'D8');
+    // D4 pays the Grow; W9, W4, W5, W6 are what is left, plenty of build
+    // options so the Build task is a real choice and stays queued rather
+    // than auto-resolving.
+    dealTo(data, s, DAIRY, 'D4', 'W9', 'W4', 'W5', 'W6');
+    const grown = growBuilding(data, s, DAIRY, 'D8', 'D4');
+    // `activate` pushes the Build first and the Draw 2 second, and `pushTask`
+    // appends - so the head of the queue is the Build, exactly the printed
+    // order, not the engine's old draw-first reversal.
+    expect(grown.state.tasks[0]?.t).toBe('build');
+  });
+
+  it('D8 still draws 2 when the Build cannot happen', () => {
+    const s = base();
+    buildFor(data, s, DAIRY, 'D8');
+    // D4 pays the Grow and is the only card in hand, so nothing is left to
+    // Build with.
+    dealTo(data, s, DAIRY, 'D4');
+    const grown = growBuilding(data, s, DAIRY, 'D8', 'D4');
+    // The Build auto-skipped for lack of anything to pay with: no build task
+    // pending, only the Draw.
+    expect(grown.state.tasks.some((t) => t.t === 'build')).toBe(false);
+    const before = player(grown.state, DAIRY).hand.length;
+    const done = answerAll(grown.state);
+    expect(player(done, DAIRY).hand.length).toBe(before + 2);
+  });
+});
+
+describe("D10 The Scout's Post - choose the deck, then decide (v47)", () => {
+  it("reveals the chosen deck's top card and builds it at a discount of 2", () => {
     const s = base();
     buildFor(data, s, DAIRY, 'D10');
     dealTo(data, s, DAIRY, 'D5', 'W4', 'W5', 'W6');
-    const wheatTop = s.decks.wheat[0] as string;
+    // W9 costs 3 total (2 wheat + 1 wild); at a discount of 2 it costs 1.
+    s.decks.wheat = ['W9', ...s.decks.wheat.filter((c) => c !== 'W9')];
     const grown = growBuilding(data, s, DAIRY, 'D10', 'D5');
-    const offers = revealedOffers(grown.state);
-    // One top per suit in play is on offer (those that are affordable at -2).
+
+    // The deck is chosen FIRST, before anything is revealed - the new v47 step.
+    const chooseWheat = pendingAnswers(data, grown.state).find(
+      (a) => a.kind === 'card' && a.payload.suit === 'wheat',
+    );
+    expect(chooseWheat).toBeDefined();
+    const revealed = answerTask(data, grown.state, chooseWheat as TaskAnswer).state;
+
+    const offers = revealedOffers(revealed);
     expect(offers.length).toBeGreaterThan(0);
-    const takeWheat = offers.find((o) => o.card === wheatTop)?.answer;
-    expect(takeWheat).toBeDefined();
-    const state = answerAll(answerTask(data, grown.state, takeWheat as TaskAnswer).state);
-    expect(player(state, DAIRY).tableau.some((b) => b.card === wheatTop)).toBe(true);
+    expect(offers.every((o) => o.card === 'W9')).toBe(true);
+    const takeAt1 = offers.find((o) => {
+      const payload = (o.answer as Extract<TaskAnswer, { kind: 'card' }>).payload;
+      return Array.isArray(payload.payment) && payload.payment.length === 1;
+    });
+    expect(takeAt1).toBeDefined();
+
+    const state = answerAll(answerTask(data, revealed, takeAt1?.answer as TaskAnswer).state);
+    expect(player(state, DAIRY).tableau.some((b) => b.card === 'W9')).toBe(true);
   });
 
-  it('unbuilt reveals go back on top of their own decks, never to a discard', () => {
+  it('a declined reveal is discarded, never returned to the deck (R3)', () => {
     const s = base();
     buildFor(data, s, DAIRY, 'D10');
     dealTo(data, s, DAIRY, 'D5');
-    const tops = Object.fromEntries(
-      data.cards.suits.map((suit) => [suit, s.decks[suit][0] as string]),
-    );
+    const wheatTop = s.decks.wheat[0] as string;
     const grown = growBuilding(data, s, DAIRY, 'D10', 'D5');
-    const skip = pendingAnswers(data, grown.state).find((a) => a.kind === 'skip');
+    const chooseWheat = pendingAnswers(data, grown.state).find(
+      (a) => a.kind === 'card' && a.payload.suit === 'wheat',
+    );
+    expect(chooseWheat).toBeDefined();
+    const revealed = answerTask(data, grown.state, chooseWheat as TaskAnswer).state;
+    const skip = pendingAnswers(data, revealed).find((a) => a.kind === 'skip');
     expect(skip).toBeDefined();
-    const done = answerTask(data, grown.state, skip as TaskAnswer).state;
-    for (const suit of data.cards.suits) {
-      expect(done.decks[suit][0], suit).toBe(tops[suit]);
-      expect(done.discards[suit], suit).toEqual([]);
-    }
+    const done = answerTask(data, revealed, skip as TaskAnswer).state;
+
+    // R3 overturns the old "back on top of its own deck" reading.
+    expect(done.decks.wheat[0]).not.toBe(wheatTop);
+    expect(done.discards.wheat).toContain(wheatTop);
+    expect(done.tasks).toHaveLength(0);
   });
 
-  it('costs nothing but the card that grows it: the £3 gate is long gone', () => {
+  it('an unaffordable reveal is discarded too, not returned (R3)', () => {
     const s = base();
     buildFor(data, s, DAIRY, 'D10');
-    dealTo(data, s, DAIRY, 'D5', 'W4', 'W5', 'W6');
+    dealTo(data, s, DAIRY, 'D5');
+    // W13 costs 4; even at a discount of 2 it needs 2 payment cards, and the
+    // Dairy hand is empty (D5's only card paid to grow it).
+    s.decks.wheat = ['W13', ...s.decks.wheat.filter((c) => c !== 'W13')];
     const grown = growBuilding(data, s, DAIRY, 'D10', 'D5');
-    expect(pendingAnswers(data, grown.state).some((a) => a.kind === 'card')).toBe(true);
+    const chooseWheat = pendingAnswers(data, grown.state).find(
+      (a) => a.kind === 'card' && a.payload.suit === 'wheat',
+    );
+    const revealed = answerTask(data, grown.state, chooseWheat as TaskAnswer).state;
+    expect(pendingAnswers(data, revealed).every((a) => a.kind === 'skip')).toBe(true);
+    const done = answerAll(revealed);
+    expect(done.decks.wheat).not.toContain('W13');
+    expect(done.discards.wheat).toContain('W13');
   });
 });
 
-describe('D11 The Heritage House - sow the payment back', () => {
-  it('sows every card the build spent, onto ANY of your own buildings', () => {
+describe('D11 The Heritage House - draws for what it spent (v47)', () => {
+  it('draws 1 for each card the build spent, and sows nothing', () => {
     const s = base();
-    buildFor(data, s, DAIRY, 'D11', 'D4', 'D8');
-    // W9 costs 2 wheat + 1 wild, so the build spends three cards and all three
-    // come back onto the board. D5 pays to grow the House.
+    buildFor(data, s, DAIRY, 'D11');
     dealTo(data, s, DAIRY, 'D5', 'W9', 'W4', 'W5', 'W6');
     const grown = growBuilding(data, s, DAIRY, 'D11', 'D5');
     expect(headBuild(grown.state).mods).toEqual({});
-
     const w9 = buildsOf(grown.state, 'W9').find(
       (a) => a.kind === 'build' && a.payment.length === 3,
     );
     expect(w9).toBeDefined();
-    // The Farmstead's divert is PREPENDED in front of everything the build
-    // queued, so it is declined first - which is also the proof that ONE
-    // DESTINATION PER SPENT CARD still falls out of the ordering: a card banked
-    // in the barn would have left the discard and could not then be sown.
-    const built = answerTask(data, grown.state, w9 as TaskAnswer).state;
     const spent = (w9 as Extract<TaskAnswer, { kind: 'build' }>).payment;
+    const built = answerTask(data, grown.state, w9 as TaskAnswer).state;
 
-    // Every spent card is offered, and against every own building with room -
-    // the new building included, and the two Tier 1s that were already down.
-    const onto = pendingAnswers(data, built)
-      .filter((a) => a.kind === 'card')
-      .map((a) => a.payload.onto);
-    for (const card of spent) {
-      expect(offeredCards(built), card).toContain(card);
-    }
-    expect(onto).toContain('D4');
-    expect(onto).toContain('D8');
-    expect(onto).toContain('W9');
+    // No task is left waiting for a sow answer - the draw is pushed straight
+    // off the afterBuild event, sized to what was spent.
+    const draw = built.tasks.find((t) => t.t === 'draw' && t.src === 'D11');
+    expect(draw).toBeDefined();
+    expect(draw && draw.t === 'draw' ? draw.see : -1).toBe(3);
+    expect(draw && draw.t === 'draw' ? draw.keep : -1).toBe(3);
 
     const done = answerAll(built);
-    // Nothing the build spent is still in a discard: it is all on the table.
-    for (const card of spent) expect(done.discards.wheat).not.toContain(card);
-    const placed = player(done, DAIRY).tableau.flatMap((b) => b.stack);
-    for (const card of spent) expect(placed).toContain(card);
-  });
-
-  it('the sow is per card, so one payment can finish two different stacks', () => {
-    const s = base();
-    buildFor(data, s, DAIRY, 'D11', 'D4', 'D8');
-    dealTo(data, s, DAIRY, 'D5', 'W9', 'W4', 'W5', 'W6');
-    // D4 and D8 are both threshold 2 and both already hold one card, so a
-    // 3-card payment can top up both and put the third on the new building.
-    loadStack(data, s, DAIRY, 'D4', 1, 'wheat');
-    loadStack(data, s, DAIRY, 'D8', 1, 'wheat');
-    const grown = growBuilding(data, s, DAIRY, 'D11', 'D5');
-    const w9 = buildsOf(grown.state, 'W9').find(
-      (a) => a.kind === 'build' && a.payment.length === 3,
-    );
-    let state = answerTask(data, grown.state, w9 as TaskAnswer).state;
-    for (const target of ['D4', 'D8']) {
-      const answer = pendingAnswers(data, state).find(
-        (a) => a.kind === 'card' && a.payload.onto === target,
-      );
-      expect(answer, target).toBeDefined();
-      state = answerTask(data, state, answer as TaskAnswer).state;
+    // Nothing is sown any more: every spent card is still exactly where the
+    // build's discard put it, and none of it ever reaches a stack.
+    const onStacks = player(done, DAIRY).tableau.flatMap((b) => b.stack);
+    for (const card of spent) {
+      expect(onStacks).not.toContain(card);
+      expect(done.discards.wheat).toContain(card);
     }
-    expect(buildingOf(state, DAIRY, 'D4').stack).toHaveLength(2);
-    expect(buildingOf(state, DAIRY, 'D8').stack).toHaveLength(2);
-    // Both Tier 1s are full now and drop out of the target list by themselves;
-    // what is left is the just-built W9 and the two starters that carry a
-    // threshold (the Service and the Notice Board), which is the same target
-    // set tasks.ts sowTargets builds for a sow task with no explicit list.
-    const left = pendingAnswers(data, state).filter((a) => a.kind === 'card');
-    const onto = new Set(left.map((a) => (a.kind === 'card' ? a.payload.onto : null)));
-    expect(onto.has('W9')).toBe(true);
-    expect(onto.has('D4')).toBe(false);
-    expect(onto.has('D8')).toBe(false);
   });
 
-  it('sows as far as there is room and leaves the rest, never refusing the build', () => {
-    // The mandatory-effect convention for the whole v30 pass (plan section 8.3)
-    // is SKIP SILENTLY: sow as many of the spent cards as there are legal
-    // targets for, never refuse the activation and never refuse the Build.
-    //
-    // A total no-op is close to unreachable and that is worth saying out loud:
-    // the card the Build just put down is itself a legal target, empty and with
-    // room, so there is almost always somewhere for the FIRST card to go. What
-    // is easy to reach is a PARTIAL sow, and that is the case that decides the
-    // convention. W13 costs four cards and prints a threshold of 1, so with
-    // every other building of the seat full exactly one of the four can land.
+  it('a bigger payment draws more: the count tracks the spend, not a flat rate', () => {
     const s = base();
     buildFor(data, s, DAIRY, 'D11');
     dealTo(data, s, DAIRY, 'D5', 'W13', 'W4', 'W5', 'W6', 'W7');
-    // D11 is threshold 2 and the grow payment is its second card, so it fills
-    // itself. ⛔ THERE IS NOTHING ELSE TO FILL (C1, 09/09/2026): the Notice
-    // Board D3 this line used to load to 5 stands in the centre and is in no
-    // tableau, and D1 the Barn and D2 the Farmstead print no threshold, so they
-    // were never sow targets. Change 6 had already deleted D0 the Service.
-    loadStack(data, s, DAIRY, 'D11', 1, 'wheat');
+    // W13 costs 4 (3 wheat + 1 wild).
     const grown = growBuilding(data, s, DAIRY, 'D11', 'D5');
     const w13 = buildsOf(grown.state, 'W13').find((a) => a.kind === 'build');
     expect(w13).toBeDefined();
-    const spent = (w13 as Extract<TaskAnswer, { kind: 'build' }>).payment;
-    expect(spent).toHaveLength(4);
-    const done = answerAll(answerTask(data, grown.state, w13 as TaskAnswer).state);
+    const built = answerTask(data, grown.state, w13 as TaskAnswer).state;
+    const draw = built.tasks.find((t) => t.t === 'draw' && t.src === 'D11');
+    expect(draw && draw.t === 'draw' ? draw.see : -1).toBe(4);
+  });
 
-    // The build happened, one card landed on it, and the other three simply
-    // stayed in the discard. No task is left waiting for an impossible answer.
-    expect(player(done, DAIRY).tableau.some((b) => b.card === 'W13')).toBe(true);
-    expect(buildingOf(done, DAIRY, 'W13').stack).toHaveLength(1);
-    const stranded = spent.filter((c) => done.discards.wheat.includes(c));
-    expect(stranded).toHaveLength(3);
-    expect(done.tasks).toHaveLength(0);
+  /**
+   * A free build cannot be reached through D11's OWN grant (it never carries a
+   * discount and no card in the catalogue costs 0), so the `event.payment.length
+   * === 0` guard is exercised directly against the afterBuild hook, exactly as
+   * the printed rule reads it: 0 cards spent, 0 cards drawn. `drawN` itself
+   * already no-ops at `n <= 0`; this is the standing check that D11 truly
+   * passes it that value rather than skipping the call some other way.
+   */
+  it('draws 0 on a free build', () => {
+    const s = base();
+    buildFor(data, s, DAIRY, 'D11');
+    const fx = new Fx(data, s, DAIRY);
+    handlerFor('D11')?.on?.afterBuild?.(
+      fx,
+      { seat: DAIRY, card: 'W4', payment: [], src: 'D11', fromHand: true },
+      { seat: DAIRY, card: 'D11' },
+    );
+    expect(fx.state.tasks.some((t) => t.t === 'draw' && t.src === 'D11')).toBe(false);
+  });
+
+  it("only fires on its own build, never on another card's", () => {
+    const s = base();
+    buildFor(data, s, DAIRY, 'D11');
+    const fx = new Fx(data, s, DAIRY);
+    handlerFor('D11')?.on?.afterBuild?.(
+      fx,
+      { seat: DAIRY, card: 'W4', payment: ['W5', 'W6'], src: null, fromHand: true },
+      { seat: DAIRY, card: 'D11' },
+    );
+    expect(fx.state.tasks.some((t) => t.t === 'draw' && t.src === 'D11')).toBe(false);
   });
 
   /**
    * ⛔ "A FREE BUILD SPENDS NOTHING, SO IT SOWS NOTHING" IS DELETED (v31), AND
-   * IT IS THE CASE ITSELF THAT BECAME UNREACHABLE RATHER THAN THE RULE. It drove
-   * W16, which used to be a COIN-priced Power card at a card cost of 0, so a
-   * granted Build could take it for no cards at all and D11 had nothing to sow
-   * back. Since v31 the 30 Power and Endgame cards cost 2 cards of their own
-   * suit and NO CARD IN THE CATALOGUE COSTS ZERO CARDS, so a payment-free build
-   * cannot be reached through D11's grant at any board state.
-   *
-   * The guard is still in the handler (`event.payment.length === 0` returns
-   * early) and still has one live producer: D15 The Grand Creamery's free build,
-   * which lands through `placeBuilt` with an empty payment. O17 The Fruit Basket
-   * carries the same guard for the same reason.
+   * IT IS THE CASE ITSELF THAT BECAME UNREACHABLE RATHER THAN THE RULE. Kept
+   * here as the standing check that the `covered` zone the old build-on-top
+   * used has not been quietly reintroduced.
    */
   it('nothing in the game covers a building any more', () => {
     // The `covered` zone was deleted on 19/08/2026 with D11's build-on-top.
@@ -722,6 +764,17 @@ describe('D13 The Cheese Vault - the scaler', () => {
     dealTo(data, s, DAIRY, 'W4');
     expect(legalMoves(data, s).some((m) => m.type === 'cardMove' && m.card === 'D13')).toBe(false);
     expect(legalMoves(data, s).some((m) => m.type === 'grow' && m.building === 'D13')).toBe(true);
+  });
+
+  /** R13 (tasks/v48-rulings-v2.md, 24/09/2026): a built Power card now draws too. */
+  it('R13: a built Power card counts toward the draw', () => {
+    const s = base();
+    buildFor(data, s, DAIRY, 'D13', 'D4', 'D16'); // D16 The Ledger, a Power card
+    dealTo(data, s, DAIRY, 'W4');
+    // D13, D4, D16 - three built "buildings" once a Power card counts - drawn
+    // on top of an empty hand (W4 paid the Grow).
+    const state = answerAll(growBuilding(data, s, DAIRY, 'D13', 'W4').state);
+    expect(player(state, DAIRY).hand).toHaveLength(3);
   });
 });
 
@@ -782,69 +835,54 @@ describe('D14 The Cream Refinery - the demolition', () => {
   });
 });
 
-describe('D15 The Grand Creamery - two reveals, one free build', () => {
-  const pickDeck = (state: GameState, suit: string) =>
-    pendingAnswers(data, state).find((a) => a.kind === 'card' && a.payload.suit === suit);
-
-  it('reveals 2, builds 1 free and discards the other', () => {
+describe('D15 The Grand Creamery - a free build off the hand (v47)', () => {
+  it('builds a chosen hand card for free, paying nothing and ignoring the n-of-suit requirement', () => {
     const s = base();
     buildFor(data, s, DAIRY, 'D15');
-    dealTo(data, s, DAIRY, 'W4');
-    const first = s.decks.wheat[0] as string;
-    const second = s.decks.wheat[1] as string;
-    const grown = growBuilding(data, s, DAIRY, 'D15', 'W4');
-
-    // Dean, 19/08/2026: any deck, and the two may be the same one.
-    let state = answerTask(data, grown.state, pickDeck(grown.state, 'wheat') as TaskAnswer).state;
-    state = answerTask(data, state, pickDeck(state, 'wheat') as TaskAnswer).state;
-
-    // Both are now on offer, and exactly one gets built.
-    const offers = revealedOffers(state);
-    const offered = offers.map((o) => o.card);
-    expect(offered).toContain(first);
-    expect(offered).toContain(second);
-    const buildFirst = offers.find((o) => o.card === first)?.answer;
-    state = answerAll(answerTask(data, state, buildFirst as TaskAnswer).state);
-    expect(player(state, DAIRY).tableau.some((b) => b.card === first)).toBe(true);
-    expect(player(state, DAIRY).tableau.some((b) => b.card === second)).toBe(false);
-    expect(state.discards.wheat).toContain(second);
-    // Free: no cards paid at all, so the hand is exactly what the grow left.
+    // W9 costs 2 wheat + 1 wild: normally unbuildable with zero wheat cards in
+    // payment. D15's grow payment (D4) leaves the hand holding only W9 itself.
+    dealTo(data, s, DAIRY, 'D4', 'W9');
+    const grown = growBuilding(data, s, DAIRY, 'D15', 'D4');
+    const build = buildsOf(grown.state, 'W9').find((a) => a.kind === 'build');
+    expect(build).toBeDefined();
+    expect((build as Extract<TaskAnswer, { kind: 'build' }>).payment).toEqual([]);
+    const state = answerAll(answerTask(data, grown.state, build as TaskAnswer).state);
+    expect(player(state, DAIRY).tableau.some((b) => b.card === 'W9')).toBe(true);
     expect(player(state, DAIRY).hand).toEqual([]);
   });
 
-  it('the two decks may be different', () => {
+  it('builds a Power or Endgame card too, for the same free price', () => {
     const s = base();
     buildFor(data, s, DAIRY, 'D15');
-    dealTo(data, s, DAIRY, 'W4');
-    const wheatTop = s.decks.wheat[0] as string;
-    const dairyTop = s.decks.dairy[0] as string;
-    const grown = growBuilding(data, s, DAIRY, 'D15', 'W4');
-    let state = answerTask(data, grown.state, pickDeck(grown.state, 'wheat') as TaskAnswer).state;
-    state = answerTask(data, state, pickDeck(state, 'dairy') as TaskAnswer).state;
-    const offered = revealedOffers(state).map((o) => o.card);
-    expect(offered).toContain(wheatTop);
-    expect(offered).toContain(dairyTop);
-  });
-
-  it('an expensive Power card still builds free, which is the jackpot', () => {
-    const s = base();
-    buildFor(data, s, DAIRY, 'D15');
-    dealTo(data, s, DAIRY, 'W4');
-    // ⛔ W16 USED TO BE A COIN-PRICED POWER CARD AT A CARD COST OF ZERO, so this
-    // test proved the free build could take something the seat could not have
-    // afforded in cards. Since v31 the 30 Power and Endgame cards cost 2 cards
-    // of their own suit, which makes the case STRONGER rather than moot: a Dairy
-    // seat can now never buy W16 out of hand at all, and the Creamery hands it
-    // over for nothing.
-    s.decks.wheat = ['W16', ...s.decks.wheat.filter((c) => c !== 'W16')];
-    const grown = growBuilding(data, s, DAIRY, 'D15', 'W4');
-    let state = answerTask(data, grown.state, pickDeck(grown.state, 'wheat') as TaskAnswer).state;
-    state = answerTask(data, state, pickDeck(state, 'wheat') as TaskAnswer).state;
-    const buildW16 = revealedOffers(state).find((o) => o.card === 'W16')?.answer;
-    expect(buildW16).toBeDefined();
-    state = answerAll(answerTask(data, state, buildW16 as TaskAnswer).state);
+    dealTo(data, s, DAIRY, 'D4', 'W16');
+    const grown = growBuilding(data, s, DAIRY, 'D15', 'D4');
+    const build = buildsOf(grown.state, 'W16').find((a) => a.kind === 'build');
+    expect(build).toBeDefined();
+    expect((build as Extract<TaskAnswer, { kind: 'build' }>).payment).toEqual([]);
+    const state = answerAll(answerTask(data, grown.state, build as TaskAnswer).state);
     expect(player(state, DAIRY).tableau.some((b) => b.card === 'W16')).toBe(true);
-    expect(player(state, DAIRY).hand).toEqual([]);
+  });
+
+  it('fires afterBuild reactors even though the payment is empty (D16 The Ledger still draws)', () => {
+    const s = base();
+    buildFor(data, s, DAIRY, 'D15', 'D16');
+    dealTo(data, s, DAIRY, 'D4', 'W4');
+    const grown = growBuilding(data, s, DAIRY, 'D15', 'D4');
+    const build = buildsOf(grown.state, 'W4').find((a) => a.kind === 'build');
+    expect(build).toBeDefined();
+    const built = answerTask(data, grown.state, build as TaskAnswer).state;
+    expect(built.tasks.some((t) => t.t === 'draw' && t.src === 'D16')).toBe(true);
+  });
+
+  it('is mandatory with any card in hand, and does nothing with an empty hand', () => {
+    const s = base();
+    buildFor(data, s, DAIRY, 'D15');
+    dealTo(data, s, DAIRY, 'D4');
+    const grown = growBuilding(data, s, DAIRY, 'D15', 'D4');
+    // The hand is empty after the grow payment leaves it: the build task has
+    // nothing to offer and auto-skips, exactly like every other mandatory
+    // "Build." in the suit.
+    expect(grown.state.tasks).toHaveLength(0);
   });
 
   it('is a GROW building now, not an ACTION', () => {
@@ -981,15 +1019,41 @@ describe('the endgame cards - D19, D20, D21', () => {
     expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(4);
   });
 
+  /**
+   * ⭐ R13 (tasks/v48-rulings-v2.md, 24/09/2026): a built Power card of a
+   * foreign suit now counts for D19, on top of Tier 1-3 buildings; a built
+   * Power card of D19's OWN suit still does not (same as a Tier 1-3 card of
+   * your own suit never has).
+   */
+  it('R13: a foreign Power card counts for D19, an own-suit one does not', () => {
+    const s = base();
+    buildFor(data, s, DAIRY, 'D19', 'W16', 'D16'); // W16 (Wheat Power) and D16 (Dairy Power)
+    // D19's 1 for W16 only; D16 is Dairy and does not count for D19. D2 scores
+    // 2 for the two Dairy deck cards built (D19, D16) - unaffected by R13, the
+    // Barn's own-crop scorer counts every deck card regardless of type.
+    expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(1 + 2);
+  });
+
   it('D20 scores 1 for every 2 buildings BUILT - never a starter', () => {
     const s = base();
     buildFor(data, s, DAIRY, 'D20', 'D10', 'D4');
-    // D20, D10 and D4 - the starters are not built - and the divisor of 2 the
-    // rebalance added rounds three down to one. D2 adds its flat 3.
+    // D20, D10 and D4 built; D20 is itself an Endgame card and, both before
+    // and after R13, never counts toward its own total - D10 and D4 are the
+    // whole count (2), and the divisor of 2 the rebalance added rounds it to
+    // 1. D2 adds its flat 3 for the three Dairy deck cards.
     expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(1 + 3);
-    // So the fourth building is what actually pays for the third.
+    // A fourth Tier 1-3 building is what actually pays for the second point.
     buildFor(data, s, DAIRY, 'D5');
-    expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(2 + 4);
+    expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(1 + 4);
+  });
+
+  /** R13: a built Power card counts toward D20's total too. */
+  it('R13: a built Power card counts toward D20', () => {
+    const s = base();
+    buildFor(data, s, DAIRY, 'D20', 'D4', 'D16'); // D16 The Ledger, a Power card
+    // D20 counts D4 and D16 - 2, divisor 2 - so 1; D2 scores 3 for the three
+    // Dairy deck cards built.
+    expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(1 + 3);
   });
 
   /**
@@ -1031,6 +1095,50 @@ describe('the endgame cards - D19, D20, D21', () => {
     const s = base();
     buildFor(data, s, DAIRY, 'D21');
     expect(gameEndScores(data, s)[DAIRY]?.endgame).toBe(1); // D2's own line only
+  });
+});
+
+/**
+ * ⭐ R13 (tasks/v48-rulings-v2.md, 24/09/2026): "a building you have built"
+ * counts a built Power card for D6/D9/D13/D19/D20 (this file) and W19/W20
+ * (wheat.test.ts) - COUNTS ONLY. `builtBuildingsAndPower` (buildings.ts) is a
+ * deliberately separate helper from every TARGET list (`ownBuildings` and
+ * everything built on it), so a Power card counted above must still never be
+ * reachable as a sow, Grow, Harvest, activation or stack target.
+ */
+describe('R13: Power cards count, but only for counts', () => {
+  it('a built Power card is never offered as a GROW target, even though it now counts elsewhere', () => {
+    const s = base();
+    buildFor(data, s, DAIRY, 'D6', 'D16'); // D16 The Ledger, a Power card
+    dealTo(data, s, DAIRY, 'W4');
+    // D16 counts toward D6's draw (see the R13 test above), but a Power card
+    // has no threshold and no stack, so it is never a legal GROW target.
+    expect(legalMoves(data, s).some((m) => m.type === 'grow' && m.building === 'D16')).toBe(false);
+  });
+
+  /**
+   * ⚠️ D14's own target list (the file-local `builtBuildings`, dairy.ts) is
+   * DELIBERATELY left untouched by this pass - see that function's own doc
+   * comment - so R13 does not WIDEN it. It is worth being honest about what
+   * that preserves rather than fixes: `builtBuildings` already offered Power
+   * AND Endgame cards as demolish targets BEFORE this pass (it filters only
+   * `type !== 'starter'`), which is arguably its own gap against the rule
+   * book's base definition of a building (never a Power or Endgame card) and
+   * predates R13 entirely. Out of scope for this pass - D14 is not one of the
+   * three retexted cards and R13 does not name it - and reported rather than
+   * silently fixed or silently made worse.
+   */
+  it('D14 The Cream Refinery: R13 does not widen its target list further (still offers Power and Endgame cards, a pre-existing gap)', () => {
+    const s = base();
+    buildFor(data, s, DAIRY, 'D14', 'D16', 'D19'); // a Power card and an Endgame card
+    dealTo(data, s, DAIRY, 'W4');
+    const grown = growBuilding(data, s, DAIRY, 'D14', 'W4');
+    const targets = pendingAnswers(data, grown.state).flatMap((a) =>
+      a.kind === 'card' ? [a.payload.card as CardId] : [],
+    );
+    // Same set R13 finds it in: builtBuildings still reads `type !== 'starter'`
+    // and nothing about that changed here.
+    expect(targets.sort()).toEqual(['D14', 'D16', 'D19'].sort());
   });
 });
 
