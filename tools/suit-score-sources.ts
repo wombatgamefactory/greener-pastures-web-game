@@ -18,7 +18,7 @@
  *
  * Usage:
  *   npx tsx tools/suit-score-sources.ts [--overlay=overlays/x.overlay.json]
- *                                        [--n=1580] [--seed=reference-v25]
+ *                                        [--n=1580] [--seed=reference-v26]
  *                                        [--sample=1] [--compare=reports/watchlist-....txt]
  *
  * `--overlay` defaults to `overlays/hand-limit-7-legacy-v1.overlay.json`
@@ -465,17 +465,16 @@ function findCompareFile(): string | null {
     return null;
   }
   const matches = files.filter(
-    (f) => f.startsWith('watchlist-') && f.includes('reference-v25') && f.includes(overlayName),
+    (f) => f.startsWith('watchlist-') && f.includes(REFERENCE.id) && f.includes(overlayName),
   );
   if (matches.length > 0) {
     matches.sort();
     return join(dir, matches[matches.length - 1] as string);
   }
-  // Fall back to the plain reference-v25 baseline (hand bound 10), noted as such.
+  // Fall back to the plain REFERENCE.id baseline (whatever hand bound is current), noted as such.
   const fallback = files
     .filter(
-      (f) =>
-        f.startsWith('watchlist-') && f.includes('reference-v25') && !f.includes('-hand-limit'),
+      (f) => f.startsWith('watchlist-') && f.includes(REFERENCE.id) && !f.includes('-hand-limit'),
     )
     .sort();
   if (fallback.length > 0) return join(dir, fallback[fallback.length - 1] as string);
@@ -590,7 +589,7 @@ if (compareRows) {
   );
 } else {
   push(
-    'No control watchlist report found to compare against (looked in reports/ for a reference-v25 file matching the overlay name).',
+    `No control watchlist report found to compare against (looked in reports/ for a ${REFERENCE.id} file matching the overlay name).`,
   );
   push('suit          this script win rate');
   for (const s of SUITS) {

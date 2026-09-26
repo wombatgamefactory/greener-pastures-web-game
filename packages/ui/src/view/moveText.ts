@@ -357,10 +357,11 @@ function describeCardPayload(
         : 'nothing'
     }`;
   }
-  // A17 The Smoke Pot (v49): at the end of your turn, move a card off one of
-  // your full buildings into your barn. Named BY CROP, never by id - a stack
-  // is shown to its own owner as suit letters only (`buildingView`, view.ts),
-  // so any card of that crop is the same move.
+  // A17 The Smoke Pot (v49 sheet retext, 26/09/2026): at the end of your turn,
+  // move a card off one of your own Notice Boards into your barn (an ordinary
+  // building is no longer a legal source). Named BY CROP, never by id - a
+  // stack is shown to its own owner as suit letters only (`buildingView`,
+  // view.ts), so any card of that crop is the same move.
   if (
     task?.kind === 'smokePotMove' &&
     payload.building !== undefined &&

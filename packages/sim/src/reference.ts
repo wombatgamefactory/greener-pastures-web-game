@@ -1701,8 +1701,47 @@ export const REFERENCE_V25: ReferenceConfig = {
   seed: 'reference-v25',
 };
 
+/**
+ * `reference-v26`: SHEET v49, TWO APIARY CARDS RETEXTED, NO MEASURABLE EFFECT
+ * (Dean, 26/09/2026).
+ *
+ * A11 The Wax Workshop now Harvests another of your buildings at 1 or more
+ * cards (was 2). A17 The Smoke Pot now moves 1 card from one of your Notice
+ * Boards to your Barn at the end of your turn (was from any full building).
+ * Both are already built.
+ *
+ * A paired run on reference-v25 seeds
+ * (`reports/watchlist-2026-09-26T13-43-04-reference-v25-v49-a11-a17-paired-v1.txt`
+ * against control `reports/watchlist-2026-09-24T16-56-40-reference-v25.txt`)
+ * moved Apiary from 20.4% to 20.5%: no measurable effect.
+ *
+ * The instrument is re-cut every time cards change, whether or not a change
+ * moves a number, so this reference exists to keep every subsequent report
+ * naming the sheet it was actually run against.
+ *
+ * ⛔ NO NUMBER IN ANY reference-v25 OR EARLIER REPORT IS COMPARABLE AS A LEVEL.
+ */
+export const REFERENCE_V26: ReferenceConfig = {
+  ...REFERENCE_V25,
+  id: 'reference-v26',
+  description:
+    'SHEET v49: TWO APIARY CARDS RETEXTED (Dean, 26/09/2026). reference-v25 stands - the ' +
+    'token island, no balloons, no Aerodrome, no Village Store coin, no closing draw, no ' +
+    'island wild substitution, the Vegetable barn suit, the five per-suit Helping Hands, a ' +
+    'random first player, the round finished at game end, every v45/v46/v47/v48 card retext ' +
+    'including R13, and the hand bound of 10 - and TWO FACES MOVE. A11 The Wax Workshop now ' +
+    'Harvests another of your buildings at 1 or more cards (was 2). A17 The Smoke Pot now ' +
+    "moves 1 card from one of your Notice Boards to your Barn at the end of the owner's turn " +
+    '(was from any full building). Both are already built. A paired run on reference-v25 ' +
+    'seeds (reports/watchlist-2026-09-26T13-43-04-reference-v25-v49-a11-a17-paired-v1.txt ' +
+    'against control reports/watchlist-2026-09-24T16-56-40-reference-v25.txt) moved Apiary ' +
+    'from 20.4% to 20.5%: NO MEASURABLE EFFECT. ⛔ NO NUMBER IN ANY reference-v25 OR EARLIER ' +
+    'REPORT IS COMPARABLE AS A LEVEL.',
+  seed: 'reference-v26',
+};
+
 /** The instrument every current number is defined against. */
-export const REFERENCE = REFERENCE_V25;
+export const REFERENCE = REFERENCE_V26;
 
 /**
  * The noise floor, measured once and quoted constantly.
@@ -1986,28 +2025,47 @@ export interface NoiseFloor {
  * Pasted from reports/noise-2026-09-24T16-58-19-reference-v25.txt (24/09/2026):
  * seat deviation fell from 3.277 to 0.412, so the seat-fairness check can fail again.
  */
+/**
+ * MEASURED FOR `reference-v26` on 26/09/2026, pasted below from
+ * `reports/noise-2026-09-26T13-56-20-reference-v26.txt`. ⚠️ Seat deviation
+ * rises from 0.412 on v25 to 5.086, so the seat-fairness check has little room
+ * to fail on this instrument. A v25 floor quoted against a v26 run would
+ * describe a different instrument.
+ *
+ * The v25 values, for the record and NOT for use (measured 24/09/2026, from
+ * `reports/noise-2026-09-24T16-58-19-reference-v25.txt`): meeples held at
+ * game end 0, barn at game end 0, game length 0, visits per turn 0.003,
+ * actions per turn 0.002, meeple spend rate 0.004, self-visit share of visits
+ * 0, bonus slot used 0.003, door mix (busiest board share) 0.003, farm bypass
+ * share 0, unfinished games 0.001, winning score 0, last as % of winner
+ * 0.005, tied top score 0.002, deck reshuffles per game 0, reshuffles per
+ * played crop 0, seat deviation 0.412.
+ *
+ * Re-measure with `npm run sim -- --noise --n=1580` and paste the literal it
+ * prints back in here.
+ */
 export const NOISE_FLOOR: NoiseFloor | null = {
-  reference: 'reference-v25',
+  reference: 'reference-v26',
   games: 1580,
-  measured: '2026-09-24',
+  measured: '2026-09-26',
   movement: {
     'meeples held at game end': 0,
     'barn at game end': 0,
     'game length, rounds': 0,
-    'visits per turn': 0.003,
-    'actions per turn': 0.002,
+    'visits per turn': 0.005,
+    'actions per turn': 0.006,
     'meeple spend rate': 0.004,
     'self-visit share of visits': 0,
-    'bonus slot used, share of turns': 0.003,
+    'bonus slot used, share of turns': 0.004,
     'door mix, busiest board share': 0.003,
     'farm bypass share': 0,
-    'unfinished games': 0.001,
+    'unfinished games': 0.002,
     'winning score': 0,
-    'last as % of winner': 0.005,
-    'tied top score': 0.002,
+    'last as % of winner': 0.002,
+    'tied top score': 0.015,
     'deck reshuffles per game': 0,
     'reshuffles, played crop': 0,
-    'seat deviation': 0.412,
+    'seat deviation': 5.086,
   },
 };
 /**

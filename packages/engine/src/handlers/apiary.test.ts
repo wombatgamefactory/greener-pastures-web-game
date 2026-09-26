@@ -869,25 +869,24 @@ describe("A10 The Cross-Pollinator - a visit to a rival's Notice Board, paid wit
   });
 });
 
-describe('A11 The Wax Workshop - a real Harvest, relaxed to 2 cards', () => {
+describe('A11 The Wax Workshop - a real Harvest, relaxed to 1 card', () => {
   /**
-   * ⭐ v48 retext (24/09/2026, R3 carried, `tasks/v48-rulings-v2.md`; row A11
-   * of `tasks/v48-ambiguity-audit-v1.md`): "Harvest another of your buildings
-   * with 2 or more cards on it, even if it is not full." A REAL Harvest of
-   * ONE building, the owner's choice - not the old "skim one card from every
-   * full building" (v42-v47).
+   * ⭐ v49 retext (sheet v49, 26/09/2026, `tasks/v49-sheet-a11-a17-pass.md`):
+   * the minimum drops from 2 to 1 - "Harvest another of your buildings with
+   * 1 or more cards on it, even if it is not full." Everything else from v48
+   * R3 stands: a REAL Harvest of ONE building, the owner's choice.
    */
-  it('harvests one other building holding 2 or more cards, even if not full', () => {
+  it('harvests a building with exactly 1 card, even if not full', () => {
     const s = base();
     buildFor(data, s, APIARY, 'A11', 'A5', 'A7'); // A5: threshold 2; A7: threshold 3
     dealTo(data, s, APIARY, 'A4');
     loadStack(data, s, APIARY, 'A5', 2); // full at its own threshold
-    loadStack(data, s, APIARY, 'A7', 2); // not full (needs 3), but 2 or more
+    loadStack(data, s, APIARY, 'A7', 1); // not full (needs 3), but 1 or more
     const grown = growBuilding(data, s, APIARY, 'A11', 'A4');
     const choose = grown.state.tasks[0];
     if (choose?.t !== 'chooseBuilding') throw new Error('expected a chooseBuilding task');
     expect(choose.filter).toBe('harvestable');
-    expect(choose.relaxedMin).toBe(2);
+    expect(choose.relaxedMin).toBe(1);
     expect(choose.exclude).toBe('A11');
     const offered = pendingAnswers(data, grown.state)
       .flatMap((a) => (a.kind === 'building' ? [a.card] : []))
@@ -897,17 +896,17 @@ describe('A11 The Wax Workshop - a real Harvest, relaxed to 2 cards', () => {
     const harvested = answerTask(data, grown.state, { kind: 'building', card: 'A7' });
     // A REAL Harvest: the whole stack goes to the barn, not one card.
     expect(buildingOf(harvested.state, APIARY, 'A7').stack).toEqual([]);
-    expect(player(harvested.state, APIARY).barn).toHaveLength(2);
+    expect(player(harvested.state, APIARY).barn).toHaveLength(1);
     // The building never chosen is untouched.
     expect(buildingOf(harvested.state, APIARY, 'A5').stack).toHaveLength(2);
   });
 
-  /** R3: the Notice Board is a legal target at 2 cards, never below (S8). */
-  it('may harvest your own Notice Board at 2 cards', () => {
+  /** The owner's own Notice Board is a legal target at 1 card, never below (S8). */
+  it("may harvest the owner's own Notice Board at 1 card", () => {
     const s = base();
     buildFor(data, s, APIARY, 'A11');
     dealTo(data, s, APIARY, 'A4');
-    loadStack(data, s, APIARY, 'A3', 2, 'wheat'); // the Notice Board, at 2
+    loadStack(data, s, APIARY, 'A3', 1, 'wheat'); // the Notice Board, at 1
     const grown = growBuilding(data, s, APIARY, 'A11', 'A4');
     const offered = pendingAnswers(data, grown.state).flatMap((a) =>
       a.kind === 'building' ? [a.card] : [],
@@ -915,17 +914,17 @@ describe('A11 The Wax Workshop - a real Harvest, relaxed to 2 cards', () => {
     expect(offered).toEqual(['A3']);
     const harvested = answerTask(data, grown.state, { kind: 'building', card: 'A3' });
     expect(buildingOf(harvested.state, APIARY, 'A3').stack).toEqual([]);
-    expect(player(harvested.state, APIARY).barn).toHaveLength(2);
+    expect(player(harvested.state, APIARY).barn).toHaveLength(1);
   });
 
-  /** R3: A11 may never harvest itself, however loaded. */
-  it('cannot harvest itself, even holding 2 or more cards', () => {
+  /** A11 may never harvest itself, however loaded. */
+  it('cannot harvest itself, even holding 1 or more cards', () => {
     const s = base();
     buildFor(data, s, APIARY, 'A11');
     dealTo(data, s, APIARY, 'A4', 'A5'); // A5 spare, so the hand is not the reason
-    loadStack(data, s, APIARY, 'A11', 2); // 2 of its own threshold 3: not full, but 2+
+    loadStack(data, s, APIARY, 'A11', 1); // 1 of its own threshold 3: not full, but 1+
     const grown = growBuilding(data, s, APIARY, 'A11', 'A4');
-    // No other building holds 2 or more, and A11 may never target itself.
+    // No other building holds any cards, and A11 may never target itself.
     expect(grown.state.tasks).toHaveLength(0);
   });
 
@@ -935,19 +934,19 @@ describe('A11 The Wax Workshop - a real Harvest, relaxed to 2 cards', () => {
    * (`granaryDraw`, wheat.ts), not a plain `draw` task, so the proof is the
    * hand's net movement instead: -1 for A11's own GROW payment, +1 for W16.
    */
-  it('is a REAL Harvest: When-Harvested lines fire', () => {
+  it('is a REAL Harvest: When-Harvested lines fire, even at 1 card', () => {
     const s = base();
     buildFor(data, s, APIARY, 'A11', 'A5', 'W16'); // W16: "whenever you harvest, if hand <=5, Draw 1"
     dealTo(data, s, APIARY, 'A4');
-    loadStack(data, s, APIARY, 'A5', 2);
+    loadStack(data, s, APIARY, 'A5', 1);
     const before = player(s, APIARY).hand.length;
     const grown = growBuilding(data, s, APIARY, 'A11', 'A4');
     const state = answerAll(grown.state);
     expect(player(state, APIARY).hand.length).toBe(before);
-    expect(player(state, APIARY).barn).toHaveLength(2);
+    expect(player(state, APIARY).barn).toHaveLength(1);
   });
 
-  it('mandatory: with no building holding 2 or more cards, nothing happens', () => {
+  it('mandatory: with no building holding any cards, nothing happens', () => {
     const s = base();
     buildFor(data, s, APIARY, 'A11', 'A5');
     dealTo(data, s, APIARY, 'A4');
@@ -1418,14 +1417,14 @@ describe("A16 The Beekeeper's Veil - stack position 2, unchanged by the rebuild"
  * rather than as a side effect of the 18/09/2026 blanket fix, which is
  * reversed everywhere else (A8, W5, the generic Apiary door).
  */
-describe('A17 The Smoke Pot - at the end of your turn, move 1 card off a full building of yours to your Barn', () => {
+describe('A17 The Smoke Pot - at the end of your turn, move 1 card off one of your Notice Boards to your Barn', () => {
   /**
-   * ⭐ v49 retext (24/09/2026, `tasks/v49-rulings-v1.md` R4): the whole
-   * driver changes. A17 no longer keys off a visit at all - it moves onto
-   * `beforeTurnEnd`, the fixed once-a-turn seam O17 The Fruit Basket, V17 and
-   * O18 already use, so the real end-of-turn flow (`type: 'endTurn'`) is the
-   * honest way to drive it, the same route `orchard.test.ts`'s O17 block
-   * uses for the sibling card.
+   * v49 sheet retext (26/09/2026, `tasks/v49-sheet-a11-a17-pass.md`): the
+   * SOURCE changes from any one of the owner's full buildings to any one of
+   * the owner's Notice Boards, at any count. The trigger (`beforeTurnEnd`,
+   * the fixed once-a-turn seam O17 The Fruit Basket, V17 and O18 already
+   * use) and the destination (the Barn, via `stackCardToBarn`, no Harvest
+   * hook) are unchanged.
    */
   function drainViaApply(state: GameState): GameState {
     let s = state;
@@ -1439,19 +1438,19 @@ describe('A17 The Smoke Pot - at the end of your turn, move 1 card off a full bu
   }
 
   /**
-   * ⭐ NAMED BY CROP, NEVER BY CARD ID (fixed after `view-safety.test.ts`
-   * caught the leak at seed `view-safety-3-0` step 308): `buildingView`
-   * (view.ts) shows a stack, its owner's own included, as suit letters only,
-   * so the answer cannot name a specific card - it names a crop, and a mixed
-   * stack (sow is suit-free) proves the answer is one PER CROP, never one
+   * ⭐ NAMED BY CROP, NEVER BY CARD ID (the hidden-information fix that
+   * already held on the full-buildings version): `buildingView` (view.ts)
+   * shows a stack, its owner's own and a Notice Board's included, as suit
+   * letters only, so the answer cannot name a specific card - it names a
+   * crop, and a mixed stack proves the answer is one PER CROP, never one
    * per card.
    */
-  it('offers to move a card off a full building of yours, one answer per crop, and the chosen crop is then no longer full', () => {
+  it("moves a card from the owner's Notice Board to the barn, one answer per crop", () => {
     const s = base();
-    buildFor(data, s, APIARY, 'A17', 'A5'); // A5: threshold 2
-    loadStack(data, s, APIARY, 'A5', 1, 'orchard');
-    loadStack(data, s, APIARY, 'A5', 1, 'wheat'); // full, two DIFFERENT crops
-    const [orchardCard, wheatCard] = buildingOf(s, APIARY, 'A5').stack;
+    buildFor(data, s, APIARY, 'A17');
+    loadStack(data, s, APIARY, 'A3', 1, 'orchard');
+    loadStack(data, s, APIARY, 'A3', 1, 'wheat'); // the owner's own Notice Board, two crops
+    const [orchardCard, wheatCard] = buildingOf(s, APIARY, 'A3').stack;
     s.turn.actionSpent = true;
     const held = apply(data, s, { type: 'endTurn', seat: APIARY }).state;
     expect(held.tasks).toEqual([
@@ -1460,44 +1459,38 @@ describe('A17 The Smoke Pot - at the end of your turn, move 1 card off a full bu
 
     const answers = pendingAnswers(data, held);
     expect(answers).toContainEqual({ kind: 'skip' });
-    expect(answers).toContainEqual({ kind: 'card', payload: { building: 'A5', crop: 'orchard' } });
-    expect(answers).toContainEqual({ kind: 'card', payload: { building: 'A5', crop: 'wheat' } });
-    // Two cards, two crops, one answer each: never one per card.
+    expect(answers).toContainEqual({ kind: 'card', payload: { building: 'A3', crop: 'orchard' } });
+    expect(answers).toContainEqual({ kind: 'card', payload: { building: 'A3', crop: 'wheat' } });
     expect(answers).toHaveLength(3);
 
     const move = apply(data, held, {
       type: 'task',
       seat: APIARY,
-      answer: { kind: 'card', payload: { building: 'A5', crop: 'orchard' } },
+      answer: { kind: 'card', payload: { building: 'A3', crop: 'orchard' } },
     }).state;
-    // The orchard card left; the wheat card is the only one on a stack of 1:
-    // no longer full, and it may be grown again.
-    expect(buildingOf(move, APIARY, 'A5').stack).toEqual([wheatCard]);
+    expect(buildingOf(move, APIARY, 'A3').stack).toEqual([wheatCard]);
     expect(player(move, APIARY).barn).toContain(orchardCard);
     expect(player(move, APIARY).barn).not.toContain(wheatCard);
-    // A placement, not a Harvest: no on-harvest hook fired (nothing else is
-    // built here to fire one, so the honest check is that nothing threw and
-    // the turn boundary carried on to the next seat).
     expect(move.turnPlayer).toBe(WHEAT);
   });
 
   it('a stack with two cards of the SAME crop offers just one answer for it', () => {
     const s = base();
-    buildFor(data, s, APIARY, 'A17', 'A5');
-    loadStack(data, s, APIARY, 'A5', 2, 'orchard'); // full, both orchard
+    buildFor(data, s, APIARY, 'A17');
+    loadStack(data, s, APIARY, 'A3', 2, 'orchard'); // the Notice Board, both orchard
     s.turn.actionSpent = true;
     const held = apply(data, s, { type: 'endTurn', seat: APIARY }).state;
     const answers = pendingAnswers(data, held);
     expect(answers).toEqual([
-      { kind: 'card', payload: { building: 'A5', crop: 'orchard' } },
+      { kind: 'card', payload: { building: 'A3', crop: 'orchard' } },
       { kind: 'skip' },
     ]);
   });
 
-  it('declining leaves the building exactly as full as it was', () => {
+  it('declining leaves the Notice Board exactly as loaded as it was', () => {
     const s = base();
-    buildFor(data, s, APIARY, 'A17', 'A5');
-    loadStack(data, s, APIARY, 'A5', 2, 'orchard');
+    buildFor(data, s, APIARY, 'A17');
+    loadStack(data, s, APIARY, 'A3', 2, 'orchard');
     s.turn.actionSpent = true;
     const held = apply(data, s, { type: 'endTurn', seat: APIARY }).state;
     const declined = apply(data, held, {
@@ -1505,49 +1498,102 @@ describe('A17 The Smoke Pot - at the end of your turn, move 1 card off a full bu
       seat: APIARY,
       answer: { kind: 'skip' },
     }).state;
-    expect(buildingOf(declined, APIARY, 'A5').stack).toHaveLength(2);
+    expect(buildingOf(declined, APIARY, 'A3').stack).toHaveLength(2);
     expect(declined.turnPlayer).toBe(WHEAT);
   });
 
-  it('never offers a building that is not full', () => {
+  /** An ordinary building, full or not, is never a legal source any more. */
+  it('never offers an ordinary full building', () => {
     const s = base();
     buildFor(data, s, APIARY, 'A17', 'A5', 'A7'); // A5: threshold 2, A7: threshold 3
-    loadStack(data, s, APIARY, 'A5', 1, 'orchard'); // 1 of 2: not full
-    loadStack(data, s, APIARY, 'A7', 2, 'orchard'); // 2 of 3: not full
+    loadStack(data, s, APIARY, 'A5', 2, 'orchard'); // full
+    loadStack(data, s, APIARY, 'A7', 3, 'orchard'); // full
     s.turn.actionSpent = true;
     const held = apply(data, s, { type: 'endTurn', seat: APIARY }).state;
     expect(held.tasks).toEqual([]);
   });
 
-  it('a Notice Board is never a source, even loaded past 3', () => {
+  /**
+   * Dean's two-board fix (11/09/2026): at two seats `base()` deals the
+   * Apiary seat a second Notice Board, D3 (Dairy, the first unfarmed suit
+   * in catalogue order - see `dealExtraNoticeBoards`, setup.ts). Either
+   * board is a legal source.
+   */
+  it("at 2 players, either of the owner's two boards is offered", () => {
     const s = base();
     buildFor(data, s, APIARY, 'A17');
-    loadStack(data, s, APIARY, 'A3', 4, 'orchard'); // the Notice Board: 3+ never shuts
+    expect(
+      noticeBoardsOf(data, s, APIARY)
+        .map((b) => b.card)
+        .sort(),
+    ).toEqual(['A3', 'D3']);
+    loadStack(data, s, APIARY, 'A3', 1, 'wheat');
+    loadStack(data, s, APIARY, 'D3', 1, 'dairy');
     s.turn.actionSpent = true;
     const held = apply(data, s, { type: 'endTurn', seat: APIARY }).state;
-    expect(held.tasks).toEqual([]);
+    const offered = pendingAnswers(data, held)
+      .flatMap((a) => (a.kind === 'card' ? [(a.payload as { building: string }).building] : []))
+      .sort();
+    expect(offered).toEqual(['A3', 'D3']);
+  });
+
+  /**
+   * The move is a placement into the Barn, NOT a Harvest: no When-Harvested
+   * text fires. W16 The Granary ("whenever you harvest, if hand <=5, Draw 1")
+   * is built and its hand would otherwise gain a card; it must not.
+   */
+  it('fires no Harvest hooks: W16 does not draw', () => {
+    const s = base();
+    buildFor(data, s, APIARY, 'A17', 'W16');
+    loadStack(data, s, APIARY, 'A3', 1, 'wheat');
+    const before = player(s, APIARY).hand.length;
+    s.turn.actionSpent = true;
+    const held = apply(data, s, { type: 'endTurn', seat: APIARY }).state;
+    const state = answerAll(held);
+    expect(player(state, APIARY).hand.length).toBe(before);
+    expect(player(state, APIARY).barn).toHaveLength(1);
   });
 
   it('never offers a rival building, and never fires on a rival turn end', () => {
     // Seats flipped from base(): seat 0 is Wheat, seat 1 is Apiary (A17's
     // owner), so ending seat 0's turn must never touch it.
     const s = makeState(data, ['wheat', 'apiary']);
-    buildFor(data, s, 1, 'A17', 'A5');
-    loadStack(data, s, 1, 'A5', 2, 'orchard');
+    buildFor(data, s, 1, 'A17');
+    loadStack(data, s, 1, 'A3', 2, 'orchard'); // 1's own Notice Board (Apiary suit)
     s.turn.actionSpent = true;
     const out = apply(data, s, { type: 'endTurn', seat: 0 }).state;
     expect(out.tasks).toEqual([]);
     expect(player(out, 1).barn).toHaveLength(0);
   });
 
-  it('with no full building, adds nothing and leaves no dead prompt', () => {
+  it('not offered when no board of the owner holds a card', () => {
     const s = base();
     buildFor(data, s, APIARY, 'A17', 'A5');
+    loadStack(data, s, APIARY, 'A5', 2, 'orchard'); // an ordinary full building: never a source
     s.turn.actionSpent = true;
     const held = apply(data, s, { type: 'endTurn', seat: APIARY }).state;
     expect(held.tasks).toEqual([]);
     const state = drainViaApply(held);
     expect(player(state, APIARY).barn).toHaveLength(0);
+  });
+
+  /**
+   * View-safety: the answer is `{ building, crop }` and never carries a card
+   * id, exactly as the hidden-information fix requires (a stack is shown to
+   * every seat, its owner included, as suit letters only).
+   */
+  it('answers carry no card id', () => {
+    const s = base();
+    buildFor(data, s, APIARY, 'A17');
+    loadStack(data, s, APIARY, 'A3', 1, 'wheat');
+    s.turn.actionSpent = true;
+    const held = apply(data, s, { type: 'endTurn', seat: APIARY }).state;
+    const answers = pendingAnswers(data, held);
+    for (const a of answers) {
+      if (a.kind === 'card') {
+        expect(Object.keys(a.payload as object).sort()).toEqual(['building', 'crop']);
+      }
+    }
   });
 });
 

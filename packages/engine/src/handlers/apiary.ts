@@ -106,7 +106,14 @@ import {
 // `actions.ts` barrel so the barrel (not this pass's file) needs no new export.
 import { cardVisitTargets, doCardVisit } from '../actions/bonus.js';
 import type { Fx } from '../fx.js';
-import { canSowOnto, cardById, drawableSuits, isFull, isHarvestable, player } from '../query.js';
+import {
+  canSowOnto,
+  cardById,
+  drawableSuits,
+  isHarvestable,
+  noticeBoardsOf,
+  player,
+} from '../query.js';
 import { activateOnly } from '../runtime.js';
 import type { CardId, GameState, Seat, TaskAnswer } from '../state.js';
 import {
@@ -812,10 +819,10 @@ export const crossPollinator: CardHandler = {
 };
 
 /**
- * A11 The Wax Workshop - "Harvest another of your buildings with 2 or more
- * cards on it, even if it is not full." v48 retext (24/09/2026): a REAL
- * Harvest of ONE building, not "put 1 card from each full building into your
- * Barn" (v42-v47). Threshold rises to 3 (data only, R15).
+ * A11 The Wax Workshop - "Harvest another of your buildings with 1 or more
+ * cards on it, even if it is not full." v49 retext (sheet v49, 26/09/2026,
+ * `tasks/v49-sheet-a11-a17-pass.md`): the only change from v48 is the minimum,
+ * 2 down to 1. Threshold stands at 3 (data only, R15 of v48).
  */
 export const waxWorkshop: CardHandler = {
   difficulty: {
@@ -823,21 +830,20 @@ export const waxWorkshop: CardHandler = {
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: false, conditional: true, counts: false, interrupts: false },
     notes:
-      '⭐ v48 retext (24/09/2026, `tasks/v48-rulings-v2.md` R3 carried, and R15 on the ' +
-      'threshold; `tasks/v48-ambiguity-audit-v1.md` row A11): a REAL HARVEST now, not a ' +
-      'move - it prints "Harvest", so the whole stack goes to the barn, the When-Harvested ' +
-      'line fires, and W16/W18 count it (the V11 reading, v46 R1). ONE building, the ' +
-      "owner's choice: another of your buildings (never A11 itself), full OR holding 2 or " +
-      'more cards - your own Notice Board included at 2 or more (R3), which the plain ' +
-      'Harvest action never reaches below 3 (S8). Built off `chooseBuilding`, filter ' +
-      "'harvestable', `relaxedMin: 2` (the same relaxation the Wheat SERVICE door already " +
-      "passes), `exclude: self.card`, `then: 'harvest'` - the shared primitive W8 and the " +
-      'Wheat door both use, so this needed no new engine seam. Mandatory (no "may"): with ' +
-      'no building holding 2 or more cards, nothing happens. Threshold 3 is data only ' +
-      '(R15): A11 can never harvest itself (R3), so its own clog is now cleared only by ' +
-      "ANOTHER card's harvest reaching it. The `skimHive` move this replaces - one card per " +
-      'FULL building, any suit, via `stackCardToBarn` - is gone; `stackCardToBarn` (fx.ts) ' +
-      'lost its only caller here (v48) and regained one on A17 The Smoke Pot (v49, below).',
+      '⭐ v49 retext (sheet v49, 26/09/2026, `tasks/v49-sheet-a11-a17-pass.md`; builder ' +
+      'default carried from v48 R3/`tasks/v48-rulings-v2.md`): a REAL HARVEST, not a move - ' +
+      'it prints "Harvest", so the whole stack goes to the barn, the When-Harvested line ' +
+      "fires, and W16/W18 count it (the V11 reading, v46 R1). ONE building, the owner's " +
+      'choice: another of your buildings (never A11 itself), full OR holding 1 or more ' +
+      'cards - your own Notice Board included at 1 or more (the face reads "another of ' +
+      'your buildings" and A11 already reached a board below 3), which the plain Harvest ' +
+      'action never reaches below 3 (S8). Built off `chooseBuilding`, filter ' +
+      "'harvestable', `relaxedMin: 1` (was 2 on v48; the same relaxation shape the Wheat " +
+      "SERVICE door already used at its own value), `exclude: self.card`, `then: 'harvest'` " +
+      '- the shared primitive W8 and the Wheat door both use, so this needed no new engine ' +
+      'seam. Mandatory (no "may"): with no OTHER building holding any cards, nothing ' +
+      'happens. Threshold 3 is data only (R15 of v48): A11 can never harvest itself (R3 of ' +
+      "v48), so its own clog is still cleared only by ANOTHER card's harvest reaching it.",
   },
   activate(fx, self) {
     fx.pushTask({
@@ -845,7 +851,7 @@ export const waxWorkshop: CardHandler = {
       pid: self.seat,
       src: self.card,
       filter: 'harvestable',
-      relaxedMin: 2,
+      relaxedMin: 1,
       exclude: self.card,
       then: 'harvest',
     });
@@ -1156,11 +1162,16 @@ export const beekeepersVeil: CardHandler = {
 };
 
 /**
- * A17 The Smoke Pot - "At the end of your turn, you may move 1 card from any 1
- * of your full buildings to your Barn." v49 retext (24/09/2026,
- * `tasks/v49-rulings-v1.md` R4): a NEW SHAPE - a clog RELIEF valve rather than
- * a visit reward. Was "Whenever you visit a neighbour, you may SOW the top
- * card of any deck onto one of your buildings" on v42-v48.
+/**
+ * A17 The Smoke Pot - "At the end of your turn, you may move 1 card from one
+ * of your Notice Boards to your Barn." v49 sheet retext (sheet v49,
+ * 26/09/2026, `tasks/v49-sheet-a11-a17-pass.md`): the SOURCE changes from any
+ * one of the owner's full buildings to any one of the owner's Notice Boards,
+ * at any count. Was "you may move 1 card from any 1 of your full buildings to
+ * your Barn" on v49's first build (`tasks/v49-rulings-v1.md` R4, engine-only,
+ * never re-cut as a reference); before that, "Whenever you visit a neighbour,
+ * you may SOW the top card of any deck onto one of your buildings" on
+ * v42-v48.
  */
 export const smokePot: CardHandler = {
   difficulty: {
@@ -1168,74 +1179,66 @@ export const smokePot: CardHandler = {
     verified: { prompts: true, crossPlayer: false, addsMoves: false, endgame: false },
     asserted: { newPrimitive: true, conditional: true, counts: false, interrupts: true },
     notes:
-      '⭐ v49 (24/09/2026): THE TRIGGER, THE SOURCE AND THE DESTINATION ALL CHANGE AT ONCE. ' +
-      'The card no longer keys off a visit at all - `afterVisit` and its visitor/neighbour ' +
-      'guards are gone - and moves onto `beforeTurnEnd`, the same fixed end-of-turn seam ' +
-      'O17 The Fruit Basket, V17 and O18 already use (`fruitBasket`, orchard.ts): ' +
-      "`finishTurn` fires it exactly once a turn, before the hand-limit discard, so 'once a " +
-      "turn' is automatic and needs no `markFired` guard of its own. Owner-scoped " +
-      '(`event.seat === self.seat`). ' +
-      "⭐ R4 (Dean): the source is any ONE of the OWNER'S OWN full buildings - never a " +
-      "rival's, so this is no longer a cross-table card at all (`crossPlayer` flips to " +
-      'false) - and a Notice Board is NEVER a source: a `3+` board is never `isFull` ' +
-      '(S8), which is the CLOG definition (`isFull`, query.ts), not the harvest-reached ' +
-      "definition `isHarvestable` most of this suit's other new Harvest offers read. Using " +
-      '`isFull` rather than the more familiar `fullBuildings`/`harvestable` filter is ' +
-      'deliberate and load-bearing: `fullBuildings` would wrongly let a `3+` Notice Board ' +
-      'count once it held three cards, which R4 explicitly rules out ("A Notice Board is ' +
-      "never 'full' and is not a source\"). One card, the OWNER's choice, off any full " +
-      "building's stack, so a mixed stack (sow is suit-free) is a real choice - which crop " +
-      'leaves matters to the Barn\'s own-crop scorer. Optional ("you may"): a skip is ' +
-      'offered and a full building simply stays clogged. ' +
-      '⭐ A PLACEMENT INTO THE BARN, NOT A HARVEST (R4, and the builder default note): the ' +
-      'primitive is `fx.stackCardToBarn` (fx.ts), which splices the one named card off the ' +
-      'stack and pushes it straight to the barn with no `afterHarvest` hook, exactly as the ' +
-      "old A11 (pre-v48) used it and exactly as D7 The Versatile Shed's `spendFromStack` " +
-      'sibling stays out of the Harvest funnel on purpose. `stackCardToBarn` was orphaned by ' +
-      'the v48 pass (A11 The Wax Workshop moved to a real Harvest) and this is its first ' +
-      'caller since. THE BUILDING IS THEN NO LONGER FULL (R4): one card leaves a stack that ' +
-      'was exactly at threshold, so it drops back under, and it may be grown again next ' +
-      "turn - this is the card's whole point, a Harvest-shaped release valve that costs no " +
-      "action and touches no other card's text. " +
-      "⛔ WHAT WENT: the deck-top sow onto one of the owner's buildings, and the whole " +
-      'visitor/neighbour-side machinery (`afterVisit`, `event.self`, the v31 self-visit ' +
-      'guard) that machinery needed. A17 no longer cares who visited whom, or whether ' +
-      'anybody did. ' +
+      '⭐ v49 sheet retext (26/09/2026, `tasks/v49-sheet-a11-a17-pass.md`): ONLY THE ' +
+      'SOURCE CHANGES. The trigger stays `beforeTurnEnd`, the same fixed end-of-turn seam ' +
+      'O17 The Fruit Basket, V17 and O18 use (`fruitBasket`, orchard.ts): `finishTurn` ' +
+      "fires it exactly once a turn, before the hand-limit discard, so 'once a turn' is " +
+      'automatic and needs no `markFired` guard of its own. Owner-scoped ' +
+      '(`event.seat === self.seat`). The destination stays the Barn via `fx.stackCardToBarn` ' +
+      '(fx.ts), which splices one named card off a stack and pushes it straight to the barn ' +
+      "with NO `afterHarvest` hook - not a Harvest, exactly as D7 The Versatile Shed's " +
+      '`spendFromStack` sibling stays out of the Harvest funnel on purpose, so it never ' +
+      'clashes with "a Notice Board is never harvested below 3" (S8): this is a placement, ' +
+      'not a harvest, so that floor is not in play. Optional ("you may"): a skip is offered ' +
+      'and a board simply keeps its card. ' +
+      "⭐ THE SOURCE IS NOW THE OWNER'S OWN NOTICE BOARD(S), NEVER AN ORDINARY BUILDING " +
+      '(builder default, `tasks/v49-sheet-a11-a17-pass.md`): read off `noticeBoardsOf` ' +
+      '(query.ts), which is every board the seat has laid out - one board in every mode ' +
+      "this project ships, TWO at two seats under Dean's two-board fix, either eligible. " +
+      'ANY count, 1 or more (a `3+` board is never `isFull`, so the old full-buildings ' +
+      'filter would have refused it forever; this reads the stack length directly instead). ' +
+      'An ordinary building - full or not - is no longer a legal source at all: `isFull` ' +
+      "and `fullBuildings` lose their only caller in this handler. One card, the OWNER's " +
+      "choice of board and crop (a board's stack is suit-free, so a mixed stack is a real " +
+      "choice - which crop leaves matters to the Barn's own-crop scorer). It may leave a " +
+      'board empty; A21 The Wax Hall then counts one fewer building until it is visited ' +
+      'again. THE TASK IS NOT OFFERED WHEN NO BOARD OF THE OWNER HOLDS A CARD. ' +
       "⭐ BOT PRICING: no existing `TaskAnswer` kind fits 'one of (building, card on its " +
-      "stack)', so the choice is a file-local `card` task (`smokePotMove`) whose answers " +
-      'fall through the flat `cardTask`/`skip` terms - a genuine measurement caveat, the ' +
-      "same shape A10's board/deck choice and A15's discard choice already carry (§0). " +
-      '⛔ THE ANSWER NAMES A CROP, NEVER A CARD ID (fixed after `view-safety.test.ts` caught ' +
-      'it at seed `view-safety-3-0` step 308): `buildingView` (view.ts) shows every stack, ' +
-      "including the OWNER's own, as suit letters only - individual card identity on a " +
-      'stack is not part of ANY view, owner included - so an answer naming a specific ' +
-      'stacked card by id cannot be justified from what the answering seat can even see, ' +
-      "the same boundary that makes D10 The Scout's Post answer a revealed deck top BY " +
-      'SLOT rather than by id (`revealedIn`/`pickFromReveal`, state.ts). Cards on one ' +
-      'stack of the same crop are interchangeable for this purpose (sow is suit-free, so a ' +
-      'stack is a multiset of crops with no meaningful order - the standing Discard ' +
-      'Ordering principle applies here too), so the answer is `{ building, crop }` and the ' +
-      'resolver takes the first stacked card of that crop - any one of them is the same ' +
-      'move. This also SHRINKS the answer count to at most one per crop on a stack rather ' +
-      'than one per card.',
+      "stack)', so the choice stays the file-local `card` task (`smokePotMove`) whose " +
+      'answers fall through the flat `cardTask`/`skip` terms - a genuine measurement ' +
+      "caveat, the same shape A10's board/deck choice and A15's discard choice already " +
+      'carry (§0). ' +
+      '⛔ THE ANSWER NAMES A CROP, NEVER A CARD ID (the hidden-information fix that already ' +
+      'held on the full-buildings version, kept unchanged here): `buildingView` (view.ts) ' +
+      "shows every stack, including the OWNER's own AND a Notice Board's, as suit letters " +
+      'only - individual card identity on a stack is not part of ANY view, owner included ' +
+      '- so an answer naming a specific stacked card by id cannot be justified from what ' +
+      "the answering seat can even see, the same boundary that makes D10 The Scout's Post " +
+      'answer a revealed deck top BY SLOT rather than by id (`revealedIn`/`pickFromReveal`, ' +
+      'state.ts). Cards on one stack of the same crop are interchangeable for this purpose ' +
+      '(a Notice Board is paid by any crop, and sow onto an ordinary building is suit-free ' +
+      'too, so a stack is a multiset of crops with no meaningful order - the standing ' +
+      'Discard Ordering principle applies here too), so the answer is `{ building, crop }` ' +
+      'and the resolver takes the first stacked card of that crop - any one of them is the ' +
+      'same move. This also SHRINKS the answer count to at most one per crop per board ' +
+      'rather than one per card.',
   },
   on: {
     beforeTurnEnd(fx, event, self) {
       if (event.seat !== self.seat) return;
-      // R4: `isFull` (the CLOG question), never `isHarvestable`/`fullBuildings`
-      // (the HARVEST question) - a `3+` Notice Board answers isHarvestable at
-      // three cards but isFull is false for it forever (S8), which is exactly
-      // the exclusion R4 names.
-      const full = player(fx.state, self.seat).tableau.filter((b) => isFull(fx.data, b));
-      if (full.length === 0) return;
+      // The source is the owner's own Notice Board(s), any count 1 or more -
+      // never an ordinary building, full or not (builder default,
+      // tasks/v49-sheet-a11-a17-pass.md).
+      const boards = noticeBoardsOf(fx.data, fx.state, self.seat).filter((b) => b.stack.length > 0);
+      if (boards.length === 0) return;
       fx.pushTask({ t: 'card', pid: self.seat, src: self.card, kind: 'smokePotMove', riders: {} });
     },
   },
   tasks: {
     smokePotMove: {
       answers(data, state, task) {
-        const full = player(state, task.pid).tableau.filter((b) => isFull(data, b));
-        const out: TaskAnswer[] = full.flatMap((b) => {
+        const boards = noticeBoardsOf(data, state, task.pid).filter((b) => b.stack.length > 0);
+        const out: TaskAnswer[] = boards.flatMap((b) => {
           // BY CROP, NEVER BY CARD ID: a stack is shown to every seat, its
           // owner included, as suit letters only (`buildingView`, view.ts),
           // so the answer can only name what that view can see.
@@ -1251,8 +1254,8 @@ export const smokePot: CardHandler = {
         if (answer.kind === 'skip') return true;
         if (answer.kind !== 'card') throw new Error('smokePotMove expects a card answer');
         const { building, crop } = answer.payload as { building: CardId; crop: Suit };
-        const b = player(fx.state, task.pid).tableau.find((x) => x.card === building);
-        if (!b) throw new Error(`${building} is not on seat ${task.pid}'s farm`);
+        const b = noticeBoardsOf(fx.data, fx.state, task.pid).find((x) => x.card === building);
+        if (!b) throw new Error(`${building} is not one of seat ${task.pid}'s Notice Boards`);
         // Any card of the named crop is the same move (crops on a stack are
         // interchangeable; see the docblock).
         const card = b.stack.find((c) => cardById(fx.data, c).suit === crop);
