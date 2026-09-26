@@ -243,16 +243,23 @@ export function RivalRail({
                * the run re-flows to two lines at the 1024 floor without leaving a
                * dangling separator on the end of the first.
                */}
-              <p className="rival-run">
-                <span>{receiptTotal(farm.receipts)} VP</span>
-                <span>{farm.handCount} in hand</span>
-                <span>{farm.barnCount} in barn</span>
-              </p>
+              {/* 26/09/2026: the run and the Workers note share one wrapping
+                row (see `.rival-stats`), so with a wider system font the note
+                fills the run's half-empty second line instead of adding a third
+                - which is what pushed the third neighbour off the rail at the
+                1024 floor on Linux. */}
+              <div className="rival-stats">
+                <p className="rival-run">
+                  <span>{receiptTotal(farm.receipts)} VP</span>
+                  <span>{farm.handCount} in hand</span>
+                  <span>{farm.barnCount} in barn</span>
+                </p>
 
-              {/* What free actions this farm is sitting on. A meeple is spent at
-                the start of ITS OWNER'S turn, so this is a read on what they are
-                about to be able to do rather than on what they have. */}
-              <MeepleSupply data={data} meeples={farm.meeples} size="rail" />
+                {/* What free actions this farm is sitting on. A meeple is spent at
+                  the start of ITS OWNER'S turn, so this is a read on what they are
+                  about to be able to do rather than on what they have. */}
+                <MeepleSupply data={data} meeples={farm.meeples} size="rail" />
+              </div>
 
               {boards.length === 0 ? (
                 <p className="rival-board rival-board-none">

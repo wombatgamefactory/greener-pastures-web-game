@@ -521,6 +521,23 @@ body.is-dragging .zoom {
   max-width: 260px;
 }
 
+/*
+ * 26/09/2026: with a wider system font (Linux, ChromeOS) the whole meeple zone
+ * no longer fitted beside the bonus zone at the 1024 floor, so it wrapped onto
+ * a second row - and jumped back up when the bonus resolved and its zone
+ * narrowed, moving the farm 18px (verify-layout's "farm moved" check). A small
+ * flex basis keeps it on the bar's first row; its caption wraps inside it
+ * instead, which the 40px button row has the height for.
+ */
+.action-buttons > .zone-meeple {
+  flex: 1 1 72px;
+}
+
+.zone-meeple .zone-head {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
 .zone-bonus,
 .zone-meeple,
 .zone-exit {

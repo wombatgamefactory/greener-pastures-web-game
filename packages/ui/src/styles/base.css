@@ -127,7 +127,10 @@
   --motion-state: 600ms;
   --motion-ui: 160ms;
 
-  --font-display: 'Fredoka', 'Berlin Sans FB', 'Trebuchet MS', system-ui, sans-serif;
+  /* Fredoka is bundled (@fontsource-variable/fredoka, imported in main.tsx) so
+     every machine draws the same display text; the rest are fallbacks only. */
+  --font-display:
+    'Fredoka Variable', 'Fredoka', 'Berlin Sans FB', 'Trebuchet MS', system-ui, sans-serif;
   --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
 
   /* Comfortable desktop. Overridden downward at the breakpoints below. */

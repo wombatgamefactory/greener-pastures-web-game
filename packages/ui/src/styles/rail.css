@@ -238,6 +238,29 @@
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * 26/09/2026: the run and the Workers note flow as ONE wrapping row. The run's
+ * own box steps aside (`display: contents`) so its spans and the note are
+ * siblings in this flex row; the note is set off by space rather than a middot,
+ * so whichever line it lands on there is never a dangling separator.
+ */
+.rival-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 5px;
+  font-size: var(--fs-sm);
+  line-height: 1.3;
+}
+
+.rival-stats > .rival-run {
+  display: contents;
+}
+
+.rival-stats > .supply-rail {
+  margin-left: 6px;
+}
+
 .rival-run span:not(:last-child)::after {
   content: '·';
   margin-left: 5px;
@@ -259,9 +282,10 @@
 
 .rival-board-head {
   display: flex;
+  flex-wrap: wrap; /* 26/09/2026: see .rival-payout */
   align-items: baseline;
   justify-content: space-between;
-  gap: 6px;
+  gap: 0 6px;
 }
 
 .rival-board-name {
@@ -275,7 +299,14 @@
 /* The door is not a caption, so it is not caption-coloured. Since v31 it IS the
    payoff - a visit pays nothing and buys this farm's suit action - so it is the
    thing the decision is made on and it reads in full ink. */
+/*
+ * 26/09/2026: with a wider system font (Linux, ChromeOS) the payout no longer
+ * fits beside the label at the 1024 floor and used to break into three short
+ * lines, which pushed the third rival off the rail. The head now wraps, so the
+ * payout drops whole onto its own full-width line instead.
+ */
 .rival-payout {
+  flex: 1 1 auto;
   font-size: var(--fs-xs); /* was 11px, 25/09/2026 token pass */
   color: var(--ink);
   text-align: right;
