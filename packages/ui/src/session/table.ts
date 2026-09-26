@@ -311,6 +311,19 @@ export class Session {
   /** Moves undo may not rewind past: the warm-up walk is scenery, not your play. */
   private floor = 0;
   /**
+   * B17 (25/09/2026): the index in `log` where YOUR CURRENT turn's own moves
+   * begin. Undo used to reach back across a whole game of your own past
+   * turns, one call at a time - technically replay-a-prefix either way, but
+   * "undo" reading as "rewind my last several turns" is not what the label
+   * promises. `send` moves this forward the instant control becomes yours
+   * (a bot's `endTurn`, or the very first move of a fresh table); nothing
+   * else touches it, so a turn spent entirely on tasks and no main action yet
+   * still has a floor at its own start rather than its predecessor's.
+   */
+  private turnFloor = 0;
+  /** Log indices of keep answers the session sent for you (`autoKeep`). */
+  private autoSent = new Set<number>();
+  /**
    * Which turn the table is on. Counted here rather than derived from the log,
    * because a cross-player task answer changes a move's `seat` without ending
    * anyone's turn - deriving it from seat changes overstates a real game by
@@ -346,6 +359,14 @@ export class Session {
     return this.options.opponents[seat] ?? 'balanced';
   }
 
+  /**
+   * The one boundary undo may not cross: the later of the warm-up floor
+   * (never yours to touch) and your current turn's own floor (B17).
+   */
+  private undoFloor(): number {
+    return Math.max(this.floor, this.turnFloor);
+  }
+
   snapshot(): Snapshot {
     const actor = actorOf(this.state);
     const yours = actor === YOU;
@@ -357,7 +378,12 @@ export class Session {
       events: this.events.slice(-160),
       over: isOver(this.state),
       score: isOver(this.state) ? score(this.gameData, this.state) : null,
-      canUndo: this.log.slice(this.floor).some((m) => m.seat === YOU),
+      // ⭐ B17 (25/09/2026): `yours` is folded in deliberately, not just the
+      // turn floor. Without it, undo would stay available all through a bot's
+      // thinking right after you end your turn - the moves are still >=
+      // `turnFloor` until the NEXT time control comes back to you - which is
+      // exactly the "unavailable after End turn" case the ticket names.
+      canUndo: yours && this.log.slice(this.undoFloor()).some((m) => m.seat === YOU),
       played: this.log.length,
     };
   }
@@ -396,6 +422,12 @@ export class Session {
       this.walk(depth, minHand, toEnd);
     } finally {
       this.floor = this.log.length;
+      // B17: the walk always stops exactly at the top of your turn (its own
+      // `turnTop` check), so nothing of yours has been played in it yet - your
+      // turn's own floor and the warm-up's are the same index. Set explicitly
+      // rather than left to `send`'s tracking, which has no way to tell "the
+      // walk just stopped" from "your turn genuinely just began".
+      this.turnFloor = this.floor;
     }
   }
 
@@ -480,10 +512,52 @@ export class Session {
   /** Play a move. Throws exactly where the engine would, so no UI-side rule can hide one. */
   send(move: Move): void {
     const applied = apply(this.gameData, this.state, move);
+    const wasYours = this.state.turnPlayer === YOU;
     if (applied.state.turnPlayer !== this.state.turnPlayer) this.turns += 1;
     this.state = applied.state;
     this.log.push(move);
     this.events.push(...redactEvents(applied.events, YOU));
+    // B17: the moment turnPlayer becomes you - a bot's own `endTurn`, most of
+    // the time - is where your turn's floor sits. `this.log.length` already
+    // includes the move just pushed (that bot's move, which belongs to the
+    // turn that just ended), so it names the index your own first move of the
+    // new turn will land on.
+    if (!wasYours && this.state.turnPlayer === YOU) this.turnFloor = this.log.length;
+  }
+
+  /**
+   * The human's own move, from a click: `send` plus `autoKeep`. Kept apart from
+   * `send` so every path that feeds a recorded log back in (replay, a capture,
+   * a test) plays it verbatim, with no keep inserted twice.
+   */
+  play(move: Move): void {
+    this.send(move);
+    this.autoKeep();
+  }
+
+  /**
+   * ⭐ 26/09/2026 (Dean): "if I am not getting an option to discard, I don't
+   * need to select to confirm the cards." A Draw reveals its cards and then
+   * asks for a `keep` answer; when that answer is the ONLY legal move (Draw 2
+   * keep both, Draw 4 keep all), it carries no decision, so it is sent here
+   * the instant it appears and the cards go straight into your hand. A keep
+   * with a real choice (fewer kept than seen) still waits for your clicks.
+   *
+   * Sent from the session rather than a component effect so it happens inside
+   * the same `send`, before React ever renders the empty confirm step. The
+   * index is remembered in `autoSent` so `undo` steps back past it (undoing a
+   * draw returns you to the deck choice, not to a confirm you never saw), and
+   * it runs only from `play`, never from `send`, because a replayed log already
+   * holds the keep.
+   */
+  private autoKeep(): void {
+    if (actorOf(this.state) !== YOU) return;
+    const moves = legalMoves(this.gameData, this.state);
+    const only = moves.length === 1 ? moves[0] : undefined;
+    if (only?.type !== 'task' || only.answer.kind !== 'keep') return;
+    this.autoSent.add(this.log.length);
+    this.send(only);
+    this.autoKeep();
   }
 
   /**
@@ -571,9 +645,20 @@ export class Session {
    * reason this is a solo-versus-bots affordance rather than a rule.
    */
   undo(): boolean {
+    // ⚠️ B17 BUG CAUGHT BY ITS OWN TEST (25/09/2026): `undoFloor()` alone
+    // bounds WHICH of your moves are reachable, but says nothing about WHOSE
+    // decision it currently is - your own moves from a turn that has already
+    // ended are still sitting at indices >= `turnFloor` (nothing removes them
+    // until your NEXT turn starts), so a bare index check let `undo()` keep
+    // succeeding right after `endTurn`, disagreeing with `canUndo` above,
+    // which does gate on `yours`. Both must refuse together.
+    if (actorOf(this.state) !== YOU) return false;
     let cut = -1;
-    for (let i = this.log.length - 1; i >= this.floor; i--) {
-      if ((this.log[i] as Move).seat === YOU) {
+    // Bounded by `undoFloor()` rather than `floor` alone, so a search that
+    // used to walk back across every one of your past turns now stops at the
+    // start of this one.
+    for (let i = this.log.length - 1; i >= this.undoFloor(); i--) {
+      if ((this.log[i] as Move).seat === YOU && !this.autoSent.has(i)) {
         cut = i;
         break;
       }
@@ -588,6 +673,7 @@ export class Session {
     this.state = this.deal();
     this.log.length = 0;
     this.events = [];
+    for (const i of [...this.autoSent]) if (i >= moves.length) this.autoSent.delete(i);
     for (const move of moves) this.send(move);
     this.floor = floor;
   }

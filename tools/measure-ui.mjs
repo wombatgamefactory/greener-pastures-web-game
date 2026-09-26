@@ -116,7 +116,11 @@ const TAG = tagAt === -1 ? 'baseline-v1' : (args[tagAt + 1] ?? 'baseline-v1');
 const SWEEP = args.includes('--sweep');
 
 const ROOT = resolve(import.meta.dirname, '..');
-const DIST = join(ROOT, 'packages', 'ui', 'dist');
+// GP_DIST (25/09/2026): lets parallel workers verify their own build, e.g.
+// `npx vite build --outDir <dir>` from packages/ui, then GP_DIST=<dir>.
+const DIST = process.env.GP_DIST
+  ? resolve(process.env.GP_DIST)
+  : join(ROOT, 'packages', 'ui', 'dist');
 const OUT = join(ROOT, 'reports', `ui-${TAG}`);
 /** Must match `base` in vite.config.ts. */
 const BASE = '/greener-pastures-web-game/';
@@ -152,9 +156,101 @@ function serveDist() {
   return new Promise((ok) => server.listen(0, '127.0.0.1', () => ok(server)));
 }
 
+/**
+ * T10b (26/09/2026): THE TURN-TOP PASS, AND WHY THE FIXTURE ABOVE WAS NOT ENOUGH.
+ *
+ * The densest FIXTURE is chosen for its density, and at `dense-a` depth 760
+ * that meant a turn whose bonus was ALREADY TAKEN: the turn bar was one line
+ * tall, the farm started 66px higher than on an ordinary turn, and the
+ * tableau had room for its 87px buildings. So this tool reported "0 sliced"
+ * while every ordinary turn-top at 1600x900 cut every building in half (QA
+ * D1). It also never held more than 5 buildings, so it never saw a second
+ * row. These are the states a player actually meets: the bonus slot still
+ * open, the Worker strip in its no-Workers state, and dense farms (2p farms of
+ * 10 to 14 buildings, 4p farms of 5 to 8) - the QA driver's seeds
+ * (`.scratch/qa/slice-probe.mjs`), measured at EVERY viewport. Any building
+ * vertically clipped by any scrolling ancestor, or by the viewport, fails the
+ * run (exit code 1).
+ */
+const TURN_TOPS = [
+  { seats: 2, seed: 'qa-a', depth: 160 },
+  { seats: 2, seed: 'qa-a', depth: 320 },
+  { seats: 2, seed: 'qa-a', depth: 900 },
+  { seats: 2, seed: 'qa-b', depth: 320 },
+  { seats: 4, seed: 'qa-a', depth: 160 },
+  { seats: 4, seed: 'qa-b', depth: 320 },
+  { seats: 4, seed: 'qa-c', depth: 240 },
+  { seats: 4, seed: 'qa-c', depth: 640 },
+];
+
+/** Buildings in YOUR tableau cut through vertically by a clipping ancestor or the viewport. */
+function clippedBuildings() {
+  const tableau = document.querySelector('.farm .tableau');
+  if (!tableau) return { buildings: 0, clipped: 0, card: 0, bonusOpen: false, workerStrip: false };
+  const all = [...tableau.querySelectorAll('.building')];
+  let clipped = 0;
+  for (const b of all) {
+    const r = b.getBoundingClientRect();
+    let bad = r.top < -0.5 || r.bottom > window.innerHeight + 0.5;
+    for (
+      let a = b.parentElement;
+      a && a !== document.documentElement && !bad;
+      a = a.parentElement
+    ) {
+      const cs = getComputedStyle(a);
+      if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
+      const ar = a.getBoundingClientRect();
+      if (r.top < ar.top - 0.5 || r.bottom > ar.bottom + 0.5) bad = true;
+    }
+    if (bad) clipped++;
+  }
+  return {
+    buildings: all.length,
+    clipped,
+    card: Math.round(all[0]?.getBoundingClientRect().width ?? 0),
+    bonusOpen: !!document.querySelector('.bonus-exits'),
+    workerStrip: !!document.querySelector('.farm > .supply-full'),
+    sideways: tableau.classList.contains('tableau-scroll'),
+  };
+}
+
 function urlFor(server, fixture) {
   const q = `?autostart=1&seats=4&seed=${fixture.seed}&depth=${fixture.depth}&minHand=${fixture.minHand}`;
   return `http://127.0.0.1:${server.address().port}${BASE}${q}`;
+}
+
+/**
+ * ⚠️ THE MEASURE-THEN-CORRECT RACE, AND WHY IT LIVES HERE RATHER THAN IN A CSS
+ * NUMBER (25/09/2026, floor/laptop slicing fix, WP1b).
+ *
+ * `Table.tsx`'s `useCssSize` reads a card size back off the CSS ladder with
+ * `getComputedStyle`, but its React state STARTS at a hard-coded fallback
+ * (128px for `--card-building`) and only becomes the real ladder value once its
+ * `useEffect` has run and committed a second render. On a real browser that gap
+ * is one frame and nobody sees it; on a fresh Playwright navigation that
+ * resolves `waitUntil: 'networkidle'` the moment the last asset lands, `probe()`
+ * can run inside that gap and measure a card that is NOT the one the ladder
+ * asked for.
+ *
+ * This is not a rare miss. Instrumented directly: at every one of the seven
+ * ladder steps, `.building .card`'s computed width read 128px immediately after
+ * `goto` resolved and only the CORRECT ladder value (84, 84, 120, 150, 200, 200,
+ * 280px in step order) after a further wait. The floor and laptop steps are
+ * where it bites hardest, because 128px is bigger than either step's real card
+ * (92-104px on the pre-fix ladder) and inflates `tableauHidden` by exactly the
+ * difference - which is why trimming `--card-building` in base.css moved
+ * nothing: the probe was never reading the trimmed value in the first place.
+ *
+ * The fix is to wait for React to finish, not to keep shrinking a number the
+ * tool was not measuring. Two animation frames is what `useCssSize`'s effect
+ * needs to commit and paint; waiting on that condition rather than a fixed
+ * timeout costs nothing when the value is already settled (the common case on
+ * a slower machine) and is not a fragile magic number.
+ */
+async function settle(page) {
+  await page.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  );
 }
 
 /**
@@ -294,7 +390,11 @@ function probe() {
   if (tableau) {
     const box = rect(tableau);
     tableauHidden = Math.max(0, tableau.scrollHeight - Math.round(box.height));
-    slicedBuildings = buildings.filter((b) => rect(b).bottom > box.bottom + 1).length;
+    // T10b (26/09/2026): the TOP edge too, and the farm's buildings only: a
+    // sideways tableau scrolled part-way can hide a building above as well.
+    slicedBuildings = [...tableau.querySelectorAll('.building')].filter(
+      (b) => rect(b).bottom > box.bottom + 1 || rect(b).top < box.top - 1,
+    ).length;
   }
 
   /*
@@ -455,6 +555,7 @@ try {
       const cells = [];
       for (const depth of SWEEP_DEPTHS) {
         await page.goto(urlFor(server, { seed, depth, minHand: 5 }), { waitUntil: 'networkidle' });
+        await settle(page);
         const m = await page.evaluate(probe);
         cells.push(`${m.buildings}b/${m.handCards}h`.padStart(8));
       }
@@ -469,6 +570,7 @@ try {
   let best = null;
   for (const fixture of FIXTURES) {
     await page.goto(urlFor(server, fixture), { waitUntil: 'networkidle' });
+    await settle(page);
     const m = await page.evaluate(probe);
     const score = density(m);
     console.log(
@@ -488,6 +590,7 @@ try {
   for (const viewport of VIEWPORTS) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.goto(url, { waitUntil: 'networkidle' });
+    await settle(page);
     const m = await page.evaluate(probe);
 
     /*
@@ -561,8 +664,47 @@ try {
     console.log(`  -> ${shot}`);
   }
 
+  // --- T10b: the turn-top pass (see TURN_TOPS) ------------------------------
+  console.log('\nturn-top pass: bonus slot open, dense farms, every viewport');
+  report.turnTops = {};
+  let turnTopFailures = 0;
+  for (const viewport of VIEWPORTS) {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    const rows = [];
+    for (const t of TURN_TOPS) {
+      const q = `?autostart=1&seats=${t.seats}&seed=${t.seed}&depth=${t.depth}&minHand=0`;
+      await page.goto(`http://127.0.0.1:${server.address().port}${BASE}${q}`, {
+        waitUntil: 'networkidle',
+      });
+      await page.waitForSelector('.farm .tableau');
+      await settle(page);
+      await page.waitForTimeout(150);
+      const m = await page.evaluate(clippedBuildings);
+      rows.push({ ...t, ...m });
+      if (m.clipped > 0) turnTopFailures++;
+    }
+    report.turnTops[viewport.name] = rows;
+    const worst = rows.reduce((a, r) => a + (r.clipped > 0 ? 1 : 0), 0);
+    console.log(
+      `  ${viewport.name.padEnd(10)} ${worst} of ${rows.length} states clip a building  ` +
+        rows
+          .map(
+            (r) =>
+              `${r.seats}p/${r.buildings}b@${r.card}px${r.sideways ? '>' : ''}` +
+              `${r.bonusOpen ? '+bonus' : ''}${r.clipped ? ` CLIPPED ${r.clipped}` : ''}`,
+          )
+          .join('  '),
+    );
+  }
+
   writeFileSync(join(OUT, 'measurements.json'), `${JSON.stringify(report, null, 2)}\n`);
   console.log(`\nwritten to ${OUT}`);
+  if (turnTopFailures > 0) {
+    console.log(`\nFAIL  ${turnTopFailures} turn-top state(s) draw a building cut through`);
+    process.exitCode = 1;
+  } else {
+    console.log('\nok    no building vertically clipped at any turn-top, at any viewport');
+  }
 } finally {
   await browser?.close();
   server?.close();

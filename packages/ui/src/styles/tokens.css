@@ -1,0 +1,171 @@
+/*
+ * Design tokens (25/09/2026). The single type scale every stylesheet draws on.
+ * Owned by the visual-system pass (WP2), which tunes the values and adds colour,
+ * spacing and radius tokens. Nothing below 12px CSS at 1600 wide; the scale
+ * steps up with the UiScale ladder at 2400+ and 3440.
+ *
+ * ⚠️ THE FIVE `--fs-*` NAMES ARE A CONTRACT. Other stylesheets are being moved
+ * onto them by name, so a value may be retuned here but a name may not be
+ * renamed or removed. Add new tokens beside them instead.
+ *
+ * ⭐ WHY FIVE SIZES AND NOT MORE. The census that started this pass found 83
+ * `font-size` declarations spread over eleven different values from 9px to
+ * 22px, and four of them (9, 10, 11 and 12) were doing the same job - "quiet
+ * caption" - at four sizes nobody could tell apart. Five steps on a ratio of
+ * about 1.2 is what a player can actually perceive as a hierarchy:
+ *
+ *   --fs-xs   12   captions, zone heads, legends, uppercase labels. The floor.
+ *   --fs-sm   13   secondary UI text, notes, chips, ghost buttons.
+ *   --fs-md   15   body text: prompts, button labels, the turn bar's verbs.
+ *   --fs-lg   18   panel headings, the start button, the verdict line.
+ *   --fs-xl   22   the one headline on a screen: your farm, the result.
+ *
+ * THE LADDER IS THE SAME ONE `base.css` STEPS THE CARD SIZES ON, keyed on the
+ * same media queries rather than on a class, because the ladder IS those media
+ * queries (`UiScale.tsx` only multiplies what they set, and deliberately leaves
+ * font sizes alone - see `SCALED` there). Type follows the card sizes up:
+ *
+ *   step F  (2400 x 1300+, a 1440p monitor, and 3440 ultrawide)      x1.25
+ *   ultrawide (3200+ wide, still 1440 tall)                          x1.375
+ *   step G  (2400 x 1800+, 4K at 100%)                               x1.5
+ *
+ * ⚠️ 3440 IS x1.375, NOT THE x1.5 THE BRIEF SKETCHED, AND ON PURPOSE. A 3440 x
+ * 1440 ultrawide has the pixel density of a 2560 x 1440 panel (34" against
+ * 27"), `--table-max` caps the layout at 2560 so the extra width goes to the
+ * margins, and the height - which is what every region is short of - is the
+ * same 1440. x1.5 there would set the rail's captions at 18px in a 320px rail
+ * built for 15. 4K is the screen where x1.5 is physically right: the same
+ * 27" at 1.5 times the density.
+ */
+:root {
+  /* ---- type ------------------------------------------------------------- */
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 15px;
+  --fs-lg: 18px;
+  --fs-xl: 22px;
+  /* The display step, for a hero line that is not a panel heading. */
+  --fs-2xl: 28px;
+
+  --lh-tight: 1.15;
+  --lh-snug: 1.3;
+  --lh-body: 1.45;
+
+  /* T10b (26/09/2026): the turn bar's ONE message line (`main-column.css`,
+     `.bar-line`), where every prompt sentence and bar note now lives. A
+     fixed height, so a prompt can never move the farm (QA D2). */
+  --bar-line-h: calc(var(--fs-md) * 1.5);
+  /* One row of 40px buttons, the 3px row gap and the message line: the turn
+     bar's constant height from the desktop rung up (`main-column.css`
+     overrides it below that, where the bar is two rows). */
+  --turn-zone-h: calc(43px + var(--bar-line-h));
+
+  /* Uppercase caption tracking: 0.06em is where 12px capitals stop touching. */
+  --track-caps: 0.06em;
+
+  /* ---- colour: ink and plate ---------------------------------------------
+   * `--ink`, `--ink-soft`, `--ink-line`, `--rule` and the papers live in
+   * base.css with their measured contrast ladder. These are the additions. */
+
+  /* The printed keyline ink off the card frame (`.card::after`), and the text
+     colour on a parchment title plate: 13.6:1 on the plate. */
+  --ink-strong: #2f2318;
+  /* The card title plate (B7): opaque parchment, lighter than every paper so it
+     reads as a label stuck on the art rather than a hole in it. */
+  --plate: #fdf8ea;
+  --plate-edge: #b9a68a;
+
+  /* A control or swatch BOUNDARY on paper. `--ink-line` (#b9a68a) is 2.1:1 on
+     the paper and fine for a hairline rule; a boundary that has to be SEEN to
+     find the control (WCAG 1.4.11, 3:1) uses this: 3.23:1 on the gradient's
+     darkest stop #efe6d1, 3.6:1 on the paper. */
+  --edge: #8f7c62;
+
+  /* ---- colour: the three accents -----------------------------------------
+   * Go (the seat-neutral green the prompts and targets already use), stop
+   * (the rust the clog flag and over-limit hand wear), and focus. No blue. */
+  --go: #3f7a3a;
+  --go-deep: #2f5c2b;
+  --go-wash: #eef4e6;
+  --stop: #a2493a;
+  /* Focus is the deep green, not the seat colour: a Wheat or Dairy seat colour
+     is near-invisible on paper, and a focus ring must never depend on who you
+     are. 6.9:1 on the paper, well over the 3:1 a focus indicator needs. */
+  --focus: #2f5c2b;
+  --focus-ring: 0 0 0 2px var(--paper, #f7f1e3), 0 0 0 4px var(--focus);
+
+  /* ---- colour: the disabled palette (B16) --------------------------------
+   * Replaces `opacity` dimming. Opacity fades the BOUNDARY with the label, so a
+   * disabled control at 0.36 had an edge of about 1.3:1 and simply vanished;
+   * a player could not tell "shut" from "not there". Here the boundary stays at
+   * 3:1 and a dashed style says "shut", and the label drops to a muted ink that
+   * still reads (3.6:1 on the fill - disabled text is exempt from 4.5:1, but a
+   * label nobody can read cannot tell you what is shut). */
+  --disabled-fill: #f1ebdc;
+  --disabled-ink: #86765f;
+  --disabled-edge: #8f7c62;
+
+  /* ---- spacing ---------------------------------------------------------- */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 12px;
+  --space-6: 16px;
+  --space-7: 24px;
+
+  /* ---- radius ----------------------------------------------------------- */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 16px;
+  --radius-pill: 999px;
+
+  /* ---- elevation ---------------------------------------------------------
+   * Four levels and one light source (above, slightly warm). Level 1 is a chip
+   * resting on the table, 2 a card or raised button, 3 a lifted card or a
+   * popover, 4 an overlay. `--shadow` and `--shadow-lift` in base.css are the
+   * older pair and equal levels 1 and 3 closely enough to coexist. */
+  --elev-1: 0 1px 2px rgb(58 42 24 / 16%);
+  --elev-2: 0 1px 2px rgb(58 42 24 / 12%), 0 2px 6px rgb(58 42 24 / 14%);
+  --elev-3: 0 2px 4px rgb(58 42 24 / 12%), 0 8px 20px rgb(58 42 24 / 22%);
+  --elev-4: 0 4px 8px rgb(58 42 24 / 14%), 0 18px 44px rgb(58 42 24 / 30%);
+  /* The pressed state: pushed into the felt rather than lifted off it. */
+  --elev-pressed: inset 0 1px 3px rgb(58 42 24 / 22%);
+}
+
+/* Step F: 2560 x 1440, and the 3440 ultrawide until the rule below. */
+@media (min-width: 2400px) and (min-height: 1300px) {
+  :root {
+    --fs-xs: 15px;
+    --fs-sm: 16px;
+    --fs-md: 19px;
+    --fs-lg: 23px;
+    --fs-xl: 28px;
+    --fs-2xl: 35px;
+  }
+}
+
+/* Ultrawide at 1440 tall: the same density as step F, a touch more. */
+@media (min-width: 3200px) and (min-height: 1300px) {
+  :root {
+    --fs-xs: 16.5px;
+    --fs-sm: 18px;
+    --fs-md: 20.5px;
+    --fs-lg: 25px;
+    --fs-xl: 30px;
+    --fs-2xl: 38px;
+  }
+}
+
+/* Step G: 4K at 100% scaling. Last, so it wins over the ultrawide rule. */
+@media (min-width: 2400px) and (min-height: 1800px) {
+  :root {
+    --fs-xs: 18px;
+    --fs-sm: 19.5px;
+    --fs-md: 22.5px;
+    --fs-lg: 27px;
+    --fs-xl: 33px;
+    --fs-2xl: 42px;
+  }
+}

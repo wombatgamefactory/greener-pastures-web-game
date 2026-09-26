@@ -55,14 +55,16 @@
  */
 
 import type { GameData } from '@gp/data';
-import type { Move, PlayerView } from '@gp/engine';
+import type { PlayerView } from '@gp/engine';
 import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 
+import { useEscapeKey } from '../session/escape';
+import { activateGroup } from '../session/play';
 import type { Play } from '../session/play';
 import { actionIcon } from '../view/art';
-import { actionGroups, describeMove } from '../view/moveText';
+import { actionGroups, actionReason } from '../view/moveText';
 import type { ActionGroup, TurnZone } from '../view/moveText';
-import { visitHosts } from '../view/intent';
 import { meepleWindowOpen } from './Supply';
 
 /**
@@ -70,18 +72,20 @@ import { meepleWindowOpen } from './Supply';
  *
  * ⭐ `bonusUsed` IS A LIST SINCE v31, not a boolean, and this is where the
  * difference shows. The printed rule is one option a turn, which a boolean said
- * perfectly well; A Helping Hand grants BOTH options, so "has the slot gone" and
- * "how many are left" are two different questions. The interface cannot compute
- * the second - `bonusSlotsFor` reads a built card against the true state - so it
- * asks the move list instead, which is the same answer arrived at from the side
- * the interface is allowed to see.
+ * perfectly well; ⚠️ THE OLD A HELPING HAND THAT GRANTED A SECOND PLAY IS GONE
+ * (v39 replaced it with five distinct per-suit cards, none of which grants a
+ * second bonus play), but A10 The Cross-Pollinator (v48) grants an EXTRA visit
+ * with no per-board latch (R9), so "has the slot gone" and "how many are left"
+ * are still two different questions. The interface cannot compute the second -
+ * `bonusSlotsFor` reads a built card against the true state - so it asks the
+ * move list instead, which is the same answer arrived at from the side the
+ * interface is allowed to see.
  *
  * `rules.turn.bonusTiming` carries the paired controls, so the interface honours
  * the knob rather than the rule: an arm that switches the rule back must switch
  * the interface back with it or it is measuring two different games. Since
- * 03/09/2026 the shipped value is 'end' - meeples, core action, THEN the bonus -
- * so the bar's two shapes now arrive in the opposite order to the one they were
- * designed in.
+ * 09/09/2026 the shipped value is 'start' - bonus FIRST, then the core action -
+ * so the bar's two shapes arrive in the order they were designed in.
  */
 function bonusWindowOpen(data: GameData, view: PlayerView): boolean {
   switch (data.rules.turn.bonusTiming) {
@@ -157,12 +161,24 @@ function ZoneHead({ label, state }: { label: string; state: 'go' | 'spent' | 'id
   return <h4 className={`zone-head zone-${state}`}>{label}</h4>;
 }
 
+/**
+ * B11 (25/09/2026): Undo is not an `ActionGroup`, so it gets its own fixed
+ * sentence rather than one from `actionReason` - live or disabled, it is
+ * always the same fact (the scope B17 set), never a count that changes turn
+ * to turn.
+ */
+const UNDO_REASON =
+  'Undo last step: your last move this turn. Nothing before your turn began can be undone.';
+
 export function ActionBar({
   data,
   play,
   onUndo,
   canUndo,
   waitingOn,
+  onShowHowToPlay,
+  onShowKeyHelp,
+  children,
 }: {
   data: GameData;
   play: Play;
@@ -170,8 +186,28 @@ export function ActionBar({
   canUndo: boolean;
   /** Text for whoever the table is waiting on, when it is not you. */
   waitingOn: string | null;
+  /**
+   * WP5 item 2 (25/09/2026): the turn bar's own "?" opens a small menu with
+   * both of these, mirroring the two things the keyboard layer separately
+   * reaches - `?` straight to the shortcut sheet, and How to play already
+   * one click away from the start screen. Optional so the render tests and
+   * any other caller that mounts `ActionBar` with no help surface at all
+   * still typecheck.
+   */
+  onShowHowToPlay?: (() => void) | undefined;
+  onShowKeyHelp?: (() => void) | undefined;
+  /**
+   * T10b (26/09/2026): THE PROMPT, drawn in the bar's own message line. See
+   * the dated note on `.bar-line` below and in `main-column.css`.
+   */
+  children?: ReactNode;
 }) {
   const groups = actionGroups(data, play.view, play.moves);
+  const [helpOpen, setHelpOpen] = useState(false);
+  // 25/09/2026 (WP5 item 3): joins the same escape stack as every other
+  // dialog - see `session/escape.ts`. A menu, not a full dialog, but it still
+  // owes Escape a close.
+  useEscapeKey(() => setHelpOpen(false), helpOpen);
   const armed = play.intent.k === 'arm' ? play.intent : null;
 
   /**
@@ -221,36 +257,11 @@ export function ActionBar({
   const meepleLive = play.active && (meepleGroup?.moves.length ?? 0) > 0;
   const meeplesHeld = Object.values(play.view.you.meeples).reduce((a, b) => a + b, 0);
 
-  const onGroup = (group: ActionGroup) => {
-    const { moves, needsTarget, type } = group;
-    if (moves.length === 0) return;
-    if (!needsTarget) {
-      play.choose(moves, 'Which one?');
-      return;
-    }
-    /*
-     * A VISIT NARROWS ON ITS HOST, NOT ON ITS MOVE COUNT. There is one move per
-     * (host, hand card) pair, so a family with five moves may still have exactly
-     * one place to go - and making somebody arm a family and then click the only
-     * neighbour in it is a click spent on nothing.
-     */
-    if (type === 'visit') {
-      const hosts = visitHosts(moves);
-      if (hosts.length === 1) {
-        play.setVisitFee(hosts[0] as number, null);
-        return;
-      }
-      play.arm('visit');
-      return;
-    }
-    // One legal target: skip the arming step rather than making someone click a
-    // family and then the only thing in it.
-    if (moves.length === 1 && type !== 'build') {
-      play.send(moves[0] as Move);
-      return;
-    }
-    play.arm(type);
-  };
+  // 25/09/2026 (WP5 item 2): the dispatch logic that used to live in this
+  // closure is now `session/play.ts`'s exported `activateGroup`, shared with
+  // the keyboard layer (`session/keys.ts`) so a shortcut does exactly what a
+  // click does rather than a second copy of the same five branches.
+  const onGroup = (group: ActionGroup) => activateGroup(play, group);
 
   /**
    * `kind` is the zone's costume, not a second idea of what the button is: an
@@ -260,10 +271,18 @@ export function ActionBar({
    */
   const button = (group: ActionGroup, kind: 'action' | 'exit' = 'action') => {
     const enabled = play.active && group.moves.length > 0;
-    const title =
-      group.moves.length === 1
-        ? describeMove(data, play.view, group.moves[0] as Move)
-        : `${group.hint}${group.moves.length > 0 ? ` (${group.moves.length} ways)` : ''}`;
+    /*
+     * B11 (25/09/2026): ONE SENTENCE, LIVE OR DISABLED, EVERY BUTTON.
+     *
+     * `actionReason` reads only the view and the move list - never a rule this
+     * file would have to re-derive - so "why can I not Deliver" is answered
+     * honestly (a barn count, not an invented "needs 4"). It doubles as the
+     * mouse tooltip (`title`) and, via the hidden span below, the text an
+     * `aria-describedby` points a screen reader at: the two must never
+     * disagree, so there is exactly one sentence rather than two.
+     */
+    const reason = actionReason(play.view, group.moves, group);
+    const reasonId = `action-reason-${group.key}`;
     /*
      * THE ICON, AND WHY ONLY SOME BUTTONS GET ONE (27/08/2026, Dean).
      *
@@ -280,19 +299,44 @@ export function ActionBar({
      */
     const icon = actionIcon(group.key);
     const isArmed = armed !== null && armed.type === group.type;
+    /*
+     * B18 (25/09/2026): End turn's "ready" look. `play.revealed` is true once
+     * this turn's action told you something new (a Draw's cards, a Harvest
+     * that might carry a hook) and stays true until you end your turn or a
+     * fresh one starts for you - see `session/play.ts`. Reusing `.primary`
+     * (already the assemblies' confirm colour) and `.is-target` (the same
+     * pulse a live target wears, which already respects
+     * `prefers-reduced-motion`) means End turn gets a genuine invitation
+     * without a new stylesheet rule: nothing here AUTO-plays it, it is still
+     * one click away exactly as before.
+     */
+    /*
+     * 26/09/2026 (Dean): "if you have a Worker in hand but don't want to
+     * spend it, how do you end your turn? There should be an obvious button."
+     * End turn is now the solid primary button WHENEVER it is legal - holding
+     * an unspent Worker, a standing move, anything that keeps the turn open -
+     * not only after a revealing action. The pulse stays reserved for the
+     * B18 case (new cards just arrived), so it still means "look at this".
+     */
+    const endTurnLive = kind === 'exit' && group.type === 'endTurn' && enabled;
+    const ready = endTurnLive && play.revealed;
     return (
       <button
         key={group.key}
         type="button"
         className={`${kind}${isArmed ? ' action-armed' : ''}${
           group.key === 'visit' ? ' action-hook' : ''
-        }`}
+        }${endTurnLive ? ' primary' : ''}${ready ? ' is-target' : ''}`}
         disabled={!enabled}
-        title={title}
+        title={reason}
+        aria-describedby={reasonId}
         onClick={() => onGroup(group)}
       >
         {icon !== null && <img className="action-icon" src={icon} alt="" aria-hidden="true" />}
         <span className="action-name">{group.label}</span>
+        <span id={reasonId} className="visually-hidden">
+          {reason}
+        </span>
       </button>
     );
   };
@@ -372,6 +416,36 @@ export function ActionBar({
         ? 'Workers: nothing to do'
         : 'Workers: after your action';
 
+  const meepleNote = meepleLive
+    ? 'Spend one in your supply, below - after your action, before you end your turn.'
+    : meeplesHeld === 0
+      ? 'Every island delivery brings one.'
+      : meepleWindow
+        ? 'You hold some, but none of their actions is legal right now.'
+        : 'Take your action first - you may spend one afterwards.';
+
+  /*
+   * What the message line says when no prompt covers it, in priority order.
+   * ⭐ The bonus note is SHORTER than it was (26/09/2026) so that it fits one
+   * line at the 1024 floor; the full sentence is its tooltip, and the Visit
+   * button's own `aria-describedby` reason already carries the rule.
+   */
+  const bonusNote = (
+    <>
+      <strong>Your bonus, first.</strong> Visit a neighbour or skip - it shuts when you take your
+      action.
+    </>
+  );
+  // The Worker sentence is NOT a bar note: with Workers held, the farm's own
+  // supply strip says the same thing beside the pawns, and a third copy is
+  // what QA D1 counted against the tableau. It stays this zone's tooltip.
+  const barNote: ReactNode = inBonusPhase ? bonusNote : waitingOn;
+  const barNoteTitle = inBonusPhase
+    ? "Your bonus, first. One option, or skip it - the slot shuts the moment you take your action. A card on a neighbour's board is the one that puts you on somebody else's farm."
+    : typeof barNote === 'string'
+      ? barNote
+      : undefined;
+
   return (
     <div className="actionbar" aria-label="your turn">
       <div className="action-buttons">
@@ -404,19 +478,19 @@ export function ActionBar({
                 </button>
               </span>
             )}
-            {!inBonusPhase && bonus.length === 0 && (
-              <p className="zone-note">
-                {bonusTaken ? 'Taken.' : bonusOpen ? 'Nothing to take.' : 'Not any more.'}
-              </p>
+            {/* ⭐ 25/09/2026 (manager note, WP2): the zone HEAD already reads
+                "bonus taken" once it is spent, so a second "Taken." right
+                underneath it was the same fact said twice. Only the two
+                cases the head does not already cover get a note here. */}
+            {!inBonusPhase && bonus.length === 0 && !bonusTaken && (
+              <p className="zone-note">{bonusOpen ? 'Nothing to take.' : 'Not any more.'}</p>
             )}
           </div>
-          {inBonusPhase && (
-            <p className="bonus-phase" aria-label="bonus slot, at the start of your turn">
-              <strong>Your bonus, first.</strong> One of these, or skip it - the slot shuts the
-              moment you take your action. A card on a <em>neighbour&rsquo;s</em> board is the one
-              that puts you on somebody else&rsquo;s farm.
-            </p>
-          )}
+          {/* T10b (26/09/2026): the bonus note moved to the message line
+              (`.bar-line`, below). It was a second and often a third line
+              under this row, and every one of those lines came out of the
+              tableau's height: at 1600x900 it was a third of every building
+              (QA D1). */}
         </section>
 
         {/*
@@ -428,19 +502,20 @@ export function ActionBar({
          * decision zones (18/09/2026, 2.5.3) because it is now the last thing
          * that happens in a turn, not the first.
          */}
-        <section className="zone zone-meeple" aria-label="your Workers">
+        <section
+          className={`zone zone-meeple${meeplesHeld === 0 ? ' zone-meeple-none' : ''}`}
+          aria-label="your Workers"
+          title={meepleNote}
+        >
+          {/* T10b (26/09/2026): THE HEAD ONLY, AND ITS SENTENCE MOVED TO THE
+              MESSAGE LINE (or, with no Workers, to this zone's tooltip). The
+              zone used to wrap onto a line of its own under the bonus zone
+              ("NO WORKERS / Every island delivery brings one."), which with
+              the farm's own empty Worker strip said the same thing twice and
+              cost the tableau about 45px on every turn (QA D1). The head is
+              still the window's name, in the same place, every turn. */}
           <ZoneHead label={meepleLabel} state={meepleState} />
-          <div className="zone-row">
-            <p className="zone-note">
-              {meepleLive
-                ? 'Spend one in your supply, below - after your action, before you end your turn.'
-                : meeplesHeld === 0
-                  ? 'Every island delivery brings one.'
-                  : meepleWindow
-                    ? 'You hold some, but none of their actions is legal right now.'
-                    : 'Take your action first - you may spend one afterwards.'}
-            </p>
-          </div>
+          <span className="visually-hidden">{meepleNote}</span>
         </section>
       </div>
 
@@ -448,24 +523,119 @@ export function ActionBar({
         <ZoneHead label="then" state="idle" />
         <div className="zone-row">
           {exits.map((group) => button(group, 'exit'))}
+          {/*
+           * B17 (25/09/2026): undo is scoped to your own current turn (the
+           * floor is set the moment your turn begins - `session/table.ts`),
+           * labelled for what it does rather than the bare verb, and drawn as
+           * its own class rather than sharing `.exit-stop` with Cancel below:
+           * WP2's neutral-ghost restyle in `play.css` targets `.exit-undo`,
+           * because undoing your own move is not the same weight as the red
+           * "stop what I am doing" cancel is.
+           */}
           <button
             type="button"
-            className="exit exit-stop"
+            className="exit exit-undo"
             disabled={!canUndo}
             onClick={onUndo}
-            title="replay without it"
+            title={UNDO_REASON}
+            aria-describedby="action-reason-undo"
           >
-            undo
+            Undo last step
+            <span id="action-reason-undo" className="visually-hidden">
+              {UNDO_REASON}
+            </span>
           </button>
           {play.intent.k !== 'idle' && (
             <button type="button" className="exit exit-stop" onClick={play.cancel}>
               cancel
             </button>
           )}
+          {/*
+           * WP5 item 2 (25/09/2026): the visible "?" beside the exits. A menu
+           * rather than jumping straight to one page, because the two things
+           * behind it answer different questions - "what are the rules" and
+           * "what are the keys" - and a player who already knows the rules
+           * should not have to page through them to find the shortcut sheet.
+           */}
+          {(onShowHowToPlay || onShowKeyHelp) && (
+            <div className="turn-help">
+              <button
+                type="button"
+                className="exit turn-help-btn"
+                aria-haspopup="true"
+                aria-expanded={helpOpen}
+                aria-label="Help and keyboard shortcuts"
+                title="Help and keyboard shortcuts"
+                onClick={() => setHelpOpen((v) => !v)}
+              >
+                ?
+              </button>
+              {helpOpen && (
+                <div className="turn-help-menu" role="menu" aria-label="Help">
+                  {onShowHowToPlay && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setHelpOpen(false);
+                        onShowHowToPlay();
+                      }}
+                    >
+                      How to play
+                    </button>
+                  )}
+                  {onShowKeyHelp && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setHelpOpen(false);
+                        onShowKeyHelp();
+                      }}
+                    >
+                      Keyboard shortcuts
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </section>
 
-      {waitingOn !== null && <p className="waiting-on">{waitingOn}</p>}
+      {/*
+       * T10b (26/09/2026): THE MESSAGE LINE. ONE LINE, EVERY TURN, AND IT IS
+       * THE ONLY PLACE THE BAR SPEAKS IN SENTENCES.
+       *
+       * Three notes used to take a line each under the buttons - the bonus
+       * phase's two-line explanation, the Worker zone's sentence, and the
+       * "waiting on" line - and the prompt took a fourth row of its own in
+       * `.main-column`. Every one of them came out of the tableau's height,
+       * and the prompt's row grew with the question, which moved the whole
+       * farm down mid-turn (QA D1 and D2). Now there is exactly one line, of
+       * fixed height: the prompt when the game is asking something, otherwise
+       * whichever note this moment has. The prompt sits in the same grid cell
+       * on top of the note (`main-column.css`), so the note never needs to
+       * know whether a prompt is showing.
+       *
+       * The prompt's multi-line parts are not here: an assembly still docks
+       * over the shared table, and a task's cards and answers go to the task
+       * tray under the decks (`Prompt.tsx`). Only the sentence lives here.
+       */}
+      <div className="bar-line">
+        {barNote !== null && (
+          <p
+            className={`bar-note${inBonusPhase ? ' bonus-phase' : ''}${
+              // `.waiting-on` is the hook four verify tools wait for.
+              !inBonusPhase && waitingOn !== null ? ' waiting-on' : ''
+            }`}
+            title={barNoteTitle}
+          >
+            {barNote}
+          </p>
+        )}
+        {children}
+      </div>
     </div>
   );
 }

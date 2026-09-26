@@ -1,0 +1,38 @@
+/*
+ * The table shell: the two-column grid pinned to the viewport.
+ * Split from table.css into region files, 25/09/2026 (B24). Behaviour-neutral:
+ * proved by identical verify-layout and measure-ui output before and after the
+ * split (.scratch/wp1/). Comments are kept verbatim; they are this project's
+ * design memory.
+ */
+
+/*
+ * Layout B: focus plus rail.
+ *
+ * The shell is a two-column grid pinned to the viewport, and every region that
+ * can overflow scrolls INSIDE itself. That is what makes the 1024x700 floor a
+ * property of the layout rather than a hope: the page itself never scrolls, so
+ * "below the fold" can only happen if a region is given too little height, and
+ * the verifier measures exactly that.
+ */
+
+.table {
+  display: grid;
+  grid-template-columns: var(--rail-w) minmax(0, 1fr);
+  gap: var(--gap);
+  height: 100dvh;
+  padding: var(--gap);
+  overflow: hidden;
+  /*
+   * CAPPED AND CENTRED (27/08/2026). Past `--table-max` a wider window gives
+   * the layout margins rather than a wider table, and the size ladder spends
+   * the difference on the cards instead. The reasoning, and why 2560, is on the
+   * token in `base.css`.
+   *
+   * It cannot bind below the cap, and `margin-inline: auto` resolves to zero
+   * while the box is filling its parent, so every step at or under 2560 renders
+   * exactly as it did - checked against `reports/ui-phase5-verify`, not assumed.
+   */
+  max-width: var(--table-max);
+  margin-inline: auto;
+}

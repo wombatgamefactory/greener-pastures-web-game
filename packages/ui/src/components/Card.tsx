@@ -133,7 +133,11 @@ export function Card({ face, width, zoomTier = false, children, className = '' }
         </p>
       </div>
 
-      <h3 className="card-name" data-text={face.name}>
+      {/* `title` (25/09/2026, B7): a small card truncates its name on the
+          title plate (card.css), and the tooltip is the pointer's way back to
+          the whole of it. The `aria-label` above already carries it for
+          assistive tech. */}
+      <h3 className="card-name" data-text={face.name} title={face.name}>
         {face.name}
       </h3>
 

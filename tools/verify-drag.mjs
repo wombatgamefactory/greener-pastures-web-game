@@ -25,7 +25,11 @@ import process from 'node:process';
 import { chromium } from 'playwright-core';
 
 const ROOT = resolve(import.meta.dirname, '..');
-const DIST = join(ROOT, 'packages', 'ui', 'dist');
+// GP_DIST (25/09/2026): lets parallel workers verify their own build, e.g.
+// `npx vite build --outDir <dir>` from packages/ui, then GP_DIST=<dir>.
+const DIST = process.env.GP_DIST
+  ? resolve(process.env.GP_DIST)
+  : join(ROOT, 'packages', 'ui', 'dist');
 const BASE = '/greener-pastures-web-game/';
 const QUERY = '?autostart=1&seats=4&depth=320&minHand=4';
 /** The responsive floor. If the gesture only works on a big screen it has failed. */
@@ -117,6 +121,33 @@ async function visitPair(page) {
   };
 }
 
+/**
+ * ⭐ 25/09/2026: is this point actually inside the viewport right now?
+ *
+ * Added after `verify:drag` failed all four "the visit, dragged" checks and
+ * then crashed on an uncaught 30s timeout (`.scratch/ui-recon-2026-09-25-v1.md`).
+ * Diagnosed by driving the app directly rather than guessing: the same
+ * gesture (drag, highlight, prompt, `.assembly-hook`, `.rival-visiting`, the
+ * fee click, the feed line) succeeds end to end at 1366x768. At the 1024x700
+ * floor specifically, `.hand-card`'s own bounding box sits at `top: 756`
+ * while the viewport is 700 tall and nothing on the page scrolls
+ * (`body { overflow: hidden }`, `scrollHeight === clientHeight === 700`) - the
+ * exact pixels `verify:layout` already reports for "your hand ... clipped by
+ * a scrolling ancestor" at the same viewport (to-do list; the fix lives in
+ * `table.css`, owned by another pass at the time of writing, and is
+ * deliberately out of scope here).
+ *
+ * `page.mouse.move` will happily aim at a point past the bottom of the
+ * window - it is not a real OS cursor - so without this guard the drag
+ * starts over nothing, every check below fails for that one reason dressed
+ * up as four different symptoms, and the fee-click step then hangs 30s
+ * waiting on a panel that could never have opened. This names the real cause
+ * up front so a genuine drag-code regression is never mistaken for it again.
+ */
+function onScreen(point, viewport) {
+  return point.x >= 0 && point.y >= 0 && point.x <= viewport.width && point.y <= viewport.height;
+}
+
 let server;
 let browser;
 
@@ -189,6 +220,13 @@ try {
   if (!pair) {
     fail('a live neighbour to visit', 'no rival is lit in the warmed position');
   } else {
+    check(
+      'the hand card and the rival panel are both reachable on screen',
+      onScreen(pair.from, VIEWPORT) && onScreen(pair.to, VIEWPORT),
+      `card at (${Math.round(pair.from.x)}, ${Math.round(pair.from.y)}), rival at ` +
+        `(${Math.round(pair.to.x)}, ${Math.round(pair.to.y)}), viewport ${VIEWPORT.width}x${VIEWPORT.height}` +
+        " - see `onScreen`'s comment before assuming the checks below are a drag-code regression",
+    );
     let hotSeen = false;
     await mouseDrag(page, pair.from, pair.to, {
       onMove: async (t) => {
@@ -234,20 +272,39 @@ try {
     // confirmation surface" half of the ticket. The signal is the LAST feed line
     // rather than the number of them: the feed caps at 40 and a warmed position
     // is already there, so a count is a check that can never pass.
-    const lastLine = () => page.locator('.feed-line').last().innerText();
-    const before = await lastLine();
-    await page.locator('.assembly-visit .chip').first().click();
-    await page.waitForTimeout(150);
-    check(
-      'naming the fee makes the move',
-      (await lastLine()) !== before,
-      'the event feed did not change',
-    );
-    check(
-      'the panel closes behind the move',
-      (await page.locator('.assembly-visit').count()) === 0,
-      'the visit panel is still open',
-    );
+    //
+    // ⭐ 25/09/2026: guarded. If the panel above never opened, `.assembly-visit
+    // .chip` can never appear, and waiting on it used to hang for Playwright's
+    // full 30s and then crash the whole script with an uncaught timeout - which
+    // is why no scenario after this one ever ran on a bad day (see `onScreen`'s
+    // comment for the run that first did this). The cause is already named by
+    // the checks above; this just stops chasing a locator that cannot resolve,
+    // so the rest of the scenarios still get a chance to run.
+    if ((await page.locator('.assembly-visit').count()) === 0) {
+      fail('naming the fee makes the move', 'the visit panel never opened - see the checks above');
+      fail('the panel closes behind the move', 'skipped - the panel never opened');
+    } else {
+      const lastLine = () => page.locator('.feed-line').last().innerText();
+      const before = await lastLine();
+      try {
+        await page.locator('.assembly-visit .chip').first().click({ timeout: 5000 });
+        await page.waitForTimeout(150);
+        check(
+          'naming the fee makes the move',
+          (await lastLine()) !== before,
+          'the event feed did not change',
+        );
+        check(
+          'the panel closes behind the move',
+          (await page.locator('.assembly-visit').count()) === 0,
+          'the visit panel is still open',
+        );
+      } catch (e) {
+        const reason = String(e?.message ?? e).split('\n')[0];
+        fail('naming the fee makes the move', `the fee chip never became clickable: ${reason}`);
+        fail('the panel closes behind the move', 'skipped - the fee was never chosen');
+      }
+    }
   }
 
   // ---- 3. nothing obscures the board mid-flight --------------------------

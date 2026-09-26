@@ -81,7 +81,10 @@ const SURFACES = [
 ];
 
 const ROOT = resolve(import.meta.dirname, '..');
-const DIST = normalize(join(ROOT, 'packages', 'ui', 'dist'));
+// GP_DIST (25/09/2026): verify a build made elsewhere (parallel workers).
+const DIST = normalize(
+  process.env.GP_DIST ? resolve(process.env.GP_DIST) : join(ROOT, 'packages', 'ui', 'dist'),
+);
 const OUT = join(ROOT, 'reports', 'webkit');
 /** Must match `base` in vite.config.ts. */
 const BASE = '/greener-pastures-web-game/';

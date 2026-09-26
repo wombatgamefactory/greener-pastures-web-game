@@ -85,7 +85,9 @@ const jobs: GameJob[] = sample <= 1 ? allJobs : allJobs.filter((_, i) => i % sam
 
 process.stderr.write(
   `${REFERENCE.id} plan: ${allJobs.length} games across ${plan.cells.length} cells` +
-    (sample > 1 ? `, subsampled to ${jobs.length} (every ${sample}${ordinalSuffix(sample)})\n` : `\n`),
+    (sample > 1
+      ? `, subsampled to ${jobs.length} (every ${sample}${ordinalSuffix(sample)})\n`
+      : `\n`),
 );
 
 function ordinalSuffix(n: number): string {
@@ -121,8 +123,10 @@ function trackExtras(extras: Extras, seats: number) {
       if (e.e === 'delivered') {
         extras.deliveriesSoFarBySeat[e.seat] = (extras.deliveriesSoFarBySeat[e.seat] ?? 0) + 1;
         const n = extras.deliveriesSoFarBySeat[e.seat] as number;
-        if (n === 3 && extras.roundAt3BySeat[e.seat] === null) extras.roundAt3BySeat[e.seat] = roundOf();
-        if (n === 6 && extras.roundAt6BySeat[e.seat] === null) extras.roundAt6BySeat[e.seat] = roundOf();
+        if (n === 3 && extras.roundAt3BySeat[e.seat] === null)
+          extras.roundAt3BySeat[e.seat] = roundOf();
+        if (n === 6 && extras.roundAt6BySeat[e.seat] === null)
+          extras.roundAt6BySeat[e.seat] = roundOf();
       } else if (e.e === 'endTriggered') {
         extras.endTriggerSeat = e.seat;
         extras.endTriggerRound = roundOf();
@@ -256,7 +260,13 @@ for (let i = 0; i < jobs.length; i++) {
   const track = trackExtras(extras, job.seats);
   const fold = new Fold(
     data,
-    { seed: job.seed, cell: job.cell, suits: [...job.seating], neutral: [...job.neutral], profiles: [...job.profiles] },
+    {
+      seed: job.seed,
+      cell: job.cell,
+      suits: [...job.seating],
+      neutral: [...job.neutral],
+      profiles: [...job.profiles],
+    },
     job.seats,
   );
   const result = runGame(data, {
@@ -271,7 +281,12 @@ for (let i = 0; i < jobs.length; i++) {
       track(d.pre, d.post, d.events);
     },
   });
-  const metrics: GameMetrics = fold.finish(result.state, result.outcome, result.chooseMs, result.error ?? null);
+  const metrics: GameMetrics = fold.finish(
+    result.state,
+    result.outcome,
+    result.chooseMs,
+    result.error ?? null,
+  );
 
   const now = performance.now();
   if (now - lastPrint > 2000) {
@@ -357,7 +372,8 @@ for (let i = 0; i < jobs.length; i++) {
     scoreBySuitSeats.set(key, seatsAcc);
 
     if (!won) {
-      const winnerTotal = metrics.winner !== null ? (metrics.scores[metrics.winner]?.total ?? NaN) : NaN;
+      const winnerTotal =
+        metrics.winner !== null ? (metrics.scores[metrics.winner]?.total ?? NaN) : NaN;
       if (Number.isFinite(winnerTotal)) {
         (marginToWinnerBySuit.get(suit) as number[]).push(winnerTotal - brk.total);
       }
@@ -457,7 +473,10 @@ function findCompareFile(): string | null {
   }
   // Fall back to the plain reference-v25 baseline (hand bound 10), noted as such.
   const fallback = files
-    .filter((f) => f.startsWith('watchlist-') && f.includes('reference-v25') && !f.includes('-hand-limit'))
+    .filter(
+      (f) =>
+        f.startsWith('watchlist-') && f.includes('reference-v25') && !f.includes('-hand-limit'),
+    )
     .sort();
   if (fallback.length > 0) return join(dir, fallback[fallback.length - 1] as string);
   return null;
@@ -501,7 +520,9 @@ function median(xs: readonly number[]): number {
   if (xs.length === 0) return NaN;
   const s = [...xs].sort((a, b) => a - b);
   const mid = s.length >> 1;
-  return s.length % 2 === 1 ? (s[mid] as number) : ((s[mid - 1] as number) + (s[mid] as number)) / 2;
+  return s.length % 2 === 1
+    ? (s[mid] as number)
+    : ((s[mid - 1] as number) + (s[mid] as number)) / 2;
 }
 /** Linear-interpolation percentile (0-100), the same method most spreadsheets default to. */
 function percentile(xs: readonly number[], p: number): number {
@@ -530,17 +551,24 @@ function ci95(xs: readonly number[]): [number, number] {
 const lines: string[] = [];
 const push = (s = '') => lines.push(s);
 
-push('suit-score-sources.ts - where each suit\'s points come from');
+push("suit-score-sources.ts - where each suit's points come from");
 push('='.repeat(78));
 push(`instrument:   ${REFERENCE.id}, overlay "${overlayName}" (${overlayPath})`);
 push(`seed:         ${seed}`);
-push(`plan:         ${allJobs.length} games across ${plan.cells.length} stratified cells (n=${games} target)`);
-if (sample > 1) push(`subsample:    every ${sample}${ordinalSuffix(sample)} job -> ${jobs.length} games run`);
+push(
+  `plan:         ${allJobs.length} games across ${plan.cells.length} stratified cells (n=${games} target)`,
+);
+if (sample > 1)
+  push(`subsample:    every ${sample}${ordinalSuffix(sample)} job -> ${jobs.length} games run`);
 push(`games run:    ${jobs.length} (${endedGames} ended, ${notEndedGames} not ended)`);
 if (notEndedGames > 0) {
-  push(`  not ended by outcome: ${[...notEndedOutcomes.entries()].map(([k, v]) => `${k} ${v}`).join(', ')}`);
+  push(
+    `  not ended by outcome: ${[...notEndedOutcomes.entries()].map(([k, v]) => `${k} ${v}`).join(', ')}`,
+  );
 }
-push(`wall time:    ${(wallMs / 1000).toFixed(1)}s single-threaded (${(jobs.length / (wallMs / 1000)).toFixed(1)} games/s)`);
+push(
+  `wall time:    ${(wallMs / 1000).toFixed(1)}s single-threaded (${(jobs.length / (wallMs / 1000)).toFixed(1)} games/s)`,
+);
 push('');
 
 push('WIN-RATE SANITY CHECK');
@@ -557,9 +585,13 @@ if (compareRows) {
       `${s.padEnd(13)} ${fmt(mine).padStart(5)}%       ${fmt(control).padStart(5)}%              ${diff >= 0 ? '+' : ''}${fmt(diff)} pts`,
     );
   }
-  push('A diff within about 2 points at this n is within the suit table\'s own noise; see the control report\'s 95% interval column.');
+  push(
+    "A diff within about 2 points at this n is within the suit table's own noise; see the control report's 95% interval column.",
+  );
 } else {
-  push('No control watchlist report found to compare against (looked in reports/ for a reference-v25 file matching the overlay name).');
+  push(
+    'No control watchlist report found to compare against (looked in reports/ for a reference-v25 file matching the overlay name).',
+  );
   push('suit          this script win rate');
   for (const s of SUITS) {
     const row = winsBySuit.get(s) as SuitWinRow;
@@ -571,11 +603,15 @@ push('');
 
 push('SECTION 0: SCORE BALANCE BY SUIT');
 push('-'.repeat(78));
-push('Why this section exists: a raw mean score can move the opposite way from a suit\'s win rate.');
-push('On the apiary-board-sow-hand7-v1 overlay, Apiary\'s mean total FELL (29.2 to 28.4) while its');
-push('win rate ROSE (20.6% to 29.1%), because every seat\'s score fell and Apiary\'s fell less than');
-push('everyone else\'s. These readings are all relative to the other seats in the SAME game, so they');
-push('track position at the table rather than a raw number that a whole-game shift can drag either way.');
+push("Why this section exists: a raw mean score can move the opposite way from a suit's win rate.");
+push("On the apiary-board-sow-hand7-v1 overlay, Apiary's mean total FELL (29.2 to 28.4) while its");
+push("win rate ROSE (20.6% to 29.1%), because every seat's score fell and Apiary's fell less than");
+push(
+  "everyone else's. These readings are all relative to the other seats in the SAME game, so they",
+);
+push(
+  'track position at the table rather than a raw number that a whole-game shift can drag either way.',
+);
 push('');
 push('pooled, mean per seat-game:');
 push('suit          n     vs table   vs winner   % of winner   typical rank   last%');
@@ -588,11 +624,15 @@ for (const s of SUITS) {
     ).padStart(9)}%     ${fmt(meanRank, 2).padStart(9)}     ${pct(a.lastCount, a.n).padStart(6)}`,
   );
 }
-push('  vs table    = this seat\'s score minus the average of the OTHER seats\' scores in that game.');
-push('  vs winner   = this seat\'s score minus the top score in that game (0 if this seat topped it, ties included).');
-push('  % of winner = this seat\'s score as a percentage of the top score in that game.');
-push('  typical rank = mean finishing position, 1 = top, read off the game\'s own tie-break order.');
-push('  last%       = share of that suit\'s seat-games that finished in last place.');
+push(
+  "  vs table    = this seat's score minus the average of the OTHER seats' scores in that game.",
+);
+push(
+  "  vs winner   = this seat's score minus the top score in that game (0 if this seat topped it, ties included).",
+);
+push("  % of winner = this seat's score as a percentage of the top score in that game.");
+push("  typical rank = mean finishing position, 1 = top, read off the game's own tie-break order.");
+push("  last%       = share of that suit's seat-games that finished in last place.");
 push('');
 push('by seat count:');
 push('suit:seats     n     vs table   vs winner   % of winner   typical rank   last%');
@@ -604,13 +644,17 @@ for (const s of SUITS) {
     push(
       `${`${s}:${seats}p`.padEnd(14)} ${String(a.n).padStart(5)} ${fmt(mean(a.tableMargin)).padStart(8)}   ${fmt(
         mean(a.winnerMargin),
-      ).padStart(8)}    ${fmt(mean(a.shareOfWinner)).padStart(9)}%     ${fmt(meanRank, 2).padStart(9)}     ${pct(a.lastCount, a.n).padStart(6)}`,
+      ).padStart(
+        8,
+      )}    ${fmt(mean(a.shareOfWinner)).padStart(9)}%     ${fmt(meanRank, 2).padStart(9)}     ${pct(a.lastCount, a.n).padStart(6)}`,
     );
   }
 }
 push('');
-push('distribution of the margin against the table, pooled (so a small difference between two suits, or');
-push('two overlays, can be judged against how spread out one suit\'s own games already are):');
+push(
+  'distribution of the margin against the table, pooled (so a small difference between two suits, or',
+);
+push("two overlays, can be judged against how spread out one suit's own games already are):");
 push('suit          10th   25th   typical(50th)   75th   90th   |  likely range on the mean (95%)');
 for (const s of SUITS) {
   const a = balanceBySuit.get(s) as BalanceAcc;
@@ -623,7 +667,10 @@ for (const s of SUITS) {
   );
 }
 push('');
-const spreadEntries = SUITS.map((s) => ({ suit: s, m: mean((balanceBySuit.get(s) as BalanceAcc).tableMargin) }));
+const spreadEntries = SUITS.map((s) => ({
+  suit: s,
+  m: mean((balanceBySuit.get(s) as BalanceAcc).tableMargin),
+}));
 const spreadTop = spreadEntries.reduce((a, b) => (b.m > a.m ? b : a));
 const spreadBottom = spreadEntries.reduce((a, b) => (b.m < a.m ? b : a));
 const spread = spreadTop.m - spreadBottom.m;
@@ -637,7 +684,9 @@ push('');
 push('SECTION 1: FINAL SCORE BY SOURCE, BY SUIT');
 push('-'.repeat(78));
 push('mean per seat-game (all ended games this suit sat in), then winners only');
-push('suit          n     printed  receipts  endgame  total  | winners: printed receipts endgame total (n)');
+push(
+  'suit          n     printed  receipts  endgame  total  | winners: printed receipts endgame total (n)',
+);
 for (const s of SUITS) {
   const a = scoreBySuit.get(s) as ScoreAcc;
   const m = (x: number) => fmt(x / a.n);
@@ -645,7 +694,9 @@ for (const s of SUITS) {
   push(
     `${s.padEnd(13)} ${String(a.n).padStart(5)} ${m(a.sums.printed).padStart(8)} ${m(a.sums.receipts).padStart(9)} ${m(
       a.sums.endgame,
-    ).padStart(8)} ${m(a.sums.total).padStart(6)}  |  ${wm(a.winSums.printed).padStart(7)} ${wm(a.winSums.receipts).padStart(8)} ${wm(
+    ).padStart(
+      8,
+    )} ${m(a.sums.total).padStart(6)}  |  ${wm(a.winSums.printed).padStart(7)} ${wm(a.winSums.receipts).padStart(8)} ${wm(
       a.winSums.endgame,
     ).padStart(7)} ${wm(a.winSums.total).padStart(5)} (${a.winN})`,
   );
@@ -672,11 +723,17 @@ push('-'.repeat(78));
 push('who fills their Farmstead first (triggers the end):');
 push(`  ended games: ${endedGames}`);
 for (const s of SUITS) {
-  push(`  ${s.padEnd(11)} ${endTriggerBySuit.get(s)} (${pct(endTriggerBySuit.get(s) ?? 0, endedGames)})`);
+  push(
+    `  ${s.padEnd(11)} ${endTriggerBySuit.get(s)} (${pct(endTriggerBySuit.get(s) ?? 0, endedGames)})`,
+  );
 }
-push('  even share would be ~20% (5 suits), but not every game seats every suit - read against seat-games, not games.');
+push(
+  '  even share would be ~20% (5 suits), but not every game seats every suit - read against seat-games, not games.',
+);
 push('');
-push('round a seat first reaches 3 deliveries, and 6 (median; "never" = share of that suit\'s seat-games that did not reach it):');
+push(
+  'round a seat first reaches 3 deliveries, and 6 (median; "never" = share of that suit\'s seat-games that did not reach it):',
+);
 push('suit          median round @3   never-3   median round @6   never-6');
 for (const s of SUITS) {
   const r3 = roundAt3BySuit.get(s) as number[];
@@ -707,16 +764,19 @@ for (const s of SUITS) {
 }
 push('');
 
-push('SECTION 3: APIARY AND WHEAT\'S OWN-SUIT CARDS');
+push("SECTION 3: APIARY AND WHEAT'S OWN-SUIT CARDS");
 push('-'.repeat(78));
 for (const suit of FOCUS_SUITS) {
   push(`${suit.toUpperCase()} (${seatGamesOfSuit.get(suit) ?? 0} seat-games)`);
-  push('card   name                          built%   mean activ. (built only)  mean VP    unbuilt-in-hand-at-end%');
+  push(
+    'card   name                          built%   mean activ. (built only)  mean VP    unbuilt-in-hand-at-end%',
+  );
   const own = ownCardStats.get(suit) as Map<CardId, OwnCardAcc>;
   for (const [cardId, acc] of own) {
     const card = cardsById.get(cardId) as Card;
     const builtShare = pct(acc.builtSeats, acc.seatGames);
-    const meanActivWhenBuilt = acc.builtSeats === 0 ? NaN : acc.activationsSumWhenBuilt / acc.builtSeats;
+    const meanActivWhenBuilt =
+      acc.builtSeats === 0 ? NaN : acc.activationsSumWhenBuilt / acc.builtSeats;
     const meanVp = acc.builtSeats === 0 ? NaN : acc.vpSum / acc.builtSeats;
     const unbuiltShare = pct(acc.unbuiltInHandAtEnd, acc.seatGames);
     push(
@@ -725,7 +785,9 @@ for (const suit of FOCUS_SUITS) {
       ).padStart(6)}     ${unbuiltShare.padStart(6)}`,
     );
   }
-  push('  (mean activations and mean VP are conditioned on having been built; "unbuilt-in-hand-at-end%" is share of all seat-games of this suit, not just the ones that did not build it.)');
+  push(
+    '  (mean activations and mean VP are conditioned on having been built; "unbuilt-in-hand-at-end%" is share of all seat-games of this suit, not just the ones that did not build it.)',
+  );
   push('');
 }
 
@@ -741,7 +803,9 @@ for (const s of SUITS) {
   push(
     `${s.padEnd(13)}      ${o('tier1').padStart(4)} ${o('tier2').padStart(4)} ${o('tier3').padStart(4)} ${o('power').padStart(4)} ${o(
       'endgame',
-    ).padStart(4)} |          ${f('tier1').padStart(4)} ${f('tier2').padStart(4)} ${f('tier3').padStart(4)} ${f('power').padStart(4)} ${f(
+    ).padStart(
+      4,
+    )} |          ${f('tier1').padStart(4)} ${f('tier2').padStart(4)} ${f('tier3').padStart(4)} ${f('power').padStart(4)} ${f(
       'endgame',
     ).padStart(4)}`,
   );
@@ -762,20 +826,32 @@ push('');
 push('WHAT COULD NOT BE MEASURED HERE, AND WHY');
 push('-'.repeat(78));
 push('- Per-card activation counts are GAME totals attributed to the single seat that built the');
-push('  card (a specific card id has at most one physical copy in a game, so this is exact, not an');
-push('  approximation) - but they cannot be split further into WHEN in the game an activation fired,');
+push(
+  '  card (a specific card id has at most one physical copy in a game, so this is exact, not an',
+);
+push(
+  '  approximation) - but they cannot be split further into WHEN in the game an activation fired,',
+);
 push('  only how many.');
-push('- "Unbuilt in hand at game end" reads the final GameState directly (no engine change - the sim');
+push(
+  '- "Unbuilt in hand at game end" reads the final GameState directly (no engine change - the sim',
+);
 push('  already holds this state; runJob simply discards it, this script does not). It cannot say');
 push('  whether a card sat in hand the WHOLE game or arrived on the final turn; only that it was');
 push('  there when the game stopped.');
 push('- The margin-to-winner and end-trigger readings are pooled across seat counts. A seat-count');
-push('  split exists in Section 1 and could be extended to Sections 2-4 if wanted; skipped here to');
+push(
+  '  split exists in Section 1 and could be extended to Sections 2-4 if wanted; skipped here to',
+);
 push('  keep the report to one pass over the same instrument the brief asked for.');
-push('- Card VP in Section 3 is the ENGINE\'S per-seat vp[] field on CardFacts (printed VP plus any');
-push('  end-game formula for that specific card only) - it does not include the Barn\'s own-crop');
-push('  scorer or any other card\'s contribution, which is why Section 1\'s "endgame" column is the');
-push('  one to read for a suit\'s total end-game VP.');
+push(
+  "- Card VP in Section 3 is the ENGINE'S per-seat vp[] field on CardFacts (printed VP plus any",
+);
+push("  end-game formula for that specific card only) - it does not include the Barn's own-crop");
+push(
+  '  scorer or any other card\'s contribution, which is why Section 1\'s "endgame" column is the',
+);
+push("  one to read for a suit's total end-game VP.");
 push('');
 
 const report = lines.join('\n') + '\n';

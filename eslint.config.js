@@ -48,6 +48,8 @@ export default tseslint.config(
       'tools/verify-layout.mjs',
       'tools/verify-drag.mjs',
       'tools/verify-webkit.mjs',
+      'tools/verify-a11y.mjs',
+      'tools/verify-keyboard.mjs',
       'tools/render-sheets.mjs',
       'tools/measure-ui.mjs',
       'tools/probe-dock.mjs',
@@ -62,6 +64,10 @@ export default tseslint.config(
         window: 'readonly',
         getComputedStyle: 'readonly',
         Image: 'readonly',
+        // 25/09/2026 (WP1b): `measure-ui.mjs`'s `settle()` waits two animation
+        // frames inside a `page.evaluate` callback, which runs in the browser
+        // like the globals above it.
+        requestAnimationFrame: 'readonly',
       },
     },
   },

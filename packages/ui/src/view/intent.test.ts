@@ -35,6 +35,7 @@ import {
   UNROUTED_TASK_ANSWERS,
   buildCandidates,
   buildComplete,
+  cardsSpent,
   clickBuilding,
   clickCardPower,
   clickDeck,
@@ -42,6 +43,7 @@ import {
   clickHost,
   clickMeeple,
   clickTile,
+  deliverFamilyClick,
   emptyBuildDraft,
   liveTargets,
   subsetAnswer,
@@ -714,5 +716,49 @@ describe('the visit chooses a board, on the two-player shipped corpus', () => {
       }
     }
     expect(checked).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * B4 (25/09/2026): a single legal Deliver must never play itself off one
+ * click on the turn bar - it used to, exactly like Grow or Harvest, which is
+ * how the appraisal caught a whole barn (often 4 cards) spending itself with
+ * no assembly and no way back. `deliverFamilyClick` is what `ActionBar.tsx`'s
+ * Deliver button now asks, and it is tested here on its own rather than only
+ * through a rendered click, since the UI test suite has no DOM to click in.
+ */
+describe('deliverFamilyClick (B4)', () => {
+  const move = (spend: Record<string, number>, token?: number): Move =>
+    ({
+      type: 'deliver',
+      seat: 0,
+      tile: 'A1',
+      spend,
+      ...(token !== undefined ? { token } : {}),
+    }) as Move;
+
+  it('counts a delivery by the total it spends, across every suit named', () => {
+    expect(cardsSpent(move({ wheat: 2, orchard: 2 }))).toBe(4);
+    expect(cardsSpent(move({ wheat: 1 }))).toBe(1);
+  });
+
+  it('sends a single legal delivery straight away when it spends fewer than 2 cards', () => {
+    const decision = deliverFamilyClick([move({ wheat: 1 })]);
+    expect(decision.k).toBe('send');
+  });
+
+  it('opens the assembly pre-filled, and sends nothing, for a single delivery spending 2 or more cards', () => {
+    const decision = deliverFamilyClick([move({ wheat: 2, orchard: 2 }, 0)]);
+    expect(decision.k).toBe('prefill');
+    if (decision.k !== 'prefill') throw new Error('expected a prefill decision');
+    // Pre-filled means COMPLETE: every chip the one offer paid is already on
+    // the draft, so the panel shows a live confirm button rather than an
+    // empty payment waiting to be rebuilt one click at a time.
+    expect(decision.draft).toEqual({ tile: 'A1', token: 0, spend: { wheat: 2, orchard: 2 } });
+  });
+
+  it('arms the family, sending nothing, when more than one delivery is legal', () => {
+    const decision = deliverFamilyClick([move({ wheat: 4 }), move({ orchard: 4 })]);
+    expect(decision.k).toBe('arm');
   });
 });

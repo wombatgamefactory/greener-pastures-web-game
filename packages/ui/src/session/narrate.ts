@@ -22,6 +22,7 @@
 import type { GameData, Suit } from '@gp/data';
 import type { GameEvent, Seat } from '@gp/engine';
 
+import { GLOSSARY } from '../view/glossary';
 import { SUIT_META, maskedCardPhrase, seatName, suitArticle } from '../view/suits';
 import { doorOf } from '../view/table';
 
@@ -41,13 +42,24 @@ const SUIT_LETTER: Readonly<Record<string, Suit>> = {
   D: 'dairy',
 };
 
-/** The five actions, in the words the turn bar uses. */
+/**
+ * The six actions, in the words the turn bar uses.
+ *
+ * ⭐ FIXED 25/09/2026 (B9): `'grow'` was missing, which is `DoorAction`'s sixth
+ * member (`packages/data/src/types.ts`) and exactly what the Apiary board
+ * power and an Apiary Worker buy - so a visit or a Worker spend that bought a
+ * Grow fell through to `event.action` unchanged and printed lower-case
+ * "grow" where every other action here is capitalised. Both `narrate()`'s own
+ * `visited`/`meepleSpent` lines and the new `summariseTurns` below read this
+ * same table, so the fix is one line for both.
+ */
 const ACTION_WORD: Readonly<Record<string, string>> = {
   harvest: 'Harvest',
   deliver: 'Deliver',
   draw: 'Draw',
   sow: 'Sow',
   build: 'Build',
+  grow: 'Grow',
 };
 
 function isMasked(id: string): boolean {
@@ -71,13 +83,71 @@ function cardList(data: GameData, ids: readonly string[]): string {
   return ids.map((id) => cardWord(data, id)).join(', ');
 }
 
+/**
+ * CAUSE BEFORE EFFECT (B10, 25/09/2026).
+ *
+ * `doVisit` (`packages/engine/src/actions/bonus.ts`) places the visit fee
+ * (`cardPlaced`) and only THEN emits the `visited` event that says a visit
+ * happened at all - reading that order straight would print "places a card
+ * on Y's Notice Board" a line before "X visits Y ... takes Deliver", telling
+ * the reader the effect before the thing that caused it. The engine's order
+ * is not a bug this file can fix (the engine is not this pass's to edit) - so
+ * this reorders just that one adjacent pair before narrating: a `cardPlaced`
+ * onto the visited host's board, immediately preceding the `visited` event
+ * for the same seat, is moved to sit right AFTER it instead. Nothing else
+ * about the events changes - not their content, not any other pair's order -
+ * and a placement that is not a visit fee (a sow, a Grow, a hook's own
+ * `cardPlaced`) is left exactly where the engine put it, because the
+ * `onto.seat === host` and `seat` match has to hold for both events.
+ */
+function reorderCauseBeforeEffect(events: readonly GameEvent[]): GameEvent[] {
+  const out = [...events];
+  for (let i = 0; i < out.length; i++) {
+    const visited = out[i];
+    if (visited === undefined || visited.e !== 'visited') continue;
+    for (let j = i - 1; j >= 0; j--) {
+      const placed = out[j];
+      if (placed === undefined) break;
+      if (
+        placed.e === 'cardPlaced' &&
+        placed.seat === visited.seat &&
+        placed.onto.seat === visited.host
+      ) {
+        out.splice(j, 1);
+        // `i` still names the visit's ORIGINAL slot; removing one element
+        // before it shifts the visit itself back to `i - 1`, so re-inserting
+        // the placement at `i` lands it one after the visit's new position -
+        // exactly "cause, then effect".
+        out.splice(i, 0, placed);
+        break;
+      }
+      // Stop at the edge of this actor's own run of events - a different
+      // seat's line, or a turn boundary - so a placement from several turns
+      // back is never dragged forward onto an unrelated visit.
+      if ('seat' in placed && placed.seat !== visited.seat) break;
+      if (placed.e === 'turnEnded' || placed.e === 'endTriggered' || placed.e === 'gameEnded')
+        break;
+    }
+  }
+  return out;
+}
+
+/**
+ * How a seat is named from another seat's events, shared by `narrate()` and
+ * `summariseTurns()` below (25/09/2026, B9) so the two never drift apart on
+ * the one sentence fragment they both build from.
+ */
+function seatWho(suits: readonly (Suit | undefined)[], you: Seat, seat: Seat): string {
+  return seatName(suits[seat], seat, you);
+}
+
 export function narrate(
   data: GameData,
   event: GameEvent,
   suits: readonly (Suit | undefined)[],
   you: Seat,
 ): FeedLine | null {
-  const who = (seat: Seat): string => seatName(suits[seat], seat, you);
+  const who = (seat: Seat): string => seatWho(suits, you, seat);
   const line = (text: string, seat: Seat | null = null, kind: FeedLine['kind'] = 'normal') => ({
     text,
     seat,
@@ -132,16 +202,21 @@ export function narrate(
       // island null". Under the shipped island Workers this is always a
       // delivery (`tile` set); a null tile is only reachable through the
       // retired meeple-currency visit arm's own Collect (§5 of the project
-      // CLAUDE.md), which is a different component from the delivery Worker.
+      // CLAUDE.md), which is a different, retired component from the shipped
+      // delivery Worker. ⭐ FIXED 25/09/2026 (B13): this branch said "meeple"
+      // where the very next one already says "Worker" for the same event -
+      // CLAUDE.md is explicit that no player-facing text says "meeple" except
+      // the delivery Worker, which is what this now reads as, dead branch or
+      // not.
       return line(
         event.tile === null
-          ? `${who(event.seat)} takes back a ${SUIT_META[event.colour].label} meeple`
-          : `${who(event.seat)} takes the ${SUIT_META[event.colour].label} Worker off island ${event.tile}`,
+          ? `${who(event.seat)} takes back a ${SUIT_META[event.colour].label} ${GLOSSARY.worker}`
+          : `${who(event.seat)} takes the ${SUIT_META[event.colour].label} ${GLOSSARY.worker} off island ${event.tile}`,
         event.seat,
       );
     case 'meepleSpent':
       return line(
-        `${who(event.seat)} spends ${suitArticle(SUIT_META[event.colour].label)} ${SUIT_META[event.colour].label} Worker: ${ACTION_WORD[event.action] ?? event.action}. It leaves the game.`,
+        `${who(event.seat)} spends ${suitArticle(SUIT_META[event.colour].label)} ${SUIT_META[event.colour].label} ${GLOSSARY.worker}: ${ACTION_WORD[event.action] ?? event.action}. It leaves the game.`,
         event.seat,
       );
     case 'reshuffled':
@@ -157,7 +232,9 @@ export function narrate(
       // whether it carried a Worker - all three already sit on the event, so
       // there is nothing to look up.
       const crop = event.crop === 'wild' ? 'wild' : SUIT_META[event.crop].label;
-      const worker = event.worker ? `, with a ${SUIT_META[event.worker].label} Worker` : '';
+      const worker = event.worker
+        ? `, with a ${SUIT_META[event.worker].label} ${GLOSSARY.worker}`
+        : '';
       return line(
         `${who(event.seat)} delivers to island ${event.tile}: the ${crop} token, ${event.vp} VP${worker}`,
         event.seat,
@@ -235,7 +312,7 @@ export function narrateAll(
   suits: readonly (Suit | undefined)[],
   you: Seat,
 ): FeedLine[] {
-  return events.flatMap((e) => {
+  return reorderCauseBeforeEffect(events).flatMap((e) => {
     const l = narrate(data, e, suits, you);
     return l ? [l] : [];
   });
@@ -249,4 +326,176 @@ export function narrateAll(
 export function meepleActionWord(data: GameData, colour: Suit): string {
   const door = doorOf(data, colour);
   return door.actionLabel;
+}
+
+/* -------------------------------------------------------------------------
+ * B9, 25/09/2026: "WHILE YOU WERE AWAY".
+ *
+ * `TurnSummary.tsx` needs one line per RIVAL TURN, not one line per event -
+ * the feed already does per-event, and repeating that format in a dismissible
+ * strip would just be a second copy of the same list. This groups the raw
+ * events between two of YOUR OWN decisions by the seat whose turn they belong
+ * to (a `turnEnded` event closes each group) and writes one plain-language
+ * sentence per group, joining the turn's notable acts with "then" - the shape
+ * the brief's own worked example uses: "Orchard farm visited you (+1 card on
+ * your Notice Board), then delivered to island B2 for 6 VP."
+ *
+ * Deliberately NOT built by re-running `narrateAll` and gluing its sentences
+ * together: those sentences are written to stand alone in a scrolling feed
+ * ("X visits Y: a card onto their Notice Board..."), and stapling several of
+ * them together reads as a list, not a story. This writes its own, shorter
+ * clauses instead, and reuses only the small pieces that are already exactly
+ * right for it (`cardWord`, `seatWho`, `ACTION_WORD`, `SUIT_META`).
+ * ------------------------------------------------------------------------- */
+
+export interface TurnSummaryLine {
+  /** The rival whose turn this line is about. */
+  readonly seat: Seat;
+  readonly text: string;
+  /** Suits mentioned, own suit first, for a small inline icon per suit. */
+  readonly icons: readonly Suit[];
+}
+
+/** One clause of a turn's story, or null for an event this summary is quiet about. */
+function turnClause(
+  data: GameData,
+  event: GameEvent,
+  suits: readonly (Suit | undefined)[],
+  you: Seat,
+): { text: string; suits: readonly Suit[] } | null {
+  switch (event.e) {
+    // ⛔ Quiet on purpose, same reason as `narrate()`'s own `doorUsed` case:
+    // whatever the visit or Worker bought is about to arrive as its OWN
+    // event (a `delivered`, a `built`, a `harvested`, cards drawn...), so
+    // naming the door here as well would say the same thing twice.
+    case 'doorUsed':
+      return null;
+    case 'visited': {
+      const toYou = event.host === you;
+      const target = toYou ? 'you' : `${seatWho(suits, you, event.host)}'s board`;
+      const possessive = toYou ? 'your' : 'their';
+      return {
+        text: `visited ${target} (+1 card on ${possessive} Notice Board)`,
+        suits: event.host === event.seat ? [] : [suits[event.host]].filter((s): s is Suit => !!s),
+      };
+    }
+    case 'delivered': {
+      return {
+        text: `delivered to island ${event.tile} for ${event.vp} VP`,
+        suits: event.crop === 'wild' ? [] : [event.crop],
+      };
+    }
+    case 'built':
+      return { text: `built ${cardWord(data, event.card)}`, suits: [] };
+    case 'harvested': {
+      const n = event.cards.length;
+      return {
+        text: `harvested ${cardWord(data, event.building)} (${n} card${n === 1 ? '' : 's'})`,
+        suits: [],
+      };
+    }
+    case 'meepleSpent': {
+      const label = SUIT_META[event.colour].label;
+      return {
+        text: `spent ${suitArticle(label)} ${label} ${GLOSSARY.worker} for ${ACTION_WORD[event.action] ?? event.action}`,
+        suits: [event.colour],
+      };
+    }
+    case 'cardsToHand': {
+      const n = event.cards.length;
+      return { text: `drew ${n} card${n === 1 ? '' : 's'}`, suits: [] };
+    }
+    case 'demolished':
+      return { text: `demolished ${cardWord(data, event.card)}`, suits: [] };
+    case 'cardGifted':
+      return {
+        text: `gave ${cardWord(data, event.card)} to ${seatWho(suits, you, event.to)}`,
+        suits: [],
+      };
+    case 'endTriggered':
+      return {
+        text: `made their ${data.rules.endGame.deliveriesToTrigger}th delivery, triggering the endgame`,
+        suits: [],
+      };
+    default:
+      return null;
+  }
+}
+
+/**
+ * One line per rival turn found in `events`. `suits` and `you` are exactly
+ * `narrateAll`'s own parameters (`seatSuits(view)` and `YOU`), so a caller
+ * that already has both for the feed has both for this too.
+ *
+ * A group with no seat-bearing event at all (a stray `reshuffled` or
+ * `cardsDiscarded` with nothing else around it) is dropped rather than
+ * printed as an empty sentence - it belongs to nobody's story.
+ */
+export function summariseTurns(
+  data: GameData,
+  events: readonly GameEvent[],
+  suits: readonly (Suit | undefined)[],
+  you: Seat,
+): TurnSummaryLine[] {
+  const lines: TurnSummaryLine[] = [];
+  let group: GameEvent[] = [];
+  let groupSeat: Seat | null = null;
+
+  const flush = () => {
+    if (groupSeat !== null && groupSeat !== you) {
+      const clauses: { text: string; suits: readonly Suit[] }[] = [];
+      for (const e of group) {
+        const clause = turnClause(data, e, suits, you);
+        if (clause) clauses.push(clause);
+      }
+      if (clauses.length > 0) {
+        const icons: Suit[] = [];
+        const ownSuit = suits[groupSeat];
+        if (ownSuit) icons.push(ownSuit);
+        for (const c of clauses) for (const s of c.suits) if (!icons.includes(s)) icons.push(s);
+        lines.push({
+          seat: groupSeat,
+          text: `${seatWho(suits, you, groupSeat)} ${clauses.map((c) => c.text).join(', then ')}.`,
+          icons,
+        });
+      }
+    }
+    group = [];
+    groupSeat = null;
+  };
+
+  for (const event of events) {
+    if (groupSeat === null && 'seat' in event) groupSeat = event.seat;
+    group.push(event);
+    if (event.e === 'turnEnded') flush();
+  }
+  flush(); // a trailing, not-yet-closed turn (no `turnEnded` seen yet) is still shown
+
+  return lines;
+}
+
+/**
+ * Everything in `current` that came after `baseline`'s own events, found by
+ * OBJECT IDENTITY rather than a count or a timestamp.
+ *
+ * `Session.snapshot()` (`session/table.ts`) hands out `this.events.slice(-160)`
+ * on every call: the same growing array, windowed to its last 160 entries, and
+ * never rebuilt or mutated in place. So two snapshots taken further apart than
+ * one call to `send` are the same list with more appended, and finding
+ * `baseline`'s LAST element inside `current` finds the seam between "what you
+ * had already seen" and "what happened since". If the seam cannot be found -
+ * only reachable if a single bot round somehow produced over 160 events, which
+ * the shipped game has never measured - every current event is treated as new
+ * rather than none, on the same principle as `narrate.ts`'s masked-card
+ * fallbacks: a slightly over-eager summary is a far smaller fault than a
+ * silently empty one.
+ */
+export function eventsSinceBaseline(
+  baseline: readonly GameEvent[],
+  current: readonly GameEvent[],
+): GameEvent[] {
+  if (baseline.length === 0) return [...current];
+  const last = baseline[baseline.length - 1] as GameEvent;
+  const seam = current.lastIndexOf(last);
+  return seam === -1 ? [...current] : current.slice(seam + 1);
 }

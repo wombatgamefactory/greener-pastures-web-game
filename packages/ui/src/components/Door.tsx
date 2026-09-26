@@ -46,7 +46,10 @@ export function DoorChip({
   return (
     <div
       className={`door door-${size}`}
-      style={{ borderColor: meta.pip }}
+      // `edge`, not `pip` (25/09/2026): since the ruled swatches the Dairy pip is
+      // #efedee and the Wheat pip #fceb3d, both near-invisible as a border on
+      // paper. `edge` is the same hue at 3:1 or better (see `suits.ts`).
+      style={{ borderColor: meta.edge }}
       title={`${meta.label}: ${door.actionText}`}
     >
       {size === 'full' && <img className="door-art" src={doorArt(door.action)} alt="" />}

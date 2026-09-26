@@ -29,10 +29,10 @@
  * a human can actually see, which a pair of unlabelled VP numbers was not.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { GameData } from '@gp/data';
 import { tokensPerTile } from '@gp/data';
-import type { PlayerView } from '@gp/engine';
+import type { IslandToken, PlayerView } from '@gp/engine';
 
 import { mark } from '../session/play';
 import type { Play } from '../session/play';
@@ -62,14 +62,66 @@ function IslandLegend({ data }: { data: GameData }) {
       Every island card: {crates} tokens. A delivery is {crates * cardsPerCrate} barn cards: both
       tokens&apos; demands first (you choose a token), then the last token&apos;s demand plus{' '}
       {cardsPerCrate} of any crop.
+      {/*
+       * B20, 25/09/2026: THE WILD TOKEN KEY. The appraisal named this
+       * specifically ("the purple island token has no key"): a cornucopia
+       * token's printed art reads as an odd-one-out on the tile and nothing on
+       * screen said why until a player hovered it.
+       *
+       * ⚠️ A FULL SENTENCE HERE IS NOT FREE, AND NEITHER IS A SECOND LINE. Two
+       * earlier cuts both cost real height this legend's row does not have: a
+       * second `<p>` cost 37px at 1366x768 (measured on `verify:layout`,
+       * which shrank `.farm`'s row enough to clip the hand), and even a
+       * clause of extra WORDS on this same line wrapped it to two lines on
+       * `measure-ui`'s densest fixture at 1600x900 (4px sliced off the
+       * tableau). What is left is the swatch alone, sized to the line it sits
+       * on - the explanation is one hover or one Tab stop away on its `title`
+       * and `aria-label`, which costs nothing until it is asked for.
+       */}{' '}
+      <span
+        className="island-key-inline"
+        // WP5 item 1, 25/09/2026: `role="img"` fixes axe's `aria-prohibited-attr`
+        // - a plain `<span>` has no implicit role that supports naming at all
+        // ("generic"), so `aria-label` on it alone is invalid ARIA even though
+        // every browser tested still exposed it. This element IS a small
+        // graphical key (the swatch below), so `img` is the correct role, not
+        // a workaround.
+        role="img"
+        tabIndex={0}
+        title="A cornucopia token (the odd one out on a tile) pays with ANY 2 cards, your choice of crop."
+        aria-label="Key: the round purple token is a cornucopia. It pays with any 2 cards, your choice of crop."
+      >
+        <span className="island-key-swatch" aria-hidden="true" />
+      </span>
     </p>
   );
+}
+
+/**
+ * B20, 25/09/2026: what a delivery to THIS tile needs and pays, in one
+ * sentence, for the hover/focus tooltip below. Reads the same two facts the
+ * legend states in general terms (`IslandLegend` above) but keyed to this
+ * tile's OWN printed tokens, which is the reading a player actually plans a
+ * delivery from - "2 Apple + 2 Wheat" rather than "both tokens' demands".
+ */
+function tileNeedText(data: GameData, tokens: readonly IslandToken[]): string {
+  const { cardsPerCrate } = data.island.tileRule;
+  const demand = (t: IslandToken) =>
+    `${cardsPerCrate} ${t.demand === 'wild' ? 'of any crop' : SUIT_META[t.demand].label}`;
+  const [a, b] = tokens;
+  if (a && b) {
+    return `First delivery here needs ${demand(a)} plus ${demand(b)}, and chooses which token it takes; the other waits for a later delivery.`;
+  }
+  if (a) {
+    return `Second delivery here needs ${demand(a)} plus ${cardsPerCrate} of any crop, and takes the last token.`;
+  }
+  return 'Both tokens claimed. This tile is closed.';
 }
 
 export function IslandPanel({
   data,
   view,
-  tileWidth,
+  tileWidth: minTileWidth,
   play,
   onExpand,
   onDeliver,
@@ -88,6 +140,85 @@ export function IslandPanel({
 }) {
   const rows: Level[] = [3, 2, 1];
   const capacity = tokensPerTile(data);
+  /*
+   * B15, 25/09/2026: FILL THE COLUMN, DON'T JUST SIT IN IT.
+   *
+   * `tileWidth` (renamed `minTileWidth` here) is the CSS ladder's value
+   * (`--island-tile-w`, `base.css`) - tuned as a FLOOR against the tableau's
+   * own capacity budget at 1024-1600, never as a ceiling. At 2560 and 3440 the
+   * shared table's middle column has thirty-odd percent more width than five
+   * fixed-width tiles need (measured: the island painted at about 36% of its
+   * column, appraisal's "dead band"), and nothing before this used the rest.
+   *
+   * `fitWidth` is the width that would make the WIDEST row exactly fill the
+   * container this panel is actually given, measured with a `ResizeObserver`
+   * rather than the window (the shared table's column is narrower than the
+   * window by the rail and the reading region, both of which this component
+   * has no way to know about otherwise). The rendered width is
+   * `Math.max(minTileWidth, fitWidth)`, so a step where the ladder's own value
+   * is already the tighter fit (1024-1600) is completely unaffected - this
+   * only ever grows the island, never shrinks it below what capacity planning
+   * settled on.
+   */
+  const rowCounts = rows.map(
+    (level) => view.island.tiles.filter((t) => levelOf(data, t.tile) === level).length,
+  );
+  const widestRow = Math.max(1, ...rowCounts);
+  const deepRows = Math.max(1, rowCounts.filter((n) => n > 0).length);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [fitWidth, setFitWidth] = useState(0);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return undefined;
+    const ROW_GAP = 6; // `.island-row`'s own gap (island.css)
+    /*
+     * ⚠️ GATED TO 2400px AND UP, ON PURPOSE. The fill logic ran at every step
+     * on the first cut, and at 1600x900 it grew the island just enough to
+     * push `measure-ui`'s own densest fixture back into slicing 5 of 5
+     * buildings (0px hidden before, 31px after) - a viewport this file was
+     * never supposed to touch, since 1024-1600 already have `--island-tile-w`
+     * tuned against that exact capacity budget (`base.css`). B15 only ever
+     * asked for the 2400+ steps; below that this resolves to `minTileWidth`,
+     * i.e. exactly what shipped before this component changed.
+     *
+     * ⚠️ BY HEIGHT AS WELL AS WIDTH, IN ONE PASS, NOT A MEASURE-AND-CORRECT
+     * LOOP. A first cut fit the widest row to the column's width alone and
+     * left a SECOND effect to measure the result and shrink it if too tall -
+     * which needs an extra render to settle, and `verify:layout`'s mid-action
+     * pass caught it landing mid-settle often enough to read as flaky (the
+     * qhd hand strip clipped on some runs and not others, same seed, same
+     * build). `HEIGHT_PER_TILE_WIDTH` folds the island's real per-row cost
+     * (not just the tile art - the token and Worker chrome under it) into one
+     * constant, calibrated off the pre-B15 island (578px tall at 126px tile
+     * width, 3 rows: 578 / 126 = 4.587), so both bounds are known before the
+     * first render rather than discovered after it.
+     */
+    // Calibrated at deepRows = 3 (578px tall at a 126px tile, the pre-B15
+    // island): 578 / 126 / 3 rows = 1.529 per row per pixel of tile width.
+    const HEIGHT_PER_ROW_PER_TILE_WIDTH = 1.529;
+    const measure = () => {
+      if (window.innerWidth < 2400) {
+        setFitWidth(0);
+        return;
+      }
+      const w = el.getBoundingClientRect().width;
+      const byWidth = (w - ROW_GAP * (widestRow - 1)) / widestRow;
+      const budgetHeight = window.innerHeight * 0.42;
+      const byHeight = budgetHeight / deepRows / HEIGHT_PER_ROW_PER_TILE_WIDTH;
+      setFitWidth(Math.max(0, Math.floor(Math.min(byWidth, byHeight))));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener('resize', measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [widestRow, deepRows]);
+  // Capped a little above the enlarge overlay's own ceiling (200px): the
+  // inline map sits beside a farm and a rail and should never outgrow either.
+  const tileWidth = Math.min(300, Math.max(minTileWidth, fitWidth));
   // The play tier (238x256) is already sharper than an inline tile ever draws
   // it; the zoom tier only earns its weight once a token is drawn bigger than
   // that, which is exactly the enlarged overlay (`IslandOverlay` below, up to
@@ -116,6 +247,7 @@ export function IslandPanel({
 
   return (
     <div
+      ref={containerRef}
       className={`island${onExpand ? ' island-openable' : ''}`}
       style={{ ['--island-tile' as string]: `${tileWidth}px` }}
       onClick={onExpand}
@@ -144,9 +276,13 @@ export function IslandPanel({
                 const tokenChoiceOpen = (additions?.tokens.length ?? 0) > 1;
                 const tokenSize = Math.round(tileWidth * 0.42);
                 const workerSize = Math.max(12, Math.round(tileWidth * 0.22));
+                // B20, 25/09/2026: what THIS tile needs and pays, for the
+                // hover/focus tooltip below - see `tileNeedText`'s own banner.
+                const needText = tileNeedText(data, tile.tokens);
                 return (
                   <div
                     key={tile.tile}
+                    data-card={tile.tile}
                     className={`island-tile${spent >= capacity ? ' island-tile-done' : ''}${mark(
                       play,
                       live,
@@ -159,19 +295,33 @@ export function IslandPanel({
                           }
                         : undefined
                     }
-                    role={live ? 'button' : undefined}
-                    tabIndex={live ? 0 : undefined}
-                    onKeyDown={
-                      live
-                        ? (e) => {
-                            if (e.key !== 'Enter' && e.key !== ' ') return;
-                            e.stopPropagation();
-                            deliver(tile.tile);
-                          }
-                        : undefined
-                    }
+                    /*
+                     * ⭐ 25/09/2026 (B20): ALWAYS FOCUSABLE, NOT ONLY WHEN
+                     * LIVE. A tile you cannot deliver to right now is still a
+                     * tile a player wants to read - "what does this one want"
+                     * is a planning question, not just a this-turn question -
+                     * so `role`/`tabIndex` no longer gate on `live` the way
+                     * item 4's rival boards and B23's decks do not either.
+                     * Activation (the click/Enter/Space branch) still does.
+                     */
+                    role="button"
+                    aria-disabled={!live}
+                    aria-label={needText}
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (!live || (e.key !== 'Enter' && e.key !== ' ')) return;
+                      e.stopPropagation();
+                      deliver(tile.tile);
+                    }}
                   >
                     <img className="island-art" src={islandTileArt(tile.tile)} alt="" />
+                    {/* The tooltip itself: CSS-only reveal on hover or focus
+                        (`island.css`), same idiom as the deck popover (B23) -
+                        no JS state, works the same for a pointer and for a
+                        keyboard user tabbing onto the tile. */}
+                    <div className="island-tip" aria-hidden="true">
+                      {needText}
+                    </div>
                     {/*
                      * THE TOKENS STILL ON THE TILE (2.5.1). One printed face per
                      * token - crop pair (or the cornucopia pair for a wild
@@ -191,13 +341,14 @@ export function IslandPanel({
                      * choice nobody can see is a choice nobody can measure.
                      */}
                     {/*
-                     * ⚠️ POSITIONED INLINE, NOT IN `styles/table.css` (owned by
+                     * ⚠️ POSITIONED INLINE, NOT IN `styles/island.css` (owned by
                      * another pass): this replaces the three absolutely-
                      * positioned rows (`.island-demands`/`.island-receipts`/
                      * `.island-meeples`) that used to overlay `.island-art`
                      * (itself `position: absolute; inset: 0` inside a
                      * `position: relative` tile). `.island-tokens`
-                     * (`styles/table.css`) carries the layout now.
+                     * (`styles/island.css`, split from `table.css` 25/09/2026)
+                     * carries the layout now.
                      */}
                     <div className="island-tokens">
                       {tile.tokens.map((token, i) => {
@@ -342,6 +493,43 @@ export function IslandOverlay({
    * enlarged one has no such neighbours to answer to.
    */
   const [tile, setTile] = useState(120);
+  /*
+   * B26, 25/09/2026: A TRUE DIALOG. `role="dialog"` was already here; what was
+   * missing is what makes that role trustworthy - `aria-modal`, so a screen
+   * reader hides the rest of the page while this is open, a focus TRAP, so Tab
+   * cannot walk out of the overlay into the table behind it, and focus
+   * RETURN, so closing it puts the keyboard back where it was rather than at
+   * the top of the document (both named in the appraisal's accessibility
+   * finding and B26's brief).
+   */
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    return () => {
+      opener?.focus?.();
+    };
+  }, []);
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || !dialogRef.current) return;
+      const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!first || !last) return;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
   const levels: Level[] = [3, 2, 1];
   const counts = levels.map(
     (level) => view.island.tiles.filter((t) => levelOf(data, t.tile) === level).length,
@@ -367,9 +555,11 @@ export function IslandOverlay({
   return (
     <div className="overlay" onClick={onClose} role="presentation">
       <div
+        ref={dialogRef}
         className="island-large"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
+        aria-modal="true"
         aria-label="the island, enlarged"
       >
         <header className="island-large-head">

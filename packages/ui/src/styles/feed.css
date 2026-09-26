@@ -1,0 +1,31 @@
+/*
+ * feed.css (25/09/2026, WP3a/B10).
+ *
+ * Everything the base `.feed`, `.feed-lines`, `.feed-line`, `.feed-who`,
+ * `.feed-boundary` and `.feed-alarm` rules already do lives in `table.css` and
+ * stays there (another worker is splitting that file; this stylesheet is
+ * loaded AFTER it and only ADDS classes, never overrides one of theirs on the
+ * same selector). What is here is new: the turn-header treatment for B10's
+ * "group each turn under a seat-coloured header", built from `tokens.css`'s
+ * scale rather than a literal size or colour.
+ */
+
+/*
+ * A TURN'S OWN HEADER, layered onto the existing `.feed-boundary` line rather
+ * than replacing it - `narrate.ts` already writes "X to play" once per turn
+ * (the `turnEnded` event), so `EventFeed.tsx` marks that same line with this
+ * class instead of inventing a second, redundant announcement. `--line-ink`
+ * is the seat's own ink, already set inline by `EventFeed.tsx` exactly the
+ * way `.feed-who` reads it - one colour source for "whose line is this"
+ * across the whole feed.
+ */
+.feed-turn-head {
+  margin-top: var(--space-3, 6px);
+  padding-top: var(--space-2, 4px);
+  font-size: var(--fs-xs, 12px);
+  font-weight: 700;
+  letter-spacing: var(--track-caps, 0.06em);
+  text-transform: uppercase;
+  color: var(--line-ink, var(--ink-strong, inherit));
+  border-top-color: var(--line-ink, var(--edge, currentColor));
+}

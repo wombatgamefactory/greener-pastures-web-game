@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Greener Pastures favicon (25/09/2026): five field strips in the five
+       ruled suit colours (Orchard, Wheat, Vegetable, Apiary, Dairy) on a
+       rounded card with the sepia keyline the printed cards wear. -->
+  <defs>
+    <clipPath id="c"><rect x="2" y="2" width="28" height="28" rx="6"/></clipPath>
+  </defs>
+  <g clip-path="url(#c)">
+    <rect x="2" y="2" width="28" height="28" fill="#f7f1e3"/>
+    <path d="M2 2h28v6.2C22 6 10 10 2 7.6Z" fill="#ca5744"/>
+    <path d="M2 7.6C10 10 22 6 30 8.2v5.6C22 11.6 10 15.6 2 13.2Z" fill="#fceb3d"/>
+    <path d="M2 13.2c8 2.4 20-1.6 28 .6v5.6c-8-2.2-20 1.8-28-.6Z" fill="#9cac85"/>
+    <path d="M2 18.8c8 2.4 20-1.6 28 .6V25c-8-2.2-20 1.8-28-.6Z" fill="#e7963b"/>
+    <path d="M2 24.4c8 2.4 20-1.6 28 .6V30H2Z" fill="#efedee"/>
+  </g>
+  <rect x="2" y="2" width="28" height="28" rx="6" fill="none" stroke="#2f2318" stroke-width="2"/>
+</svg>

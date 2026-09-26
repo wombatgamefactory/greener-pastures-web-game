@@ -1,0 +1,192 @@
+/*
+ * motion.css (B8/B9, 25/09/2026). Owns three things: the FLIP animator's own
+ * duration token and ghost styling (`session/motion.ts`), the 2s "changed
+ * object" ring B9 asks for, and the "while you were away" strip
+ * (`components/TurnSummary.tsx`).
+ *
+ * ⚠️ `--motion-card-duration` IS A NEW TOKEN, NOT `--motion-state`. See the
+ * long comment at the top of `session/motion.ts` for why: `--motion-state`
+ * (`base.css`) already drives every hover/press transition in the interface
+ * at 600ms, and redefining it here - a later `@import` - would retune every
+ * one of those as a side effect of this pass. This is unrelated and timed for
+ * a card's flight rather than a hover (250-350ms per the brief).
+ */
+:root {
+  --motion-card-duration: 300ms;
+}
+
+/*
+ * Belt and braces, same shape as `overlays.css`'s own note by the same name:
+ * `session/motion.ts` already branches on `prefersReducedMotion()` in JS and
+ * switches every transform-based animation for an opacity-only one, so this
+ * is not load-bearing for the acceptance check - but a token that claims to
+ * be a duration should read as `0s` under the setting it claims to respect,
+ * the same discipline `base.css` holds `--motion-state` and `--motion-ui` to.
+ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-card-duration: 0s;
+  }
+}
+
+/*
+ * THE GHOST. Cloned from a live `[data-card]` element (`cloneGhost` in
+ * `session/motion.ts`), appended to `Motion.tsx`'s own fixed overlay div and
+ * given an explicit inline position/size at clone time - this class only ever
+ * adds what an inline style cannot: it must never intercept a click (a ghost
+ * sits over the real board while it flies) and must always paint above
+ * everything else so a flight from the barn to the island is not clipped by
+ * `.island`'s own stacking context.
+ */
+.motion-ghost {
+  z-index: 4000;
+  will-change: transform, opacity;
+}
+
+/* The invisible full-viewport host `Motion.tsx` renders once. It holds every
+   ghost and nothing else, so it must never be a click target itself. */
+.motion-ghosts {
+  position: fixed;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 4000;
+}
+
+/*
+ * B9's "outline changed objects for about 2s": a static ring, not a motion -
+ * `CardMotion.outline()` toggles this class on and off with a `setTimeout`
+ * rather than a WAAPI animation, because 2s of held state is not what
+ * `.animate()` is for. Drawn as an outline (never a border or a box-shadow)
+ * so it never nudges the element's own layout, which matters most on a board
+ * that is mid-turn for a rival on the very next tick.
+ */
+.motion-outline {
+  outline: 3px solid var(--ink);
+  outline-offset: 3px;
+  border-radius: var(--radius-md);
+  transition: outline-color var(--motion-card-duration) ease-out;
+}
+
+/* -------------------------------------------------------------------------
+ * TurnSummary (B9): "while you were away".
+ *
+ * ⭐ MOVED 25/09/2026 (WP5 item 4). It used to sit `top: 12px; right: 12px` -
+ * the TOP-RIGHT corner of the whole viewport, which the comment this replaces
+ * argued was clear because only the Notice Board powers legend (`.panel-doors`)
+ * lived there. The appraisal's own screenshot
+ * (`.scratch/wp3b/turn-summary-1600.png`) showed that reasoning was wrong: the
+ * legend is KEY REFERENCE INFORMATION even though it is not a click target,
+ * and covering the top rows of "the five Notice Board powers" while a player
+ * is trying to catch up on what the bots just did is exactly the wrong moment
+ * to hide it.
+ *
+ * Anchored bottom-LEFT of the RAIL column instead, not the viewport: `left`
+ * plus a width tied to `--rail-w` (the same token `layout.css`'s grid column
+ * uses) means it can never reach into the main column at all, at any
+ * breakpoint, so the shared-table legend, the decks, the island and every
+ * hand card are safe by construction rather than by measuring one screenshot.
+ * A capped `max-height` keeps it off the rival boards at the TOP of the same
+ * column - `.rival`'s own dated note measures that row at 446.9px even at the
+ * tightest (1024x700, four seats) floor, comfortably more than this panel is
+ * ever allowed to claim. What it DOES sit over, while shown, is the lower
+ * part of the event feed and the quiet corner's pace/capture row - a
+ * scrolling log and two controls that are idle while it is a rival's turn
+ * (that is the only time this panel ever appears), traded deliberately against
+ * covering the legend, a rival board or the hand. `tools/verify-motion.mjs`
+ * proves the no-live-target claim with a real hit-test rather than trusting
+ * this comment, and its target list now includes `.panel-doors`.
+ * ------------------------------------------------------------------------- */
+.turn-summary {
+  position: fixed;
+  top: auto;
+  left: 12px;
+  right: auto;
+  bottom: 12px;
+  width: calc(var(--rail-w) - 24px);
+  max-height: min(220px, 32vh);
+  overflow-y: auto;
+  background: var(--paper-panel);
+  border: 1px solid var(--ink-line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lift);
+  padding: 10px 14px;
+  z-index: 3000;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}
+
+.turn-summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 6px;
+}
+
+.turn-summary-title {
+  margin: 0;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  color: var(--ink-soft);
+}
+
+.turn-summary-close {
+  border: 1px solid var(--ink-line);
+  background: transparent;
+  color: var(--ink-soft);
+  border-radius: var(--radius-pill);
+  width: 22px;
+  height: 22px;
+  line-height: 1;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.turn-summary-close:hover,
+.turn-summary-close:focus-visible {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+.turn-summary-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.turn-summary-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  line-height: var(--lh-snug);
+}
+
+/* One small dot per suit mentioned, never a second icon set (the file header
+   in `session/narrate.ts`'s B9 block explains why this borrows `SUIT_META`
+   rather than drawing anything new). */
+.turn-summary-icon {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: 4px;
+  flex: 0 0 auto;
+}
+
+.turn-summary-icons {
+  display: inline-flex;
+  gap: 3px;
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+/* ⭐ The old "below the 1024x700 floor" override (25/09/2026 and earlier) is
+   gone: it widened the panel to the full gutter against the pre-WP5 top-right
+   placement, which no longer applies now that the panel is anchored to
+   `--rail-w` (above) at every breakpoint this project supports. */

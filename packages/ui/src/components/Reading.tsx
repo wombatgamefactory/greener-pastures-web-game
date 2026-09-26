@@ -60,7 +60,11 @@ export function Reading({
   if (id.endsWith('?')) {
     const suit = data.cards.suits.find((s) => s.charAt(0).toUpperCase() === id.charAt(0));
     return (
-      <div className="reading-gloss">
+      // WP5 item 1, 25/09/2026: `tabIndex={0}` fixes axe's
+      // `scrollable-region-focusable`, same reasoning as `EventFeed.tsx`'s
+      // `.feed-lines` - a scrolling box with no focusable descendant of its
+      // own was reachable only by a mouse wheel.
+      <div className="reading-gloss" tabIndex={0}>
         <p className="gloss-masked">
           {sentenceCase(maskedCardPhrase(suit))}. Its crop is public; which card it is stays hidden
           until it is played.
@@ -79,7 +83,7 @@ export function Reading({
   const now = play ? glossNow(data, face, play.view, play.moves, play.active) : [];
 
   return (
-    <div className="reading-gloss">
+    <div className="reading-gloss" tabIndex={0}>
       {terms.length > 0 && (
         <dl className="gloss-terms">
           {terms.map((t) => (

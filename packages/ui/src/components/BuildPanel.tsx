@@ -46,7 +46,7 @@ import {
 } from '../view/intent';
 import type { BuildDraft, DeliverDraft } from '../view/intent';
 import { printedFace } from '../view/printed';
-import { cardName, spendText } from '../view/moveText';
+import { buildCostWords, cardName, spendText } from '../view/moveText';
 import { SUIT_META } from '../view/suits';
 import { Card } from './Card';
 import { withPayment, withStackPayment } from '../view/intent';
@@ -71,14 +71,30 @@ export function BuildPanel({
       ? `${additions.remaining.min}`
       : `${additions.remaining.min}-${additions.remaining.max}`;
 
+  /*
+   * B11 (25/09/2026): THE COST PREVIEW, IN THE HEADER, BEFORE ANY PAYMENT.
+   * The printed cost is a property of the CARD, not of what has been paid so
+   * far, so it is read off `data.cards.catalogue` once here rather than from
+   * the draft - it is the one number on this panel that never changes while
+   * the assembly is open, and it is what a player wants to know before
+   * clicking anything.
+   */
+  const face = printedFace(data, draft.card);
+  const printedCard = data.cards.catalogue.find((c) => c.id === draft.card);
+
   return (
     <section className="assembly" aria-label="build a card">
       <div className="assembly-subject">
-        <Card face={printedFace(data, draft.card)} width={cardWidth} />
+        <Card face={face} width={cardWidth} />
       </div>
 
       <div className="assembly-body">
         <h3>Build {cardName(data, draft.card)}</h3>
+        {printedCard?.buildCost && (
+          <p className="assembly-hint assembly-cost">
+            Costs {buildCostWords(face.suit, printedCard.buildCost)}.
+          </p>
+        )}
         <p className="assembly-hint">
           {candidates.length === 0
             ? 'That payment cannot be finished. Take a card back off.'
@@ -109,7 +125,9 @@ export function BuildPanel({
             </button>
           ))}
           {draft.payment.length + draft.stacks.length === 0 && (
-            <span className="chip chip-empty">nothing paid yet</span>
+            // T10b (26/09/2026): said "nothing paid yet" as a greyed chip, which read
+            // as a disabled button (QA D10). It is an instruction, so it says what to do.
+            <span className="chip chip-empty">click a lit card in your hand to pay</span>
           )}
         </div>
 
@@ -224,7 +242,8 @@ export function DeliverPanel({ play, draft }: { play: Play; draft: DeliverDraft 
               </button>
             ))}
           {Object.keys(draft.spend).length === 0 && (
-            <span className="chip chip-empty">nothing paid yet</span>
+            // T10b (26/09/2026): an instruction, not a greyed chip (QA D10).
+            <span className="chip chip-empty">choose barn cards below to pay</span>
           )}
         </div>
 

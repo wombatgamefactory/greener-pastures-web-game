@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
-import type { Plugin } from 'vite';
+import type { IndexHtmlTransformContext, Plugin } from 'vite';
 
 // GitHub Pages serves a project site from /<repo>/, so the built asset URLs need
 // that prefix. Local dev and `vite preview` serve from the root.
@@ -94,13 +94,61 @@ function analytics(): Plugin {
   };
 }
 
+/**
+ * B25 (WP5 item 5, 25/09/2026): preload the Fredoka 500 woff2, the weight the
+ * Result screen's standing line and How to play's page headings set, so the
+ * first heading a player reaches after the start screen does not visibly
+ * swap fonts mid-read. `link rel="preload"` needs the file's actual (hashed)
+ * built name, which is only known after Rollup has emitted it, so this reads
+ * the finished bundle rather than guessing a path - the same shape
+ * `transformIndexHtml` already uses in `analytics()` above, just reading
+ * `ctx.bundle` instead of writing fixed tags.
+ */
+function preloadFont(): Plugin {
+  return {
+    name: 'gp-preload-font',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post' as const,
+      handler: (_html: string, ctx: IndexHtmlTransformContext) => {
+        if (ctx.path.includes('sheet.html')) return [];
+        const bundle = ctx.bundle;
+        if (!bundle) return [];
+        const font = Object.keys(bundle).find((file) =>
+          /fredoka-latin-500-normal-.*\.woff2$/.test(file),
+        );
+        if (!font) return [];
+        return [
+          {
+            tag: 'link',
+            attrs: {
+              rel: 'preload',
+              href: `${REPO_BASE}${font}`,
+              as: 'font',
+              type: 'font/woff2',
+              crossorigin: true,
+            },
+            injectTo: 'head' as const,
+          },
+        ];
+      },
+    },
+  };
+}
+
 export default defineConfig(({ command }) => ({
   base: command === 'build' ? REPO_BASE : '/',
   define: { __APP_VERSION__: JSON.stringify(buildId()) },
-  plugins: [react(), analytics()],
+  plugins: [react(), analytics(), preloadFont()],
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    // B25 (WP5 item 5, 25/09/2026): `false`, not `'hidden'`. `'hidden'` still
+    // WRITES a `.map` file beside every chunk in `dist/assets` - it only
+    // omits the `//# sourceMappingURL` comment that would point a browser at
+    // it - so it does not clear this pass's own acceptance criterion ("no
+    // `.map` files in `dist/assets`"), which checks the files on disk rather
+    // than whether anything links to them. `false` emits none at all.
+    sourcemap: false,
     // Two entries: the game, and the card sheet renderer that replaces the
     // InDesign data merge (tools/render-sheets.mjs drives the second one).
     // Naming `index.html` explicitly is required - the moment `input` is set,

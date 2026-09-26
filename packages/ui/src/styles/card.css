@@ -268,20 +268,98 @@
     display: none;
   }
 
+  /*
+   * ⭐ 25/09/2026 (B7): THE BAND GOES ENTIRELY, not to 75%. With its text and
+   * icons dropped it was a blank coloured strip that said nothing the suit chip
+   * does not, and it was exactly where the title plate below needs to sit.
+   */
   .card:not(.card-readable) .card-band {
-    opacity: 0.75;
+    display: none;
   }
 
-  /* The name is the last thing to go illegible, so BOTH kinds of card take the
-     bigger type. Only the offset is conditional: a card that has dropped its top
-     band pulls the name up into the space, and a readable one has not. */
-  .card-name {
+  /* A readable card under 260px keeps the printed name, a size up. */
+  .card-readable .card-name {
     font-size: 6.4cqw;
     -webkit-text-stroke-width: 1cqw;
   }
 
+  /*
+   * ⭐ THE TITLE PLATE (25/09/2026, B7). Every small card - the hand, the
+   * tableau, the deck tops, the rail - draws its name on a solid parchment
+   * plate in dark ink, instead of the printed white-with-sepia-keyline.
+   *
+   * WHY THE PRINTED TREATMENT HAD TO GO AT THIS SIZE. The keyline is a print
+   * device for a 63.5mm card held at arm's length; at 100px it was a 9-10px
+   * white word whose 1cqw stroke was ONE pixel, fighting whatever the art put
+   * behind it - hay, sky, a white cow. The appraisal read every title on the
+   * 1600 screen as illegible, and it was right. A plate is how every digital
+   * card game that reads well handles this (the name is a label, not paint).
+   *
+   * The rules that make it work:
+   *   - opaque, so the ground under the ink is known and the contrast is a
+   *     number (--ink-strong on --plate, 14.4:1), not a hope;
+   *   - never below --fs-xs (12px at 1600, 15px at 2560), and proportional
+   *     above that up to --fs-md, so a big card is not a small-print card;
+   *   - one line, truncated with an ellipsis; the whole name comes back on
+   *     hover or keyboard focus (the plate unwraps), and it is always in the
+   *     card's `aria-label` and the h3's `title`;
+   *   - a 2px underline in the suit's ink, so the plate still says whose it is;
+   *   - the printed keyline (`.card::after`, z-index 9) still frames it.
+   *
+   * ⚠️ NO `paint-order` HERE, so the Safari <17.4 bug of 10/08/2026 cannot
+   * reach the plate at all - and the `[data-text]` fill layer from base.css is
+   * switched OFF, because an absolutely positioned copy does not inherit the
+   * ellipsis and would print the untruncated name over the truncated one.
+   *
+   * Readable cards and cards over 260px (the zoom, the 4K hand, the print
+   * sheets in `render-sheets.mjs`) keep the printed treatment: at that size it
+   * reads, and it is what the physical card looks like.
+   */
+  /* ⚠️ The size is written out on each element that needs it rather than set
+     once on `.card`: a container query styles the container's DESCENDANTS and
+     never the container itself, so a custom property declared on `.card` in
+     here is simply never set (found 25/09/2026, when every plate computed to
+     the inherited 16px). */
   .card:not(.card-readable) .card-name {
-    top: 15%;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 2px 5px;
+    font-family: var(--font-display);
+    font-size: clamp(var(--fs-xs), 6.4cqw, var(--fs-md));
+    font-weight: 600;
+    line-height: 1.2;
+    text-align: center;
+    color: var(--ink-strong);
+    -webkit-text-stroke: 0;
+    paint-order: normal;
+    background: var(--plate);
+    border-bottom: 2px solid var(--suit-ink, var(--plate-edge));
+    box-shadow: 0 1px 2px rgb(47 35 24 / 20%);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .card:not(.card-readable) .card-name::after {
+    content: none;
+  }
+
+  /* The whole name on hover or keyboard focus: the plate unwraps downwards over
+     the art, and the ellipsis goes. Focus is matched on the card itself and on
+     the live wrapper `Farm.tsx` puts round it. */
+  .card:not(.card-readable):hover .card-name,
+  .card:not(.card-readable):focus-within .card-name,
+  :focus-visible > .card:not(.card-readable) .card-name {
+    white-space: normal;
+    text-overflow: clip;
+  }
+
+  /* The VP badge sat at 19%, under where the plate now is. */
+  .card:not(.card-readable) .card-vp {
+    /* The plate's height (its type at line-height 1.2, plus 4px padding and
+       the 2px rule) and a little air. */
+    top: calc(clamp(var(--fs-xs), 6.4cqw, var(--fs-md)) * 1.2 + 6px + 2%);
   }
 
   .card:not(.card-readable) .card-ref {
@@ -294,16 +372,9 @@
     display: none;
   }
 
-  .card:not(.card-readable) .card-band {
-    display: none;
-  }
-
-  .card:not(.card-readable) .card-name {
-    top: 4%;
-    left: 15%;
-    right: 4%;
-    font-size: 8cqw;
-  }
+  /* The plate carries on at this size unchanged: it is already full width and
+     already at the floor, so the old offsets (top 4%, left 15%, 8cqw) that
+     squeezed a stroked name in beside the VP badge are gone (25/09/2026). */
 
   .card:not(.card-readable) .card-threshold {
     font-size: 22cqw;

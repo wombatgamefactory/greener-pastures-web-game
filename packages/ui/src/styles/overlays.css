@@ -1,0 +1,284 @@
+/*
+ * Zoom, inspector, the island enlarge overlay and table-wide banners.
+ * Split from table.css into region files, 25/09/2026 (B24). Behaviour-neutral:
+ * proved by identical verify-layout and measure-ui output before and after the
+ * split (.scratch/wp1/). Comments are kept verbatim; they are this project's
+ * design memory.
+ */
+
+/* ---- zoom, inspector, banner -------------------------------------------- */
+
+/* Clear of the turn bar: the bar is a click target now, and a hover zoom that
+   covers the buttons you are reaching for is worse than one that sits higher. */
+.zoom {
+  position: fixed;
+  right: 14px;
+  bottom: 76px;
+  z-index: 80;
+  pointer-events: none;
+  display: grid;
+  gap: 4px;
+  max-width: 420px;
+}
+
+.zoom .card {
+  box-shadow: var(--shadow-lift);
+}
+
+/* The scrim arrives rather than appearing. `--motion-ui`, not the band: it is
+   the answer to a click, and both overlays it serves are opened by one. */
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  animation: overlay-in var(--motion-ui) ease;
+  background: rgb(44 32 20 / 52%);
+  display: grid;
+  place-items: center;
+  z-index: 90;
+  padding: 20px;
+}
+
+.inspector {
+  background: var(--paper-panel);
+  border-radius: 10px;
+  padding: 12px 14px;
+  max-width: min(1100px, 92vw);
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-lift);
+  display: grid;
+  gap: 8px;
+}
+
+/*
+ * THE ENLARGED ISLAND. Deliberately the same costume as `.inspector` - same
+ * scrim, same paper, same radius, same close button - because they are the same
+ * kind of thing (a compressed region, opened out) and the game should not have
+ * two modal idioms for one gesture.
+ *
+ * No `max-height` scroller: `IslandOverlay` sizes the tile so the whole pyramid
+ * fits the window, which is the point of it. A scrolling island would be the
+ * inline map's problem again with more paint.
+ */
+.island-large {
+  background: var(--paper-panel);
+  border-radius: 10px;
+  padding: 12px 16px 14px;
+  box-shadow: var(--shadow-lift);
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+}
+
+.island-large-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+}
+
+.island-large-head h2 {
+  font-size: var(--fs-lg); /* was 17px, 25/09/2026 token pass */
+}
+
+.island-large-head p {
+  margin: 0;
+  font-size: var(--fs-xs); /* was 12px, 25/09/2026 token pass */
+  color: var(--ink-soft);
+}
+
+.island-large-head .inspector-close {
+  margin-left: auto;
+}
+
+/* At full size the one-line rule can be read like a caption rather than a
+   footnote, so it stops being 9px. */
+.island-large .island-legend {
+  font-size: var(--fs-sm); /* was 13px, 25/09/2026 token pass */
+}
+
+.inspector-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: var(--fs-xs); /* was 12px, 25/09/2026 token pass */
+}
+
+.inspector-head h2 {
+  font-size: var(--fs-lg); /* was 17px, 25/09/2026 token pass */
+  color: var(--seat-ink);
+}
+
+.inspector-close {
+  margin-left: auto;
+  background: var(--paper-deep);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 3px 12px;
+  font-size: var(--fs-xs); /* was 12px, 25/09/2026 token pass */
+}
+
+.inspector-visit {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  font-size: var(--fs-xs); /* was 12px, 25/09/2026 token pass */
+  background: var(--paper);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.inspector-workers {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.inspector .tableau {
+  overflow: visible;
+}
+
+/*
+ * TABLE-WIDE NOTICES: the end trigger, and the supply lock.
+ *
+ * ⚠️ THEY USED TO BE `position: fixed` AT THE TOP CENTRE, which is precisely
+ * where the shared table draws its DECKS and THE ISLAND captions - so the end-game
+ * banner printed straight across them, in every screenshot this project has
+ * ever taken. Phase 2 made it worse rather than better: those captions lost the
+ * panels behind them, so what had been a banner over a box became text on text.
+ *
+ * A fixed element cannot be argued out of overlapping; it can only be moved
+ * somewhere else that is empty today. There is no such place on this screen -
+ * that was phase 0's finding and it has not changed - so the notice goes into
+ * the flow instead, as a row at the top of the main column. It cannot overlap
+ * anything by construction, and the row exists only in the states that have
+ * something to say (`.main-noticed` in Table.tsx), so it costs nothing the rest
+ * of the time.
+ */
+.table-notice {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+}
+
+.table-notice p {
+  margin: 0;
+  background: #a2493a;
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: var(--fs-sm); /* was 13px, 25/09/2026 token pass */
+  line-height: 1.3;
+  padding: 2px 16px;
+  border-radius: 6px;
+  text-align: center;
+}
+
+/**
+ * THE BONUS PHASE (19/08/2026). The slot is start-of-turn only now, so the bar
+ * opens on the four bonus options and a skip, then shows the main actions. It is
+ * an honesty affordance and not a rule: offered in one flat row, the bonus
+ * silently expires the moment somebody clicks Build, and a forfeited visit is
+ * the hook not happening.
+ */
+/* One line, and `max-width` is off for that reason: the bar is 800px or more
+   wide and this sentence is 92 characters, so at 11px it fits on one line at
+   every step. A second line here is 14px out of the tableau's row budget. */
+/* T10b (26/09/2026): now a `.bar-note` in the bar's one fixed message line
+   (`main-column.css`), which sets its size, its single line and its
+   ellipsis; this rule keeps only its colour. It WAS two lines at 1600 and
+   three at 1024, and every one came out of the tableau's height (QA D1). */
+.bonus-phase {
+  color: var(--ink-soft);
+}
+
+.bonus-phase strong {
+  color: var(--seat-ink, var(--ink));
+}
+
+/*
+ * ⚠️ LAST IN THE FILE ON PURPOSE, AND IT HAS TO BE.
+ *
+ * These two keyframed animations are declared further up (`overlay-in` on
+ * `.overlay` in the zoom-and-inspector block, `count-moved` on the farm head's
+ * Worker and VP chips). A media query carries no extra specificity, so a guard
+ * written ABOVE the rule it is guarding simply loses the cascade to it - which
+ * is exactly what the first cut of this did, and what a browser check caught.
+ * At the bottom of the file it cannot lose.
+ *
+ * Belt and braces, deliberately. The base.css guard takes `--motion-state` and
+ * `--motion-ui` to 0s, which already stops both of these and every transition
+ * written against them - that is the guard that cannot be forgotten. This is
+ * the one that cannot be defeated: a later edit hard-coding a duration rather
+ * than using a token would slip past the token guard silently, and
+ * `animation: none` does not care what the duration says.
+ *
+ * ⚠️ `.count-moved`'s flag is cleared by `animationend` (see `useChanged` in
+ * Farm.tsx) and `animation: none` fires none, so the class stays on the
+ * element. Harmless - nothing is drawn - and the right trade: the alternative
+ * is a JS timer kept equal to a CSS token by hand.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .overlay,
+  .count-moved {
+    animation: none;
+  }
+}
+
+/*
+ * The hand preview (26/09/2026, Dean): the hovered hand card drawn full and
+ * readable at three times its hand width, its top level with the hand's top. It never
+ * takes a pointer event, so the card beneath is still the one you click or
+ * drag, and it is hidden while a drag is in flight.
+ */
+.hand-preview {
+  position: fixed;
+  z-index: 90;
+  pointer-events: none;
+  animation: hand-preview-in var(--motion-ui, 120ms) ease-out;
+  transform-origin: 50% 0%;
+}
+
+.hand-preview .card {
+  box-shadow: var(--shadow-lift, 0 10px 28px rgb(60 40 20 / 30%));
+}
+
+body.is-dragging .hand-preview {
+  display: none;
+}
+
+/* The other hand cards slide out from under the preview (26/09/2026). */
+.hand-card-shift {
+  transition: transform 160ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hand-card-shift {
+    transition: none;
+  }
+}
+
+/* The corner zoom would show the same card a second time. */
+body:has(.hand-preview) .zoom {
+  display: none;
+}
+
+@keyframes hand-preview-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hand-preview {
+    animation: none;
+  }
+}

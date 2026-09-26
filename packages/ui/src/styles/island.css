@@ -1,0 +1,287 @@
+/*
+ * The island.
+ * Split from table.css into region files, 25/09/2026 (B24). Behaviour-neutral:
+ * proved by identical verify-layout and measure-ui output before and after the
+ * split (.scratch/wp1/). Comments are kept verbatim; they are this project's
+ * design memory.
+ */
+
+/* ---- island ------------------------------------------------------------- */
+
+.island {
+  display: grid;
+  /*
+   * ⚠️ THE COLUMN HAS TO BE NAMED, or the rows are free to overflow the panel.
+   *
+   * With no `grid-template-columns` the implicit column is `auto`, which sizes
+   * to MAX-CONTENT - so at any size where the pyramid is wider than the shared table
+   * column allows, the grid area is wider than `.island` itself and a row's
+   * `max-width: 100%` resolves against the area rather than against the box a
+   * reader can see. The rows then paint straight over the Notice Board powers legend
+   * in the column to their right. `minmax(0, 1fr)` pins the area to
+   * the container, which is what makes the cap on `.island-row` bind.
+   *
+   * No effect at any shipped step: `justify-items: center` centres each row in
+   * its area either way, and at scale 1 the island fits its column with room
+   * over, so the two areas are the same place. Found by the scale slider at
+   * 120% (phase 5) and fixed once, for both.
+   */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3px;
+  justify-items: center;
+}
+
+/*
+ * `max-width` is the one line that stops a too-wide island painting over the
+ * Notice Board powers legend, and it was put here by the UI scale slider (phase 5).
+ *
+ * `.island` is `justify-items: center`, so a row is sized to its CONTENT and is
+ * free to overflow the grid column it sits in - and the shared table's third column
+ * (the Notice Board powers legend) is what it overflows onto. Capping the row at
+ * its container's width hands the shortfall to the flex items, which are tiles
+ * with an `aspect-ratio` and therefore shrink cleanly in both directions.
+ *
+ * ⚠️ IT CHANGES NOTHING AT SCALE 1, and cannot: a `max-width` only binds when
+ * the content is wider than the box, and at every shipped step the island fits
+ * its column with room to spare. `measure-ui` confirms it - the phase 5 numbers
+ * are identical to phase 4's at all three viewports.
+ */
+.island-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+}
+
+/* Every tile is identical under the flat island, so the rule is stated once
+   under the pyramid instead of on a label beside each decorative row. */
+.island-legend {
+  margin: 2px 0 0;
+  font-size: var(--fs-xs); /* was 9px, 25/09/2026 token pass */
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+/*
+ * ⭐ THE MAP IS A CLICK TARGET (phase 5). The whole pyramid opens the full-size
+ * island, and `Island.tsx` explains why a live tile's own click wins over it.
+ *
+ * The cue is a cursor and a hover lift and nothing else: this is the second
+ * loudest region on the screen already (phase 2's note 2), and a border or a
+ * ring round it in the resting state would settle that contest the wrong way -
+ * the farm is meant to own the page. `filter: brightness` rather than a
+ * `transform: scale`, because the tiles butt edge to edge and a scaled map
+ * would open hairline seams between them at every row.
+ */
+.island-openable {
+  cursor: zoom-in;
+}
+
+.island-openable:hover {
+  filter: brightness(1.03);
+}
+
+/* The panel caption, doubling as the enlarge control. Plain by design - it has
+   to read as the caption it replaced, not as a button parked in the shared table. */
+.island-expand {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+}
+
+.island-expand:hover,
+.island-expand:focus-visible {
+  color: var(--ink);
+}
+
+/*
+ * ⚠️ THE ROW'S CAP DID NOT REACH THE TILES, and this is where it broke.
+ *
+ * `.island-row` has carried `max-width: 100%` since phase 5 precisely so a
+ * too-wide pyramid cannot paint over the column to its right. It capped the ROW
+ * and stopped: this inner flex box is the row's only child, it had no cap and
+ * the default `min-width: auto`, so it refused to shrink below its content and
+ * simply overflowed the row it was supposed to be constrained by. Measured at
+ * the 1024 floor with four seats - a five-tile bottom row runs 65px past the
+ * panel and straight across the AERODROME caption, which is exactly the failure
+ * the row's cap was written to prevent.
+ *
+ * It bites now because the shared table's third column got taller and busier: it used
+ * to hold one Service chip and now holds the five-door legend that is also the
+ * Worker key, so what the island was painting over is a panel a player has to
+ * read. Same fix as the row's, one level down, plus the `min-width: 0` that
+ * makes a flex item actually honour it.
+ */
+.island-tiles {
+  display: flex;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/*
+ * `flex-shrink` and `min-width` are what let the cap above do anything. A tile
+ * is `width: var(--island-tile)` with an `aspect-ratio`, so shrinking it stays
+ * proportional in both directions and the art never distorts - the pyramid just
+ * gets smaller than its nominal step at the width where it would not fit.
+ */
+.island-tile {
+  position: relative;
+  width: var(--island-tile);
+  min-width: 0;
+  flex-shrink: 1;
+  aspect-ratio: 375 / 520;
+  overflow: hidden;
+}
+
+.island-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.island-tile-done {
+  filter: saturate(0.45) brightness(0.94);
+}
+
+/*
+ * B20, 25/09/2026: THE TILE TOOLTIP. `overflow: hidden` on `.island-tile`
+ * keeps the art cropped to the printed silhouette, and that is exactly what
+ * would clip the tooltip below it - so the tile lets its overflow show only
+ * while it is actually being read, and lifts above its row neighbours
+ * (`z-index`) so the tooltip is never drawn UNDER the next tile along.
+ */
+.island-tile:hover,
+.island-tile:focus-visible {
+  overflow: visible;
+  z-index: 5;
+}
+
+.island-tile:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.island-tip {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 4px;
+  z-index: 6;
+  width: max-content;
+  max-width: 220px;
+  padding: 6px 8px;
+  background: var(--paper-panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lift);
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+  color: var(--ink);
+  text-align: left;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--motion-ui) ease,
+    visibility var(--motion-ui) ease;
+}
+
+.island-tile:hover .island-tip,
+.island-tile:focus-visible .island-tip {
+  opacity: 1;
+  visibility: visible;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .island-tip {
+    transition: none;
+  }
+}
+
+/* B20: the wild/cornucopia token key, riding on the legend's own line rather
+   than opening a new one (see the dated note on `IslandLegend` in
+   `Island.tsx` for why a second line is not free). `inline-flex` so the
+   swatch sits on the text baseline instead of dropping to its own row. */
+.island-key-inline {
+  display: inline-flex;
+  vertical-align: middle;
+  padding: 2px;
+  border-radius: 50%;
+}
+
+.island-key-inline:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.island-key-swatch {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #8a5fb0;
+  border: 1px solid var(--rule);
+}
+
+/*
+ * ⭐ THE TOKEN ISLAND (16/09/2026): one row of up to two tokens, centred over
+ * the tile art. Moved here from the inline style `Island.tsx` used to carry
+ * (2.4.1/10, 18/09/2026 - `Island.tsx` now just sets the class) - replaces the
+ * three v31-era absolutely-positioned rows this class list used to hold
+ * (`.island-demands`, `.island-crate`, `.demand`, `.island-receipts`,
+ * `.island-meeples`, all DELETED: nothing in `packages/ui/src` still
+ * references any of them).
+ */
+.island-tokens {
+  position: absolute;
+  inset: 8% 4% auto;
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+}
+
+.island-meeple-gone {
+  width: max(9px, calc(var(--island-tile) * 0.15));
+  height: max(11px, calc(var(--island-tile) * 0.2));
+}
+
+.receipt {
+  width: max(14px, calc(var(--island-tile) * 0.21));
+  height: max(14px, calc(var(--island-tile) * 0.21));
+  border-radius: 50%;
+  border: 1px solid #2f2318;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.receipt img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  mix-blend-mode: multiply;
+}
+
+.receipt-empty {
+  background: rgb(255 255 255 / 55%);
+  border-style: dashed;
+}
+
+/* What an untaken slot pays. The tile's own gradient - 6 then 3 - is the only
+   one left in the game, so it has to be legible on the board. */
+.receipt-empty i {
+  font-family: var(--font-display);
+  font-style: normal;
+  /* Floor was a bare 9px, 25/09/2026 token pass: never below the type scale's
+     smallest step, whatever that step is tuned to. */
+  font-size: max(var(--fs-xs), calc(var(--island-tile) * 0.14));
+  line-height: 1;
+  color: var(--ink);
+}

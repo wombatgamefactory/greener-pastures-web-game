@@ -125,9 +125,17 @@ export function VisitPanel({
                 spent here buys, in the host's own words rather than a generic
                 one-word gloss. */}
             <p className="assembly-hint">
-              <strong>{info ? info.actionText : "Their board's power"}, for one card.</strong> Pick
-              the card you are willing to lose: it rides into their barn as exactly the mixed colour
-              the island will ask of them. Your junk, their treasure.
+              {/* QA 26/09/2026: this said the card "rides into their barn as exactly the
+                  mixed colour the island will ask of them" - wrong (it rests on their
+                  Notice Board until they harvest it, as the note below says) and
+                  designer jargon. */}
+              {/* T10b (26/09/2026): the printed power text ends in its own full stop,
+                  so appending ", for one card." printed "...into your Barn., for one
+                  card." (QA D10). The price is its own sentence now. */}
+              <strong>
+                {info ? info.actionText.replace(/\.\s*$/, '') : "Their board's power"}.
+              </strong>{' '}
+              One card buys it. Pick the card you are willing to lose. Your junk, their treasure.
             </p>
 
             {options.size === 0 ? (
@@ -154,9 +162,13 @@ export function VisitPanel({
           <button className="ghost" onClick={play.cancel}>
             cancel
           </button>
+          {/* ⭐ REWORDED 25/09/2026 (B13): "the bank pays nobody" was designer
+              shorthand for "there is no currency in this game to mint" - true,
+              but not a sentence a player needs to parse mid-turn. Said plainly:
+              the card stays put until the owner acts on it. */}
           <span className="assembly-note">
-            Their farm is {SUIT_META[farm.suit].label}. They pay nothing and gain a card on their
-            board; the bank pays nobody.
+            Their farm is {SUIT_META[farm.suit].label}. The card stays on their board. They keep it
+            when they harvest.
           </span>
         </div>
       </div>

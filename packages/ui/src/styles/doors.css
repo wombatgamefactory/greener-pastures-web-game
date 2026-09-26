@@ -1,0 +1,262 @@
+/*
+ * The five doors and the Workers (meeples) that share their colours.
+ * Split from table.css into region files, 25/09/2026 (B24). Behaviour-neutral:
+ * proved by identical verify-layout and measure-ui output before and after the
+ * split (.scratch/wp1/). Comments are kept verbatim; they are this project's
+ * design memory.
+ */
+
+/* ---- the five doors, and the meeples that share their colours ----------- */
+
+/*
+ * ⭐ THIS REPLACED THE WORKER BLOCK (v31), and about half of it is gone rather
+ * than renamed. The Working Week track (`.worker-space`, `.worker-space-here`,
+ * `.worker-space-home`, `.worker-meeple`) died on 2026-08-10 with the track
+ * itself and had been dead CSS for three weeks; the wage line (`.worker-next`)
+ * and the hire colour (`.worker-hire`) went with the currency. What is left is
+ * the one fact a colour carries: which of the five actions it is.
+ */
+
+.door {
+  border: 1px solid var(--rule);
+  border-left-width: 3px;
+  border-radius: 6px;
+  background: var(--paper);
+  padding: 3px 5px;
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+}
+
+.door-art {
+  width: 54px;
+  border-radius: 4px;
+  flex: none;
+}
+
+.door-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.door-name {
+  font-family: var(--font-display);
+  font-size: var(--fs-xs); /* was 11px, 25/09/2026 token pass */
+  display: flex;
+  gap: 4px;
+  justify-content: space-between;
+  /* Without this the chip cannot be narrower than its longest word, and the
+     legend is a fixed grid column in the shared table - a long farm name there does
+     not wrap, it shoulders the panel out over the island beside it. */
+  min-width: 0;
+}
+
+.door-verb {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.door-name em {
+  font-style: normal;
+  font-size: var(--fs-xs); /* was 9px, 25/09/2026 token pass */
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.door-action {
+  font-size: var(--fs-xs); /* was 10px, 25/09/2026 token pass */
+  color: var(--ink-soft);
+}
+
+/* ---- meeples ------------------------------------------------------------ */
+
+/*
+ * The pawn is an inline SVG (see Meeple.tsx for why it is drawn rather than
+ * painted), so it needs no sizing here - the component sets width and height in
+ * px off one number. What CSS owns is how a pawn sits with type beside it.
+ */
+.meeple {
+  display: block;
+  flex: none;
+}
+
+.supply {
+  min-width: 0;
+}
+
+.supply-rail {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-height: 15px;
+}
+
+.supply-pawn {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.supply-pawn b {
+  font-family: var(--font-display);
+  font-size: var(--fs-xs); /* was 10px, 25/09/2026 token pass */
+  color: var(--ink-soft);
+}
+
+.supply-none {
+  font-size: var(--fs-xs); /* was 9px, 25/09/2026 token pass */
+  color: var(--ink-soft);
+}
+
+/*
+ * YOUR OWN SUPPLY. It sits between the farm header and the tableau, which is
+ * where the turn starts - meeples are spent before the bonus and before the
+ * action - so the eye meets it in the order the rules do.
+ *
+ * ⚠️ IT MUST NOT CHANGE HEIGHT BETWEEN THE THREE STATES. The tableau's whole
+ * height budget is measured from the bottom of everything above it (phase 1's
+ * height invariance), so a strip that grew when the window opened would push
+ * every building down at exactly the moment a player is looking at them. The
+ * row is therefore a fixed min-height and the state is carried by colour and by
+ * the caption, never by size.
+ */
+/* T10b (26/09/2026): ONE ROW, head beside the pawns rather than over them,
+   so the strip costs one line of the farm when you hold Workers - and none
+   when you do not (it is not drawn, `Farm.tsx`). */
+.supply-full {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 3px 10px;
+  padding: 4px 6px;
+  border-radius: 7px;
+  border: 1px dashed var(--rule);
+  background: color-mix(in srgb, var(--paper) 60%, transparent);
+}
+
+/* 25/09/2026 (WP2 coordination): door and supply CSS draws its boundary off
+   the neutral `--edge` token rather than the seat colour, which is
+   near-invisible on paper for Wheat and Dairy. */
+.supply-open {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--edge) 70%, var(--rule));
+  background: color-mix(in srgb, var(--edge) 12%, var(--paper));
+}
+
+/*
+ * ⚠️ `stuck` LOOKS LIKE `shut` AND READS DIFFERENTLY, on purpose. The window is
+ * open but not one of the meeples held has a legal action - so nothing is
+ * clickable, exactly as when the window has passed, and the strip must not look
+ * live. What separates them is the caption, because that is the fact that
+ * differs; giving it a third border treatment would be inventing a visual state
+ * for a difference that is entirely about WHY, not about what you can do.
+ */
+.supply-stuck {
+  border-style: dashed;
+}
+
+.supply-head {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-xs); /* was 11px, 25/09/2026 token pass */
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.supply-open .supply-head {
+  color: var(--seat-ink);
+}
+
+.supply-head em {
+  font-style: normal;
+  font-size: var(--fs-xs); /* was 10px, 25/09/2026 token pass */
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-soft);
+}
+
+.supply-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  min-height: 30px;
+}
+
+.supply-row .empty-note {
+  margin: 0;
+}
+
+.supply-meeple {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  padding: 2px 8px 2px 5px;
+  text-align: left;
+}
+
+.supply-meeple:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.supply-meeple-body {
+  display: grid;
+  gap: 0;
+}
+
+.supply-verb {
+  font-family: var(--font-display);
+  font-size: var(--fs-xs); /* was 12px, 25/09/2026 token pass */
+}
+
+.supply-meeple em {
+  font-style: normal;
+  font-size: var(--fs-xs); /* was 9px, 25/09/2026 token pass */
+  color: var(--ink-soft);
+}
+
+.supply-meeple .meeple-stack b,
+.meeple-stack b {
+  font-family: var(--font-display);
+  font-size: var(--fs-xs); /* was 10px, 25/09/2026 token pass */
+}
+
+/*
+ * THE FLOOR, 25/09/2026 (B19/WP1). At 1024x700 the meeple supply strip is one
+ * of several fixed-height rows competing with the tableau for a 700px budget,
+ * and the tableau is the one guaranteed to be readable (farm.css). The strip's
+ * OWN height-stability rule stands (see the dated note above `.supply-full`:
+ * it must not change height between its open/shut/stuck states) - this only
+ * lowers the fixed height it holds at, at the tightest two breakpoints, not the rule
+ * that it stays fixed.
+ */
+@media (max-width: 1400px), (max-height: 820px) {
+  .supply-row {
+    min-height: 18px;
+  }
+
+  .supply-full {
+    padding: 2px 6px;
+  }
+
+  .supply-head {
+    margin-bottom: 0;
+  }
+}

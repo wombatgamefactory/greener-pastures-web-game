@@ -59,6 +59,10 @@ function staticPlay(view: PlayerView, moves: readonly Move[], intent: Intent): P
           ? [intent.fee]
           : [],
     subsetKind: null,
+    // B18 (25/09/2026): this fixture never plays a move, so nothing is ever
+    // freshly revealed - the "ready to end turn" glow is exercised by
+    // `usePlay`'s own tests, not by anything rendered against a static Play.
+    revealed: false,
     send: noop,
     choose: noop,
     cancel: noop,
@@ -805,6 +809,13 @@ describe('the start screen', () => {
     // Ticket 10: `hard` is an alias with no bot behind it until ticket 11
     // measures one. Hiding the rung is the honest reading.
     expect(html).not.toContain('>Hard<');
-    expect(html).toContain('a hermit');
+    // ⭐ 25/09/2026 (WP4, B14c): each neighbour's personality ("a hermit", "a
+    // socialite"...) and the seed now wait under "More options", collapsed and
+    // not rendered on first paint, so a first-time player meets three plain
+    // questions and a How to play button rather than a form.
+    expect(html).toContain('More options');
+    expect(html).toContain('How to play');
+    expect(html).not.toContain('a hermit');
+    expect(html).not.toContain('game number');
   });
 });

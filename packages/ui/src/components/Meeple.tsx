@@ -40,7 +40,8 @@
  * an overlay-applied run, which is exactly what `boundary.test.ts` polices -
  * every component takes `GameData` as a prop, this included.
  *
- * ⚠️ IT IS DRAWN RATHER THAN PAINTED, and that is a decision rather than a
+ * ⚠️ IT IS DRAWN RATHER THAN PAINTED (since 26/09/2026 the drawing is the
+ * farmer silhouette traced from `images/meeple.png`, see WORKER_PATH), and that is a decision rather than a
  * placeholder. `tokens/meeple.webp` exists and is a lovely illustrated farmer;
  * it is one picture, in one palette, and the rule here needs FIVE that separate
  * from each other at 14px on a token. A flat pawn silhouette filled with the aid
@@ -99,6 +100,16 @@ export function workerActionLabel(data: GameData): Readonly<Record<Suit, string>
   };
 }
 
+/**
+ * ⭐ 26/09/2026 (Dean): the Worker is the farmer silhouette from
+ * `images/meeple.png` (wide-brimmed hat, round body, two legs), traced once
+ * with OpenCV into this one closed path in a 26.44 x 32 box. It replaces the
+ * generic board-game pawn. Still a flat fill in the action colour with an ink
+ * keyline, for every reason given in the header above.
+ */
+const WORKER_PATH =
+  'M11.01 0.30 L9.98 0.75 L9.29 1.31 L7.03 5.29 L4.42 5.77 L2.39 6.38 L1.52 6.76 L0.87 7.16 L0.35 7.63 L0.10 8.04 L0.00 8.59 L0.19 9.17 L0.67 9.69 L1.39 10.18 L2.37 10.62 L3.77 11.07 L6.41 11.60 L6.59 13.00 L6.78 13.65 L7.10 14.36 L7.92 15.46 L8.91 16.25 L7.44 16.91 L6.19 17.66 L4.90 18.65 L3.89 19.63 L2.95 20.77 L1.92 22.29 L1.70 23.03 L1.76 23.78 L2.02 24.34 L2.34 24.73 L2.87 25.09 L3.48 25.27 L4.05 25.25 L4.53 25.11 L5.93 24.15 L5.70 25.85 L5.66 27.75 L5.80 29.68 L6.14 31.52 L5.27 32.00 L12.42 32.00 L12.42 29.39 L12.58 29.04 L12.82 28.83 L13.08 28.73 L13.40 28.73 L13.68 28.84 L14.02 29.26 L14.05 32.00 L21.18 32.00 L20.33 31.54 L20.65 29.74 L20.80 27.99 L20.75 25.78 L20.53 24.15 L21.97 25.13 L22.53 25.27 L23.30 25.21 L24.05 24.79 L24.55 24.16 L24.76 23.51 L24.73 22.80 L24.52 22.24 L23.56 20.82 L22.72 19.79 L21.71 18.78 L20.74 17.98 L19.69 17.27 L18.59 16.68 L17.56 16.25 L18.09 15.88 L18.72 15.29 L19.44 14.23 L19.89 12.96 L20.06 11.55 L21.01 11.46 L22.64 11.09 L23.97 10.67 L25.01 10.21 L25.72 9.76 L26.20 9.28 L26.44 8.77 L26.42 8.19 L26.15 7.68 L25.67 7.21 L25.05 6.81 L24.21 6.43 L22.26 5.82 L19.44 5.29 L17.31 1.51 L16.95 1.09 L16.39 0.71 L15.13 0.21 L13.88 0.00 L12.27 0.03Z';
+
 export function Meeple({
   data,
   colour,
@@ -110,27 +121,40 @@ export function Meeple({
   colour: Suit;
   /** Height in px. The pawn's aspect is fixed, so width follows. */
   size?: number;
-  title?: string;
+  title?: string | undefined;
   className?: string;
 }) {
   const action = workerActionLabel(data)[colour];
+  /*
+   * ⭐ FIXED 25/09/2026 (WP5 item 1, axe `svg-img-alt` on the result screen).
+   * `Door.tsx` and `Supply.tsx` both pass `title=""` ON PURPOSE, to suppress
+   * this SVG's own native tooltip where the surrounding button already
+   * carries a fuller one - `title=""` was never meant to say "and give this
+   * `role="img"` element no accessible name either", but `??` only catches
+   * `null`/`undefined`, so an explicit empty string slipped past it and left
+   * `aria-label=""` (and an empty `<title></title>`, equally unhelpful) on
+   * every meeple drawn that way. `||` treats the empty string the same as
+   * "no title given" for BOTH the label and whether the `<title>` element is
+   * worth rendering at all, which is what every caller actually wants: a
+   * real accessible name always, and a native tooltip only when one was
+   * explicitly written.
+   */
+  const accessibleLabel = title || `${action} Worker`;
   return (
     <svg
       className={`meeple ${className}`}
-      viewBox="0 0 24 32"
-      width={Math.round(size * 0.75)}
+      viewBox="-1 -1 28.44 34"
+      width={Math.round((size * 28.44) / 34)}
       height={size}
       role="img"
-      aria-label={title ?? `${action} Worker`}
+      aria-label={accessibleLabel}
       focusable="false"
     >
-      {title !== undefined && <title>{title}</title>}
-      {/* Head, then shoulders and skirt: the standard pawn, one path so the
-          fill and the stroke cannot disagree at the join. */}
+      {title && <title>{title}</title>}
+      {/* The farmer silhouette (WORKER_PATH): one path so the fill and the
+          stroke cannot disagree at a join. */}
       <path
-        d="M12 1.5a4.6 4.6 0 0 1 0 9.2 4.6 4.6 0 0 1 0-9.2Z
-           M12 10.6c4.1 0 6.2 2.6 6.4 5.8.1 1.6-.7 2.6-2 3 2.4 1.9 4 5.1 4.4 10.1H3.2
-           c.4-5 2-8.2 4.4-10.1-1.3-.4-2.1-1.4-2-3 .2-3.2 2.3-5.8 6.4-5.8Z"
+        d={WORKER_PATH}
         fill={WORKER_COLOUR[colour]}
         stroke="var(--ink, #5a4632)"
         strokeWidth="1.4"
@@ -160,7 +184,17 @@ export function MeepleStack({
   if (count <= 0) return null;
   return (
     <span className="meeple-stack" title={title}>
-      <Meeple data={data} colour={colour} size={size} title={title ?? ''} />
+      {/*
+       * ⭐ FIXED 25/09/2026 (WP5 item 1, axe `svg-img-alt` on the result
+       * screen): this used to pass `title ?? ''`. An explicit empty STRING is
+       * not `undefined`, so it defeated `Meeple`'s own `title ?? \`${action}
+       * Worker\`` fallback (leaving `aria-label=""`) AND its
+       * `title !== undefined` check (rendering an empty `<title></title>`
+       * inside the SVG) - two ways to say nothing where `Meeple` already knew
+       * a good default. Passing `title` through unchanged lets that default
+       * do its job whenever this component's own caller has not named one.
+       */}
+      <Meeple data={data} colour={colour} size={size} title={title} />
       <b>{count}</b>
     </span>
   );

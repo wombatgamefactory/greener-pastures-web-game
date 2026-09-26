@@ -6,6 +6,7 @@
  * each stack, what they have banked - lives here, one click away.
  */
 
+import { useEffect, useRef } from 'react';
 import type { GameData } from '@gp/data';
 import type { PlayerView, Seat } from '@gp/engine';
 
@@ -39,13 +40,51 @@ export function Inspector({
   const meta = SUIT_META[farm.suit];
   const door = doorOf(data, farm.suit);
 
+  /*
+   * ⭐ WP5 item 1, 25/09/2026: A TRUE DIALOG, matching `Island.tsx`'s own B26
+   * treatment (`role="dialog"` was already here; `aria-modal`, a focus TRAP and
+   * focus RETURN were not). `Table.tsx`'s `overlaid` effect already answers
+   * Escape for this overlay (`session/escape.ts`), so only Tab-trapping and
+   * focus in/out are this component's own job.
+   */
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    return () => {
+      opener?.focus?.();
+    };
+  }, []);
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || !dialogRef.current) return;
+      const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!first || !last) return;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   return (
     <div className="overlay" onClick={onClose} role="presentation">
       <div
+        ref={dialogRef}
         className="inspector"
         style={{ ['--seat-ink' as string]: meta.ink }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
+        aria-modal="true"
         aria-label={`${seatName(suits[seat], seat, view.seat)}'s farm`}
       >
         <header className="inspector-head">
@@ -82,7 +121,7 @@ export function Inspector({
                   legal here; `harvestable` only says whether the OWNER could
                   harvest it right now, which never changes that. */}
               <span>
-                One card on their Notice Board, and you take their door: {board.actionText}
+                One card on their Notice Board buys its power: {board.actionText}
                 {board.harvestable
                   ? ' They could harvest it now, but that never stops a visit.'
                   : ''}

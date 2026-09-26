@@ -1,0 +1,337 @@
+/*
+ * The main column: the notice banners, the turn zone (action bar plus prompt)
+ * and the panel chrome shared by a few regions.
+ * Split from table.css into region files, 25/09/2026 (B24). Behaviour-neutral:
+ * proved by identical verify-layout and measure-ui output before and after the
+ * split (.scratch/wp1/). Comments are kept verbatim; they are this project's
+ * design memory.
+ */
+
+/* ---- the main column ---------------------------------------------------- */
+
+/*
+ * The shared table, the turn zone, then the farm. The farm is the only row that flexes,
+ * so the prompt and the action bar can never push the hand below the fold -
+ * they take their own height and the tableau gives it up (it scrolls).
+ *
+ * ⚠️ THE TURN ZONE MOVED ABOVE THE FARM ON 27/08/2026 (Dean) AND THE TRACKS ARE
+ * HOW. The alternative was to put the bar inside `.farm`, and it was refused:
+ * the farm's internal grid was tuned across five phases against the tableau
+ * capacity constraint (14 buildings, 0 sliced, at every viewport), and a new
+ * row inside it is exactly the change that took capacity from 14 to 7 when
+ * phase 3 tried putting zone captions on their own line. Re-ordering this
+ * column costs the farm nothing: it still gets whatever the shared table and the
+ * turn zone do not want, which is the same arithmetic in a different order.
+ *
+ * `.farm` PINS ITSELF TO THE LAST TRACK rather than trusting auto-flow, because
+ * the turn zone is conditional - the render tests drive this tree with no
+ * `play` at all (Table.tsx documents why). Without the pin, a table with no
+ * turn zone auto-flows the farm onto an `auto` track, and an `auto` farm in a
+ * fixed-height column overflows instead of squeezing, which is the failure that
+ * slices a row of buildings in half.
+ *
+ * PHASE 2 DID NOT CHANGE THESE TRACKS, and that is worth saying because it is
+ * the obvious way to have done it and it is wrong. The shared table is the `auto`
+ * row; the farm is `minmax(0, 1fr)` but hugs its content, so the slack Phase 1
+ * freed sits in the farm's row as bare table. Making the shared table the flexing
+ * row instead would hand it that height - and would also let it take height the
+ * farm still needed, because an `auto` farm row in a fixed-height column can
+ * overflow rather than squeeze, and the way this layout fails when the farm is
+ * squeezed is the tableau slicing a row of buildings in half.
+ *
+ * So the shared table takes the slack by GROWING ITS CONTENT - a bigger island, sized
+ * in `base.css` - and the 1fr farm row absorbs the difference. The safety
+ * property is unchanged and it is the browser's rather than ours: whatever the
+ * shared table asks for, the farm's row is what is left, `.farm` is capped at it, and
+ * the tableau scrolls. The tuning limit is therefore measured, not asserted -
+ * `tableauCapacity` must stay at 14 and `slicedBuildings` at 0 in
+ * `tools/measure-ui.mjs`, which is what decided how far the island could go.
+ */
+.main-column {
+  display: grid;
+  /*
+   * FOUR ROWS SINCE 25/09/2026 (B3, WP1), NOT THREE: shared table, the turn
+   * zone (bar only now), the prompt dock, then the farm. The prompt dock's OWN
+   * row is either one line tall (`.prompt-quiet`) or ~0 (everything else lifts
+   * itself out of flow - see `.prompt-dock` below), so this adds a track, not
+   * height. `position: relative` is new too: it is the prompt dock's
+   * positioning context.
+   */
+  /*
+   * ⭐ BACK TO THREE ROWS, 26/09/2026 (T10b): shared table, turn zone, farm.
+   * The prompt dock's own row is gone - the prompt now lives INSIDE the turn
+   * bar's fixed message line (`ActionBar`'s `.bar-line`, below), because a
+   * row of its own, however quiet, grew with every live task and moved the
+   * farm mid-turn (QA D2).
+   */
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: var(--gap);
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+}
+
+/*
+ * See the block above: the farm takes the LAST explicit track, whichever it is.
+ * `-2 / -1` is the last track counted from the end, so it is right for both the
+ * three-track column and the four-track one `.main-noticed` makes, and it stays
+ * right if a row is ever added at the top. Naming a number here would have to
+ * be kept in step by hand with two rules and a conditional element.
+ */
+.main-column > .farm {
+  grid-row: -2 / -1;
+}
+
+/*
+ * THE TURN ZONE: the action bar's own row.
+ *
+ * ⭐ HELD ONE PROMPT LINE PLUS THE BAR UNTIL 25/09/2026 (B3, WP1); it is the
+ * bar alone now, and `.prompt-dock` below is its own row for the reason given
+ * there. The wrapper still exists for placement, not for the pair - a bare
+ * `<ActionBar>` with no wrapper would auto-flow onto whichever track the
+ * column's child count put it on, which is exactly the fragility the dated
+ * note on `.main-column > .farm` warns against.
+ *
+ * `max-height` IS THE FIXED-HEIGHT GUARANTEE B3 asks for: this row must never
+ * grow with what the bar decides to show (more buttons, a wrapped icon row),
+ * because the farm's `minmax(60px, 1fr)` (`farm.css`) only has so much floor
+ * to give up before the tableau hits ITS OWN floor. Past the cap the bar
+ * scrolls within its own row rather than pushing the farm - unusual for a
+ * button row, but the alternative is the farm losing pixels to a sibling's
+ * growth with no ceiling at all, which is the defect B3 exists to remove.
+ */
+.turn-zone {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  /*
+   * 112px, not a viewport fraction. `30vh` was tried first and left 1366x768
+   * ($230px cap) and 1024x700 ($210px) both far too loose to protect the
+   * tableau's own 60px floor from a bar that has measured as tall as 120px -
+   * `verify:layout`'s new mid-action pass is what caught 1366's hand strip
+   * being pushed off the bottom of the farm with the cap still that generous.
+   * 112px clears every historical reading of the bar's resting height
+   * (81-105px across the ladder) with a little room, and only clips a bar
+   * that is already taller than any of this project's own screenshots show.
+   */
+  max-height: 112px;
+  overflow-y: auto;
+  /*
+   * T10b (26/09/2026): AND A FLOOR, SO ITS HEIGHT IS THE SAME IN EVERY PHASE.
+   * The bar is one row of 40px buttons plus the one fixed message line at
+   * every step from 1366 up, and two rows of buttons at the floor. A floor at
+   * that resting height means the bonus phase (two buttons), the main phase
+   * (five, plus the zone heads) and every prompt state all start the farm at
+   * the same y - which is what `verify:layout`'s new farm-stability pass
+   * asserts across a Draw reveal and a Deliver tile choice.
+   */
+  min-height: var(--turn-zone-h);
+}
+
+@media (max-width: 1499px), (max-height: 849px) {
+  .turn-zone {
+    /* Was 96px under (max-width: 1100px), (max-height: 760px) until
+       26/09/2026 (T10b). Below the desktop rung the bar's zones wrap to a
+       SECOND row of buttons (the exits beside the actions, the bonus and
+       Worker heads under them), measured at 106-110px with the message line
+       at 1024 and 1366 - so a 96px cap scrolled the message line, and with
+       it every prompt sentence, out of sight. The cap is now the two-row
+       height, and the floor is the same value, so the bar is one constant
+       height at these steps whatever phase the turn is in. */
+    --turn-zone-h: calc(87px + var(--bar-line-h));
+    max-height: var(--turn-zone-h);
+  }
+}
+
+/*
+ * THE PROMPT DOCK, 25/09/2026 (B3, WP1).
+ *
+ * `Prompt.tsx` (not owned here) renders one `<section class="prompt">` per
+ * turn state. Three shapes share the class: the two one-line notes
+ * (`prompt-quiet`, "card in hand", "choose a target"); a live TASK's answer
+ * list, and the disambiguation menu - both of which are answered largely BY
+ * CLICKING THE TABLE ITSELF (a deck, a tile, a building, a rival's board -
+ * `Prompt.tsx`'s own comment calls this "answered in place"); and the build,
+ * visit and deliver ASSEMBLIES (`BuildPanel`/`VisitPanel`/`DeliverPanel`),
+ * which are self-contained surfaces with their own confirm/cancel and, per
+ * `Prompt.tsx`, take a hand card by click or drop - never a click on the
+ * shared table above the farm.
+ *
+ * ⛔ ONLY THE ASSEMBLIES DOCK AS AN OVERLAY. The first cut docked every
+ * non-quiet prompt, which put an opaque sheet over the decks and the island
+ * during an ordinary task - "pick a deck for your second card" - and made the
+ * deck it was asking about unclickable underneath its own instruction (found
+ * in review, `.scratch/wp4/debug-blocked-1600.png`). `.assembly` is the class
+ * every one of the three panels renders as its own root, so `:has(.assembly)`
+ * is the exact, narrow hook: a task prompt and the choose-menu stay in this
+ * row's NORMAL FLOW, in reach of - never on top of - whatever they are asking
+ * about, and only a real assembly (which needs nothing from the shared table)
+ * lifts out and covers it.
+ *
+ * `pointer-events: none` on the row, restored to `auto` on the prompt itself,
+ * is belt-and-braces for the same bug: even docked, the row's own box must
+ * never intercept a click past its actual (auto-height) content.
+ */
+.prompt-dock {
+  min-width: 0;
+  pointer-events: none;
+}
+
+/*
+ * T10b (26/09/2026): THE BAR'S MESSAGE LINE, AND THE PROMPT IN IT.
+ *
+ * `.prompt-dock` now sits inside `.bar-line` (`ActionBar.tsx`), in the SAME
+ * grid cell as the bar's own note, so a prompt covers the note rather than
+ * adding a line under it. The line's height is fixed, so nothing the game
+ * asks can move the farm. What does not fit in one line is the tray's job
+ * (`Prompt.tsx`, `.task-tray` in `shared-table.css`) or the assembly's (the
+ * dock rule below, unchanged); a sentence that still overruns is ellipsed,
+ * with the whole sentence as its tooltip.
+ *
+ * ⚠️ NOTHING HERE MAY BE POSITIONED. The assembly below docks by
+ * `position: absolute` against `.main-column`, and a positioned `.bar-line`,
+ * `.actionbar` or `.turn-zone` would capture it into the bar's own box (and
+ * the turn zone's `overflow-y: auto` would then clip it).
+ */
+.bar-line {
+  grid-column: 1 / -1;
+  display: grid;
+  min-width: 0;
+  height: var(--bar-line-h);
+  overflow: hidden;
+}
+
+.bar-line > * {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+
+.bar-note {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: var(--bar-line-h);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink-soft);
+  padding-left: 14px;
+}
+
+/* A live question covers the note: the note is what this moment would say if
+   the game were not asking anything. An assembly does not cover it, because
+   an assembly is docked over the shared table and leaves the line empty. */
+.bar-line:has(.prompt:not(:has(.assembly))) > .bar-note {
+  visibility: hidden;
+}
+
+.prompt-dock .prompt:not(:has(.assembly)) {
+  padding: 0 10px;
+  gap: 0;
+  align-content: center;
+  height: var(--bar-line-h);
+  background: color-mix(in srgb, var(--paper-hero) 70%, transparent);
+  border-radius: 0 6px 6px 0;
+}
+
+.prompt-dock .prompt:not(:has(.assembly)) .prompt-line {
+  line-height: var(--bar-line-h);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.prompt-dock .prompt {
+  pointer-events: auto;
+}
+
+.prompt-dock .prompt:has(.assembly) {
+  position: absolute;
+  inset: 0 0 auto 0;
+  /* 20, not 5 (QA 26/09/2026): every card's printed keyline is `.card::after`
+     at z-index 9 in the same stacking context (card.css), so at 5 the keylines
+     of the decks under the dock were drawn ON TOP of the assembly's text, a
+     grid of ghost rectangles over every Build, Visit and Grow panel. 20 clears
+     the keyline (9) and the island tooltip (6) and stays under the deck
+     popover (30), the help menu (40) and every dialog. */
+  z-index: 20;
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  background: var(--paper-hero);
+  border: 1px solid var(--rule);
+  border-left-width: 4px;
+  border-radius: 0 0 8px 8px;
+  box-shadow: var(--shadow-lift);
+}
+
+/*
+ * The notice row, added rather than reserved. An always-present `auto` track
+ * would be 0px tall with a `--gap` above it, so an empty row would still cost a
+ * band of dead table at the top of every game - the class is what keeps the
+ * cost to the states that actually carry a notice.
+ */
+.main-noticed {
+  /* Four since 26/09/2026 (T10b): the notice, the shared table, the turn
+     zone and the farm - the prompt dock's row is gone (see `.main-column`). */
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  row-gap: 6px;
+}
+
+/*
+ * TIER 2, THE SHARED TABLE. Chromeless (phase 2).
+ *
+ * `.panel` used to be the whole costume - fill, rule, radius, shadow - and four
+ * regions wore it: the decks, the island, your Service and the Aerodrome. None
+ * of them is yours, none of them is where a decision is made, and every one of
+ * them was drawn with exactly as much authority as your own farm.
+ *
+ * They sit straight on the body's radial gradient now. The decks are five card
+ * backs and five discards, the island is a painted map, the Aerodrome is a list
+ * of balloons: all of them are already shapes with edges of their own, so the
+ * box round them was never separating anything. What it was doing was spending
+ * contrast, and contrast is the budget this whole phase is about.
+ *
+ * The class stays (it is what the layout hangs `min-width: 0` on, and phase 2
+ * changes paint, not structure), and `measure-ui` counts by computed style
+ * rather than by class name for exactly that reason - so a panel that keeps its
+ * name but gives up its chrome cannot be counted as chrome.
+ *
+ * The padding goes with it. It was the frame's inset, and with no frame it was
+ * 12px of vertical nothing per panel - which, on the row that is being handed
+ * Phase 1's leftover height, is height the island can have instead.
+ */
+.panel {
+  min-width: 0;
+}
+
+/*
+ * A CAPTION, NOT A HEADER (phase 2).
+ *
+ * These labels were `h2`s, so `base.css` was setting them in Fredoka 600 - the
+ * display face, at the heaviest weight the game uses - at the same 11px the
+ * strip titles use. Five of them across the top of the screen in the display
+ * face is five things competing with your farm's name for the eye.
+ *
+ * The demotion is WEIGHT, not colour. Dropping to the UI face at 400 and 10px
+ * takes the emphasis out; going lighter than `--ink-soft` would have taken the
+ * legibility out with it, and `--ink-soft` is already the contrast item on the
+ * Phase 5 list (~4.0:1, short of AA). A phase about hierarchy has no business
+ * making the text harder to read on its way past.
+ */
+.panel-title {
+  font-family: var(--font-ui);
+  font-weight: 400;
+  font-size: var(--fs-xs); /* was 10px, 25/09/2026 token pass */
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-soft);
+  margin-bottom: 3px;
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.panel-title em {
+  font-style: normal;
+  text-transform: none;
+  letter-spacing: 0;
+}

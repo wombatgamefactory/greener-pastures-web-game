@@ -20,10 +20,11 @@
  * Worker feels too strong" is worth far more with the exact position attached.
  */
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import { downloadJson } from '../session/download';
 import type { CaptureRequest, CaptureTaken } from '../session/capture';
+import { useEscapeKey } from '../session/escape';
 
 const LABELS = [
   { id: 'bug', label: 'Bug', hint: 'Something the game did wrong.' },
@@ -36,14 +37,10 @@ export function CapturePanel({ take }: { take(request: CaptureRequest): CaptureT
   const [note, setNote] = useState('');
   const [saved, setSaved] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open]);
+  // 25/09/2026 (WP5 item 3): `useEscapeKey`, not a raw `window` bubble
+  // listener - see `session/escape.ts`'s header for why the old shape could
+  // silently stop working once CookieYes attaches its own listener.
+  useEscapeKey(() => setOpen(false), open);
 
   const save = () => {
     // The position is read at the moment of the click, not when the panel was

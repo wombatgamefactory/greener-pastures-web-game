@@ -38,7 +38,7 @@ import type { GameScore, PlayerView } from '@gp/engine';
 import { Session, data } from '../session/table';
 import { scoreReport, separatorOf, verdictLine } from '../view/scoring';
 import type { Verdict } from '../view/scoring';
-import { Result } from './Result';
+import { Result, ordinal, standingLine } from './Result';
 
 interface Finished {
   readonly seed: string;
@@ -221,10 +221,65 @@ describe('the result screen renders', () => {
     // the engine still grants one further turn each - `Result.tsx` says both.
     expect(html).toContain('island delivery, which ends the game');
     expect(html).toContain('The round finishes');
-    expect(html).toContain('Another game');
-    // The design instrument: the island's share of the winning score, printed.
-    expect(html).toContain('of the winning score');
+    // ⭐ 25/09/2026 (B5): two ways out, and the design instrument (the
+    // island's share of the winning score) is behind `?debug=1`, so a player
+    // never sees it. The test renderer has no `window`, so it is off here.
+    expect(html).toContain('Play again (same seats)');
+    expect(html).toContain('New setup');
+    expect(html).not.toContain('of the winning score');
     expect(html).not.toContain('is a bug in the breakdown');
+  });
+
+  /**
+   * ⭐ 25/09/2026 (B5): THE SCREEN OPENS ON THE PLAYER'S OWN STANDING, a place
+   * out of the table ("You came 2nd of 3", or "You won!" with "1st of 3"), and
+   * it never talks to the designer or says "meeple". Every finished game is
+   * checked, so both the win line and the came-Nth line get exercised whenever
+   * the searched seeds produce both.
+   */
+  it('opens on your standing and a place, with no designer text and no meeples', () => {
+    for (const game of GAMES) {
+      const html = renderToStaticMarkup(
+        <Result data={data} view={game.view} score={game.score} onAgain={() => {}} />,
+      );
+      expect(html).toMatch(/You came|You won/);
+      expect(html).toMatch(/(1st|2nd|3rd|4th) of [2-4]/);
+      expect(html.toLowerCase()).not.toContain('meeple');
+      expect(html).not.toContain('design aims');
+      const report = scoreReport(data, game.view, game.score);
+      const you = report.seats.find((s) => s.isYou)!;
+      const line = standingLine(report);
+      if (you.rank === 1) expect(line.head).toBe('You won!');
+      else expect(line.head).toBe(`You came ${ordinal(you.rank)} of ${report.seats.length}`);
+    }
+  });
+
+  it('says a loss and a tie in plain words', () => {
+    const report = scoreReport(data, GAMES[0]!.view, GAMES[0]!.score);
+    const mk = (rank: number, total: number, isYou: boolean, name: string) => ({
+      ...report.seats[0]!,
+      rank,
+      isYou,
+      name,
+      breakdown: { ...report.seats[0]!.breakdown, total },
+    });
+    const lost = {
+      ...report,
+      seats: [
+        mk(1, 30, false, 'Orchard farm'),
+        mk(2, 23, true, 'You (Wheat)'),
+        mk(3, 13, false, 'Vegetable farm'),
+      ],
+    };
+    expect(standingLine(lost)).toEqual({
+      head: 'You came 2nd of 3',
+      sub: '23 VP, 7 VP behind Orchard farm.',
+    });
+    const tied = {
+      ...report,
+      seats: [mk(1, 30, false, 'Orchard farm'), mk(2, 30, true, 'You (Wheat)')],
+    };
+    expect(standingLine(tied).sub).toContain('tie-break');
   });
 
   /**
@@ -244,13 +299,14 @@ describe('the result screen renders', () => {
   });
 
   /** The tie-break's stock and the dead-component count, both on the screen. */
-  it('prints the cards held and whether any meeple died unspent', () => {
+  it('prints the cards held and whether any Worker died unspent', () => {
     const game = GAMES[0]!;
     const html = renderToStaticMarkup(
       <Result data={data} view={game.view} score={game.score} onAgain={() => {}} />,
     );
     expect(html).toContain('Held at the end');
-    expect(html).toMatch(/meeple|None went to waste/);
+    // ⭐ 25/09/2026: "Workers", the component's name at the table.
+    expect(html).toMatch(/Worker|None went to waste/);
   });
 
   it('raises the alarm when the working disagrees with the engine', () => {

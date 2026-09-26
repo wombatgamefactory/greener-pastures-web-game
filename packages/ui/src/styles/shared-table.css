@@ -1,0 +1,180 @@
+/*
+ * The shared table: decks, discards and the five doors legend.
+ * Split from table.css into region files, 25/09/2026 (B24). Behaviour-neutral:
+ * proved by identical verify-layout and measure-ui output before and after the
+ * split (.scratch/wp1/). Comments are kept verbatim; they are this project's
+ * design memory.
+ */
+
+/* ---- the shared table ---------------------------------------------------- */
+
+.shared-table {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(160px, auto);
+  gap: var(--gap);
+  min-width: 0;
+}
+
+.shared-table-right {
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: var(--gap);
+  align-content: start;
+  min-width: 0;
+}
+
+.decks {
+  display: flex;
+  gap: 5px;
+}
+
+/*
+ * T10b (26/09/2026): THE TASK TRAY - where a live task's cards and answers go
+ * (`Prompt.tsx` carries the argument; QA D2). It is a host in the decks
+ * panel, absolutely placed from just under the deck BACKS down to the bottom
+ * of the shared table's row, and it stacks its tray against that bottom edge:
+ * so a small tray sits in the empty space under the decks, a tall one rises
+ * over the discard piles, and none ever reaches a deck back - the thing a
+ * Draw asks you to click. It is in the decks' own column, so the island's
+ * tiles beside it are never under it either.
+ *
+ * `top` is the panel caption plus one deck back (`--card-deck` at the printed
+ * 1039 x 750 ratio) plus the deck's own 3px gap, with a little to spare. The
+ * host is click-through; only the tray inside it takes the pointer. z-index
+ * 20, the same as a docked assembly: over the card keylines (9), under the
+ * deck popover (30).
+ */
+.panel-decks {
+  position: relative;
+}
+
+.task-tray {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: calc(var(--fs-xs) * 1.6 + 3px + var(--card-deck) * 0.7219 + 6px);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-start;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.prompt-tray {
+  pointer-events: auto;
+  display: grid;
+  gap: 6px;
+  max-width: 100%;
+  max-height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 8px;
+  background: var(--paper-hero);
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--seat-ink, var(--go));
+  border-radius: 0 8px 8px 0;
+  box-shadow: var(--shadow-lift);
+}
+
+.deck {
+  position: relative;
+  display: grid;
+  gap: 3px;
+  border-radius: var(--radius-sm);
+}
+
+/* B23, 25/09/2026: keep the native disabled cursor semantics without a native
+   `disabled` attribute - see the dated note on `DeckSpine` in
+   `SharedTable.tsx` for why the button stays focusable either way. */
+.deck[aria-disabled='true'] {
+  cursor: default;
+}
+
+.deck:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/*
+ * THE POPOVER: hidden by default, shown on hover OR keyboard focus, in one
+ * rule that needs no JavaScript state - `:focus-visible` fires for a keyboard
+ * `Tab` exactly where `:hover` fires for a pointer, so the same box answers
+ * both. Positioned to drop BELOW the deck rather than over it, so it never
+ * covers the card it is describing while a player reads both at once.
+ */
+.deck-popover {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 30;
+  margin-top: 4px;
+  display: grid;
+  gap: 2px;
+  min-width: max-content;
+  max-width: 220px;
+  padding: 6px 8px;
+  background: var(--paper-panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lift);
+  font-size: var(--fs-xs);
+  color: var(--ink);
+  line-height: 1.3;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--motion-ui) ease,
+    visibility var(--motion-ui) ease;
+}
+
+.deck-popover strong {
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+}
+
+/* `:focus-within` became `:has(:focus-visible)` on 26/09/2026 (T10b): a
+   deck clicked with the MOUSE keeps focus, so the popover stayed open after
+   every Draw click and sat on top of the revealed card in the task tray
+   under it. Keyboard focus still opens it, exactly as before. */
+.deck:hover .deck-popover,
+.deck:focus-visible .deck-popover,
+.deck:has(:focus-visible) .deck-popover {
+  opacity: 1;
+  visibility: visible;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deck-popover {
+    transition: none;
+  }
+}
+
+.deck-discard {
+  display: grid;
+  gap: 1px;
+  justify-items: center;
+}
+
+.deck-empty {
+  aspect-ratio: 1039 / 750;
+  border: 1px dashed var(--ink-line);
+  border-radius: 5px;
+}
+
+.deck-label {
+  font-size: var(--fs-xs); /* was 9px, 25/09/2026 token pass */
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* The doors legend: five chips, one per colour, in the panel the Hiring Fair
+   used to have. `auto-fit` rather than a fixed count so the legend reflows to
+   one column at the 1024 floor instead of clipping the fifth. */
+.doors {
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}

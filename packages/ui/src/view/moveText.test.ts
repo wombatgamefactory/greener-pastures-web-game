@@ -29,12 +29,32 @@ import { describe, expect, it } from 'vitest';
 // see the docblock on `session/table.ts`). A test importing `data` from here is
 // exercising the shipped game, not an arm.
 import { data } from '../session/table';
-import { answerTask, growBuilding, handlerFor, pendingAnswers, testkit, viewFor } from '@gp/engine';
-import type { TaskAnswer } from '@gp/engine';
+import {
+  answerTask,
+  apply,
+  cardById,
+  growBuilding,
+  handlerFor,
+  pendingAnswers,
+  player,
+  testkit,
+  viewFor,
+} from '@gp/engine';
+import type { CardId, GameState, Seat, TaskAnswer } from '@gp/engine';
 
 import { Session } from '../session/table';
 import { buildOffers } from './intent';
-import { describeMove, glossAbility, glossCost, glossNow, visitText } from './moveText';
+import {
+  actionGroups,
+  actionReason,
+  describeAnswer,
+  describeMove,
+  describeTask,
+  glossAbility,
+  glossCost,
+  glossNow,
+  visitText,
+} from './moveText';
 import { printedFace } from './printed';
 import { seatSuits } from './table';
 import { seatName } from './suits';
@@ -498,5 +518,341 @@ describe('a revealed deck top is named for its owner and masked for everyone els
     });
     expect(line).toBe('reveal the top card of the Wheat deck');
     expect(line).not.toContain('barn');
+  });
+});
+
+/** Move deck cards straight into a seat's barn, bypassing payment. Shared by
+ * every scenario below that needs a barn pre-loaded rather than paid into. */
+function barnTo(state: GameState, seat: Seat, ...cards: CardId[]): void {
+  for (const card of cards) {
+    const suit = cardById(data, card).suit;
+    const deck = state.decks[suit];
+    const i = deck.indexOf(card);
+    if (i < 0) throw new Error(`${card} is not in the ${suit} deck`);
+    deck.splice(i, 1);
+    player(state, seat).barn.push(card);
+  }
+}
+
+/**
+ * The three gaps `ui-recon-2026-09-25-v1.md` found: D5's `sowSpent` and O9's
+ * `give` had no sentence at all and fell to `describeCardPayload`'s raw-JSON
+ * fallback, and V6's shared `barnDiscard` step fell to the bare `{suit}`
+ * default ("the wheat crop", no verb). Each scenario below is driven through
+ * the real engine, the same way the `scout` fixture above is, so the sentence
+ * is checked against a payload the handlers actually produce.
+ */
+describe('D5, O9 and V6: no more raw JSON (recon 25/09/2026)', () => {
+  it('D5 The Churning Shed: sows the spent card onto the building it built', () => {
+    const DAIRY = 0;
+    const s = testkit.makeState(data, ['dairy', 'wheat']);
+    testkit.noMeeples(s);
+    testkit.buildFor(data, s, DAIRY, 'D5');
+    testkit.dealTo(data, s, DAIRY, 'D6', 'W9', 'W4', 'W5', 'W6');
+    // Growing D5 with D6 fires its activated Build; paying W9 with the rest of
+    // the hand is what leaves cards for `sowSpent` to place one of.
+    const grown = growBuilding(data, s, DAIRY, 'D5', 'D6');
+    const build = pendingAnswers(data, grown.state).find(
+      (a) => a.kind === 'build' && a.card === 'W9' && a.payment.length === 3,
+    ) as TaskAnswer;
+    expect(build).toBeDefined();
+    const built = answerTask(data, grown.state, build).state;
+    expect(built.tasks[0]).toMatchObject({ t: 'card', kind: 'sowSpent' });
+
+    const you = viewFor(data, built, DAIRY);
+    const sow = pendingAnswers(data, built).find((a) => a.kind === 'card') as TaskAnswer;
+    const line = describeMove(data, you, { type: 'task', seat: DAIRY, answer: sow });
+    expect(line).toMatch(/^sow .+ onto .+$/);
+    // The building it built (W9) is what the sowed card lands on.
+    expect(line).toContain(cardById(data, 'W9').name);
+    expect(line).not.toContain('{');
+  });
+
+  it('O9 The Fruit Stand: names the recipient the same way every cross-table move does', () => {
+    const ORCHARD = 0;
+    const WHEAT = 1;
+    const s = testkit.makeState(data, ['orchard', 'wheat', 'vegetable']);
+    testkit.buildFor(data, s, ORCHARD, 'O9');
+    testkit.dealTo(data, s, ORCHARD, 'O4', 'O5', 'O6');
+    const grown = growBuilding(data, s, ORCHARD, 'O9', 'O4');
+    const toWheat = pendingAnswers(data, grown.state).find(
+      (a) => a.kind === 'card' && a.payload.to === WHEAT,
+    ) as TaskAnswer;
+    expect(toWheat).toBeDefined();
+
+    const you = viewFor(data, grown.state, ORCHARD);
+    const line = describeMove(data, you, { type: 'task', seat: ORCHARD, answer: toWheat });
+    expect(line).toMatch(/^give .+ to .+$/);
+    expect(line).toContain('Wheat farm');
+    expect(line).not.toContain('{');
+  });
+
+  it('V6 The Trade Depot: the outgoing barn discard reads as a discard, not a bare crop', () => {
+    const VEG = 0;
+    const s = testkit.makeState(data, ['vegetable', 'wheat']);
+    testkit.buildFor(data, s, VEG, 'V6');
+    barnTo(s, VEG, 'W4', 'O4');
+    testkit.dealTo(data, s, VEG, 'V10');
+    const grown = growBuilding(data, s, VEG, 'V6', 'V10');
+    expect(grown.state.tasks[0]).toMatchObject({ t: 'card', kind: 'barnDiscard' });
+
+    const you = viewFor(data, grown.state, VEG);
+    const discard = pendingAnswers(data, grown.state).find((a) => a.kind === 'card') as TaskAnswer;
+    const line = describeMove(data, you, { type: 'task', seat: VEG, answer: discard });
+    expect(line).toMatch(/^discard a \w+ card from your barn$/);
+    expect(line).not.toBe('the wheat crop');
+    expect(line).not.toBe('the orchard crop');
+  });
+
+  /**
+   * V8 and V15 share the exact same `barnDiscard` task the recon flagged for
+   * V6 - the sentence has to be right for them too, not a V6-only patch. Both
+   * discard a barn card the same way V6's outgoing leg does, so one shared
+   * sentence is correct rather than a coincidence.
+   */
+  it('the shared barnDiscard sentence is equally right for V8 and V15', () => {
+    for (const [card, payment] of [
+      ['V8', 'V11'],
+      ['V15', 'V16'],
+    ] as const) {
+      const VEG = 0;
+      const s = testkit.makeState(data, ['vegetable', 'wheat']);
+      testkit.buildFor(data, s, VEG, card);
+      barnTo(s, VEG, 'W4');
+      testkit.dealTo(data, s, VEG, payment);
+      const grown = growBuilding(data, s, VEG, card, payment);
+      const discardTask = grown.state.tasks.find((t) => t.t === 'card' && t.kind === 'barnDiscard');
+      if (!discardTask) continue; // this card's gate did not open on this hand; not what is under test
+      const you = viewFor(data, grown.state, VEG);
+      const discard = pendingAnswers(data, grown.state).find((a) => a.kind === 'card') as
+        TaskAnswer | undefined;
+      if (!discard) continue;
+      const line = describeMove(data, you, { type: 'task', seat: VEG, answer: discard });
+      expect(line).toBe('discard a Wheat card from your barn');
+    }
+  });
+
+  /**
+   * The safety net (recon (e)): whatever the NEXT unwritten card task is, it
+   * must never reach a player as `{"card":"D5-14"}`. `describeAnswer` is
+   * exercised directly here with a made-up kind nothing registers, standing
+   * in for the next gap before anyone has written its sentence.
+   */
+  it('a card task nobody has written a sentence for still reads as English, never JSON', () => {
+    const line = describeAnswer(
+      data,
+      {
+        kind: 'card',
+        payload: { mystery: 42 },
+      },
+      {
+        t: 'card',
+        pid: 0,
+        src: 'D1',
+        kind: 'somethingNobodyHasWrittenYet',
+        riders: {},
+      },
+    );
+    expect(line).not.toMatch(/[{}]/);
+    expect(line.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * A second pass, requested after the first (25/09/2026): D18 A Helping Hand
+ * (Dairy) shares D5/D7's exact `{card}` shape and had no sentence either, and
+ * a grep of every `kind:` a handler under `packages/engine/src/handlers`
+ * registers turned up four more live, reachable gaps the first recon missed
+ * because it was scoped to the four named passes rather than the whole
+ * catalogue: D14 The Cream Refinery (`refine`), O14 The Conservatory
+ * (`sowAll`), V15 The International Port (`freeBuild`), and A6 The Garden
+ * Hive (`growAny` - a `kind: 'card'` payload `{building, payment}` that looks
+ * like it should hit the generic `grow` answer case but does not, because its
+ * answer's own `kind` is `'card'`, not `'grow'`; only O13's now-retired shape
+ * used to share that generic case). Three more - V12's `auctionSuit`, W15's
+ * `patisserieDeck`, W16's `granaryDraw` - were already reaching a real
+ * sentence (the `{suit}` default, "the wheat crop") rather than raw JSON, but
+ * that default names no verb, so they are registered in `SUIT_ANSWER` too.
+ * Each scenario below is driven through the real engine, same as the D5/O9/V6
+ * tests above.
+ */
+describe('D18, and the rest of the catalogue: no unregistered card task reaches raw JSON (25/09/2026)', () => {
+  it('D18 A Helping Hand (Dairy): puts one spent card into the barn', () => {
+    const DAIRY = 0;
+    const s = testkit.makeState(data, ['dairy', 'wheat']);
+    testkit.noMeeples(s);
+    testkit.buildFor(data, s, DAIRY, 'D18');
+    // D9 The Prosperity Wagon costs 3 (2 dairy + 1 any) - qualifies at "3 or more".
+    testkit.dealTo(data, s, DAIRY, 'D9', 'D5', 'D6', 'W4');
+    const built = apply(data, s, {
+      type: 'build',
+      seat: DAIRY,
+      card: 'D9',
+      payment: ['D5', 'D6', 'W4'],
+    }).state;
+    expect(built.tasks[0]).toMatchObject({ t: 'card', kind: 'd18Barn' });
+
+    const you = viewFor(data, built, DAIRY);
+    const put = pendingAnswers(data, built).find((a) => a.kind === 'card') as TaskAnswer;
+    const line = describeMove(data, you, { type: 'task', seat: DAIRY, answer: put });
+    expect(line).toMatch(/^put .+ into your barn$/);
+    expect(line).not.toContain('{');
+  });
+
+  it('D14 The Cream Refinery: names the building being demolished', () => {
+    const DAIRY = 0;
+    const s = testkit.makeState(data, ['dairy', 'wheat']);
+    testkit.buildFor(data, s, DAIRY, 'D14', 'D9');
+    testkit.dealTo(data, s, DAIRY, 'W4');
+    const grown = growBuilding(data, s, DAIRY, 'D14', 'W4');
+    const takeD9 = pendingAnswers(data, grown.state).find(
+      (a) => a.kind === 'card' && a.payload.card === 'D9',
+    ) as TaskAnswer;
+
+    const you = viewFor(data, grown.state, DAIRY);
+    const line = describeMove(data, you, { type: 'task', seat: DAIRY, answer: takeD9 });
+    expect(line).toBe(`demolish ${cardById(data, 'D9').name}`);
+    expect(line).not.toContain('{');
+  });
+
+  it('O14 The Conservatory: sows a hand card onto a named building', () => {
+    const ORCHARD = 0;
+    const s = testkit.makeState(data, ['orchard', 'wheat']);
+    testkit.buildFor(data, s, ORCHARD, 'O14', 'O4', 'O5');
+    testkit.dealTo(data, s, ORCHARD, 'O6', 'O7', 'O8');
+    const grown = growBuilding(data, s, ORCHARD, 'O14', 'O6');
+    const sow = pendingAnswers(data, grown.state).find((a) => a.kind === 'card') as TaskAnswer;
+
+    const you = viewFor(data, grown.state, ORCHARD);
+    const line = describeMove(data, you, { type: 'task', seat: ORCHARD, answer: sow });
+    expect(line).toMatch(/^sow .+ onto .+$/);
+    expect(line).not.toContain('{');
+  });
+
+  it('V15 The International Port: names the free build', () => {
+    const VEG = 0;
+    const s = testkit.makeState(data, ['vegetable', 'wheat']);
+    testkit.buildFor(data, s, VEG, 'V15');
+    barnTo(s, VEG, 'D4', 'W4');
+    testkit.dealTo(data, s, VEG, 'D9', 'D16', 'W5', 'V13');
+    const grown = growBuilding(data, s, VEG, 'V15', 'V13');
+    const discardDairy = pendingAnswers(data, grown.state).find(
+      (a) => a.kind === 'card' && a.payload.suit === 'dairy',
+    ) as TaskAnswer;
+    const afterDiscard = answerTask(data, grown.state, discardDairy).state;
+    expect(afterDiscard.tasks[0]).toMatchObject({ t: 'card', kind: 'freeBuild' });
+
+    const build = pendingAnswers(data, afterDiscard).find(
+      (a) => a.kind === 'card' && a.payload.card === 'D9',
+    ) as TaskAnswer;
+    const you = viewFor(data, afterDiscard, VEG);
+    const line = describeMove(data, you, { type: 'task', seat: VEG, answer: build });
+    expect(line).toBe(`build ${cardById(data, 'D9').name} for free`);
+    expect(line).not.toContain('{');
+  });
+
+  it('A6 The Garden Hive: reads as an ordinary paid Grow, not raw JSON', () => {
+    const APIARY = 0;
+    const s = testkit.makeState(data, ['apiary', 'orchard']);
+    testkit.buildFor(data, s, APIARY, 'A6', 'O4');
+    testkit.dealTo(data, s, APIARY, 'A4', 'W4');
+    const grown = growBuilding(data, s, APIARY, 'A6', 'A4');
+    const anyCrop = pendingAnswers(data, grown.state).find(
+      (a) => a.kind === 'card' && a.payload.building === 'O4' && a.payload.payment === 'W4',
+    ) as TaskAnswer;
+
+    const you = viewFor(data, grown.state, APIARY);
+    const line = describeMove(data, you, { type: 'task', seat: APIARY, answer: anyCrop });
+    expect(line).toBe(`${cardById(data, 'O4').name}, paying ${cardById(data, 'W4').name}`);
+    expect(line).not.toContain('{');
+  });
+});
+
+/**
+ * B11 (25/09/2026): every action button gets a one-line reason, live or
+ * disabled - "the greyed-out Build button, greyed out silently" is Top 3 in
+ * the appraisal. `actionReason` is what `ActionBar.tsx` reads for both its
+ * `title` tooltip and its hidden `aria-describedby` span, so the property
+ * that matters is that it is NEVER the empty string, over real turn-tops
+ * rather than an invented position - a family with zero legal moves is
+ * exactly where an empty string would otherwise slip through unnoticed.
+ */
+describe('actionReason gives every family a non-empty sentence (B11)', () => {
+  const seeds = ['reason-a', 'reason-b', 'reason-c'];
+
+  it('never returns an empty or whitespace-only reason, live or disabled', () => {
+    let liveChecked = 0;
+    let disabledChecked = 0;
+    for (const seed of seeds) {
+      const snap = position(seed);
+      const groups = actionGroups(data, snap.view, snap.moves).filter(
+        (g) => !g.onBoard && g.zone !== 'exit',
+      );
+      for (const group of groups) {
+        const reason = actionReason(snap.view, group.moves, group);
+        expect(reason.trim().length, `${group.key}: "${reason}"`).toBeGreaterThan(0);
+        expect(reason.startsWith(group.label), reason).toBe(true);
+        if (group.moves.length > 0) liveChecked += 1;
+        else disabledChecked += 1;
+      }
+    }
+    // Both shapes actually occurred somewhere in the sample, or the "never
+    // empty" claim above would only ever have been tested on one of them.
+    expect(liveChecked).toBeGreaterThan(0);
+    expect(disabledChecked).toBeGreaterThan(0);
+  });
+
+  it('never asserts a number for Deliver beyond what the barn genuinely holds', () => {
+    // The one rule this file must not re-derive: how many cards a delivery
+    // costs. The disabled sentence may say how many sit in the barn, never
+    // invent a required total the engine alone knows.
+    for (const seed of seeds) {
+      const snap = position(seed);
+      const barnTotal = Object.values(snap.view.you.barn).reduce((a, b) => a + (b ?? 0), 0);
+      const group = actionGroups(data, snap.view, snap.moves).find((g) => g.type === 'deliver');
+      if (!group) continue;
+      const reason = actionReason(snap.view, group.moves, group);
+      expect(reason).toContain(String(barnTotal));
+    }
+  });
+});
+
+/**
+ * B13 (25/09/2026): no player-facing sentence out of this module says
+ * "meeple" (the piece is a Worker everywhere a player reads it) or "door"
+ * (internal shorthand for a suit's plain action). Swept over real warmed
+ * positions - every move actually on offer, every family's live and disabled
+ * reason, every task a position is actually showing - rather than asserted
+ * about the FAMILIES table alone, which would miss a task or a move-specific
+ * sentence built somewhere else in the file.
+ */
+describe('no jargon leaks into a player-facing sentence (B13)', () => {
+  const seeds = ['jargon-a', 'jargon-b', 'jargon-c'];
+  const clean = (s: string) => {
+    const lower = s.toLowerCase();
+    expect(lower, s).not.toContain('meeple');
+    expect(lower, s).not.toContain('door');
+  };
+
+  it('describeMove, actionReason and describeTask stay in plain language', () => {
+    let checked = 0;
+    for (const seed of seeds) {
+      const snap = position(seed);
+      for (const move of snap.moves) {
+        clean(describeMove(data, snap.view, move));
+        checked += 1;
+      }
+      for (const group of actionGroups(data, snap.view, snap.moves)) {
+        clean(actionReason(snap.view, group.moves, group));
+        clean(group.label);
+        checked += 1;
+      }
+      const task = snap.view.tasks[0];
+      if (task && task.pid === snap.view.seat) {
+        clean(describeTask(data, task));
+        checked += 1;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 });

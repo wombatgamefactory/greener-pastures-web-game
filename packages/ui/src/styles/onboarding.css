@@ -1,0 +1,1043 @@
+/*
+ * onboarding.css (25/09/2026): created empty as scaffolding for the UI polish pass.
+ *
+ * ⭐ 25/09/2026 (WP4): the start screen, How to play, the guided first turn and
+ * the result screen. Imported LAST (styles.css), so the start and result rules
+ * here override their originals in play.css, which WP2 owns and this package
+ * must not edit. Type sizes come from the tokens in tokens.css (--fs-xs..xl),
+ * so when WP2 tunes the scale this surface moves with it. Suit colours are the
+ * ruled hexes, and no white text sits on the Wheat or Apiary colour anywhere
+ * in this file.
+ *
+ * Tokens (25/09/2026, from WP2's tokens.css): --go / --go-deep / --go-wash for
+ * the one green, --radius-*, --elev-*, --focus-ring. The --fs-* scale already
+ * steps up at 2400+ and 3200+, so the large-screen blocks below change LAYOUT
+ * (widths, art sizes) and move only the headline text a step, never every size.
+ */
+
+/* ---- the start screen ---------------------------------------------------- */
+
+/* The card: never narrower than it was, and at the 2400+ steps at least 900px
+   (B15), with a wider form column so the choices do not float in white. */
+.start-card {
+  width: min(880px, 100%);
+  max-width: none;
+  grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
+  padding: 22px;
+}
+
+.start-hero {
+  align-content: start;
+}
+
+.start-hook {
+  font-size: var(--fs-md);
+}
+
+/* How to play: the one secondary action on the screen, placed under the hook
+   it explains, full width so it reads as a button and not a link. */
+.start-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 14px;
+  border: 2px solid var(--go);
+  border-radius: var(--radius-pill);
+  background: var(--paper-hero);
+  color: var(--go-deep);
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  cursor: pointer;
+}
+
+.start-help span {
+  display: inline-grid;
+  place-items: center;
+  width: 1.4em;
+  height: 1.4em;
+  border-radius: 50%;
+  background: var(--go);
+  color: #fff;
+  font-size: 0.8em;
+}
+
+.start-help:hover,
+.start-help:focus-visible {
+  background: var(--go-wash);
+}
+
+.start-facts {
+  margin: 0;
+  text-align: center;
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+
+.start-card legend {
+  font-size: var(--fs-xs);
+  letter-spacing: 0.06em;
+}
+
+.start-go {
+  font-size: var(--fs-xl);
+  padding: 10px 22px;
+}
+
+.start-more {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--rule);
+  padding-top: 6px;
+}
+
+.start-more-toggle {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 0;
+  padding: 4px 2px;
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.start-more-toggle:hover,
+.start-more-toggle:focus-visible {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.start-more-caret {
+  width: 1em;
+}
+
+.start-more-body {
+  display: grid;
+  gap: 10px;
+}
+
+.start-archetypes label {
+  grid-template-columns: 130px minmax(0, 1fr);
+  font-size: var(--fs-sm);
+}
+
+.start-card input,
+.start-card select {
+  font-size: var(--fs-sm);
+  padding: 4px 8px;
+}
+
+.start-guide {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.start-guide input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--go);
+}
+
+/* The 1024x700 floor: the collapsed form plus the cover must fit without a
+   scroll, so the cover shrinks a little and the gaps close up. */
+@media (max-height: 760px) and (min-width: 761px) {
+  .start-card {
+    grid-template-columns: minmax(0, 250px) minmax(0, 1fr);
+    padding: 16px 18px;
+    gap: 18px;
+  }
+
+  .start-form {
+    gap: 9px;
+  }
+}
+
+/* B15: the 2400+ steps. At least 900px wide and growing with the viewport,
+   the type a step up from the token scale so a 4K screen reads like a laptop. */
+@media (min-width: 2400px) {
+  .start-card {
+    width: clamp(960px, 44vw, 1320px);
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr);
+    padding: 34px;
+    gap: 36px;
+    border-radius: var(--radius-xl);
+  }
+
+  .start-hook {
+    font-size: var(--fs-lg);
+  }
+
+  .start-help {
+    font-size: var(--fs-xl);
+    padding: 12px 18px;
+  }
+
+  .start-archetypes label {
+    grid-template-columns: 200px minmax(0, 1fr);
+  }
+
+  .start-go {
+    font-size: var(--fs-2xl);
+    padding: 14px 26px;
+  }
+
+  .start-form {
+    gap: 18px;
+  }
+}
+
+/* ---- How to play --------------------------------------------------------- */
+
+.htp-overlay {
+  z-index: 110;
+}
+
+.htp {
+  background: var(--paper-panel);
+  border-radius: 14px;
+  box-shadow: var(--elev-4);
+  width: min(1000px, 94vw);
+  max-height: min(92dvh, 900px);
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.htp-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px 6px;
+}
+
+.htp-head h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  color: var(--go-deep);
+}
+
+.htp-close {
+  margin-left: auto;
+  background: var(--paper-deep);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 4px 14px;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.htp-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 18px 10px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.htp-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-pill);
+  padding: 4px 12px 4px 5px;
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.htp-tab-num {
+  display: inline-grid;
+  place-items: center;
+  width: 1.6em;
+  height: 1.6em;
+  border-radius: 50%;
+  background: var(--paper-deep);
+  font-size: var(--fs-xs);
+}
+
+.htp-tab-on {
+  background: var(--go);
+  border-color: var(--go-deep);
+  color: #fff;
+}
+
+.htp-tab-on .htp-tab-num {
+  background: #fff;
+  color: var(--go-deep);
+}
+
+.htp-page {
+  overflow-y: auto;
+  padding: 14px 18px 8px;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.htp-page h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+}
+
+.htp-page h4 {
+  margin: 0 0 3px;
+  font-family: var(--font-display);
+  font-size: var(--fs-md);
+  font-weight: 500;
+}
+
+.htp-page p {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.htp-page .htp-lead {
+  font-size: var(--fs-md);
+}
+
+.htp-page .htp-note {
+  color: var(--ink-soft);
+  border-left: 3px solid var(--rule);
+  padding-left: 10px;
+}
+
+.htp-beats,
+.htp-boards,
+.htp-actions,
+.htp-steps,
+.htp-score {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.htp-beats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.htp-beats li {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 8px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.htp-beats img {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  justify-self: center;
+}
+
+.htp-beats img.htp-token {
+  width: 80px;
+}
+
+.htp-beats small {
+  font-family: var(--font-ui, inherit);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+.htp-num {
+  display: inline-grid;
+  place-items: center;
+  width: 1.5em;
+  height: 1.5em;
+  border-radius: 50%;
+  background: var(--go);
+  color: #fff;
+  font-size: 0.85em;
+  margin-right: 4px;
+}
+
+.htp-boards {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.htp-boards li {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  justify-items: center;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-top: 5px solid var(--htp-suit);
+  border-radius: 10px;
+  padding: 8px;
+}
+
+.htp-boards h4 {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.htp-boards h4 img {
+  width: 18px;
+  height: 18px;
+}
+
+/* The verb chip: paper with a swatch dot, the same answer WP2 gave the crop
+   chips on the start screen (play.css), because no one text colour clears
+   contrast on all five suit colours (dark ink fails on Orchard red, white on
+   Wheat, Apiary and Dairy). */
+.htp-verb {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-ui, inherit);
+  font-size: var(--fs-xs);
+  padding: 1px 8px 1px 5px;
+  border-radius: var(--radius-pill);
+  background: var(--paper-hero);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+}
+
+.htp-verb::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--htp-suit);
+  box-shadow: inset 0 0 0 1px rgb(47 35 24 / 55%);
+}
+
+.htp-actions {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.htp-actions li {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  text-align: center;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: 10px 8px;
+}
+
+.htp-actions img {
+  width: 84px;
+  height: 84px;
+  object-fit: contain;
+}
+
+.htp-island {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.htp-island-art {
+  width: 200px;
+  border-radius: 8px;
+  border: 1px solid var(--ink-line);
+  box-shadow: var(--shadow);
+}
+
+.htp-tokens {
+  display: flex;
+  gap: 10px;
+}
+
+.htp-tokens img {
+  width: 72px;
+}
+
+.htp-steps,
+.htp-score {
+  display: grid;
+  gap: 6px;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.htp-steps li,
+.htp-score li {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+
+.htp-score {
+  counter-reset: score;
+}
+
+.htp-score li {
+  counter-increment: score;
+}
+
+.htp-score li::before {
+  content: counter(score);
+  display: inline-grid;
+  place-items: center;
+  width: 1.5em;
+  height: 1.5em;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--go);
+  color: #fff;
+  font-size: var(--fs-xs);
+}
+
+.htp-end {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.htp-end img {
+  width: 72px;
+  height: 72px;
+}
+
+.htp-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px 14px;
+  border-top: 1px solid var(--rule);
+}
+
+.htp-back {
+  background: none;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 5px 14px;
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.htp-back:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.htp-count {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+
+.htp-next {
+  margin-left: auto;
+  font-size: var(--fs-md);
+  padding: 7px 18px;
+}
+
+/* The floor, and any narrow window: two columns for the lists, smaller art. */
+@media (max-width: 1100px), (max-height: 760px) {
+  .htp-boards {
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  }
+
+  .htp-actions {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+
+  .htp-beats img {
+    width: 72px;
+    height: 72px;
+  }
+
+  .htp-actions img {
+    width: 60px;
+    height: 60px;
+  }
+
+  .htp-island-art {
+    width: 150px;
+  }
+}
+
+@media (max-width: 700px) {
+  .htp-beats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .htp-beats li {
+    grid-template-columns: 64px minmax(0, 1fr);
+    grid-template-rows: none;
+  }
+
+  .htp-beats img {
+    width: 64px;
+    height: 64px;
+  }
+}
+
+@media (min-width: 2400px) {
+  .htp {
+    width: min(1500px, 80vw);
+    border-radius: var(--radius-xl);
+  }
+
+  .htp-head h2 {
+    font-size: var(--fs-2xl);
+  }
+
+  .htp-page h3 {
+    font-size: var(--fs-xl);
+  }
+
+  .htp-beats img {
+    width: 140px;
+    height: 140px;
+  }
+
+  .htp-actions img {
+    width: 112px;
+    height: 112px;
+  }
+
+  .htp-island-art {
+    width: 320px;
+  }
+
+  .htp-tokens img {
+    width: 110px;
+  }
+}
+
+/* ---- the guided first turn ----------------------------------------------- */
+
+/* The ring dims everything else with one enormous spread shadow, the standard
+   coach-mark spotlight, and never takes a click: `pointer-events: none` means
+   the player clicks the real button underneath, which is the whole point. */
+.coach-ring {
+  position: fixed;
+  z-index: 95;
+  pointer-events: none;
+  border-radius: 10px;
+  border: 3px solid var(--go);
+  box-shadow:
+    0 0 0 4px rgb(253 247 232 / 90%),
+    0 0 0 9999px rgb(44 32 20 / 26%);
+  transition:
+    left 0.18s ease,
+    top 0.18s ease,
+    width 0.18s ease,
+    height 0.18s ease;
+  animation: coach-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes coach-pulse {
+  50% {
+    border-color: #7fb069;
+  }
+}
+
+.coach-bubble {
+  position: fixed;
+  z-index: 96;
+  background: var(--paper-hero);
+  border: 2px solid var(--go);
+  border-radius: 12px;
+  box-shadow: var(--elev-4);
+  padding: 10px 14px 10px;
+  display: grid;
+  gap: 5px;
+  color: var(--ink);
+}
+
+.coach-bubble-free {
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(380px, calc(100vw - 24px));
+}
+
+.coach-beats {
+  display: flex;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.coach-beats li {
+  font-size: var(--fs-xs);
+  padding: 1px 9px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--rule);
+  color: var(--ink-soft);
+}
+
+.coach-beats .coach-beat-on {
+  background: var(--go);
+  border-color: var(--go-deep);
+  color: #fff;
+}
+
+.coach-beats .coach-beat-done {
+  background: var(--paper-deep);
+  color: var(--ink);
+}
+
+.coach-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  color: var(--go-deep);
+}
+
+.coach-text {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.coach-skip {
+  justify-self: end;
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.coach-ok {
+  justify-self: end;
+  font-size: var(--fs-sm);
+}
+
+@media (min-width: 2400px) {
+  .coach-bubble {
+    max-width: 460px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coach-ring {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* ---- the result screen --------------------------------------------------- */
+
+.result {
+  width: min(980px, 94vw);
+  max-width: none;
+  gap: 10px;
+}
+
+/* Your own standing leads (B5), in the display face and the largest size on
+   the screen; the winner's line drops to a subhead under it. */
+.result-standing {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-2xl);
+  line-height: 1.1;
+  color: var(--go-deep);
+}
+
+.result-standing-sub {
+  margin: 2px 0 6px;
+  font-size: var(--fs-md);
+}
+
+.result-head h2 {
+  font-size: var(--fs-md);
+  font-weight: 500;
+}
+
+.result-trigger {
+  font-size: var(--fs-sm);
+}
+
+.result-table {
+  font-size: var(--fs-md);
+}
+
+.result-table caption {
+  font-size: var(--fs-xs);
+}
+
+.result-table thead th {
+  font-size: var(--fs-xs);
+  line-height: 1.2;
+  vertical-align: bottom;
+}
+
+.result-farm img {
+  width: 20px;
+  height: 20px;
+}
+
+/* One seat's score by source, as a stacked bar scaled to the top total. Three
+   warm tones from the table's own palette, each keyed in the column head. */
+.result-bar-head {
+  width: 34%;
+  text-align: left !important;
+}
+
+.result-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 10px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.result-key::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--key);
+}
+
+.result-key-island,
+.result-bar-island {
+  --key: #5f8a4a;
+}
+
+.result-key-built,
+.result-bar-built {
+  --key: #d19a3c;
+}
+
+.result-key-endgame,
+.result-bar-endgame {
+  --key: #8a5a3a;
+}
+
+.result-bar-cell {
+  text-align: left !important;
+}
+
+.result-bar {
+  display: flex;
+  height: 12px;
+  width: 100%;
+  border-radius: 6px;
+  background: var(--paper-deep);
+  overflow: hidden;
+}
+
+.result-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--key);
+}
+
+.result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.result-again {
+  font-size: var(--fs-lg);
+  padding: 8px 22px;
+  border-radius: 8px;
+}
+
+.result-setup {
+  background: var(--paper);
+  border: 1px solid var(--ink-line);
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-family: var(--font-display);
+  font-size: var(--fs-md);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.result-setup:hover,
+.result-setup:focus-visible {
+  background: var(--paper-deep);
+}
+
+.result-note,
+.result-share,
+.result-warn {
+  font-size: var(--fs-sm);
+}
+
+.result-detail h3 {
+  font-size: var(--fs-md);
+}
+
+.result-source h4 {
+  font-size: var(--fs-sm);
+}
+
+.result-source-body {
+  font-size: var(--fs-xs);
+}
+
+.result-sum.result-stock {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+@media (max-width: 1100px), (max-height: 760px) {
+  .result-standing {
+    font-size: var(--fs-xl);
+  }
+
+  .result-bar-head {
+    width: 22%;
+  }
+
+  .result-key {
+    display: none;
+  }
+}
+
+@media (min-width: 2400px) {
+  .result {
+    width: min(1500px, 80vw);
+    padding: 22px 26px;
+  }
+
+  .result-table {
+    font-size: var(--fs-lg);
+  }
+
+  .result-source-body {
+    font-size: var(--fs-sm);
+  }
+
+  .result-bar {
+    height: 18px;
+  }
+
+  .result-farm img {
+    width: 28px;
+    height: 28px;
+  }
+}
+
+/* -------------------------------------------------------------------------
+ * KeyHelp (WP5 item 2, 25/09/2026): the shortcut sheet `?` opens.
+ *
+ * Deliberately the SMALLEST dialog this file styles - a table, not a
+ * multi-page tour - so it shares `.overlay`'s scrim and `.htp`'s general
+ * "paper panel, rounded, a head row with a close button" shape rather than
+ * inventing a third look for what is, in the end, one more `role="dialog"`.
+ * ------------------------------------------------------------------------- */
+.keyhelp-overlay {
+  z-index: 110;
+}
+
+.keyhelp {
+  background: var(--paper-panel);
+  border-radius: 14px;
+  box-shadow: var(--elev-4);
+  width: min(420px, 94vw);
+  max-height: min(80dvh, 560px);
+  overflow-y: auto;
+  padding: 14px 18px 18px;
+  display: grid;
+  gap: 10px;
+}
+
+.keyhelp-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.keyhelp-head h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  color: var(--go-deep);
+}
+
+.keyhelp-close {
+  margin-left: auto;
+  background: var(--paper-deep);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 4px 14px;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.keyhelp-note {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
+.keyhelp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+
+.keyhelp-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.keyhelp-table td:first-child {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.keyhelp-table kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  text-align: center;
+  padding: 2px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--ink-line);
+  background: var(--paper);
+  box-shadow: 0 1px 0 var(--ink-line);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+}
+
+/* Keyboard focus on everything this file styles, from the shared ring. */
+.start-help:focus-visible,
+.start-more-toggle:focus-visible,
+.htp-close:focus-visible,
+.htp-tab:focus-visible,
+.htp-back:focus-visible,
+.htp-next:focus-visible,
+.coach-skip:focus-visible,
+.coach-ok:focus-visible,
+.result-again:focus-visible,
+.result-setup:focus-visible,
+.keyhelp-close:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}

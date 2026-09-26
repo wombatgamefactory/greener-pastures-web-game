@@ -1,5 +1,19 @@
 /* Entry point for the stylesheet, split by concern. */
+@import './styles/tokens.css';
 @import './styles/base.css';
 @import './styles/card.css';
-@import './styles/table.css';
+/* table.css split into region files, 25/09/2026 (B24): behaviour-neutral, see
+   the header of each file. Order matches the old table.css cascade position. */
+@import './styles/layout.css';
+@import './styles/rail.css';
+@import './styles/main-column.css';
+@import './styles/shared-table.css';
+@import './styles/island.css';
+@import './styles/farm.css';
+@import './styles/hand.css';
+@import './styles/doors.css';
+@import './styles/overlays.css';
 @import './styles/play.css';
+@import './styles/feed.css';
+@import './styles/motion.css';
+@import './styles/onboarding.css';

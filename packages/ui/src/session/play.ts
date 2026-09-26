@@ -20,10 +20,11 @@
  * where a BOARD component's click is.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Suit } from '@gp/data';
 import type { CardId, Move, MoveType, PlayerView, Seat } from '@gp/engine';
 
+import type { ActionGroup } from '../view/moveText';
 import {
   IDLE,
   buildComplete,
@@ -33,6 +34,7 @@ import {
   clickHandCard,
   clickHost,
   clickMeeple,
+  deliverFamilyClick,
   deliverStart,
   emptyBuildDraft,
   focused,
@@ -41,9 +43,11 @@ import {
   subsetAdditions,
   subsetAnswer,
   visitComplete,
+  visitHosts,
   withPayment,
 } from '../view/intent';
 import type { BuildDraft, DeliverDraft, Intent, Live } from '../view/intent';
+import { useEscapeKey } from './escape';
 
 export interface Play {
   /** True when the decision is yours. Every click handler is inert otherwise. */
@@ -90,6 +94,19 @@ export interface Play {
    */
   setDeliverDraft?(draft: DeliverDraft): void;
 
+  /**
+   * B18 (25/09/2026): true once your action this turn was one that revealed
+   * something new to look at - a Draw's cards, or a Harvest that might carry a
+   * When-Harvested hook - and still true until you end your turn or a fresh
+   * one starts for you. `ActionBar.tsx` reads it to give End turn a "ready"
+   * look rather than treating it exactly like Grow's plain, nothing-to-see
+   * completion. It is read-only state, never a gate: End turn is unaffected
+   * when this is false, and nothing here ever sends a move on its own -
+   * B18 asks for no AUTO-pass, only a clearer invitation to the one the
+   * player still has to click.
+   */
+  readonly revealed: boolean;
+
   building(card: CardId): void;
   /** The badge on a built card: the standing move that card is offering. */
   cardPower(card: CardId): void;
@@ -125,16 +142,40 @@ export function usePlay(host: PlayHost): Play {
     setPicked([]);
   }, [revision]);
 
+  /**
+   * B18 (25/09/2026): "ready to end turn". See the `Play.revealed` doc for
+   * what it means; this is only where it is tracked.
+   *
+   * Reset on the transition INTO your turn (inactive to active), which is the
+   * one moment the flag from a turn already gone must not survive into the
+   * next - a fresh turn-top has revealed nothing yet, whatever the last one
+   * ended on. Comparing `active` on a ref rather than trusting `revision`
+   * alone: `revision` bumps on every move in the game, including every one of
+   * a bot's, and resetting on all of those would clear the flag out from under
+   * the very render that just set it (a bot's move is what usually makes the
+   * decision come back to you in the first place - see `App.tsx`'s stepper).
+   */
+  const wasActive = useRef(active);
+  const [revealed, setRevealed] = useState(false);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setIntent(IDLE);
-        setPicked([]);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+    if (active && !wasActive.current) setRevealed(false);
+    wasActive.current = active;
+  }, [active]);
+
+  /*
+   * 25/09/2026 (WP5 item 3): `useEscapeKey`, not a plain `window` bubble
+   * listener - see `session/escape.ts`'s header for the CookieYes race this
+   * wins outright. This is the BOTTOM of the escape stack: it is always
+   * active (an assembly's own cancel has nowhere else to go), so any dialog
+   * that pushes its own handler while it is open - `TurnSummary`, `KeyHelp`,
+   * `HowToPlay`, the island overlay - sits above it and answers Escape first,
+   * exactly as it did when Table.tsx's overlay effect and this one were two
+   * independent `window` listeners racing on registration order.
+   */
+  useEscapeKey(() => {
+    setIntent(IDLE);
+    setPicked([]);
+  }, true);
 
   const task = pendingTask(view);
 
@@ -178,6 +219,20 @@ export function usePlay(host: PlayHost): Play {
 
   const send = useCallback(
     (move: Move) => {
+      // B18: a Draw's reveal or a Harvest's stack (which may carry a
+      // When-Harvested hook) are what "new information" means here; a task
+      // answer completing a draw's keep counts the same as the draw that
+      // opened it, since that is the moment the cards actually arrive. Ending
+      // the turn is the one send that always clears it, whatever else is true.
+      if (
+        move.type === 'draw' ||
+        move.type === 'harvest' ||
+        (move.type === 'task' && (move.answer.kind === 'keep' || move.answer.kind === 'deck'))
+      ) {
+        setRevealed(true);
+      } else if (move.type === 'endTurn') {
+        setRevealed(false);
+      }
       sendMove(move);
       setIntent(IDLE);
       setPicked([]);
@@ -294,6 +349,7 @@ export function usePlay(host: PlayHost): Play {
               : picked,
       subsetKind,
       live: liveTargets(view, moves, effective),
+      revealed,
 
       send,
       choose: resolve,
@@ -350,14 +406,14 @@ export function usePlay(host: PlayHost): Play {
       },
       meeple: (colour) => {
         if (inert) return;
-        resolve(clickMeeple(moves, colour), 'Spend which meeple?');
+        resolve(clickMeeple(moves, colour), 'Spend which Worker?'); // QA 26/09/2026: was "meeple", which a player reads
       },
       deck: (suit) => {
         if (inert) return;
         resolve(clickDeck(moves, effective, suit), 'Which deck?');
       },
     };
-  }, [active, view, moves, effective, picked, subsetKind, send, resolve]);
+  }, [active, view, moves, effective, picked, subsetKind, revealed, send, resolve]);
 
   return play;
 }
@@ -375,4 +431,63 @@ export function usePlay(host: PlayHost): Play {
 export function mark(play: Play | undefined, live: boolean): string {
   if (!play || !play.active || !live) return '';
   return focused(play.intent) ? ' is-target' : ' is-live';
+}
+
+/**
+ * Do what clicking a turn-bar family's button does: play its one move, open
+ * the generic menu, or arm it so its targets light up.
+ *
+ * ⭐ EXTRACTED FROM `ActionBar.tsx`'s `onGroup` 25/09/2026 (WP5 item 2), so the
+ * keyboard layer (`session/keys.ts`) can do exactly what a click does rather
+ * than re-implementing it - both callers go through the same `Play` methods
+ * (`arm`, `send`, `setVisitFee`, `setDeliverDraft`) and never construct a
+ * move of their own. Nothing here reads a rule the button did not already
+ * read: `group.moves` is still the only thing that decides what is legal.
+ */
+export function activateGroup(play: Play, group: ActionGroup): void {
+  const { moves, needsTarget, type } = group;
+  if (moves.length === 0) return;
+  if (!needsTarget) {
+    play.choose(moves, 'Which one?');
+    return;
+  }
+  /*
+   * A VISIT NARROWS ON ITS HOST, NOT ON ITS MOVE COUNT. There is one move per
+   * (host, hand card) pair, so a family with five moves may still have exactly
+   * one place to go - and making somebody arm a family and then click the only
+   * neighbour in it is a click spent on nothing.
+   */
+  if (type === 'visit') {
+    const hosts = visitHosts(moves);
+    if (hosts.length === 1) {
+      play.setVisitFee(hosts[0] as number, null);
+      return;
+    }
+    play.arm('visit');
+    return;
+  }
+  /*
+   * ⭐ B4 (25/09/2026): DELIVER GETS ITS OWN RULE, TESTED ON ITS OWN
+   * (`deliverFamilyClick`, `view/intent.ts`). See `ActionBar.tsx`'s own
+   * history of this branch for why a lone legal delivery must not simply
+   * play itself: a single expensive candidate opens the assembly PRE-FILLED
+   * instead, so every chip already shows paid and the player still has to
+   * confirm.
+   */
+  if (type === 'deliver') {
+    const decision = deliverFamilyClick(moves);
+    if (decision.k === 'send') play.send(decision.move);
+    else if (decision.k === 'prefill') play.setDeliverDraft?.(decision.draft);
+    else play.arm('deliver');
+    return;
+  }
+  // One legal target: skip the arming step rather than making someone click a
+  // family and then the only thing in it. Build is excluded - `startBuild`
+  // (via a hand-card click while armed) only ever auto-sends a genuinely free
+  // build, never one that spends a card, so it needs no guard here.
+  if (moves.length === 1 && type !== 'build') {
+    play.send(moves[0] as Move);
+    return;
+  }
+  play.arm(type);
 }

@@ -1,0 +1,703 @@
+/*
+ * The rival rail and the event feed.
+ *
+ * Split from table.css into region files, 25/09/2026 (B24). Behaviour-neutral:
+ * proved by identical verify-layout and measure-ui output before and after the
+ * split (.scratch/wp1/). Comments are kept verbatim; they are this project's
+ * design memory.
+ *
+ * The feed block is left as it stood in table.css rather than moved into
+ * feed.css: another worker is restyling the feed there, and feed.css loads
+ * later in styles.css so it overrides this.
+ */
+
+/* ---- the rail ----------------------------------------------------------- */
+
+/* The neighbours come first and the feed takes what is left. A fractional split
+   gave the feed 259px at the 700px floor and pushed the third neighbour out of
+   the rail entirely - which the layout verifier only caught once it learned to
+   account for clipping by a scrolling ancestor. */
+.rail-column {
+  display: grid;
+  /*
+   * T10b (26/09/2026): the rivals HUG their content and the table talk takes
+   * the rest. It was `minmax(0, 1fr) clamp(104px, 18%, 320px) auto`: the
+   * rivals' row flexed, so at 1600 and 2560 it left a 200 to 400px empty band
+   * under the last rival while the log above the pace controls was capped at
+   * 320px and scrolled (QA D13). `minmax(0, max-content)` still squeezes the
+   * rivals first at the 1024 floor, exactly as the `0` minimum did, because
+   * the feed's 104px minimum is claimed before any intrinsic track grows.
+   */
+  grid-template-rows: minmax(0, max-content) minmax(104px, 1fr) auto;
+  gap: var(--gap);
+  min-height: 0;
+}
+
+/*
+ * ⭐ THE QUIET CORNER, IN THE FLOW (phase 4).
+ *
+ * The pace buttons and the capture trigger were both `position: fixed` in the
+ * bottom-left of the viewport, and the bottom-left of the viewport is the
+ * bottom of the event feed. So they printed across the feed's last line at every
+ * viewport in every screenshot since phase 0, and the pace strip hung half off
+ * the panel edge into the window's own padding. Phase 2 made it more obvious
+ * rather than worse: the feed lost its frame, so what had been a control on a
+ * box became text on text.
+ *
+ * This is the same fix phase 3 applied to the end-game banner, for the same
+ * reason. **A row at the bottom of the column cannot overlap anything by
+ * construction.** Reserving the band with a `padding-bottom` on the feed would
+ * have looked identical and would have been a hard-coded number that has to be
+ * kept in step, by hand, with the height of two elements laid out somewhere
+ * else. An `auto` row is the browser's arithmetic, not ours.
+ *
+ * It WRAPS at the 1024 floor, where the rail is 196px and the two controls come
+ * to about 220px. That costs the feed one line and is the honest price: the row
+ * is the height the controls actually need, which is exactly what they were
+ * taking from the feed before without asking.
+ */
+.rail-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  min-width: 0;
+  /* Matches `.feed`'s own inset so the controls line up with the commentary
+     above them rather than hanging off its left edge, which is what the fixed
+     version did (10px from the window, against the feed's text at 25px). */
+  padding: 0 8px;
+}
+
+/*
+ * ⭐ 25/09/2026 (B21): `.rail` SPLITS INTO A FIXED HEAD AND A SCROLLING LIST.
+ *
+ * Before the standings card, `.rail` WAS the scrolling list - one flex column
+ * with `overflow-y: auto` on itself, so a table with more neighbours than fit
+ * simply scrolled the whole thing. That is no longer the shape the card
+ * needs: it has to stay on screen at every seat count and every viewport (the
+ * acceptance test is "visible without scrolling"), so it cannot be a child a
+ * neighbour-heavy table pushes below the fold.
+ *
+ * `.rail` is now the plain flex column; the standings card is its first,
+ * fixed-height child (`flex: none`, set on `.standings` below), and
+ * `.rail-neighbours` - the second child - carries the `overflow-y: auto` this
+ * element used to own for itself. At 2560px and up this is also where the
+ * rail's dead band (the appraisal's "large empty band below the rivals")
+ * gets used: the card's own rows grow with the same type scale as the rest
+ * of the rail rather than sitting pinned to a phone-sized band at the bottom
+ * of a mostly-empty column.
+ */
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-height: 0;
+}
+
+.rail-neighbours {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  overflow-y: auto;
+  min-height: 0;
+  padding-right: 2px;
+}
+
+/*
+ * TIER 3, THE RAIL. Chromeless (phase 2).
+ *
+ * A neighbour used to wear the same fill, the same 1px rule, the same radius
+ * and the same shadow as your own farm, the island and the decks - nine boxes
+ * of equal weight, which is a hierarchy with nothing at the top of it. The
+ * measurement that started this phase counted them; the fix is that only one
+ * region on this screen keeps that costume, and it is not this one.
+ *
+ * ONE THING SURVIVES: the 4px seat edge, and it is now doing two jobs. It says
+ * whose farm this is (the same colour their cards, their pip and their receipts
+ * wear), and with the fills gone it is the ONLY separator between one
+ * neighbour and the next - the rail is a stack of three, and without a rule
+ * round each one there has to be something down the left telling the eye where
+ * one stops. An edge is not chrome: it costs one colour on one side, carries
+ * information, and cannot be mistaken for a container.
+ */
+.rival {
+  border-left: 4px solid var(--seat-edge);
+  /* 25/09/2026 (B21): was `4px 8px 6px` / `gap: 5px`. The standings strip
+     needed room from the same fixed 446.9px `.rail` row three neighbour cards
+     already spend nearly all of at the 1024x700 floor (see the note on
+     `.standings`), and this is the few px per card it borrows to make room -
+     small enough that it does not read as a different card, and it is the
+     only place left to find it once the strip's own rows are already at the
+     type scale's floor. */
+  padding: 2px 8px 3px;
+  display: grid;
+  gap: 3px;
+}
+
+/*
+ * The seat whose turn it is. A WASH, not an outline (phase 2).
+ *
+ * The old 2px `--seat-pip` outline was fine when it was one loud thing among
+ * nine loud things. In a chromeless rail it would be the highest-contrast shape
+ * anywhere on the screen, including the farm the whole phase exists to promote,
+ * and the loudest thing on a screen should never be a fact you cannot act on.
+ *
+ * A fill instead: the same tone the farm wears, tinted with the seat's own
+ * colour, so the highlight reads as "lit up" rather than as "selected". It
+ * pairs with the "to play" chip that was always there and does the actual
+ * telling. The plain declaration first is the fallback - a browser without
+ * `color-mix` drops the second line and still gets a wash, which is the part
+ * that matters; the tint is the refinement.
+ *
+ * ⚠️ It is a real background, so `measure-ui` counts an active neighbour as a
+ * chromed panel. That is honest and it is left alone: the metric asks whether a
+ * region has a fill, and this one does. It just is not there most of the time.
+ */
+.rival-active {
+  background: var(--paper-panel);
+  background: color-mix(in srgb, var(--seat-edge) 12%, var(--paper-panel));
+  border-radius: 0 6px 6px 0;
+}
+
+.rival-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 0;
+  padding: 0;
+  width: 100%;
+  text-align: left;
+}
+
+.rival-head:hover .rival-open,
+.rival-head:focus-visible .rival-open {
+  opacity: 1;
+}
+
+.rival-head h3 {
+  font-size: var(--fs-sm); /* was 13px, 25/09/2026 token pass */
+  color: var(--seat-ink);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rival-crop {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+/* `--seat-ink`, for the reason set out on `.farm-turn` below: white on a Dairy
+   or Wheat PIP is 1.19:1 and 2.25:1, which is a white word on a cream lozenge.
+   Two chips, one defect, one fix. */
+.rival-turn {
+  font-size: var(--fs-xs); /* was 10px, 25/09/2026 token pass */
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: var(--seat-ink);
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+/*
+ * ⭐ ONE RUN AT READING SIZE, WHERE FOUR COLUMNS AT 9px USED TO BE (phase 4).
+ *
+ * The old shape was a `<dl>` of four equal columns, each with a 9px uppercase
+ * caption over a 13px value. It cost two lines, it forced every value into a
+ * quarter of a 196px rail, and the captions were below reading size - so the
+ * panel whose entire job is "who should I visit" was answering in type nobody
+ * reads from a seat.
+ *
+ * Every number stays; only the furniture goes. The unit rides along with the
+ * value ("7 in hand"), which is what makes the caption redundant and pays for
+ * the size - 13px, the same size as the neighbour's own name above it.
+ *
+ * IT IS ALLOWED TO WRAP, and that is deliberate rather than tolerated. At the
+ * 1024 floor the rail is 196px and the run is about 210px, so it takes two
+ * lines there and one at every larger step. Two lines of readable type beats one
+ * line of unreadable type, and the row this replaced took two lines anyway.
+ *
+ * The separator is drawn by CSS and TRAILS its value rather than leading the
+ * next one, which is the difference between a wrapped second line reading
+ * "1 in barn" and reading "· 1 in barn" - a stray bullet, which is what the
+ * first cut of this rendered at the floor.
+ */
+.rival-run {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 5px;
+  font-size: var(--fs-sm); /* was 13px, 25/09/2026 token pass */
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+}
+
+.rival-run span:not(:last-child)::after {
+  content: '·';
+  margin-left: 5px;
+  color: var(--ink-line);
+}
+
+/*
+ * THE MOST DECISION-RELEVANT OBJECT IN THE RAIL, drawn like it.
+ *
+ * The fill bar is the only thing on a neighbour's panel that says whether a
+ * visit will be ACCEPTED, so of everything phase 4 compressed this is the one
+ * item that grew. Its label and its payout share the line above it - the label
+ * left, the price right - and the bar itself gets the full width underneath.
+ */
+.rival-board {
+  display: grid;
+  gap: 3px;
+}
+
+.rival-board-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.rival-board-name {
+  font-size: var(--fs-xs); /* was 10px, 25/09/2026 token pass */
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+/* The door is not a caption, so it is not caption-coloured. Since v31 it IS the
+   payoff - a visit pays nothing and buys this farm's suit action - so it is the
+   thing the decision is made on and it reads in full ink. */
+.rival-payout {
+  font-size: var(--fs-xs); /* was 11px, 25/09/2026 token pass */
+  color: var(--ink);
+  text-align: right;
+}
+
+.rival-board-none {
+  margin: 0;
+  font-size: var(--fs-xs); /* was 11px, 25/09/2026 token pass */
+  color: #a2493a;
+  font-style: italic;
+}
+
+/*
+ * ⭐ 25/09/2026 (item 4): `aria-disabled` REPLACES `disabled` ON THE BOARD
+ * BUTTON, so a not-live board is still focusable and still reachable from the
+ * keyboard - see the dated note in `RivalRail.tsx`. The button itself no
+ * longer gets a browser default to signal "not available", so this states it
+ * explicitly, in the project's own disabled palette (`--disabled-ink`, B16,
+ * `tokens.css`) rather than an `opacity` fade - the rail is chromeless by
+ * design (the banner above `.rival` explains why), so this dims the TEXT
+ * rather than adding a fill or an edge the rest of the rail does not wear.
+ */
+.rival-board-live[aria-disabled='true'] {
+  cursor: default;
+}
+
+.rival-board-live[aria-disabled='true'] .rival-board-name,
+.rival-board-live[aria-disabled='true'] .rival-payout {
+  color: var(--disabled-ink);
+}
+
+/* Scoped to the rail: the same bar in the inspector and the visit panel already
+   has room to be read and does not need the extra weight. */
+.rival-board .fillbar-track {
+  height: 12px;
+}
+
+.rival-board .fillbar-text {
+  font-size: var(--fs-xs); /* was 11px, 25/09/2026 token pass */
+  color: var(--ink);
+}
+
+.rival-open {
+  font-size: var(--fs-xs); /* was 9px, 25/09/2026 token pass */
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0;
+  /* Hover feedback, so `--motion-ui` rather than the research's band: this
+     follows the pointer and a half-second fade would arrive after the pointer
+     had gone. Was a bare 120ms; the token is the only change. */
+  transition: opacity var(--motion-ui) ease;
+}
+
+/* The rail is compressed hard so three neighbours fit above the 700px fold, and
+   the door chip is the thing that had to shrink: at rail size it does not RENDER
+   the painting or the printed sentence rather than drawing them and hiding them,
+   which is what lets the one fact that remains - which of the five actions this
+   farm grants - come up to a size worth printing. */
+.door-rail .door-name {
+  font-size: var(--fs-xs); /* was 12px, 25/09/2026 token pass */
+  align-items: baseline;
+}
+
+.door-rail .door-name em {
+  font-size: var(--fs-xs); /* was 10px, 25/09/2026 token pass */
+  color: var(--ink);
+}
+
+/* ---- the standings card (B21, 25/09/2026, attempt 2) --------------------- */
+
+/*
+ * A REAL CARD, AT THE TOP OF THE RAIL, not a footer of running text (the
+ * review that sent this back named that exact failure). `flex: none` so it
+ * never competes with `.rail-neighbours` for the rail's own `1fr` row in
+ * `.rail-column` (`layout.css`) - it takes exactly the height its rows need
+ * and the neighbour list gives up whatever that costs, which is the same
+ * trade `.rail-foot` already makes for the pace buttons below the feed.
+ *
+ * ⚠️ THE BUDGET IS TIGHT AND MEASURED, NOT GUESSED (25/09/2026). At the
+ * 1024x700 floor with four seats, `.rail`'s whole 1fr row is 446.9px and
+ * three neighbour cards - each the sum of its own head, run, Worker row and
+ * board - spend about 380-400px of it once trimmed (see `.rival`'s own dated
+ * note). What is left for this card is about 50-70px, which is why the floor
+ * step below shrinks the icons and the padding rather than dropping any of
+ * them - the request was for icons at every size, not icons only where there
+ * happens to be room.
+ */
+.standings {
+  flex: none;
+  display: grid;
+  gap: 3px;
+  margin-bottom: 2px;
+  padding: 5px 8px 6px;
+  background: var(--paper-panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md, 8px);
+}
+
+.standings-title {
+  margin: 0;
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+}
+
+/* The one line for the end trigger, replacing attempt 1's per-row "final"
+   chip. `#a2493a` is the one accent this screen carries for "something is
+   closing" (the clog flag, the over-limit hand) - the same colour
+   `Table.tsx`'s own end-trigger banner uses, so the two read as one fact. */
+.standings-final {
+  margin: 0;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: #a2493a;
+  line-height: 1.25;
+}
+
+.standings-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+}
+
+/*
+ * ⚠️ ELLIPSIS, NOT WRAP, AND NEVER A ONE-LETTER NAME. Attempt 1 abbreviated
+ * the FIGURES to fit a line and that read as jargon; this abbreviates the
+ * NAME instead, which a crop icon (`.standing-crop`, below) already backs up,
+ * and only when a genuinely long label (Vegetable) meets a genuinely narrow
+ * column - "Wheat", "Dairy", "Apiary", "Orchard" all clear the floor's own
+ * `--rail-w` (196px) in full. `overflow: hidden` plus a `min-width: 0` name
+ * means a row that cannot fit trims the name with "…", never down to a bare
+ * initial - the specific defect ("O.", "You (...") the review named.
+ */
+.standing {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  column-gap: 4px;
+  font-size: var(--fs-sm);
+  line-height: 1.2;
+  padding: 1px 2px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+/* The seat whose turn it is now, in the same wash the rail uses for an active
+   neighbour - one visual language for "it is happening now" everywhere on
+   this screen, not a second one invented for this card. */
+.standing-turn {
+  background: color-mix(in srgb, var(--seat-edge, var(--go)) 14%, transparent);
+}
+
+/* The seat-colour swatch: the same identifying colour `.rival`'s left border
+   and `Farm.tsx`'s header wear, drawn small rather than as a 4px rule - this
+   row is short enough that a rule reads as a stray mark rather than an edge. */
+.standing-swatch {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.standing-crop {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  object-fit: contain;
+}
+
+.standing-name {
+  flex: 1 1 auto;
+  min-width: 34px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.standing-you .standing-name {
+  text-decoration: underline;
+  text-decoration-color: var(--rule);
+  text-underline-offset: 2px;
+}
+
+/* The leader's star: drawn (`LeaderStar` in `RivalRail.tsx`), not emoji, in
+   the same warm ink the game already uses for "notable", never a loud colour
+   of its own - it says "ahead", not "alert". */
+.standing-crown {
+  flex: none;
+  color: var(--seat-ink, #b06a1c);
+}
+
+.standing-stat {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.standing-vp img {
+  width: 11px;
+  height: 11px;
+}
+
+.standing-hand-icon {
+  color: var(--ink-soft);
+}
+
+/*
+ * THE RECEIPTS, AS PIPS (the request's own words: "so the race to six reads
+ * at a glance"). One pip per delivery the target asks for, filled left to
+ * right as they are taken - the same shape the Farmstead's own six printed
+ * slots use on the card itself, at a size this row can afford.
+ */
+.standing-receipts {
+  gap: 1.5px;
+}
+
+.standing-pip {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--paper-deep);
+  box-shadow: inset 0 0 0 1px var(--ink-line);
+}
+
+.standing-pip-filled {
+  background: var(--seat-edge, var(--go));
+  box-shadow: none;
+}
+
+/*
+ * THE FLOOR STEP: everything shrinks a little further rather than anything
+ * being dropped. Matches `base.css`'s own floor condition so the two steps
+ * agree on where "the floor" starts.
+ */
+@media (max-width: 1100px), (max-height: 760px) {
+  /*
+   * ⚠️ THE FLOOR BUDGET, MEASURED (25/09/2026, attempt 2). At 1024x700 with
+   * four seats, `.rail`'s 1fr row is 446.9px and three neighbour cards spend
+   * about 380.7px of it (gaps included) - about 66px is what is actually
+   * left, which is what every number below is sized against, not a guess.
+   * Icons stay at every size (the review's own ask); what shrinks is their
+   * size and the chrome around them, never their presence.
+   */
+  .standings {
+    /* 0 top, 1 bottom since 26/09/2026 (T10b): pays for the rows' taller
+       line height, see `.standing` below. */
+    padding: 0 5px 1px;
+    gap: 1px;
+  }
+
+  /* The floor spends its few spare px on the rows, not the caption - every
+     row's icons already say what its numbers are without a heading over
+     them. `Final round` stays: it is state, not decoration. */
+  .standings-title {
+    display: none;
+  }
+
+  .standings-final {
+    font-size: var(--fs-xs);
+    line-height: 1.1;
+  }
+
+  .standings-list {
+    gap: 0;
+  }
+
+  .standing {
+    font-size: var(--fs-xs);
+    /* 1.2, not 1.05 (T10b, 26/09/2026): at 1.05 each row was 12.6px for 12px
+       type, so with `overflow: hidden` the rows cropped their own descenders
+       and touched ("Vegetable" lost the tail of its g, QA D8). The clip is
+       horizontal only now (the name still ellipses), so a descender paints
+       past its line box instead of being cut. 1.2 was tried first and pushed
+       the third rival off the floor rail (`verify:layout`); 1.1 plus the
+       tighter padding on `.standings` below fits. */
+    line-height: 1.1;
+    overflow: visible;
+    overflow-x: clip;
+    column-gap: 3px;
+    padding: 0 1px;
+  }
+
+  .standing-name {
+    min-width: 26px;
+  }
+
+  .standing-swatch {
+    width: 6px;
+    height: 6px;
+  }
+
+  .standing-crop {
+    width: 9px;
+    height: 9px;
+  }
+
+  .standing-crown {
+    width: 9px;
+    height: 9px;
+  }
+
+  .standing-vp img {
+    width: 9px;
+    height: 9px;
+  }
+
+  .standing-hand-icon {
+    width: 8px;
+    height: 10px;
+  }
+
+  .standing-pip {
+    width: 3px;
+    height: 3px;
+  }
+}
+
+/*
+ * THE LARGE-DISPLAY STEP (2400px+): the card scales up with the rest of the
+ * rail's own token ladder rather than sitting pinned to a phone-sized band in
+ * what was the dead space below the rivals.
+ */
+@media (min-width: 2400px) and (min-height: 1300px) {
+  .standings {
+    padding: 8px 12px 10px;
+    gap: 5px;
+  }
+
+  .standing {
+    column-gap: 7px;
+  }
+
+  .standing-crop {
+    width: 18px;
+    height: 18px;
+  }
+
+  .standing-swatch {
+    width: 10px;
+    height: 10px;
+  }
+
+  .standing-pip {
+    width: 7px;
+    height: 7px;
+  }
+
+  .standing-vp img {
+    width: 15px;
+    height: 15px;
+  }
+}
+
+/* ---- the feed ----------------------------------------------------------- */
+
+/* TIER 3. Chromeless with the rest of the rail (phase 2): the feed is a running
+   commentary, and a commentary does not need a frame round it. Its own left
+   ticks (`.feed-line`, coloured by whose turn is being narrated) already give
+   the block an edge, so nothing was carrying structure that is now missing. */
+.feed {
+  padding: 4px 8px 6px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+.feed-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  font-size: var(--fs-xs); /* was 11px, 25/09/2026 token pass */
+  line-height: 1.35;
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+.feed-line {
+  padding: 1px 0;
+  border-left: 3px solid var(--line-ink, transparent);
+  padding-left: 5px;
+}
+
+/*
+ * The actor's name, in the seat's own ink (phase 4).
+ *
+ * `--line-ink` is `SUIT_META[suit].ink`, which `suits.ts` documents as the tone
+ * for "borders and text on a pale ground" - the same choice phase 3 had to make
+ * for the turn bar's go light, and for the same reason: `--seat-pip` is tuned to
+ * separate five crops as a 10px dot and two of the five (Wheat, Dairy) are far
+ * too pale to set type in on cream.
+ *
+ * Weight does the work `--line-ink` cannot do on its own. A colour alone is not
+ * a distinction a colour-blind reader can use, and the point is scanning, so the
+ * lead is bolder than the sentence after it whatever ink it lands in.
+ */
+.feed-who {
+  color: var(--line-ink, inherit);
+  font-weight: 600;
+  font-style: normal;
+}
+
+.feed-boundary {
+  color: var(--ink-soft);
+  font-style: italic;
+  border-top: 1px dashed var(--rule);
+  margin-top: 2px;
+  padding-top: 2px;
+}
+
+.feed-alarm {
+  font-weight: 700;
+  color: #a2493a;
+}

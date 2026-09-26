@@ -39,7 +39,22 @@ const THRESHOLD = 6;
 /** Marks the zone under the pointer. Set on the element, not through React. */
 const HOT_ATTR = 'data-drop-hot';
 
-/** Marks the document while a card is in flight, for cursor and hover suppression. */
+/**
+ * Marks the document while a card is in flight, for cursor and hover
+ * suppression.
+ *
+ * ⭐ 25/09/2026: applied from the PRESS, not from `armed`. It used to go on
+ * only once the pointer had travelled past `THRESHOLD`, which is right for
+ * `hold()` (a click must never spend the card) but wrong for hover
+ * suppression: hovering the card to press it down already shows the zoom
+ * panel (`Farm.tsx`'s `onMouseEnter`), and a still-armed press sits inside
+ * `THRESHOLD` for a few pointermoves, so the floating `.zoom` overlay (the
+ * `--card-read: 0` shape at the 1024x700 floor, `Table.tsx`) was visible for
+ * those samples even though a drag was plainly under way - caught by
+ * `verify:drag`'s "hover zoom stays out of the way" check. Moving the class
+ * to `start()` closes that gap; `onUp`'s click-path early return removes it
+ * again so a plain click is never left with the class stuck on.
+ */
 const DRAGGING_CLASS = 'is-dragging';
 
 export interface Drag {
@@ -128,7 +143,6 @@ export function useDrag(play?: Play | undefined): Drag {
           p.hold(s.card);
           s.tookHold = true;
         }
-        document.body.classList.add(DRAGGING_CLASS);
         setCard(s.card);
       }
       place(e);
@@ -141,6 +155,7 @@ export function useDrag(play?: Play | undefined): Drag {
       const s = session.current;
       if (!s) return;
       if (!s.armed) {
+        document.body.classList.remove(DRAGGING_CLASS);
         session.current = null;
         return; // never travelled: it was a click, and the click handler owns it
       }
@@ -168,18 +183,28 @@ export function useDrag(play?: Play | undefined): Drag {
     const onKey = (e: KeyboardEvent) => {
       // `usePlay` already clears the intent on Escape; this only takes the card
       // out of the air so the two cannot disagree about what is in flight.
+      // `onCancel` itself checks `session.current`, so this is a no-op on every
+      // Escape that is not mid-drag - no stack bookkeeping needed the way
+      // `session/escape.ts` needs it for a dialog.
       if (e.key === 'Escape') onCancel();
     };
 
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onCancel);
-    window.addEventListener('keydown', onKey);
+    // 25/09/2026 (WP5 item 3): capture phase, not bubble. See
+    // `session/escape.ts`'s header for why a real Escape can be swallowed
+    // before it ever reaches a `window` BUBBLE listener once CookieYes's own
+    // capture-phase `document` listener is loaded - `window`'s capture phase
+    // always runs before `document`'s, whatever order either attached in, so
+    // this one line is enough to win that race without the full escape stack
+    // (this handler already gates itself on an active drag existing).
+    window.addEventListener('keydown', onKey, true);
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
-      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keydown', onKey, true);
       document.body.classList.remove(DRAGGING_CLASS);
     };
   }, []);
@@ -205,6 +230,10 @@ export function useDrag(play?: Play | undefined): Drag {
       over: null,
       hot: null,
     };
+    // See `DRAGGING_CLASS`'s comment: hover suppression starts at the press,
+    // not at `armed`, because the hover that led to this press can already
+    // have shown the zoom panel.
+    document.body.classList.add(DRAGGING_CLASS);
   }, []);
 
   const consumeClick = useCallback(() => {

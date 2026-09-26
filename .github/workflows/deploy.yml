@@ -35,6 +35,20 @@ jobs:
       - name: Build
         run: npm run build
 
+      # B2, 25/09/2026: the regression this pass fixed (B1, the 1024x700
+      # floor) shipped because nothing in CI ever rendered the built app - the
+      # step below is what makes that impossible again. Reuses
+      # `card-sheets.yml`'s own Chromium install so the two workflows do not
+      # carry two different pins of the same browser.
+      - name: Install Chromium (for verify:layout)
+        run: npx playwright-core install --with-deps chromium
+
+      - name: Verify layout (table)
+        run: npm run verify:layout
+
+      - name: Verify layout (result screen)
+        run: npm run verify:layout -- --result
+
       - uses: actions/configure-pages@v6
 
       # v4 stopped bundling dotfiles into the artifact. `packages/ui/dist` has

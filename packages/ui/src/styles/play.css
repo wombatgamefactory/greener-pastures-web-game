@@ -21,6 +21,45 @@
   outline-offset: 1px;
 }
 
+/*
+ * ⭐ ONE FOCUS RING FOR THE WHOLE LAYER (25/09/2026, WP2).
+ *
+ * Every interactive thing this file styles shows the same 2px ring in
+ * `--focus` when the KEYBOARD reaches it (`:focus-visible`, so a mouse click
+ * never draws it). The deep green rather than the seat colour, because a Wheat
+ * or Dairy seat colour is nearly the paper and a focus ring must not depend on
+ * which crop you picked; 6.9:1 on the paper against the 3:1 WCAG 2.4.13 asks
+ * for. Outline rather than box-shadow so it survives `overflow: hidden`
+ * parents and never shifts layout; the offset keeps it off the control's own
+ * edge so the two read as two lines.
+ */
+.is-live:focus-visible,
+.is-target:focus-visible,
+.action:focus-visible,
+.exit:focus-visible,
+.primary:focus-visible,
+.ghost:focus-visible,
+.answer:focus-visible,
+.chip:focus-visible,
+.choice:focus-visible,
+.revealed-card:focus-visible,
+.rival-board-live:focus-visible,
+.start-card input:focus-visible,
+.start-card select:focus-visible,
+.capture-note:focus-visible,
+.uiscale input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* A focused live CARD rings the card itself, which is the thing being chosen;
+   the wrapper round it has no visible box of its own. */
+.is-live:focus-visible > .card,
+.is-target:focus-visible > .card {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .is-target {
   cursor: pointer;
   position: relative;
@@ -30,7 +69,7 @@
 .is-target > .card,
 .is-target.card,
 .is-target .island-art {
-  outline: 3px solid #3f7a3a;
+  outline: 3px solid var(--go);
   outline-offset: 2px;
 }
 
@@ -38,8 +77,8 @@
 .is-target.supply-meeple,
 .is-target.rival,
 .is-target.deck {
-  box-shadow: 0 0 0 3px #3f7a3a;
-  border-radius: 6px;
+  box-shadow: 0 0 0 3px var(--go);
+  border-radius: var(--radius-md);
 }
 
 .is-live.deck {
@@ -54,8 +93,8 @@
  * other targets are still there next turn.
  */
 .is-live.supply-meeple {
-  box-shadow: 0 0 0 2px #3f7a3a;
-  background: #eef4e6;
+  box-shadow: 0 0 0 2px var(--go);
+  background: var(--go-wash);
 }
 
 /*
@@ -79,8 +118,11 @@
  * should: that is a question with one answer, asked for a moment, and the
  * loudest thing on screen is the right size for it.
  */
+/* `--seat-ink`, not `--seat-pip` (25/09/2026): with the ruled swatches a Dairy
+   pip is #efedee and a Wheat pip #fceb3d, and a 3px bar in either on the paper
+   was not a cue at all. The ink is the same hue at 4.5:1. */
 .is-live.rival {
-  box-shadow: -3px 0 0 0 var(--seat-pip);
+  box-shadow: -3px 0 0 0 var(--seat-ink, var(--go));
 }
 
 @keyframes target-pulse {
@@ -116,14 +158,16 @@
   z-index: 60 !important;
 }
 
+/* `--seat-ink` since 25/09/2026, for the reason on `.is-live.rival` above: a
+   held Wheat or Dairy card was outlined in a colour the paper swallowed. */
 .hand-card.is-held .card,
 .revealed-card.is-picked .card {
-  outline: 3px solid var(--seat-pip, #3f7a3a);
+  outline: 3px solid var(--seat-ink, var(--go));
   outline-offset: 2px;
 }
 
 .hand-card.is-picked .card {
-  outline: 3px solid #a2493a;
+  outline: 3px solid var(--stop);
   outline-offset: 2px;
 }
 
@@ -164,7 +208,13 @@ body.is-dragging .hand-card.is-held {
    on top of the tableau you are dragging TO. Found in the browser: dragging
    across your own buildings opened the zoom on each one in turn and hid the
    targets behind it. It is hit-test-invisible (`pointer-events: none`) so the
-   drag still worked perfectly and looked broken. */
+   drag still worked perfectly and looked broken.
+   ⭐ 25/09/2026: `session/drag.ts` now adds `is-dragging` from the pointer
+   PRESS rather than from the moment the drag is confirmed (`armed`) - the
+   hover that leads into a press can already have opened this panel, and the
+   few pointermoves inside the click/drag threshold used to sit outside this
+   rule's window, so `verify:drag`'s "hover zoom stays out of the way" caught
+   the panel still up for those samples. See `DRAGGING_CLASS`'s comment. */
 body.is-dragging .zoom {
   display: none;
 }
@@ -192,9 +242,9 @@ body.is-dragging .zoom {
 /* The zone under the pointer, marked by the drag layer rather than by React:
    a pointermove costs a hit-test and an attribute, not a pass over the table. */
 [data-drop-hot] {
-  outline: 3px solid #3f7a3a !important;
+  outline: 3px solid var(--go) !important;
   outline-offset: 2px;
-  background: #eef4e6;
+  background: var(--go-wash);
 }
 
 /* ---- the prompt strip ---------------------------------------------------- */
@@ -218,7 +268,7 @@ body.is-dragging .zoom {
  * plain ink - is the whole reason it was ever coloured.
  */
 .prompt {
-  border-left: 4px solid var(--seat-ink, #3f7a3a);
+  border-left: 4px solid var(--seat-ink, var(--go));
   padding: 4px 10px;
   display: grid;
   gap: 6px;
@@ -231,7 +281,7 @@ body.is-dragging .zoom {
 
 .prompt-line {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-md);
   line-height: 1.3;
 }
 
@@ -242,16 +292,30 @@ body.is-dragging .zoom {
   align-items: center;
 }
 
+/* An answer is a button, so its edge is `--edge` (3:1) rather than the 1.4:1
+   `--rule` hairline it used to wear: a control a player has to find is a
+   boundary, not a rule (25/09/2026). Hover lifts, press pushes into the felt. */
 .answer {
   background: var(--paper);
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  padding: 3px 9px;
-  font-size: 12px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-md);
+  padding: 4px 10px;
+  min-height: 32px;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  box-shadow: var(--elev-1);
+  transition:
+    background-color var(--motion-ui) ease,
+    box-shadow var(--motion-ui) ease;
 }
 
 .answer:hover {
   background: var(--paper-deep);
+  box-shadow: var(--elev-2);
+}
+
+.answer:active {
+  box-shadow: var(--elev-pressed);
 }
 
 .revealed {
@@ -289,13 +353,13 @@ body.is-dragging .zoom {
  * classes any more.
  */
 .assembly-hook {
-  border-left: 4px solid #3f7a3a;
-  padding-left: 8px;
+  border-left: 4px solid var(--go);
+  padding-left: var(--space-4);
 }
 
 .assembly-hook .chip:hover {
-  background: #eef4e6;
-  border-color: #3f7a3a;
+  background: var(--go-wash);
+  border-color: var(--go);
 }
 
 .assembly-body {
@@ -305,7 +369,7 @@ body.is-dragging .zoom {
 }
 
 .assembly-body h3 {
-  font-size: 14px;
+  font-size: var(--fs-md);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -317,7 +381,7 @@ body.is-dragging .zoom {
 
 .assembly-hint {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--ink-soft);
 }
 
@@ -328,7 +392,7 @@ body.is-dragging .zoom {
 }
 
 .assembly-note {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--ink-soft);
 }
 
@@ -340,7 +404,7 @@ body.is-dragging .zoom {
 }
 
 .chips-label {
-  font-size: 10px;
+  font-size: var(--fs-xs);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--ink-soft);
@@ -348,15 +412,18 @@ body.is-dragging .zoom {
 
 .chip {
   background: var(--paper);
-  border: 1px solid var(--rule);
-  border-radius: 999px;
-  padding: 2px 9px;
-  font-size: 11px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-pill);
+  padding: 2px 10px;
+  font-size: var(--fs-sm);
+  color: var(--ink);
 }
 
+/* A paid chip is DONE, so it sits back on the deeper paper; never a
+   strike-through (25/09/2026 - a line through a word reads as an error). */
 .chip-paid {
   background: var(--paper-deep);
-  border-color: var(--ink-line);
+  border-color: var(--edge);
 }
 
 /* ⛔ `.payoff` AND `.payoffs` ARE GONE (v31). They laid out the three prizes a
@@ -372,7 +439,7 @@ body.is-dragging .zoom {
  * `visit` painting and the seat's green.
  */
 .action-hook:not(:disabled) {
-  border-color: #3f7a3a;
+  border-color: var(--go);
 }
 
 /* ---- the turn bar -------------------------------------------------------- */
@@ -470,6 +537,58 @@ body.is-dragging .zoom {
 }
 
 /*
+ * THE "?" HELP BUTTON (WP5 item 2, 25/09/2026). A small round chip beside
+ * Undo and Cancel rather than a fourth zone - it spends none of the turn's
+ * three resources, so it belongs with the other two controls that do not
+ * either. `position: relative` on the wrapper is what lets the menu below
+ * anchor to the button rather than to the whole bar.
+ */
+.turn-help {
+  position: relative;
+}
+
+.turn-help-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.turn-help-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  display: grid;
+  gap: 2px;
+  background: var(--paper-panel);
+  border: 1px solid var(--ink-line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lift);
+  padding: 4px;
+  min-width: 168px;
+}
+
+.turn-help-menu button {
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.turn-help-menu button:hover,
+.turn-help-menu button:focus-visible {
+  background: var(--paper-deep);
+  outline: none;
+}
+
+/*
  * The zone's caption, which is also the turn state - see `ZoneHead` in
  * ActionBar.tsx for why the two are one thing now.
  */
@@ -477,7 +596,7 @@ body.is-dragging .zoom {
   margin: 0;
   flex: none;
   font-family: var(--font-ui);
-  font-size: 9px;
+  font-size: var(--fs-xs);
   font-weight: 600;
   line-height: 1.2;
   text-transform: uppercase;
@@ -501,23 +620,43 @@ body.is-dragging .zoom {
  * already uses. No blue was needed and none was added.
  */
 .zone-go {
-  color: var(--seat-ink, #3f7a3a);
+  color: var(--seat-ink, var(--go));
 }
 
+/*
+ * DONE, NOT WRONG (25/09/2026). This was `text-decoration: line-through`, and
+ * "~~BONUS TAKEN~~" / "~~ACTION SPENT~~" read as an error or a retraction - a
+ * struck word is how a form says "no". The state is the calmest one on the bar:
+ * the thing happened and there is nothing left to do about it. So it is a tick
+ * and muted ink, which is how every checklist a player has ever used says
+ * "done". The tick is drawn here so the label text in `ActionBar.tsx` stays
+ * plain words for a screen reader.
+ */
 .zone-spent {
-  text-decoration: line-through;
+  /* --ink-soft, not the disabled ink: this is a state a player reads, and it
+     has to clear 4.5:1 (4.69 on the gradient's darkest stop). */
+  color: var(--ink-soft);
+}
+
+.zone-spent::before {
+  content: '\2713';
+  display: inline-block;
+  margin-right: 0.35em;
+  color: var(--go);
+  font-weight: 700;
 }
 
 .zone-note,
 .turn-note,
 .waiting-on {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--ink-soft);
 }
 
 .turn-note {
   grid-column: 1 / -1;
+  /* The Wheat ink, 4.69:1 on the gradient: an amber "note this". */
   color: #855e0e;
 }
 
@@ -541,9 +680,29 @@ body.is-dragging .zoom {
   padding: 3px 12px;
   background: var(--paper);
   border: 1px solid var(--rule);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-family: var(--font-display);
-  font-size: 12px;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  transition:
+    background-color var(--motion-ui) ease,
+    box-shadow var(--motion-ui) ease,
+    transform var(--motion-ui) ease;
+}
+
+/*
+ * T10b (26/09/2026): A LITTLE LESS SIDE PADDING BELOW 1800px WIDE. At 1600x900
+ * the main-phase bar (five actions, the bonus reminder, the Worker head) plus
+ * the exits with "cancel" showing was about 15px wider than the bar, so arming
+ * any action wrapped the bar to a second row and moved the farm 18px mid-turn
+ * (`verify:layout`'s build-assembly check). 9px a side buys back about 40px;
+ * the 40px hit height, which is the number that matters, is untouched.
+ */
+@media (max-width: 1799px) {
+  .action,
+  .exit {
+    padding-inline: 9px;
+  }
 }
 
 /*
@@ -583,14 +742,18 @@ body.is-dragging .zoom {
  * one crop that is not on a cream ground - Visit is cut from the aid's dark ALSO
  * strip and carries a sliver of that strip's edge.
  *
- * A disabled button dims through `opacity` on the button itself, so the icon
- * fades with its label and needs no rule of its own.
+ * A disabled button used to dim through `opacity` on the button itself, so the
+ * icon faded with its label. Since 25/09/2026 the button has an explicit
+ * disabled palette instead (see the traffic light below), which leaves the
+ * picture at full strength, so the icon now takes its own rule there: grey and
+ * faded. That is allowed to be faint in a way the button's EDGE is not - the
+ * icon is decoration and the word beside it carries the meaning.
  */
 .action-icon {
   flex: none;
   width: var(--action-icon);
   height: var(--action-icon);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   /* The crops are square; this is insurance against a re-cut that is not. */
   object-fit: cover;
 }
@@ -610,9 +773,19 @@ body.is-dragging .zoom {
  *          "these two are shut", which is what an opacity-only treatment says.
  *   armed  the one you have picked, filled solid. The loudest thing in the bar,
  *          and it should be: it is a question with one answer, asked once.
- *   stop   undo and cancel, in the #a2493a the clog flag and the over-limit hand
- *          already wear. They are the only two controls here that take something
- *          away, and they are the two a player reaches for in a hurry.
+ *   stop   RETIRED 25/09/2026. Undo and cancel wore the #a2493a the clog flag
+ *          and the over-limit hand wear, as the two controls that "take something
+ *          away". In play it read the other way: a red button is a warning, and
+ *          undo is the SAFE control - the one that gives a misclick back. So both
+ *          are now neutral ghost buttons (below), and rust is kept for the things
+ *          that really are a problem: a clogged building, an over-full hand.
+ *
+ * And a fourth thing that is not a colour: SHUT. It was `opacity: 0.36`, which
+ * fades the button's edge along with its label until the control is simply not
+ * there (about 1.3:1). Now it is the explicit disabled palette in tokens.css -
+ * a flat fill, a DASHED edge at 3:1 so the control can still be found, and a
+ * muted label that can still be read. Dashed is the "not available" signal; it
+ * does not rely on colour, which this palette is short of.
  *
  * ⚠️ NO BLUE. The palette is printed cream and sepia; a blue "primary" button is
  * the fastest way to make a board game look like a web form. `--seat-pip` and
@@ -620,36 +793,92 @@ body.is-dragging .zoom {
  * everywhere else on it.
  */
 .action:not(:disabled) {
-  box-shadow: inset 0 -3px 0 var(--seat-ink, #3f7a3a);
-  border-color: var(--ink-line);
+  box-shadow:
+    inset 0 -3px 0 var(--seat-ink, var(--go)),
+    var(--elev-1);
+  border-color: var(--edge);
 }
 
 .action:disabled,
-.exit:disabled {
-  opacity: 0.36;
-  cursor: default;
+.exit:disabled,
+.primary:disabled,
+.ghost:disabled {
+  background: var(--disabled-fill);
+  border: 1px dashed var(--disabled-edge);
+  color: var(--disabled-ink);
+  box-shadow: none;
+  cursor: not-allowed;
 }
 
-.action:not(:disabled):hover,
+.action:disabled .action-icon {
+  filter: grayscale(1);
+  opacity: 0.45;
+}
+
+/*
+ * ⚠️ FIXED 25/09/2026 (WP5 item 1, axe `color-contrast`): `.action-armed` is
+ * EXCLUDED from this hover fill. It used to be `.action:not(:disabled):hover`
+ * with no exclusion, which a real mouse hits every time - a player's cursor
+ * sits right on the button they just clicked - and the armed background is
+ * `--seat-ink` (dark) with white text on top; the hover rule below it in
+ * source order overwrote that to `--paper-deep` (cream) while the white text
+ * stayed, at 1.28:1 against a 4.5:1 floor. `.action-armed` gets its own hover
+ * rule instead, immediately below, that darkens its OWN fill rather than
+ * replacing it with the unfilled button's.
+ */
+.action:not(:disabled):not(.action-armed):hover,
 .exit:not(:disabled):hover {
   background: var(--paper-deep);
 }
 
+.action:not(:disabled):hover {
+  box-shadow:
+    inset 0 -3px 0 var(--seat-ink, var(--go)),
+    var(--elev-2);
+}
+
+/* Pressed: into the felt, one pixel down. */
+.action:not(:disabled):active,
+.exit:not(:disabled):active {
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 -3px 0 var(--seat-ink, var(--go)),
+    var(--elev-pressed);
+}
+
+.exit:not(:disabled):active {
+  box-shadow: var(--elev-pressed);
+}
+
 /* Filled, so it takes `--seat-ink` for the same reason the caption does: white
-   on Dairy's #f6e6b4 is not a label, it is a blank button. */
+   on a Dairy pip (#efedee since 25/09/2026, 1.17:1) is not a label, it is a
+   blank button. White on every seat ink is 5.8:1 or better. */
 .action-armed,
 .action-armed:not(:disabled) {
-  background: var(--seat-ink, #3f7a3a);
+  background: var(--seat-ink, var(--go));
   border-color: rgb(0 0 0 / 22%);
-  box-shadow: none;
+  box-shadow: var(--elev-2);
   color: #fff;
+}
+
+/* Darkens its OWN fill on hover, the same idea as `.primary:hover` going from
+   `--go` to `--go-deep` - never the unfilled button's `--paper-deep`, which is
+   what the fix above stops it inheriting. White text over a DARKER seat ink is
+   never the contrast risk; only a LIGHTER one could be, and this never lightens. */
+.action-armed:not(:disabled):hover {
+  background: color-mix(in srgb, var(--seat-ink, var(--go)) 82%, black);
+  box-shadow: var(--elev-3);
 }
 
 .exit {
   font-family: var(--font-ui);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   color: var(--ink-soft);
   background: none;
+}
+
+.exit:not(:disabled) {
+  border-color: var(--edge);
 }
 
 /* The skip is a control in the turn bar like any other, so it takes the bar's
@@ -665,43 +894,74 @@ body.is-dragging .zoom {
   padding: 3px 12px;
 }
 
-.exit-stop:not(:disabled) {
-  color: #a2493a;
-  border-color: #a2493a;
+/*
+ * UNDO AND CANCEL: A NEUTRAL GHOST (25/09/2026). They were rust, the "stop"
+ * colour, and the traffic-light note above says why that is gone. They keep
+ * the `.exit-stop` class name because `ActionBar.tsx` puts it on both; the
+ * look is the plain ghost the rest of the exits wear, with the ink a step
+ * darker than a quiet exit so undo is findable in a hurry. `.exit-undo` is
+ * styled the same, for when the markup gives undo a name of its own.
+ */
+.exit-stop:not(:disabled),
+.exit-undo:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--edge);
+  background: transparent;
+}
+
+.exit-stop:not(:disabled):hover,
+.exit-undo:not(:disabled):hover {
+  background: var(--paper-deep);
 }
 
 .primary {
-  background: #3f7a3a;
-  border: 1px solid #2f5c2b;
+  background: var(--go);
+  border: 1px solid var(--go-deep);
   color: #fff;
-  border-radius: 6px;
-  padding: 4px 14px;
+  border-radius: var(--radius-md);
+  padding: 5px 16px;
   font-family: var(--font-display);
-  font-size: 13px;
+  font-size: var(--fs-md);
+  box-shadow: var(--elev-2);
+  transition:
+    background-color var(--motion-ui) ease,
+    box-shadow var(--motion-ui) ease,
+    transform var(--motion-ui) ease;
 }
 
-.primary:disabled {
-  opacity: 0.4;
-  cursor: default;
+.primary:not(:disabled):hover {
+  background: var(--go-deep);
+  box-shadow: var(--elev-3);
+}
+
+.primary:not(:disabled):active {
+  transform: translateY(1px);
+  box-shadow: var(--elev-pressed);
 }
 
 .ghost {
   background: none;
-  border: 1px solid var(--rule);
-  border-radius: 6px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-md);
   padding: 3px 10px;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--ink-soft);
+  transition: background-color var(--motion-ui) ease;
 }
 
-.ghost:disabled {
-  opacity: 0.4;
-  cursor: default;
+.ghost:not(:disabled):hover {
+  background: var(--paper-deep);
+  color: var(--ink);
+}
+
+.ghost:not(:disabled):active {
+  box-shadow: var(--elev-pressed);
 }
 
 .ghost-on {
   background: var(--paper-deep);
   color: var(--ink);
+  box-shadow: var(--elev-pressed);
 }
 
 /* In the flow, in `.rail-foot` at the bottom of the rail column (phase 4). It
@@ -729,7 +989,7 @@ body.is-dragging .zoom {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 9px;
+  font-size: var(--fs-xs);
   color: var(--ink-soft);
 }
 
@@ -748,7 +1008,8 @@ body.is-dragging .zoom {
 .uiscale b {
   font-weight: 500;
   font-variant-numeric: tabular-nums;
-  min-width: 26px;
+  /* 32px: "120%" at the 12px floor (25/09/2026), up from 26px at 9px. */
+  min-width: 32px;
 }
 
 /* ---- the rail's board button -------------------------------------------- */
@@ -768,7 +1029,7 @@ body.is-dragging .zoom {
 }
 
 .rival-visiting {
-  outline: 3px solid #3f7a3a;
+  outline: 3px solid var(--go);
   outline-offset: 1px;
 }
 
@@ -802,8 +1063,8 @@ body.is-dragging .zoom {
 .start-card {
   background: rgb(253 250 241 / 92%);
   border: 1px solid var(--rule);
-  border-radius: 16px;
-  box-shadow: var(--shadow-lift);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--elev-4);
   padding: 20px;
   max-width: 860px;
   display: grid;
@@ -822,7 +1083,7 @@ body.is-dragging .zoom {
   aspect-ratio: 1;
   object-fit: cover;
   display: block;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--ink-line);
   box-shadow: var(--shadow);
 }
@@ -835,7 +1096,7 @@ body.is-dragging .zoom {
 
 .start-hook {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--fs-md);
   line-height: 1.45;
   text-align: center;
   text-wrap: balance;
@@ -867,7 +1128,7 @@ body.is-dragging .zoom {
 }
 
 .start-card legend {
-  font-size: 10px;
+  font-size: var(--fs-xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--ink-soft);
@@ -880,23 +1141,74 @@ body.is-dragging .zoom {
 }
 
 .choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
   background: var(--paper);
-  border: 1px solid var(--rule);
-  border-radius: 999px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-pill);
   padding: 4px 14px;
   font-family: var(--font-display);
-  font-size: 13px;
+  font-size: var(--fs-md);
+  color: var(--ink);
+  box-shadow: var(--elev-1);
+  transition:
+    background-color var(--motion-ui) ease,
+    box-shadow var(--motion-ui) ease;
 }
 
-.choice-on {
-  background: var(--seat-pip, #3f7a3a);
-  border-color: rgb(0 0 0 / 18%);
+.choice:hover {
+  background: var(--paper-deep);
+}
+
+.choice:active {
+  box-shadow: var(--elev-pressed);
+}
+
+/*
+ * ⭐ THE SELECTED CHOICE IS INK, AND THE CROP IS A SWATCH (25/09/2026, B16).
+ *
+ * It used to fill the chip with the crop's pip and set the word in white. With
+ * the ruled swatches that is 1.23:1 on Wheat, 1.17:1 on Dairy and 2.38:1 on
+ * Apiary - a blank chip - and no single text colour clears 4.5:1 on all five
+ * pips (dark ink fails on Orchard red at 13-15px, white fails on the other
+ * four). So the two jobs are split: the selected state is the dark ink fill
+ * with white text (8.9:1) whatever the crop, and the crop's colour moves into a
+ * swatch dot in front of the word, on every crop chip, selected or not. The dot
+ * has a dark rim, so Dairy's near-white still has a visible edge on paper.
+ *
+ * The dot is keyed on the inline `--seat-pip` that `Start.tsx` writes on crop
+ * chips only, so the seat-count and neighbour chips (which carry no colour)
+ * draw no dot.
+ */
+.choice[style*='--seat-pip']::before {
+  content: '';
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--seat-pip);
+  box-shadow: inset 0 0 0 1px rgb(47 35 24 / 55%);
+}
+
+.choice-on,
+.choice-on:hover {
+  background: var(--ink);
+  border-color: var(--ink-strong);
   color: #fff;
+  box-shadow: var(--elev-pressed);
+}
+
+.choice-on[style*='--seat-pip']::before {
+  box-shadow:
+    inset 0 0 0 1px rgb(47 35 24 / 55%),
+    0 0 0 1.5px rgb(255 255 255 / 85%);
 }
 
 .start-note {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--fs-sm);
   color: var(--ink-soft);
 }
 
@@ -910,26 +1222,27 @@ body.is-dragging .zoom {
   grid-template-columns: 120px minmax(0, 1fr);
   gap: 8px;
   align-items: center;
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .start-card input,
 .start-card select {
   font: inherit;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   padding: 3px 7px;
-  border: 1px solid var(--rule);
-  border-radius: 6px;
+  /* A field's edge is a boundary (3:1), not a rule. */
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-md);
   background: var(--paper);
   color: inherit;
 }
 
 .start-go {
   margin-top: 2px;
-  font-size: 17px;
+  font-size: var(--fs-lg);
   padding: 9px 22px;
-  border-radius: 8px;
-  box-shadow: var(--shadow);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-2);
 }
 
 /* ---- the result overlay -------------------------------------------------- */
@@ -943,23 +1256,23 @@ body.is-dragging .zoom {
 }
 
 .result-head h2 {
-  font-size: 19px;
+  font-size: var(--fs-xl);
 }
 
 .result-trigger {
   margin: 3px 0 0;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--ink-soft);
 }
 
 .result-table {
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: var(--fs-sm);
   width: 100%;
 }
 
 .result-table thead th {
-  font-size: 10px;
+  font-size: var(--fs-xs);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--ink-soft);
@@ -971,7 +1284,7 @@ body.is-dragging .zoom {
 .result-table caption {
   caption-side: top;
   text-align: left;
-  font-size: 10px;
+  font-size: var(--fs-xs);
   color: var(--ink-soft);
   padding-bottom: 2px;
 }
@@ -983,7 +1296,10 @@ body.is-dragging .zoom {
 .result-table tbody tr:hover,
 .result-table tbody tr:focus-visible {
   background: var(--paper-deep);
-  outline: none;
+  /* A ring, not only the fill (25/09/2026): the deeper paper is 1.1:1 against
+     the row beside it, which a keyboard user cannot follow. */
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
 }
 
 .result-table td,
@@ -1020,7 +1336,7 @@ body.is-dragging .zoom {
    without arithmetic. */
 .result-table td small {
   display: block;
-  font-size: 9px;
+  font-size: var(--fs-xs);
   color: var(--ink-soft);
 }
 
@@ -1035,21 +1351,21 @@ body.is-dragging .zoom {
 .result-share,
 .result-note {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--fs-sm);
   color: var(--ink-soft);
   line-height: 1.4;
 }
 
 .result-warn {
   margin: 0;
-  font-size: 11px;
-  color: #a2493a;
+  font-size: var(--fs-sm);
+  color: var(--stop);
 }
 
 .result-detail {
   background: var(--paper);
   border: 1px solid var(--rule);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 8px 10px;
   display: grid;
   gap: 7px;
@@ -1059,7 +1375,7 @@ body.is-dragging .zoom {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 14px;
+  font-size: var(--fs-md);
   color: var(--seat-ink);
 }
 
@@ -1074,7 +1390,7 @@ body.is-dragging .zoom {
   gap: 8px;
   margin: 0 0 3px;
   font-family: var(--font-display);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 500;
 }
 
@@ -1083,7 +1399,7 @@ body.is-dragging .zoom {
   align-items: center;
   gap: 3px;
   margin-left: auto;
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 
 .result-source-vp img {
@@ -1096,7 +1412,7 @@ body.is-dragging .zoom {
   flex-wrap: wrap;
   gap: 5px 6px;
   align-items: flex-start;
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 
 .result-source-body .chip b {
@@ -1163,7 +1479,7 @@ body.is-dragging .zoom {
    name truncates rather than shouldering the pace buttons off the row. The full
    string is in the browser's own downloads list either way. */
 .capture-saved {
-  font-size: 10px;
+  font-size: var(--fs-xs);
   color: var(--ink-soft);
   white-space: nowrap;
   overflow: hidden;
@@ -1181,7 +1497,7 @@ body.is-dragging .zoom {
   padding: 10px;
   background: var(--paper-panel);
   border: 1px solid var(--rule);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lift);
 }
 
@@ -1197,18 +1513,18 @@ body.is-dragging .zoom {
 
 .capture-note {
   font-family: var(--font-ui);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--ink);
   background: var(--paper);
   border: 1px solid var(--rule);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 6px;
   resize: vertical;
 }
 
 .capture-hint {
   margin: 0;
-  font-size: 10px;
+  font-size: var(--fs-xs);
   line-height: 1.35;
   color: var(--ink-soft);
 }

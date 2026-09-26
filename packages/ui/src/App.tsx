@@ -22,15 +22,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Suit } from '@gp/data';
 import { isPolicyId } from '@gp/bots';
 import type { PolicyId } from '@gp/bots';
-import type { Move } from '@gp/engine';
+import type { GameEvent, Move } from '@gp/engine';
 
 import { gameFinished, gameStarted } from './session/analytics';
 import { CapturePanel } from './components/CapturePanel';
+import { HowToPlay } from './components/HowToPlay';
+import { KeyHelp } from './components/KeyHelp';
+import { Motion } from './components/Motion';
 import { Result } from './components/Result';
 import { Start } from './components/Start';
 import { Table } from './components/Table';
+import { TurnSummary } from './components/TurnSummary';
 import { UiScaleControl, useUiScale } from './components/UiScale';
 import { takeCapture } from './session/capture';
+import { useKeyboardShortcuts } from './session/keys';
+import { CardMotion } from './session/motion';
+import { eventsSinceBaseline, summariseTurns } from './session/narrate';
+import type { TurnSummaryLine } from './session/narrate';
 import { usePlay } from './session/play';
 import { Session, YOU, data } from './session/table';
 import type { SessionOptions } from './session/table';
@@ -106,6 +114,30 @@ export function App() {
   const [stalled, setStalled] = useState(false);
   const bump = useCallback(() => setRevision((r) => r + 1), []);
 
+  /*
+   * B8 (25/09/2026): one `CardMotion` for the whole app's life, not one per
+   * game. `useState`'s lazy initialiser runs exactly once, so this is the
+   * same object across every re-render and every "Play again" - which is
+   * exactly why every place below that hands the table a BRAND NEW `Session`
+   * also calls `motion.notifySnapNext()` first: without it, `CardMotion`
+   * would diff a fresh deal's positions against the previous game's final
+   * ones and animate a meaningless flood of "moves" across two unrelated
+   * boards.
+   */
+  const [motion] = useState(() => new CardMotion());
+
+  /*
+   * B9 (25/09/2026): "while you were away". `awayBaseline` holds the events
+   * as they stood the LAST time the decision was yours - captured the instant
+   * it stops being yours - so that the instant it becomes yours again,
+   * `eventsSinceBaseline` names exactly the events the bots produced in
+   * between. See `session/narrate.ts`'s `summariseTurns` for why this is not
+   * simply "the last N events": a bot round can be any number of moves.
+   */
+  const [awayLines, setAwayLines] = useState<TurnSummaryLine[] | null>(null);
+  const awayBaseline = useRef<readonly GameEvent[] | null>(null);
+  const wasYours = useRef<boolean | null>(null);
+
   // The session is mutable by design - it is the one thing holding the truth -
   // so `revision` is what tells React the snapshot is stale. It is a dependency
   // that is deliberately not read inside the callback.
@@ -116,7 +148,7 @@ export function App() {
 
   const send = useCallback(
     (move: Move) => {
-      session?.send(move);
+      session?.play(move);
       bump();
     },
     [session, bump],
@@ -128,6 +160,47 @@ export function App() {
     active: snapshot?.yours === true && snapshot.over === false,
     revision,
     send,
+  });
+
+  // Lifted out of the `<Table onUndo={...}>` prop below (WP5 item 2, 25/09/2026)
+  // so the keyboard layer's Z shortcut can send exactly the same thing a click
+  // on "Undo last step" does, rather than a second copy of what undoing costs.
+  //
+  // B8: `session.undo()` replays a whole prefix of the move log from the deal
+  // in one synchronous call (`session/table.ts`), so the commit that follows
+  // can move dozens of `[data-card]` elements at once. Telling `CardMotion` to
+  // skip the next one is what keeps that a silent snap rather than the bots'
+  // whole game replaying at speed - see `session/motion.ts`'s own header.
+  const handleUndo = useCallback(() => {
+    if (!session) return;
+    motion.notifySnapNext();
+    session.undo();
+    setStalled(false);
+    setAwayLines(null);
+    bump();
+  }, [session, motion, bump]);
+
+  /*
+   * WP5 items 1 and 2 (25/09/2026): the "?" shortcut sheet and the How to
+   * play dialog, both reachable mid-game from the turn bar's own "?" menu
+   * (`ActionBar.tsx`) as well as by keyboard. Owned here, not by `Table` or
+   * `ActionBar`, because `HowToPlay` and `KeyHelp` are both top-level dialogs
+   * - the same reason `TurnSummary` and `Result` are siblings of `<Table>`
+   * rather than its children.
+   */
+  const [howToOpen, setHowToOpen] = useState(false);
+  const [keyHelpOpen, setKeyHelpOpen] = useState(false);
+
+  useKeyboardShortcuts({
+    data,
+    play,
+    onUndo: handleUndo,
+    canUndo: snapshot?.canUndo ?? false,
+    onOpenKeyHelp: () => setKeyHelpOpen(true),
+    // Neither dialog's own Tab-trap should also feed the game a shortcut -
+    // `?` opening on top of itself, or a letter typed while reading How to
+    // play landing on a building underneath it.
+    suspended: howToOpen || keyHelpOpen,
   });
 
   // One bot move per tick. The timer is torn down and rebuilt on every
@@ -146,6 +219,48 @@ export function App() {
     }, PACE[pace]);
     return () => clearTimeout(timer);
   }, [session, snapshot, pace, bump]);
+
+  /*
+   * B9: catch the two edges of a bot round. The moment it STOPS being yours,
+   * `snapshot.events` (already the redacted, up-to-160 window `Session`
+   * hands out) is the baseline everything after it will be measured against.
+   * The moment it BECOMES yours again, `eventsSinceBaseline` names the events
+   * in between and `summariseTurns` turns them into one line per rival turn.
+   *
+   * Deliberately reads `snapshot` alone as its dependency (not `session`,
+   * `data` or `YOU`, none of which ever change mid-session) so this fires on
+   * every revision exactly once, in the order the transitions actually
+   * happened - a `useMemo`'d derivation would recompute on the same schedule
+   * but could not tell "just arrived" from "already true", which is the
+   * whole distinction this effect exists to catch.
+   */
+  useEffect(() => {
+    if (snapshot === null) return;
+    const was = wasYours.current;
+    if (was === true && !snapshot.yours) {
+      awayBaseline.current = snapshot.events;
+    } else if (was !== true && snapshot.yours && awayBaseline.current !== null) {
+      const fresh = eventsSinceBaseline(awayBaseline.current, snapshot.events);
+      awayBaseline.current = null;
+      const lines = summariseTurns(data, fresh, seatSuits(snapshot.view), YOU);
+      if (lines.length > 0) {
+        setAwayLines(lines);
+        // The "outline changed objects for about 2s" half of B9: a board that
+        // was visited and an island tile that was delivered to, read straight
+        // off the same event window rather than re-derived from the prose
+        // above. A rival's VP already pulses live as the bots play, through
+        // `CardMotion`'s own counter watch (`.rival-run span`), so it needs
+        // no separate treatment here.
+        const targets = new Set<string>();
+        for (const event of fresh) {
+          if (event.e === 'cardPlaced') targets.add(event.onto.building);
+          if (event.e === 'delivered') targets.add(event.tile);
+        }
+        motion.outline([...targets]);
+      }
+    }
+    wasYours.current = snapshot.yours;
+  }, [snapshot, motion]);
 
   // Report the finished table once. `over` stays true for every frame the
   // scoring screen is up, and `gameFinished` is paired with a `gameStarted`
@@ -169,9 +284,18 @@ export function App() {
     return (
       <Start
         onStart={(options) => {
+          // B8: a brand new deal has nothing in common with whatever was on
+          // screen a moment ago (the start screen itself, or a finished
+          // game's result), so the next commit must resync silently rather
+          // than animate every card into existence from wherever it used to
+          // be.
+          motion.notifySnapNext();
           setSession(new Session(data, options));
           setStalled(false);
           setRevision(0);
+          setAwayLines(null);
+          awayBaseline.current = null;
+          wasYours.current = null;
           reported.current = false;
           gameStarted({
             seats: options.seats,
@@ -198,17 +322,38 @@ export function App() {
 
   return (
     <>
+      {/*
+       * THE SKIP LINK (WP5 item 2, 25/09/2026): the first focusable element on
+       * the table screen, before the rail and the shared table a keyboard user
+       * would otherwise have to Tab through every turn just to reach the bar
+       * that plays it. `.turn-zone` carries `id="turn-zone"` and `tabIndex={-1}`
+       * for exactly this (`Table.tsx`) - focusing a non-interactive element by
+       * id is the standard skip-link shape, but the first real button inside it
+       * is a more useful landing spot than the wrapper itself, so this reaches
+       * for that first and only falls back to the zone when the turn bar has
+       * genuinely nothing enabled (a rival's turn: `.turn-zone` is not even
+       * rendered then, and the query returns nothing to focus at all).
+       */}
+      <button
+        type="button"
+        className="skip-link"
+        onClick={() => {
+          const zone = document.querySelector<HTMLElement>('.turn-zone');
+          const target = zone?.querySelector<HTMLElement>('button:not([disabled])') ?? zone;
+          target?.focus();
+        }}
+      >
+        Go to your turn
+      </button>
       <Table
         data={data}
         view={snapshot.view}
         events={snapshot.events}
         play={play}
         canUndo={snapshot.canUndo}
-        onUndo={() => {
-          session.undo();
-          setStalled(false);
-          bump();
-        }}
+        onUndo={handleUndo}
+        onShowHowToPlay={() => setHowToOpen(true)}
+        onShowKeyHelp={() => setKeyHelpOpen(true)}
         waitingOn={waitingOn}
         /* The supply lock is a table-wide notice like the end trigger, so it
            goes through the same strip rather than getting a floating banner of
@@ -268,14 +413,60 @@ export function App() {
         }
       />
 
+      {/* B8: reads exactly what `<Table>` above already has - no new prop
+          reaches into `session/table.ts` or `session/play.ts` for this. */}
+      <Motion data={data} events={snapshot.events} you={YOU} revision={revision} motion={motion} />
+
+      {/* B9: dismissible on Escape or its own close button; covers no live
+          click target (`tools/verify-motion.mjs` hit-tests this for real). */}
+      <TurnSummary lines={awayLines} onDismiss={() => setAwayLines(null)} />
+
+      {/* WP5 items 1 and 2 (25/09/2026): mid-game How to play and the
+          shortcut sheet, reachable from `ActionBar.tsx`'s "?" menu or by
+          pressing `?`. Both are real dialogs (`session/escape.ts` for the
+          Escape half); mounting them here rather than inside `Table` keeps
+          them siblings of it exactly as `Result` and `TurnSummary` already
+          are. */}
+      <HowToPlay data={data} open={howToOpen} onClose={() => setHowToOpen(false)} />
+      <KeyHelp open={keyHelpOpen} onClose={() => setKeyHelpOpen(false)} />
+
       {snapshot.over && snapshot.score && (
         <Result
           data={data}
           view={snapshot.view}
           score={snapshot.score}
           onAgain={() => {
+            motion.notifySnapNext();
             setSession(null);
             setRevision(0);
+            setAwayLines(null);
+            awayBaseline.current = null;
+            wasYours.current = null;
+          }}
+          /*
+           * "Play again (same seats)" (manager note, 25/09/2026, wiring
+           * `Result.tsx`'s `onReplay`, added by the onboarding pass). Same
+           * seats, same crops, same bot temperaments - `session.options`
+           * spread as-is - with a fresh deal: the seed is derived rather than
+           * reused outright, so clicking it twice in a row does not deal the
+           * identical game twice. Without this the component falls back to a
+           * page reload that reseats the crops but starts every bot's
+           * temperament over.
+           */
+          onReplay={() => {
+            motion.notifySnapNext();
+            setSession(
+              new Session(data, {
+                ...session.options,
+                seed: `${session.options.seed}-replay-${Date.now().toString(36)}`,
+              }),
+            );
+            setStalled(false);
+            setRevision(0);
+            setAwayLines(null);
+            awayBaseline.current = null;
+            wasYours.current = null;
+            reported.current = false;
           }}
         />
       )}

@@ -132,7 +132,16 @@
 
   /* Comfortable desktop. Overridden downward at the breakpoints below. */
   --rail-w: 244px;
-  --card-building: 100px;
+  /* 25/09/2026 (B-floor/laptop slicing, WP1b): was 100px. This is the value
+     the "laptop" ladder step (1366x768) reads, since it is too wide for the
+     floor media query and too short for the 1500x850 one - it lands here, on
+     the desktop default, unmodified until then. Most of the reported 36px
+     of slicing turned out to be `tools/measure-ui.mjs` reading a stale
+     fallback size before `Table.tsx`'s `useCssSize` effect had committed
+     (see `settle()` in that file) rather than a real layout shortfall; once
+     the tool waits for the real value the true shortfall at this step is a
+     few px, which this trim closes with margin. */
+  --card-building: 78px;
   --card-hand: 106px;
   --card-deck: 96px;
   --card-inspector: 158px;
@@ -160,6 +169,15 @@
    */
   --card-barn: 70px;
   /*
+   * THE FARMSTEAD RECEIPT ICON (B22, 25/09/2026). Used to be
+   * `Math.round(cardWidth * 0.18)` in `Farm.tsx`, tracking the HAND card width
+   * for no reason a receipt icon has anything to do with - so it read about
+   * 12px at 1600 (too small to read the crop) and about 55px at 2560 (bigger
+   * than the chip it sat in). A receipt is a token, not a card, so it gets a
+   * token-sized token: fixed here, scaled per step like everything else.
+   */
+  --token: 22px;
+  /*
    * How the fan sits when the row is not short of space, as a fraction of a
    * hand card: negative overlaps, positive separates. Dimensionless on purpose -
    * it multiplies `--card-hand`, which is already dialled per step and already
@@ -167,9 +185,14 @@
    *
    * -0.1 is the shipped fan and it is right for a card that is a picture. The
    * large steps flip it, and the reasoning is on `.hand-card + .hand-card` in
-   * `table.css`.
+   * `hand.css` (formerly `table.css`, split 25/09/2026).
+   *
+   * ⚠️ EASED TO -0.06, 25/09/2026 (WP2 coordination): at -0.1 the overlap ran
+   * over the legible-titles plate B7 draws under each card (`Card.tsx`), so
+   * the left card of every pair in the hand lost its own name to the one in
+   * front of it at 1600x900. -0.06 still reads as a held fan and clears it.
    */
-  --hand-fan: -0.1;
+  --hand-fan: -0.06;
   /*
    * ⭐ DOCK MAGNIFICATION: HOW BIG THE CARD UNDER THE POINTER GETS (27/08/2026).
    *
@@ -356,6 +379,7 @@
     --card-deck: 80px;
     --card-inspector: 136px;
     --card-barn: 61px;
+    --token: 20px;
     --island-tile-w: 58px;
     --action-icon: 22px;
     --gap: 10px;
@@ -377,6 +401,7 @@
     --card-deck: 116px;
     --card-inspector: 186px;
     --card-barn: 86px;
+    --token: 24px;
     --island-tile-w: 82px;
     --action-icon: 26px;
     --gap: 14px;
@@ -456,6 +481,7 @@
     /* Frozen at the desktop step's value from here up, and restated at each
        step so a reader of any one block can see what the barn is doing. */
     --card-barn: 86px;
+    --token: 26px;
     --island-tile-w: 96px;
     --action-icon: 28px;
     --gap: 16px;
@@ -492,6 +518,7 @@
     --card-deck: 160px;
     --card-inspector: 240px;
     --card-barn: 86px;
+    --token: 30px;
     --island-tile-w: 126px;
     /* The asset ceiling, not the layout's - see the note in `:root`. */
     --action-icon: 30px;
@@ -544,6 +571,7 @@
     --card-deck: 170px;
     --card-inspector: 260px;
     --card-barn: 86px;
+    --token: 34px;
     --island-tile-w: 200px;
     /* Held at step F's value: the source art has nothing more to give. */
     --action-icon: 30px;
@@ -589,12 +617,37 @@
      * titles start being covered again - the exact defect phase 1 removed. The
      * `measure-ui` fixture holds two cards and would not have caught it.
      */
-    --card-building: 104px;
+    /*
+     * 25/09/2026 (B-floor/laptop slicing, WP1b): was 104px.
+     *
+     * `measure-ui` reported this step slicing all 5 buildings of its densest
+     * fixture by 36px, which looked like it contradicted the census two
+     * comments up (0 sliced, 19px of slack in hand). It did not: the tool
+     * itself had a measure-then-correct race. `Table.tsx`'s `useCssSize`
+     * starts its React state at a hard-coded fallback (128px) and only
+     * becomes this ladder's real value once its effect commits, and the
+     * tool's probe could run inside that gap - it was measuring a 128px card
+     * that no ladder step ever ships, not the 104px this block actually
+     * sets. Fixed at the source (`settle()` in `tools/measure-ui.mjs`, which
+     * now waits two animation frames before probing).
+     *
+     * With the race gone the true shortfall at THIS step, on a busier turn
+     * than the census above was written against (the bonus phase and a live
+     * prompt both open at once, leaving the tableau's row shorter), was a few
+     * px rather than 36. Trimmed here until `measure-ui` read 0 sliced with
+     * some margin in hand.
+     */
+    --card-building: 84px;
     --card-hand: 88px;
     --card-deck: 62px;
     --card-inspector: 118px;
     --card-barn: 58px;
-    --island-tile-w: 54px;
+    --token: 18px;
+    /* 38px, down from 54px, 25/09/2026: freed for the tableau/hand/barn 60px
+       floor (B19/WP1). The island is the one shared-table element with no
+       measured capacity constraint tied to its size, so it is the cheapest
+       place to buy the tableau back its room at the 1024x700 floor. */
+    --island-tile-w: 38px;
     /*
      * The tightest case in the whole ladder. At 1024 the main column is about
      * 780px wide and the bar has to hold six action buttons, the bonus zone and
@@ -739,9 +792,38 @@ img {
   white-space: nowrap;
 }
 
+/*
+ * THE SKIP LINK (WP5 item 2, 25/09/2026): "Go to your turn", the first
+ * focusable thing on the table screen. Unlike `.visually-hidden` above, this
+ * one has to become VISIBLE the moment it is focused - a skip link nobody can
+ * see while tabbing to it is not a skip link - so it is pushed off-canvas
+ * with a transform rather than clipped, and `:focus` slides it back on.
+ */
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 5000;
+  transform: translateY(-200%);
+  background: var(--go);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-pill);
+  padding: 8px 16px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform var(--motion-ui) ease;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+  box-shadow: var(--focus-ring);
+}
+
 .empty-note {
   margin: 0;
   color: var(--ink-soft);
-  font-size: 12px;
+  font-size: var(--fs-xs); /* was 12px, 25/09/2026 token pass */
   font-style: italic;
 }

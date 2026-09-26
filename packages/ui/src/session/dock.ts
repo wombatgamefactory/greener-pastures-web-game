@@ -200,7 +200,17 @@ export function useHandDock(handKey: string, enabled: boolean): RefObject<HTMLDi
        * Even a strip that stays home grows upward, and the ceiling is what
        * keeps it inside the farm panel and away from the turn bar above it.
        */
-      const ceiling = farm?.getBoundingClientRect().top ?? tableau?.top ?? box.top;
+      /*
+       * T10b (26/09/2026): THE CEILING IS THE BOTTOM OF YOUR TABLEAU, not the
+       * farm panel's top edge. Up to the panel's edge, a magnified hand card
+       * rose over your own buildings at the very moment you were paying for
+       * one of them, and a building under the fan could not even be hovered
+       * (QA D11). Your buildings are what the hand is spent on, so the fan may
+       * grow into the strip's own caption and no further; the reading region
+       * beside it still shows the hovered card at full size. `view/dock.ts`'s
+       * note on `dockRise` describes the old ceiling and is kept as history.
+       */
+      const ceiling = tableau?.bottom ?? farm?.getBoundingClientRect().top ?? box.top;
       const rise = dockRise(box.top, box.height, barn?.top ?? box.bottom, ceiling, peak);
       const spot = (edge: number, cap: number) =>
         dockAnchors(

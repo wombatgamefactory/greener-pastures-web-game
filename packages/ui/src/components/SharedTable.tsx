@@ -8,6 +8,10 @@
  * spines with five separate discards - the Draw action is "top of any two
  * decks, keep both", and that only reads if the five stay visibly apart.
  *
+ * ⭐ FILE RENAMED FROM `Commons.tsx` TO `SharedTable.tsx` 25/09/2026 (B24): the
+ * component itself was already called `SharedTable` (below), and the file name
+ * was the one place the retired name still lingered. No behaviour change.
+ *
  * ⭐ RENAMED FROM `Commons` 18/09/2026 (2.7.4). THE COMMONS - five Notice Boards
  * standing ownerless in the centre, each with a public face-up pile anyone
  * could play onto - was ruled DEAD on 13/09/2026 and its code deleted
@@ -36,6 +40,7 @@ import type { PlayerView } from '@gp/engine';
 
 import { mark } from '../session/play';
 import type { Play } from '../session/play';
+import { cardName } from '../view/moveText';
 import { SUIT_META, seatName } from '../view/suits';
 import { doorOf, doorOwner, seatSuits } from '../view/table';
 import type { Door } from '../view/table';
@@ -87,6 +92,27 @@ function boardPowers(data: GameData): Door[] {
     .filter((door): door is Door => door !== null);
 }
 
+/**
+ * B23, 25/09/2026: THE DECK POPOVER.
+ *
+ * The discard's top card was already drawn here, permanently, at deck size -
+ * but deck size is 62-138px across the ladder (`--card-deck`, `base.css`) and
+ * a card that small is a picture to glance at, not something you can read the
+ * printed text off. And the whole element was only ever reachable when it was
+ * LIVE (`tabIndex={live ? 0 : undefined}`, same bug as the rival Notice Board
+ * buttons item 4 of this pass fixes): a deck you were not about to draw from
+ * this turn - which is most decks, most turns - could not be tabbed to at
+ * all, so its count and its discard were mouse-and-hover only.
+ *
+ * Every deck is now focusable, live or not (`aria-disabled` carries the
+ * legal/illegal distinction the way item 4's board buttons do), and hovering
+ * or focusing it opens a small text popover naming BOTH facts together - how
+ * many cards are left, and what the top discard is - rather than leaving a
+ * player to infer the count from a printed corner numeral and the discard
+ * from a thumbnail. `discard` is public state (`PlayerView.discards`), so
+ * nothing here crosses the hidden-information boundary the view type
+ * enforces.
+ */
 function DeckSpine({
   data,
   suit,
@@ -106,20 +132,25 @@ function DeckSpine({
 }) {
   const top = discard[discard.length - 1];
   const live = play?.live.decks.has(suit) ?? false;
+  const label = `${SUIT_META[suit].label} deck: ${count} card${count === 1 ? '' : 's'} left. ${
+    top ? `Top of discard: ${cardName(data, top)}.` : 'Discard pile empty.'
+  }`;
+  const activate = () => play?.deck(suit);
   return (
     <div
       className={`deck${mark(play, live)}`}
       onMouseLeave={() => zoom.clear()}
-      onClick={live ? () => play?.deck(suit) : undefined}
-      role={live ? 'button' : undefined}
-      tabIndex={live ? 0 : undefined}
-      onKeyDown={
-        live
-          ? (e) => {
-              if (e.key === 'Enter' || e.key === ' ') play?.deck(suit);
-            }
-          : undefined
-      }
+      onClick={live ? activate : undefined}
+      role="button"
+      aria-disabled={!live}
+      aria-label={label}
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (live && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          activate();
+        }
+      }}
     >
       <CardBack suit={suit} width={width} count={count} />
       <div className="deck-discard">
@@ -133,6 +164,20 @@ function DeckSpine({
         <span className="deck-label" style={{ color: SUIT_META[suit].ink }}>
           {SUIT_META[suit].label}
         </span>
+      </div>
+      {/* The popover itself: CSS-only reveal on hover or focus (`shared-
+          table.css`), so it works identically for a pointer and for a
+          keyboard user tabbing onto the deck - neither needs JavaScript state
+          to see it, only `:hover`/`:focus-visible`. `aria-hidden` because the
+          `aria-label` above already carries the same words to a screen
+          reader the moment the deck itself receives focus; this is the
+          sighted reading of that same fact. */}
+      <div className="deck-popover" aria-hidden="true">
+        <strong>{SUIT_META[suit].label}</strong>
+        <span>
+          {count} card{count === 1 ? '' : 's'} left
+        </span>
+        <span>{top ? `Top of discard: ${cardName(data, top)}` : 'Discard pile empty'}</span>
       </div>
     </div>
   );
@@ -176,6 +221,12 @@ export function SharedTable({
             />
           ))}
         </div>
+        {/* T10b (26/09/2026): the task tray's host. `Prompt.tsx` portals a
+            live task's cards and answers in here, under the deck backs and
+            clear of them (`shared-table.css`, `.task-tray`), so a task never
+            reflows the farm and never covers a deck it is asking about. Empty
+            and click-through on every other turn. */}
+        {play && <div className="task-tray" id="task-tray" />}
       </div>
 
       <div className="panel panel-island">

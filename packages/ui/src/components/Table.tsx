@@ -23,12 +23,13 @@ import type { GameData } from '@gp/data';
 import type { GameEvent, PlayerView, Seat } from '@gp/engine';
 
 import { useDrag } from '../session/drag';
+import { useEscapeKey } from '../session/escape';
 import { narrateAll } from '../session/narrate';
 import type { Play } from '../session/play';
 import { SUIT_META } from '../view/suits';
 import { seatSuits } from '../view/table';
 import { ActionBar } from './ActionBar';
-import { SharedTable } from './Commons';
+import { SharedTable } from './SharedTable';
 import { DragGhost } from './DragGhost';
 import { EventFeed } from './EventFeed';
 import { Farm } from './Farm';
@@ -87,6 +88,8 @@ export function Table({
   waitingOn = null,
   notice = null,
   corner = null,
+  onShowHowToPlay,
+  onShowKeyHelp,
 }: {
   data: GameData;
   view: PlayerView;
@@ -95,6 +98,9 @@ export function Table({
   onUndo?: (() => void) | undefined;
   canUndo?: boolean | undefined;
   waitingOn?: string | null | undefined;
+  /** WP5 item 2: forwarded straight to `ActionBar`'s own "?" menu. */
+  onShowHowToPlay?: (() => void) | undefined;
+  onShowKeyHelp?: (() => void) | undefined;
   /**
    * A table-wide announcement from outside the table: today only App's supply
    * lock. Rendered in the same strip as the end trigger, because the two are
@@ -163,21 +169,19 @@ export function Table({
   const readAsRegion = read > 0;
 
   /*
-   * Escape closes whichever overlay is up. One listener for both, mounted only
+   * Escape closes whichever overlay is up. One handler for both, active only
    * while there is something to close, so Escape keeps its other meaning (the
    * play layer's "put the card down") on every other frame.
+   *
+   * 25/09/2026 (WP5 item 3): `useEscapeKey` rather than a raw `window` bubble
+   * listener - see `session/escape.ts`'s header for the CookieYes race this
+   * wins outright.
    */
   const overlaid = inspecting !== null || islandOpen;
-  useEffect(() => {
-    if (!overlaid) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      setInspecting(null);
-      setIslandOpen(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [overlaid]);
+  useEscapeKey(() => {
+    setInspecting(null);
+    setIslandOpen(false);
+  }, overlaid);
 
   return (
     <div className="table" data-phase={view.phase}>
@@ -229,7 +233,16 @@ export function Table({
          * is one more thing on screen that is nobody's. The rail is NOT in this
          * column and is unaffected: each neighbour sets its own.
          */
-        style={{ ['--seat-ink' as string]: seatMeta.ink, ['--seat-pip' as string]: seatMeta.pip }}
+        style={{
+          ['--seat-ink' as string]: seatMeta.ink,
+          ['--seat-pip' as string]: seatMeta.pip,
+          /* 25/09/2026 (WP2 coordination): `--seat-pip` is now Wheat/Dairy's
+             light paper-matched pip colour and reads as invisible on a border
+             or a fill. `--seat-edge` carries `SUIT_META[suit].edge`, the same
+             hue at 3:1 or better, for every place table.css's split files draw
+             a boundary or a progress fill rather than a dot. */
+          ['--seat-edge' as string]: seatMeta.edge,
+        }}
       >
         {notices.length > 0 && (
           <div className="table-notice" role="status">
@@ -271,25 +284,55 @@ export function Table({
          * track explicitly (table.css) for the render-test path, where `play`
          * is absent and there is no turn zone at all.
          *
-         * THE BAR IS ABOVE THE PROMPT, which is the reverse of the old bottom
-         * zone and is deliberate. The prompt is the surface a hand card is
-         * DROPPED on - the build and visit assemblies are drop targets - so it
-         * belongs on the side of the zone nearest the hand, which is now below
-         * rather than above. It also reads as a chain going down the screen:
-         * the button you pressed, then what the game wants next, then your
-         * farm. Phase 5's "they are one zone" is unchanged; they are simply one
-         * zone somewhere else.
+         * ⭐ SPLIT INTO TWO ROWS, 25/09/2026 (B3, WP1). The bar and the prompt
+         * used to be ONE grid row, sized to whichever of the two was taller -
+         * so a multi-line Build or Visit assembly grew that row, and the farm
+         * below it (the flexing track) gave up exactly what the assembly took.
+         * Every prompt state reflowed the farm, and a tall assembly could slice
+         * the tableau mid-turn (Top 2 in the appraisal). `.turn-zone` now holds
+         * ONLY the bar, so its height never depends on what the game is asking.
+         * `.prompt-dock` is `main-column.css`'s own row for the prompt, but a
+         * multi-line answer (anything that is not `.prompt-quiet` - the build,
+         * visit and deliver assemblies, the disambiguation menu, a live task)
+         * is lifted out of that row by `position: absolute` and drawn as a
+         * sheet docked over the top of the shared table instead (`main-column.css`
+         * carries the rule and the reasoning). The one-line "hold"/"arm" notes
+         * stay in normal flow, which is the "action bar row plus one prompt
+         * line" the ticket asks for. `Prompt.tsx` itself is untouched: the
+         * split is entirely `.prompt-quiet`, a class it already wrote.
          */}
         {play && (
-          <div className="turn-zone">
+          // `id` plus `tabIndex={-1}` (WP5 item 2, 25/09/2026): the skip
+          // link's landing spot (`App.tsx`). Not natively focusable - a plain
+          // `<div>` - so it needs both to be a legal target for a
+          // programmatic `.focus()` or an in-page `href="#turn-zone"` jump.
+          <div className="turn-zone" id="turn-zone" tabIndex={-1}>
             <ActionBar
               data={data}
               play={play}
               onUndo={onUndo ?? (() => {})}
               canUndo={canUndo}
               waitingOn={waitingOn}
-            />
-            <Prompt data={data} play={play} zoom={zoom} />
+              onShowHowToPlay={onShowHowToPlay}
+              onShowKeyHelp={onShowKeyHelp}
+            >
+              {/*
+               * T10b (26/09/2026): THE PROMPT LIVES IN THE BAR'S MESSAGE LINE,
+               * NOT IN A ROW OF ITS OWN. The row it had (B3) held one line when
+               * quiet, but a live task's reveal ("Draw 2: pick a deck for your
+               * second card", with the card) and "Deliver: choose an island
+               * tile" stayed in normal flow and pushed the farm down by up to
+               * 95px mid-turn, taking the hand and the receipts off the bottom
+               * at 1024 and 1600 (QA D2). Now the sentence is one fixed line in
+               * the bar, a task's cards and answers go to the tray under the
+               * decks (`Prompt.tsx`), and an assembly docks over the shared
+               * table exactly as before. `.prompt-dock` keeps its name: the
+               * keyboard layer and three verify tools find the prompt by it.
+               */}
+              <div className="prompt-dock">
+                <Prompt data={data} play={play} zoom={zoom} />
+              </div>
+            </ActionBar>
           </div>
         )}
         <Farm

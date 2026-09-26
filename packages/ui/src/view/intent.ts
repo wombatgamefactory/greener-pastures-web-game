@@ -910,6 +910,71 @@ export function deliverStart(
   return deliverCandidates(moves, draft).length > 0 ? { draft } : null;
 }
 
+/**
+ * A draft that already names a whole offer's tile, token and spend (B4,
+ * 25/09/2026). Used to pre-fill the deliver assembly for a single-candidate
+ * Deliver rather than sending it straight away - see `ActionBar.tsx`'s
+ * `onGroup`, which used to let a lone legal delivery play itself the moment
+ * the Deliver button was clicked, spending a whole barn (often 4 cards) with
+ * no assembly and no way back. The draft this returns is already `deliverComplete`,
+ * so the panel opens showing every chip paid and a live confirm button - the
+ * player still has to click it.
+ */
+export function deliverDraftFromOffer(offer: DeliverOffer): DeliverDraft {
+  return { tile: offer.tile, token: offer.token ?? null, spend: { ...offer.spend } };
+}
+
+/**
+ * How many cards a move spends in one click, for the same B4 rule: a lone
+ * legal candidate that spends 2 or more cards must not fire from a single
+ * button press with nothing shown first. Grow's one card and Harvest's none
+ * never trip it; Build already never reaches the shortcut this guards
+ * (`onGroup` excludes it, and `startBuild` only auto-sends a free build) and
+ * Deliver is the one family that does.
+ */
+export function cardsSpent(move: Move): number {
+  switch (move.type) {
+    // A raw `build` move never carries `stacks` - that field only exists on a
+    // build TASK's answer (`BuildOffer.stacks`), and a task answer is not what
+    // this guards: Build is excluded from the shortcut before `cardsSpent` is
+    // ever asked (see `ActionBar.tsx`'s `onGroup`).
+    case 'build':
+      return move.payment.length;
+    case 'grow':
+      return move.payment === null ? 0 : 1;
+    case 'deliver':
+      return Object.values(move.spend).reduce((a: number, b) => a + (b ?? 0), 0);
+    case 'visit':
+      return move.fee === null ? 0 : 1;
+    default:
+      return 0;
+  }
+}
+
+/**
+ * What clicking the Deliver family button on the turn bar should do (B4,
+ * 25/09/2026). Factored out of `ActionBar.tsx`'s `onGroup` so the rule is
+ * unit-testable on its own: with more than one legal delivery, arm the
+ * family exactly as any other multi-candidate family does; with exactly one
+ * and it spends 2 or more cards, open the assembly PRE-FILLED with that
+ * offer rather than sending it (the appraisal's `deliver-armed-1600.png`:
+ * a lone legal delivery used to spend a whole barn, often 4 cards, the
+ * instant the button was clicked, with nothing shown first and no way back);
+ * with one spending fewer than 2, send it straight away like any other
+ * cheap single-target family (Grow, Harvest).
+ */
+export function deliverFamilyClick(
+  moves: readonly Move[],
+): { k: 'send'; move: Move } | { k: 'prefill'; draft: DeliverDraft } | { k: 'arm' } {
+  if (moves.length !== 1) return { k: 'arm' };
+  const move = moves[0] as Move;
+  if (cardsSpent(move) >= 2) {
+    const offer = deliverOffers(moves)[0];
+    if (offer) return { k: 'prefill', draft: deliverDraftFromOffer(offer) };
+  }
+  return { k: 'send', move };
+}
+
 // --- subset answers ---------------------------------------------------------
 
 /**

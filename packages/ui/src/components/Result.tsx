@@ -20,6 +20,15 @@
  * `gameEnd` handler, so it arrives in the end-game section like any other
  * card and every seat now has at least one line there.
  *
+ * ⭐ 25/09/2026 (UI polish WP4, item B5): THE SCREEN NOW TALKS TO THE PLAYER.
+ * It opens with where YOU finished ("You came 2nd of 3, 7 VP behind Orchard
+ * farm", or a win line), each seat's score is drawn as a three-colour bar by
+ * source, and the design-instrument sentences (the island's share of the winning
+ * score against the ~50% target) moved behind `?debug=1`, where Dean can still
+ * read them off a finished game. "Meeple" is gone from every line a player sees:
+ * the component is a Worker everywhere else in the interface and the rule book.
+ * Two ways out instead of one: "Play again (same seats)" and "New setup".
+ *
  * Nothing here knows a rule constant. The island's VP by arrival order, the
  * delivery count that ends the game and the number of further turns are all read
  * out of `GameData`.
@@ -32,26 +41,132 @@ import type { GameScore, PlayerView } from '@gp/engine';
 
 import { cropIcon, frame, token } from '../view/art';
 import { scoreReport, verdictLine } from '../view/scoring';
-import type { EndgameCard, ScoredCard, SeatScore } from '../view/scoring';
+import type { EndgameCard, ScoreReport, ScoredCard, SeatScore } from '../view/scoring';
 import { SUIT_META } from '../view/suits';
 import { ZoomPanel, useZoom } from './Zoom';
 import type { Zoomer } from './Zoom';
+
+/**
+ * `?debug=1` shows the designer's readings (25/09/2026). Read per render rather
+ * than threaded through as a prop, because it is a property of the page a
+ * designer opened, not of the game; guarded for the test renderer, which has no
+ * `window`.
+ */
+function debugMode(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return new URLSearchParams(window.location.search).get('debug') === '1';
+  } catch {
+    return false;
+  }
+}
+
+const ORDINALS = ['1st', '2nd', '3rd', '4th', '5th'];
+export function ordinal(n: number): string {
+  return ORDINALS[n - 1] ?? `${n}th`;
+}
+
+/**
+ * THE PLAYER'S OWN LINE, first on the screen (25/09/2026, B5). A player who has
+ * just spent forty minutes on a game wants to know where THEY came before they
+ * want the winner's margin, so this leads and `verdictLine` follows it.
+ *
+ * Ties are said honestly: two farms level on VP are separated by the tie-break
+ * chain (cards held, then receipts), and "0 VP behind" would be nonsense, so a
+ * level score names the tie-break instead of a margin.
+ */
+export function standingLine(report: ScoreReport): { head: string; sub: string } {
+  const seats = report.seats;
+  const you = seats.find((s) => s.isYou);
+  const of = `of ${seats.length}`;
+  if (!you) return { head: `${report.verdict.winner.name} wins`, sub: '' };
+  const total = you.breakdown.total;
+  if (you.rank === 1) {
+    const next = seats[1];
+    const by = next ? total - next.breakdown.total : 0;
+    return {
+      head: 'You won!',
+      sub:
+        next === undefined
+          ? `1st ${of}, with ${total} VP.`
+          : by > 0
+            ? `1st ${of}, with ${total} VP: ${by} VP ahead of ${next.name}.`
+            : `1st ${of}, level with ${next.name} on ${total} VP and ahead on the tie-break.`,
+    };
+  }
+  const winner = seats[0]!;
+  const behind = winner.breakdown.total - total;
+  return {
+    head: `You came ${ordinal(you.rank)} ${of}`,
+    sub:
+      behind > 0
+        ? `${total} VP, ${behind} VP behind ${winner.name}.`
+        : `${total} VP, level with ${winner.name}, who takes it on the tie-break.`,
+  };
+}
+
+/** One seat's three sources as a bar, so the shape of a score reads at a glance. */
+function SourceBar({ seat, scale }: { seat: SeatScore; scale: number }) {
+  const { receipts, printed, endgame, total } = seat.breakdown;
+  const pct = (n: number) => `${scale > 0 ? (Math.max(0, n) / scale) * 100 : 0}%`;
+  return (
+    <span
+      className="result-bar"
+      role="img"
+      aria-label={`${receipts} island, ${printed} printed, ${endgame} end-game, ${total} in all`}
+    >
+      <span className="result-bar-island" style={{ width: pct(receipts) }} />
+      <span className="result-bar-built" style={{ width: pct(printed) }} />
+      <span className="result-bar-endgame" style={{ width: pct(endgame) }} />
+    </span>
+  );
+}
 
 export function Result({
   data,
   view,
   score,
   onAgain,
+  onReplay,
 }: {
   data: GameData;
   view: PlayerView;
   score: GameScore;
+  /** "New setup": back to the start screen. */
   onAgain(): void;
+  /**
+   * "Play again (same seats)": the same farmers and crops, a fresh deal. Wired
+   * by `App.tsx` when it can rebuild the session; until then the fallback below
+   * reloads the page on a query string that seats the same crops.
+   */
+  onReplay?: () => void;
 }) {
   const report = scoreReport(data, view, score);
+  const debug = debugMode();
+  const standing = standingLine(report);
+  const scale = Math.max(1, ...report.seats.map((s) => s.breakdown.total));
+  const replay =
+    onReplay ??
+    (() => {
+      // ⚠️ FALLBACK ONLY (25/09/2026). `readOptions` in `App.tsx` seats these
+      // crops in this order with `depth=0` (a fresh deal, no warm-up walk). The
+      // bots' temperaments do not survive a reload; `onReplay` keeps them.
+      if (typeof window === 'undefined') return;
+      const suits = [...report.seats].sort((a, b) => a.seat - b.seat).map((s) => s.suit);
+      const q = new URLSearchParams({
+        seats: String(suits.length),
+        suits: suits.join(','),
+        seed: `replay-${Date.now().toString(36)}`,
+        depth: '0',
+        minHand: '0',
+      });
+      window.location.search = q.toString();
+    });
   const { verdict } = report;
   const trigger = data.rules.endGame;
-  const [open, setOpen] = useState(verdict.winner.seat);
+  // ⭐ 25/09/2026: the working opens on YOUR farm (the question a player asks
+  // first is "where did my points come from"), falling back to the winner's.
+  const [open, setOpen] = useState(report.seats.find((s) => s.isYou)?.seat ?? verdict.winner.seat);
   const zoom = useZoom();
   const detail = report.seats.find((s) => s.seat === open) ?? verdict.winner;
   const disagrees = report.seats.filter((s) => !s.agrees);
@@ -60,6 +175,9 @@ export function Result({
     <div className="overlay" role="dialog" aria-label="final scores">
       <div className="inspector result">
         <header className="result-head">
+          {/* ⭐ 25/09/2026: your own standing leads; the winner's line follows. */}
+          <p className="result-standing">{standing.head}</p>
+          <p className="result-standing-sub">{standing.sub}</p>
           <h2>
             <span style={{ color: SUIT_META[verdict.winner.suit].ink }}>{verdict.winner.name}</span>{' '}
             {verdictLine(verdict)}
@@ -78,7 +196,8 @@ export function Result({
 
         <table className="result-table">
           <caption>
-            Click a farm for its working. The island share sits under the island VP.
+            Where every point came from. Click a farm to see its working.
+            {debug ? ' The island share sits under the island VP.' : ''}
           </caption>
           <thead>
             <tr>
@@ -88,9 +207,14 @@ export function Result({
               <th scope="col" className="result-farm-head">
                 farm
               </th>
-              <th scope="col">island</th>
-              <th scope="col">built</th>
-              <th scope="col">end-game</th>
+              <th scope="col" className="result-bar-head">
+                <span className="result-key result-key-island">island</span>
+                <span className="result-key result-key-built">printed</span>
+                <span className="result-key result-key-endgame">end-game</span>
+              </th>
+              <th scope="col">island receipts</th>
+              <th scope="col">printed on cards</th>
+              <th scope="col">end-game cards</th>
               <th scope="col">total</th>
             </tr>
           </thead>
@@ -111,9 +235,12 @@ export function Result({
                   <img src={cropIcon(s.suit)} alt="" />
                   {s.name}
                 </th>
+                <td className="result-bar-cell">
+                  <SourceBar seat={s} scale={scale} />
+                </td>
                 <td>
                   {s.breakdown.receipts}
-                  <small>{Math.round(s.islandShare)}%</small>
+                  {debug && <small>{Math.round(s.islandShare)}%</small>}
                 </td>
                 <td>{s.breakdown.printed}</td>
                 <td>{s.breakdown.endgame}</td>
@@ -125,16 +252,23 @@ export function Result({
           </tbody>
         </table>
 
-        <p className="result-share">
-          The island paid <b>{Math.round(verdict.winner.islandShare)}%</b> of the winning score. The
-          design aims for about half or more; well under that, and the farms are outscoring the
-          thing everyone is supposed to be racing for.
-        </p>
+        {/* ⭐ 25/09/2026: THE DESIGN INSTRUMENT MOVED BEHIND `?debug=1`. It is a
+            question for the designer (is the island carrying half the winning
+            score?), and a player reading it on a scoring screen was being told
+            the game might be broken. The number is unchanged. */}
+        {debug && (
+          <p className="result-share">
+            The island paid <b>{Math.round(verdict.winner.islandShare)}%</b> of the winning score.
+            The design aims for about half or more; well under that, and the farms are outscoring
+            the thing everyone is supposed to be racing for.
+          </p>
+        )}
 
         <Detail seat={detail} zoom={zoom} />
 
         {/*
          * ⭐ THE DEAD-COMPONENT NUMBER, printed where a player can see it.
+         * (25/09/2026: worded as Workers, the component's name at the table.)
          *
          * A meeple is a stored action that leaves the game when spent, so one
          * still in a supply at the end was never used - and the v31 plan asks
@@ -145,8 +279,8 @@ export function Result({
          */}
         <p className="result-note">
           {report.meeplesUnspent === 0
-            ? 'Every meeple the island paid out was spent. None went to waste.'
-            : `${report.meeplesUnspent} meeple${report.meeplesUnspent === 1 ? '' : 's'} left the game unspent, still in supplies. They score nothing: a meeple is a stored action, not a point.`}
+            ? 'Every Worker the island paid out was spent. None went to waste.'
+            : `${report.meeplesUnspent} Worker${report.meeplesUnspent === 1 ? ' was' : 's were'} never spent. Workers score nothing: each one is a stored action, not a point.`}
         </p>
         {disagrees.length > 0 && (
           <p className="result-warn" role="alert">
@@ -156,9 +290,14 @@ export function Result({
           </p>
         )}
 
-        <button className="primary" onClick={onAgain}>
-          Another game
-        </button>
+        <div className="result-actions">
+          <button className="primary result-again" onClick={replay}>
+            Play again (same seats)
+          </button>
+          <button className="result-setup" onClick={onAgain}>
+            New setup
+          </button>
+        </div>
         <ZoomPanel data={data} zoom={zoom} width={340} />
       </div>
     </div>
@@ -248,8 +387,8 @@ function Detail({ seat, zoom }: { seat: SeatScore; zoom: Zoomer }) {
         Held at the end: <b>{seat.stock}</b> card{seat.stock === 1 ? '' : 's'} in hand and barn,
         which is the tie-break after VP.{' '}
         {seat.meeplesLeft === 0
-          ? 'No meeples left over.'
-          : `${seat.meeplesLeft} meeple${seat.meeplesLeft === 1 ? '' : 's'} unspent, worth nothing.`}
+          ? 'No Workers left over.'
+          : `${seat.meeplesLeft} Worker${seat.meeplesLeft === 1 ? '' : 's'} unspent, worth nothing.`}
       </p>
     </div>
   );

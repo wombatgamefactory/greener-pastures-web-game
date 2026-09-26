@@ -166,6 +166,52 @@ describe('undo is replay-a-prefix', () => {
     expect(session.snapshot().canUndo).toBe(false);
     expect(session.undo()).toBe(false);
   });
+
+  /**
+   * B17 (25/09/2026): undo used to reach back across a whole game of your own
+   * past turns, one call at a time - "undo" reading as "rewind my last several
+   * turns" rather than the "undo last step" the button is now labelled. This
+   * pins both halves: unavailable the moment your turn has ended (even though
+   * every move you played that turn is still sitting in the log), and, once a
+   * fresh turn gives you something to undo, never reaching further back than
+   * where that turn began.
+   */
+  it("is unavailable once your turn has ended, and never reaches before your turn's own floor", () => {
+    const session = new Session(data, THREE);
+    while (!session.snapshot().yours) session.stepBot();
+
+    // Play your whole turn out, ending it exactly as a human clicking End
+    // turn would - preferring `endTurn` the moment it is offered.
+    for (
+      let guard = 0;
+      guard < 60 && session.snapshot().yours && !session.snapshot().over;
+      guard++
+    ) {
+      const snap = session.snapshot();
+      const move = snap.moves.find((m) => m.type === 'endTurn') ?? (snap.moves[0] as Move);
+      session.send(move);
+    }
+    expect(session.snapshot().yours).toBe(false);
+
+    // Your turn is over. However many of your own moves are sitting in the
+    // log from it, undo must not be offered - the whole point of "last STEP".
+    expect(session.snapshot().canUndo).toBe(false);
+    expect(session.undo()).toBe(false);
+
+    // Let the table come back around and take one action. Undo now reaches
+    // exactly that move, and nothing before it.
+    while (!session.snapshot().yours && !session.snapshot().over) session.stepBot();
+    if (session.snapshot().over) return; // an unlucky short game; nothing left to check
+    const beforeThisMove = JSON.stringify(session.snapshot().view);
+    session.send(session.snapshot().moves[0] as Move);
+    expect(session.snapshot().canUndo).toBe(true);
+    expect(session.undo()).toBe(true);
+    expect(JSON.stringify(session.snapshot().view)).toEqual(beforeThisMove);
+    // Back at this turn's own floor, with the previous (ended) turn still
+    // completely out of reach.
+    expect(session.snapshot().canUndo).toBe(false);
+    expect(session.undo()).toBe(false);
+  });
 });
 
 describe('the warm-up walk', () => {
@@ -182,4 +228,35 @@ describe('the warm-up walk', () => {
     },
     WHOLE_GAME,
   );
+});
+
+/**
+ * 26/09/2026 (Dean): a Draw whose keep offers no choice goes straight into your
+ * hand. The session sends the lone keep answer itself, and undo steps back past
+ * it to the deck choice rather than to a confirm the player never saw.
+ */
+describe('a keep with no choice is never asked for', () => {
+  it('drawing straight into the hand, and undo lands on the deck choice', () => {
+    const session = new Session(data, THREE);
+    while (!session.snapshot().yours) session.stepBot();
+    const draw = session.snapshot().moves.find((m) => m.type === 'draw');
+    expect(draw).toBeDefined();
+    session.play(draw as Move);
+    let beforeLastDeck = '';
+    for (let i = 0; i < 6; i++) {
+      const snap = session.snapshot();
+      const deck = snap.moves.find((m) => m.type === 'task' && m.answer.kind === 'deck');
+      if (!deck) break;
+      beforeLastDeck = JSON.stringify(snap.view);
+      session.play(deck);
+    }
+    const after = session.snapshot();
+    // No lone keep is ever left waiting for the player.
+    const keeps = after.moves.filter((m) => m.type === 'task' && m.answer.kind === 'keep');
+    expect(after.moves.length === 1 && keeps.length === 1).toBe(false);
+    if (after.yours) {
+      expect(session.undo()).toBe(true);
+      expect(JSON.stringify(session.snapshot().view)).toEqual(beforeLastDeck);
+    }
+  });
 });
